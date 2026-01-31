@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nationhood | Home</title>
+    <style>
+        :root {
+            --gold: #ffcc00;
+            --dark-bg: #121212;
+            --panel-bg: #1e1e1e;
+            --text-main: #e0e0e0;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--dark-bg);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* Hero Section */
+        header {
+            width: 100%;
+            padding: 60px 0;
+            text-align: center;
+            background: linear-gradient(to bottom, #1a1a1a, #121212);
+            border-bottom: 2px solid var(--gold);
+        }
+
+        h1 {
+            font-size: 4rem;
+            margin: 0;
+            letter-spacing: 4px;
+            color: var(--gold);
+            text-transform: uppercase;
+            text-shadow: 0 0 15px rgba(255, 204, 0, 0.4);
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: #888;
+            margin-top: 10px;
+        }
+
+        /* Main Menu Container */
+        .main-container {
+            display: flex;
+            gap: 40px;
+            margin-top: 50px;
+            width: 90%;
+            max-width: 1000px;
+        }
+
+        /* Menu Buttons */
+        .menu-options {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .menu-btn {
+            background-color: var(--panel-bg);
+            border: 1px solid #444;
+            color: white;
+            padding: 25px;
+            font-size: 1.5rem;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: block;
+            border-radius: 4px;
+        }
+
+        .menu-btn:hover {
+            border-color: var(--gold);
+            background-color: #2a2a2a;
+            transform: translateX(10px);
+        }
+
+        .menu-btn span {
+            display: block;
+            font-size: 0.9rem;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        /* Side Info Panel */
+        .info-panel {
+            flex: 1;
+            background-color: var(--panel-bg);
+            padding: 30px;
+            border-radius: 4px;
+            border-top: 4px solid var(--gold);
+        }
+
+        h3 { color: var(--gold); margin-top: 0; }
+
+        .news-item {
+            margin-bottom: 20px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+        }
+
+        .news-date { font-size: 0.8rem; color: var(--gold); }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Nationhood</h1>
+        <div class="subtitle">Alpha Version 0.1 | World Map Ready</div>
+    </header>
+
+    <main class="main-container">
+        <section class="menu-options">
+            <a href="map.html" class="menu-btn">
+                LOG IN
+                <span>Resume your progress in an active Shard</span>
+            </a>
+
+            <a href="signup.html" class="menu-btn">
+                SIGN UP
+                <span>Create an account for Nationhood</span>
+            </a>
+
+            <button class="menu-btn" onclick="alert('Settings Panel Locked')">
+                CHRONICLE
+                <span>Review information on the world</span>
+            </button>
+        </section>
+
+        <section class="info-panel">
+            <h3>WORLD LOG</h3>
+            <div class="news-item">
+                <div class="news-date">JANUARY 30, 2026</div>
+                <p><strong>Melizea Discovered:</strong> The coastal region of Melizea has been successfully mapped. San Maria established as the regional capital.</p>
+            </div>
+            <div class="news-item">
+                <div class="news-date">SYSTEM UPDATE</div>
+                <p>Geographic coordinates for the Southern Continent have been stabilized. No further continent "disappearances" reported.</p>
+            </div>
+        </section>
+    </main>
+
+</body>
+</html>
