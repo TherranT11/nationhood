@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Nationhood | Join the Chronicle</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        body { background-color: #121212; color: #e0e0e0; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .signup-card { background: #1e1e1e; padding: 40px; border-radius: 8px; border-top: 4px solid #ffcc00; width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        h2 { color: #ffcc00; margin-top: 0; }
+        .input-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-size: 0.9rem; color: #888; }
+        input, select { width: 100%; padding: 12px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 4px; box-sizing: border-box; }
+        .btn-join { width: 100%; padding: 15px; background: #ffcc00; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; color: #000; }
+        .btn-join:hover { background: #e6b800; }
+        .btn-join:disabled { background: #666; cursor: not-allowed; }
+        .login-link { text-align: center; margin-top: 15px; font-size: 0.8rem; }
+        .login-link a { color: #ffcc00; text-decoration: none; }
+        .error { color: #ff4444; font-size: 0.9rem; margin-top: 10px; text-align: center; }
+    </style>
+</head>
+<body>
+
+<div class="signup-card">
+    <h2>Establish Faction</h2>
+    <form id="signup-form">
+        <div class="input-group">
+            <label>Email Address</label>
+            <input type="email" id="email" placeholder="commander@melizea.gov" required>
+        </div>
+        <div class="input-group">
+            <label>Password</label>
+            <input type="password" id="password" minlength="6" required>
+        </div>
+        <div class="input-group">
+            <label>Faction Path</label>
+            <select id="faction-type">
+                <option value="party">Political Party (Influence & Law)</option>
+                <option value="military">Military Branch (Force & Security)</option>
+                <option value="corp">Corporation (Wealth & Trade)</option>
+            </select>
+        </div>
+        <button type="submit" class="btn-join" id="submit-btn">CREATE ACCOUNT</button>
+        <div id="error-message" class="error"></div>
+    </form>
+    <div class="login-link">
+        Already have a faction? <a href="login.html">Log In</a>
+    </div>
+</div>
+
+<script>
+    // Your Supabase credentials
+    const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
+    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+    document.getElementById('signup-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const submitBtn = document.getElementById('submit-btn');
+        const errorMsg = document.getElementById('error-message');
+        
+        errorMsg.textContent = '';
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'CREATING FACTION...';
+        
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const factionType = document.getElementById('faction-type').value;
+        const targetNation = "Melizea";
+
+        try {
+            // STEP 1: Create the User in Supabase Auth
+            const { data: authData, error: authError } = await _supabase.auth.signUp({
+                email,
+                password,
+            });
+
+            if (authError) throw authError;
+
+            // STEP 2: Create the Faction Record
+            if (authData.user) {
+                const tempName = email.split('@')[0] + "'s Faction";
+                
+                const { error: dbError } = await _supabase
+                    .from('factions')
+                    .insert([{ 
+                        id: authData.user.id, 
+                        faction_name: tempName,
+                        faction_type: factionType, 
+                        nation: targetNation
+                    }]);
+
+                if (dbError) throw dbError;
+
+                alert("Faction Commissioned! Welcome to the Chronicle.");
+                window.location.href = "map.html";
+            }
+        } catch (error) {
+            console.error('Signup error:', error);
+            errorMsg.textContent = error.message || 'Signup failed. Please try again.';
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'CREATE ACCOUNT';
+        }
+    });
+</script>
+
+</body>
+</html>
