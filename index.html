@@ -2,153 +2,76 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nationhood | Home</title>
+    <title>Nationhood | Faction Login</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        :root {
-            --gold: #ffcc00;
-            --dark-bg: #121212;
-            --panel-bg: #1e1e1e;
-            --text-main: #e0e0e0;
-        }
-
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--dark-bg);
-            color: var(--text-main);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-        }
-
-        /* Hero Section */
-        header {
-            width: 100%;
-            padding: 60px 0;
-            text-align: center;
-            background: linear-gradient(to bottom, #1a1a1a, #121212);
-            border-bottom: 2px solid var(--gold);
-        }
-
-        h1 {
-            font-size: 4rem;
-            margin: 0;
-            letter-spacing: 4px;
-            color: var(--gold);
-            text-transform: uppercase;
-            text-shadow: 0 0 15px rgba(255, 204, 0, 0.4);
-        }
-
-        .subtitle {
-            font-size: 1.2rem;
-            color: #888;
-            margin-top: 10px;
-        }
-
-        /* Main Menu Container */
-        .main-container {
-            display: flex;
-            gap: 40px;
-            margin-top: 50px;
-            width: 90%;
-            max-width: 1000px;
-        }
-
-        /* Menu Buttons */
-        .menu-options {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .menu-btn {
-            background-color: var(--panel-bg);
-            border: 1px solid #444;
-            color: white;
-            padding: 25px;
-            font-size: 1.5rem;
-            text-align: left;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            display: block;
-            border-radius: 4px;
-        }
-
-        .menu-btn:hover {
-            border-color: var(--gold);
-            background-color: #2a2a2a;
-            transform: translateX(10px);
-        }
-
-        .menu-btn span {
-            display: block;
-            font-size: 0.9rem;
-            color: #888;
-            margin-top: 5px;
-        }
-
-        /* Side Info Panel */
-        .info-panel {
-            flex: 1;
-            background-color: var(--panel-bg);
-            padding: 30px;
-            border-radius: 4px;
-            border-top: 4px solid var(--gold);
-        }
-
-        h3 { color: var(--gold); margin-top: 0; }
-
-        .news-item {
-            margin-bottom: 20px;
-            border-bottom: 1px solid #333;
-            padding-bottom: 10px;
-        }
-
-        .news-date { font-size: 0.8rem; color: var(--gold); }
+        body { background-color: #121212; color: #e0e0e0; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-card { background: #1e1e1e; padding: 40px; border-radius: 8px; border-top: 4px solid #ffcc00; width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        h2 { color: #ffcc00; margin-top: 0; }
+        .input-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-size: 0.9rem; color: #888; }
+        input { width: 100%; padding: 12px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 4px; box-sizing: border-box; }
+        .btn-login { width: 100%; padding: 15px; background: #ffcc00; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; color: #000; }
+        .btn-login:hover { background: #e6b800; }
+        .signup-link { text-align: center; margin-top: 15px; font-size: 0.8rem; }
+        .signup-link a { color: #ffcc00; text-decoration: none; }
+        .error { color: #ff4444; font-size: 0.9rem; margin-top: 10px; text-align: center; }
     </style>
 </head>
 <body>
 
-    <header>
-        <h1>Nationhood</h1>
-        <div class="subtitle">Alpha Version 0.1 | World Map Ready</div>
-    </header>
+<div class="login-card">
+    <h2>Faction Login</h2>
+    <form id="login-form">
+        <div class="input-group">
+            <label>Email Address</label>
+            <input type="email" id="email" required>
+        </div>
+        <div class="input-group">
+            <label>Password</label>
+            <input type="password" id="password" required>
+        </div>
+        <button type="submit" class="btn-login">ENTER THE CHRONICLE</button>
+        <div id="error-message" class="error"></div>
+    </form>
+    <div class="signup-link">
+        New to the continent? <a href="signup.html">Establish a Faction</a>
+    </div>
+</div>
 
-    <main class="main-container">
-        <section class="menu-options">
-            <a href="map.html" class="menu-btn">
-                LOG IN
-                <span>Resume your progress in an active Shard</span>
-            </a>
+<script>
+    // Your Supabase credentials - CORRECT KEY
+    const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
+    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
-            <a href="signup.html" class="menu-btn">
-                SIGN UP
-                <span>Create an account for Nationhood</span>
-            </a>
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const errorMsg = document.getElementById('error-message');
+        errorMsg.textContent = '';
+        
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
 
-            <button class="menu-btn" onclick="alert('Settings Panel Locked')">
-                CHRONICLE
-                <span>Review information on the world</span>
-            </button>
-        </section>
+        try {
+            // Sign in with Supabase Auth
+            const { data, error } = await _supabase.auth.signInWithPassword({
+                email: email,
+                password: password,
+            });
 
-        <section class="info-panel">
-            <h3>WORLD LOG</h3>
-            <div class="news-item">
-                <div class="news-date">JANUARY 30, 2026</div>
-                <p><strong>Melizea Discovered:</strong> The coastal region of Melizea has been successfully mapped. San Maria established as the regional capital.</p>
-            </div>
-            <div class="news-item">
-                <div class="news-date">SYSTEM UPDATE</div>
-                <p>Geographic coordinates for the Southern Continent have been stabilized. No further continent "disappearances" reported.</p>
-            </div>
-        </section>
-    </main>
+            if (error) throw error;
+
+            // Success! Redirect to map
+            window.location.href = "map.html";
+            
+        } catch (error) {
+            console.error('Login error:', error);
+            errorMsg.textContent = error.message || 'Login failed. Please try again.';
+        }
+    });
+</script>
 
 </body>
 </html>
