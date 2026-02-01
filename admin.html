@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Nationhood | Admin Panel</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        .admin-container {
+            background: #1e1e1e;
+            padding: 40px;
+            border-radius: 8px;
+            border-top: 4px solid #ff4444;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+        }
+        
+        h1 {
+            color: #ff4444;
+            margin-top: 0;
+            font-size: 2rem;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        .warning {
+            background: #2a1a1a;
+            border-left: 4px solid #ff4444;
+            padding: 15px;
+            margin: 20px 0;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+        
+        .input-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: white;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+        
+        input[type="password"]:focus {
+            outline: none;
+            border-color: #ff4444;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 1rem;
+            transition: 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .btn-danger {
+            background: #ff4444;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #cc0000;
+        }
+        
+        .btn-danger:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        
+        .btn-secondary {
+            background: #444;
+            color: white;
+            margin-top: 10px;
+        }
+        
+        .btn-secondary:hover {
+            background: #555;
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        .status.error {
+            background: #2a1a1a;
+            color: #ff4444;
+            border: 1px solid #ff4444;
+        }
+        
+        .status.success {
+            background: #1a2a1a;
+            color: #4CAF50;
+            border: 1px solid #4CAF50;
+        }
+        
+        .status.info {
+            background: #1a1a2a;
+            color: #2196F3;
+            border: 1px solid #2196F3;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .shard-info {
+            background: #252525;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+        
+        .info-label {
+            color: #888;
+        }
+        
+        .info-value {
+            color: #ffcc00;
+            font-weight: bold;
+        }
+        
+        .back-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .back-link a {
+            color: #2196F3;
+            text-decoration: none;
+        }
+        
+        .back-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+<div class="admin-container">
+    <h1>⚠️ Admin Panel ⚠️</h1>
+    
+    <!-- Login Section -->
+    <div id="login-section">
+        <div class="warning">
+            <strong>⚠️ RESTRICTED ACCESS</strong><br>
+            This panel contains dangerous operations. Unauthorized access is prohibited.
+        </div>
+        
+        <div class="input-group">
+            <label>Admin Password</label>
+            <input type="password" id="admin-password" placeholder="Enter admin password">
+        </div>
+        
+        <button class="btn btn-danger" onclick="authenticate()">AUTHENTICATE</button>
+        
+        <div id="auth-error" class="status error hidden"></div>
+        
+        <div class="back-link">
+            <a href="index.html">← Back to Game</a>
+        </div>
+    </div>
+    
+    <!-- Admin Controls Section -->
+    <div id="admin-section" class="hidden">
+        <div class="warning">
+            <strong>⚠️ DANGER ZONE</strong><br>
+            These operations cannot be undone. Use with extreme caution.
+        </div>
+        
+        <div class="shard-info" id="shard-info">
+            <h3 style="color: #ffcc00; margin-top: 0;">Current Shard Status</h3>
+            <div class="info-row">
+                <span class="info-label">Shard Name:</span>
+                <span class="info-value" id="info-name">Loading...</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Current Date:</span>
+                <span class="info-value" id="info-date">Loading...</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Current Tick:</span>
+                <span class="info-value" id="info-tick">Loading...</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Active Players:</span>
+                <span class="info-value" id="info-players">Loading...</span>
+            </div>
+        </div>
+        
+        <h3 style="color: #ff4444;">Reset Alpha Shard</h3>
+        <p style="color: #888; font-size: 0.9rem; line-height: 1.6;">
+            This will:<br>
+            • Reset game date to January, 2000<br>
+            • Reset current_tick to 0<br>
+            • Set next tick to 8 hours from now<br>
+            • Reset ALL nation stats to defaults<br>
+            • Remove nation assignments from ALL players (forces re-selection)<br>
+            • Does NOT delete user accounts or factions
+        </p>
+        
+        <button class="btn btn-danger" id="reset-btn" onclick="resetShard()">
+            🔥 RESET ALPHA SHARD 🔥
+        </button>
+        
+        <button class="btn btn-secondary" onclick="logout()">
+            Logout
+        </button>
+        
+        <div id="operation-status" class="status info hidden"></div>
+    </div>
+</div>
+
+<script>
+    const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
+    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+    
+    // Admin password (change this to whatever you want)
+    const ADMIN_PASSWORD = 'nationhood2000';
+    
+    let isAuthenticated = false;
+    
+    function authenticate() {
+        const password = document.getElementById('admin-password').value;
+        const errorDiv = document.getElementById('auth-error');
+        
+        if (password === ADMIN_PASSWORD) {
+            isAuthenticated = true;
+            document.getElementById('login-section').classList.add('hidden');
+            document.getElementById('admin-section').classList.remove('hidden');
+            loadShardInfo();
+            errorDiv.classList.add('hidden');
+        } else {
+            errorDiv.textContent = 'Invalid password. Access denied.';
+            errorDiv.classList.remove('hidden');
+        }
+    }
+    
+    function logout() {
+        isAuthenticated = false;
+        document.getElementById('login-section').classList.remove('hidden');
+        document.getElementById('admin-section').classList.add('hidden');
+        document.getElementById('admin-password').value = '';
+    }
+    
+    async function loadShardInfo() {
+        try {
+            // Get shard info
+            const { data: shard } = await _supabase
+                .from('shard')
+                .select('*')
+                .eq('name', 'Alpha Shard')
+                .single();
+            
+            // Count active players
+            const { data: factions } = await _supabase
+                .from('factions')
+                .select('id')
+                .not('nation_id', 'is', null);
+            
+            document.getElementById('info-name').textContent = shard.name;
+            document.getElementById('info-date').textContent = shard.current_date || 'Not Set';
+            document.getElementById('info-tick').textContent = shard.current_tick || 0;
+            document.getElementById('info-players').textContent = factions ? factions.length : 0;
+            
+        } catch (error) {
+            console.error('Error loading shard info:', error);
+        }
+    }
+    
+    async function resetShard() {
+        if (!isAuthenticated) return;
+        
+        const confirmed = confirm(
+            '⚠️ ARE YOU ABSOLUTELY SURE? ⚠️\n\n' +
+            'This will reset the entire Alpha Shard to January 2000 and kick out all players.\n\n' +
+            'This action CANNOT be undone!\n\n' +
+            'Click OK to proceed or Cancel to abort.'
+        );
+        
+        if (!confirmed) return;
+        
+        const btn = document.getElementById('reset-btn');
+        const status = document.getElementById('operation-status');
+        
+        btn.disabled = true;
+        btn.textContent = '⏳ RESETTING...';
+        status.className = 'status info';
+        status.textContent = 'Starting reset operation...';
+        status.classList.remove('hidden');
+        
+        try {
+            // Step 1: Reset shard data
+            status.textContent = 'Step 1/4: Resetting shard data...';
+            
+            const nextTick = new Date();
+            nextTick.setHours(nextTick.getHours() + 8);
+            
+            const { error: shardError } = await _supabase
+                .from('shard')
+                .update({
+                    current_date: 'January, 2000',
+                    current_tick: 0,
+                    next_tick_at: nextTick.toISOString()
+                })
+                .eq('name', 'Alpha Shard');
+            
+            if (shardError) throw shardError;
+            
+            // Step 2: Reset nation stats to defaults
+            status.textContent = 'Step 2/4: Resetting nation stats...';
+            
+            const { data: nations, error: getNationsError } = await _supabase
+                .from('nations')
+                .select('id');
+            
+            if (getNationsError) throw getNationsError;
+            
+            for (const nation of nations) {
+                const { error: nationError } = await _supabase
+                    .from('nations')
+                    .update({
+                        // Reset all stats to 50 (or whatever your defaults are)
+                        religious: 50,
+                        stability: 50,
+                        civil_unrest: 50,
+                        terrorism: 50,
+                        legitimacy: 50,
+                        efficiency: 50,
+                        standard_of_living: 50,
+                        happiness: 50,
+                        polarization: 50,
+                        freedom_index: 50,
+                        GDP: 50,
+                        budget: 50,
+                        debt: 50,
+                        inflation: 50,
+                        foreign_investment: 50,
+                        income_tax: 50,
+                        tariffs: 50,
+                        credit: 50,
+                        healthcare_quality: 50,
+                        lifespan: 50,
+                        beds_per_1000: 50,
+                        literacy: 50,
+                        higher_education: 50,
+                        academic_index: 50,
+                        rail_network: 50,
+                        urbanization: 50,
+                        digital_infrastructure: 50,
+                        oil_and_gas: 50,
+                        rare_minerals: 50,
+                        arable_land: 50,
+                        energy_generation: 50,
+                        fuel_prices: 50,
+                        pollution: 50,
+                        crime_rate: 50,
+                        social_mobility: 50,
+                        benefits: 50,
+                        population: 50,
+                        eligible_voters: 50,
+                        far_left: 50,
+                        left: 50,
+                        center_left: 50,
+                        center: 50,
+                        center_right: 50,
+                        right: 50,
+                        far_right: 50,
+                        political_violence: 50
+                    })
+                    .eq('id', nation.id);
+                
+                if (nationError) throw nationError;
+            }
+            
+            // Step 3: Clear nation assignments from all factions
+            status.textContent = 'Step 3/4: Removing player nation assignments...';
+            
+            const { error: factionsError } = await _supabase
+                .from('factions')
+                .update({
+                    nation_id: null,
+                    nation: 'Pending'
+                })
+                .not('nation_id', 'is', null);
+            
+            if (factionsError) throw factionsError;
+            
+            // Step 4: Complete
+            status.textContent = 'Step 4/4: Finalizing...';
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            status.className = 'status success';
+            status.textContent = '✅ RESET COMPLETE! Alpha Shard has been reset to January, 2000. All players have been kicked out.';
+            
+            // Reload shard info
+            await loadShardInfo();
+            
+            btn.textContent = '🔥 RESET ALPHA SHARD 🔥';
+            btn.disabled = false;
+            
+        } catch (error) {
+            console.error('Reset error:', error);
+            status.className = 'status error';
+            status.textContent = '❌ ERROR: ' + error.message;
+            btn.textContent = '🔥 RESET ALPHA SHARD 🔥';
+            btn.disabled = false;
+        }
+    }
+    
+    // Allow Enter key to authenticate
+    document.getElementById('admin-password').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            authenticate();
+        }
+    });
+</script>
+
+</body>
+</html>
