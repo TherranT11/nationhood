@@ -314,7 +314,14 @@
         
         <hr>
         <div style="font-size: 0.8rem; color: #666;">
-            Shard: Alpha | World Time: <span id="clock">18:45 LMT</span>
+            <div style="margin-bottom: 8px;">
+                <strong style="color: #ffcc00;">Game Date:</strong> 
+                <span id="game-date" style="color: #fff;">Loading...</span>
+            </div>
+            <div>
+                <strong style="color: #ffcc00;">Next Tick:</strong> 
+                <span id="tick-countdown" style="color: #fff;">Calculating...</span>
+            </div>
         </div>
     </aside>
 </div>
@@ -329,6 +336,7 @@
     let currentFaction = null;
     let selectedNationForModal = null;
     let availableNations = [];
+    let tickInterval = null;
 
     async function initSession() {
         const { data: { user } } = await _supabase.auth.getUser();
@@ -366,6 +374,65 @@
         document.getElementById('population').innerText = faction.population || 1000;
         document.getElementById('resources').innerText = faction.resources || 500;
         document.getElementById('stability').innerText = faction.stability || 100;
+        
+        // Initialize tick system
+        await loadTickData();
+        startTickCountdown();
+    }
+    
+    async function loadTickData() {
+        try {
+            const { data: shard, error } = await _supabase
+                .from('shard')
+                .select('current_date, next_tick_at, current_tick')
+                .eq('name', 'Alpha Shard')
+                .single();
+            
+            if (error) throw error;
+            
+            // Display current game date
+            document.getElementById('game-date').innerText = shard.current_date || 'Unknown';
+            
+            // Store next tick time globally
+            window.nextTickAt = shard.next_tick_at ? new Date(shard.next_tick_at) : null;
+            
+        } catch (error) {
+            console.error('Error loading tick data:', error);
+            document.getElementById('game-date').innerText = 'Error';
+            document.getElementById('tick-countdown').innerText = 'Error';
+        }
+    }
+    
+    function startTickCountdown() {
+        // Update countdown every second
+        tickInterval = setInterval(updateCountdown, 1000);
+        updateCountdown(); // Initial update
+    }
+    
+    function updateCountdown() {
+        if (!window.nextTickAt) {
+            document.getElementById('tick-countdown').innerText = 'Not scheduled';
+            return;
+        }
+        
+        const now = new Date();
+        const timeUntilTick = window.nextTickAt - now;
+        
+        if (timeUntilTick <= 0) {
+            document.getElementById('tick-countdown').innerText = 'Processing tick...';
+            clearInterval(tickInterval);
+            // Reload page to show new tick
+            setTimeout(() => location.reload(), 2000);
+            return;
+        }
+        
+        // Format time remaining
+        const hours = Math.floor(timeUntilTick / (1000 * 60 * 60));
+        const minutes = Math.floor((timeUntilTick % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((timeUntilTick % (1000 * 60)) / 1000);
+        
+        document.getElementById('tick-countdown').innerText = 
+            `${hours}h ${minutes}m ${seconds}s`;
     }
 
     async function showNationSelectionModal() {
