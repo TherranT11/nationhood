@@ -478,8 +478,8 @@
         if (timeUntilTick <= 0) {
             document.getElementById('tick-countdown').innerText = 'Processing tick...';
             clearInterval(tickInterval);
-            // Reload page to show new tick
-            setTimeout(() => location.reload(), 2000);
+            // Process the tick
+            processTick();
             return;
         }
         
@@ -490,6 +490,82 @@
         
         document.getElementById('tick-countdown').innerText = 
             `${hours}h ${minutes}m ${seconds}s`;
+    }
+    
+    async function processTick() {
+        try {
+            console.log('Processing tick...');
+            
+            // Get current shard data
+            const { data: shard, error: getError } = await _supabase
+                .from('shard')
+                .select('current_date, current_tick')
+                .eq('name', 'Alpha Shard')
+                .single();
+            
+            if (getError) throw getError;
+            
+            // Calculate next date
+            const nextDate = advanceMonth(shard.current_date);
+            const nextTick = shard.current_tick + 1;
+            
+            // Calculate next tick time (8 hours from now)
+            const nextTickTime = new Date();
+            nextTickTime.setHours(nextTickTime.getHours() + 8);
+            
+            // Update shard
+            const { error: updateError } = await _supabase
+                .from('shard')
+                .update({
+                    current_date: nextDate,
+                    current_tick: nextTick,
+                    next_tick_at: nextTickTime.toISOString()
+                })
+                .eq('name', 'Alpha Shard');
+            
+            if (updateError) throw updateError;
+            
+            console.log(`Tick processed! Advanced to ${nextDate} (Tick ${nextTick})`);
+            
+            // Reload page to show new date
+            setTimeout(() => location.reload(), 1000);
+            
+        } catch (error) {
+            console.error('Tick processing error:', error);
+            document.getElementById('tick-countdown').innerText = 'Error processing tick';
+            alert('Error processing tick: ' + error.message + '\nPlease contact admin.');
+        }
+    }
+    
+    function advanceMonth(currentDate) {
+        // Parse the current date (e.g., "January, 2000")
+        const parts = currentDate.split(',');
+        const month = parts[0].trim();
+        const year = parseInt(parts[1].trim());
+        
+        const months = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+        
+        const currentMonthIndex = months.indexOf(month);
+        
+        if (currentMonthIndex === -1) {
+            console.error('Invalid month:', month);
+            return currentDate; // Return unchanged if error
+        }
+        
+        // Advance to next month
+        let nextMonthIndex = currentMonthIndex + 1;
+        let nextYear = year;
+        
+        // Handle year rollover
+        if (nextMonthIndex >= 12) {
+            nextMonthIndex = 0;
+            nextYear = year + 1;
+        }
+        
+        return `${months[nextMonthIndex]}, ${nextYear}`;
     }
 
     async function showNationSelectionModal() {
