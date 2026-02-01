@@ -38,10 +38,16 @@
         }
 
         .selected-nation {
+            filter: drop-shadow(0 0 15px rgba(255, 204, 0, 0.8));
+        }
+        
+        /* Specific colors for each nation when selected */
+        #Melizea.selected-nation {
             fill: #ffcc00 !important;
-            filter: drop-shadow(0 0 15px #ffcc00);
-            stroke: #b8860b;
-            stroke-width: 2;
+        }
+        
+        #Avelia.selected-nation {
+            fill: #ff9999 !important;
         }
         
         /* Capital markers */
@@ -52,7 +58,9 @@
         
         .capital-name {
             fill: #1a1a1a;
-            font-size: 3.175px;
+            font-size: 4px;
+            font-family: sans-serif;
+            font-weight: bold;
             pointer-events: none;
         }
 
