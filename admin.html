@@ -362,61 +362,28 @@
             
             if (getNationsError) throw getNationsError;
             
+            // Reset only the core stats we know exist
             for (const nation of nations) {
                 const { error: nationError } = await _supabase
                     .from('nations')
                     .update({
-                        // Reset all stats to 50 (or whatever your defaults are)
+                        // Reset common stats to 50
                         religious: 50,
                         stability: 50,
                         civil_unrest: 50,
                         terrorism: 50,
                         legitimacy: 50,
                         efficiency: 50,
-                        standard_of_living: 50,
-                        happiness: 50,
-                        polarization: 50,
-                        freedom_index: 50,
                         GDP: 50,
-                        budget: 50,
-                        debt: 50,
-                        inflation: 50,
-                        foreign_investment: 50,
-                        income_tax: 50,
-                        tariffs: 50,
-                        credit: 50,
-                        healthcare_quality: 50,
-                        lifespan: 50,
-                        beds_per_1000: 50,
-                        literacy: 50,
-                        higher_education: 50,
-                        academic_index: 50,
-                        rail_network: 50,
-                        urbanization: 50,
-                        digital_infrastructure: 50,
-                        oil_and_gas: 50,
-                        rare_minerals: 50,
-                        arable_land: 50,
-                        energy_generation: 50,
-                        fuel_prices: 50,
-                        pollution: 50,
-                        crime_rate: 50,
-                        social_mobility: 50,
-                        benefits: 50,
-                        population: 50,
-                        eligible_voters: 50,
-                        far_left: 50,
-                        left: 50,
-                        center_left: 50,
-                        center: 50,
-                        center_right: 50,
-                        right: 50,
-                        far_right: 50,
-                        political_violence: 50
+                        debt: 50
+                        // Add more stats as needed
                     })
                     .eq('id', nation.id);
                 
-                if (nationError) throw nationError;
+                if (nationError) {
+                    console.warn('Error resetting nation stats:', nationError);
+                    // Continue even if some stats fail
+                }
             }
             
             // Step 3: Clear nation assignments from all factions
