@@ -6,44 +6,144 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <style>
-        body { background-color: #121212; color: #e0e0e0; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .signup-card { background: #1e1e1e; padding: 40px; border-radius: 8px; border-top: 4px solid #ffcc00; width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        body { background-color: #121212; color: #e0e0e0; font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .signup-card { background: #1e1e1e; padding: 40px; border-radius: 8px; border-top: 4px solid #ffcc00; width: 100%; max-width: 450px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         h2 { color: #ffcc00; margin-top: 0; }
         .input-group { margin-bottom: 20px; }
         label { display: block; margin-bottom: 8px; font-size: 0.9rem; color: #888; }
-        input, select { width: 100%; padding: 12px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 4px; box-sizing: border-box; }
+        input { width: 100%; padding: 12px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 4px; box-sizing: border-box; }
+        
+        /* Faction Type Cards */
+        .faction-types {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .faction-option {
+            padding: 15px;
+            background: #252525;
+            border: 2px solid #444;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+        }
+        
+        .faction-option.available:hover {
+            border-color: #ffcc00;
+            background: #2a2a2a;
+        }
+        
+        .faction-option.selected {
+            border-color: #ffcc00;
+            background: #2a2a2a;
+        }
+        
+        .faction-option.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            background: #1a1a1a;
+        }
+        
+        .faction-title {
+            font-weight: bold;
+            color: #ffcc00;
+            font-size: 1.1rem;
+            margin-bottom: 5px;
+        }
+        
+        .faction-option.disabled .faction-title {
+            color: #666;
+        }
+        
+        .faction-desc {
+            font-size: 0.85rem;
+            color: #888;
+            line-height: 1.4;
+        }
+        
+        .coming-soon {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #ffcc00;
+            color: #000;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
         .btn-join { width: 100%; padding: 15px; background: #ffcc00; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; color: #000; }
         .btn-join:hover { background: #e6b800; }
         .btn-join:disabled { background: #666; cursor: not-allowed; }
         .login-link { text-align: center; margin-top: 15px; font-size: 0.8rem; }
         .login-link a { color: #ffcc00; text-decoration: none; }
         .error { color: #ff4444; font-size: 0.9rem; margin-top: 10px; text-align: center; }
+        .info-note {
+            background: #1a2a1a;
+            border-left: 3px solid #4CAF50;
+            padding: 12px;
+            margin-bottom: 20px;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            color: #aaa;
+        }
     </style>
 </head>
 <body>
 
 <div class="signup-card">
     <h2>Establish Faction</h2>
+    
+    <div class="info-note">
+        <strong style="color: #4CAF50;">Welcome to Alpha Shard!</strong><br>
+        You'll choose your nation (Melizea or Avelia) after creating your account.
+    </div>
+    
     <form id="signup-form">
         <div class="input-group">
             <label>Email Address</label>
-            <input type="email" id="email" placeholder="commander@melizea.gov" required>
+            <input type="email" id="email" placeholder="commander@example.com" required>
         </div>
+        
         <div class="input-group">
             <label>Password</label>
             <input type="password" id="password" minlength="6" required>
         </div>
+        
         <div class="input-group">
-            <label>Faction Path</label>
-            <select id="faction-type">
-                <option value="party">Political Party (Influence & Law)</option>
-                <option value="military">Military Branch (Force & Security)</option>
-                <option value="corp">Corporation (Wealth & Trade)</option>
-            </select>
+            <label>Choose Your Faction Path</label>
+            <div class="faction-types">
+                <!-- Political Party - Available -->
+                <div class="faction-option available selected" data-type="party">
+                    <div class="faction-title">Political Party</div>
+                    <div class="faction-desc">Shape laws, influence policy, and guide your nation's future through political power.</div>
+                </div>
+                
+                <!-- Corporation - Coming Soon -->
+                <div class="faction-option disabled" data-type="corp">
+                    <span class="coming-soon">Coming Soon</span>
+                    <div class="faction-title">Corporation</div>
+                    <div class="faction-desc">Control wealth, trade, and economic power to influence the nation.</div>
+                </div>
+                
+                <!-- Military Branch - Coming Soon -->
+                <div class="faction-option disabled" data-type="military">
+                    <span class="coming-soon">Coming Soon</span>
+                    <div class="faction-title">Military Branch</div>
+                    <div class="faction-desc">Command forces, ensure security, and project strength for your nation.</div>
+                </div>
+            </div>
         </div>
-        <button type="submit" class="btn-join" id="submit-btn">CREATE ACCOUNT</button>
+        
+        <button type="submit" class="btn-join" id="submit-btn">CREATE FACTION</button>
         <div id="error-message" class="error"></div>
     </form>
+    
     <div class="login-link">
         Already have a faction? <a href="login.html">Log In</a>
     </div>
@@ -55,6 +155,27 @@
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
     const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
+    let selectedFactionType = 'party'; // Default and only option for now
+    
+    // Handle faction type selection (only party is clickable)
+    document.querySelectorAll('.faction-option').forEach(option => {
+        option.addEventListener('click', function() {
+            // Only allow clicking on available options
+            if (this.classList.contains('disabled')) {
+                return;
+            }
+            
+            // Remove selected from all
+            document.querySelectorAll('.faction-option').forEach(opt => 
+                opt.classList.remove('selected')
+            );
+            
+            // Add selected to this one
+            this.classList.add('selected');
+            selectedFactionType = this.getAttribute('data-type');
+        });
+    });
+
     document.getElementById('signup-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         
@@ -65,12 +186,10 @@
         submitBtn.disabled = true;
         submitBtn.textContent = 'CREATING FACTION...';
         
-        const email = document.getElementById('email').value;
-        const password = document.getElementById('password').value;
-        const factionType = document.getElementById('faction-type').value;
-        const targetNation = "Melizea";
-
         try {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
             // STEP 1: Create the User in Supabase Auth
             const { data: authData, error: authError } = await _supabase.auth.signUp({
                 email,
@@ -79,29 +198,41 @@
 
             if (authError) throw authError;
 
-            // STEP 2: Create the Faction Record
+            // STEP 2: Get Alpha Shard ID
+            const { data: shard, error: shardError } = await _supabase
+                .from('shard')
+                .select('id')
+                .eq('name', 'Alpha Shard')
+                .single();
+
+            if (shardError) throw new Error('Could not find Alpha Shard');
+
+            // STEP 3: Create the Faction Record (without nation_id yet)
             if (authData.user) {
                 const tempName = email.split('@')[0] + "'s Faction";
                 
                 const { error: dbError } = await _supabase
                     .from('factions')
                     .insert([{ 
-                        id: authData.user.id, 
+                        id: authData.user.id,
+                        shard_id: shard.id,
+                        nation_id: null, // Will be set when they choose on the map
                         faction_name: tempName,
-                        faction_type: factionType, 
-                        nation: targetNation
+                        faction_type: selectedFactionType,
+                        nation: 'Pending' // Temporary placeholder
                     }]);
 
                 if (dbError) throw dbError;
 
-                alert("Faction Commissioned! Welcome to the Chronicle.");
+                // Success! Send them to map to choose nation
+                alert("Faction Created! Now choose your nation.");
                 window.location.href = "map.html";
             }
         } catch (error) {
             console.error('Signup error:', error);
             errorMsg.textContent = error.message || 'Signup failed. Please try again.';
             submitBtn.disabled = false;
-            submitBtn.textContent = 'CREATE ACCOUNT';
+            submitBtn.textContent = 'CREATE FACTION';
         }
     });
 </script>
