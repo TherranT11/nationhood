@@ -8,6 +8,52 @@
     <style>
         body { margin: 0; padding: 0; background-color: #121212; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         
+        /* Tick Status Bar */
+        #tick-status-bar {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+            border-bottom: 3px solid #ffcc00;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .tick-info {
+            display: flex;
+            gap: 40px;
+            align-items: center;
+        }
+        
+        .tick-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .tick-label {
+            font-size: 0.7rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 3px;
+        }
+        
+        .tick-value {
+            font-size: 1.1rem;
+            color: #ffcc00;
+            font-weight: bold;
+        }
+        
+        .tick-countdown {
+            font-size: 1.3rem;
+            color: #4CAF50;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+        }
+        
         /* Map Container and Ocean */
         #map-container { flex: 3; overflow: auto; background-color: #002b4d; position: relative; }
         svg { width: 100%; height: auto; display: block; }
@@ -237,6 +283,24 @@
 </head>
 <body>
 
+<!-- Tick Status Bar -->
+<div id="tick-status-bar">
+    <div class="tick-info">
+        <div class="tick-item">
+            <div class="tick-label">Game Date</div>
+            <div class="tick-value" id="game-date">Loading...</div>
+        </div>
+        <div class="tick-item">
+            <div class="tick-label">Next Tick In</div>
+            <div class="tick-countdown" id="tick-countdown">Calculating...</div>
+        </div>
+    </div>
+    <div class="tick-item">
+        <div class="tick-label">Shard</div>
+        <div class="tick-value">Alpha</div>
+    </div>
+</div>
+
 <!-- Nation Selection Modal -->
 <div id="nation-modal" class="modal-overlay hidden">
     <div class="modal-content">
@@ -313,15 +377,8 @@
         </div>
         
         <hr>
-        <div style="font-size: 0.8rem; color: #666;">
-            <div style="margin-bottom: 8px;">
-                <strong style="color: #ffcc00;">Game Date:</strong> 
-                <span id="game-date" style="color: #fff;">Loading...</span>
-            </div>
-            <div>
-                <strong style="color: #ffcc00;">Next Tick:</strong> 
-                <span id="tick-countdown" style="color: #fff;">Calculating...</span>
-            </div>
+        <div style="font-size: 0.8rem; color: #666; font-style: italic;">
+            Data synchronized with Alpha Shard
         </div>
     </aside>
 </div>
