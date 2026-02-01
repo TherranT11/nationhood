@@ -33,12 +33,11 @@
         .land:hover { 
             fill: #fff5cc; 
             filter: drop-shadow(0 0 10px rgba(255, 245, 204, 0.5));
-            transform: scale(1.01);
-            transform-origin: center;
         }
 
         .selected-nation {
-            filter: drop-shadow(0 0 15px rgba(255, 204, 0, 0.8));
+            filter: drop-shadow(0 0 15px rgba(255, 204, 0, 0.8)) !important;
+            transform: none !important;
         }
         
         /* Specific colors for each nation when selected */
@@ -48,6 +47,7 @@
         
         #Avelia.selected-nation {
             fill: #ff9999 !important;
+            filter: drop-shadow(0 0 15px rgba(255, 153, 153, 0.8)) !important;
         }
         
         /* Capital markers */
