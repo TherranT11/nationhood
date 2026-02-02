@@ -415,26 +415,20 @@
     function getIdeologyTags(group) {
         const ideologies = [];
         
-        // Map database columns to display names
-        const ideologyMap = {
-            'liberty_equality': ['LIBERTY', 'EQUALITY'],
-            'freedom_security': ['FREEDOM', 'SECURITY'],
-            'cooperation_competition': ['COOPERATION', 'COMPETITION'],
-            'tradition_progress': ['TRADITION', 'PROGRESS'],
-            'nationalism_globalism': ['NATIONALISM', 'GLOBALISM']
-        };
+        // Your database stores ideology names as text in ideology_value_1, ideology_value_2, etc.
+        // Each interest group simply supports certain ideologies (binary: yes or no)
         
-        // Check each axis and add the appropriate ideology
-        for (const [column, [left, right]] of Object.entries(ideologyMap)) {
-            const value = group[column];
-            if (value !== null && value !== undefined) {
-                if (value < 0) {
-                    ideologies.push(left);
-                } else if (value > 0) {
-                    ideologies.push(right);
-                }
-                // If value is 0, it's neutral on this axis, so we skip it
-            }
+        if (group.ideology_value_1) {
+            ideologies.push(group.ideology_value_1.toUpperCase());
+        }
+        if (group.ideology_value_2) {
+            ideologies.push(group.ideology_value_2.toUpperCase());
+        }
+        if (group.ideology_value_3) {
+            ideologies.push(group.ideology_value_3.toUpperCase());
+        }
+        if (group.ideology_value_4) {
+            ideologies.push(group.ideology_value_4.toUpperCase());
         }
         
         return ideologies;
@@ -461,13 +455,13 @@
             groupsContainer.innerHTML = interestGroups.map(group => {
                 const ideologies = getIdeologyTags(group);
                 const ideologyHTML = ideologies.map(ideology => 
-                    `<span class="ideology-tag ${ideologyColors[ideology]}">${ideology}</span>`
+                    `<span class="ideology-tag ${ideologyColors[ideology] || ''}">${ideology}</span>`
                 ).join('');
                 
                 return `
                     <div class="interest-group-card">
                         <div class="interest-group-header">
-                            <span class="interest-group-name">${group.name} <span class="interest-group-pop">(${formatNumber(group.population)})</span></span>
+                            <span class="interest-group-name">${group.group_name || group.name || 'Unknown Group'} <span class="interest-group-pop">(${formatNumber(group.population)})</span></span>
                         </div>
                         <div class="interest-group-ideologies">
                             ${ideologyHTML || '<span style="color: #666;">No ideologies defined</span>'}
