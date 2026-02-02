@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Avelia | Nationhood Alpha</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .nation-container {
+            background: #1e1e1e;
+            padding: 40px;
+            border-radius: 8px;
+            border-top: 4px solid #ff9999;
+            width: 90%;
+            max-width: 900px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+        }
+        
+        h1 {
+            color: #ff9999;
+            margin: 0 0 30px 0;
+            font-size: 2.5rem;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+        
+        .stats-section {
+            background: #252525;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 4px solid #ff9999;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+        
+        .stat-item {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        .stat-label {
+            font-size: 0.75rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        
+        .stat-value {
+            font-size: 1.3rem;
+            color: #ff9999;
+            font-weight: bold;
+        }
+        
+        h2 {
+            color: #ff9999;
+            font-size: 1.3rem;
+            margin: 30px 0 15px 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+        
+        .interest-groups {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .interest-group-card {
+            background: #252525;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .interest-group-name {
+            font-size: 1.1rem;
+            color: #4CAF50;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        
+        .interest-group-pop {
+            font-size: 0.85rem;
+            color: #888;
+        }
+        
+        .government-section {
+            background: #252525;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 4px solid #2196F3;
+        }
+        
+        .head-of-government {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            border-left: 3px solid #ff9999;
+        }
+        
+        .head-label {
+            font-size: 0.75rem;
+            color: #888;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        
+        .head-value {
+            font-size: 1.2rem;
+            color: #ff9999;
+            font-weight: bold;
+        }
+        
+        .parties-list {
+            display: grid;
+            gap: 10px;
+        }
+        
+        .party-item {
+            background: #1a1a1a;
+            padding: 12px 15px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 3px solid #2196F3;
+        }
+        
+        .party-name {
+            font-size: 1rem;
+            color: #e0e0e0;
+            font-weight: 500;
+        }
+        
+        .party-seats {
+            font-size: 1rem;
+            color: #2196F3;
+            font-weight: bold;
+        }
+        
+        .action-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 30px;
+        }
+        
+        .btn {
+            padding: 15px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 1rem;
+            transition: 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .btn-back {
+            background: #444;
+            color: white;
+        }
+        
+        .btn-back:hover {
+            background: #555;
+        }
+        
+        .btn-continue {
+            background: #ff9999;
+            color: #000;
+        }
+        
+        .btn-continue:hover {
+            background: #ff7777;
+        }
+        
+        .btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+        }
+        
+        .error {
+            background: #2a1a1a;
+            border: 1px solid #ff4444;
+            color: #ff4444;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+
+<div class="nation-container">
+    <div id="loading" class="loading">
+        Loading Avelia data...
+    </div>
+    
+    <div id="content" style="display: none;">
+        <h1 id="nation-name">AVELIA</h1>
+        
+        <!-- Nation Stats -->
+        <div class="stats-section">
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-label">Government Type</div>
+                    <div class="stat-value" id="government-type">Loading...</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Capital</div>
+                    <div class="stat-value" id="capital">Loading...</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Population</div>
+                    <div class="stat-value" id="population">Loading...</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Stability</div>
+                    <div class="stat-value" id="stability">Loading...</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Civil Unrest</div>
+                    <div class="stat-value" id="civil-unrest">Loading...</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">GDP</div>
+                    <div class="stat-value" id="gdp">Loading...</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Voter Blocs -->
+        <h2>Voter Blocs</h2>
+        <div class="interest-groups" id="interest-groups">
+            <!-- Populated by JavaScript -->
+        </div>
+        
+        <!-- Government -->
+        <h2>Government</h2>
+        <div class="government-section">
+            <div class="head-of-government">
+                <div class="head-label">Head of Government</div>
+                <div class="head-value" id="head-of-government">Loading...</div>
+            </div>
+            
+            <div class="parties-list" id="parties-list">
+                <!-- Populated by JavaScript -->
+            </div>
+        </div>
+        
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+            <button class="btn btn-back" onclick="goBack()">← GO BACK</button>
+            <button class="btn btn-continue" id="continue-btn" onclick="continueToPartyCreation()">CONTINUE →</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
+    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+    
+    const NATION_NAME = 'Avelia';
+    let nationData = null;
+    let currentUser = null;
+    
+    async function loadNationData() {
+        try {
+            // Check if user is logged in
+            const { data: { user } } = await _supabase.auth.getUser();
+            if (!user) {
+                window.location.href = "login.html";
+                return;
+            }
+            currentUser = user;
+            
+            // Load nation data
+            const { data: nation, error: nationError } = await _supabase
+                .from('nations')
+                .select('*')
+                .eq('name', NATION_NAME)
+                .single();
+            
+            if (nationError) throw nationError;
+            nationData = nation;
+            
+            // Load interest groups
+            const { data: interestGroups, error: groupsError } = await _supabase
+                .from('interest_groups')
+                .select('*')
+                .eq('nation_id', nation.id)
+                .order('population', { ascending: false });
+            
+            if (groupsError) throw groupsError;
+            
+            // Load parties (both NPC and player)
+            const { data: parties, error: partiesError } = await _supabase
+                .from('parties')
+                .select('*')
+                .eq('nation_id', nation.id)
+                .order('seats', { ascending: false });
+            
+            // Also load player factions that are parties
+            const { data: playerFactions, error: factionsError } = await _supabase
+                .from('factions')
+                .select('*')
+                .eq('nation_id', nation.id)
+                .eq('faction_type', 'party');
+            
+            // Display the data
+            displayNationData(nation, interestGroups, parties || [], playerFactions || []);
+            
+        } catch (error) {
+            console.error('Error loading nation data:', error);
+            document.getElementById('loading').innerHTML = `
+                <div class="error">
+                    Error loading nation data: ${error.message}
+                </div>
+                <button class="btn btn-back" onclick="goBack()" style="margin-top: 20px;">← GO BACK</button>
+            `;
+        }
+    }
+    
+    function displayNationData(nation, interestGroups, parties, playerFactions) {
+        // Format numbers
+        const formatNumber = (num) => {
+            if (num === null || num === undefined) return 'N/A';
+            return num.toLocaleString();
+        };
+        
+        // Display nation stats
+        document.getElementById('government-type').textContent = nation.government_type || 'Not Set';
+        document.getElementById('capital').textContent = nation.capital || 'Unknown';
+        document.getElementById('population').textContent = formatNumber(nation.population);
+        document.getElementById('stability').textContent = nation.stability || 'N/A';
+        document.getElementById('civil-unrest').textContent = nation.civil_unrest || 'N/A';
+        document.getElementById('gdp').textContent = nation.GDP ? `$${formatNumber(nation.GDP)}` : 'N/A';
+        
+        // Display interest groups
+        const groupsContainer = document.getElementById('interest-groups');
+        if (interestGroups && interestGroups.length > 0) {
+            groupsContainer.innerHTML = interestGroups.map(group => `
+                <div class="interest-group-card">
+                    <div class="interest-group-name">${group.name}</div>
+                    <div class="interest-group-pop">Population: ${formatNumber(group.population)}</div>
+                </div>
+            `).join('');
+        } else {
+            groupsContainer.innerHTML = '<p style="color: #888;">No voter blocs defined yet.</p>';
+        }
+        
+        // Combine NPC parties and player factions
+        const allParties = [
+            ...parties.map(p => ({ ...p, isPlayer: false })),
+            ...playerFactions.map(f => ({
+                name: f.faction_name,
+                seats: 0, // Player parties start with 0 seats
+                isPlayer: true,
+                is_npc: false
+            }))
+        ];
+        
+        // Sort by seats
+        allParties.sort((a, b) => (b.seats || 0) - (a.seats || 0));
+        
+        // Find head of government (party with most seats)
+        const headParty = allParties.length > 0 && allParties[0].seats > 0 
+            ? allParties[0].name 
+            : 'None (No majority)';
+        
+        document.getElementById('head-of-government').textContent = headParty;
+        
+        // Display parties
+        const partiesContainer = document.getElementById('parties-list');
+        if (allParties.length > 0) {
+            partiesContainer.innerHTML = allParties.map(party => `
+                <div class="party-item">
+                    <span class="party-name">${party.name}${party.isPlayer ? ' (Player)' : ''}</span>
+                    <span class="party-seats">${party.seats || 0} Seats</span>
+                </div>
+            `).join('');
+        } else {
+            partiesContainer.innerHTML = '<p style="color: #888;">No political parties yet.</p>';
+        }
+        
+        // Show content, hide loading
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+    }
+    
+    function goBack() {
+        window.location.href = 'map.html';
+    }
+    
+    async function continueToPartyCreation() {
+        // Check if user already has a party in this nation
+        const { data: existingParty } = await _supabase
+            .from('factions')
+            .select('*')
+            .eq('id', currentUser.id)
+            .eq('faction_type', 'party')
+            .single();
+        
+        if (existingParty && existingParty.nation_id === nationData.id) {
+            alert('You already have a party in this nation!');
+            return;
+        }
+        
+        if (existingParty && existingParty.nation_id !== nationData.id) {
+            alert('You already have a party in another nation. You can only have one party.');
+            return;
+        }
+        
+        // Continue to party creation
+        window.location.href = 'createparty.html?nation=' + NATION_NAME.toLowerCase();
+    }
+    
+    // Load data on page load
+    loadNationData();
+</script>
+
+</body>
+</html>
