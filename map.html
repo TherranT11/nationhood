@@ -527,8 +527,10 @@
             
             console.log(`Tick processed! Advanced to ${nextDate} (Tick ${nextTick})`);
             
-            // Reload page to show new date
-            setTimeout(() => location.reload(), 1000);
+            // Force a hard reload with cache bust
+            setTimeout(() => {
+                window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now();
+            }, 1000);
             
         } catch (error) {
             console.error('Tick processing error:', error);
