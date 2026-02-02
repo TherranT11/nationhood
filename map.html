@@ -496,7 +496,22 @@
         try {
             console.log('Processing tick...');
             
-            // Get current shard data
+            // FIRST: Set next tick to future IMMEDIATELY to prevent re-trigger
+            const nextTickTime = new Date();
+            nextTickTime.setHours(nextTickTime.getHours() + 8);
+            
+            const { error: lockError } = await _supabase
+                .from('shard')
+                .update({
+                    next_tick_at: nextTickTime.toISOString()
+                })
+                .eq('name', 'Alpha Shard');
+            
+            if (lockError) throw lockError;
+            
+            console.log('Next tick locked to:', nextTickTime.toISOString());
+            
+            // THEN: Get current data and calculate new date
             const { data: shard, error: getError } = await _supabase
                 .from('shard')
                 .select('current_date, current_tick')
@@ -505,32 +520,27 @@
             
             if (getError) throw getError;
             
-            // Calculate next date
             const nextDate = advanceMonth(shard.current_date);
             const nextTick = shard.current_tick + 1;
             
-            // Calculate next tick time (8 hours from now)
-            const nextTickTime = new Date();
-            nextTickTime.setHours(nextTickTime.getHours() + 8);
-            
-            // Update shard
+            // Update the date and tick counter
             const { error: updateError } = await _supabase
                 .from('shard')
                 .update({
                     current_date: nextDate,
-                    current_tick: nextTick,
-                    next_tick_at: nextTickTime.toISOString()
+                    current_tick: nextTick
                 })
                 .eq('name', 'Alpha Shard');
             
             if (updateError) throw updateError;
             
             console.log(`Tick processed! Advanced to ${nextDate} (Tick ${nextTick})`);
+            console.log(`Next tick scheduled for: ${nextTickTime.toISOString()}`);
             
-            // Force a hard reload with cache bust
+            // Wait a moment to ensure DB commits, then reload
             setTimeout(() => {
                 window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now();
-            }, 1000);
+            }, 2000); // Increased to 2 seconds for safety
             
         } catch (error) {
             console.error('Tick processing error:', error);
