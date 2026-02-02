@@ -245,7 +245,8 @@
             • Set next tick to 8 hours from now<br>
             • Reset ALL nation stats to defaults<br>
             • Remove nation assignments from ALL players (forces re-selection)<br>
-            • Does NOT delete user accounts or factions
+            • Clear ALL party data (type, name, abbreviation, ideologies)<br>
+            • Does NOT delete user accounts
         </p>
         
         <button class="btn btn-danger" id="reset-btn" onclick="resetShard()">
@@ -410,14 +411,21 @@
                 }
             }
             
-            // Step 3: Clear nation assignments from all factions
-            status.textContent = 'Step 3/4: Removing player nation assignments...';
+            // Step 3: Clear nation assignments AND party data from all factions
+            status.textContent = 'Step 3/4: Removing player nation assignments and clearing party data...';
             
             const { error: factionsError } = await _supabase
                 .from('factions')
                 .update({
                     nation_id: null,
-                    nation: 'Pending'
+                    nation: 'Pending',
+                    faction_type: null,      // Clear party type
+                    faction_name: null,      // Clear party name
+                    abbreviation: null,      // Clear abbreviation
+                    ideology_value_1: null,  // Clear ideology 1
+                    ideology_value_2: null,  // Clear ideology 2
+                    ideology_value_3: null,  // Clear ideology 3 (if exists)
+                    ideology_value_4: null   // Clear ideology 4 (if exists)
                 })
                 .not('nation_id', 'is', null);
             
@@ -428,7 +436,7 @@
             await new Promise(resolve => setTimeout(resolve, 500));
             
             status.className = 'status success';
-            status.textContent = `✅ RESET COMPLETE! Alpha Shard has been reset to January, 2000. Next tick scheduled for ${nextTick.toLocaleString()}. All players have been kicked out.`;
+            status.textContent = `✅ RESET COMPLETE! Alpha Shard has been reset to January, 2000. Next tick scheduled for ${nextTick.toLocaleString()}. All players have been kicked out and all party data cleared.`;
             
             // Reload shard info
             await loadShardInfo();
