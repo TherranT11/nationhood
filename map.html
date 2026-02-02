@@ -169,92 +169,8 @@
         hr { border: 0; border-top: 1px solid #333; margin: 20px 0; }
         h3 { color: #ffcc00; margin-top: 0; font-size: 1rem; text-transform: uppercase; letter-spacing: 1px; }
         
-        /* Nation Selection Modal */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.9);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-        
-        .modal-content {
-            background: #1e1e1e;
-            padding: 40px;
-            border-radius: 8px;
-            border-top: 4px solid #ffcc00;
-            max-width: 600px;
-            width: 90%;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
-        }
-        
-        .modal-title {
-            color: #ffcc00;
-            font-size: 2rem;
-            margin-top: 0;
-            margin-bottom: 10px;
-            text-align: center;
-        }
-        
-        .modal-subtitle {
-            color: #888;
-            text-align: center;
-            margin-bottom: 30px;
-            font-size: 0.9rem;
-        }
-        
-        .nation-choices {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        
-        .nation-card {
-            background: #252525;
-            border: 2px solid #444;
-            border-radius: 8px;
-            padding: 20px;
-            cursor: pointer;
-            transition: all 0.3s;
-            text-align: center;
-        }
-        
-        .nation-card:hover {
-            border-color: #ffcc00;
-            background: #2a2a2a;
-        }
-        
-        .nation-card.selected {
-            border-color: #ffcc00;
-            background: #2a2a2a;
-        }
-        
-        .nation-card-title {
-            color: #ffcc00;
-            font-size: 1.5rem;
-            font-weight: bold;
-            margin-bottom: 10px;
-        }
-        
-        .nation-card-capital {
-            color: #888;
-            font-size: 0.85rem;
-            margin-bottom: 15px;
-        }
-        
-        .nation-card-desc {
-            color: #aaa;
-            font-size: 0.85rem;
-            line-height: 1.5;
-        }
-        
-        .confirm-btn {
+        /* View Nation Button */
+        .view-nation-btn {
             width: 100%;
             padding: 15px;
             background: #ffcc00;
@@ -264,16 +180,14 @@
             border-radius: 4px;
             font-size: 1rem;
             color: #000;
-            transition: 0.2s;
+            transition: 0.3s;
+            margin-top: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
         
-        .confirm-btn:hover {
+        .view-nation-btn:hover {
             background: #e6b800;
-        }
-        
-        .confirm-btn:disabled {
-            background: #666;
-            cursor: not-allowed;
         }
         
         .hidden {
@@ -298,30 +212,6 @@
     <div class="tick-item">
         <div class="tick-label">Shard</div>
         <div class="tick-value">Alpha</div>
-    </div>
-</div>
-
-<!-- Nation Selection Modal -->
-<div id="nation-modal" class="modal-overlay hidden">
-    <div class="modal-content">
-        <h2 class="modal-title">Choose Your Nation</h2>
-        <p class="modal-subtitle">Select the nation your faction will serve in Alpha Shard</p>
-        
-        <div class="nation-choices">
-            <div class="nation-card" data-nation-id="" data-nation-name="Melizea">
-                <div class="nation-card-title">Melizea</div>
-                <div class="nation-card-capital">Capital: San Maria</div>
-                <div class="nation-card-desc">A coastal nation known for its strategic position and balanced approach to governance.</div>
-            </div>
-            
-            <div class="nation-card" data-nation-id="" data-nation-name="Avelia">
-                <div class="nation-card-title">Avelia</div>
-                <div class="nation-card-capital">Capital: Oros</div>
-                <div class="nation-card-desc">A smaller southern nation rising to prominence through determination and unity.</div>
-            </div>
-        </div>
-        
-        <button class="confirm-btn" id="confirm-nation-btn" disabled>CONFIRM SELECTION</button>
     </div>
 </div>
 
@@ -376,6 +266,11 @@
             <p style="color: #888; font-style: italic;">Select a nation on the map to view detailed information.</p>
         </div>
         
+        <!-- View Nation Button (hidden by default) -->
+        <button id="view-nation-btn" class="view-nation-btn hidden" onclick="viewNation()">
+            VIEW NATION
+        </button>
+        
         <hr>
         <div style="font-size: 0.8rem; color: #666; font-style: italic;">
             Data synchronized with Alpha Shard
@@ -391,8 +286,7 @@
 
     let currentUser = null;
     let currentFaction = null;
-    let selectedNationForModal = null;
-    let availableNations = [];
+    let selectedNation = null; // Track currently selected nation
     let tickInterval = null;
 
     async function initSession() {
@@ -418,16 +312,10 @@
 
         currentFaction = faction;
 
-        // Check if faction needs to choose a nation
-        if (!faction.nation_id || faction.nation_id === null) {
-            await showNationSelectionModal();
-            return;
-        }
-
-        // Normal map initialization
+        // Display faction info (allow browsing even without nation)
         document.getElementById('f-name').innerText = faction.faction_name;
         document.getElementById('f-type').innerText = faction.faction_type.toUpperCase() + ' PATH';
-        document.getElementById('nation-display').innerText = 'Nation: ' + (faction.nation || 'Unknown');
+        document.getElementById('nation-display').innerText = faction.nation ? 'Nation: ' + faction.nation : 'Nation: Unassigned';
         document.getElementById('population').innerText = faction.population || 1000;
         document.getElementById('resources').innerText = faction.resources || 500;
         document.getElementById('stability').innerText = faction.stability || 100;
@@ -580,99 +468,17 @@
         return `${months[nextMonthIndex]}, ${nextYear}`;
     }
 
-    async function showNationSelectionModal() {
-        // Load available nations
-        const { data: shard } = await _supabase.from('shard').select('id').eq('name', 'Alpha Shard').single();
-        
-        if (!shard) {
-            alert('Error loading shard data');
-            return;
-        }
-
-        const { data: nations, error } = await _supabase
-            .from('nations')
-            .select('id, name, capital')
-            .eq('shard_is', shard.id);
-
-        if (error || !nations || nations.length === 0) {
-            alert('Error loading nations. Please refresh.');
-            return;
-        }
-
-        availableNations = nations;
-
-        // Update modal with actual nation data
-        const nationCards = document.querySelectorAll('.nation-card');
-        nations.forEach((nation, index) => {
-            if (nationCards[index]) {
-                nationCards[index].setAttribute('data-nation-id', nation.id);
-                nationCards[index].setAttribute('data-nation-name', nation.name);
-                const titleEl = nationCards[index].querySelector('.nation-card-title');
-                const capitalEl = nationCards[index].querySelector('.nation-card-capital');
-                if (titleEl) titleEl.textContent = nation.name;
-                if (capitalEl && nation.capital) capitalEl.textContent = `Capital: ${nation.capital}`;
-            }
-        });
-
-        // Show modal
-        document.getElementById('nation-modal').classList.remove('hidden');
-
-        // Setup event listeners
-        setupNationSelection();
-    }
-
-    function setupNationSelection() {
-        const nationCards = document.querySelectorAll('.nation-card');
-        const confirmBtn = document.getElementById('confirm-nation-btn');
-
-        nationCards.forEach(card => {
-            card.addEventListener('click', () => {
-                // Remove selected from all
-                nationCards.forEach(c => c.classList.remove('selected'));
-                // Add to this one
-                card.classList.add('selected');
-                
-                selectedNationForModal = {
-                    id: card.getAttribute('data-nation-id'),
-                    name: card.getAttribute('data-nation-name')
-                };
-                
-                confirmBtn.disabled = false;
-            });
-        });
-
-        confirmBtn.addEventListener('click', async () => {
-            if (!selectedNationForModal) return;
-
-            confirmBtn.disabled = true;
-            confirmBtn.textContent = 'JOINING...';
-
-            try {
-                // Update faction with chosen nation
-                const { error } = await _supabase
-                    .from('factions')
-                    .update({
-                        nation_id: selectedNationForModal.id,
-                        nation: selectedNationForModal.name
-                    })
-                    .eq('id', currentUser.id);
-
-                if (error) throw error;
-
-                // Hide modal and reload
-                document.getElementById('nation-modal').classList.add('hidden');
-                location.reload();
-            } catch (error) {
-                alert('Error joining nation: ' + error.message);
-                confirmBtn.disabled = false;
-                confirmBtn.textContent = 'CONFIRM SELECTION';
-            }
-        });
-    }
-
     async function handleLogout() {
         await _supabase.auth.signOut();
         window.location.href = "index.html";
+    }
+    
+    function viewNation() {
+        if (!selectedNation) return;
+        
+        // Navigate to the nation's detail page
+        const nationName = selectedNation.name.toLowerCase();
+        window.location.href = `${nationName}.html`;
     }
 
     // Map interaction
@@ -707,6 +513,9 @@
                     `;
                     return;
                 }
+                
+                // Store selected nation
+                selectedNation = nation;
                 
                 // Count active player parties for this nation
                 const { data: playerParties, error: partiesError } = await _supabase
@@ -767,11 +576,17 @@
                     </div>
                 `;
                 
+                // Show the "VIEW NATION" button
+                document.getElementById('view-nation-btn').classList.remove('hidden');
+                
             } catch (error) {
                 console.error('Error loading nation data:', error);
                 document.getElementById('details').innerHTML = `
                     <p style="color: #ff4444;">Error loading nation data. Please try again.</p>
                 `;
+                
+                // Hide the button on error
+                document.getElementById('view-nation-btn').classList.add('hidden');
             }
         });
     });
