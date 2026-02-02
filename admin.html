@@ -228,6 +228,10 @@
                 <span class="info-value" id="info-tick">Loading...</span>
             </div>
             <div class="info-row">
+                <span class="info-label">Next Tick At:</span>
+                <span class="info-value" id="info-next-tick">Loading...</span>
+            </div>
+            <div class="info-row">
                 <span class="info-label">Active Players:</span>
                 <span class="info-value" id="info-players">Loading...</span>
             </div>
@@ -309,6 +313,23 @@
             document.getElementById('info-tick').textContent = shard.current_tick || 0;
             document.getElementById('info-players').textContent = factions ? factions.length : 0;
             
+            // Format next tick time
+            if (shard.next_tick_at) {
+                const nextTickDate = new Date(shard.next_tick_at);
+                const now = new Date();
+                const timeUntil = nextTickDate - now;
+                
+                if (timeUntil > 0) {
+                    const hours = Math.floor(timeUntil / (1000 * 60 * 60));
+                    const minutes = Math.floor((timeUntil % (1000 * 60 * 60)) / (1000 * 60));
+                    document.getElementById('info-next-tick').textContent = `${nextTickDate.toLocaleString()} (in ${hours}h ${minutes}m)`;
+                } else {
+                    document.getElementById('info-next-tick').textContent = `${nextTickDate.toLocaleString()} (OVERDUE - should process now)`;
+                }
+            } else {
+                document.getElementById('info-next-tick').textContent = 'Not Scheduled';
+            }
+            
         } catch (error) {
             console.error('Error loading shard info:', error);
         }
@@ -339,8 +360,11 @@
             // Step 1: Reset shard data
             status.textContent = 'Step 1/4: Resetting shard data...';
             
+            // Calculate next tick time (8 hours from now)
             const nextTick = new Date();
             nextTick.setHours(nextTick.getHours() + 8);
+            
+            console.log('Setting next_tick_at to:', nextTick.toISOString());
             
             const { error: shardError } = await _supabase
                 .from('shard')
@@ -404,7 +428,7 @@
             await new Promise(resolve => setTimeout(resolve, 500));
             
             status.className = 'status success';
-            status.textContent = '✅ RESET COMPLETE! Alpha Shard has been reset to January, 2000. All players have been kicked out.';
+            status.textContent = `✅ RESET COMPLETE! Alpha Shard has been reset to January, 2000. Next tick scheduled for ${nextTick.toLocaleString()}. All players have been kicked out.`;
             
             // Reload shard info
             await loadShardInfo();
