@@ -132,36 +132,6 @@
             overflow-y: auto;
         }
 
-        .user-panel { background: #252525; padding: 15px; border-radius: 8px; margin-bottom: 25px; border-bottom: 2px solid #333; }
-        .faction-type-tag { font-size: 0.7rem; color: #ffcc00; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 5px; }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-top: 15px;
-        }
-        
-        .stat-box {
-            background: #1a1a1a;
-            padding: 10px;
-            border-radius: 4px;
-            border-left: 2px solid #ffcc00;
-        }
-        
-        .stat-label {
-            font-size: 0.7rem;
-            color: #888;
-            text-transform: uppercase;
-        }
-        
-        .stat-value {
-            font-size: 1.2rem;
-            color: #ffcc00;
-            font-weight: bold;
-            margin-top: 5px;
-        }
-        
         .logout-btn { background: transparent; border: 1px solid #ff4444; color: #ff4444; padding: 6px 12px; cursor: pointer; border-radius: 4px; transition: 0.3s; margin-top: 10px; font-size: 0.75rem; width: 100%; }
         .logout-btn:hover { background: #ff4444; color: white; }
         
@@ -238,29 +208,6 @@
     </div>
 
     <aside id="sidebar">
-        <div class="user-panel">
-            <div class="faction-type-tag" id="f-type">Loading...</div>
-            <h2 id="f-name" style="margin: 5px 0; color: #ffcc00;">Faction Name</h2>
-            <div style="font-size: 0.8rem; color: #888;" id="nation-display">Nation: Loading...</div>
-            
-            <div class="stats-grid">
-                <div class="stat-box">
-                    <div class="stat-label">Population</div>
-                    <div class="stat-value" id="population">0</div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-label">Resources</div>
-                    <div class="stat-value" id="resources">0</div>
-                </div>
-                <div class="stat-box" style="grid-column: span 2;">
-                    <div class="stat-label">Stability</div>
-                    <div class="stat-value" id="stability">0</div>
-                </div>
-            </div>
-            
-            <button class="logout-btn" onclick="handleLogout()">ABANDON SESSION</button>
-        </div>
-
         <h3>INTEL REPORT</h3>
         <div id="details">
             <p style="color: #888; font-style: italic;">Select a nation on the map to view detailed information.</p>
@@ -275,6 +222,8 @@
         <div style="font-size: 0.8rem; color: #666; font-style: italic;">
             Data synchronized with Alpha Shard
         </div>
+        
+        <button class="logout-btn" onclick="handleLogout()" style="margin-top: 20px;">ABANDON SESSION</button>
     </aside>
 </div>
 
@@ -297,7 +246,7 @@
         }
         currentUser = user;
 
-        // Load faction data
+        // Load faction data (just to verify user exists)
         const { data: faction, error: factionError } = await _supabase
             .from('factions')
             .select('*')
@@ -311,14 +260,6 @@
         }
 
         currentFaction = faction;
-
-        // Display faction info (allow browsing even without nation)
-        document.getElementById('f-name').innerText = faction.faction_name;
-        document.getElementById('f-type').innerText = faction.faction_type.toUpperCase() + ' PATH';
-        document.getElementById('nation-display').innerText = faction.nation ? 'Nation: ' + faction.nation : 'Nation: Unassigned';
-        document.getElementById('population').innerText = faction.population || 1000;
-        document.getElementById('resources').innerText = faction.resources || 500;
-        document.getElementById('stability').innerText = faction.stability || 100;
         
         // Initialize tick system
         await loadTickData();
