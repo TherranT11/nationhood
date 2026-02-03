@@ -445,7 +445,7 @@ const MOCK_CABINET = [
    ============================================================ */
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
-    if (!user) { window.location.href = 'login.html'; return; }
+    if (!user) { window.location.href = 'index.html'; return; }
     currentUser = user;
 
     // Faction
@@ -659,9 +659,144 @@ async function handleLogout() {
 }
 
 /* ============================================================
+   SEAT ALLOCATION LOGIC (Step 7)
+   ============================================================ */
+/**
+ * Allocates parliament seats using proportional representation (largest remainder method)
+ * @param {Array} parties - Array of { id, name, voteShare, color }
+ * @param {number} totalSeats - Total seats to allocate
+ * @returns {Array} - Array of { id, name, seats, color, voteShare }
+ */
+function allocateSeats(parties, totalSeats) {
+    // Validate inputs
+    if (!parties || parties.length === 0) {
+        throw new Error('Parties array is required');
+    }
+    if (totalSeats <= 0) {
+        throw new Error('Total seats must be positive');
+    }
+
+    const totalVoteShare = parties.reduce((sum, p) => sum + p.voteShare, 0);
+    if (Math.abs(totalVoteShare - 100) > 0.1) {
+        console.warn(`Vote shares sum to ${totalVoteShare}%, not 100%. Results may be unexpected.`);
+    }
+
+    // Calculate initial allocation using floor
+    const results = parties.map(party => {
+        const exactSeats = (party.voteShare / 100) * totalSeats;
+        const floorSeats = Math.floor(exactSeats);
+        const remainder = exactSeats - floorSeats;
+        
+        return {
+            id: party.id,
+            name: party.name,
+            color: party.color,
+            voteShare: party.voteShare,
+            seats: floorSeats,
+            remainder: remainder
+        };
+    });
+
+    // Count how many seats we've allocated so far
+    const seatsAllocated = results.reduce((sum, p) => sum + p.seats, 0);
+    const seatsRemaining = totalSeats - seatsAllocated;
+
+    // Sort by remainder (largest first)
+    results.sort((a, b) => b.remainder - a.remainder);
+
+    // Give remaining seats to parties with largest remainders
+    for (let i = 0; i < seatsRemaining; i++) {
+        results[i].seats += 1;
+    }
+
+    // Remove the remainder property (we don't need it in output)
+    results.forEach(p => delete p.remainder);
+
+    // Sort back by seats (descending) for cleaner output
+    results.sort((a, b) => b.seats - a.seats);
+
+    return results;
+}
+
+/* ============================================================
+   CABINET ASSIGNMENT LOGIC (Step 8)
+   ============================================================ */
+/**
+ * Assigns cabinet positions to parties based on seat allocation
+ * @param {Array} parties - Array of { id, name, seats } (from allocateSeats output)
+ * @param {Array} positions - Array of position names (strings)
+ * @returns {Array} - Array of { position, party_id, party_name }
+ */
+function assignCabinet(parties, positions) {
+    // Validate
+    if (!parties || parties.length === 0) {
+        throw new Error('Parties array is required');
+    }
+    if (!positions || positions.length === 0) {
+        throw new Error('Positions array is required');
+    }
+
+    // Sort parties by seats (descending)
+    const sortedParties = [...parties].sort((a, b) => b.seats - a.seats);
+    const totalSeats = sortedParties.reduce((sum, p) => sum + p.seats, 0);
+
+    // Prime Minister always goes to the party with the most seats
+    const cabinet = [{
+        position: positions[0],
+        party_id: sortedParties[0].id,
+        party_name: sortedParties[0].name
+    }];
+
+    // Remaining positions
+    const remainingPositions = positions.slice(1);
+
+    // Calculate ministry allocation using largest remainder
+    const ministryAllocation = sortedParties.map(party => {
+        const proportion = party.seats / totalSeats;
+        const exactMinistries = proportion * remainingPositions.length;
+        const floorMinistries = Math.floor(exactMinistries);
+        const remainder = exactMinistries - floorMinistries;
+        
+        return {
+            ...party,
+            ministries: floorMinistries,
+            remainder: remainder
+        };
+    });
+
+    // Allocate remaining ministries
+    const ministriesAllocated = ministryAllocation.reduce((sum, p) => sum + p.ministries, 0);
+    const ministriesRemaining = remainingPositions.length - ministriesAllocated;
+
+    ministryAllocation.sort((a, b) => b.remainder - a.remainder);
+    for (let i = 0; i < ministriesRemaining; i++) {
+        ministryAllocation[i].ministries += 1;
+    }
+
+    // Assign ministries
+    let positionIndex = 0;
+    for (const party of ministryAllocation) {
+        for (let i = 0; i < party.ministries; i++) {
+            if (positionIndex >= remainingPositions.length) break;
+            
+            cabinet.push({
+                position: remainingPositions[positionIndex],
+                party_id: party.id,
+                party_name: party.name
+            });
+            
+            positionIndex++;
+        }
+    }
+
+    return cabinet;
+}
+
+/* ============================================================
    GO
    ============================================================ */
 init();
 </script>
+    
 </body>
 </html>
