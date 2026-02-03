@@ -245,7 +245,7 @@
             • Set next tick to 8 hours from now<br>
             • Reset ALL nation stats to defaults<br>
             • Remove nation assignments from ALL players (forces re-selection)<br>
-            • Clear ALL party data (type, name, abbreviation, ideologies)<br>
+            • Reset ALL party data (type → pending, name → Unnamed Faction, clear abbreviation & ideologies)<br>
             • Does NOT delete user accounts
         </p>
         
@@ -392,7 +392,6 @@
                 const { error: nationError } = await _supabase
                     .from('nations')
                     .update({
-                        // Reset common stats to 50
                         religious: 50,
                         stability: 50,
                         civil_unrest: 50,
@@ -401,13 +400,11 @@
                         efficiency: 50,
                         GDP: 50,
                         debt: 50
-                        // Add more stats as needed
                     })
                     .eq('id', nation.id);
                 
                 if (nationError) {
                     console.warn('Error resetting nation stats:', nationError);
-                    // Continue even if some stats fail
                 }
             }
             
@@ -419,13 +416,13 @@
                 .update({
                     nation_id: null,
                     nation: 'Pending',
-                    faction_type: null,      // Clear party type
-                    faction_name: null,      // Clear party name
-                    abbreviation: null,      // Clear abbreviation
-                    ideology_value_1: null,  // Clear ideology 1
-                    ideology_value_2: null,  // Clear ideology 2
-                    ideology_value_3: null,  // Clear ideology 3 (if exists)
-                    ideology_value_4: null   // Clear ideology 4 (if exists)
+                    faction_type: 'pending',           // Set to 'pending' instead of null
+                    faction_name: 'Unnamed Faction',   // Default name to satisfy NOT NULL constraint
+                    abbreviation: null,
+                    ideology_value_1: null,
+                    ideology_value_2: null,
+                    ideology_value_3: null,
+                    ideology_value_4: null
                 })
                 .not('nation_id', 'is', null);
             
