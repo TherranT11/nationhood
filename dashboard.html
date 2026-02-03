@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard | Nationhood Alpha</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        /* ===== RESET & BASE ===== */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: #121212;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ===== TOP BAR ===== */
+        #top-bar {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+            border-bottom: 3px solid #ffcc00;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            z-index: 100;
+            flex-shrink: 0;
+        }
+        .top-bar-row1 {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px 6px 20px;
+        }
+        .tick-info { display: flex; gap: 30px; align-items: center; }
+        .tick-item { display: flex; flex-direction: column; }
+        .tick-label { font-size: 0.65rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+        .tick-value { font-size: 1rem; color: #ffcc00; font-weight: bold; }
+        .tick-countdown { font-size: 1.1rem; color: #4CAF50; font-weight: bold; font-family: 'Courier New', monospace; }
+        .top-bar-right { display: flex; align-items: center; gap: 15px; }
+        .party-badge {
+            background: #252525;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 4px 10px;
+            font-size: 0.8rem;
+            color: #ffcc00;
+            font-weight: bold;
+        }
+        .logout-btn {
+            background: transparent; border: 1px solid #ff4444; color: #ff4444;
+            padding: 4px 10px; cursor: pointer; border-radius: 4px; font-size: 0.7rem;
+            transition: 0.3s; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .logout-btn:hover { background: #ff4444; color: white; }
+
+        /* ===== NAV TABS ===== */
+        .nav-tabs {
+            display: flex;
+            padding: 0 20px 0 20px;
+            gap: 2px;
+            border-top: 1px solid #333;
+        }
+        .nav-tab {
+            padding: 7px 14px;
+            background: transparent;
+            border: none;
+            color: #888;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            border-radius: 4px 4px 0 0;
+            transition: background 0.2s, color 0.2s;
+            white-space: nowrap;
+        }
+        .nav-tab:hover { background: #2a2a2a; color: #ccc; }
+        .nav-tab.active { background: #121212; color: #ffcc00; border-top: 2px solid #ffcc00; }
+
+        /* ===== MAIN CONTENT AREA ===== */
+        #content-area {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        .tab-panel { display: none; min-height: 100%; }
+        .tab-panel.active { display: block; }
+
+        /* ===== SHARED PANEL STYLES ===== */
+        .panel-padding { padding: 24px; }
+        .section-header {
+            color: #ffcc00;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #333;
+        }
+        .info-block {
+            background: #1a1a1a;
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 18px;
+            border-left: 3px solid #ffcc00;
+        }
+        .info-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #222; }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { font-size: 0.72rem; color: #888; text-transform: uppercase; letter-spacing: 0.8px; }
+        .info-value { font-size: 0.95rem; color: #e0e0e0; font-weight: 500; }
+        .info-value.gold { color: #ffcc00; }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+        .stat-card {
+            background: #1a1a1a;
+            border-radius: 6px;
+            padding: 16px 12px;
+            text-align: center;
+            border-top: 2px solid #333;
+        }
+        .stat-card .stat-label { font-size: 0.68rem; color: #888; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+        .stat-card .stat-value { font-size: 1.25rem; color: #ffcc00; font-weight: bold; }
+
+        .ideology-tag {
+            display: inline-block;
+            padding: 4px 11px;
+            border-radius: 3px;
+            font-size: 0.74rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-right: 6px;
+        }
+        .tag-liberty { background: #9C27B0; color: white; }
+        .tag-equality { background: #E91E63; color: white; }
+        .tag-freedom { background: #2196F3; color: white; }
+        .tag-security { background: #FF9800; color: white; }
+        .tag-cooperation { background: #4CAF50; color: white; }
+        .tag-competition { background: #F44336; color: white; }
+        .tag-tradition { background: #795548; color: white; }
+        .tag-progress { background: #00BCD4; color: white; }
+        .tag-nationalism { background: #FF5722; color: white; }
+        .tag-globalism { background: #3F51B5; color: white; }
+
+        /* ===== WORLD TAB ===== */
+        #tab-world { display: none; height: calc(100vh - 88px); }
+        #tab-world.active { display: flex; }
+        #world-map-container {
+            flex: 1;
+            background: #002b4d;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: auto;
+        }
+        #world-map-container svg { width: 100%; max-width: 1280px; height: auto; display: block; }
+        .land { cursor: pointer; transition: fill 0.3s, filter 0.3s; fill: #fff; stroke: #000; stroke-width: 1; }
+        .land:hover { fill: #fff5cc; filter: drop-shadow(0 0 8px rgba(255,245,204,0.5)); }
+        #Melizea:hover { fill: #fff5cc; filter: drop-shadow(0 0 8px rgba(255,245,204,0.5)); }
+        #Avelia:hover { fill: #ffcccc; filter: drop-shadow(0 0 8px rgba(255,153,153,0.5)); }
+        #Melizea.selected-nation { fill: #ffcc00 !important; filter: drop-shadow(0 0 15px rgba(255,204,0,0.8)) !important; }
+        #Avelia.selected-nation { fill: #ff9999 !important; filter: drop-shadow(0 0 15px rgba(255,153,153,0.8)) !important; }
+        .continent-bg { fill: #1a1a1a; stroke: #2a2a2a; stroke-width: 1.5; pointer-events: none; }
+        .capital-dot { fill: #1a1a1a; pointer-events: none; }
+        .capital-name { fill: #1a1a1a; font-size: 4px; font-family: sans-serif; font-weight: bold; pointer-events: none; }
+
+        #world-sidebar {
+            width: 320px;
+            flex-shrink: 0;
+            background: #1a1a1a;
+            border-left: 2px solid #333;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        #world-sidebar h3 { color: #ffcc00; font-size: 0.88rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+        #world-intel p { color: #666; font-style: italic; font-size: 0.85rem; }
+
+        /* ===== NATION TAB ===== */
+        .nation-hero {
+            background: linear-gradient(135deg, #1e1e1e 0%, #151515 100%);
+            border-bottom: 2px solid #333;
+            padding: 30px 24px 22px;
+            text-align: center;
+        }
+        .nation-hero h2 { color: #ffcc00; font-size: 2rem; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 4px; }
+        .nation-hero .capital-label { color: #888; font-size: 0.82rem; }
+
+        /* ===== GOVERNMENT TAB ===== */
+        .gov-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+        .person-card {
+            background: #1a1a1a;
+            border-radius: 6px;
+            padding: 16px;
+            border-left: 3px solid #ffcc00;
+        }
+        .person-card .person-role { font-size: 0.68rem; color: #888; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 5px; }
+        .person-card .person-name { font-size: 1.05rem; color: #e0e0e0; font-weight: bold; margin-bottom: 5px; }
+        .person-card .person-meta { font-size: 0.75rem; color: #aaa; display: flex; align-items: center; gap: 8px; }
+        .person-card .ptag { background: #252525; border: 1px solid #444; border-radius: 3px; padding: 2px 8px; font-size: 0.72rem; color: #ffcc00; }
+        .person-card .year { color: #666; }
+
+        .cabinet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+        .minister-card {
+            background: #1a1a1a;
+            border-radius: 6px;
+            padding: 15px;
+            border-left: 3px solid #4CAF50;
+        }
+        .minister-card .minister-title { font-size: 0.72rem; color: #4CAF50; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 5px; font-weight: bold; }
+        .minister-card .minister-name { font-size: 0.95rem; color: #e0e0e0; font-weight: 600; margin-bottom: 3px; }
+        .minister-card .minister-party { font-size: 0.72rem; color: #888; margin-bottom: 7px; }
+        .minister-card .minister-desc { font-size: 0.78rem; color: #666; line-height: 1.45; font-style: italic; }
+
+        /* Parliament half-circle */
+        .parliament-wrap { margin: 10px 0 6px; display: flex; justify-content: center; }
+        .parliament-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 16px; margin-top: 14px; }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.76rem; color: #aaa; }
+        .legend-swatch { width: 13px; height: 13px; border-radius: 2px; }
+
+        /* ===== PARTY TAB ===== */
+        .party-layout { display: grid; grid-template-columns: 300px 1fr; gap: 22px; padding: 24px; }
+        .party-info-block {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 24px;
+            border: 1px solid #2a2a2a;
+            height: fit-content;
+            position: sticky;
+            top: 24px;
+        }
+        .party-name-big { color: #ffcc00; font-size: 1.55rem; font-weight: bold; margin-bottom: 3px; }
+        .party-abbr-big { color: #666; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 14px; }
+        .party-ideologies { margin-bottom: 18px; }
+        .party-stat-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid #222; }
+        .party-stat-row:last-child { border-bottom: none; }
+        .psr-label { font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.8px; }
+        .psr-value { font-size: 1rem; color: #ffcc00; font-weight: bold; }
+        .psr-value.neutral { color: #e0e0e0; }
+        .party-right-col { min-height: 200px; }
+
+        /* ===== PLACEHOLDER TABS ===== */
+        .placeholder-panel {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: calc(100vh - 88px); color: #555; text-align: center;
+        }
+        .placeholder-panel .ph-icon { font-size: 2.8rem; margin-bottom: 14px; opacity: 0.35; }
+        .placeholder-panel h3 { color: #666; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 6px; }
+        .placeholder-panel p { font-size: 0.8rem; color: #444; }
+    </style>
+</head>
+<body>
+
+<!-- ===== TOP BAR ===== -->
+<div id="top-bar">
+    <div class="top-bar-row1">
+        <div class="tick-info">
+            <div class="tick-item">
+                <div class="tick-label">Game Date</div>
+                <div class="tick-value" id="game-date">Loading…</div>
+            </div>
+            <div class="tick-item">
+                <div class="tick-label">Tick</div>
+                <div class="tick-value" id="tick-number">—</div>
+            </div>
+            <div class="tick-item">
+                <div class="tick-label">Next Tick In</div>
+                <div class="tick-countdown" id="tick-countdown">—</div>
+            </div>
+        </div>
+        <div class="top-bar-right">
+            <span class="party-badge" id="party-badge">…</span>
+            <button class="logout-btn" onclick="handleLogout()">Abandon Session</button>
+        </div>
+    </div>
+    <div class="nav-tabs">
+        <button class="nav-tab active" data-tab="world">World</button>
+        <button class="nav-tab" data-tab="nation">Nation</button>
+        <button class="nav-tab" data-tab="government">Government</button>
+        <button class="nav-tab" data-tab="legislature">Legislature</button>
+        <button class="nav-tab" data-tab="party">Party</button>
+        <button class="nav-tab" data-tab="elections">Elections</button>
+        <button class="nav-tab" data-tab="laws">Laws</button>
+        <button class="nav-tab" data-tab="diplomacy">Diplomacy</button>
+        <button class="nav-tab" data-tab="economy">Economy</button>
+        <button class="nav-tab" data-tab="conflict">Conflict</button>
+    </div>
+</div>
+
+<!-- ===== CONTENT AREA ===== -->
+<div id="content-area">
+
+    <!-- ---- WORLD ---- -->
+    <div class="tab-panel active" id="tab-world">
+        <div id="world-map-container">
+            <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg">
+                <path class="continent-bg" d="m 215.66543,627.12266 0.73605,10.30483 2.57621,3.31227 c 0,0 0.73606,0.73607 0.73606,3.31229 0,2.57619 0.36803,4.41634 0.36803,4.41634 l 2.20818,1.84016 c 0,0 1.47212,0.36803 2.94424,1.47211 1.47212,1.10408 2.20818,1.10408 2.20818,1.10408 0,0 2.94423,2.57622 4.41635,2.57622 h 4.78439 c 0,0 3.6803,2.20819 3.6803,4.41635 0,2.20818 -1.47212,4.7844 2.94424,3.6803 4.41635,-1.10408 11.77695,-1.84015 11.77695,-1.84015 0,0 -0.73606,-4.04831 0.36803,-6.2565 1.10409,-2.20818 -0.36803,-3.6803 2.94423,-5.52045 3.31227,-1.84015 8.09667,-4.78438 8.09667,-4.78438 0,0 1.47211,2.20818 -0.73607,-4.41637 -2.20818,-6.62453 -2.20818,-7.36058 -2.20818,-7.36058 0,0 4.04833,-3.6803 5.52044,-5.52045 1.47212,-1.84015 6.99257,-4.41635 7.3606,-9.56876 0.36804,-5.15242 0,-6.62456 2.20819,-8.09668 2.20816,-1.47211 5.88846,-1.10408 6.99257,-4.04831 1.10408,-2.94425 -2.57622,-5.15241 2.94423,-9.20075 5.52045,-4.04834 8.83272,-5.52045 8.46468,-7.72864 -0.36804,-2.20816 -1.47211,-11.40891 -1.47211,-11.40891 l 4.41634,-4.78438 -2.57619,-8.09665 -6.25653,-6.62453 -4.41634,-11.0409 c 0,0 1.47211,-6.62453 0.73604,-8.83272 -0.73604,-2.20819 -2.20816,-3.6803 -4.41634,-6.99257 -2.20819,-3.31226 -9.9368,-15.82528 -9.9368,-15.82528 0,0 -4.41637,-5.88846 -6.25652,-8.46468 -1.84013,-2.5762 -1.10408,-9.56877 -5.88847,-7.36058 -4.78438,2.20816 -8.09665,-2.20819 -7.72862,4.04831 0.36803,6.25652 1.47212,13.98513 3.68029,17.2974 2.20818,3.31227 3.31227,1.84015 5.88848,6.62453 2.5762,4.78441 5.88847,0.73607 4.78439,7.3606 -1.10408,6.62454 1.10408,9.20076 -3.6803,11.40892 -4.78439,2.20818 0,8.09667 -6.25651,2.20818 -6.2565,-5.88846 -9.9368,-8.46468 -9.9368,-11.40891 0,-2.94426 1.47212,-6.25652 1.47212,-8.46468 0,-2.20819 -0.73606,-6.99257 -2.20818,-8.09668 -1.47212,-1.10408 -4.41635,-4.41634 -5.15241,-7.72861 -0.73606,-3.31226 -1.47212,-7.72863 0,-8.46468 1.47212,-0.73607 4.41635,-6.62453 5.15241,-8.46468 0.73606,-1.84015 5.88848,-8.83272 5.88848,-8.83272 l 6.99256,-4.41637 c 0,0 0.73606,1.10411 2.57621,-0.36801 1.84015,-1.47211 4.41635,-6.25652 5.15242,-7.72864 0.73607,-1.47211 2.57622,-4.41634 2.57622,-6.62453 v -7.3606 c 0,-1.84015 -1.10411,-8.09665 0,-9.9368 1.10408,-1.84015 1.47211,-4.78438 2.94423,-6.99257 1.47211,-2.20816 10.67287,-1.10408 5.15242,-8.83271 l -5.52046,-7.72861 c 0,0 -1.10408,-3.31227 -2.94423,-7.72864 -1.84015,-4.41635 -2.94425,-10.30484 -4.78438,-11.40892 -1.84016,-1.10407 -12.88105,-8.83271 -12.88105,-8.83271 l -7.72863,-5.88846 c 0,0 -5.15241,-0.36804 -8.46468,2.57619 -3.31227,2.94423 -4.41636,2.94423 -2.94424,6.62453 1.47212,3.6803 4.78439,6.25653 6.62454,7.36061 1.84014,1.10408 1.47212,2.20818 -3.31227,4.78438 -4.78439,2.57622 -6.99257,4.41637 -9.20074,4.41637 -2.20818,0 -11.04089,-3.6803 -11.04089,-3.6803 l -4.41636,-7.36061 c 0,0 -3.6803,-5.52045 -5.52045,-7.3606 -1.84015,-1.84015 -7.36059,-7.36057 -6.99256,-9.93679 0.36803,-2.5762 2.5762,-5.52046 2.20817,-8.09665 -0.36802,-2.57622 -10.67286,-11.04091 -10.67286,-11.04091 0,0 1.10409,-3.6803 -1.84015,0.36804 -2.94424,4.04834 -3.31226,4.04834 -6.99256,8.46468 -3.6803,4.41637 0.73606,-3.6803 -7.72863,8.09665 -8.46468,11.77697 -8.09665,11.0409 -9.56877,15.08924 -1.47212,4.04831 0.36803,8.46468 2.57621,11.40891 2.20818,2.94423 0.73606,1.10408 4.04833,6.62453 3.31226,5.52046 0.36803,4.04834 4.04832,9.20076 3.6803,5.15241 7.3606,6.62453 11.40893,10.67286 4.04832,4.04831 6.2565,3.31227 9.56877,6.99255 3.31227,3.6803 5.88847,5.88848 5.88847,9.20075 0,3.31226 1.84015,4.41637 -1.84014,7.3606 -3.6803,2.94423 -12.51301,9.20073 -12.51301,9.20073 0,0 3.68029,2.57622 -5.15242,4.7844 -8.83272,2.20816 -15.82528,2.20816 -19.87361,2.94423 -4.04832,0.73605 -2.20817,-2.94423 -7.72862,2.5762 -5.52045,5.52045 -7.72863,6.25652 -7.72863,8.83272 0,2.57622 0.73606,17.66543 0.73606,17.66543 0,0 1.10409,0.36804 4.04833,3.31227 2.94424,2.94423 2.20818,2.94423 4.78439,5.15241 2.57621,2.20819 6.2565,2.57623 9.20074,5.52046 2.94424,2.94423 12.88104,1.47211 15.82528,-0.36804 2.94424,-1.84015 1.84015,-10.30483 8.09665,-5.52045 6.25651,4.78438 9.93681,6.99257 11.0409,9.20075 1.10408,2.20819 4.04832,4.04834 4.78438,7.72861 0.73606,3.68031 3.31227,5.52046 1.10409,9.20076 -2.20818,3.6803 -2.20818,4.41634 -6.2565,6.62453 -4.04833,2.20818 -4.41636,0 -10.30484,3.6803 -5.88847,3.6803 -11.77695,8.09665 -13.24907,8.46468 -1.47212,0.36804 -6.23651,-2.02914 -8.83271,-2.20818 -10.67286,-0.73604 -9.9368,-9.56877 -11.40892,-11.40892 -1.47212,-1.84015 -6.25651,-8.09664 -6.25651,-8.09664 0,0 -12.14498,6.99256 -13.24907,9.20072 -1.10409,2.20819 -3.31227,0.73607 -3.31227,8.09668 0,7.36057 0.36803,9.20072 1.10409,11.40891 0.73606,2.20818 7.20946,6.83201 9.93681,4.41636 12.88104,-11.40893 9.20074,-1.47213 9.20074,-1.47213 0,0 2.94424,10.30484 4.41636,8.09668 1.47212,-2.20819 3.63767,-14.80849 6.99256,-12.51304 6.99257,4.7844 6.99257,3.68031 8.09665,6.62455 1.10409,2.94423 0.73606,2.94423 1.47212,5.88848 0.73606,2.94423 1.47212,3.31227 2.20818,4.78438 0.73606,1.47212 4.41636,2.94423 5.15242,4.41635 0.73606,1.47211 4.78439,4.04834 5.52045,6.25652 0.73605,2.20816 9.9368,7.36058 9.9368,7.36058 0,0 3.31226,1.1041 5.52044,3.6803 2.20818,2.57622 8.09666,6.99257 8.09666,6.99257 z" />
+                <path id="Melizea" class="land" data-nation-name="Melizea" d="M 190.64418 370.17844 C 190.39264 370.16652 189.85741 370.62319 188.79933 372.07806 C 185.85509 376.1264 185.48677 376.12632 181.80647 380.54266 C 178.12617 384.95903 182.54295 376.86238 174.07826 388.63933 C 165.61358 400.4163 165.98146 399.68051 164.50934 403.72885 C 163.03722 407.77716 164.87723 412.19322 167.08541 415.13745 C 169.29359 418.08168 167.82147 416.2414 171.13374 421.76185 C 174.446 427.28231 171.50178 425.81042 175.18207 430.96284 C 178.86237 436.11525 182.54286 437.58725 186.59119 441.63558 C 190.63951 445.68389 192.84733 444.94815 196.1596 448.62843 C 199.47187 452.30873 202.04813 454.51663 202.04813 457.8289 C 202.04813 459.99893 202.83802 461.22145 202.34786 462.63429 C 202.3478 462.63445 202.34791 462.63465 202.34786 462.63481 L 207.14808 464.78197 L 215.47574 461.65916 L 217.03688 449.68831 L 213.91407 435.63542 L 210.27089 426.78739 L 220.68059 422.10343 L 234.73296 422.10343 L 246.7038 417.41897 L 263.26765 407.02632 C 259.60023 404.56215 252.10037 399.31206 252.10037 399.31206 L 244.37165 393.42405 C 244.37165 393.42405 239.21932 393.05589 235.90705 396.00012 C 232.59478 398.94435 231.49092 398.94422 232.96304 402.62452 C 234.43516 406.30482 237.74729 408.88123 239.58744 409.98531 C 241.42758 411.08939 241.05937 412.19332 236.27498 414.76952 C 231.49059 417.34574 229.28268 419.18578 227.07451 419.18578 C 224.86633 419.18578 216.03333 415.50539 216.03333 415.50539 L 211.61706 408.14511 C 211.61706 408.14511 207.93661 402.62447 206.09646 400.78432 C 204.25631 398.94417 198.7361 393.42368 199.10413 390.84746 C 199.47216 388.27126 201.68029 385.32699 201.31226 382.7508 C 200.94424 380.17458 190.63953 371.71013 190.63953 371.71013 C 190.63953 371.71013 191.09258 370.19968 190.64418 370.17844 z" />
+                <path id="Avelia" class="land" data-nation-name="Avelia" d="M 262.65735 406.61446 L 257.62097 407.77718 L 253.2047 411.08912 L 245.47597 415.50539 L 235.90705 420.29011 L 228.91471 420.29011 L 221.92185 419.92217 L 215.66539 421.39392 L 210.51325 422.86618 L 206.83285 427.65038 L 211.61706 436.85137 L 214.19313 445.31597 L 211.98499 457.09303 L 220.08166 461.5093 L 222.65824 461.14136 C 222.65824 461.14136 226.33817 457.82896 228.17832 455.62077 C 230.01847 453.41259 230.01833 453.04444 230.75439 450.10018 C 231.49045 447.15595 231.85853 446.78814 232.59459 443.10784 C 233.33065 439.42757 232.96285 442.73995 233.69891 440.53177 C 234.43497 438.32358 233.33098 437.58724 233.33098 437.58724 C 233.33098 437.58724 234.06671 436.85123 236.64292 435.37911 C 239.21912 433.907 239.95538 434.2753 239.95538 434.2753 L 243.63577 433.90685 L 246.57978 436.85137 L 249.89224 440.8997 L 249.15637 446.4203 L 255.41283 451.2045 C 255.41283 451.2045 259.82915 450.83641 261.6693 449.3643 C 263.50945 447.89218 265.71754 445.68376 266.08557 444.21165 C 266.45361 442.73953 267.18938 440.16354 267.18938 437.21931 C 267.18938 434.27508 266.45356 435.0114 264.24537 432.06717 C 262.03719 429.12294 262.40503 430.59495 260.93291 428.38677 C 259.46079 426.17858 260.9331 427.28236 260.19704 423.60205 C 259.98674 422.55054 259.83666 421.9499 259.72937 421.62801 L 261.6693 420.65804 L 264.24537 420.29011 L 269.76596 419.92217 C 269.76596 419.92217 269.80121 419.87628 269.86466 419.79246 C 269.83188 419.71336 269.79923 419.63356 269.76596 419.55372 C 267.92581 415.13737 266.82137 409.24919 264.98124 408.14511 C 264.57777 407.90304 263.73209 407.34218 262.65735 406.61446 z" />
+                <circle class="capital-dot" cx="188.7" cy="429.77" r="1.012" />
+                <text class="capital-name" x="165" y="433.17">San Maria</text>
+                <circle class="capital-dot" cx="246.74" cy="429.25" r="1.012" />
+                <text class="capital-name" x="242" y="433.17">Oros</text>
+            </svg>
+        </div>
+        <div id="world-sidebar">
+            <h3>Intel Report</h3>
+            <div id="world-intel"><p>Select a nation on the map to view details.</p></div>
+        </div>
+    </div>
+
+    <!-- ---- NATION ---- -->
+    <div class="tab-panel" id="tab-nation">
+        <div class="nation-hero">
+            <h2 id="nation-hero-name">—</h2>
+            <div class="capital-label" id="nation-hero-capital">Capital: —</div>
+        </div>
+        <div class="panel-padding">
+            <div class="stat-grid" id="nation-stat-grid"></div>
+        </div>
+    </div>
+
+    <!-- ---- GOVERNMENT ---- -->
+    <div class="tab-panel" id="tab-government">
+        <div class="panel-padding">
+            <div class="section-header">Government Structure</div>
+            <div class="info-block">
+                <div class="info-row"><span class="info-label">Government Type</span><span class="info-value" id="gov-type">Parliamentary Democracy</span></div>
+                <div class="info-row"><span class="info-label">Legislative Branch</span><span class="info-value" id="gov-leg">Unicameral</span></div>
+                <div class="info-row"><span class="info-label">Judicial System</span><span class="info-value" id="gov-jud">Independent Courts</span></div>
+            </div>
+
+            <div class="section-header">Government Personnel</div>
+            <div class="info-block" style="margin-bottom:14px;">
+                <div class="info-row"><span class="info-label">National Approval</span><span class="info-value gold">62%</span></div>
+            </div>
+            <div class="gov-two-col">
+                <div class="person-card">
+                    <div class="person-role">Head of Government</div>
+                    <div class="person-name">John Smith</div>
+                    <div class="person-meta"><span class="ptag">Workers Alliance</span><span class="year">Elected 2000</span></div>
+                </div>
+                <div class="person-card">
+                    <div class="person-role">Head of State</div>
+                    <div class="person-name">Sarah Beth</div>
+                    <div class="person-meta"><span class="ptag">Workers Alliance</span><span class="year">Elected 2000</span></div>
+                </div>
+            </div>
+
+            <div class="section-header">Cabinet</div>
+            <div class="cabinet-grid" id="cabinet-grid"></div>
+
+            <div class="section-header">Current Parliamentary Makeup</div>
+            <div class="parliament-wrap">
+                <svg id="parliament-svg" width="520" height="280" viewBox="0 0 520 280"></svg>
+            </div>
+            <div class="parliament-legend" id="parliament-legend"></div>
+        </div>
+    </div>
+
+    <!-- ---- LEGISLATURE ---- -->
+    <div class="tab-panel" id="tab-legislature">
+        <div class="placeholder-panel"><div class="ph-icon">⚖️</div><h3>Legislature</h3><p>Bills, debates, and legislative sessions — coming soon.</p></div>
+    </div>
+
+    <!-- ---- PARTY ---- -->
+    <div class="tab-panel" id="tab-party">
+        <div class="party-layout">
+            <div class="party-info-block" id="party-info-block"></div>
+            <div class="party-right-col"></div>
+        </div>
+    </div>
+
+    <!-- ---- ELECTIONS ---- -->
+    <div class="tab-panel" id="tab-elections">
+        <div class="placeholder-panel"><div class="ph-icon">🗳️</div><h3>Elections</h3><p>Campaign, canvass, and compete for seats — coming soon.</p></div>
+    </div>
+    <!-- ---- LAWS ---- -->
+    <div class="tab-panel" id="tab-laws">
+        <div class="placeholder-panel"><div class="ph-icon">📜</div><h3>Laws</h3><p>Propose and pass legislation — coming soon.</p></div>
+    </div>
+    <!-- ---- DIPLOMACY ---- -->
+    <div class="tab-panel" id="tab-diplomacy">
+        <div class="placeholder-panel"><div class="ph-icon">🤝</div><h3>Diplomacy</h3><p>Forge alliances and negotiate — coming soon.</p></div>
+    </div>
+    <!-- ---- ECONOMY ---- -->
+    <div class="tab-panel" id="tab-economy">
+        <div class="placeholder-panel"><div class="ph-icon">📈</div><h3>Economy</h3><p>Trade, taxation, and economic policy — coming soon.</p></div>
+    </div>
+    <!-- ---- CONFLICT ---- -->
+    <div class="tab-panel" id="tab-conflict">
+        <div class="placeholder-panel"><div class="ph-icon">⚔️</div><h3>Conflict</h3><p>Military strategy and unrest — coming soon.</p></div>
+    </div>
+
+</div><!-- end content-area -->
+
+<script>
+/* ============================================================
+   SUPABASE
+   ============================================================ */
+const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
+const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+/* ============================================================
+   STATE
+   ============================================================ */
+let currentUser   = null;
+let currentFaction = null;
+let currentNation  = null;
+let tickInterval   = null;
+
+/* ============================================================
+   MOCK DATA  —  replaced by real game data as it becomes available
+   ============================================================ */
+const MOCK_PARTIES = [
+    { name: 'Workers Alliance',           abbr: 'WA',  seats: 42, color: '#E91E63' },
+    { name: 'Communist Party of Melizea', abbr: 'CPM', seats: 28, color: '#F44336' },
+    { name: 'Progressive Democrats',      abbr: 'PD',  seats: 18, color: '#2196F3' },
+    { name: 'National Conservatives',     abbr: 'NC',  seats: 15, color: '#FF9800' },
+    { name: 'Green Future',               abbr: 'GF',  seats: 10, color: '#4CAF50' },
+    { name: 'Libertarian Union',          abbr: 'LU',  seats:  7, color: '#9C27B0' },
+];
+
+function getPartyList() {
+    if (!currentFaction || currentFaction.faction_type !== 'party') return MOCK_PARTIES;
+    const exists = MOCK_PARTIES.find(p => p.name === currentFaction.faction_name);
+    if (exists) return MOCK_PARTIES;
+    return [...MOCK_PARTIES, { name: currentFaction.faction_name, abbr: currentFaction.abbreviation, seats: 0, color: '#ffcc00' }];
+}
+
+const MOCK_CABINET = [
+    { title:'Minister of the Interior',    name:'Susan Johns',   party:'Workers Alliance',           desc:'Oversees domestic policy, internal security, and civil administration.' },
+    { title:'Minister of Defense',         name:'Travis Kyle',   party:'Communist Party of Melizea', desc:'Responsible for the nation\'s armed forces and military strategy.' },
+    { title:'Minister of Finance',         name:'Elena Marsh',   party:'Workers Alliance',           desc:'Manages the national budget, taxation, and economic planning.' },
+    { title:'Minister of Foreign Affairs', name:'Ricardo Vane',  party:'Progressive Democrats',     desc:'Handles all diplomatic relations and international negotiations.' },
+    { title:'Minister of Education',       name:'Lena Carrow',   party:'Green Future',               desc:'Shapes schools, universities, and research funding.' },
+    { title:'Minister of Health',          name:'Omar Said',     party:'National Conservatives',    desc:'Oversees public health policy, hospitals, and disease prevention.' },
+];
+
+/* ============================================================
+   INIT
+   ============================================================ */
+async function init() {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) { window.location.href = 'login.html'; return; }
+    currentUser = user;
+
+    // Faction
+    const { data: faction } = await _supabase.from('factions').select('*').eq('id', user.id).single();
+    if (!faction || faction.faction_type !== 'party') { window.location.href = 'map.html'; return; }
+    currentFaction = faction;
+    document.getElementById('party-badge').textContent = faction.faction_name + ' [' + (faction.abbreviation || '—') + ']';
+
+    // Nation
+    if (faction.nation_id) {
+        const { data: nation } = await _supabase.from('nations').select('*').eq('id', faction.nation_id).single();
+        currentNation = nation;
+    }
+
+    // Tick
+    await loadTickData();
+    startTickCountdown();
+
+    // Populate tabs
+    populateNationTab();
+    populateGovernmentTab();
+    populatePartyTab();
+
+    // Wire up tab switching + world map
+    setupTabs();
+    setupWorldMap();
+}
+
+/* ============================================================
+   TICK
+   ============================================================ */
+async function loadTickData() {
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_date, next_tick_at, current_tick').eq('name', 'Alpha Shard').single();
+        document.getElementById('game-date').textContent  = shard.current_date || '—';
+        document.getElementById('tick-number').textContent = shard.current_tick  || '—';
+        window.nextTickAt = shard.next_tick_at ? new Date(shard.next_tick_at) : null;
+    } catch(e) { console.error('Tick load:', e); }
+}
+function startTickCountdown() { tickInterval = setInterval(updateCountdown, 1000); updateCountdown(); }
+function updateCountdown() {
+    if (!window.nextTickAt) { document.getElementById('tick-countdown').textContent = '—'; return; }
+    const diff = window.nextTickAt - Date.now();
+    if (diff <= 0) { document.getElementById('tick-countdown').textContent = 'Processing…'; clearInterval(tickInterval); return; }
+    const h = Math.floor(diff / 3600000),
+          m = Math.floor((diff % 3600000) / 60000),
+          s = Math.floor((diff % 60000)   / 1000);
+    document.getElementById('tick-countdown').textContent = h + 'h ' + m + 'm ' + s + 's';
+}
+
+/* ============================================================
+   TABS
+   ============================================================ */
+function setupTabs() {
+    document.querySelectorAll('.nav-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const target = btn.dataset.tab;
+            document.querySelectorAll('.nav-tab').forEach(b  => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            document.getElementById('tab-' + target).classList.add('active');
+        });
+    });
+}
+
+/* ============================================================
+   WORLD TAB  —  map click → sidebar intel
+   ============================================================ */
+function setupWorldMap() {
+    document.querySelectorAll('.land').forEach(path => {
+        path.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('.land').forEach(l => l.classList.remove('selected-nation'));
+            e.target.classList.add('selected-nation');
+
+            const name = e.target.getAttribute('data-nation-name');
+            const sidebar = document.getElementById('world-intel');
+            sidebar.innerHTML = '<p style="color:#888;font-style:italic;">Loading ' + name + '…</p>';
+
+            try {
+                const { data: nation } = await _supabase.from('nations').select('*').eq('name', name).single();
+                if (!nation) { sidebar.innerHTML = '<p style="color:#f44;">Nation not found.</p>'; return; }
+                const fmt = n => (n == null) ? 'N/A' : Number(n).toLocaleString();
+                sidebar.innerHTML =
+                    '<h3 style="color:#ffcc00;font-size:1.1rem;margin-bottom:6px;">' + nation.name + '</h3>' +
+                    '<p style="color:#888;font-size:0.78rem;margin-bottom:14px;">Capital: ' + (nation.capital||'—') + '</p>' +
+                    '<div style="display:flex;flex-direction:column;gap:8px;">' +
+                        sRow('Population', fmt(nation.population), '#ffcc00') +
+                        sRow('Government', nation.government_type||'—', '#fff') +
+                        sRow('GDP',        '$'+fmt(nation.GDP), '#4CAF50') +
+                        sRow('Debt',       '$'+fmt(nation.debt), '#ff9800') +
+                    '</div>';
+            } catch(e) { sidebar.innerHTML = '<p style="color:#f44;">Error loading data.</p>'; }
+        });
+    });
+}
+function sRow(label, val, color) {
+    return '<div style="background:#252525;padding:8px 10px;border-radius:4px;display:flex;justify-content:space-between;">' +
+           '<span style="font-size:0.72rem;color:#888;text-transform:uppercase;">' + label + '</span>' +
+           '<span style="font-size:0.88rem;color:' + color + ';font-weight:bold;">' + val + '</span></div>';
+}
+
+/* ============================================================
+   NATION TAB
+   ============================================================ */
+function populateNationTab() {
+    if (!currentNation) return;
+    const n = currentNation;
+    document.getElementById('nation-hero-name').textContent   = n.name.toUpperCase();
+    document.getElementById('nation-hero-capital').textContent = 'Capital: ' + (n.capital || '—');
+    const fmt = v => (v == null) ? 'N/A' : Number(v).toLocaleString();
+    const stats = [
+        { label:'Population',   value: fmt(n.population) },
+        { label:'GDP',          value: '$'+fmt(n.GDP) },
+        { label:'Nat\'l Debt',  value: '$'+fmt(n.debt) },
+        { label:'Stability',    value: n.stability != null ? String(n.stability) : 'N/A' },
+        { label:'Civil Unrest', value: n.civil_unrest != null ? String(n.civil_unrest) : 'N/A' },
+        { label:'Gov. Type',    value: n.government_type || '—' },
+    ];
+    document.getElementById('nation-stat-grid').innerHTML = stats.map(s =>
+        '<div class="stat-card"><div class="stat-label">'+s.label+'</div><div class="stat-value">'+s.value+'</div></div>'
+    ).join('');
+}
+
+/* ============================================================
+   GOVERNMENT TAB
+   ============================================================ */
+function populateGovernmentTab() {
+    // Cabinet
+    document.getElementById('cabinet-grid').innerHTML = MOCK_CABINET.map(m =>
+        '<div class="minister-card">' +
+            '<div class="minister-title">' + m.title + '</div>' +
+            '<div class="minister-name">' + m.name + '</div>' +
+            '<div class="minister-party">' + m.party + '</div>' +
+            '<div class="minister-desc">' + m.desc + '</div>' +
+        '</div>'
+    ).join('');
+
+    // Parliament half-circle
+    drawParliament();
+}
+
+function drawParliament() {
+    const parties   = getPartyList();
+    const total     = parties.reduce((s, p) => s + p.seats, 0);
+    const svg       = document.getElementById('parliament-svg');
+    const cx = 260, cy = 250, rO = 210, rI = 140;
+    let angle = Math.PI;  // start left (180°), sweep to 0° (right)
+    let paths = '';
+
+    parties.forEach(party => {
+        const sweep = (party.seats / total) * Math.PI;
+        const a1 = angle, a2 = angle - sweep;
+
+        const x1o = cx + rO * Math.cos(a1), y1o = cy + rO * Math.sin(a1);
+        const x2o = cx + rO * Math.cos(a2), y2o = cy + rO * Math.sin(a2);
+        const x1i = cx + rI * Math.cos(a2), y1i = cy + rI * Math.sin(a2);
+        const x2i = cx + rI * Math.cos(a1), y2i = cy + rI * Math.sin(a1);
+        const lg  = sweep > Math.PI / 2 ? 1 : 0;
+
+        paths +=
+            '<path d="M '+x1o+' '+y1o+
+            ' A '+rO+' '+rO+' 0 '+lg+' 0 '+x2o+' '+y2o+
+            ' L '+x1i+' '+y1i+
+            ' A '+rI+' '+rI+' 0 '+lg+' 1 '+x2i+' '+y2i+
+            ' Z" fill="'+party.color+'" stroke="#121212" stroke-width="2"/>';
+
+        angle = a2;
+    });
+
+    // Center labels
+    paths += '<text x="'+cx+'" y="'+( cy - 12 )+'" text-anchor="middle" fill="#ffcc00" font-size="24" font-weight="bold">'+total+'</text>';
+    paths += '<text x="'+cx+'" y="'+( cy +  6 )+'" text-anchor="middle" fill="#666"    font-size="11">TOTAL SEATS</text>';
+
+    svg.innerHTML = paths;
+
+    // Legend
+    document.getElementById('parliament-legend').innerHTML = parties.map(p =>
+        '<div class="legend-item"><div class="legend-swatch" style="background:'+p.color+';"></div>'+p.name+' ('+p.seats+')</div>'
+    ).join('');
+}
+
+/* ============================================================
+   PARTY TAB
+   ============================================================ */
+function populatePartyTab() {
+    if (!currentFaction) return;
+    const f = currentFaction;
+
+    const ideoTags = [f.ideology_value_1, f.ideology_value_2].filter(Boolean).map(id =>
+        '<span class="ideology-tag tag-'+id.toLowerCase()+'">'+id+'</span>'
+    ).join(' ');
+
+    document.getElementById('party-info-block').innerHTML =
+        '<div class="party-name-big">'+f.faction_name+'</div>' +
+        '<div class="party-abbr-big">[' + (f.abbreviation||'—') + ']</div>' +
+        '<div class="party-ideologies">' + (ideoTags || '<span style="color:#555;">No ideologies</span>') + '</div>' +
+        '<hr style="border-color:#222;margin:16px 0;">' +
+        '<div class="party-stat-row"><span class="psr-label">Current Approval</span><span class="psr-value">12%</span></div>' +
+        '<div class="party-stat-row"><span class="psr-label">Head of Party</span><span class="psr-value neutral">—</span></div>' +
+        '<div class="party-stat-row"><span class="psr-label">Head of Party Stat</span><span class="psr-value neutral">—</span></div>' +
+        '<div class="party-stat-row"><span class="psr-label">Seats</span><span class="psr-value">0</span></div>';
+}
+
+/* ============================================================
+   LOGOUT
+   ============================================================ */
+async function handleLogout() {
+    await _supabase.auth.signOut();
+    window.location.href = 'index.html';
+}
+
+/* ============================================================
+   GO
+   ============================================================ */
+init();
+</script>
+</body>
+</html>
