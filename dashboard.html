@@ -394,27 +394,18 @@
         <div class="placeholder-panel"><div class="ph-icon">⚔️</div><h3>Conflict</h3><p>Military strategy and unrest — coming soon.</p></div>
     </div>
 
-</div><!-- end content-area -->
+</div>
 
 <script>
-/* ============================================================
-   SUPABASE
-   ============================================================ */
 const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
 const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
-/* ============================================================
-   STATE
-   ============================================================ */
 let currentUser   = null;
 let currentFaction = null;
 let currentNation  = null;
 let tickInterval   = null;
 
-/* ============================================================
-   MOCK DATA  —  replaced by real game data as it becomes available
-   ============================================================ */
 const MOCK_PARTIES = [
     { name: 'Workers Alliance',           abbr: 'WA',  seats: 42, color: '#E91E63' },
     { name: 'Communist Party of Melizea', abbr: 'CPM', seats: 28, color: '#F44336' },
@@ -440,43 +431,32 @@ const MOCK_CABINET = [
     { title:'Minister of Health',          name:'Omar Said',     party:'National Conservatives',    desc:'Oversees public health policy, hospitals, and disease prevention.' },
 ];
 
-/* ============================================================
-   INIT
-   ============================================================ */
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'index.html'; return; }
     currentUser = user;
 
-    // Faction
     const { data: faction } = await _supabase.from('factions').select('*').eq('id', user.id).single();
     if (!faction || faction.faction_type !== 'party') { window.location.href = 'map.html'; return; }
     currentFaction = faction;
     document.getElementById('party-badge').textContent = faction.faction_name + ' [' + (faction.abbreviation || '—') + ']';
 
-    // Nation
     if (faction.nation_id) {
         const { data: nation } = await _supabase.from('nations').select('*').eq('id', faction.nation_id).single();
         currentNation = nation;
     }
 
-    // Tick
     await loadTickData();
     startTickCountdown();
 
-    // Populate tabs
     populateNationTab();
     populateGovernmentTab();
     populatePartyTab();
 
-    // Wire up tab switching + world map
     setupTabs();
     setupWorldMap();
 }
 
-/* ============================================================
-   TICK
-   ============================================================ */
 async function loadTickData() {
     try {
         const { data: shard } = await _supabase.from('shard').select('current_date, next_tick_at, current_tick').eq('name', 'Alpha Shard').single();
@@ -485,7 +465,9 @@ async function loadTickData() {
         window.nextTickAt = shard.next_tick_at ? new Date(shard.next_tick_at) : null;
     } catch(e) { console.error('Tick load:', e); }
 }
+
 function startTickCountdown() { tickInterval = setInterval(updateCountdown, 1000); updateCountdown(); }
+
 function updateCountdown() {
     if (!window.nextTickAt) { document.getElementById('tick-countdown').textContent = '—'; return; }
     const diff = window.nextTickAt - Date.now();
@@ -496,9 +478,6 @@ function updateCountdown() {
     document.getElementById('tick-countdown').textContent = h + 'h ' + m + 'm ' + s + 's';
 }
 
-/* ============================================================
-   TABS
-   ============================================================ */
 function setupTabs() {
     document.querySelectorAll('.nav-tab').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -511,9 +490,6 @@ function setupTabs() {
     });
 }
 
-/* ============================================================
-   WORLD TAB  —  map click → sidebar intel
-   ============================================================ */
 function setupWorldMap() {
     document.querySelectorAll('.land').forEach(path => {
         path.addEventListener('click', async (e) => {
@@ -542,15 +518,13 @@ function setupWorldMap() {
         });
     });
 }
+
 function sRow(label, val, color) {
     return '<div style="background:#252525;padding:8px 10px;border-radius:4px;display:flex;justify-content:space-between;">' +
            '<span style="font-size:0.72rem;color:#888;text-transform:uppercase;">' + label + '</span>' +
            '<span style="font-size:0.88rem;color:' + color + ';font-weight:bold;">' + val + '</span></div>';
 }
 
-/* ============================================================
-   NATION TAB
-   ============================================================ */
 function populateNationTab() {
     if (!currentNation) return;
     const n = currentNation;
@@ -570,11 +544,7 @@ function populateNationTab() {
     ).join('');
 }
 
-/* ============================================================
-   GOVERNMENT TAB
-   ============================================================ */
 function populateGovernmentTab() {
-    // Cabinet
     document.getElementById('cabinet-grid').innerHTML = MOCK_CABINET.map(m =>
         '<div class="minister-card">' +
             '<div class="minister-title">' + m.title + '</div>' +
@@ -584,30 +554,24 @@ function populateGovernmentTab() {
         '</div>'
     ).join('');
 
-    // Parliament half-circle
-   /* ============================================================
-   DOT-GRID PARLIAMENT VISUALIZATION (Step 10)
-   ============================================================ */
+    drawParliament();
+}
 
-*/ function drawParliament() {
+function drawParliament() {
     const parties = getPartyList();
     const total = parties.reduce((s, p) => s + p.seats, 0);
     const svg = document.getElementById('parliament-svg');
     
-    // SVG dimensions
     const width = 520;
     const height = 280;
     const centerX = width / 2;
-    const centerY = height - 20; // Bottom center
+    const centerY = height - 20;
     
-    // Dot settings
     const dotRadius = 2.5;
-    const dotSpacing = 7; // Space between dot centers
+    const dotSpacing = 7;
     
-    // Calculate how many rows we need and dots per row
     const rows = calculateRows(total, centerY, dotSpacing);
     
-    // Flatten parties into individual seats with colors
     const seats = [];
     parties.forEach(party => {
         for (let i = 0; i < party.seats; i++) {
@@ -618,10 +582,8 @@ function populateGovernmentTab() {
         }
     });
     
-    // Generate dot positions
     const dots = generateDotPositions(seats.length, rows, centerX, centerY, dotSpacing);
     
-    // Build SVG
     let circles = '';
     dots.forEach((dot, index) => {
         if (index < seats.length) {
@@ -629,29 +591,23 @@ function populateGovernmentTab() {
         }
     });
     
-    // Center label
     circles += `<text x="${centerX}" y="${centerY - 12}" text-anchor="middle" fill="#ffcc00" font-size="24" font-weight="bold">${total}</text>`;
     circles += `<text x="${centerX}" y="${centerY + 6}" text-anchor="middle" fill="#666" font-size="11">TOTAL SEATS</text>`;
     
     svg.innerHTML = circles;
     
-    // Update legend
     document.getElementById('parliament-legend').innerHTML = parties.map(p =>
         '<div class="legend-item"><div class="legend-swatch" style="background:'+p.color+';"></div>'+p.name+' ('+p.seats+')</div>'
     ).join('');
 }
 
-/**
- * Calculate optimal row configuration for the semicircle
- */
 function calculateRows(totalSeats, maxRadius, spacing) {
     const rows = [];
-    let currentRadius = maxRadius - 60; // Start radius (leave room for label)
+    let currentRadius = maxRadius - 60;
     let seatsPlaced = 0;
     
-    // Work from outside in
     while (seatsPlaced < totalSeats && currentRadius > 40) {
-        const circumference = Math.PI * currentRadius; // Half circle
+        const circumference = Math.PI * currentRadius;
         const dotsInRow = Math.floor(circumference / spacing);
         
         rows.push({
@@ -660,31 +616,26 @@ function calculateRows(totalSeats, maxRadius, spacing) {
         });
         
         seatsPlaced += dotsInRow;
-        currentRadius -= spacing; // Move inward
+        currentRadius -= spacing;
     }
     
     return rows;
 }
 
-/**
- * Generate X,Y positions for all dots in a semicircle arrangement
- */
 function generateDotPositions(totalSeats, rows, centerX, centerY, spacing) {
     const positions = [];
     let seatIndex = 0;
     
-    // Start from outermost row and work inward
     for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
         const row = rows[rowIndex];
         const dotsInThisRow = Math.min(row.dots, totalSeats - seatIndex);
         
-        // Calculate angle step for this row
-        const angleStep = Math.PI / (dotsInThisRow - 1); // Spread across 180°
+        const angleStep = Math.PI / (dotsInThisRow - 1);
         
         for (let i = 0; i < dotsInThisRow; i++) {
-            const angle = Math.PI - (i * angleStep); // Start at left (180°), end at right (0°)
+            const angle = Math.PI - (i * angleStep);
             const x = centerX + row.radius * Math.cos(angle);
-            const y = centerY - row.radius * Math.sin(angle); // Subtract because SVG Y increases downward
+            const y = centerY - row.radius * Math.sin(angle);
             
             positions.push({ x, y });
             seatIndex++;
@@ -697,9 +648,7 @@ function generateDotPositions(totalSeats, rows, centerX, centerY, spacing) {
     
     return positions;
 }
-/* ============================================================
-   PARTY TAB
-   ============================================================ */
+
 function populatePartyTab() {
     if (!currentFaction) return;
     const f = currentFaction;
@@ -719,25 +668,12 @@ function populatePartyTab() {
         '<div class="party-stat-row"><span class="psr-label">Seats</span><span class="psr-value">0</span></div>';
 }
 
-/* ============================================================
-   LOGOUT
-   ============================================================ */
 async function handleLogout() {
     await _supabase.auth.signOut();
     window.location.href = 'index.html';
 }
 
-/* ============================================================
-   SEAT ALLOCATION LOGIC (Step 7)
-   ============================================================ */
-/**
- * Allocates parliament seats using proportional representation (largest remainder method)
- * @param {Array} parties - Array of { id, name, voteShare, color }
- * @param {number} totalSeats - Total seats to allocate
- * @returns {Array} - Array of { id, name, seats, color, voteShare }
- */
 function allocateSeats(parties, totalSeats) {
-    // Validate inputs
     if (!parties || parties.length === 0) {
         throw new Error('Parties array is required');
     }
@@ -750,7 +686,6 @@ function allocateSeats(parties, totalSeats) {
         console.warn(`Vote shares sum to ${totalVoteShare}%, not 100%. Results may be unexpected.`);
     }
 
-    // Calculate initial allocation using floor
     const results = parties.map(party => {
         const exactSeats = (party.voteShare / 100) * totalSeats;
         const floorSeats = Math.floor(exactSeats);
@@ -766,38 +701,23 @@ function allocateSeats(parties, totalSeats) {
         };
     });
 
-    // Count how many seats we've allocated so far
     const seatsAllocated = results.reduce((sum, p) => sum + p.seats, 0);
     const seatsRemaining = totalSeats - seatsAllocated;
 
-    // Sort by remainder (largest first)
     results.sort((a, b) => b.remainder - a.remainder);
 
-    // Give remaining seats to parties with largest remainders
     for (let i = 0; i < seatsRemaining; i++) {
         results[i].seats += 1;
     }
 
-    // Remove the remainder property (we don't need it in output)
     results.forEach(p => delete p.remainder);
 
-    // Sort back by seats (descending) for cleaner output
     results.sort((a, b) => b.seats - a.seats);
 
     return results;
 }
 
-/* ============================================================
-   CABINET ASSIGNMENT LOGIC (Step 8)
-   ============================================================ */
-/**
- * Assigns cabinet positions to parties based on seat allocation
- * @param {Array} parties - Array of { id, name, seats } (from allocateSeats output)
- * @param {Array} positions - Array of position names (strings)
- * @returns {Array} - Array of { position, party_id, party_name }
- */
 function assignCabinet(parties, positions) {
-    // Validate
     if (!parties || parties.length === 0) {
         throw new Error('Parties array is required');
     }
@@ -805,21 +725,17 @@ function assignCabinet(parties, positions) {
         throw new Error('Positions array is required');
     }
 
-    // Sort parties by seats (descending)
     const sortedParties = [...parties].sort((a, b) => b.seats - a.seats);
     const totalSeats = sortedParties.reduce((sum, p) => sum + p.seats, 0);
 
-    // Prime Minister always goes to the party with the most seats
     const cabinet = [{
         position: positions[0],
         party_id: sortedParties[0].id,
         party_name: sortedParties[0].name
     }];
 
-    // Remaining positions
     const remainingPositions = positions.slice(1);
 
-    // Calculate ministry allocation using largest remainder
     const ministryAllocation = sortedParties.map(party => {
         const proportion = party.seats / totalSeats;
         const exactMinistries = proportion * remainingPositions.length;
@@ -833,7 +749,6 @@ function assignCabinet(parties, positions) {
         };
     });
 
-    // Allocate remaining ministries
     const ministriesAllocated = ministryAllocation.reduce((sum, p) => sum + p.ministries, 0);
     const ministriesRemaining = remainingPositions.length - ministriesAllocated;
 
@@ -842,7 +757,6 @@ function assignCabinet(parties, positions) {
         ministryAllocation[i].ministries += 1;
     }
 
-    // Assign ministries
     let positionIndex = 0;
     for (const party of ministryAllocation) {
         for (let i = 0; i < party.ministries; i++) {
@@ -861,14 +775,6 @@ function assignCabinet(parties, positions) {
     return cabinet;
 }
 
-/* ============================================================
-   GO
-   ============================================================ */
-    /* ============================================================
-   WINGS SYSTEM LOGIC (Step 9)
-   ============================================================ */
-
-// Wing name lists for authoritarian governments
 const MONARCHY_WINGS = [
     'Vanguard of the Crown',
     'Defenders of the Realm',
@@ -891,50 +797,32 @@ const JUNTA_WINGS = [
     'Operations Command'
 ];
 
-/**
- * Transforms party names into "wings" for authoritarian governments
- * @param {Array} parties - Array of party objects with { id, name, seats, ... }
- * @param {string} governmentType - The government type name (e.g. "Absolute Monarchy")
- * @returns {Array} - Same party array but with display names transformed if authoritarian
- */
 function applyWingsSystem(parties, governmentType) {
-    // Only apply to authoritarian governments
     if (governmentType !== 'Absolute Monarchy' && governmentType !== 'Military Junta') {
-        return parties; // Return unchanged
+        return parties;
     }
 
-    // Choose the appropriate wing list
     const wingList = governmentType === 'Absolute Monarchy' ? MONARCHY_WINGS : JUNTA_WINGS;
 
-    // Sort parties by seat count (descending) - biggest gets first pick
     const sortedParties = [...parties].sort((a, b) => b.seats - a.seats);
 
-    // Assign wing names (no duplicates)
     const transformedParties = sortedParties.map((party, index) => {
-        // If we run out of wing names (more than 8 parties), wrap around or use a fallback
         const wingName = index < wingList.length 
             ? wingList[index] 
             : `${wingList[index % wingList.length]} (${Math.floor(index / wingList.length) + 1})`;
 
         return {
             ...party,
-            displayName: wingName,      // The name shown in the UI
-            originalName: party.name     // The original party name (preserved)
+            displayName: wingName,
+            originalName: party.name
         };
     });
 
-    // Return in original order (not sorted) but with transformed names
     return transformedParties;
 }
 
-/**
- * Gets the government type name from the government_types table via nation_governments
- * @param {string} nationId - UUID of the nation
- * @returns {Promise<string>} - The government type name (e.g. "Parliamentary Democracy")
- */
 async function getGovernmentType(nationId) {
     try {
-        // Query nation_governments to get government_type_id
         const { data: nationGov, error: govError } = await _supabase
             .from('nation_governments')
             .select('government_type_id')
@@ -943,10 +831,9 @@ async function getGovernmentType(nationId) {
 
         if (govError || !nationGov) {
             console.error('Error fetching nation government:', govError);
-            return 'Parliamentary Democracy'; // Default fallback
+            return 'Parliamentary Democracy';
         }
 
-        // Query government_types to get the type name
         const { data: govType, error: typeError } = await _supabase
             .from('government_types')
             .select('name')
@@ -955,20 +842,17 @@ async function getGovernmentType(nationId) {
 
         if (typeError || !govType) {
             console.error('Error fetching government type:', typeError);
-            return 'Parliamentary Democracy'; // Default fallback
+            return 'Parliamentary Democracy';
         }
 
         return govType.name;
 
     } catch (error) {
         console.error('Error in getGovernmentType:', error);
-       return 'Parliamentary Democracy'; // Default fallback
+        return 'Parliamentary Democracy';
     }
 }
 
-/* ============================================================
-   GO
-   ============================================================ */
 init();
 </script>
     
