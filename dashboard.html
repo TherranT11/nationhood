@@ -471,7 +471,18 @@ function startTickCountdown() { tickInterval = setInterval(updateCountdown, 1000
 function updateCountdown() {
     if (!window.nextTickAt) { document.getElementById('tick-countdown').textContent = '—'; return; }
     const diff = window.nextTickAt - Date.now();
-    if (diff <= 0) { document.getElementById('tick-countdown').textContent = 'Processing…'; clearInterval(tickInterval); return; }
+    if (diff <= 0) { 
+        document.getElementById('tick-countdown').textContent = 'Processing…'; 
+        clearInterval(tickInterval);
+        
+        // Auto-refresh tick data after 30 seconds
+        setTimeout(async () => {
+            await loadTickData();
+            startTickCountdown();
+        }, 30000); // Wait 30 seconds then reload
+        
+        return; 
+    }
     const h = Math.floor(diff / 3600000),
           m = Math.floor((diff % 3600000) / 60000),
           s = Math.floor((diff % 60000)   / 1000);
