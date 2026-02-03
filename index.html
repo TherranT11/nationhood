@@ -13,13 +13,14 @@
         input { width: 100%; padding: 12px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 4px; box-sizing: border-box; }
         .btn-login { width: 100%; padding: 15px; background: #ffcc00; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; color: #000; }
         .btn-login:hover { background: #e6b800; }
+        .btn-login:disabled { background: #555; color: #888; cursor: not-allowed; }
         .signup-link { text-align: center; margin-top: 15px; font-size: 0.8rem; }
         .signup-link a { color: #ffcc00; text-decoration: none; }
         .error { color: #ff4444; font-size: 0.9rem; margin-top: 10px; text-align: center; }
+        .loading { color: #888; font-size: 0.85rem; margin-top: 10px; text-align: center; font-style: italic; }
     </style>
 </head>
 <body>
-
 <div class="login-card">
     <h2>Faction Login</h2>
     <form id="login-form">
@@ -31,47 +32,92 @@
             <label>Password</label>
             <input type="password" id="password" required>
         </div>
-        <button type="submit" class="btn-login">ENTER THE CHRONICLE</button>
+        <button type="submit" class="btn-login" id="login-btn">ENTER THE CHRONICLE</button>
         <div id="error-message" class="error"></div>
+        <div id="loading-message" class="loading"></div>
     </form>
     <div class="signup-link">
         New to the continent? <a href="signup.html">Establish a Faction</a>
     </div>
 </div>
-
 <script>
-    // Your Supabase credentials - CORRECT KEY
     const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
     const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
+    // On page load, check if user is already logged in
+    (async () => {
+        const { data: { user } } = await _supabase.auth.getUser();
+        if (user) {
+            // Already authenticated — route them appropriately
+            await routeUser(user);
+        }
+    })();
+
     document.getElementById('login-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        
-        const errorMsg = document.getElementById('error-message');
-        errorMsg.textContent = '';
-        
-        const email = document.getElementById('email').value;
+
+        const errorMsg   = document.getElementById('error-message');
+        const loadingMsg = document.getElementById('loading-message');
+        const loginBtn   = document.getElementById('login-btn');
+
+        errorMsg.textContent   = '';
+        loadingMsg.textContent = '';
+
+        const email    = document.getElementById('email').value;
         const password = document.getElementById('password').value;
 
+        // Disable button and show loading state
+        loginBtn.disabled = true;
+        loadingMsg.textContent = 'Signing in…';
+
         try {
-            // Sign in with Supabase Auth
             const { data, error } = await _supabase.auth.signInWithPassword({
                 email: email,
                 password: password,
             });
-
             if (error) throw error;
 
-            // Success! Redirect to map
-            window.location.href = "map.html";
-            
+            loadingMsg.textContent = 'Checking faction status…';
+
+            // Route based on faction setup state
+            await routeUser(data.user);
+
         } catch (error) {
             console.error('Login error:', error);
             errorMsg.textContent = error.message || 'Login failed. Please try again.';
+            loginBtn.disabled    = false;
+            loadingMsg.textContent = '';
         }
     });
-</script>
 
+    /**
+     * Checks the user's faction status and redirects accordingly:
+     *   - Has a party with a nation assigned → dashboard.html
+     *   - Anything else (no faction, no nation, etc.) → map.html
+     */
+    async function routeUser(user) {
+        try {
+            const { data: faction } = await _supabase
+                .from('factions')
+                .select('*')
+                .eq('id', user.id)
+                .single();
+
+            if (faction && faction.faction_type === 'party' && faction.nation_id) {
+                // Fully set up — go to dashboard
+                window.location.href = 'dashboard.html';
+            } else {
+                // Needs setup — go to map
+                window.location.href = 'map.html';
+            }
+
+        } catch (error) {
+            console.error('Faction check error:', error);
+            // If the faction check fails for any reason, default to map
+            window.location.href = 'map.html';
+        }
+    }
+</script>
 </body>
 </html>
