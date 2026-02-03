@@ -163,6 +163,7 @@
             color: #888;
             font-size: 0.85rem;
             text-transform: uppercase;
+            white-space: nowrap;
         }
         
         .selected-tags {
@@ -302,14 +303,6 @@
         Your political party will start fresh, with zero seats in the legislature but high hopes to earn votes.
     </div>
     
-    <!-- Selected Ideologies Display -->
-    <div class="selected-ideologies">
-        <span class="selected-label">Selected Ideologies:</span>
-        <div class="selected-tags" id="selected-tags">
-            <span style="color: #666;">None selected (pick 2)</span>
-        </div>
-    </div>
-    
     <!-- Ideologies Section -->
     <div class="ideologies-section">
         <h2>Choose Your Ideologies</h2>
@@ -319,7 +312,7 @@
         
         <!-- LIBERTY vs EQUALITY -->
         <div class="ideology-axis">
-            <div class="axis-label">Liberty ←→ Equality</div>
+            <div class="axis-label">Liberty ↔ Equality</div>
             <div class="ideology-pair">
                 <div class="ideology-card ideology-liberty" data-ideology="LIBERTY" data-opposite="EQUALITY">
                     <div class="ideology-name">Liberty</div>
@@ -334,7 +327,7 @@
         
         <!-- FREEDOM vs SECURITY -->
         <div class="ideology-axis">
-            <div class="axis-label">Freedom ←→ Security</div>
+            <div class="axis-label">Freedom ↔ Security</div>
             <div class="ideology-pair">
                 <div class="ideology-card ideology-freedom" data-ideology="FREEDOM" data-opposite="SECURITY">
                     <div class="ideology-name">Freedom</div>
@@ -349,7 +342,7 @@
         
         <!-- COOPERATION vs COMPETITION -->
         <div class="ideology-axis">
-            <div class="axis-label">Cooperation ←→ Competition</div>
+            <div class="axis-label">Cooperation ↔ Competition</div>
             <div class="ideology-pair">
                 <div class="ideology-card ideology-cooperation" data-ideology="COOPERATION" data-opposite="COMPETITION">
                     <div class="ideology-name">Cooperation</div>
@@ -364,7 +357,7 @@
         
         <!-- TRADITION vs PROGRESS -->
         <div class="ideology-axis">
-            <div class="axis-label">Tradition ←→ Progress</div>
+            <div class="axis-label">Tradition ↔ Progress</div>
             <div class="ideology-pair">
                 <div class="ideology-card ideology-tradition" data-ideology="TRADITION" data-opposite="PROGRESS">
                     <div class="ideology-name">Tradition</div>
@@ -379,7 +372,7 @@
         
         <!-- NATIONALISM vs GLOBALISM -->
         <div class="ideology-axis">
-            <div class="axis-label">Nationalism ←→ Globalism</div>
+            <div class="axis-label">Nationalism ↔ Globalism</div>
             <div class="ideology-pair">
                 <div class="ideology-card ideology-nationalism" data-ideology="NATIONALISM" data-opposite="GLOBALISM">
                     <div class="ideology-name">Nationalism</div>
@@ -397,6 +390,13 @@
     <div class="naming-section">
         <h2>Name Your Party</h2>
         
+        <div class="selected-ideologies" style="margin-bottom: 25px;">
+            <span class="selected-label">Selected Ideologies:</span>
+            <div class="selected-tags" id="selected-tags">
+                <span style="color: #666;">None selected (pick 2)</span>
+            </div>
+        </div>
+
         <div class="input-group">
             <label class="input-label">Party Name</label>
             <input type="text" id="party-name" placeholder="e.g., The Progressive Workers Alliance" maxlength="100">
@@ -439,6 +439,20 @@
             return;
         }
         currentUser = user;
+        
+        // Check if user already has a party
+        const { data: existingParty } = await _supabase
+            .from('factions')
+            .select('*')
+            .eq('id', currentUser.id)
+            .eq('faction_type', 'party')
+            .single();
+
+        if (existingParty && existingParty.nation_id) {
+            showError('You already have a party in ' + existingParty.nation + '. You can only have one party.');
+            document.getElementById('confirm-btn').disabled = true;
+            return;
+        }
         
         // Get nation from URL
         if (!nationParam) {
