@@ -359,12 +359,43 @@
             font-size: 0.85rem;
             color: #e0e0e0;
         }
-        .action-log-empty {
+      .action-log-empty {
             text-align: center;
             color: #666;
             font-style: italic;
             padding: 20px;
         }
+
+        /* Add this new section here */
+        .election-result-row {
+            padding: 12px 0;
+            border-bottom: 1px solid #222;
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 12px;
+            align-items: center;
+        }
+        .election-result-row:last-child {
+            border-bottom: none;
+        }
+        .election-result-party {
+            font-size: 0.9rem;
+            color: #ffcc00;
+            font-weight: bold;
+        }
+        .election-result-stat {
+            font-size: 0.85rem;
+            color: #aaa;
+            text-align: right;
+        }
+        .election-result-change {
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+        .seats-gained { color: #4CAF50; }
+        .seats-lost { color: #ff4444; }
+        .seats-same { color: #888; }
+
     </style>
 </head>
 <body>
@@ -492,6 +523,13 @@
      <!-- ---- ELECTIONS ---- -->
     <div class="tab-panel" id="tab-elections">
         <div class="panel-padding">
+            <!-- Election Results (only shows after an election) -->
+<div id="election-results-section" style="display: none;">
+    <div class="section-header">Election Results — <span id="election-year">2000</span></div>
+    <div class="info-block" style="margin-bottom: 24px;">
+        <div id="election-results-list"></div>
+    </div>
+</div>
             <!-- Party Stats Header -->
             <div class="section-header">Your Party Resources</div>
             <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
@@ -1074,6 +1112,16 @@ init();
     // Elections tab functions
 async function populateElectionsTab() {
     if (!currentFaction) return;
+    
+    // Load election results (if any)
+    await loadElectionResults();
+    
+    // Update party stats
+    document.getElementById('party-ap').textContent = currentFaction.action_points || 0;
+    document.getElementById('party-funds').textContent = '$' + (currentFaction.party_funds || 0).toLocaleString();
+    document.getElementById('party-approval').textContent = (currentFaction.approval_rating || 0) + '%';
+    
+    // ... rest of your existing code
     
     // Update party stats
     document.getElementById('party-ap').textContent = currentFaction.action_points || 0;
