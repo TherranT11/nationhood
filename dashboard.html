@@ -795,6 +795,107 @@ function assignCabinet(parties, positions) {
 /* ============================================================
    GO
    ============================================================ */
+    /* ============================================================
+   WINGS SYSTEM LOGIC (Step 9)
+   ============================================================ */
+
+// Wing name lists for authoritarian governments
+const MONARCHY_WINGS = [
+    'Vanguard of the Crown',
+    'Defenders of the Realm',
+    'The Royal Guard',
+    'The Gilded Court',
+    'Keepers of the Faith',
+    'The Iron Throne',
+    'Servants of the Crown',
+    'The Noble Order'
+];
+
+const JUNTA_WINGS = [
+    'Vanguard Front',
+    'Iron Shield Division',
+    'The Command Guard',
+    'Strategic Reserve Corps',
+    'The Enforcement Arm',
+    'Homeland Defense Unit',
+    'The Doctrine Wing',
+    'Operations Command'
+];
+
+/**
+ * Transforms party names into "wings" for authoritarian governments
+ * @param {Array} parties - Array of party objects with { id, name, seats, ... }
+ * @param {string} governmentType - The government type name (e.g. "Absolute Monarchy")
+ * @returns {Array} - Same party array but with display names transformed if authoritarian
+ */
+function applyWingsSystem(parties, governmentType) {
+    // Only apply to authoritarian governments
+    if (governmentType !== 'Absolute Monarchy' && governmentType !== 'Military Junta') {
+        return parties; // Return unchanged
+    }
+
+    // Choose the appropriate wing list
+    const wingList = governmentType === 'Absolute Monarchy' ? MONARCHY_WINGS : JUNTA_WINGS;
+
+    // Sort parties by seat count (descending) - biggest gets first pick
+    const sortedParties = [...parties].sort((a, b) => b.seats - a.seats);
+
+    // Assign wing names (no duplicates)
+    const transformedParties = sortedParties.map((party, index) => {
+        // If we run out of wing names (more than 8 parties), wrap around or use a fallback
+        const wingName = index < wingList.length 
+            ? wingList[index] 
+            : `${wingList[index % wingList.length]} (${Math.floor(index / wingList.length) + 1})`;
+
+        return {
+            ...party,
+            displayName: wingName,      // The name shown in the UI
+            originalName: party.name     // The original party name (preserved)
+        };
+    });
+
+    // Return in original order (not sorted) but with transformed names
+    return transformedParties;
+}
+
+/**
+ * Gets the government type name from the government_types table via nation_governments
+ * @param {string} nationId - UUID of the nation
+ * @returns {Promise<string>} - The government type name (e.g. "Parliamentary Democracy")
+ */
+async function getGovernmentType(nationId) {
+    try {
+        // Query nation_governments to get government_type_id
+        const { data: nationGov, error: govError } = await _supabase
+            .from('nation_governments')
+            .select('government_type_id')
+            .eq('nation_id', nationId)
+            .single();
+
+        if (govError || !nationGov) {
+            console.error('Error fetching nation government:', govError);
+            return 'Parliamentary Democracy'; // Default fallback
+        }
+
+        // Query government_types to get the type name
+        const { data: govType, error: typeError } = await _supabase
+            .from('government_types')
+            .select('name')
+            .eq('id', nationGov.government_type_id)
+            .single();
+
+        if (typeError || !govType) {
+            console.error('Error fetching government type:', typeError);
+            return 'Parliamentary Democracy'; // Default fallback
+        }
+
+        return govType.name;
+
+    } catch (error) {
+        console.error('Error in getGovernmentType:', error);
+        return 'Parliamentary Democracy'; // Default fallback
+    }
+}
 init();
 </script>
     
