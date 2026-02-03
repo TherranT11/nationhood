@@ -584,12 +584,16 @@ function drawParliament() {
     
     const dots = generateDotPositions(seats.length, rows, centerX, centerY, dotSpacing);
     
-    let circles = '';
-    dots.forEach((dot, index) => {
-        if (index < seats.length) {
-            circles += `<circle cx="${dot.x}" cy="${dot.y}" r="${dotRadius}" fill="${seats[index].color}" stroke="#0a0a0a" stroke-width="0.5"/>`;
-        }
-    });
+let circles = '';
+dots.forEach((dot, index) => {
+    if (dot.hasSeat && index < seats.length) {
+        // Filled dot with party color
+        circles += `<circle cx="${dot.x}" cy="${dot.y}" r="${dotRadius}" fill="${seats[index].color}" stroke="#0a0a0a" stroke-width="0.5"/>`;
+    } else {
+        // Empty dot (gray outline)
+        circles += `<circle cx="${dot.x}" cy="${dot.y}" r="${dotRadius}" fill="none" stroke="#333" stroke-width="0.5"/>`;
+    }
+});
     
     circles += `<text x="${centerX}" y="${centerY - 12}" text-anchor="middle" fill="#ffcc00" font-size="24" font-weight="bold">${total}</text>`;
     circles += `<text x="${centerX}" y="${centerY + 6}" text-anchor="middle" fill="#666" font-size="11">TOTAL SEATS</text>`;
@@ -604,18 +608,17 @@ function drawParliament() {
 function calculateRows(totalSeats, maxRadius, spacing) {
     const rows = [];
     let currentRadius = maxRadius - 60;
-    let seatsPlaced = 0;
     
-    while (seatsPlaced < totalSeats && currentRadius > 40) {
+    // ALWAYS fill the entire semicircle, regardless of seat count
+    while (currentRadius > 40) {
         const circumference = Math.PI * currentRadius;
         const dotsInRow = Math.floor(circumference / spacing);
         
         rows.push({
             radius: currentRadius,
-            dots: Math.min(dotsInRow, totalSeats - seatsPlaced)
+            dots: dotsInRow  // ← Changed: always use full row capacity
         });
         
-        seatsPlaced += dotsInRow;
         currentRadius -= spacing;
     }
     
@@ -628,22 +631,20 @@ function generateDotPositions(totalSeats, rows, centerX, centerY, spacing) {
     
     for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
         const row = rows[rowIndex];
-        const dotsInThisRow = Math.min(row.dots, totalSeats - seatIndex);
+        const angleStep = Math.PI / (row.dots - 1);
         
-        const angleStep = Math.PI / (dotsInThisRow - 1);
-        
-        for (let i = 0; i < dotsInThisRow; i++) {
+        for (let i = 0; i < row.dots; i++) {
             const angle = Math.PI - (i * angleStep);
             const x = centerX + row.radius * Math.cos(angle);
             const y = centerY - row.radius * Math.sin(angle);
             
-            positions.push({ x, y });
+            positions.push({ 
+                x, 
+                y,
+                hasSeat: seatIndex < totalSeats  // ← Track if this dot has a seat
+            });
             seatIndex++;
-            
-            if (seatIndex >= totalSeats) break;
         }
-        
-        if (seatIndex >= totalSeats) break;
     }
     
     return positions;
