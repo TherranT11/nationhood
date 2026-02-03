@@ -585,13 +585,13 @@ function drawParliament() {
     const dots = generateDotPositions(seats.length, rows, centerX, centerY, dotSpacing);
     
 let circles = '';
-dots.forEach((dot, index) => {
-    if (dot.hasSeat && index < seats.length) {
+dots.forEach((dot) => {
+    if (dot.index < seats.length) {
         // Filled dot with party color
-        circles += `<circle cx="${dot.x}" cy="${dot.y}" r="${dotRadius}" fill="${seats[index].color}" stroke="#0a0a0a" stroke-width="0.5"/>`;
+        circles += `<circle cx="${dot.x}" cy="${dot.y}" r="${dotRadius}" fill="${seats[dot.index].color}" stroke="#0a0a0a" stroke-width="0.5"/>`;
     } else {
-        // Empty dot (gray outline)
-        circles += `<circle cx="${dot.x}" cy="${dot.y}" r="${dotRadius}" fill="none" stroke="#333" stroke-width="0.5"/>`;
+        // Empty dot (light gray)
+        circles += `<circle cx="${dot.x}" cy="${dot.y}" r="${dotRadius}" fill="#2a2a2a" stroke="#333" stroke-width="0.5"/>`;
     }
 });
     
@@ -609,17 +609,17 @@ function calculateRows(totalSeats, maxRadius, spacing) {
     const rows = [];
     let currentRadius = maxRadius - 60;
     
-    // ALWAYS fill the entire semicircle, regardless of seat count
+    // Fill from outside in until we run out of space
     while (currentRadius > 40) {
         const circumference = Math.PI * currentRadius;
         const dotsInRow = Math.floor(circumference / spacing);
         
         rows.push({
             radius: currentRadius,
-            dots: dotsInRow  // ← Changed: always use full row capacity
+            dots: dotsInRow
         });
         
-        currentRadius -= spacing;
+        currentRadius -= spacing; // Move inward for next row
     }
     
     return rows;
@@ -629,6 +629,7 @@ function generateDotPositions(totalSeats, rows, centerX, centerY, spacing) {
     const positions = [];
     let seatIndex = 0;
     
+    // Fill ALL positions in the semicircle
     for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
         const row = rows[rowIndex];
         const angleStep = Math.PI / (row.dots - 1);
@@ -638,11 +639,7 @@ function generateDotPositions(totalSeats, rows, centerX, centerY, spacing) {
             const x = centerX + row.radius * Math.cos(angle);
             const y = centerY - row.radius * Math.sin(angle);
             
-            positions.push({ 
-                x, 
-                y,
-                hasSeat: seatIndex < totalSeats  // ← Track if this dot has a seat
-            });
+            positions.push({ x, y, index: seatIndex });
             seatIndex++;
         }
     }
