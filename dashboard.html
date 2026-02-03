@@ -585,49 +585,118 @@ function populateGovernmentTab() {
     ).join('');
 
     // Parliament half-circle
-    drawParliament();
-}
+   /* ============================================================
+   DOT-GRID PARLIAMENT VISUALIZATION (Step 10)
+   ============================================================ */
 
 function drawParliament() {
-    const parties   = getPartyList();
-    const total     = parties.reduce((s, p) => s + p.seats, 0);
-    const svg       = document.getElementById('parliament-svg');
-    const cx = 260, cy = 250, rO = 210, rI = 140;
-    let angle = Math.PI;  // start left (180°), sweep to 0° (right)
-    let paths = '';
-
+    const parties = getPartyList();
+    const total = parties.reduce((s, p) => s + p.seats, 0);
+    const svg = document.getElementById('parliament-svg');
+    
+    // SVG dimensions
+    const width = 520;
+    const height = 280;
+    const centerX = width / 2;
+    const centerY = height - 20; // Bottom center
+    
+    // Dot settings
+    const dotRadius = 2.5;
+    const dotSpacing = 7; // Space between dot centers
+    
+    // Calculate how many rows we need and dots per row
+    const rows = calculateRows(total, centerY, dotSpacing);
+    
+    // Flatten parties into individual seats with colors
+    const seats = [];
     parties.forEach(party => {
-        const sweep = (party.seats / total) * Math.PI;
-        const a1 = angle, a2 = angle - sweep;
-
-        const x1o = cx + rO * Math.cos(a1), y1o = cy + rO * Math.sin(a1);
-        const x2o = cx + rO * Math.cos(a2), y2o = cy + rO * Math.sin(a2);
-        const x1i = cx + rI * Math.cos(a2), y1i = cy + rI * Math.sin(a2);
-        const x2i = cx + rI * Math.cos(a1), y2i = cy + rI * Math.sin(a1);
-        const lg  = sweep > Math.PI / 2 ? 1 : 0;
-
-        paths +=
-            '<path d="M '+x1o+' '+y1o+
-            ' A '+rO+' '+rO+' 0 '+lg+' 0 '+x2o+' '+y2o+
-            ' L '+x1i+' '+y1i+
-            ' A '+rI+' '+rI+' 0 '+lg+' 1 '+x2i+' '+y2i+
-            ' Z" fill="'+party.color+'" stroke="#121212" stroke-width="2"/>';
-
-        angle = a2;
+        for (let i = 0; i < party.seats; i++) {
+            seats.push({
+                color: party.color,
+                party: party.name
+            });
+        }
     });
-
-    // Center labels
-    paths += '<text x="'+cx+'" y="'+( cy - 12 )+'" text-anchor="middle" fill="#ffcc00" font-size="24" font-weight="bold">'+total+'</text>';
-    paths += '<text x="'+cx+'" y="'+( cy +  6 )+'" text-anchor="middle" fill="#666"    font-size="11">TOTAL SEATS</text>';
-
-    svg.innerHTML = paths;
-
-    // Legend
+    
+    // Generate dot positions
+    const dots = generateDotPositions(seats.length, rows, centerX, centerY, dotSpacing);
+    
+    // Build SVG
+    let circles = '';
+    dots.forEach((dot, index) => {
+        if (index < seats.length) {
+            circles += `<circle cx="${dot.x}" cy="${dot.y}" r="${dotRadius}" fill="${seats[index].color}" stroke="#0a0a0a" stroke-width="0.5"/>`;
+        }
+    });
+    
+    // Center label
+    circles += `<text x="${centerX}" y="${centerY - 12}" text-anchor="middle" fill="#ffcc00" font-size="24" font-weight="bold">${total}</text>`;
+    circles += `<text x="${centerX}" y="${centerY + 6}" text-anchor="middle" fill="#666" font-size="11">TOTAL SEATS</text>`;
+    
+    svg.innerHTML = circles;
+    
+    // Update legend
     document.getElementById('parliament-legend').innerHTML = parties.map(p =>
         '<div class="legend-item"><div class="legend-swatch" style="background:'+p.color+';"></div>'+p.name+' ('+p.seats+')</div>'
     ).join('');
 }
 
+/**
+ * Calculate optimal row configuration for the semicircle
+ */
+function calculateRows(totalSeats, maxRadius, spacing) {
+    const rows = [];
+    let currentRadius = maxRadius - 60; // Start radius (leave room for label)
+    let seatsPlaced = 0;
+    
+    // Work from outside in
+    while (seatsPlaced < totalSeats && currentRadius > 40) {
+        const circumference = Math.PI * currentRadius; // Half circle
+        const dotsInRow = Math.floor(circumference / spacing);
+        
+        rows.push({
+            radius: currentRadius,
+            dots: Math.min(dotsInRow, totalSeats - seatsPlaced)
+        });
+        
+        seatsPlaced += dotsInRow;
+        currentRadius -= spacing; // Move inward
+    }
+    
+    return rows;
+}
+
+/**
+ * Generate X,Y positions for all dots in a semicircle arrangement
+ */
+function generateDotPositions(totalSeats, rows, centerX, centerY, spacing) {
+    const positions = [];
+    let seatIndex = 0;
+    
+    // Start from outermost row and work inward
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+        const row = rows[rowIndex];
+        const dotsInThisRow = Math.min(row.dots, totalSeats - seatIndex);
+        
+        // Calculate angle step for this row
+        const angleStep = Math.PI / (dotsInThisRow - 1); // Spread across 180°
+        
+        for (let i = 0; i < dotsInThisRow; i++) {
+            const angle = Math.PI - (i * angleStep); // Start at left (180°), end at right (0°)
+            const x = centerX + row.radius * Math.cos(angle);
+            const y = centerY - row.radius * Math.sin(angle); // Subtract because SVG Y increases downward
+            
+            positions.push({ x, y });
+            seatIndex++;
+            
+            if (seatIndex >= totalSeats) break;
+        }
+        
+        if (seatIndex >= totalSeats) break;
+    }
+    
+    return positions;
+}
 /* ============================================================
    PARTY TAB
    ============================================================ */
