@@ -589,7 +589,7 @@ function populateGovernmentTab() {
    DOT-GRID PARLIAMENT VISUALIZATION (Step 10)
    ============================================================ */
 
-function drawParliament() {
+*/ function drawParliament() {
     const parties = getPartyList();
     const total = parties.reduce((s, p) => s + p.seats, 0);
     const svg = document.getElementById('parliament-svg');
