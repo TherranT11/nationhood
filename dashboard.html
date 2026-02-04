@@ -1547,7 +1547,7 @@ async function loadElectionInfo() {
         .eq('status', 'scheduled')
         .order('election_tick', { ascending: true })
         .limit(1)
-        .single();
+        .maybeSingle();
     
     if (election && shard) {
         document.getElementById('next-election-tick').textContent = 'Tick ' + election.election_tick;
