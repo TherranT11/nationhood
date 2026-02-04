@@ -614,7 +614,10 @@
                                 <div class="player-party">${player.faction_name}</div>
                                 <div class="player-id">ID: ${player.id.substring(0, 8)}...</div>
                             </div>
-                            <button class="btn-remove" onclick="removePlayer('${player.id}', '${nation.id}', '${player.faction_name.replace(/'/g, "\\'")}')">
+                            <button class="btn-remove" 
+                                    data-player-id="${player.id}" 
+                                    data-nation-id="${nation.id}" 
+                                    data-party-name="${player.faction_name}">
                                 Remove
                             </button>
                         </div>
@@ -633,25 +636,43 @@
             }));
             
             grid.innerHTML = nationsHTML.join('');
+            
+            // Add click handlers to all remove buttons
+            document.querySelectorAll('.btn-remove').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const playerId = this.getAttribute('data-player-id');
+                    const nationId = this.getAttribute('data-nation-id');
+                    const partyName = this.getAttribute('data-party-name');
+                    removePlayer(playerId, nationId, partyName);
+                });
+            });
         } catch (error) {
             console.error('Error loading nations:', error);
         }
     }
     
     async function removePlayer(playerId, nationId, partyName) {
+        console.log('Attempting to remove:', playerId, nationId, partyName);
+        
         if (!confirm(`Remove ${partyName} from this nation?\n\nThis will delete their party and allow them to select a new nation.`)) {
             return;
         }
         
         try {
-            const { error } = await _supabase
+            const { data, error } = await _supabase
                 .from('factions')
                 .delete()
                 .eq('id', playerId);
             
-            if (error) throw error;
+            if (error) {
+                console.error('Supabase error:', error);
+                throw error;
+            }
             
+            console.log('Delete result:', data);
             alert('✅ Player removed successfully!');
+            
+            // Reload data
             await loadStats();
             await loadNations();
         } catch (error) {
