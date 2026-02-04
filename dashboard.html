@@ -1460,20 +1460,8 @@ async function getGovernmentType(nationId) {
     }
 }
 
-
 async function populateElectionsTab() {
     if (!currentFaction) return;
-
-    async function populateElectionsTab() {
-    if (!currentFaction) return;
-    
-    // ADD THESE LINES ↓
-    try {
-        await checkCoalitionStatus();
-    } catch (e) {
-        console.error('Coalition check failed:', e);
-    }
-    // END OF NEW LINES ↑
     
     await loadElectionResults();
     
