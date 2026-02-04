@@ -249,153 +249,6 @@
         .placeholder-panel .ph-icon { font-size: 2.8rem; margin-bottom: 14px; opacity: 0.35; }
         .placeholder-panel h3 { color: #666; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 6px; }
         .placeholder-panel p { font-size: 0.8rem; color: #444; }
-
-        /* ===== ELECTIONS TAB ===== */
-        .action-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        .action-card {
-            background: #1a1a1a;
-            border-radius: 8px;
-            padding: 18px;
-            border: 1px solid #2a2a2a;
-            transition: border-color 0.3s;
-        }
-        .action-card:hover {
-            border-color: #ffcc00;
-        }
-        .action-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-        .action-title {
-            font-size: 1rem;
-            color: #ffcc00;
-            font-weight: bold;
-        }
-        .action-cost {
-            font-size: 0.75rem;
-            color: #888;
-            background: #252525;
-            padding: 4px 10px;
-            border-radius: 4px;
-        }
-        .action-desc {
-            font-size: 0.82rem;
-            color: #aaa;
-            line-height: 1.5;
-            margin-bottom: 14px;
-        }
-        .action-btn {
-            width: 100%;
-            padding: 10px;
-            background: linear-gradient(135deg, #ffcc00 0%, #e6b800 100%);
-            border: none;
-            border-radius: 6px;
-            color: #121212;
-            font-weight: bold;
-            font-size: 0.85rem;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .action-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(255, 204, 0, 0.4);
-        }
-        .action-btn:active {
-            transform: translateY(0);
-        }
-        .action-btn:disabled {
-            background: #333;
-            color: #666;
-            cursor: not-allowed;
-            transform: none;
-        }
-        .action-btn-risk {
-            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
-        }
-        .action-btn-risk:hover {
-            box-shadow: 0 4px 12px rgba(255, 152, 0, 0.4);
-        }
-        .action-select {
-            width: 100%;
-            padding: 8px;
-            background: #252525;
-            border: 1px solid #444;
-            border-radius: 4px;
-            color: #e0e0e0;
-            font-size: 0.85rem;
-        }
-        .action-log {
-            background: #1a1a1a;
-            border-radius: 6px;
-            padding: 16px;
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        .action-log-item {
-            padding: 12px;
-            background: #252525;
-            border-left: 3px solid #ffcc00;
-            border-radius: 4px;
-            margin-bottom: 10px;
-        }
-        .action-log-item:last-child {
-            margin-bottom: 0;
-        }
-        .action-log-time {
-            font-size: 0.7rem;
-            color: #666;
-            margin-bottom: 4px;
-        }
-        .action-log-message {
-            font-size: 0.85rem;
-            color: #e0e0e0;
-        }
-      .action-log-empty {
-            text-align: center;
-            color: #666;
-            font-style: italic;
-            padding: 20px;
-        }
-
-        /* Add this new section here */
-        .election-result-row {
-            padding: 12px 0;
-            border-bottom: 1px solid #222;
-            display: grid;
-            grid-template-columns: 2fr 1fr 1fr 1fr;
-            gap: 12px;
-            align-items: center;
-        }
-        .election-result-row:last-child {
-            border-bottom: none;
-        }
-        .election-result-party {
-            font-size: 0.9rem;
-            color: #ffcc00;
-            font-weight: bold;
-        }
-        .election-result-stat {
-            font-size: 0.85rem;
-            color: #aaa;
-            text-align: right;
-        }
-        .election-result-change {
-            font-size: 0.85rem;
-            font-weight: bold;
-        }
-        .seats-gained { color: #4CAF50; }
-        .seats-lost { color: #ff4444; }
-        .seats-same { color: #888; }
-
     </style>
 </head>
 <body>
@@ -520,108 +373,10 @@
         </div>
     </div>
 
-     <!-- ---- ELECTIONS ---- -->
+    <!-- ---- ELECTIONS ---- -->
     <div class="tab-panel" id="tab-elections">
-        <div class="panel-padding">
-            <!-- Election Results (only shows after an election) -->
-<div id="election-results-section" style="display: none;">
-    <div class="section-header">Election Results — <span id="election-year">2000</span></div>
-    <div class="info-block" style="margin-bottom: 24px;">
-        <div id="election-results-list"></div>
+        <div class="placeholder-panel"><div class="ph-icon">🗳️</div><h3>Elections</h3><p>Campaign, canvass, and compete for seats — coming soon.</p></div>
     </div>
-</div>
-            <!-- Party Stats Header -->
-            <div class="section-header">Your Party Resources</div>
-            <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
-                <div class="stat-card">
-                    <div class="stat-label">Action Points</div>
-                    <div class="stat-value" id="party-ap">—</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Party Funds</div>
-                    <div class="stat-value" id="party-funds">—</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Approval Rating</div>
-                    <div class="stat-value" id="party-approval">—</div>
-                </div>
-            </div>
-
-            <!-- Campaign Actions -->
-            <div class="section-header">Campaign Actions</div>
-            <div class="action-grid">
-                <!-- Grassroots Rally -->
-                <div class="action-card">
-                    <div class="action-header">
-                        <div class="action-title">Grassroots Rally</div>
-                        <div class="action-cost">2 AP • $50,000</div>
-                    </div>
-                    <div class="action-desc">Hold a rally to boost your party's approval rating. Roll 1D3 for approval gain.</div>
-                    <button class="action-btn" onclick="performAction('rally')">Organize Rally</button>
-                </div>
-
-                <!-- Attack Ad -->
-                <div class="action-card">
-                    <div class="action-header">
-                        <div class="action-title">Attack Ad</div>
-                        <div class="action-cost">3 AP • $150,000</div>
-                    </div>
-                    <div class="action-desc">Run attack ads against a rival party. Roll 1D3 to reduce their approval.</div>
-                    <div style="margin: 10px 0;">
-                        <select id="attack-target" class="action-select">
-                            <option value="">Select Target Party...</option>
-                        </select>
-                    </div>
-                    <button class="action-btn" onclick="performAction('attack')">Launch Attack Ad</button>
-                </div>
-
-                <!-- Fundraiser -->
-                <div class="action-card">
-                    <div class="action-header">
-                        <div class="action-title">Fundraiser</div>
-                        <div class="action-cost">4 AP • Free</div>
-                    </div>
-                    <div class="action-desc">Host a fundraising event. Roll 1D2: 1 = $50k, 2 = $100k raised.</div>
-                    <button class="action-btn" onclick="performAction('fundraiser')">Host Fundraiser</button>
-                </div>
-
-                <!-- Lobby Interest Group -->
-                <div class="action-card">
-                    <div class="action-header">
-                        <div class="action-title">Lobby Interest Group</div>
-                        <div class="action-cost">5 AP • Free</div>
-                    </div>
-                    <div class="action-desc">Lobby an interest group for funding. Roll 1D6 × $100k. Requires policy commitment!</div>
-                    <div style="margin: 10px 0;">
-                        <select id="lobby-target" class="action-select">
-                            <option value="">Select Interest Group...</option>
-                        </select>
-                    </div>
-                    <button class="action-btn action-btn-risk" onclick="performAction('lobby')">Lobby Group</button>
-                </div>
-            </div>
-
-            <!-- Action Log -->
-            <div class="section-header" style="margin-top: 30px;">Recent Actions</div>
-            <div id="action-log" class="action-log">
-                <div class="action-log-empty">No actions taken yet this campaign.</div>
-            </div>
-
-            <!-- Next Election -->
-            <div class="section-header" style="margin-top: 30px;">Upcoming Elections</div>
-            <div id="election-info" class="info-block">
-                <div class="info-row">
-                    <span class="info-label">Next Election</span>
-                    <span class="info-value" id="next-election-tick">—</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Ticks Remaining</span>
-                    <span class="info-value gold" id="ticks-until-election">—</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- ---- LAWS ---- -->
     <div class="tab-panel" id="tab-laws">
         <div class="placeholder-panel"><div class="ph-icon">📜</div><h3>Laws</h3><p>Propose and pass legislation — coming soon.</p></div>
@@ -697,7 +452,6 @@ async function init() {
     populateNationTab();
     populateGovernmentTab();
     populatePartyTab();
-    populateElectionsTab();
 
     setupTabs();
     setupWorldMap();
@@ -717,18 +471,7 @@ function startTickCountdown() { tickInterval = setInterval(updateCountdown, 1000
 function updateCountdown() {
     if (!window.nextTickAt) { document.getElementById('tick-countdown').textContent = '—'; return; }
     const diff = window.nextTickAt - Date.now();
-    if (diff <= 0) { 
-        document.getElementById('tick-countdown').textContent = 'Processing…'; 
-        clearInterval(tickInterval);
-        
-        // Auto-refresh tick data after 30 seconds
-        setTimeout(async () => {
-            await loadTickData();
-            startTickCountdown();
-        }, 30000); // Wait 30 seconds then reload
-        
-        return; 
-    }
+    if (diff <= 0) { document.getElementById('tick-countdown').textContent = 'Processing…'; clearInterval(tickInterval); return; }
     const h = Math.floor(diff / 3600000),
           m = Math.floor((diff % 3600000) / 60000),
           s = Math.floor((diff % 60000)   / 1000);
@@ -841,16 +584,12 @@ function drawParliament() {
     
     const dots = generateDotPositions(seats.length, rows, centerX, centerY, dotSpacing);
     
-let circles = '';
-dots.forEach((dot) => {
-    if (dot.index < seats.length) {
-        // Filled dot with party color
-        circles += `<circle cx="${dot.x}" cy="${dot.y}" r="${dotRadius}" fill="${seats[dot.index].color}" stroke="#0a0a0a" stroke-width="0.5"/>`;
-    } else {
-        // Empty dot (light gray)
-        circles += `<circle cx="${dot.x}" cy="${dot.y}" r="${dotRadius}" fill="#2a2a2a" stroke="#333" stroke-width="0.5"/>`;
-    }
-});
+    let circles = '';
+    dots.forEach((dot, index) => {
+        if (index < seats.length) {
+            circles += `<circle cx="${dot.x}" cy="${dot.y}" r="${dotRadius}" fill="${seats[index].color}" stroke="#0a0a0a" stroke-width="0.5"/>`;
+        }
+    });
     
     circles += `<text x="${centerX}" y="${centerY - 12}" text-anchor="middle" fill="#ffcc00" font-size="24" font-weight="bold">${total}</text>`;
     circles += `<text x="${centerX}" y="${centerY + 6}" text-anchor="middle" fill="#666" font-size="11">TOTAL SEATS</text>`;
@@ -865,18 +604,19 @@ dots.forEach((dot) => {
 function calculateRows(totalSeats, maxRadius, spacing) {
     const rows = [];
     let currentRadius = maxRadius - 60;
+    let seatsPlaced = 0;
     
-    // Fill from outside in until we run out of space
-    while (currentRadius > 40) {
+    while (seatsPlaced < totalSeats && currentRadius > 40) {
         const circumference = Math.PI * currentRadius;
         const dotsInRow = Math.floor(circumference / spacing);
         
         rows.push({
             radius: currentRadius,
-            dots: dotsInRow
+            dots: Math.min(dotsInRow, totalSeats - seatsPlaced)
         });
         
-        currentRadius -= spacing; // Move inward for next row
+        seatsPlaced += dotsInRow;
+        currentRadius -= spacing;
     }
     
     return rows;
@@ -886,19 +626,24 @@ function generateDotPositions(totalSeats, rows, centerX, centerY, spacing) {
     const positions = [];
     let seatIndex = 0;
     
-    // Fill ALL positions in the semicircle
     for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
         const row = rows[rowIndex];
-        const angleStep = Math.PI / (row.dots - 1);
+        const dotsInThisRow = Math.min(row.dots, totalSeats - seatIndex);
         
-        for (let i = 0; i < row.dots; i++) {
+        const angleStep = Math.PI / (dotsInThisRow - 1);
+        
+        for (let i = 0; i < dotsInThisRow; i++) {
             const angle = Math.PI - (i * angleStep);
             const x = centerX + row.radius * Math.cos(angle);
             const y = centerY - row.radius * Math.sin(angle);
             
-            positions.push({ x, y, index: seatIndex });
+            positions.push({ x, y });
             seatIndex++;
+            
+            if (seatIndex >= totalSeats) break;
         }
+        
+        if (seatIndex >= totalSeats) break;
     }
     
     return positions;
@@ -1109,211 +854,6 @@ async function getGovernmentType(nationId) {
 }
 
 init();
-  async function populateElectionsTab() {
-    if (!currentFaction) return;
-    
-    // Load election results (if any)
-    await loadElectionResults();
-    
-    // Update party stats
-    document.getElementById('party-ap').textContent = currentFaction.action_points || 0;
-    document.getElementById('party-funds').textContent = '$' + (currentFaction.party_funds || 0).toLocaleString();
-    document.getElementById('party-approval').textContent = (currentFaction.approval_rating || 0) + '%';
-    
-    // Load rival parties for attack ads
-    const { data: parties } = await _supabase
-        .from('factions')
-        .select('id, faction_name')
-        .eq('nation_id', currentFaction.nation_id)
-        .eq('faction_type', 'party')
-        .neq('id', currentFaction.id);
-    
-    const attackSelect = document.getElementById('attack-target');
-    attackSelect.innerHTML = '<option value="">Select Target Party...</option>';
-    if (parties) {
-        parties.forEach(p => {
-            attackSelect.innerHTML += `<option value="${p.id}">${p.faction_name}</option>`;
-        });
-    }
-    
-    // Load interest groups for lobbying
-    const { data: groups } = await _supabase
-        .from('interest_groups')
-        .select('id, group_name')
-        .eq('nation_id', currentFaction.nation_id);
-    
-    const lobbySelect = document.getElementById('lobby-target');
-    lobbySelect.innerHTML = '<option value="">Select Interest Group...</option>';
-    if (groups) {
-        groups.forEach(g => {
-            lobbySelect.innerHTML += `<option value="${g.id}">${g.group_name}</option>`;
-        });
-    }
-    
-    // Load recent actions
-    await loadActionLog();
-    
-    // Load election info
-    await loadElectionInfo();
-}
-
-async function loadActionLog() {
-    const { data: actions } = await _supabase
-        .from('campaign_actions')
-        .select('*')
-        .eq('party_id', currentFaction.id)
-        .order('created_at', { ascending: false })
-        .limit(5);
-    
-    const logDiv = document.getElementById('action-log');
-    if (!actions || actions.length === 0) {
-        logDiv.innerHTML = '<div class="action-log-empty">No actions taken yet this campaign.</div>';
-        return;
-    }
-    
-    logDiv.innerHTML = actions.map(a => {
-        const date = new Date(a.created_at).toLocaleString();
-        let message = '';
-        
-        if (a.action_type === 'rally') {
-            message = `Grassroots Rally: Gained ${a.result.approval_gain}% approval`;
-        } else if (a.action_type === 'attack_ad') {
-            message = `Attack Ad vs ${a.result.target}: -${a.result.approval_loss}% to their approval`;
-        } else if (a.action_type === 'fundraiser') {
-            message = `Fundraiser: Raised $${a.result.money_raised.toLocaleString()}`;
-        } else if (a.action_type === 'lobby') {
-            message = `Lobbied ${a.result.group_name}: Received $${a.result.payout.toLocaleString()}`;
-        }
-        
-        return `<div class="action-log-item">
-            <div class="action-log-time">Tick ${a.tick_performed} • ${date}</div>
-            <div class="action-log-message">${message}</div>
-        </div>`;
-    }).join('');
-}
-
-async function loadElectionInfo() {
-    if (!currentNation) return;
-    
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const { data: election } = await _supabase
-        .from('elections')
-        .select('*')
-        .eq('nation_id', currentNation.id)
-        .eq('status', 'scheduled')
-        .order('election_tick', { ascending: true })
-        .limit(1)
-        .single();
-    
-    if (election && shard) {
-        document.getElementById('next-election-tick').textContent = 'Tick ' + election.election_tick;
-        document.getElementById('ticks-until-election').textContent = (election.election_tick - shard.current_tick) + ' ticks';
-    }
-}
-
-async function loadElectionResults() {
-    if (!currentNation) return;
-    
-    const { data: election } = await _supabase
-        .from('elections')
-        .select('*')
-        .eq('nation_id', currentNation.id)
-        .eq('status', 'completed')
-        .order('election_tick', { ascending: false })
-        .limit(1)
-        .single();
-    
-    if (!election || !election.results) {
-        document.getElementById('election-results-section').style.display = 'none';
-        return;
-    }
-    
-    document.getElementById('election-results-section').style.display = 'block';
-    
-    const { data: shard } = await _supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-    const year = shard.current_date.split(', ')[1];
-    document.getElementById('election-year').textContent = year;
-    
-    const results = election.results.seats || [];
-    const resultsHTML = results.map(r => {
-        const votes = r.votes || 0;
-        const percentage = r.vote_percentage || 0;
-        const seats = r.seats || 0;
-        
-        const changeClass = seats > 0 ? 'seats-gained' : 'seats-same';
-        const changeText = `${seats} Seats Won`;
-        
-        return `<div class="election-result-row">
-            <span class="election-result-party">${r.party_name}</span>
-            <span class="election-result-stat">${votes.toLocaleString()} Votes</span>
-            <span class="election-result-stat">${percentage}%</span>
-            <span class="election-result-change ${changeClass}">${changeText}</span>
-        </div>`;
-    }).join('');
-    
-    document.getElementById('election-results-list').innerHTML = resultsHTML;
-}
-
-async function performAction(actionType) {
-    if (!currentFaction) return;
-    
-    let result;
-    
-    try {
-        if (actionType === 'rally') {
-            const { data, error } = await _supabase.rpc('action_grassroots_rally', { 
-                player_party_id: currentFaction.id 
-            });
-            if (error) throw error;
-            result = data[0];
-        } 
-        else if (actionType === 'attack') {
-            const targetId = document.getElementById('attack-target').value;
-            if (!targetId) { alert('Please select a target party!'); return; }
-            const { data, error } = await _supabase.rpc('action_attack_ad', { 
-                player_party_id: currentFaction.id,
-                target_party_id: targetId
-            });
-            if (error) throw error;
-            result = data[0];
-        }
-        else if (actionType === 'fundraiser') {
-            const { data, error } = await _supabase.rpc('action_fundraiser', { 
-                player_party_id: currentFaction.id 
-            });
-            if (error) throw error;
-            result = data[0];
-        }
-        else if (actionType === 'lobby') {
-            const groupId = document.getElementById('lobby-target').value;
-            if (!groupId) { alert('Please select an interest group!'); return; }
-            const { data, error } = await _supabase.rpc('action_lobby_interest_group', { 
-                player_party_id: currentFaction.id,
-                interest_group_id: groupId
-            });
-            if (error) throw error;
-            result = data[0];
-        }
-        
-        if (result && result.success) {
-            alert('✅ ' + result.message);
-            
-            // Update faction data
-            currentFaction.action_points = result.new_ap;
-            currentFaction.party_funds = result.new_funds;
-            if (result.new_approval) currentFaction.approval_rating = result.new_approval;
-            
-            // Refresh the tab
-            populateElectionsTab();
-        } else {
-            alert('❌ ' + (result ? result.message : 'Action failed'));
-        }
-        
-    } catch (error) {
-        console.error('Action error:', error);
-        alert('❌ Error: ' + error.message);
-    }
-}
 </script>
     
 </body>
