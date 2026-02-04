@@ -651,35 +651,39 @@
         }
     }
     
-    async function removePlayer(playerId, nationId, partyName) {
-        console.log('Attempting to remove:', playerId, nationId, partyName);
-        
-        if (!confirm(`Remove ${partyName} from this nation?\n\nThis will delete their party and allow them to select a new nation.`)) {
-            return;
-        }
-        
-        try {
-            const { data, error } = await _supabase
-                .from('factions')
-                .delete()
-                .eq('id', playerId);
-            
-            if (error) {
-                console.error('Supabase error:', error);
-                throw error;
-            }
-            
-            console.log('Delete result:', data);
-            alert('✅ Player removed successfully!');
-            
-            // Reload data
-            await loadStats();
-            await loadNations();
-        } catch (error) {
-            console.error('Error removing player:', error);
-            alert('❌ Error: ' + error.message);
-        }
+async function removePlayer(playerId, nationId, partyName) {
+    console.log('Attempting to remove:', playerId, nationId, partyName);
+    
+    if (!confirm(`Remove ${partyName} from this nation?\n\nThis will mark their party as abandoned. They can create a new party in a different nation.`)) {
+        return;
     }
+    
+    try {
+        // Instead of deleting, set nation_id to NULL and mark as abandoned
+        const { data, error } = await _supabase
+            .from('factions')
+            .update({ 
+                nation_id: null,
+                abandoned_at: new Date().toISOString()
+            })
+            .eq('id', playerId);
+        
+        if (error) {
+            console.error('Supabase error:', error);
+            throw error;
+        }
+        
+        console.log('Update result:', data);
+        alert('✅ Player removed successfully! Party will remain until next election.');
+        
+        // Reload data
+        await loadStats();
+        await loadNations();
+    } catch (error) {
+        console.error('Error removing player:', error);
+        alert('❌ Error: ' + error.message);
+    }
+}
     
     async function resetShard() {
         if (!isAuthenticated) return;
