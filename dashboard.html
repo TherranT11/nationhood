@@ -1056,7 +1056,7 @@ async function init() {
     currentUser = user;
 
     const { data: faction } = await _supabase.from('factions').select('*').eq('id', user.id).single();
-    if (!faction || faction.faction_type !== 'party') { window.location.href = 'map.html'; return; }
+    if (!faction || faction.faction_type !== 'party') { window.location.href = 'nation-selection.html'; return; }
     currentFaction = faction;
     document.getElementById('party-badge').textContent = faction.faction_name + ' [' + (faction.abbreviation || '—') + ']';
 
