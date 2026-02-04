@@ -723,7 +723,7 @@
         <button class="nav-tab" data-tab="nation">Nation</button>
         <button class="nav-tab" data-tab="government">Government</button>
         <button class="nav-tab" data-tab="legislature">Legislature</button>
-        <button class="nav-tab" data-tab="party">Parties</button>
+        <button class="nav-tab" data-tab="parties">Parties</button>
         <button class="nav-tab" data-tab="elections">Elections</button>
         <button class="nav-tab" data-tab="laws">Laws</button>
         <button class="nav-tab" data-tab="diplomacy">Diplomacy</button>
@@ -1055,8 +1055,14 @@ async function init() {
     if (!user) { window.location.href = 'index.html'; return; }
     currentUser = user;
 
-    const { data: faction } = await _supabase.from('factions').select('*').eq('id', user.id).single();
-    if (!faction || faction.faction_type !== 'party') { window.location.href = 'nation-selection.html'; return; }
+    const { data: faction, error: factionError } = await _supabase.from('factions').select('*').eq('id', user.id).single();
+    
+    // If error or no faction, redirect to nation selection
+    if (factionError || !faction || faction.faction_type !== 'party') { 
+        window.location.href = 'nation-selection.html'; 
+        return; 
+    }
+    
     currentFaction = faction;
     document.getElementById('party-badge').textContent = faction.faction_name + ' [' + (faction.abbreviation || '—') + ']';
 
