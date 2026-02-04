@@ -1210,24 +1210,6 @@ async function loadElectionInfo() {
         document.getElementById('ticks-until-election').textContent = (election.election_tick - shard.current_tick) + ' ticks';
     }
 }
-async function loadElectionInfo() {
-    if (!currentNation) return;
-    
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const { data: election } = await _supabase
-        .from('elections')
-        .select('*')
-        .eq('nation_id', currentNation.id)
-        .eq('status', 'scheduled')
-        .order('election_tick', { ascending: true })
-        .limit(1)
-        .single();
-    
-    if (election && shard) {
-        document.getElementById('next-election-tick').textContent = 'Tick ' + election.election_tick;
-        document.getElementById('ticks-until-election').textContent = (election.election_tick - shard.current_tick) + ' ticks';
-    }
-}
 
 async function loadElectionResults() {
     if (!currentNation) return;
@@ -1272,11 +1254,6 @@ async function loadElectionResults() {
     document.getElementById('election-results-list').innerHTML = resultsHTML;
 }
 
-async function performAction(actionType) {
-    if (!currentFaction) return;
-    
-    let result;
-    // ... rest of performAction
 async function performAction(actionType) {
     if (!currentFaction) return;
     
