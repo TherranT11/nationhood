@@ -1500,42 +1500,6 @@ async function populateElectionsTab() {
     await loadActionLog();
     await loadElectionInfo();
 }
-    
-    document.getElementById('party-ap').textContent = currentFaction.action_points || 0;
-    document.getElementById('party-funds').textContent = '$' + (currentFaction.party_funds || 0).toLocaleString();
-    document.getElementById('party-approval').textContent = (currentFaction.approval_rating || 0) + '%';
-    
-    const { data: parties } = await _supabase
-        .from('factions')
-        .select('id, faction_name')
-        .eq('nation_id', currentFaction.nation_id)
-        .eq('faction_type', 'party')
-        .neq('id', currentFaction.id);
-    
-    const attackSelect = document.getElementById('attack-target');
-    attackSelect.innerHTML = '<option value="">Select Target Party...</option>';
-    if (parties) {
-        parties.forEach(p => {
-            attackSelect.innerHTML += `<option value="${p.id}">${p.faction_name}</option>`;
-        });
-    }
-    
-    const { data: groups } = await _supabase
-        .from('interest_groups')
-        .select('id, group_name')
-        .eq('nation_id', currentFaction.nation_id);
-    
-    const lobbySelect = document.getElementById('lobby-target');
-    lobbySelect.innerHTML = '<option value="">Select Interest Group...</option>';
-    if (groups) {
-        groups.forEach(g => {
-            lobbySelect.innerHTML += `<option value="${g.id}">${g.group_name}</option>`;
-        });
-    }
-    
-    await loadActionLog();
-    await loadElectionInfo();
-}
 
 async function loadActionLog() {
     const { data: actions } = await _supabase
