@@ -1501,7 +1501,22 @@ async function populateElectionsTab() {
     await loadElectionInfo();
 }
     
-    await loadElectionResults();
+    const { data: groups } = await _supabase
+        .from('interest_groups')
+        .select('id, group_name')
+        .eq('nation_id', currentFaction.nation_id);
+    
+    const lobbySelect = document.getElementById('lobby-target');
+    lobbySelect.innerHTML = '<option value="">Select Interest Group...</option>';
+    if (groups) {
+        groups.forEach(g => {
+            lobbySelect.innerHTML += `<option value="${g.id}">${g.group_name}</option>`;
+        });
+    }
+    
+    await loadActionLog();
+    await loadElectionInfo();
+}
     
     document.getElementById('party-ap').textContent = currentFaction.action_points || 0;
     document.getElementById('party-funds').textContent = '$' + (currentFaction.party_funds || 0).toLocaleString();
