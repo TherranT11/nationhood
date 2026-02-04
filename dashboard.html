@@ -1109,19 +1109,11 @@ async function getGovernmentType(nationId) {
 }
 
 init();
-    // Elections tab functions
-async function populateElectionsTab() {
+  async function populateElectionsTab() {
     if (!currentFaction) return;
     
     // Load election results (if any)
     await loadElectionResults();
-    
-    // Update party stats
-    document.getElementById('party-ap').textContent = currentFaction.action_points || 0;
-    document.getElementById('party-funds').textContent = '$' + (currentFaction.party_funds || 0).toLocaleString();
-    document.getElementById('party-approval').textContent = (currentFaction.approval_rating || 0) + '%';
-    
-    // ... rest of your existing code
     
     // Update party stats
     document.getElementById('party-ap').textContent = currentFaction.action_points || 0;
@@ -1218,7 +1210,73 @@ async function loadElectionInfo() {
         document.getElementById('ticks-until-election').textContent = (election.election_tick - shard.current_tick) + ' ticks';
     }
 }
+async function loadElectionInfo() {
+    if (!currentNation) return;
+    
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const { data: election } = await _supabase
+        .from('elections')
+        .select('*')
+        .eq('nation_id', currentNation.id)
+        .eq('status', 'scheduled')
+        .order('election_tick', { ascending: true })
+        .limit(1)
+        .single();
+    
+    if (election && shard) {
+        document.getElementById('next-election-tick').textContent = 'Tick ' + election.election_tick;
+        document.getElementById('ticks-until-election').textContent = (election.election_tick - shard.current_tick) + ' ticks';
+    }
+}
 
+async function loadElectionResults() {
+    if (!currentNation) return;
+    
+    const { data: election } = await _supabase
+        .from('elections')
+        .select('*')
+        .eq('nation_id', currentNation.id)
+        .eq('status', 'completed')
+        .order('election_tick', { ascending: false })
+        .limit(1)
+        .single();
+    
+    if (!election || !election.results) {
+        document.getElementById('election-results-section').style.display = 'none';
+        return;
+    }
+    
+    document.getElementById('election-results-section').style.display = 'block';
+    
+    const { data: shard } = await _supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+    const year = shard.current_date.split(', ')[1];
+    document.getElementById('election-year').textContent = year;
+    
+    const results = election.results.seats || [];
+    const resultsHTML = results.map(r => {
+        const votes = r.votes || 0;
+        const percentage = r.vote_percentage || 0;
+        const seats = r.seats || 0;
+        
+        const changeClass = seats > 0 ? 'seats-gained' : 'seats-same';
+        const changeText = `${seats} Seats Won`;
+        
+        return `<div class="election-result-row">
+            <span class="election-result-party">${r.party_name}</span>
+            <span class="election-result-stat">${votes.toLocaleString()} Votes</span>
+            <span class="election-result-stat">${percentage}%</span>
+            <span class="election-result-change ${changeClass}">${changeText}</span>
+        </div>`;
+    }).join('');
+    
+    document.getElementById('election-results-list').innerHTML = resultsHTML;
+}
+
+async function performAction(actionType) {
+    if (!currentFaction) return;
+    
+    let result;
+    // ... rest of performAction
 async function performAction(actionType) {
     if (!currentFaction) return;
     
