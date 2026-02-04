@@ -1269,25 +1269,6 @@ function generateDotPositions(totalSeats, rows, centerX, centerY, spacing) {
     return positions;
 }
 
-function populatePartiesTab() {
-    if (!currentFaction) return;
-    const f = currentFaction;
-
-    const ideoTags = [f.ideology_value_1, f.ideology_value_2].filter(Boolean).map(id =>
-        '<span class="ideology-tag tag-'+id.toLowerCase()+'">'+id+'</span>'
-    ).join(' ');
-
-    document.getElementById('party-info-block').innerHTML =
-        '<div class="party-name-big">'+f.faction_name+'</div>' +
-        '<div class="party-abbr-big">[' + (f.abbreviation||'—') + ']</div>' +
-        '<div class="party-ideologies">' + (ideoTags || '<span style="color:#555;">No ideologies</span>') + '</div>' +
-        '<hr style="border-color:#222;margin:16px 0;">' +
-        '<div class="party-stat-row"><span class="psr-label">Current Approval</span><span class="psr-value">12%</span></div>' +
-        '<div class="party-stat-row"><span class="psr-label">Head of Party</span><span class="psr-value neutral">—</span></div>' +
-        '<div class="party-stat-row"><span class="psr-label">Head of Party Stat</span><span class="psr-value neutral">—</span></div>' +
-        '<div class="party-stat-row"><span class="psr-label">Seats</span><span class="psr-value">0</span></div>';
-}
-
 async function handleLogout() {
     await _supabase.auth.signOut();
     window.location.href = 'index.html';
