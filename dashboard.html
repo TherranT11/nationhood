@@ -2067,13 +2067,8 @@ async function populatePartiesTab() {
             .limit(1)
             .single();
         
-        // Get active coalition
-        const { data: activeCoalition } = await _supabase
-            .from('active_coalitions')
-            .select('*')
-            .eq('nation_id', currentNation.id)
-            .is('dissolved_at', null)
-            .single();
+// Get active coalition (disabled for now)
+const activeCoalition = null;
         
         const coalitionPartyIds = activeCoalition?.party_ids || [];
         const totalSeats = 120;
