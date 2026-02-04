@@ -6,35 +6,47 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            margin: 0;
-            padding: 0;
             background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
             color: #e0e0e0;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
             min-height: 100vh;
+            padding: 20px;
         }
         
         .admin-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .login-box {
             background: #1e1e1e;
             padding: 40px;
             border-radius: 8px;
             border-top: 4px solid #ff4444;
-            width: 90%;
             max-width: 600px;
+            margin: 100px auto;
             box-shadow: 0 20px 60px rgba(0,0,0,0.8);
         }
         
         h1 {
             color: #ff4444;
-            margin-top: 0;
             font-size: 2rem;
             text-align: center;
             text-transform: uppercase;
             letter-spacing: 2px;
+            margin-bottom: 20px;
+        }
+        
+        h2 {
+            color: #ffcc00;
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #333;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
         
         .warning {
@@ -66,7 +78,6 @@
             border: 1px solid #444;
             color: white;
             border-radius: 4px;
-            box-sizing: border-box;
             font-size: 1rem;
         }
         
@@ -76,16 +87,22 @@
         }
         
         .btn {
-            width: 100%;
-            padding: 15px;
+            padding: 15px 30px;
             border: none;
             font-weight: bold;
             cursor: pointer;
             border-radius: 4px;
-            font-size: 1rem;
+            font-size: 0.9rem;
             transition: 0.3s;
             text-transform: uppercase;
             letter-spacing: 1px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .btn-full {
+            width: 100%;
+            margin-right: 0;
         }
         
         .btn-danger {
@@ -97,26 +114,43 @@
             background: #cc0000;
         }
         
-        .btn-danger:disabled {
-            background: #666;
-            cursor: not-allowed;
+        .btn-warning {
+            background: #ff9800;
+            color: white;
+        }
+        
+        .btn-warning:hover {
+            background: #f57c00;
+        }
+        
+        .btn-primary {
+            background: #ffcc00;
+            color: #121212;
+        }
+        
+        .btn-primary:hover {
+            background: #e6b800;
         }
         
         .btn-secondary {
             background: #444;
             color: white;
-            margin-top: 10px;
         }
         
         .btn-secondary:hover {
             background: #555;
         }
         
+        .btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        
         .status {
             margin-top: 20px;
             padding: 15px;
             border-radius: 4px;
-            text-align: center;
             font-weight: bold;
         }
         
@@ -144,8 +178,8 @@
         
         .shard-info {
             background: #252525;
-            padding: 15px;
-            border-radius: 4px;
+            padding: 20px;
+            border-radius: 6px;
             margin: 20px 0;
         }
         
@@ -178,15 +212,152 @@
         .back-link a:hover {
             text-decoration: underline;
         }
+        
+        .admin-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+        
+        .admin-panel {
+            background: #1e1e1e;
+            padding: 30px;
+            border-radius: 8px;
+            border-top: 3px solid #ffcc00;
+        }
+        
+        .admin-panel.danger {
+            border-top-color: #ff4444;
+        }
+        
+        .nation-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .nation-card {
+            background: #252525;
+            border-radius: 6px;
+            padding: 20px;
+            border: 1px solid #333;
+        }
+        
+        .nation-name {
+            color: #ffcc00;
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        
+        .player-item {
+            background: #1a1a1a;
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 3px solid #4CAF50;
+        }
+        
+        .player-info {
+            flex: 1;
+        }
+        
+        .player-party {
+            color: #ffcc00;
+            font-size: 0.85rem;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        
+        .player-id {
+            color: #666;
+            font-size: 0.75rem;
+        }
+        
+        .btn-remove {
+            background: #ff4444;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        
+        .btn-remove:hover {
+            background: #cc0000;
+        }
+        
+        .no-players {
+            color: #666;
+            font-style: italic;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: #1a1a1a;
+            border-radius: 6px;
+            padding: 20px;
+            text-align: center;
+            border-top: 3px solid #ffcc00;
+        }
+        
+        .stat-label {
+            font-size: 0.75rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            color: #ffcc00;
+            font-weight: bold;
+        }
+        
+        .logout-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #ff4444;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.8rem;
+        }
+        
+        .logout-btn:hover {
+            background: #cc0000;
+        }
     </style>
 </head>
 <body>
 
-<div class="admin-container">
-    <h1>⚠️ Admin Panel ⚠️</h1>
-    
-    <!-- Login Section -->
-    <div id="login-section">
+<!-- Login Section -->
+<div id="login-section">
+    <div class="login-box">
+        <h1>⚠️ Admin Panel ⚠️</h1>
+        
         <div class="warning">
             <strong>⚠️ RESTRICTED ACCESS</strong><br>
             This panel contains dangerous operations. Unauthorized access is prohibited.
@@ -197,7 +368,7 @@
             <input type="password" id="admin-password" placeholder="Enter admin password">
         </div>
         
-        <button class="btn btn-danger" onclick="authenticate()">AUTHENTICATE</button>
+        <button class="btn btn-danger btn-full" onclick="authenticate()">AUTHENTICATE</button>
         
         <div id="auth-error" class="status error hidden"></div>
         
@@ -205,16 +376,38 @@
             <a href="index.html">← Back to Game</a>
         </div>
     </div>
-    
-    <!-- Admin Controls Section -->
-    <div id="admin-section" class="hidden">
-        <div class="warning">
-            <strong>⚠️ DANGER ZONE</strong><br>
-            These operations cannot be undone. Use with extreme caution.
+</div>
+
+<!-- Admin Controls Section -->
+<div id="admin-section" class="hidden">
+    <div class="admin-container">
+        <button class="logout-btn" onclick="logout()">Logout</button>
+        
+        <h1>🛡️ Admin Control Panel</h1>
+        
+        <!-- Global Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Nations</div>
+                <div class="stat-value" id="stat-nations">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Players</div>
+                <div class="stat-value" id="stat-players">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Active Parties</div>
+                <div class="stat-value" id="stat-parties">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Current Tick</div>
+                <div class="stat-value" id="stat-tick">—</div>
+            </div>
         </div>
         
-        <div class="shard-info" id="shard-info">
-            <h3 style="color: #ffcc00; margin-top: 0;">Current Shard Status</h3>
+        <!-- Shard Info -->
+        <div class="shard-info">
+            <h2>Shard Status</h2>
             <div class="info-row">
                 <span class="info-label">Shard Name:</span>
                 <span class="info-value" id="info-name">Loading...</span>
@@ -231,33 +424,56 @@
                 <span class="info-label">Next Tick At:</span>
                 <span class="info-value" id="info-next-tick">Loading...</span>
             </div>
-            <div class="info-row">
-                <span class="info-label">Active Players:</span>
-                <span class="info-value" id="info-players">Loading...</span>
+        </div>
+        
+        <div class="admin-grid">
+            <!-- Shard Reset Panel -->
+            <div class="admin-panel danger">
+                <h2>🔥 Reset Shard</h2>
+                <div class="warning">
+                    <strong>⚠️ DANGER ZONE</strong><br>
+                    Resets the entire Alpha Shard to January 2000.<br><br>
+                    This will:<br>
+                    • Reset game date to January, 2000<br>
+                    • Reset current_tick to 0<br>
+                    • Set next tick to 8 hours from now<br>
+                    • Reset ALL nation stats to defaults<br>
+                    • Kick out ALL players (forces re-selection)<br>
+                    • Clear ALL party data<br>
+                    • Does NOT delete user accounts
+                </div>
+                <button class="btn btn-danger btn-full" id="reset-btn" onclick="resetShard()">
+                    🔥 RESET ALPHA SHARD 🔥
+                </button>
+                <div id="reset-status" class="status info hidden"></div>
+            </div>
+            
+            <!-- NPC Management Panel -->
+            <div class="admin-panel">
+                <h2>🤖 NPC Parties</h2>
+                <p style="color: #888; font-size: 0.9rem; margin-bottom: 15px;">
+                    Generate and manage AI-controlled political parties.
+                </p>
+                <button class="btn btn-primary btn-full" onclick="generateAllNPCs()">
+                    Generate NPCs (All Nations)
+                </button>
+                <button class="btn btn-warning btn-full" onclick="runNPCActions()">
+                    Run NPC Actions (Manual)
+                </button>
+                <div id="npc-status" class="status info hidden"></div>
             </div>
         </div>
         
-        <h3 style="color: #ff4444;">Reset Alpha Shard</h3>
-        <p style="color: #888; font-size: 0.9rem; line-height: 1.6;">
-            This will:<br>
-            • Reset game date to January, 2000<br>
-            • Reset current_tick to 0<br>
-            • Set next tick to 8 hours from now<br>
-            • Reset ALL nation stats to defaults<br>
-            • Remove nation assignments from ALL players (forces re-selection)<br>
-            • Reset ALL party data (type → pending, name → Unnamed Faction, clear abbreviation & ideologies)<br>
-            • Does NOT delete user accounts
-        </p>
-        
-        <button class="btn btn-danger" id="reset-btn" onclick="resetShard()">
-            🔥 RESET ALPHA SHARD 🔥
-        </button>
-        
-        <button class="btn btn-secondary" onclick="logout()">
-            Logout
-        </button>
-        
-        <div id="operation-status" class="status info hidden"></div>
+        <!-- Player Management -->
+        <div class="admin-panel" style="margin-top: 30px;">
+            <h2>👥 Player Management</h2>
+            <p style="color: #888; font-size: 0.9rem; margin-bottom: 15px;">
+                Remove players from nations. They can log in and select a new nation.
+            </p>
+            <div class="nation-grid" id="nations-grid">
+                <!-- Nations will be loaded here -->
+            </div>
+        </div>
     </div>
 </div>
 
@@ -266,9 +482,7 @@
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
     const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
     
-    // Admin password (change this to whatever you want)
     const ADMIN_PASSWORD = 'nationhood2000';
-    
     let isAuthenticated = false;
     
     function authenticate() {
@@ -279,7 +493,7 @@
             isAuthenticated = true;
             document.getElementById('login-section').classList.add('hidden');
             document.getElementById('admin-section').classList.remove('hidden');
-            loadShardInfo();
+            loadAllData();
             errorDiv.classList.add('hidden');
         } else {
             errorDiv.textContent = 'Invalid password. Access denied.';
@@ -294,27 +508,24 @@
         document.getElementById('admin-password').value = '';
     }
     
+    async function loadAllData() {
+        await loadShardInfo();
+        await loadStats();
+        await loadNations();
+    }
+    
     async function loadShardInfo() {
         try {
-            // Get shard info
             const { data: shard } = await _supabase
                 .from('shard')
                 .select('*')
                 .eq('name', 'Alpha Shard')
                 .single();
             
-            // Count active players
-            const { data: factions } = await _supabase
-                .from('factions')
-                .select('id')
-                .not('nation_id', 'is', null);
-            
             document.getElementById('info-name').textContent = shard.name;
             document.getElementById('info-date').textContent = shard.current_date || 'Not Set';
             document.getElementById('info-tick').textContent = shard.current_tick || 0;
-            document.getElementById('info-players').textContent = factions ? factions.length : 0;
             
-            // Format next tick time
             if (shard.next_tick_at) {
                 const nextTickDate = new Date(shard.next_tick_at);
                 const now = new Date();
@@ -325,49 +536,145 @@
                     const minutes = Math.floor((timeUntil % (1000 * 60 * 60)) / (1000 * 60));
                     document.getElementById('info-next-tick').textContent = `${nextTickDate.toLocaleString()} (in ${hours}h ${minutes}m)`;
                 } else {
-                    document.getElementById('info-next-tick').textContent = `${nextTickDate.toLocaleString()} (OVERDUE - should process now)`;
+                    document.getElementById('info-next-tick').textContent = `${nextTickDate.toLocaleString()} (OVERDUE)`;
                 }
             } else {
                 document.getElementById('info-next-tick').textContent = 'Not Scheduled';
             }
-            
         } catch (error) {
             console.error('Error loading shard info:', error);
+        }
+    }
+    
+    async function loadStats() {
+        try {
+            const { count: nationCount } = await _supabase
+                .from('nations')
+                .select('*', { count: 'exact', head: true });
+            
+            const { count: playerCount } = await _supabase
+                .from('factions')
+                .select('*', { count: 'exact', head: true })
+                .eq('faction_type', 'party')
+                .eq('is_npc', false);
+            
+            const { count: partyCount } = await _supabase
+                .from('factions')
+                .select('*', { count: 'exact', head: true })
+                .eq('faction_type', 'party');
+            
+            const { data: shard } = await _supabase
+                .from('shard')
+                .select('current_tick')
+                .eq('name', 'Alpha Shard')
+                .single();
+            
+            document.getElementById('stat-nations').textContent = nationCount || 0;
+            document.getElementById('stat-players').textContent = playerCount || 0;
+            document.getElementById('stat-parties').textContent = partyCount || 0;
+            document.getElementById('stat-tick').textContent = shard?.current_tick || 0;
+        } catch (error) {
+            console.error('Error loading stats:', error);
+        }
+    }
+    
+    async function loadNations() {
+        try {
+            const { data: nations } = await _supabase
+                .from('nations')
+                .select('*')
+                .order('name');
+            
+            const grid = document.getElementById('nations-grid');
+            
+            if (!nations || nations.length === 0) {
+                grid.innerHTML = '<div class="no-players">No nations found</div>';
+                return;
+            }
+            
+            const nationsHTML = await Promise.all(nations.map(async (nation) => {
+                const { data: players } = await _supabase
+                    .from('factions')
+                    .select('id, faction_name, is_npc')
+                    .eq('nation_id', nation.id)
+                    .eq('faction_type', 'party')
+                    .eq('is_npc', false);
+                
+                const playersHTML = players && players.length > 0
+                    ? players.map(player => `
+                        <div class="player-item">
+                            <div class="player-info">
+                                <div class="player-party">${player.faction_name}</div>
+                                <div class="player-id">ID: ${player.id.substring(0, 8)}...</div>
+                            </div>
+                            <button class="btn-remove" onclick="removePlayer('${player.id}', '${nation.id}', '${player.faction_name}')">
+                                Remove
+                            </button>
+                        </div>
+                    `).join('')
+                    : '<div class="no-players">No players in this nation</div>';
+                
+                return `
+                    <div class="nation-card">
+                        <div class="nation-name">${nation.name}</div>
+                        ${playersHTML}
+                        <div style="font-size: 0.8rem; color: #666; margin-top: 10px;">
+                            ${players?.length || 0} player(s)
+                        </div>
+                    </div>
+                `;
+            }));
+            
+            grid.innerHTML = nationsHTML.join('');
+        } catch (error) {
+            console.error('Error loading nations:', error);
+        }
+    }
+    
+    async function removePlayer(playerId, nationId, partyName) {
+        if (!confirm(`Remove ${partyName} from this nation?\n\nThis will delete their party and allow them to select a new nation.`)) {
+            return;
+        }
+        
+        try {
+            const { error } = await _supabase
+                .from('factions')
+                .delete()
+                .eq('id', playerId);
+            
+            if (error) throw error;
+            
+            alert('✅ Player removed successfully!');
+            await loadStats();
+            await loadNations();
+        } catch (error) {
+            console.error('Error removing player:', error);
+            alert('❌ Error: ' + error.message);
         }
     }
     
     async function resetShard() {
         if (!isAuthenticated) return;
         
-        const confirmed = confirm(
-            '⚠️ ARE YOU ABSOLUTELY SURE? ⚠️\n\n' +
-            'This will reset the entire Alpha Shard to January 2000 and kick out all players.\n\n' +
-            'This action CANNOT be undone!\n\n' +
-            'Click OK to proceed or Cancel to abort.'
-        );
-        
-        if (!confirmed) return;
+        if (!confirm('⚠️ ARE YOU ABSOLUTELY SURE? ⚠️\n\nThis will reset the entire Alpha Shard to January 2000.\n\nThis CANNOT be undone!')) {
+            return;
+        }
         
         const btn = document.getElementById('reset-btn');
-        const status = document.getElementById('operation-status');
+        const status = document.getElementById('reset-status');
         
         btn.disabled = true;
         btn.textContent = '⏳ RESETTING...';
         status.className = 'status info';
-        status.textContent = 'Starting reset operation...';
+        status.textContent = 'Starting reset...';
         status.classList.remove('hidden');
         
         try {
-            // Step 1: Reset shard data
-            status.textContent = 'Step 1/4: Resetting shard data...';
-            
-            // Calculate next tick time (8 hours from now)
             const nextTick = new Date();
             nextTick.setHours(nextTick.getHours() + 8);
             
-            console.log('Setting next_tick_at to:', nextTick.toISOString());
-            
-            const { error: shardError } = await _supabase
+            status.textContent = 'Step 1/3: Resetting shard data...';
+            await _supabase
                 .from('shard')
                 .update({
                     current_date: 'January, 2000',
@@ -376,71 +683,41 @@
                 })
                 .eq('name', 'Alpha Shard');
             
-            if (shardError) throw shardError;
-            
-            // Step 2: Reset nation stats to defaults
-            status.textContent = 'Step 2/4: Resetting nation stats...';
-            
-            const { data: nations, error: getNationsError } = await _supabase
-                .from('nations')
-                .select('id');
-            
-            if (getNationsError) throw getNationsError;
-            
-            // Reset only the core stats we know exist
+            status.textContent = 'Step 2/3: Resetting nation stats...';
+            const { data: nations } = await _supabase.from('nations').select('id');
             for (const nation of nations) {
-                const { error: nationError } = await _supabase
-                    .from('nations')
-                    .update({
-                        religious: 50,
-                        stability: 50,
-                        civil_unrest: 50,
-                        terrorism: 50,
-                        legitimacy: 50,
-                        efficiency: 50,
-                        GDP: 50,
-                        debt: 50
-                    })
-                    .eq('id', nation.id);
-                
-                if (nationError) {
-                    console.warn('Error resetting nation stats:', nationError);
-                }
+                await _supabase.from('nations').update({
+                    religious: 50,
+                    stability: 50,
+                    civil_unrest: 50,
+                    terrorism: 50,
+                    legitimacy: 50,
+                    efficiency: 50,
+                    GDP: 50,
+                    debt: 50
+                }).eq('id', nation.id);
             }
             
-            // Step 3: Clear nation assignments AND party data from all factions
-            status.textContent = 'Step 3/4: Removing player nation assignments and clearing party data...';
-            
-            const { error: factionsError } = await _supabase
-                .from('factions')
-                .update({
-                    nation_id: null,
-                    nation: 'Pending',
-                    faction_type: 'pending',           // Set to 'pending' instead of null
-                    faction_name: 'Unnamed Faction',   // Default name to satisfy NOT NULL constraint
-                    abbreviation: null,
-                    ideology_value_1: null,
-                    ideology_value_2: null,
-                    ideology_value_3: null,
-                    ideology_value_4: null
-                })
-                .not('nation_id', 'is', null);
-            
-            if (factionsError) throw factionsError;
-            
-            // Step 4: Complete
-            status.textContent = 'Step 4/4: Finalizing...';
-            await new Promise(resolve => setTimeout(resolve, 500));
+            status.textContent = 'Step 3/3: Clearing player data...';
+            await _supabase.from('factions').update({
+                nation_id: null,
+                nation: 'Pending',
+                faction_type: 'pending',
+                faction_name: 'Unnamed Faction',
+                abbreviation: null,
+                ideology_value_1: null,
+                ideology_value_2: null,
+                ideology_value_3: null,
+                ideology_value_4: null
+            }).not('nation_id', 'is', null);
             
             status.className = 'status success';
-            status.textContent = `✅ RESET COMPLETE! Alpha Shard has been reset to January, 2000. Next tick scheduled for ${nextTick.toLocaleString()}. All players have been kicked out and all party data cleared.`;
-            
-            // Reload shard info
-            await loadShardInfo();
+            status.textContent = `✅ RESET COMPLETE! Next tick: ${nextTick.toLocaleString()}`;
             
             btn.textContent = '🔥 RESET ALPHA SHARD 🔥';
             btn.disabled = false;
             
+            await loadAllData();
         } catch (error) {
             console.error('Reset error:', error);
             status.className = 'status error';
@@ -450,11 +727,58 @@
         }
     }
     
-    // Allow Enter key to authenticate
-    document.getElementById('admin-password').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            authenticate();
+    async function generateAllNPCs() {
+        if (!confirm('Generate NPC parties for ALL nations?')) return;
+        
+        const status = document.getElementById('npc-status');
+        status.className = 'status info';
+        status.textContent = 'Generating NPCs...';
+        status.classList.remove('hidden');
+        
+        try {
+            const { data: nations } = await _supabase.from('nations').select('id');
+            let successCount = 0;
+            
+            for (const nation of nations) {
+                const { data } = await _supabase.rpc('generate_npc_parties_for_nation', {
+                    p_nation_id: nation.id
+                });
+                if (data && data[0]?.success) successCount++;
+            }
+            
+            status.className = 'status success';
+            status.textContent = `✅ ${successCount} nations updated with NPCs`;
+            await loadStats();
+            await loadNations();
+        } catch (error) {
+            status.className = 'status error';
+            status.textContent = '❌ ERROR: ' + error.message;
         }
+    }
+    
+    async function runNPCActions() {
+        if (!confirm('Run NPC party actions?')) return;
+        
+        const status = document.getElementById('npc-status');
+        status.className = 'status info';
+        status.textContent = 'Running NPC actions...';
+        status.classList.remove('hidden');
+        
+        try {
+            const { data, error } = await _supabase.rpc('run_all_npc_party_actions');
+            if (error) throw error;
+            
+            const summary = data.map(d => `${d.party_name}: ${d.action_taken}`).join('\n');
+            status.className = 'status success';
+            status.textContent = `✅ ${data.length} actions taken:\n${summary}`;
+        } catch (error) {
+            status.className = 'status error';
+            status.textContent = '❌ ERROR: ' + error.message;
+        }
+    }
+    
+    document.getElementById('admin-password').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') authenticate();
     });
 </script>
 
