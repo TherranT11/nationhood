@@ -101,6 +101,18 @@ async function renderPartiesPage(nation, faction) {
             .limit(1)
             .maybeSingle();
         
+        // Get active coalition to determine government/opposition status
+        const { data: coalition } = await _supabase
+            .from('active_coalitions')
+            .select('party_ids, lead_party_id')
+            .eq('nation_id', nation.id)
+            .order('formed_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        
+        const coalitionPartyIds = coalition?.party_ids || [];
+        const leadPartyId = coalition?.lead_party_id;
+        
         const totalSeats = 120;
         const majorityThreshold = 61;
         
@@ -113,10 +125,21 @@ async function renderPartiesPage(nation, faction) {
                 seats = partyResult?.seats || 0;
             }
             
-            // Determine status
+            // Determine status based on coalition membership
             let status = 'opposition';
             let statusText = 'Opposition';
-            if (seats >= majorityThreshold) {
+            
+            if (coalitionPartyIds.includes(party.id)) {
+                // Party is in the coalition
+                if (party.id === leadPartyId) {
+                    status = 'government';
+                    statusText = 'Lead Party';
+                } else {
+                    status = 'coalition';
+                    statusText = 'Coalition';
+                }
+            } else if (seats >= majorityThreshold) {
+                // Single party majority (no coalition needed)
                 status = 'government';
                 statusText = 'Government';
             }
@@ -169,6 +192,10 @@ async function renderPartiesPage(nation, faction) {
             `;
         }).join('');
         
+        // Count government vs opposition
+        const governmentCount = parties.filter(p => coalitionPartyIds.includes(p.id)).length;
+        const oppositionCount = parties.length - governmentCount;
+        
         // Render full page
         document.getElementById('content-area').innerHTML = `
             <div class="panel-padding">
@@ -181,12 +208,12 @@ async function renderPartiesPage(nation, faction) {
                         <div class="stat-value">${parties.length}</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label">Player Parties</div>
-                        <div class="stat-value">${parties.filter(p => !p.is_npc).length}</div>
+                        <div class="stat-label">Government</div>
+                        <div class="stat-value" style="color: #4CAF50;">${governmentCount}</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label">AI Parties</div>
-                        <div class="stat-value">${parties.filter(p => p.is_npc).length}</div>
+                        <div class="stat-label">Opposition</div>
+                        <div class="stat-value" style="color: #ff4444;">${oppositionCount}</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">Total Seats</div>
