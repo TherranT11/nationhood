@@ -9,6 +9,99 @@
     
     <!-- Shared Styles -->
     <link rel="stylesheet" href="css/dashboard.css">
+    
+    <!-- Page-specific styles -->
+    <style>
+        .administration-box {
+            background: linear-gradient(135deg, #1a1a1a 0%, #252525 100%);
+            border: 2px solid #ffcc00;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        .administration-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #ffcc00;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 12px;
+        }
+        .administration-subtitle {
+            font-size: 0.85rem;
+            color: #888;
+            margin-bottom: 16px;
+        }
+        .coalition-parties {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .coalition-party-tag {
+            background: #333;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            color: #e0e0e0;
+        }
+        .coalition-party-tag .seats {
+            color: #4CAF50;
+            font-weight: bold;
+            margin-left: 6px;
+        }
+        .coalition-divider {
+            color: #555;
+            font-size: 1.2rem;
+            padding: 0 4px;
+            display: flex;
+            align-items: center;
+        }
+        .ministry-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+            margin-top: 16px;
+        }
+        .ministry-card {
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 16px;
+            border-left: 4px solid #ffcc00;
+        }
+        .ministry-title {
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: #ffcc00;
+            margin-bottom: 8px;
+        }
+        .ministry-holder {
+            font-size: 0.8rem;
+            color: #aaa;
+        }
+        .ministry-holder .party-name {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        .no-government {
+            background: #1a1a1a;
+            border-left: 4px solid #ff9800;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+        .no-government-title {
+            color: #ff9800;
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .no-government-desc {
+            color: #888;
+            font-size: 0.85rem;
+        }
+    </style>
 </head>
 <body>
 
@@ -32,31 +125,35 @@
 <script>
 /**
  * Government Page
- * Displays government structure, personnel, cabinet, and parliament
+ * Displays government structure, administration, cabinet, and parliament
  */
 
-// Mock data - will be replaced with database queries later
-const MOCK_CABINET = [
-    { title: 'Minister of the Interior', name: 'Susan Johns', party: 'Workers Alliance', desc: 'Oversees domestic policy, internal security, and civil administration.' },
-    { title: 'Minister of Defense', name: 'Travis Kyle', party: 'Communist Party of Melizea', desc: 'Responsible for the nation\'s armed forces and military strategy.' },
-    { title: 'Minister of Finance', name: 'Elena Marsh', party: 'Workers Alliance', desc: 'Manages the national budget, taxation, and economic planning.' },
-    { title: 'Minister of Foreign Affairs', name: 'Ricardo Vane', party: 'Progressive Democrats', desc: 'Handles all diplomatic relations and international negotiations.' },
-    { title: 'Minister of Education', name: 'Lena Carrow', party: 'Green Future', desc: 'Shapes schools, universities, and research funding.' },
-    { title: 'Minister of Health', name: 'Omar Said', party: 'National Conservatives', desc: 'Oversees public health policy, hospitals, and disease prevention.' },
-];
+// Ministry definitions for display
+const MINISTRY_NAMES = {
+    prime_minister: 'Prime Minister',
+    interior: 'Ministry of the Interior',
+    foreign: 'Foreign Ministry',
+    defense: 'Ministry of Defense',
+    finance: 'Ministry of Finance',
+    education: 'Ministry of Education',
+    healthcare: 'Ministry of Healthcare',
+    labor: 'Ministry of Labor',
+    justice: 'Ministry of Justice',
+    transportation: 'Ministry of Transportation',
+    security: 'Ministry of Security'
+};
 
-const MOCK_PARTIES = [
-    { name: 'Workers Alliance', abbr: 'WA', seats: 42, color: '#E91E63' },
-    { name: 'Communist Party of Melizea', abbr: 'CPM', seats: 28, color: '#F44336' },
-    { name: 'Progressive Democrats', abbr: 'PD', seats: 18, color: '#2196F3' },
-    { name: 'National Conservatives', abbr: 'NC', seats: 15, color: '#FF9800' },
-    { name: 'Green Future', abbr: 'GF', seats: 10, color: '#4CAF50' },
-    { name: 'Libertarian Union', abbr: 'LU', seats: 7, color: '#9C27B0' },
-];
+// Page state
+let currentNation = null;
+let currentFaction = null;
+let partyData = [];
 
 // Initialize page
 initPage('government', async (state) => {
     const { nation, faction } = state;
+    
+    currentNation = nation;
+    currentFaction = faction;
     
     if (!nation) {
         document.getElementById('content-area').innerHTML = `
@@ -69,114 +166,286 @@ initPage('government', async (state) => {
         return;
     }
     
-    renderGovernmentPage(nation, faction);
+    await renderGovernmentPage();
 });
 
 /**
  * Render the government page content
  */
-function renderGovernmentPage(nation, faction) {
-    // Get party list (include player's party if not in mock data)
-    const parties = getPartyList(faction);
-    
-    const html = `
+async function renderGovernmentPage() {
+    // Show loading
+    document.getElementById('content-area').innerHTML = `
         <div class="panel-padding">
-            <!-- Government Structure -->
-            <div class="section-header">Government Structure</div>
-            <div class="info-block">
-                <div class="info-row">
-                    <span class="info-label">Government Type</span>
-                    <span class="info-value">${nation.government_type || 'Parliamentary Democracy'}</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Legislative Branch</span>
-                    <span class="info-value">Unicameral</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Judicial System</span>
-                    <span class="info-value">Independent Courts</span>
-                </div>
+            <div class="loading-container" style="height: 200px;">
+                <div class="loading-spinner"></div>
+                <div>Loading government data...</div>
             </div>
-            
-            <!-- Government Personnel -->
-            <div class="section-header">Government Personnel</div>
-            <div class="info-block" style="margin-bottom:14px;">
-                <div class="info-row">
-                    <span class="info-label">National Approval</span>
-                    <span class="info-value gold">62%</span>
-                </div>
-            </div>
-            
-            <div class="gov-two-col">
-                <div class="person-card">
-                    <div class="person-role">Head of Government</div>
-                    <div class="person-name">John Smith</div>
-                    <div class="person-meta">
-                        <span class="ptag">Workers Alliance</span>
-                        <span class="year">Elected 2000</span>
-                    </div>
-                </div>
-                <div class="person-card">
-                    <div class="person-role">Head of State</div>
-                    <div class="person-name">Sarah Beth</div>
-                    <div class="person-meta">
-                        <span class="ptag">Workers Alliance</span>
-                        <span class="year">Elected 2000</span>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Cabinet -->
-            <div class="section-header">Cabinet</div>
-            <div class="cabinet-grid">
-                ${MOCK_CABINET.map(m => `
-                    <div class="minister-card">
-                        <div class="minister-title">${m.title}</div>
-                        <div class="minister-name">${m.name}</div>
-                        <div class="minister-party">${m.party}</div>
-                        <div class="minister-desc">${m.desc}</div>
-                    </div>
-                `).join('')}
-            </div>
-            
-            <!-- Parliament -->
-            <div class="section-header">Current Parliamentary Makeup</div>
-            <div class="parliament-wrap">
-                <svg id="parliament-svg" width="520" height="280" viewBox="0 0 520 280"></svg>
-            </div>
-            <div class="parliament-legend" id="parliament-legend"></div>
         </div>
     `;
     
-    document.getElementById('content-area').innerHTML = html;
-    
-    // Draw parliament after DOM is ready
-    drawParliament(parties);
+    try {
+        // Fetch all required data
+        const [electionData, coalitionData, ministryData] = await Promise.all([
+            fetchLatestElection(),
+            fetchActiveCoalition(),
+            fetchMinistries()
+        ]);
+        
+        // Get party seat data from election results
+        partyData = electionData?.results?.votes || [];
+        
+        // Build the page
+        const html = `
+            <div class="panel-padding">
+                <!-- Administration Box -->
+                ${renderAdministrationBox(coalitionData, partyData)}
+                
+                <!-- Government Structure -->
+                <div class="section-header">Government Structure</div>
+                <div class="info-block">
+                    <div class="info-row">
+                        <span class="info-label">Government Type</span>
+                        <span class="info-value">${currentNation.government_type || 'Parliamentary Democracy'}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Legislative Branch</span>
+                        <span class="info-value">Unicameral (120 Seats)</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Majority Threshold</span>
+                        <span class="info-value">61 Seats</span>
+                    </div>
+                </div>
+                
+                <!-- Cabinet / Ministries -->
+                <div class="section-header">Cabinet</div>
+                ${renderCabinet(ministryData, coalitionData)}
+                
+                <!-- Parliament -->
+                <div class="section-header">Current Parliamentary Makeup</div>
+                <div class="parliament-wrap">
+                    <svg id="parliament-svg" width="520" height="280" viewBox="0 0 520 280"></svg>
+                </div>
+                <div class="parliament-legend" id="parliament-legend"></div>
+            </div>
+        `;
+        
+        document.getElementById('content-area').innerHTML = html;
+        
+        // Draw parliament after DOM is ready
+        if (partyData.length > 0) {
+            drawParliament(partyData);
+        }
+        
+    } catch (error) {
+        console.error('Error loading government data:', error);
+        document.getElementById('content-area').innerHTML = `
+            <div class="panel-padding">
+                <div class="placeholder-panel">
+                    <div class="ph-icon">⚠️</div>
+                    <h3>Error Loading Data</h3>
+                    <p>Could not load government information. Please refresh.</p>
+                </div>
+            </div>
+        `;
+    }
 }
 
 /**
- * Get party list, including player's party if not in mock data
+ * Fetch the latest completed election
  */
-function getPartyList(faction) {
-    if (!faction || faction.faction_type !== 'party') return MOCK_PARTIES;
+async function fetchLatestElection() {
+    const { data, error } = await _supabase
+        .from('elections')
+        .select('*')
+        .eq('nation_id', currentNation.id)
+        .eq('status', 'completed')
+        .order('election_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
     
-    const exists = MOCK_PARTIES.find(p => p.name === faction.faction_name);
-    if (exists) return MOCK_PARTIES;
+    if (error) console.error('Error fetching election:', error);
+    return data;
+}
+
+/**
+ * Fetch active coalition for this nation
+ */
+async function fetchActiveCoalition() {
+    const { data, error } = await _supabase
+        .from('active_coalitions')
+        .select('*')
+        .eq('nation_id', currentNation.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
     
-    return [...MOCK_PARTIES, { 
-        name: faction.faction_name, 
-        abbr: faction.abbreviation, 
-        seats: 0, 
-        color: '#ffcc00' 
-    }];
+    if (error) console.error('Error fetching coalition:', error);
+    return data;
+}
+
+/**
+ * Fetch ministries for this nation
+ */
+async function fetchMinistries() {
+    const { data, error } = await _supabase
+        .from('ministries')
+        .select('*, factions(faction_name)')
+        .eq('nation_id', currentNation.id)
+        .eq('is_active', true);
+    
+    if (error) console.error('Error fetching ministries:', error);
+    return data || [];
+}
+
+/**
+ * Render the Administration box
+ */
+function renderAdministrationBox(coalition, parties) {
+    const headOfState = currentNation.head_of_state_last_name || 'Unknown';
+    
+    // Check if we have a formed government
+    if (!coalition && parties.length > 0) {
+        // Check if any party has majority
+        const majorityParty = parties.find(p => p.seats >= 61);
+        
+        if (majorityParty) {
+            // Single party government
+            return `
+                <div class="administration-box">
+                    <div class="administration-title">${headOfState} Administration</div>
+                    <div class="administration-subtitle">Single Party Government</div>
+                    <div class="coalition-parties">
+                        <div class="coalition-party-tag">
+                            ${majorityParty.party_name}<span class="seats">${majorityParty.seats} Seats</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+            // No government formed yet
+            return `
+                <div class="no-government">
+                    <div class="no-government-title">⚠️ No Government Formed</div>
+                    <div class="no-government-desc">
+                        No party achieved a majority. A coalition must be formed to establish a government.
+                    </div>
+                </div>
+            `;
+        }
+    }
+    
+    if (coalition) {
+        // Coalition government
+        const coalitionParties = coalition.party_ids.map(partyId => {
+            const party = parties.find(p => p.party_id === partyId);
+            return party || { party_name: 'Unknown', seats: 0 };
+        }).sort((a, b) => b.seats - a.seats);
+        
+        return `
+            <div class="administration-box">
+                <div class="administration-title">${headOfState} Administration</div>
+                <div class="administration-subtitle">Coalition Government</div>
+                <div class="coalition-parties">
+                    ${coalitionParties.map((party, index) => `
+                        ${index > 0 ? '<span class="coalition-divider">|</span>' : ''}
+                        <div class="coalition-party-tag">
+                            ${party.party_name}<span class="seats">${party.seats} Seats</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+    
+    // Fallback - no election data
+    return `
+        <div class="administration-box">
+            <div class="administration-title">${headOfState} Administration</div>
+            <div class="administration-subtitle">Caretaker Government</div>
+            <div class="coalition-parties">
+                <div class="coalition-party-tag" style="background: #444; color: #888;">
+                    Awaiting Election Results
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Render the Cabinet section
+ */
+function renderCabinet(ministries, coalition) {
+    if (!ministries || ministries.length === 0) {
+        // No ministries assigned yet - show placeholder
+        if (coalition) {
+            // Coalition exists but ministries not saved
+            const allocations = coalition.ministry_allocations || {};
+            
+            if (Object.keys(allocations).length > 0) {
+                // Build cabinet from coalition allocations
+                const cards = Object.entries(allocations).map(([key, partyId]) => {
+                    const party = partyData.find(p => p.party_id === partyId);
+                    const ministryName = MINISTRY_NAMES[key] || key;
+                    
+                    return `
+                        <div class="ministry-card">
+                            <div class="ministry-title">${ministryName}</div>
+                            <div class="ministry-holder">
+                                Held by <span class="party-name">${party?.party_name || 'Unknown'}</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                return `<div class="ministry-grid">${cards}</div>`;
+            }
+        }
+        
+        return `
+            <div class="info-block" style="text-align: center; color: #888; padding: 30px;">
+                No cabinet has been formed yet. Ministries will be assigned when a government is established.
+            </div>
+        `;
+    }
+    
+    // Render from ministries table
+    const cards = ministries.map(m => {
+        const partyName = m.factions?.faction_name || 'Vacant';
+        
+        return `
+            <div class="ministry-card">
+                <div class="ministry-title">${m.ministry_name}</div>
+                <div class="ministry-holder">
+                    Held by <span class="party-name">${partyName}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    return `<div class="ministry-grid">${cards}</div>`;
 }
 
 /**
  * Draw the parliament half-circle visualization
  */
 function drawParliament(parties) {
-    const total = parties.reduce((s, p) => s + p.seats, 0);
+    // Convert to format needed for visualization
+    const partyColors = [
+        '#E91E63', '#2196F3', '#4CAF50', '#FF9800', '#9C27B0', 
+        '#00BCD4', '#F44336', '#8BC34A', '#FFC107', '#673AB7'
+    ];
+    
+    const formattedParties = parties.map((p, index) => ({
+        name: p.party_name,
+        seats: p.seats,
+        color: partyColors[index % partyColors.length]
+    }));
+    
+    const total = formattedParties.reduce((s, p) => s + p.seats, 0);
     const svg = document.getElementById('parliament-svg');
+    
+    if (!svg) return;
     
     const width = 520;
     const height = 280;
@@ -190,7 +459,7 @@ function drawParliament(parties) {
     
     // Create seats array with party colors
     const seats = [];
-    parties.forEach(party => {
+    formattedParties.forEach(party => {
         for (let i = 0; i < party.seats; i++) {
             seats.push({
                 color: party.color,
@@ -215,7 +484,7 @@ function drawParliament(parties) {
     svg.innerHTML = circles;
     
     // Render legend
-    document.getElementById('parliament-legend').innerHTML = parties.map(p =>
+    document.getElementById('parliament-legend').innerHTML = formattedParties.map(p =>
         `<div class="legend-item">
             <div class="legend-swatch" style="background:${p.color};"></div>
             ${p.name} (${p.seats})
