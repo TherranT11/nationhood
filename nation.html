@@ -9,15 +9,203 @@
     
     <!-- Shared Styles -->
     <link rel="stylesheet" href="css/dashboard.css">
+    
+    <!-- Page-Specific Styles -->
+    <style>
+        /* Nation Overview Header */
+        .nation-overview {
+            background: linear-gradient(135deg, #1e1e1e 0%, #151515 100%);
+            border-bottom: 2px solid #333;
+            padding: 24px;
+        }
+        .nation-overview h1 {
+            color: #ffcc00;
+            font-size: 2rem;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            margin-bottom: 16px;
+        }
+        .overview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+        }
+        .overview-item {
+            background: #252525;
+            padding: 12px 16px;
+            border-radius: 6px;
+            border-left: 3px solid #ffcc00;
+        }
+        .overview-label {
+            font-size: 0.7rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        .overview-value {
+            font-size: 1.1rem;
+            color: #e0e0e0;
+            font-weight: bold;
+        }
+        .overview-value.gold { color: #ffcc00; }
+        
+        /* Crisis Section */
+        .crisis-section {
+            padding: 24px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #333;
+        }
+        .crisis-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .crisis-box {
+            background: #252525;
+            border: 2px dashed #333;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            color: #555;
+            font-style: italic;
+        }
+        .crisis-box.active {
+            border: 2px solid #ff4444;
+            background: #2a1a1a;
+            color: #ff4444;
+            font-style: normal;
+        }
+        
+        /* Stats Sections */
+        .stats-section {
+            padding: 24px;
+        }
+        .sector-block {
+            margin-bottom: 32px;
+        }
+        .sector-header {
+            color: #ffcc00;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .sector-icon {
+            font-size: 1.2rem;
+        }
+        .stat-boxes {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+        @media (max-width: 900px) {
+            .stat-boxes {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        @media (max-width: 600px) {
+            .stat-boxes {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* Individual Stat Box */
+        .stat-box {
+            background: #1e1e1e;
+            border-radius: 6px;
+            padding: 14px;
+            border-left: 4px solid #333;
+            transition: border-color 0.3s;
+        }
+        .stat-box.good { border-left-color: #4CAF50; }
+        .stat-box.medium { border-left-color: #ff9800; }
+        .stat-box.bad { border-left-color: #ff4444; }
+        
+        .stat-box-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .stat-box-name {
+            font-size: 0.8rem;
+            color: #e0e0e0;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .stat-box-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        .stat-box-value.good { color: #4CAF50; }
+        .stat-box-value.medium { color: #ff9800; }
+        .stat-box-value.bad { color: #ff4444; }
+        
+        .stat-box-desc {
+            font-size: 0.72rem;
+            color: #666;
+            line-height: 1.4;
+        }
+        
+        /* Voter Demographics Special Section */
+        .voter-axis {
+            background: #1e1e1e;
+            border-radius: 6px;
+            padding: 14px;
+            margin-bottom: 12px;
+        }
+        .voter-axis-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .voter-axis-left { color: #2196F3; }
+        .voter-axis-right { color: #ff9800; }
+        .voter-bar-container {
+            height: 24px;
+            background: #333;
+            border-radius: 4px;
+            overflow: hidden;
+            display: flex;
+        }
+        .voter-bar-left {
+            background: linear-gradient(90deg, #2196F3, #64B5F6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+        .voter-bar-right {
+            background: linear-gradient(90deg, #FFB74D, #ff9800);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: bold;
+            flex: 1;
+        }
+    </style>
 </head>
 <body>
 
-<!-- ===== TOP BAR (rendered by common.js) ===== -->
+<!-- ===== TOP BAR ===== -->
 <div id="top-bar"></div>
 
 <!-- ===== CONTENT AREA ===== -->
 <div id="content-area">
-    <!-- Loading state shown initially -->
     <div class="loading-container">
         <div class="loading-spinner"></div>
         <div>Loading nation data...</div>
@@ -31,9 +219,17 @@
 <!-- Page-Specific Script -->
 <script>
 /**
- * Nation Page
- * Displays nation statistics and overview
+ * Nation Page - Comprehensive Stats Display
  */
+
+// Stats where LOWER is better (inverted coloring)
+const INVERTED_STATS = [
+    'unemployment', 'poverty_rate', 'income_inequality', 'death_rate',
+    'pollution', 'carbon_emissions', 'crime_rate', 'incarceration_rate',
+    'drug_use', 'corruption', 'polarization', 'civil_unrest', 'terrorism',
+    'political_violence', 'emigration', 'sanctions', 'debt', 'debt_growth',
+    'inflation', 'illegal_immigration'
+];
 
 // Initialize page
 initPage('nation', async (state) => {
@@ -50,92 +246,228 @@ initPage('nation', async (state) => {
         return;
     }
     
-    renderNationPage(nation);
+    await renderNationPage(nation);
 });
 
 /**
- * Render the nation page content
+ * Main render function
  */
-function renderNationPage(nation) {
-    const stats = [
-        { label: 'Population', value: formatNumber(nation.population) },
-        { label: 'GDP', value: formatCurrency(nation.GDP) },
-        { label: 'National Debt', value: formatCurrency(nation.debt) },
-        { label: 'Stability', value: nation.stability != null ? String(nation.stability) : 'N/A' },
-        { label: 'Civil Unrest', value: nation.civil_unrest != null ? String(nation.civil_unrest) : 'N/A' },
-        { label: 'Gov. Type', value: nation.government_type || '—' },
-        { label: 'Religious Index', value: nation.religious != null ? String(nation.religious) : 'N/A' },
-        { label: 'Terrorism Threat', value: nation.terrorism != null ? String(nation.terrorism) : 'N/A' },
-        { label: 'Legitimacy', value: nation.legitimacy != null ? String(nation.legitimacy) : 'N/A' },
-        { label: 'Efficiency', value: nation.efficiency != null ? String(nation.efficiency) : 'N/A' }
-    ];
-    
+async function renderNationPage(nation) {
     const html = `
-        <!-- Nation Hero Section -->
-        <div class="nation-hero">
-            <h2>${nation.name.toUpperCase()}</h2>
-            <div class="capital-label">Capital: ${nation.capital || '—'}</div>
+        <!-- Nation Overview -->
+        <div class="nation-overview">
+            <h1>${nation.name}</h1>
+            <div class="overview-grid">
+                <div class="overview-item">
+                    <div class="overview-label">Capital</div>
+                    <div class="overview-value">${nation.capital || '—'}</div>
+                </div>
+                <div class="overview-item">
+                    <div class="overview-label">Government</div>
+                    <div class="overview-value">${nation.government_type || '—'}</div>
+                </div>
+                <div class="overview-item">
+                    <div class="overview-label">Population</div>
+                    <div class="overview-value">${formatPopulation(nation.population)}</div>
+                </div>
+                <div class="overview-item">
+                    <div class="overview-label">National Approval</div>
+                    <div class="overview-value gold">${nation.national_approval || 50}%</div>
+                </div>
+                <div class="overview-item">
+                    <div class="overview-label">GDP</div>
+                    <div class="overview-value gold">${formatGDP(nation.GDP)}</div>
+                </div>
+            </div>
         </div>
         
-        <!-- Nation Stats -->
-        <div class="panel-padding">
-            <div class="section-header">National Statistics</div>
-            <div class="stat-grid">
-                ${stats.map(s => `
-                    <div class="stat-card">
-                        <div class="stat-label">${s.label}</div>
-                        <div class="stat-value">${s.value}</div>
-                    </div>
-                `).join('')}
+        <!-- Ongoing Crises -->
+        <div class="crisis-section">
+            <div class="section-header">Ongoing Crises</div>
+            <div class="crisis-grid">
+                <div class="crisis-box">No active crises</div>
+                <div class="crisis-box">No active crises</div>
             </div>
+        </div>
+        
+        <!-- National Stats -->
+        <div class="stats-section">
             
-            <!-- Additional Info Block -->
-            <div class="section-header">Overview</div>
-            <div class="info-block">
-                <div class="info-row">
-                    <span class="info-label">Nation Name</span>
-                    <span class="info-value gold">${nation.name}</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Capital City</span>
-                    <span class="info-value">${nation.capital || '—'}</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Government Type</span>
-                    <span class="info-value">${nation.government_type || '—'}</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Population</span>
-                    <span class="info-value">${formatNumber(nation.population)}</span>
+            <!-- ECONOMIC -->
+            <div class="sector-block">
+                <div class="sector-header"><span class="sector-icon">💰</span> Economic</div>
+                <div class="stat-boxes">
+                    ${renderStatBox('GDP', nation.GDP, 'Gross domestic product in billions', 'currency')}
+                    ${renderStatBox('GDP Growth', nation.gdp_growth, 'Annual economic growth rate')}
+                    ${renderStatBox('National Debt', nation.debt, 'Government debt obligations', 'currency', true)}
+                    ${renderStatBox('Debt Growth', nation.debt_growth, 'Rate of debt accumulation', null, true)}
+                    ${renderStatBox('Budget', nation.budget, 'Government budget surplus/deficit')}
+                    ${renderStatBox('Inflation', nation.inflation, 'Rate of price increases', null, true)}
+                    ${renderStatBox('Interest Rates', nation.interest_rates, 'Central bank lending rate')}
+                    ${renderStatBox('Trade Balance', nation.trade_balance, 'Exports minus imports')}
+                    ${renderStatBox('Currency Strength', nation.currency_strength, 'Value of national currency')}
+                    ${renderStatBox('Foreign Investment', nation.foreign_investment, 'International capital inflow')}
+                    ${renderStatBox('Credit Rating', nation.credit, 'National creditworthiness')}
                 </div>
             </div>
             
-            <!-- Economic Summary -->
-            <div class="section-header">Economic Summary</div>
-            <div class="info-block">
-                <div class="info-row">
-                    <span class="info-label">Gross Domestic Product</span>
-                    <span class="info-value gold">${formatCurrency(nation.GDP)}</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">National Debt</span>
-                    <span class="info-value" style="color: #ff9800;">${formatCurrency(nation.debt)}</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Debt-to-GDP Ratio</span>
-                    <span class="info-value">${calculateDebtRatio(nation.debt, nation.GDP)}</span>
+            <!-- TAXATION -->
+            <div class="sector-block">
+                <div class="sector-header"><span class="sector-icon">🧾</span> Taxation</div>
+                <div class="stat-boxes">
+                    ${renderStatBox('Income Tax', nation.income_tax, 'Tax rate on personal income')}
+                    ${renderStatBox('Corporate Tax', nation.corporate_tax, 'Tax rate on business profits')}
+                    ${renderStatBox('Sales Tax', nation.sales_tax, 'Tax on goods and services')}
+                    ${renderStatBox('Tariffs', nation.tariffs, 'Import/export duties')}
                 </div>
             </div>
             
-            <!-- Stability Indicators -->
-            <div class="section-header">Stability Indicators</div>
-            <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));">
-                ${renderStabilityIndicator('Stability', nation.stability)}
-                ${renderStabilityIndicator('Civil Unrest', nation.civil_unrest, true)}
-                ${renderStabilityIndicator('Legitimacy', nation.legitimacy)}
-                ${renderStabilityIndicator('Efficiency', nation.efficiency)}
-                ${renderStabilityIndicator('Terrorism', nation.terrorism, true)}
+            <!-- LABOR & EMPLOYMENT -->
+            <div class="sector-block">
+                <div class="sector-header"><span class="sector-icon">👷</span> Labor & Employment</div>
+                <div class="stat-boxes">
+                    ${renderStatBox('Unemployment', nation.unemployment, 'Percentage without work', null, true)}
+                    ${renderStatBox('Labor Participation', nation.labor_force_participation, 'Working-age adults employed')}
+                    ${renderStatBox('Minimum Wage', nation.minimum_wage, 'Lowest legal hourly wage')}
+                    ${renderStatBox('Union Strength', nation.union_strength, 'Power of labor unions')}
+                    ${renderStatBox('Poverty Rate', nation.poverty_rate, 'Population below poverty line', null, true)}
+                    ${renderStatBox('Income Inequality', nation.income_inequality, 'Gap between rich and poor', null, true)}
+                </div>
             </div>
+            
+            <!-- DEMOGRAPHICS -->
+            <div class="sector-block">
+                <div class="sector-header"><span class="sector-icon">👥</span> Demographics</div>
+                <div class="stat-boxes">
+                    ${renderStatBox('Population Growth', nation.population_growth, 'Rate of population change')}
+                    ${renderStatBox('Birth Rate', nation.birth_rate, 'Births per 1,000 people')}
+                    ${renderStatBox('Death Rate', nation.death_rate, 'Deaths per 1,000 people', null, true)}
+                    ${renderStatBox('Median Age', nation.median_age, 'Average age of population', 'years')}
+                    ${renderStatBox('Eligible Voters', nation.eligible_voters, 'Citizens able to vote')}
+                    ${renderStatBox('Ethnic Diversity', nation.ethnic_diversity, 'Cultural heterogeneity')}
+                </div>
+            </div>
+            
+            <!-- HEALTHCARE -->
+            <div class="sector-block">
+                <div class="sector-header"><span class="sector-icon">🏥</span> Healthcare</div>
+                <div class="stat-boxes">
+                    ${renderStatBox('Healthcare Quality', nation.healthcare_quality, 'Overall medical care standard')}
+                    ${renderStatBox('Hospital Beds', nation.beds_per_100k, 'Beds per 100,000 people')}
+                    ${renderStatBox('Life Expectancy', nation.lifespan, 'Average lifespan in years')}
+                    ${renderStatBox('Drug Use', nation.drug_use, 'Substance abuse prevalence', null, true)}
+                </div>
+            </div>
+            
+            <!-- EDUCATION -->
+            <div class="sector-block">
+                <div class="sector-header"><span class="sector-icon">🎓</span> Education</div>
+                <div class="stat-boxes">
+                    ${renderStatBox('Literacy Rate', nation.literacy, 'Population able to read/write')}
+                    ${renderStatBox('Higher Education', nation.higher_education, 'University graduation rate')}
+                    ${renderStatBox('Academic Immigration', nation.academic_immigration, 'Scholars attracted to nation')}
+                </div>
+            </div>
+            
+            <!-- INFRASTRUCTURE -->
+            <div class="sector-block">
+                <div class="sector-header"><span class="sector-icon">🏗️</span> Infrastructure</div>
+                <div class="stat-boxes">
+                    ${renderStatBox('Digital Infrastructure', nation.digital_infrastructure, 'Internet and tech networks')}
+                    ${renderStatBox('Rail Network', nation.rail_network, 'Train connectivity')}
+                    ${renderStatBox('Urbanization', nation.urbanization, 'Population in cities')}
+                    ${renderStatBox('Energy Generation', nation.energy_generation, 'Power production capacity')}
+                    ${renderStatBox('Renewable Energy', nation.renewable_energy_percentage, 'Clean energy percentage')}
+                </div>
+            </div>
+            
+            <!-- RESOURCES -->
+            <div class="sector-block">
+                <div class="sector-header"><span class="sector-icon">⛏️</span> Resources</div>
+                <div class="stat-boxes">
+                    ${renderStatBox('Arable Land', nation.arable_land, 'Farmable territory')}
+                    ${renderStatBox('Rare Minerals', nation.rare_minerals, 'Valuable mineral deposits')}
+                    ${renderStatBox('Oil & Gas', nation.oil_and_gas, 'Fossil fuel reserves')}
+                    ${renderStatBox('Fuel Prices', nation.fuel_prices, 'Cost of energy', null, true)}
+                </div>
+            </div>
+            
+            <!-- ENVIRONMENT -->
+            <div class="sector-block">
+                <div class="sector-header"><span class="sector-icon">🌍</span> Environment</div>
+                <div class="stat-boxes">
+                    ${renderStatBox('Pollution', nation.pollution, 'Air and water contamination', null, true)}
+                    ${renderStatBox('Carbon Emissions', nation.carbon_emissions, 'Greenhouse gas output', null, true)}
+                </div>
+            </div>
+            
+            <!-- SOCIAL -->
+            <div class="sector-block">
+                <div class="sector-header"><span class="sector-icon">🏠</span> Social</div>
+                <div class="stat-boxes">
+                    ${renderStatBox('Standard of Living', nation.standard_of_living, 'Quality of life index')}
+                    ${renderStatBox('Happiness', nation.happiness, 'National wellbeing index')}
+                    ${renderStatBox('Social Mobility', nation.social_mobility, 'Ability to change class')}
+                    ${renderStatBox('Benefits', nation.benefits, 'Social welfare programs')}
+                    ${renderStatBox('Crime Rate', nation.crime_rate, 'Criminal incidents per capita', null, true)}
+                    ${renderStatBox('Incarceration Rate', nation.incarceration_rate, 'Imprisoned population', null, true)}
+                </div>
+            </div>
+            
+            <!-- GOVERNANCE -->
+            <div class="sector-block">
+                <div class="sector-header"><span class="sector-icon">🏛️</span> Governance</div>
+                <div class="stat-boxes">
+                    ${renderStatBox('Stability', nation.stability, 'Government steadiness')}
+                    ${renderStatBox('Legitimacy', nation.legitimacy, 'Public trust in government')}
+                    ${renderStatBox('Efficiency', nation.efficiency, 'Bureaucratic effectiveness')}
+                    ${renderStatBox('Corruption', nation.corruption, 'Abuse of public office', null, true)}
+                    ${renderStatBox('Press Freedom', nation.press_freedom, 'Media independence')}
+                    ${renderStatBox('Judicial Independence', nation.judicial_independence, 'Court system fairness')}
+                    ${renderStatBox('Freedom Index', nation.freedom_index, 'Civil liberties rating')}
+                    ${renderStatBox('Polarization', nation.polarization, 'Political division', null, true)}
+                </div>
+            </div>
+            
+            <!-- SECURITY -->
+            <div class="sector-block">
+                <div class="sector-header"><span class="sector-icon">🛡️</span> Security</div>
+                <div class="stat-boxes">
+                    ${renderStatBox('Civil Unrest', nation.civil_unrest, 'Protests and riots', null, true)}
+                    ${renderStatBox('Terrorism Threat', nation.terrorism, 'Extremist activity level', null, true)}
+                    ${renderStatBox('Political Violence', nation.political_violence, 'Politically motivated attacks', null, true)}
+                </div>
+            </div>
+            
+            <!-- IMMIGRATION -->
+            <div class="sector-block">
+                <div class="sector-header"><span class="sector-icon">✈️</span> Immigration</div>
+                <div class="stat-boxes">
+                    ${renderStatBox('Immigration', nation.immigration, 'People entering legally')}
+                    ${renderStatBox('Illegal Immigration', nation.illegal_immigration, 'Undocumented arrivals', null, true)}
+                    ${renderStatBox('Emigration', nation.emigration, 'Citizens leaving (brain drain)', null, true)}
+                </div>
+            </div>
+            
+            <!-- INTERNATIONAL -->
+            <div class="sector-block">
+                <div class="sector-header"><span class="sector-icon">🌐</span> International</div>
+                <div class="stat-boxes">
+                    ${renderStatBox('Intl. Reputation', nation.international_reputation, 'Global standing and respect')}
+                    ${renderStatBox('Trade Agreements', nation.trade_agreements, 'Active trade deals', 'count')}
+                    ${renderStatBox('Sanctions', nation.sanctions, 'International penalties', null, true)}
+                </div>
+            </div>
+            
+            <!-- VOTER DEMOGRAPHICS -->
+            <div class="sector-block">
+                <div class="sector-header"><span class="sector-icon">🗳️</span> Voter Demographics</div>
+                ${renderVoterAxis('Competition', nation.competition_voters, 'Cooperation')}
+                ${renderVoterAxis('Liberty', nation.liberty_voters, 'Equality')}
+                ${renderVoterAxis('Security', nation.security_voters, 'Freedom')}
+                ${renderVoterAxis('Globalism', nation.globalism_voters, 'Nationalism')}
+            </div>
+            
         </div>
     `;
     
@@ -143,48 +475,86 @@ function renderNationPage(nation) {
 }
 
 /**
- * Calculate debt-to-GDP ratio
+ * Render a single stat box
  */
-function calculateDebtRatio(debt, gdp) {
-    if (!debt || !gdp || gdp === 0) return 'N/A';
-    const ratio = (debt / gdp * 100).toFixed(1);
-    return ratio + '%';
-}
-
-/**
- * Render a stability indicator with color coding
- * @param {string} label - The indicator label
- * @param {number} value - The value (0-100)
- * @param {boolean} inverse - If true, lower is better (e.g., civil unrest)
- */
-function renderStabilityIndicator(label, value, inverse = false) {
-    if (value == null) {
-        return `
-            <div class="stat-card">
-                <div class="stat-label">${label}</div>
-                <div class="stat-value" style="color: #666;">N/A</div>
-            </div>
-        `;
+function renderStatBox(name, value, description, format = null, inverted = false) {
+    const displayValue = value ?? 'N/A';
+    const numValue = parseInt(value) || 0;
+    
+    // Determine color class
+    let colorClass = 'medium';
+    if (value !== null && value !== undefined) {
+        if (inverted) {
+            // Lower is better
+            if (numValue <= 30) colorClass = 'good';
+            else if (numValue <= 60) colorClass = 'medium';
+            else colorClass = 'bad';
+        } else {
+            // Higher is better
+            if (numValue >= 70) colorClass = 'good';
+            else if (numValue >= 40) colorClass = 'medium';
+            else colorClass = 'bad';
+        }
     }
     
-    // Determine color based on value
-    let color;
-    const effectiveValue = inverse ? (100 - value) : value;
-    
-    if (effectiveValue >= 70) {
-        color = '#4CAF50'; // Green - good
-    } else if (effectiveValue >= 40) {
-        color = '#ff9800'; // Orange - warning
-    } else {
-        color = '#ff4444'; // Red - danger
+    // Format the display value
+    let formattedValue = displayValue;
+    if (format === 'currency' && typeof value === 'number') {
+        formattedValue = '$' + value + ',000,000,000';
+    } else if (format === 'years' && typeof value === 'number') {
+        formattedValue = value + ' yrs';
+    } else if (format === 'count' && typeof value === 'number') {
+        formattedValue = value;
+    } else if (typeof value === 'number') {
+        formattedValue = value;
     }
     
     return `
-        <div class="stat-card">
-            <div class="stat-label">${label}</div>
-            <div class="stat-value" style="color: ${color};">${value}</div>
+        <div class="stat-box ${colorClass}">
+            <div class="stat-box-header">
+                <span class="stat-box-name">${name}</span>
+                <span class="stat-box-value ${colorClass}">${formattedValue}</span>
+            </div>
+            <div class="stat-box-desc">${description}</div>
         </div>
     `;
+}
+
+/**
+ * Render voter axis bar
+ */
+function renderVoterAxis(leftLabel, leftValue, rightLabel) {
+    const leftPct = leftValue ?? 50;
+    const rightPct = 100 - leftPct;
+    
+    return `
+        <div class="voter-axis">
+            <div class="voter-axis-header">
+                <span class="voter-axis-left">${leftLabel}</span>
+                <span class="voter-axis-right">${rightLabel}</span>
+            </div>
+            <div class="voter-bar-container">
+                <div class="voter-bar-left" style="width: ${leftPct}%">${leftPct}%</div>
+                <div class="voter-bar-right">${rightPct}%</div>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Format population with commas
+ */
+function formatPopulation(pop) {
+    if (!pop) return 'N/A';
+    return Number(pop).toLocaleString();
+}
+
+/**
+ * Format GDP as billions
+ */
+function formatGDP(gdp) {
+    if (!gdp) return 'N/A';
+    return '$' + gdp + ',000,000,000';
 }
 </script>
 
