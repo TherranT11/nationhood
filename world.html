@@ -98,17 +98,36 @@ function setupWorldMap() {
 function renderNationIntel(nation) {
     const sidebar = document.getElementById('world-intel');
     
+    // Generate base description
+    const baseDescription = generateBaseDescription(nation);
+    
+    // Generate stat-based descriptions
+    const statDescriptions = generateStatDescriptions(nation);
+    
     sidebar.innerHTML = `
-        <h3 style="color:#ffcc00;font-size:1.1rem;margin-bottom:6px;">${nation.name}</h3>
-        <p style="color:#888;font-size:0.78rem;margin-bottom:14px;">Capital: ${nation.capital || '—'}</p>
-        <div style="display:flex;flex-direction:column;gap:8px;">
+        <h3 style="color:#ffcc00;font-size:1.2rem;margin-bottom:4px;">${nation.name}</h3>
+        <p style="color:#888;font-size:0.8rem;margin-bottom:16px;font-style:italic;">Capital: ${nation.capital || '—'}</p>
+        
+        <!-- Key Stats -->
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">
             ${intelRow('Population', formatNumber(nation.population), '#ffcc00')}
             ${intelRow('Government', nation.government_type || '—', '#fff')}
-            ${intelRow('GDP', formatCurrency(nation.GDP), '#4CAF50')}
-            ${intelRow('Debt', formatCurrency(nation.debt), '#ff9800')}
-            ${intelRow('Stability', nation.stability != null ? nation.stability : 'N/A', getStabilityColor(nation.stability))}
-            ${intelRow('Civil Unrest', nation.civil_unrest != null ? nation.civil_unrest : 'N/A', getStabilityColor(100 - nation.civil_unrest))}
         </div>
+        
+        <!-- Description -->
+        <div style="font-size:0.82rem;color:#ccc;line-height:1.5;margin-bottom:16px;">
+            ${baseDescription}
+        </div>
+        
+        <!-- Stat-based Insights -->
+        ${statDescriptions.length > 0 ? `
+            <div style="border-top:1px solid #333;padding-top:14px;margin-top:14px;">
+                <div style="font-size:0.7rem;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Intelligence Report</div>
+                <div style="font-size:0.8rem;color:#aaa;line-height:1.6;">
+                    ${statDescriptions.map(d => `<p style="margin-bottom:8px;">• ${d}</p>`).join('')}
+                </div>
+            </div>
+        ` : ''}
         
         <div style="margin-top: 20px;">
             <a href="nation.html" style="color: #2196F3; font-size: 0.85rem;">
@@ -116,6 +135,127 @@ function renderNationIntel(nation) {
             </a>
         </div>
     `;
+}
+
+/**
+ * Generate base description based on population size
+ */
+function generateBaseDescription(nation) {
+    const pop = nation.population || 0;
+    let sizeDesc = 'a nation';
+    
+    if (pop > 100000000) {
+        sizeDesc = 'a massive nation with over 100 million citizens';
+    } else if (pop > 50000000) {
+        sizeDesc = 'a large nation with tens of millions of citizens';
+    } else if (pop > 20000000) {
+        sizeDesc = 'a moderately sized nation';
+    } else if (pop > 5000000) {
+        sizeDesc = 'a smaller nation';
+    } else {
+        sizeDesc = 'a small nation-state';
+    }
+    
+    return `This country is ${sizeDesc} located on the Andorran continent. Its capital, ${nation.capital || 'the central city'}, serves as the political and economic heart of the nation.`;
+}
+
+/**
+ * Generate stat-based description snippets
+ */
+function generateStatDescriptions(nation) {
+    const descriptions = [];
+    
+    // === RESOURCES (75+) ===
+    if (nation.arable_land >= 75) {
+        descriptions.push("Fertile agricultural lands produce abundant crops, making this country a regional breadbasket.");
+    }
+    if (nation.rare_minerals >= 75) {
+        descriptions.push("Rich deposits of rare earth minerals make this country a key player in global supply chains.");
+    }
+    if (nation.oil_and_gas >= 75) {
+        descriptions.push("Vast petroleum reserves have shaped the economy and grant significant geopolitical leverage.");
+    }
+    
+    // === PROBLEMS (60+) ===
+    if (nation.civil_unrest >= 60) {
+        descriptions.push("Civil unrest is widespread, with protests and riots frequently disrupting daily life.");
+    }
+    if (nation.crime_rate >= 60) {
+        descriptions.push("High crime rates plague urban centers, straining law enforcement resources.");
+    }
+    if (nation.pollution >= 60) {
+        descriptions.push("Industrial pollution has caused significant environmental damage across the nation.");
+    }
+    if (nation.corruption >= 60) {
+        descriptions.push("Government corruption is endemic, eroding public trust in institutions.");
+    }
+    if (nation.terrorism >= 60) {
+        descriptions.push("Domestic terrorism poses an ongoing security threat to the population.");
+    }
+    if (nation.political_violence >= 60) {
+        descriptions.push("Political violence is common, with clashes between opposing factions.");
+    }
+    if (nation.poverty_rate >= 60) {
+        descriptions.push("Widespread poverty affects a significant portion of the population.");
+    }
+    if (nation.unemployment >= 60) {
+        descriptions.push("High unemployment has left many citizens struggling to find work.");
+    }
+    
+    // === POSITIVE TRAITS (70+) ===
+    if (nation.happiness >= 70) {
+        descriptions.push("Citizens report high levels of satisfaction and national well-being.");
+    }
+    if (nation.literacy >= 85) {
+        descriptions.push("A highly educated population drives innovation and economic growth.");
+    }
+    if (nation.healthcare_quality >= 70) {
+        descriptions.push("Quality healthcare ensures a high standard of living for citizens.");
+    }
+    if (nation.freedom_index >= 70) {
+        descriptions.push("Strong civil liberties protect individual rights and freedoms.");
+    }
+    if (nation.standard_of_living >= 70) {
+        descriptions.push("A high standard of living provides comfort and opportunity for most citizens.");
+    }
+    
+    // === NEGATIVE TRAITS (30 or below) ===
+    if (nation.stability <= 30) {
+        descriptions.push("Political instability threatens the nation's future and deters foreign investment.");
+    }
+    if (nation.freedom_index <= 30) {
+        descriptions.push("Civil liberties remain heavily restricted under authoritarian governance.");
+    }
+    if (nation.legitimacy <= 30) {
+        descriptions.push("The government struggles to maintain public trust and legitimacy.");
+    }
+    if (nation.happiness <= 30) {
+        descriptions.push("National morale is low, with widespread dissatisfaction among the populace.");
+    }
+    if (nation.healthcare_quality <= 30) {
+        descriptions.push("Healthcare infrastructure is severely lacking, affecting public health outcomes.");
+    }
+    
+    // === ECONOMIC (special thresholds) ===
+    if (nation.GDP >= 100) {
+        descriptions.push("A powerful economy makes this country a major force in regional trade.");
+    }
+    if (nation.debt >= 80) {
+        descriptions.push("Mounting national debt threatens long-term economic stability.");
+    }
+    if (nation.inflation >= 70) {
+        descriptions.push("Runaway inflation has eroded purchasing power and savings.");
+    }
+    
+    // === DEMOGRAPHIC ===
+    if (nation.population_growth <= 30) {
+        descriptions.push("Population decline poses challenges for the workforce and social services.");
+    }
+    if (nation.emigration >= 70) {
+        descriptions.push("Brain drain is a serious concern as skilled workers seek opportunities abroad.");
+    }
+    
+    return descriptions;
 }
 
 /**
