@@ -12,14 +12,14 @@
     
     <!-- Page-specific styles -->
     <style>
-        /* Propose Bill Button */
+        /* Header */
         .laws-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 20px;
         }
-        .propose-btn {
+        .draft-btn {
             background: linear-gradient(135deg, #ffcc00 0%, #e6b800 100%);
             border: none;
             border-radius: 6px;
@@ -30,18 +30,18 @@
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
         }
-        .propose-btn:hover {
+        .draft-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(255, 204, 0, 0.4);
         }
-        .propose-btn:disabled {
+        .draft-btn:disabled {
             background: #333;
             color: #666;
             cursor: not-allowed;
             transform: none;
             box-shadow: none;
         }
-        .propose-btn .ap-cost {
+        .draft-btn .ap-cost {
             background: rgba(0,0,0,0.2);
             padding: 2px 8px;
             border-radius: 4px;
@@ -49,7 +49,199 @@
             font-size: 0.8rem;
         }
         
-        /* Accordion Sectors */
+        /* Bills in Committee */
+        .committee-section {
+            margin-bottom: 24px;
+        }
+        .committee-bill {
+            background: #1a1a1a;
+            border: 2px solid #ff9800;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+        .committee-bill-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }
+        .committee-bill-name {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #ff9800;
+            margin-bottom: 4px;
+        }
+        .committee-bill-sponsor {
+            font-size: 0.85rem;
+            color: #888;
+        }
+        .committee-support {
+            text-align: right;
+        }
+        .support-percent {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #ff9800;
+        }
+        .support-percent.enough {
+            color: #4CAF50;
+        }
+        .support-label {
+            font-size: 0.75rem;
+            color: #888;
+        }
+        .support-bar {
+            height: 8px;
+            background: #333;
+            border-radius: 4px;
+            margin: 12px 0;
+            overflow: hidden;
+            position: relative;
+        }
+        .support-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff9800 0%, #ffcc00 100%);
+            transition: width 0.3s;
+        }
+        .support-bar-fill.enough {
+            background: linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%);
+        }
+        .threshold-marker {
+            position: absolute;
+            left: 51%;
+            top: 0;
+            width: 2px;
+            height: 100%;
+            background: #fff;
+            z-index: 1;
+        }
+        
+        /* Articles list */
+        .bill-articles {
+            background: #252525;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 16px;
+        }
+        .bill-article-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #333;
+        }
+        .bill-article-item:last-child {
+            border-bottom: none;
+        }
+        .article-info {
+            flex: 1;
+        }
+        .article-title {
+            color: #e0e0e0;
+            font-weight: bold;
+        }
+        .article-ideology {
+            font-size: 0.7rem;
+            background: #4CAF50;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-left: 8px;
+        }
+        .article-author {
+            font-size: 0.75rem;
+            color: #888;
+        }
+        
+        /* Party stances */
+        .party-stances {
+            margin-top: 16px;
+        }
+        .party-stance-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #333;
+        }
+        .party-stance-row:last-child {
+            border-bottom: none;
+        }
+        .party-stance-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .party-stance-name {
+            color: #e0e0e0;
+            font-weight: bold;
+        }
+        .party-stance-seats {
+            color: #888;
+            font-size: 0.85rem;
+        }
+        .stance-badge {
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .stance-sponsor { background: #ffcc00; color: #000; }
+        .stance-accept { background: #4CAF50; color: #fff; }
+        .stance-reject { background: #ff4444; color: #fff; }
+        .stance-pending { background: #333; color: #888; }
+        .party-stance-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .stance-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .stance-btn:hover {
+            opacity: 0.8;
+        }
+        .stance-btn.accept { background: #4CAF50; color: #fff; }
+        .stance-btn.reject { background: #ff4444; color: #fff; }
+        .stance-btn.add-article { background: #2196F3; color: #fff; }
+        .stance-btn.send-floor { background: #ffcc00; color: #000; font-weight: bold; }
+        
+        /* Floor voting section */
+        .floor-bill {
+            background: #1a1a1a;
+            border: 2px solid #4CAF50;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+        .floor-bill-name {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #4CAF50;
+            margin-bottom: 4px;
+        }
+        .floor-status {
+            background: #4CAF50;
+            color: #fff;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+        .floor-votes {
+            display: flex;
+            gap: 24px;
+            margin-top: 12px;
+        }
+        .votes-for { color: #4CAF50; font-weight: bold; }
+        .votes-against { color: #ff4444; font-weight: bold; }
+        
+        /* Sector Accordion */
         .sector-accordion {
             margin-bottom: 16px;
         }
@@ -157,48 +349,11 @@
             font-size: 0.75rem;
             color: #888;
         }
-        .active-law-stat {
-            color: #ffcc00;
-        }
         .no-law {
             color: #666;
             font-style: italic;
             padding: 8px 0;
         }
-        
-        /* Pending Bills */
-        .pending-bill {
-            background: #2a2a2a;
-            border-left: 4px solid #ff9800;
-            border-radius: 4px;
-            padding: 12px;
-            margin-bottom: 8px;
-        }
-        .pending-bill-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        .pending-bill-name {
-            font-weight: bold;
-            color: #ff9800;
-        }
-        .pending-bill-status {
-            font-size: 0.75rem;
-            background: #ff9800;
-            color: #000;
-            padding: 2px 8px;
-            border-radius: 4px;
-        }
-        .pending-bill-votes {
-            display: flex;
-            gap: 16px;
-            font-size: 0.8rem;
-            margin-top: 8px;
-        }
-        .votes-for { color: #4CAF50; }
-        .votes-against { color: #ff4444; }
         
         /* Modal Overlay */
         .modal-overlay {
@@ -223,7 +378,7 @@
             padding: 24px;
             max-width: 700px;
             width: 90%;
-            max-height: 80vh;
+            max-height: 85vh;
             overflow-y: auto;
         }
         .modal-header {
@@ -252,7 +407,7 @@
             color: #fff;
         }
         
-        /* Bill Form */
+        /* Bill Draft Form */
         .bill-article {
             background: #252525;
             border-radius: 8px;
@@ -272,6 +427,74 @@
             line-height: 1.6;
             font-style: italic;
         }
+        
+        /* Draft Articles List */
+        .draft-articles {
+            margin-bottom: 16px;
+        }
+        .draft-article-card {
+            background: #252525;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .draft-article-info {
+            flex: 1;
+        }
+        .draft-article-num {
+            font-size: 0.7rem;
+            color: #ffcc00;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .draft-article-name {
+            color: #e0e0e0;
+            font-weight: bold;
+        }
+        .draft-article-meta {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 4px;
+        }
+        .remove-article-btn {
+            background: #ff4444;
+            border: none;
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .remove-article-btn:hover {
+            background: #ff6666;
+        }
+        
+        /* Add Article Button */
+        .add-article-section {
+            background: #1e1e1e;
+            border: 2px dashed #444;
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+            margin-bottom: 16px;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .add-article-section:hover {
+            border-color: #ffcc00;
+            background: #252525;
+        }
+        .add-article-btn-text {
+            color: #ffcc00;
+            font-weight: bold;
+            font-size: 1rem;
+        }
+        
+        /* Sector/Policy Selection */
         .form-group {
             margin-bottom: 16px;
         }
@@ -283,7 +506,7 @@
             letter-spacing: 0.5px;
             margin-bottom: 8px;
         }
-        .form-select {
+        .form-select, .form-input {
             width: 100%;
             padding: 12px;
             background: #252525;
@@ -292,12 +515,10 @@
             color: #e0e0e0;
             font-size: 0.9rem;
         }
-        .form-select:focus {
+        .form-select:focus, .form-input:focus {
             outline: none;
             border-color: #ffcc00;
         }
-        
-        /* Policy Options */
         .ideology-hint {
             background: #252525;
             border-radius: 6px;
@@ -309,64 +530,52 @@
         .ideology-hint strong {
             color: #ffcc00;
         }
+        
+        /* Policy Options */
         .policy-options {
             display: flex;
             flex-direction: column;
-            gap: 12px;
-            max-height: 300px;
+            gap: 8px;
+            max-height: 200px;
             overflow-y: auto;
         }
         .policy-option {
-            background: #252525;
+            background: #2a2a2a;
             border: 2px solid #333;
-            border-radius: 8px;
-            padding: 16px;
+            border-radius: 6px;
+            padding: 12px;
             cursor: pointer;
-            transition: border-color 0.2s, background 0.2s;
+            transition: border-color 0.2s;
         }
         .policy-option:hover {
             border-color: #555;
-            background: #2a2a2a;
         }
         .policy-option.selected {
             border-color: #ffcc00;
-            background: #2a2a1a;
-        }
-        .policy-option-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
         }
         .policy-option-name {
             font-weight: bold;
             color: #e0e0e0;
-        }
-        .policy-option-ideology {
-            font-size: 0.7rem;
-            background: #4CAF50;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 4px;
-            text-transform: uppercase;
+            margin-bottom: 4px;
         }
         .policy-option-desc {
-            font-size: 0.85rem;
-            color: #aaa;
-            margin-bottom: 8px;
+            font-size: 0.8rem;
+            color: #888;
         }
         .policy-option-effects {
-            display: flex;
-            gap: 16px;
-            font-size: 0.8rem;
-        }
-        .effect-stat {
-            color: #ffcc00;
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 8px;
         }
         .effect-up { color: #4CAF50; }
         .effect-down { color: #ff4444; }
-        .effect-cost {
-            color: #888;
+        
+        /* Bill Name Input */
+        .bill-name-section {
+            background: #252525;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
         }
         
         /* Modal Footer */
@@ -408,6 +617,15 @@
             cursor: not-allowed;
             box-shadow: none;
         }
+        .btn-add {
+            padding: 8px 16px;
+            background: #4CAF50;
+            border: none;
+            border-radius: 6px;
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -423,24 +641,34 @@
     </div>
 </div>
 
-<!-- ===== PROPOSE BILL MODAL ===== -->
-<div class="modal-overlay" id="propose-modal">
+<!-- ===== DRAFT BILL MODAL ===== -->
+<div class="modal-overlay" id="draft-modal">
     <div class="modal-content">
         <div class="modal-header">
-            <div class="modal-title">Propose New Bill</div>
+            <div class="modal-title">Draft New Bill</div>
             <button class="modal-close" onclick="closeModal()">&times;</button>
         </div>
         
+        <!-- Article I - Preamble -->
         <div class="bill-article">
-            <div class="article-label">Article I.</div>
+            <div class="article-label">Article I. Preamble</div>
             <div class="article-text" id="article-preamble">
-                Loading...
+                This bill, put forth in the legislature of the nation of [Nation], by the [Party], seeks to enact the following provisions.
             </div>
         </div>
         
-        <div class="bill-article">
-            <div class="article-label">Article II.</div>
-            
+        <!-- Draft Articles -->
+        <div class="draft-articles" id="draft-articles">
+            <!-- Populated dynamically -->
+        </div>
+        
+        <!-- Add Article Section -->
+        <div class="add-article-section" id="add-article-section" onclick="showAddArticleForm()">
+            <span class="add-article-btn-text">+ Add Article</span>
+        </div>
+        
+        <!-- Add Article Form (hidden by default) -->
+        <div id="add-article-form" style="display: none;">
             <div class="form-group">
                 <label class="form-label">Select Sector</label>
                 <select class="form-select" id="sector-select" onchange="onSectorChange()">
@@ -449,23 +677,64 @@
             </div>
             
             <div class="ideology-hint" id="ideology-hint" style="display: none;">
-                Your party's ideology: <strong id="party-ideologies"></strong><br>
-                Showing compatible policies only.
+                Your party's ideology: <strong id="party-ideologies"></strong>
             </div>
             
             <div class="form-group" id="policy-group" style="display: none;">
                 <label class="form-label">Select Policy</label>
-                <div class="policy-options" id="policy-options">
-                    <!-- Populated dynamically -->
-                </div>
+                <div class="policy-options" id="policy-options"></div>
+            </div>
+            
+            <div style="display: flex; gap: 8px; margin-top: 12px;">
+                <button class="btn-cancel" onclick="hideAddArticleForm()">Cancel</button>
+                <button class="btn-add" id="add-article-btn" disabled onclick="addArticle()">Add to Bill</button>
+            </div>
+        </div>
+        
+        <!-- Bill Name -->
+        <div class="bill-name-section" id="bill-name-section" style="display: none;">
+            <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">Name Your Bill</label>
+                <input type="text" class="form-input" id="bill-name-input" placeholder="e.g., The Religious Harmony Act">
             </div>
         </div>
         
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeModal()">Cancel</button>
-            <button class="btn-submit" id="submit-bill-btn" disabled onclick="submitBill()">
-                Submit Bill — 2 AP
+            <button class="btn-submit" id="submit-bill-btn" disabled onclick="submitToCommittee()">
+                Submit to Committee — 2 AP
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== ADD ARTICLE MODAL (for Committee) ===== -->
+<div class="modal-overlay" id="committee-add-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title">Add Article to Bill</div>
+            <button class="modal-close" onclick="closeCommitteeAddModal()">&times;</button>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">Select Sector</label>
+            <select class="form-select" id="committee-sector-select" onchange="onCommitteeSectorChange()">
+                <option value="">-- Choose a sector --</option>
+            </select>
+        </div>
+        
+        <div class="ideology-hint" id="committee-ideology-hint" style="display: none;">
+            Your party's ideology: <strong id="committee-party-ideologies"></strong>
+        </div>
+        
+        <div class="form-group" id="committee-policy-group" style="display: none;">
+            <label class="form-label">Select Policy</label>
+            <div class="policy-options" id="committee-policy-options"></div>
+        </div>
+        
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeCommitteeAddModal()">Cancel</button>
+            <button class="btn-add" id="committee-add-btn" disabled onclick="submitCommitteeArticle()">Add Article</button>
         </div>
     </div>
 </div>
@@ -478,16 +747,24 @@
 <script>
 /**
  * Laws Page
- * Browse active laws, propose new legislation
+ * Browse laws, draft bills, committee review
  */
 
 // Page state
 let currentNation = null;
 let currentFaction = null;
+let currentSeats = 0;
+let allPartySeats = {};
 let allPolicies = [];
 let activeLaws = [];
-let pendingBills = [];
+let committeeBills = [];
+let floorBills = [];
+
+// Draft state
+let draftArticles = [];
 let selectedPolicy = null;
+let committeeSelectedPolicy = null;
+let currentCommitteeBillId = null;
 
 // Major sectors configuration
 const MAJOR_SECTORS = [
@@ -529,15 +806,34 @@ initPage('laws', async (state) => {
  */
 async function loadLawsData() {
     try {
-        const [policiesRes, lawsRes, billsRes] = await Promise.all([
+        // Get current party seats from latest election
+        const { data: election } = await _supabase
+            .from('elections')
+            .select('results')
+            .eq('nation_id', currentNation.id)
+            .eq('status', 'completed')
+            .order('election_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        
+        if (election?.results?.seats) {
+            election.results.seats.forEach(s => {
+                allPartySeats[s.party_id] = s.seats;
+            });
+            currentSeats = allPartySeats[currentFaction?.id] || 0;
+        }
+        
+        const [policiesRes, lawsRes, committeeRes, floorRes] = await Promise.all([
             _supabase.from('policies').select('*').eq('is_active', true),
             _supabase.from('active_laws').select('*, policies(*)').eq('nation_id', currentNation.id),
-            _supabase.from('bills').select('*, policies(*), factions(faction_name)').eq('nation_id', currentNation.id).eq('status', 'voting')
+            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), factions(faction_name)), bill_support(*)').eq('nation_id', currentNation.id).eq('status', 'committee'),
+            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', currentNation.id).eq('status', 'floor')
         ]);
         
         allPolicies = policiesRes.data || [];
         activeLaws = lawsRes.data || [];
-        pendingBills = billsRes.data || [];
+        committeeBills = committeeRes.data || [];
+        floorBills = floorRes.data || [];
         
     } catch (error) {
         console.error('Error loading laws data:', error);
@@ -548,19 +844,21 @@ async function loadLawsData() {
  * Render the main laws page
  */
 function renderLawsPage() {
-    const canPropose = (currentFaction?.action_points || 0) >= 2;
+    const canDraft = (currentFaction?.action_points || 0) >= 2;
     
     const html = `
         <div class="panel-padding">
             <div class="laws-header">
                 <div class="section-header" style="margin-bottom: 0; border-bottom: none;">Laws of ${currentNation.name}</div>
-                <button class="propose-btn" onclick="openProposeModal()" ${canPropose ? '' : 'disabled'}>
-                    Propose Bill <span class="ap-cost">2 AP</span>
+                <button class="draft-btn" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'}>
+                    Draft Bill <span class="ap-cost">2 AP</span>
                 </button>
             </div>
             
-            ${pendingBills.length > 0 ? renderPendingBills() : ''}
+            ${floorBills.length > 0 ? renderFloorBills() : ''}
+            ${committeeBills.length > 0 ? renderCommitteeBills() : ''}
             
+            <div class="section-header">Active Laws</div>
             <div class="sector-accordion">
                 ${MAJOR_SECTORS.map(sector => renderMajorSector(sector)).join('')}
             </div>
@@ -571,28 +869,129 @@ function renderLawsPage() {
 }
 
 /**
- * Render pending bills section
+ * Render bills on the floor (voting)
  */
-function renderPendingBills() {
+function renderFloorBills() {
     return `
-        <div class="section-header" style="color: #ff9800;">Pending Legislation</div>
-        <div style="margin-bottom: 24px;">
-            ${pendingBills.map(bill => `
-                <div class="pending-bill">
-                    <div class="pending-bill-header">
-                        <div class="pending-bill-name">${bill.policies?.policy_name || 'Unknown'}</div>
-                        <div class="pending-bill-status">Voting</div>
+        <div class="section-header" style="color: #4CAF50;">On The Floor</div>
+        ${floorBills.map(bill => `
+            <div class="floor-bill">
+                <div class="committee-bill-header">
+                    <div>
+                        <div class="floor-bill-name">${bill.bill_name || 'Unnamed Bill'}</div>
+                        <div class="committee-bill-sponsor">Proposed by ${bill.factions?.faction_name || 'Unknown'}</div>
                     </div>
-                    <div style="font-size: 0.85rem; color: #aaa;">
-                        Proposed by ${bill.factions?.faction_name || 'Unknown'}
-                    </div>
-                    <div class="pending-bill-votes">
-                        <span class="votes-for">✓ ${bill.votes_for} For</span>
-                        <span class="votes-against">✗ ${bill.votes_against} Against</span>
-                        <span style="color: #888;">Ends tick ${bill.voting_ends_tick}</span>
-                    </div>
+                    <div class="floor-status">VOTING — Ends Tick ${bill.voting_ends_tick}</div>
                 </div>
-            `).join('')}
+                <div class="bill-articles">
+                    ${(bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number).map(art => `
+                        <div class="bill-article-item">
+                            <div class="article-info">
+                                <span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>
+                                <span class="article-ideology">${art.policies?.ideology || ''}</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="floor-votes">
+                    <span class="votes-for">✓ ${bill.votes_for || 0} For</span>
+                    <span class="votes-against">✗ ${bill.votes_against || 0} Against</span>
+                </div>
+            </div>
+        `).join('')}
+    `;
+}
+
+/**
+ * Render bills in committee
+ */
+function renderCommitteeBills() {
+    return `
+        <div class="section-header" style="color: #ff9800;">In Committee</div>
+        <div class="committee-section">
+            ${committeeBills.map(bill => renderCommitteeBill(bill)).join('')}
+        </div>
+    `;
+}
+
+/**
+ * Render a single committee bill
+ */
+function renderCommitteeBill(bill) {
+    // Calculate support percentage
+    const support = bill.bill_support || [];
+    const acceptedSeats = support.filter(s => s.stance === 'accept').reduce((sum, s) => sum + s.seat_count, 0);
+    
+    // Add sponsor's seats
+    const sponsorSeats = allPartySeats[bill.proposed_by] || 0;
+    const totalSupport = acceptedSeats + sponsorSeats;
+    const supportPercent = Math.round((totalSupport / 120) * 100);
+    const hasEnough = supportPercent >= 51;
+    
+    // Check if current party is sponsor
+    const isSponsor = bill.proposed_by === currentFaction?.id;
+    
+    // Check current party's stance
+    const myStance = support.find(s => s.faction_id === currentFaction?.id);
+    
+    return `
+        <div class="committee-bill">
+            <div class="committee-bill-header">
+                <div>
+                    <div class="committee-bill-name">${bill.bill_name || 'Unnamed Bill'}</div>
+                    <div class="committee-bill-sponsor">Proposed by ${bill.factions?.faction_name || 'Unknown'}</div>
+                </div>
+                <div class="committee-support">
+                    <div class="support-percent ${hasEnough ? 'enough' : ''}">${supportPercent}%</div>
+                    <div class="support-label">Support (need 51%)</div>
+                </div>
+            </div>
+            
+            <div class="support-bar">
+                <div class="threshold-marker"></div>
+                <div class="support-bar-fill ${hasEnough ? 'enough' : ''}" style="width: ${supportPercent}%"></div>
+            </div>
+            
+            <div class="bill-articles">
+                ${(bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number).map(art => `
+                    <div class="bill-article-item">
+                        <div class="article-info">
+                            <span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>
+                            <span class="article-ideology">${art.policies?.ideology || ''}</span>
+                            <div class="article-author">Added by ${art.factions?.faction_name || 'Unknown'}</div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+            
+            <div class="party-stances">
+                ${renderPartyStances(bill, isSponsor, myStance, hasEnough)}
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Render party stances for a committee bill
+ */
+function renderPartyStances(bill, isSponsor, myStance, hasEnough) {
+    return `
+        <div class="party-stance-row">
+            <div class="party-stance-info">
+                <span class="party-stance-name">${currentFaction?.faction_name || 'Your Party'}</span>
+                <span class="party-stance-seats">(${currentSeats} seats)</span>
+            </div>
+            <div class="party-stance-actions">
+                ${isSponsor 
+                    ? `<span class="stance-badge stance-sponsor">SPONSOR</span>
+                       ${hasEnough ? `<button class="stance-btn send-floor" onclick="sendToFloor('${bill.id}')">Send to Floor</button>` : ''}`
+                    : myStance 
+                        ? `<span class="stance-badge stance-${myStance.stance}">${myStance.stance.toUpperCase()}</span>`
+                        : `<button class="stance-btn accept" onclick="setStance('${bill.id}', 'accept')">Accept</button>
+                           <button class="stance-btn reject" onclick="setStance('${bill.id}', 'reject')">Reject</button>
+                           <button class="stance-btn add-article" onclick="openCommitteeAddModal('${bill.id}')">+ Add Article</button>`
+                }
+            </div>
         </div>
     `;
 }
@@ -601,15 +1000,10 @@ function renderPendingBills() {
  * Render a major sector accordion
  */
 function renderMajorSector(sector) {
-    // Get all policies in this sector
     const sectorPolicies = allPolicies.filter(p => p.major_sector === sector.key);
-    
-    // Get unique minor sectors
     const minorSectors = [...new Set(sectorPolicies.map(p => p.minor_sector))];
     
-    if (minorSectors.length === 0) {
-        return ''; // Don't show empty sectors
-    }
+    if (minorSectors.length === 0) return '';
     
     return `
         <div class="major-sector" id="sector-${sector.key}">
@@ -628,10 +1022,7 @@ function renderMajorSector(sector) {
  * Render a minor sector
  */
 function renderMinorSector(majorKey, minorKey, sectorPolicies) {
-    const minorPolicies = sectorPolicies.filter(p => p.minor_sector === minorKey);
     const minorLabel = formatMinorSector(minorKey);
-    
-    // Check if there's an active law in this minor sector
     const activeLaw = activeLaws.find(law => 
         law.policies?.major_sector === majorKey && 
         law.policies?.minor_sector === minorKey
@@ -658,19 +1049,12 @@ function renderActiveLaw(law) {
     const direction = policy.stat_direction === 'UP' ? '↑' : '↓';
     const directionClass = policy.stat_direction === 'UP' ? 'effect-up' : 'effect-down';
     
-    // Calculate actual costs based on nation stats
-    const costs = calculateCosts(policy);
-    
     return `
         <div class="active-law">
             <div class="active-law-name">${policy.policy_name}</div>
             <div class="active-law-desc">${policy.description}</div>
             <div class="active-law-meta">
-                <span class="active-law-stat">
-                    ${formatStatName(policy.target_stat)} 
-                    <span class="${directionClass}">${direction}</span>
-                </span>
-                <span>Ongoing: ${formatCurrency(costs.ongoing)}/mo</span>
+                <span>${formatStatName(policy.target_stat)} <span class="${directionClass}">${direction}</span></span>
                 <span>Passed tick ${law.passed_tick || '?'}</span>
             </div>
         </div>
@@ -678,41 +1062,34 @@ function renderActiveLaw(law) {
 }
 
 /**
- * Toggle major sector accordion
+ * Toggle major sector
  */
 function toggleMajorSector(key) {
-    const el = document.getElementById(`sector-${key}`);
-    el.classList.toggle('expanded');
+    document.getElementById(`sector-${key}`).classList.toggle('expanded');
 }
 
 /**
- * Toggle minor sector accordion
+ * Toggle minor sector
  */
 function toggleMinorSector(majorKey, minorKey) {
-    const el = document.getElementById(`minor-${majorKey}-${minorKey}`);
-    el.classList.toggle('expanded');
+    document.getElementById(`minor-${majorKey}-${minorKey}`).classList.toggle('expanded');
 }
 
+// ==================== DRAFT BILL MODAL ====================
+
 /**
- * Open the propose bill modal
+ * Open draft bill modal
  */
-function openProposeModal() {
+function openDraftModal() {
+    draftArticles = [];
     selectedPolicy = null;
     
-    // Generate preamble
-    const preamble = `This bill, put forth in the legislature of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to amend the standing statutes regarding the selected sector.`;
-    document.getElementById('article-preamble').textContent = preamble;
+    // Set preamble
+    document.getElementById('article-preamble').textContent = 
+        `This bill, put forth in the legislature of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to enact the following provisions.`;
     
     // Populate sector dropdown
-    const sectorSelect = document.getElementById('sector-select');
-    sectorSelect.innerHTML = '<option value="">-- Choose a sector --</option>';
-    
-    MAJOR_SECTORS.forEach(sector => {
-        const sectorPolicies = getCompatiblePolicies(sector.key);
-        if (sectorPolicies.length > 0) {
-            sectorSelect.innerHTML += `<option value="${sector.key}">${sector.label}</option>`;
-        }
-    });
+    populateSectorDropdown('sector-select');
     
     // Show party ideologies
     const ideo1 = currentFaction.ideology_value_1 || 'Unknown';
@@ -720,23 +1097,76 @@ function openProposeModal() {
     document.getElementById('party-ideologies').textContent = `${ideo1} + ${ideo2}`;
     
     // Reset form
-    document.getElementById('ideology-hint').style.display = 'none';
-    document.getElementById('policy-group').style.display = 'none';
+    renderDraftArticles();
+    hideAddArticleForm();
+    document.getElementById('bill-name-section').style.display = 'none';
     document.getElementById('submit-bill-btn').disabled = true;
     
-    // Show modal
-    document.getElementById('propose-modal').classList.add('active');
+    document.getElementById('draft-modal').classList.add('active');
 }
 
 /**
- * Close the modal
+ * Close modal
  */
 function closeModal() {
-    document.getElementById('propose-modal').classList.remove('active');
+    document.getElementById('draft-modal').classList.remove('active');
 }
 
 /**
- * Handle sector selection change
+ * Populate sector dropdown
+ */
+function populateSectorDropdown(selectId) {
+    const select = document.getElementById(selectId);
+    select.innerHTML = '<option value="">-- Choose a sector --</option>';
+    
+    MAJOR_SECTORS.forEach(sector => {
+        const policies = getCompatiblePolicies(sector.key);
+        if (policies.length > 0) {
+            select.innerHTML += `<option value="${sector.key}">${sector.label}</option>`;
+        }
+    });
+}
+
+/**
+ * Get policies compatible with player's ideology
+ */
+function getCompatiblePolicies(sector) {
+    const ideo1 = (currentFaction.ideology_value_1 || '').toUpperCase();
+    const ideo2 = (currentFaction.ideology_value_2 || '').toUpperCase();
+    
+    // Filter out policies already in draft
+    const draftPolicyIds = draftArticles.map(a => a.policy.id);
+    
+    return allPolicies.filter(p => 
+        p.major_sector === sector &&
+        (p.ideology.toUpperCase() === ideo1 || p.ideology.toUpperCase() === ideo2) &&
+        !draftPolicyIds.includes(p.id)
+    );
+}
+
+/**
+ * Show add article form
+ */
+function showAddArticleForm() {
+    document.getElementById('add-article-section').style.display = 'none';
+    document.getElementById('add-article-form').style.display = 'block';
+    document.getElementById('sector-select').value = '';
+    document.getElementById('ideology-hint').style.display = 'none';
+    document.getElementById('policy-group').style.display = 'none';
+    selectedPolicy = null;
+    document.getElementById('add-article-btn').disabled = true;
+}
+
+/**
+ * Hide add article form
+ */
+function hideAddArticleForm() {
+    document.getElementById('add-article-section').style.display = 'block';
+    document.getElementById('add-article-form').style.display = 'none';
+}
+
+/**
+ * Handle sector change in draft modal
  */
 function onSectorChange() {
     const sector = document.getElementById('sector-select').value;
@@ -747,109 +1177,132 @@ function onSectorChange() {
         return;
     }
     
-    // Update preamble
-    const sectorLabel = MAJOR_SECTORS.find(s => s.key === sector)?.label || sector;
-    const preamble = `This bill, put forth in the legislature of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to amend the standing statutes regarding ${sectorLabel}.`;
-    document.getElementById('article-preamble').textContent = preamble;
-    
-    // Show ideology hint
     document.getElementById('ideology-hint').style.display = 'block';
     
-    // Get compatible policies
     const policies = getCompatiblePolicies(sector);
-    renderPolicyOptions(policies);
+    renderPolicyOptions(policies, 'policy-options', 'add-article-btn');
     
     document.getElementById('policy-group').style.display = 'block';
 }
 
 /**
- * Get policies compatible with player's ideology
+ * Render policy options
  */
-function getCompatiblePolicies(sector) {
-    const ideo1 = (currentFaction.ideology_value_1 || '').toUpperCase();
-    const ideo2 = (currentFaction.ideology_value_2 || '').toUpperCase();
-    
-    return allPolicies.filter(p => 
-        p.major_sector === sector &&
-        (p.ideology.toUpperCase() === ideo1 || p.ideology.toUpperCase() === ideo2)
-    );
-}
-
-/**
- * Render policy options in the modal
- */
-function renderPolicyOptions(policies) {
-    const container = document.getElementById('policy-options');
+function renderPolicyOptions(policies, containerId, buttonId) {
+    const container = document.getElementById(containerId);
     
     if (policies.length === 0) {
-        container.innerHTML = '<div class="no-law">No compatible policies available in this sector.</div>';
+        container.innerHTML = '<div class="no-law">No compatible policies available.</div>';
         return;
     }
     
     container.innerHTML = policies.map(policy => {
-        const costs = calculateCosts(policy);
         const direction = policy.stat_direction === 'UP' ? '↑' : '↓';
         const directionClass = policy.stat_direction === 'UP' ? 'effect-up' : 'effect-down';
         
-        // Check if this conflicts with an active law
-        const conflictingLaw = activeLaws.find(law => 
-            law.policies?.conflict_group && 
-            law.policies.conflict_group === policy.conflict_group
-        );
-        
         return `
-            <div class="policy-option" data-policy-id="${policy.id}" onclick="selectPolicy('${policy.id}')">
-                <div class="policy-option-header">
-                    <div class="policy-option-name">${policy.policy_name}</div>
-                    <div class="policy-option-ideology">${policy.ideology}</div>
+            <div class="policy-option" data-policy-id="${policy.id}" onclick="selectPolicyOption('${policy.id}', '${buttonId}')">
+                <div class="policy-option-name">${policy.policy_name} 
+                    <span class="article-ideology">${policy.ideology}</span>
                 </div>
                 <div class="policy-option-desc">${policy.description}</div>
                 <div class="policy-option-effects">
-                    <span class="effect-stat">
-                        ${formatStatName(policy.target_stat)} 
-                        <span class="${directionClass}">${direction}</span>
-                    </span>
-                    <span class="effect-cost">
-                        Upfront: ${formatCurrency(costs.upfront)} | 
-                        Ongoing: ${formatCurrency(costs.ongoing)}/mo
-                    </span>
+                    ${formatStatName(policy.target_stat)} <span class="${directionClass}">${direction}</span>
                 </div>
-                ${conflictingLaw ? `<div style="color: #ff9800; font-size: 0.75rem; margin-top: 8px;">⚠️ Will repeal: ${conflictingLaw.policies.policy_name}</div>` : ''}
             </div>
         `;
     }).join('');
 }
 
 /**
- * Select a policy
+ * Select a policy option
  */
-function selectPolicy(policyId) {
+function selectPolicyOption(policyId, buttonId) {
     selectedPolicy = allPolicies.find(p => p.id === policyId);
     
     // Update UI
-    document.querySelectorAll('.policy-option').forEach(el => {
-        el.classList.remove('selected');
-    });
+    document.querySelectorAll('.policy-option').forEach(el => el.classList.remove('selected'));
     document.querySelector(`[data-policy-id="${policyId}"]`).classList.add('selected');
     
-    // Enable submit button
-    document.getElementById('submit-bill-btn').disabled = false;
+    document.getElementById(buttonId).disabled = false;
 }
 
 /**
- * Submit the bill
+ * Add article to draft
  */
-async function submitBill() {
+function addArticle() {
     if (!selectedPolicy) return;
     
-    // Check AP
-    if ((currentFaction.action_points || 0) < 2) {
-        alert('Not enough Action Points!');
+    draftArticles.push({
+        articleNumber: draftArticles.length + 2, // Start at Article II
+        policy: selectedPolicy
+    });
+    
+    renderDraftArticles();
+    hideAddArticleForm();
+    selectedPolicy = null;
+    
+    // Show bill name section and enable submit
+    if (draftArticles.length > 0) {
+        document.getElementById('bill-name-section').style.display = 'block';
+        document.getElementById('submit-bill-btn').disabled = false;
+    }
+}
+
+/**
+ * Render draft articles
+ */
+function renderDraftArticles() {
+    const container = document.getElementById('draft-articles');
+    
+    if (draftArticles.length === 0) {
+        container.innerHTML = '';
         return;
     }
     
+    container.innerHTML = draftArticles.map((art, index) => `
+        <div class="draft-article-card">
+            <div class="draft-article-info">
+                <div class="draft-article-num">Article ${art.articleNumber}</div>
+                <div class="draft-article-name">${art.policy.policy_name} <span class="article-ideology">${art.policy.ideology}</span></div>
+                <div class="draft-article-meta">
+                    ${art.policy.description}
+                </div>
+            </div>
+            <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+        </div>
+    `).join('');
+}
+
+/**
+ * Remove article from draft
+ */
+function removeArticle(index) {
+    draftArticles.splice(index, 1);
+    
+    // Renumber
+    draftArticles.forEach((art, i) => {
+        art.articleNumber = i + 2;
+    });
+    
+    renderDraftArticles();
+    
+    if (draftArticles.length === 0) {
+        document.getElementById('bill-name-section').style.display = 'none';
+        document.getElementById('submit-bill-btn').disabled = true;
+    }
+}
+
+/**
+ * Submit bill to committee
+ */
+async function submitToCommittee() {
+    if (draftArticles.length === 0) return;
+    
+    const billName = document.getElementById('bill-name-input').value.trim() || 'Unnamed Bill';
+    
     try {
-        // Get current shard tick
+        // Get current tick
         const { data: shard } = await _supabase
             .from('shard')
             .select('current_tick')
@@ -858,49 +1311,49 @@ async function submitBill() {
         
         const currentTick = shard?.current_tick || 0;
         
-        // Generate preamble
-        const sectorLabel = MAJOR_SECTORS.find(s => s.key === selectedPolicy.major_sector)?.label || selectedPolicy.major_sector;
-        const preamble = `Article I. This bill, put forth in the legislature of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to amend the standing statutes regarding ${sectorLabel}.\n\nArticle II. Be it enacted that ${selectedPolicy.policy_name}: ${selectedPolicy.description}`;
-        
-        // Create the bill
+        // Create bill
         const { data: bill, error: billError } = await _supabase
             .from('bills')
             .insert({
                 nation_id: currentNation.id,
-                policy_id: selectedPolicy.id,
                 proposed_by: currentFaction.id,
                 proposed_tick: currentTick,
-                preamble: preamble,
-                status: 'voting',
-                votes_for: 0,
-                votes_against: 0,
-                voting_ends_tick: currentTick + 3
+                bill_name: billName,
+                status: 'committee',
+                preamble: `This bill, put forth in the legislature of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to enact the following provisions.`
             })
             .select()
             .single();
         
         if (billError) throw billError;
         
+        // Create articles
+        const articles = draftArticles.map(art => ({
+            bill_id: bill.id,
+            policy_id: art.policy.id,
+            article_number: art.articleNumber,
+            added_by: currentFaction.id
+        }));
+        
+        const { error: articlesError } = await _supabase
+            .from('bill_articles')
+            .insert(articles);
+        
+        if (articlesError) throw articlesError;
+        
         // Deduct AP
-        const { error: apError } = await _supabase
+        await _supabase
             .from('factions')
             .update({ action_points: currentFaction.action_points - 2 })
             .eq('id', currentFaction.id);
         
-        if (apError) throw apError;
-        
-        // Update local state
         currentFaction.action_points -= 2;
         
-        // Refresh cache
-        await refreshGameState();
-        
-        // Close modal and reload
         closeModal();
         await loadLawsData();
         renderLawsPage();
         
-        alert(`Bill proposed successfully! Voting ends at tick ${currentTick + 3}.`);
+        alert(`"${billName}" submitted to committee!`);
         
     } catch (error) {
         console.error('Error submitting bill:', error);
@@ -908,55 +1361,211 @@ async function submitBill() {
     }
 }
 
+// ==================== COMMITTEE ACTIONS ====================
+
 /**
- * Calculate costs based on nation stats
+ * Set stance on a bill
  */
-function calculateCosts(policy) {
-    const population = currentNation.population || 10000000;
-    const popMultiplier = population / 10000000;
-    
-    let statMultiplier = 1;
-    if (policy.cost_scaling_stat_2) {
-        const statValue = currentNation[policy.cost_scaling_stat_2] || 50;
-        statMultiplier = statValue / 50;
+async function setStance(billId, stance) {
+    try {
+        const { error } = await _supabase
+            .from('bill_support')
+            .upsert({
+                bill_id: billId,
+                faction_id: currentFaction.id,
+                stance: stance,
+                seat_count: currentSeats
+            }, { onConflict: 'bill_id,faction_id' });
+        
+        if (error) throw error;
+        
+        await loadLawsData();
+        renderLawsPage();
+        
+    } catch (error) {
+        console.error('Error setting stance:', error);
+        alert('Error setting stance.');
     }
-    
-    return {
-        upfront: Math.round(policy.upfront_cost * popMultiplier * statMultiplier),
-        ongoing: Math.round(policy.ongoing_cost * popMultiplier * statMultiplier)
-    };
 }
 
 /**
- * Format stat name for display
+ * Open committee add article modal
  */
+function openCommitteeAddModal(billId) {
+    currentCommitteeBillId = billId;
+    committeeSelectedPolicy = null;
+    
+    populateSectorDropdown('committee-sector-select');
+    
+    const ideo1 = currentFaction.ideology_value_1 || 'Unknown';
+    const ideo2 = currentFaction.ideology_value_2 || 'Unknown';
+    document.getElementById('committee-party-ideologies').textContent = `${ideo1} + ${ideo2}`;
+    
+    document.getElementById('committee-sector-select').value = '';
+    document.getElementById('committee-ideology-hint').style.display = 'none';
+    document.getElementById('committee-policy-group').style.display = 'none';
+    document.getElementById('committee-add-btn').disabled = true;
+    
+    document.getElementById('committee-add-modal').classList.add('active');
+}
+
+/**
+ * Close committee add modal
+ */
+function closeCommitteeAddModal() {
+    document.getElementById('committee-add-modal').classList.remove('active');
+}
+
+/**
+ * Handle sector change in committee modal
+ */
+function onCommitteeSectorChange() {
+    const sector = document.getElementById('committee-sector-select').value;
+    
+    if (!sector) {
+        document.getElementById('committee-ideology-hint').style.display = 'none';
+        document.getElementById('committee-policy-group').style.display = 'none';
+        return;
+    }
+    
+    document.getElementById('committee-ideology-hint').style.display = 'block';
+    
+    const policies = getCompatiblePolicies(sector);
+    renderCommitteePolicyOptions(policies);
+    
+    document.getElementById('committee-policy-group').style.display = 'block';
+}
+
+/**
+ * Render committee policy options
+ */
+function renderCommitteePolicyOptions(policies) {
+    const container = document.getElementById('committee-policy-options');
+    
+    if (policies.length === 0) {
+        container.innerHTML = '<div class="no-law">No compatible policies available.</div>';
+        return;
+    }
+    
+    container.innerHTML = policies.map(policy => {
+        const direction = policy.stat_direction === 'UP' ? '↑' : '↓';
+        const directionClass = policy.stat_direction === 'UP' ? 'effect-up' : 'effect-down';
+        
+        return `
+            <div class="policy-option" data-policy-id="${policy.id}" onclick="selectCommitteePolicy('${policy.id}')">
+                <div class="policy-option-name">${policy.policy_name}</div>
+                <div class="policy-option-desc">${policy.description}</div>
+                <div class="policy-option-effects">
+                    ${formatStatName(policy.target_stat)} <span class="${directionClass}">${direction}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+/**
+ * Select committee policy
+ */
+function selectCommitteePolicy(policyId) {
+    committeeSelectedPolicy = allPolicies.find(p => p.id === policyId);
+    
+    document.querySelectorAll('#committee-policy-options .policy-option').forEach(el => el.classList.remove('selected'));
+    document.querySelector(`#committee-policy-options [data-policy-id="${policyId}"]`).classList.add('selected');
+    
+    document.getElementById('committee-add-btn').disabled = false;
+}
+
+/**
+ * Submit article to committee bill
+ */
+async function submitCommitteeArticle() {
+    if (!committeeSelectedPolicy || !currentCommitteeBillId) return;
+    
+    try {
+        // Get current article count
+        const { data: existingArticles } = await _supabase
+            .from('bill_articles')
+            .select('article_number')
+            .eq('bill_id', currentCommitteeBillId)
+            .order('article_number', { ascending: false })
+            .limit(1);
+        
+        const nextArticleNum = (existingArticles?.[0]?.article_number || 1) + 1;
+        
+        // Add article
+        const { error } = await _supabase
+            .from('bill_articles')
+            .insert({
+                bill_id: currentCommitteeBillId,
+                policy_id: committeeSelectedPolicy.id,
+                article_number: nextArticleNum,
+                added_by: currentFaction.id
+            });
+        
+        if (error) throw error;
+        
+        // Auto-accept the bill
+        await _supabase
+            .from('bill_support')
+            .upsert({
+                bill_id: currentCommitteeBillId,
+                faction_id: currentFaction.id,
+                stance: 'accept',
+                seat_count: currentSeats
+            }, { onConflict: 'bill_id,faction_id' });
+        
+        closeCommitteeAddModal();
+        await loadLawsData();
+        renderLawsPage();
+        
+    } catch (error) {
+        console.error('Error adding article:', error);
+        alert('Error adding article.');
+    }
+}
+
+/**
+ * Send bill to floor
+ */
+async function sendToFloor(billId) {
+    try {
+        const { data: shard } = await _supabase
+            .from('shard')
+            .select('current_tick')
+            .eq('name', 'Alpha Shard')
+            .single();
+        
+        const currentTick = shard?.current_tick || 0;
+        
+        const { error } = await _supabase
+            .from('bills')
+            .update({
+                status: 'floor',
+                voting_ends_tick: currentTick + 3
+            })
+            .eq('id', billId);
+        
+        if (error) throw error;
+        
+        await loadLawsData();
+        renderLawsPage();
+        
+        alert('Bill sent to the floor for voting!');
+        
+    } catch (error) {
+        console.error('Error sending to floor:', error);
+        alert('Error sending bill to floor.');
+    }
+}
+
+// ==================== UTILITIES ====================
+
 function formatStatName(stat) {
     return stat.charAt(0).toUpperCase() + stat.slice(1).replace(/_/g, ' ');
 }
 
-/**
- * Format minor sector name
- */
 function formatMinorSector(key) {
     return key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-}
-
-/**
- * Format currency
- */
-function formatCurrency(amount) {
-    if (amount === 0) return '$0';
-    const absAmount = Math.abs(amount);
-    const sign = amount < 0 ? '-' : '';
-    
-    if (absAmount >= 1000000000) {
-        return `${sign}$${(absAmount / 1000000000).toFixed(1)}B`;
-    } else if (absAmount >= 1000000) {
-        return `${sign}$${(absAmount / 1000000).toFixed(0)}M`;
-    } else if (absAmount >= 1000) {
-        return `${sign}$${(absAmount / 1000).toFixed(0)}K`;
-    }
-    return `${sign}$${absAmount}`;
 }
 </script>
 
