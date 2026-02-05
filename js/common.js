@@ -126,18 +126,27 @@ async function refreshGameState() {
 function renderTopBar(activeTab) {
     const topBarHTML = `
         <div class="top-bar-row1">
-            <div class="tick-info">
-                <div class="tick-item">
-                    <div class="tick-label">Game Date</div>
-                    <div class="tick-value" id="game-date">Loading…</div>
+            <div class="top-bar-left">
+                <!-- Nation Flag & Name -->
+                <div class="nation-badge" id="nation-badge">
+                    <img class="nation-flag" id="nation-flag" src="" alt="" style="display: none;">
+                    <span class="nation-name" id="nation-name">Loading...</span>
                 </div>
-                <div class="tick-item">
-                    <div class="tick-label">Tick</div>
-                    <div class="tick-value" id="tick-number">—</div>
-                </div>
-                <div class="tick-item">
-                    <div class="tick-label">Next Tick In</div>
-                    <div class="tick-countdown" id="tick-countdown">—</div>
+                
+                <!-- Tick Info -->
+                <div class="tick-info">
+                    <div class="tick-item">
+                        <div class="tick-label">Game Date</div>
+                        <div class="tick-value" id="game-date">Loading…</div>
+                    </div>
+                    <div class="tick-item">
+                        <div class="tick-label">Tick</div>
+                        <div class="tick-value" id="tick-number">—</div>
+                    </div>
+                    <div class="tick-item">
+                        <div class="tick-label">Next Tick In</div>
+                        <div class="tick-countdown" id="tick-countdown">—</div>
+                    </div>
                 </div>
             </div>
             <div class="top-bar-right">
@@ -187,13 +196,35 @@ let tickInterval = null;
 let nextTickAt = null;
 
 /**
- * Update the top bar with shard/faction info
+ * Update the top bar with shard/faction/nation info
  */
-function updateTopBarInfo(faction, shard) {
+function updateTopBarInfo(faction, shard, nation) {
     // Party badge
     const badge = document.getElementById('party-badge');
     if (badge && faction) {
         badge.textContent = faction.faction_name + ' [' + (faction.abbreviation || '—') + ']';
+    }
+    
+    // Nation flag and name
+    const nationFlag = document.getElementById('nation-flag');
+    const nationName = document.getElementById('nation-name');
+    
+    if (nation) {
+        // Set nation name
+        if (nationName) {
+            nationName.textContent = nation.name || 'Unknown Nation';
+        }
+        
+        // Set flag if available
+        if (nationFlag && nation.flag_url) {
+            nationFlag.src = nation.flag_url;
+            nationFlag.alt = nation.name + ' flag';
+            nationFlag.style.display = 'block';
+        }
+    } else {
+        if (nationName) {
+            nationName.textContent = 'No Nation';
+        }
     }
     
     // Tick info
@@ -416,8 +447,8 @@ async function initPage(activeTab, onReady) {
     const state = await loadGameState();
     if (!state) return; // Redirect happened
     
-    // Update top bar with real data
-    updateTopBarInfo(state.faction, state.shard);
+    // Update top bar with real data (now includes nation)
+    updateTopBarInfo(state.faction, state.shard, state.nation);
     
     // Call page-specific initialization
     if (onReady) {
