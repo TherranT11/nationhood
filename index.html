@@ -93,7 +93,7 @@
 
     /**
      * Checks the user's faction status and redirects accordingly:
-     *   - Has a party with a nation assigned → dashboard.html
+     *   - Has a party with a nation assigned → world.html
      *   - Anything else (no faction, no nation, etc.) → map.html
      */
     async function routeUser(user) {
@@ -105,8 +105,8 @@
                 .single();
 
             if (faction && faction.faction_type === 'party' && faction.nation_id) {
-                // Fully set up — go to dashboard
-                window.location.href = 'dashboard.html';
+                // Fully set up — go to world (main dashboard)
+                window.location.href = 'world.html';
             } else {
                 // Needs setup — go to map
                 window.location.href = 'map.html';
