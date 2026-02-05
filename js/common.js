@@ -4,6 +4,7 @@
  * - Top bar rendering
  * - Navigation
  * - Tick countdown
+ * - Population growth calculations
  */
 
 // ===== STATE MANAGEMENT =====
@@ -280,6 +281,122 @@ function showLoading(containerId = 'content-area') {
             </div>
         `;
     }
+}
+
+
+// ===== POPULATION GROWTH CALCULATION =====
+
+/**
+ * Calculate Population Growth score (0-100) from contributing stats
+ * @param {object} nation - Nation object with all stats
+ * @returns {number} Population growth score (0-100)
+ */
+function calculatePopulationGrowth(nation) {
+    const factors = [
+        // Positive factors (use raw value)
+        { key: 'birth_rate', weight: 3.0, invert: false },
+        { key: 'immigration', weight: 2.0, invert: false },
+        { key: 'healthcare_quality', weight: 1.5, invert: false },
+        { key: 'lifespan', weight: 1.5, invert: false },
+        { key: 'standard_of_living', weight: 1.0, invert: false },
+        { key: 'happiness', weight: 1.0, invert: false },
+        
+        // Negative factors (invert: 100 - value)
+        { key: 'death_rate', weight: 3.0, invert: true },
+        { key: 'emigration', weight: 2.0, invert: true },
+        { key: 'poverty_rate', weight: 1.0, invert: true },
+        { key: 'pollution', weight: 0.5, invert: true },
+        { key: 'crime_rate', weight: 0.5, invert: true },
+        { key: 'political_violence', weight: 0.75, invert: true },
+        { key: 'civil_unrest', weight: 0.75, invert: true },
+        { key: 'drug_use', weight: 0.5, invert: true },
+        { key: 'terrorism', weight: 0.5, invert: true }
+    ];
+    
+    let totalWeight = 0;
+    let totalScore = 0;
+    
+    for (const factor of factors) {
+        const rawValue = nation[factor.key] ?? 50; // Default to 50 if missing
+        const value = factor.invert ? (100 - rawValue) : rawValue;
+        
+        totalScore += value * factor.weight;
+        totalWeight += factor.weight;
+    }
+    
+    return Math.round(totalScore / totalWeight);
+}
+
+/**
+ * Calculate monthly population change based on growth score
+ * @param {number} population - Current total population
+ * @param {number} growthScore - Population growth score (0-100)
+ * @param {number} maxRate - Maximum monthly rate (default 0.01 = 1%)
+ * @returns {number} Population change (positive or negative)
+ */
+function calculatePopulationChange(population, growthScore, maxRate = 0.01) {
+    const monthlyRate = ((growthScore - 50) / 50) * maxRate;
+    return Math.round(population * monthlyRate);
+}
+
+/**
+ * Apply population growth to a nation
+ * Updates population and distributes change across ideology voters
+ * @param {object} nation - Nation object with population and voter data
+ * @returns {object} Object with updated values to save
+ */
+function applyPopulationGrowth(nation) {
+    // Calculate growth score
+    const growthScore = calculatePopulationGrowth(nation);
+    
+    // Calculate population change
+    const popChange = calculatePopulationChange(nation.population, growthScore);
+    
+    // New total population
+    const newPopulation = nation.population + popChange;
+    
+    // Get current ideology voters (assuming these are stored on nation object)
+    // Adjust these keys to match your actual database columns
+    const ideologyKeys = [
+        'progressive_voters',
+        'liberal_voters', 
+        'moderate_voters',
+        'conservative_voters',
+        'nationalist_voters'
+    ];
+    
+    // Calculate total voters and distribute change proportionally
+    let totalVoters = 0;
+    const currentVoters = {};
+    
+    for (const key of ideologyKeys) {
+        const value = nation[key] ?? 0;
+        currentVoters[key] = value;
+        totalVoters += value;
+    }
+    
+    // Distribute population change across ideologies
+    const updatedVoters = {};
+    for (const key of ideologyKeys) {
+        if (totalVoters > 0) {
+            const share = currentVoters[key] / totalVoters;
+            updatedVoters[key] = Math.round(currentVoters[key] + (popChange * share));
+        } else {
+            updatedVoters[key] = currentVoters[key];
+        }
+    }
+    
+    // Also update eligible_voters (assuming it tracks voting-age population)
+    const voterRatio = nation.eligible_voters / nation.population;
+    const newEligibleVoters = Math.round(newPopulation * voterRatio);
+    
+    return {
+        population_growth: growthScore,
+        population: newPopulation,
+        eligible_voters: newEligibleVoters,
+        population_change: popChange, // For logging/display
+        ...updatedVoters
+    };
 }
 
 
