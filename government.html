@@ -276,7 +276,7 @@ async function fetchActiveCoalition() {
         .from('active_coalitions')
         .select('*')
         .eq('nation_id', currentNation.id)
-        .order('created_at', { ascending: false })
+        .order('formed_at', { ascending: false })
         .limit(1)
         .maybeSingle();
     
