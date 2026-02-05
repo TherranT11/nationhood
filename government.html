@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Government | Nationhood Alpha</title>
+    
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Shared Styles -->
+    <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+
+<!-- ===== TOP BAR (rendered by common.js) ===== -->
+<div id="top-bar"></div>
+
+<!-- ===== CONTENT AREA ===== -->
+<div id="content-area">
+    <!-- Loading state shown initially -->
+    <div class="loading-container">
+        <div class="loading-spinner"></div>
+        <div>Loading government data...</div>
+    </div>
+</div>
+
+<!-- Shared Scripts -->
+<script src="js/supabase-client.js"></script>
+<script src="js/common.js"></script>
+
+<!-- Page-Specific Script -->
+<script>
+/**
+ * Government Page
+ * Displays government structure, personnel, cabinet, and parliament
+ */
+
+// Mock data - will be replaced with database queries later
+const MOCK_CABINET = [
+    { title: 'Minister of the Interior', name: 'Susan Johns', party: 'Workers Alliance', desc: 'Oversees domestic policy, internal security, and civil administration.' },
+    { title: 'Minister of Defense', name: 'Travis Kyle', party: 'Communist Party of Melizea', desc: 'Responsible for the nation\'s armed forces and military strategy.' },
+    { title: 'Minister of Finance', name: 'Elena Marsh', party: 'Workers Alliance', desc: 'Manages the national budget, taxation, and economic planning.' },
+    { title: 'Minister of Foreign Affairs', name: 'Ricardo Vane', party: 'Progressive Democrats', desc: 'Handles all diplomatic relations and international negotiations.' },
+    { title: 'Minister of Education', name: 'Lena Carrow', party: 'Green Future', desc: 'Shapes schools, universities, and research funding.' },
+    { title: 'Minister of Health', name: 'Omar Said', party: 'National Conservatives', desc: 'Oversees public health policy, hospitals, and disease prevention.' },
+];
+
+const MOCK_PARTIES = [
+    { name: 'Workers Alliance', abbr: 'WA', seats: 42, color: '#E91E63' },
+    { name: 'Communist Party of Melizea', abbr: 'CPM', seats: 28, color: '#F44336' },
+    { name: 'Progressive Democrats', abbr: 'PD', seats: 18, color: '#2196F3' },
+    { name: 'National Conservatives', abbr: 'NC', seats: 15, color: '#FF9800' },
+    { name: 'Green Future', abbr: 'GF', seats: 10, color: '#4CAF50' },
+    { name: 'Libertarian Union', abbr: 'LU', seats: 7, color: '#9C27B0' },
+];
+
+// Initialize page
+initPage('government', async (state) => {
+    const { nation, faction } = state;
+    
+    if (!nation) {
+        document.getElementById('content-area').innerHTML = `
+            <div class="placeholder-panel">
+                <div class="ph-icon">🏛️</div>
+                <h3>No Nation Selected</h3>
+                <p>Your party is not assigned to a nation yet.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    renderGovernmentPage(nation, faction);
+});
+
+/**
+ * Render the government page content
+ */
+function renderGovernmentPage(nation, faction) {
+    // Get party list (include player's party if not in mock data)
+    const parties = getPartyList(faction);
+    
+    const html = `
+        <div class="panel-padding">
+            <!-- Government Structure -->
+            <div class="section-header">Government Structure</div>
+            <div class="info-block">
+                <div class="info-row">
+                    <span class="info-label">Government Type</span>
+                    <span class="info-value">${nation.government_type || 'Parliamentary Democracy'}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Legislative Branch</span>
+                    <span class="info-value">Unicameral</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Judicial System</span>
+                    <span class="info-value">Independent Courts</span>
+                </div>
+            </div>
+            
+            <!-- Government Personnel -->
+            <div class="section-header">Government Personnel</div>
+            <div class="info-block" style="margin-bottom:14px;">
+                <div class="info-row">
+                    <span class="info-label">National Approval</span>
+                    <span class="info-value gold">62%</span>
+                </div>
+            </div>
+            
+            <div class="gov-two-col">
+                <div class="person-card">
+                    <div class="person-role">Head of Government</div>
+                    <div class="person-name">John Smith</div>
+                    <div class="person-meta">
+                        <span class="ptag">Workers Alliance</span>
+                        <span class="year">Elected 2000</span>
+                    </div>
+                </div>
+                <div class="person-card">
+                    <div class="person-role">Head of State</div>
+                    <div class="person-name">Sarah Beth</div>
+                    <div class="person-meta">
+                        <span class="ptag">Workers Alliance</span>
+                        <span class="year">Elected 2000</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Cabinet -->
+            <div class="section-header">Cabinet</div>
+            <div class="cabinet-grid">
+                ${MOCK_CABINET.map(m => `
+                    <div class="minister-card">
+                        <div class="minister-title">${m.title}</div>
+                        <div class="minister-name">${m.name}</div>
+                        <div class="minister-party">${m.party}</div>
+                        <div class="minister-desc">${m.desc}</div>
+                    </div>
+                `).join('')}
+            </div>
+            
+            <!-- Parliament -->
+            <div class="section-header">Current Parliamentary Makeup</div>
+            <div class="parliament-wrap">
+                <svg id="parliament-svg" width="520" height="280" viewBox="0 0 520 280"></svg>
+            </div>
+            <div class="parliament-legend" id="parliament-legend"></div>
+        </div>
+    `;
+    
+    document.getElementById('content-area').innerHTML = html;
+    
+    // Draw parliament after DOM is ready
+    drawParliament(parties);
+}
+
+/**
+ * Get party list, including player's party if not in mock data
+ */
+function getPartyList(faction) {
+    if (!faction || faction.faction_type !== 'party') return MOCK_PARTIES;
+    
+    const exists = MOCK_PARTIES.find(p => p.name === faction.faction_name);
+    if (exists) return MOCK_PARTIES;
+    
+    return [...MOCK_PARTIES, { 
+        name: faction.faction_name, 
+        abbr: faction.abbreviation, 
+        seats: 0, 
+        color: '#ffcc00' 
+    }];
+}
+
+/**
+ * Draw the parliament half-circle visualization
+ */
+function drawParliament(parties) {
+    const total = parties.reduce((s, p) => s + p.seats, 0);
+    const svg = document.getElementById('parliament-svg');
+    
+    const width = 520;
+    const height = 280;
+    const centerX = width / 2;
+    const centerY = height - 20;
+    
+    const dotRadius = 2.5;
+    const dotSpacing = 7;
+    
+    const rows = calculateRows(total, centerY, dotSpacing);
+    
+    // Create seats array with party colors
+    const seats = [];
+    parties.forEach(party => {
+        for (let i = 0; i < party.seats; i++) {
+            seats.push({
+                color: party.color,
+                party: party.name
+            });
+        }
+    });
+    
+    const dots = generateDotPositions(seats.length, rows, centerX, centerY, dotSpacing);
+    
+    let circles = '';
+    dots.forEach((dot, index) => {
+        if (index < seats.length) {
+            circles += `<circle cx="${dot.x}" cy="${dot.y}" r="${dotRadius}" fill="${seats[index].color}" stroke="#0a0a0a" stroke-width="0.5"/>`;
+        }
+    });
+    
+    // Add total seats text in center
+    circles += `<text x="${centerX}" y="${centerY - 12}" text-anchor="middle" fill="#ffcc00" font-size="24" font-weight="bold">${total}</text>`;
+    circles += `<text x="${centerX}" y="${centerY + 6}" text-anchor="middle" fill="#666" font-size="11">TOTAL SEATS</text>`;
+    
+    svg.innerHTML = circles;
+    
+    // Render legend
+    document.getElementById('parliament-legend').innerHTML = parties.map(p =>
+        `<div class="legend-item">
+            <div class="legend-swatch" style="background:${p.color};"></div>
+            ${p.name} (${p.seats})
+        </div>`
+    ).join('');
+}
+
+/**
+ * Calculate parliament rows based on total seats
+ */
+function calculateRows(totalSeats, maxRadius, spacing) {
+    const rows = [];
+    let currentRadius = maxRadius - 60;
+    let seatsPlaced = 0;
+    
+    while (seatsPlaced < totalSeats && currentRadius > 40) {
+        const circumference = Math.PI * currentRadius;
+        const dotsInRow = Math.floor(circumference / spacing);
+        
+        rows.push({
+            radius: currentRadius,
+            dots: Math.min(dotsInRow, totalSeats - seatsPlaced)
+        });
+        
+        seatsPlaced += dotsInRow;
+        currentRadius -= spacing;
+    }
+    
+    return rows;
+}
+
+/**
+ * Generate dot positions for parliament visualization
+ */
+function generateDotPositions(totalSeats, rows, centerX, centerY, spacing) {
+    const positions = [];
+    let seatIndex = 0;
+    
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+        const row = rows[rowIndex];
+        const dotsInThisRow = Math.min(row.dots, totalSeats - seatIndex);
+        
+        const angleStep = Math.PI / (dotsInThisRow - 1);
+        
+        for (let i = 0; i < dotsInThisRow; i++) {
+            const angle = Math.PI - (i * angleStep);
+            const x = centerX + row.radius * Math.cos(angle);
+            const y = centerY - row.radius * Math.sin(angle);
+            
+            positions.push({ x, y });
+            seatIndex++;
+            
+            if (seatIndex >= totalSeats) break;
+        }
+        
+        if (seatIndex >= totalSeats) break;
+    }
+    
+    return positions;
+}
+</script>
+
+</body>
+</html>
