@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Economy | Nationhood Alpha</title>
+    
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Shared Styles -->
+    <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+
+<!-- ===== TOP BAR (rendered by common.js) ===== -->
+<div id="top-bar"></div>
+
+<!-- ===== CONTENT AREA ===== -->
+<div id="content-area">
+    <div class="placeholder-panel">
+        <div class="ph-icon">📈</div>
+        <h3>Economy</h3>
+        <p>Trade, taxation, and economic policy — coming soon!</p>
+    </div>
+</div>
+
+<!-- Shared Scripts -->
+<script src="js/supabase-client.js"></script>
+<script src="js/common.js"></script>
+
+<!-- Page-Specific Script -->
+<script>
+// Initialize page (just loads top bar and nav)
+initPage('economy', async (state) => {
+    // Placeholder - no content to load yet
+});
+</script>
+
+</body>
+</html>
