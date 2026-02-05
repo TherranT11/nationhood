@@ -24,6 +24,11 @@ body {
     align-items: center;
     padding: 10px 20px 6px 20px;
 }
+.top-bar-left {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
 .tick-info { display: flex; gap: 30px; align-items: center; }
 .tick-item { display: flex; flex-direction: column; }
 .tick-label { font-size: 0.65rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
@@ -45,6 +50,33 @@ body {
     transition: 0.3s; text-transform: uppercase; letter-spacing: 0.5px;
 }
 .logout-btn:hover { background: #ff4444; color: white; }
+
+/* ===== NATION BADGE (Flag + Name) ===== */
+.nation-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding-right: 20px;
+    border-right: 1px solid #333;
+    min-width: 70px;
+}
+.nation-flag {
+    width: 48px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: 3px;
+    border: 1px solid #444;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+.nation-name {
+    font-size: 0.65rem;
+    color: #ffcc00;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    white-space: nowrap;
+}
 
 /* ===== NAV TABS ===== */
 .nav-tabs {
