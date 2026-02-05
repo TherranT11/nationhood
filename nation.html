@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Nation | Nationhood Alpha</title>
+    
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Shared Styles -->
+    <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+
+<!-- ===== TOP BAR (rendered by common.js) ===== -->
+<div id="top-bar"></div>
+
+<!-- ===== CONTENT AREA ===== -->
+<div id="content-area">
+    <!-- Loading state shown initially -->
+    <div class="loading-container">
+        <div class="loading-spinner"></div>
+        <div>Loading nation data...</div>
+    </div>
+</div>
+
+<!-- Shared Scripts -->
+<script src="js/supabase-client.js"></script>
+<script src="js/common.js"></script>
+
+<!-- Page-Specific Script -->
+<script>
+/**
+ * Nation Page
+ * Displays nation statistics and overview
+ */
+
+// Initialize page
+initPage('nation', async (state) => {
+    const { nation, faction } = state;
+    
+    if (!nation) {
+        document.getElementById('content-area').innerHTML = `
+            <div class="placeholder-panel">
+                <div class="ph-icon">🏴</div>
+                <h3>No Nation Selected</h3>
+                <p>Your party is not assigned to a nation yet.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    renderNationPage(nation);
+});
+
+/**
+ * Render the nation page content
+ */
+function renderNationPage(nation) {
+    const stats = [
+        { label: 'Population', value: formatNumber(nation.population) },
+        { label: 'GDP', value: formatCurrency(nation.GDP) },
+        { label: 'National Debt', value: formatCurrency(nation.debt) },
+        { label: 'Stability', value: nation.stability != null ? String(nation.stability) : 'N/A' },
+        { label: 'Civil Unrest', value: nation.civil_unrest != null ? String(nation.civil_unrest) : 'N/A' },
+        { label: 'Gov. Type', value: nation.government_type || '—' },
+        { label: 'Religious Index', value: nation.religious != null ? String(nation.religious) : 'N/A' },
+        { label: 'Terrorism Threat', value: nation.terrorism != null ? String(nation.terrorism) : 'N/A' },
+        { label: 'Legitimacy', value: nation.legitimacy != null ? String(nation.legitimacy) : 'N/A' },
+        { label: 'Efficiency', value: nation.efficiency != null ? String(nation.efficiency) : 'N/A' }
+    ];
+    
+    const html = `
+        <!-- Nation Hero Section -->
+        <div class="nation-hero">
+            <h2>${nation.name.toUpperCase()}</h2>
+            <div class="capital-label">Capital: ${nation.capital || '—'}</div>
+        </div>
+        
+        <!-- Nation Stats -->
+        <div class="panel-padding">
+            <div class="section-header">National Statistics</div>
+            <div class="stat-grid">
+                ${stats.map(s => `
+                    <div class="stat-card">
+                        <div class="stat-label">${s.label}</div>
+                        <div class="stat-value">${s.value}</div>
+                    </div>
+                `).join('')}
+            </div>
+            
+            <!-- Additional Info Block -->
+            <div class="section-header">Overview</div>
+            <div class="info-block">
+                <div class="info-row">
+                    <span class="info-label">Nation Name</span>
+                    <span class="info-value gold">${nation.name}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Capital City</span>
+                    <span class="info-value">${nation.capital || '—'}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Government Type</span>
+                    <span class="info-value">${nation.government_type || '—'}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Population</span>
+                    <span class="info-value">${formatNumber(nation.population)}</span>
+                </div>
+            </div>
+            
+            <!-- Economic Summary -->
+            <div class="section-header">Economic Summary</div>
+            <div class="info-block">
+                <div class="info-row">
+                    <span class="info-label">Gross Domestic Product</span>
+                    <span class="info-value gold">${formatCurrency(nation.GDP)}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">National Debt</span>
+                    <span class="info-value" style="color: #ff9800;">${formatCurrency(nation.debt)}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Debt-to-GDP Ratio</span>
+                    <span class="info-value">${calculateDebtRatio(nation.debt, nation.GDP)}</span>
+                </div>
+            </div>
+            
+            <!-- Stability Indicators -->
+            <div class="section-header">Stability Indicators</div>
+            <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));">
+                ${renderStabilityIndicator('Stability', nation.stability)}
+                ${renderStabilityIndicator('Civil Unrest', nation.civil_unrest, true)}
+                ${renderStabilityIndicator('Legitimacy', nation.legitimacy)}
+                ${renderStabilityIndicator('Efficiency', nation.efficiency)}
+                ${renderStabilityIndicator('Terrorism', nation.terrorism, true)}
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('content-area').innerHTML = html;
+}
+
+/**
+ * Calculate debt-to-GDP ratio
+ */
+function calculateDebtRatio(debt, gdp) {
+    if (!debt || !gdp || gdp === 0) return 'N/A';
+    const ratio = (debt / gdp * 100).toFixed(1);
+    return ratio + '%';
+}
+
+/**
+ * Render a stability indicator with color coding
+ * @param {string} label - The indicator label
+ * @param {number} value - The value (0-100)
+ * @param {boolean} inverse - If true, lower is better (e.g., civil unrest)
+ */
+function renderStabilityIndicator(label, value, inverse = false) {
+    if (value == null) {
+        return `
+            <div class="stat-card">
+                <div class="stat-label">${label}</div>
+                <div class="stat-value" style="color: #666;">N/A</div>
+            </div>
+        `;
+    }
+    
+    // Determine color based on value
+    let color;
+    const effectiveValue = inverse ? (100 - value) : value;
+    
+    if (effectiveValue >= 70) {
+        color = '#4CAF50'; // Green - good
+    } else if (effectiveValue >= 40) {
+        color = '#ff9800'; // Orange - warning
+    } else {
+        color = '#ff4444'; // Red - danger
+    }
+    
+    return `
+        <div class="stat-card">
+            <div class="stat-label">${label}</div>
+            <div class="stat-value" style="color: ${color};">${value}</div>
+        </div>
+    `;
+}
+</script>
+
+</body>
+</html>
