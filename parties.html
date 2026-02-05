@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Parties | Nationhood Alpha</title>
+    
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Shared Styles -->
+    <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+
+<!-- ===== TOP BAR (rendered by common.js) ===== -->
+<div id="top-bar"></div>
+
+<!-- ===== CONTENT AREA ===== -->
+<div id="content-area">
+    <!-- Loading state shown initially -->
+    <div class="loading-container">
+        <div class="loading-spinner"></div>
+        <div>Loading parties...</div>
+    </div>
+</div>
+
+<!-- Shared Scripts -->
+<script src="js/supabase-client.js"></script>
+<script src="js/common.js"></script>
+
+<!-- Page-Specific Script -->
+<script>
+/**
+ * Parties Page
+ * Displays all political parties in the nation
+ */
+
+// Initialize page
+initPage('parties', async (state) => {
+    const { nation, faction } = state;
+    
+    if (!nation) {
+        document.getElementById('content-area').innerHTML = `
+            <div class="placeholder-panel">
+                <div class="ph-icon">🏛️</div>
+                <h3>No Nation Selected</h3>
+                <p>Your party is not assigned to a nation yet.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    await renderPartiesPage(nation, faction);
+});
+
+/**
+ * Render the parties page content
+ */
+async function renderPartiesPage(nation, faction) {
+    // Show loading in content area
+    document.getElementById('content-area').innerHTML = `
+        <div class="panel-padding">
+            <div class="section-header">Political Parties in ${nation.name}</div>
+            <div class="loading-container" style="height: 200px;">
+                <div class="loading-spinner"></div>
+                <div>Loading parties...</div>
+            </div>
+        </div>
+    `;
+    
+    try {
+        // Get all parties in the nation
+        const { data: parties, error } = await _supabase
+            .from('factions')
+            .select('*')
+            .eq('nation_id', nation.id)
+            .eq('faction_type', 'party')
+            .order('approval_rating', { ascending: false });
+        
+        if (error) throw error;
+        
+        if (!parties || parties.length === 0) {
+            document.getElementById('content-area').innerHTML = `
+                <div class="panel-padding">
+                    <div class="section-header">Political Parties in ${nation.name}</div>
+                    <div style="text-align: center; color: #666; padding: 40px;">
+                        No political parties in this nation yet.
+                    </div>
+                </div>
+            `;
+            return;
+        }
+        
+        // Get the most recent election to determine seats
+        const { data: election } = await _supabase
+            .from('elections')
+            .select('*')
+            .eq('nation_id', nation.id)
+            .eq('status', 'completed')
+            .order('election_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        
+        const totalSeats = 120;
+        const majorityThreshold = 61;
+        
+        // Build party cards
+        const partiesHTML = parties.map(party => {
+            // Get seats from election results
+            let seats = 0;
+            if (election && election.results && election.results.seats) {
+                const partyResult = election.results.seats.find(s => s.party_id === party.id);
+                seats = partyResult?.seats || 0;
+            }
+            
+            // Determine status
+            let status = 'opposition';
+            let statusText = 'Opposition';
+            if (seats >= majorityThreshold) {
+                status = 'government';
+                statusText = 'Government';
+            }
+            
+            // Approval color
+            const approvalClass = party.approval_rating >= 50 ? 'good' : party.approval_rating <= 30 ? 'bad' : '';
+            
+            const isYourParty = party.id === faction?.id;
+            
+            return `
+                <div class="party-display-card ${isYourParty ? 'your-party' : ''}">
+                    <div class="party-card-header">
+                        <div class="party-card-name">
+                            <div class="party-display-name">
+                                ${party.faction_name}
+                                ${party.is_npc ? '<span class="party-npc-badge">AI</span>' : ''}
+                                ${isYourParty ? '<span style="color: #ffcc00; font-size: 0.75rem; margin-left: 8px;">★ YOUR PARTY</span>' : ''}
+                            </div>
+                            <div class="party-display-abbr">${party.abbreviation || '—'}</div>
+                        </div>
+                        <div class="party-status-badge status-${status}">
+                            ${statusText}
+                        </div>
+                    </div>
+                    
+                    <div class="party-display-ideologies">
+                        ${party.ideology_value_1 ? `<span class="ideology-tag tag-${party.ideology_value_1.toLowerCase()}">${party.ideology_value_1}</span>` : ''}
+                        ${party.ideology_value_2 ? `<span class="ideology-tag tag-${party.ideology_value_2.toLowerCase()}">${party.ideology_value_2}</span>` : ''}
+                    </div>
+                    
+                    <div class="party-display-stats">
+                        <div class="party-stat-item">
+                            <div class="party-stat-label">Approval</div>
+                            <div class="party-stat-value ${approvalClass}">${party.approval_rating || 0}%</div>
+                        </div>
+                        <div class="party-stat-item">
+                            <div class="party-stat-label">Seats</div>
+                            <div class="party-stat-value">${seats} / ${totalSeats}</div>
+                        </div>
+                        <div class="party-stat-item">
+                            <div class="party-stat-label">Action Points</div>
+                            <div class="party-stat-value">${party.action_points || 0}</div>
+                        </div>
+                        <div class="party-stat-item">
+                            <div class="party-stat-label">Party Funds</div>
+                            <div class="party-stat-value">$${(party.party_funds || 0).toLocaleString()}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        // Render full page
+        document.getElementById('content-area').innerHTML = `
+            <div class="panel-padding">
+                <div class="section-header">Political Parties in ${nation.name}</div>
+                
+                <!-- Summary Stats -->
+                <div class="stat-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Parties</div>
+                        <div class="stat-value">${parties.length}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Player Parties</div>
+                        <div class="stat-value">${parties.filter(p => !p.is_npc).length}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">AI Parties</div>
+                        <div class="stat-value">${parties.filter(p => p.is_npc).length}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Seats</div>
+                        <div class="stat-value">${totalSeats}</div>
+                    </div>
+                </div>
+                
+                <!-- Party Grid -->
+                <div class="parties-display-grid">
+                    ${partiesHTML}
+                </div>
+            </div>
+        `;
+        
+    } catch (error) {
+        console.error('Error loading parties:', error);
+        document.getElementById('content-area').innerHTML = `
+            <div class="panel-padding">
+                <div class="section-header">Political Parties in ${nation.name}</div>
+                <div style="text-align: center; color: #ff4444; padding: 40px;">
+                    Error loading parties. Please refresh the page.
+                </div>
+            </div>
+        `;
+    }
+}
+</script>
+
+</body>
+</html>
