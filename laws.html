@@ -9,6 +9,406 @@
     
     <!-- Shared Styles -->
     <link rel="stylesheet" href="css/dashboard.css">
+    
+    <!-- Page-specific styles -->
+    <style>
+        /* Propose Bill Button */
+        .laws-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .propose-btn {
+            background: linear-gradient(135deg, #ffcc00 0%, #e6b800 100%);
+            border: none;
+            border-radius: 6px;
+            padding: 12px 24px;
+            color: #121212;
+            font-weight: bold;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .propose-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 204, 0, 0.4);
+        }
+        .propose-btn:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .propose-btn .ap-cost {
+            background: rgba(0,0,0,0.2);
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-left: 8px;
+            font-size: 0.8rem;
+        }
+        
+        /* Accordion Sectors */
+        .sector-accordion {
+            margin-bottom: 16px;
+        }
+        .major-sector {
+            background: #1a1a1a;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            overflow: hidden;
+        }
+        .major-sector-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .major-sector-header:hover {
+            background: #252525;
+        }
+        .major-sector-title {
+            font-size: 1rem;
+            font-weight: bold;
+            color: #ffcc00;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .major-sector-arrow {
+            color: #666;
+            font-size: 1.2rem;
+            transition: transform 0.3s;
+        }
+        .major-sector.expanded .major-sector-arrow {
+            transform: rotate(90deg);
+        }
+        .major-sector-content {
+            display: none;
+            padding: 0 20px 16px;
+        }
+        .major-sector.expanded .major-sector-content {
+            display: block;
+        }
+        
+        /* Minor Sectors */
+        .minor-sector {
+            background: #252525;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            overflow: hidden;
+        }
+        .minor-sector-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .minor-sector-header:hover {
+            background: #2a2a2a;
+        }
+        .minor-sector-title {
+            font-size: 0.85rem;
+            color: #e0e0e0;
+        }
+        .minor-sector-arrow {
+            color: #555;
+            font-size: 1rem;
+            transition: transform 0.3s;
+        }
+        .minor-sector.expanded .minor-sector-arrow {
+            transform: rotate(90deg);
+        }
+        .minor-sector-content {
+            display: none;
+            padding: 12px 16px;
+            background: #1e1e1e;
+            border-top: 1px solid #333;
+        }
+        .minor-sector.expanded .minor-sector-content {
+            display: block;
+        }
+        
+        /* Active Law Display */
+        .active-law {
+            background: #2a2a2a;
+            border-left: 4px solid #4CAF50;
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+        .active-law-name {
+            font-weight: bold;
+            color: #4CAF50;
+            margin-bottom: 4px;
+        }
+        .active-law-desc {
+            font-size: 0.85rem;
+            color: #aaa;
+            margin-bottom: 8px;
+        }
+        .active-law-meta {
+            display: flex;
+            gap: 16px;
+            font-size: 0.75rem;
+            color: #888;
+        }
+        .active-law-stat {
+            color: #ffcc00;
+        }
+        .no-law {
+            color: #666;
+            font-style: italic;
+            padding: 8px 0;
+        }
+        
+        /* Pending Bills */
+        .pending-bill {
+            background: #2a2a2a;
+            border-left: 4px solid #ff9800;
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+        .pending-bill-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .pending-bill-name {
+            font-weight: bold;
+            color: #ff9800;
+        }
+        .pending-bill-status {
+            font-size: 0.75rem;
+            background: #ff9800;
+            color: #000;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .pending-bill-votes {
+            display: flex;
+            gap: 16px;
+            font-size: 0.8rem;
+            margin-top: 8px;
+        }
+        .votes-for { color: #4CAF50; }
+        .votes-against { color: #ff4444; }
+        
+        /* Modal Overlay */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal-content {
+            background: #1a1a1a;
+            border: 2px solid #ffcc00;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 700px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #333;
+        }
+        .modal-title {
+            font-size: 1.2rem;
+            color: #ffcc00;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        .modal-close:hover {
+            color: #fff;
+        }
+        
+        /* Bill Form */
+        .bill-article {
+            background: #252525;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .article-label {
+            font-size: 0.75rem;
+            color: #ffcc00;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        .article-text {
+            color: #e0e0e0;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            font-style: italic;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-label {
+            display: block;
+            font-size: 0.8rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        .form-select {
+            width: 100%;
+            padding: 12px;
+            background: #252525;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-size: 0.9rem;
+        }
+        .form-select:focus {
+            outline: none;
+            border-color: #ffcc00;
+        }
+        
+        /* Policy Options */
+        .ideology-hint {
+            background: #252525;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 16px;
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+        .ideology-hint strong {
+            color: #ffcc00;
+        }
+        .policy-options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .policy-option {
+            background: #252525;
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 16px;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .policy-option:hover {
+            border-color: #555;
+            background: #2a2a2a;
+        }
+        .policy-option.selected {
+            border-color: #ffcc00;
+            background: #2a2a1a;
+        }
+        .policy-option-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .policy-option-name {
+            font-weight: bold;
+            color: #e0e0e0;
+        }
+        .policy-option-ideology {
+            font-size: 0.7rem;
+            background: #4CAF50;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+        .policy-option-desc {
+            font-size: 0.85rem;
+            color: #aaa;
+            margin-bottom: 8px;
+        }
+        .policy-option-effects {
+            display: flex;
+            gap: 16px;
+            font-size: 0.8rem;
+        }
+        .effect-stat {
+            color: #ffcc00;
+        }
+        .effect-up { color: #4CAF50; }
+        .effect-down { color: #ff4444; }
+        .effect-cost {
+            color: #888;
+        }
+        
+        /* Modal Footer */
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid #333;
+        }
+        .btn-cancel {
+            padding: 12px 24px;
+            background: #333;
+            border: none;
+            border-radius: 6px;
+            color: #888;
+            cursor: pointer;
+        }
+        .btn-cancel:hover {
+            background: #444;
+            color: #fff;
+        }
+        .btn-submit {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #ffcc00 0%, #e6b800 100%);
+            border: none;
+            border-radius: 6px;
+            color: #121212;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .btn-submit:hover {
+            box-shadow: 0 4px 12px rgba(255, 204, 0, 0.4);
+        }
+        .btn-submit:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+    </style>
 </head>
 <body>
 
@@ -17,10 +417,56 @@
 
 <!-- ===== CONTENT AREA ===== -->
 <div id="content-area">
-    <div class="placeholder-panel">
-        <div class="ph-icon">📜</div>
-        <h3>Laws</h3>
-        <p>Propose and pass legislation — coming soon!</p>
+    <div class="loading-container">
+        <div class="loading-spinner"></div>
+        <div>Loading laws...</div>
+    </div>
+</div>
+
+<!-- ===== PROPOSE BILL MODAL ===== -->
+<div class="modal-overlay" id="propose-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title">Propose New Bill</div>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        
+        <div class="bill-article">
+            <div class="article-label">Article I.</div>
+            <div class="article-text" id="article-preamble">
+                Loading...
+            </div>
+        </div>
+        
+        <div class="bill-article">
+            <div class="article-label">Article II.</div>
+            
+            <div class="form-group">
+                <label class="form-label">Select Sector</label>
+                <select class="form-select" id="sector-select" onchange="onSectorChange()">
+                    <option value="">-- Choose a sector --</option>
+                </select>
+            </div>
+            
+            <div class="ideology-hint" id="ideology-hint" style="display: none;">
+                Your party's ideology: <strong id="party-ideologies"></strong><br>
+                Showing compatible policies only.
+            </div>
+            
+            <div class="form-group" id="policy-group" style="display: none;">
+                <label class="form-label">Select Policy</label>
+                <div class="policy-options" id="policy-options">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+        </div>
+        
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+            <button class="btn-submit" id="submit-bill-btn" disabled onclick="submitBill()">
+                Submit Bill — 2 AP
+            </button>
+        </div>
     </div>
 </div>
 
@@ -30,10 +476,488 @@
 
 <!-- Page-Specific Script -->
 <script>
-// Initialize page (just loads top bar and nav)
+/**
+ * Laws Page
+ * Browse active laws, propose new legislation
+ */
+
+// Page state
+let currentNation = null;
+let currentFaction = null;
+let allPolicies = [];
+let activeLaws = [];
+let pendingBills = [];
+let selectedPolicy = null;
+
+// Major sectors configuration
+const MAJOR_SECTORS = [
+    { key: 'ECONOMICS', label: 'Economics', icon: '💰' },
+    { key: 'LABOR', label: 'Labor', icon: '👷' },
+    { key: 'EDUCATION', label: 'Education', icon: '📚' },
+    { key: 'ENERGY', label: 'Energy', icon: '⚡' },
+    { key: 'SOCIAL', label: 'Social', icon: '🏥' },
+    { key: 'MILITARY', label: 'Military & Security', icon: '🛡️' },
+    { key: 'GOVERNANCE', label: 'Governance', icon: '🏛️' },
+    { key: 'IMMIGRATION', label: 'Immigration', icon: '🌍' },
+    { key: 'INTERNATIONAL', label: 'International', icon: '🌐' }
+];
+
+// Initialize page
 initPage('laws', async (state) => {
-    // Placeholder - no content to load yet
+    const { nation, faction } = state;
+    
+    currentNation = nation;
+    currentFaction = faction;
+    
+    if (!nation) {
+        document.getElementById('content-area').innerHTML = `
+            <div class="placeholder-panel">
+                <div class="ph-icon">📜</div>
+                <h3>No Nation Selected</h3>
+                <p>Your party is not assigned to a nation yet.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    await loadLawsData();
+    renderLawsPage();
 });
+
+/**
+ * Load all required data
+ */
+async function loadLawsData() {
+    try {
+        const [policiesRes, lawsRes, billsRes] = await Promise.all([
+            _supabase.from('policies').select('*').eq('is_active', true),
+            _supabase.from('active_laws').select('*, policies(*)').eq('nation_id', currentNation.id),
+            _supabase.from('bills').select('*, policies(*), factions(faction_name)').eq('nation_id', currentNation.id).eq('status', 'voting')
+        ]);
+        
+        allPolicies = policiesRes.data || [];
+        activeLaws = lawsRes.data || [];
+        pendingBills = billsRes.data || [];
+        
+    } catch (error) {
+        console.error('Error loading laws data:', error);
+    }
+}
+
+/**
+ * Render the main laws page
+ */
+function renderLawsPage() {
+    const canPropose = (currentFaction?.action_points || 0) >= 2;
+    
+    const html = `
+        <div class="panel-padding">
+            <div class="laws-header">
+                <div class="section-header" style="margin-bottom: 0; border-bottom: none;">Laws of ${currentNation.name}</div>
+                <button class="propose-btn" onclick="openProposeModal()" ${canPropose ? '' : 'disabled'}>
+                    Propose Bill <span class="ap-cost">2 AP</span>
+                </button>
+            </div>
+            
+            ${pendingBills.length > 0 ? renderPendingBills() : ''}
+            
+            <div class="sector-accordion">
+                ${MAJOR_SECTORS.map(sector => renderMajorSector(sector)).join('')}
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('content-area').innerHTML = html;
+}
+
+/**
+ * Render pending bills section
+ */
+function renderPendingBills() {
+    return `
+        <div class="section-header" style="color: #ff9800;">Pending Legislation</div>
+        <div style="margin-bottom: 24px;">
+            ${pendingBills.map(bill => `
+                <div class="pending-bill">
+                    <div class="pending-bill-header">
+                        <div class="pending-bill-name">${bill.policies?.policy_name || 'Unknown'}</div>
+                        <div class="pending-bill-status">Voting</div>
+                    </div>
+                    <div style="font-size: 0.85rem; color: #aaa;">
+                        Proposed by ${bill.factions?.faction_name || 'Unknown'}
+                    </div>
+                    <div class="pending-bill-votes">
+                        <span class="votes-for">✓ ${bill.votes_for} For</span>
+                        <span class="votes-against">✗ ${bill.votes_against} Against</span>
+                        <span style="color: #888;">Ends tick ${bill.voting_ends_tick}</span>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+/**
+ * Render a major sector accordion
+ */
+function renderMajorSector(sector) {
+    // Get all policies in this sector
+    const sectorPolicies = allPolicies.filter(p => p.major_sector === sector.key);
+    
+    // Get unique minor sectors
+    const minorSectors = [...new Set(sectorPolicies.map(p => p.minor_sector))];
+    
+    if (minorSectors.length === 0) {
+        return ''; // Don't show empty sectors
+    }
+    
+    return `
+        <div class="major-sector" id="sector-${sector.key}">
+            <div class="major-sector-header" onclick="toggleMajorSector('${sector.key}')">
+                <div class="major-sector-title">${sector.icon} ${sector.label}</div>
+                <div class="major-sector-arrow">▶</div>
+            </div>
+            <div class="major-sector-content">
+                ${minorSectors.map(minor => renderMinorSector(sector.key, minor, sectorPolicies)).join('')}
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Render a minor sector
+ */
+function renderMinorSector(majorKey, minorKey, sectorPolicies) {
+    const minorPolicies = sectorPolicies.filter(p => p.minor_sector === minorKey);
+    const minorLabel = formatMinorSector(minorKey);
+    
+    // Check if there's an active law in this minor sector
+    const activeLaw = activeLaws.find(law => 
+        law.policies?.major_sector === majorKey && 
+        law.policies?.minor_sector === minorKey
+    );
+    
+    return `
+        <div class="minor-sector" id="minor-${majorKey}-${minorKey}">
+            <div class="minor-sector-header" onclick="toggleMinorSector('${majorKey}', '${minorKey}')">
+                <div class="minor-sector-title">${minorLabel}</div>
+                <div class="minor-sector-arrow">▶</div>
+            </div>
+            <div class="minor-sector-content">
+                ${activeLaw ? renderActiveLaw(activeLaw) : '<div class="no-law">No active law in this area.</div>'}
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Render an active law
+ */
+function renderActiveLaw(law) {
+    const policy = law.policies;
+    const direction = policy.stat_direction === 'UP' ? '↑' : '↓';
+    const directionClass = policy.stat_direction === 'UP' ? 'effect-up' : 'effect-down';
+    
+    // Calculate actual costs based on nation stats
+    const costs = calculateCosts(policy);
+    
+    return `
+        <div class="active-law">
+            <div class="active-law-name">${policy.policy_name}</div>
+            <div class="active-law-desc">${policy.description}</div>
+            <div class="active-law-meta">
+                <span class="active-law-stat">
+                    ${formatStatName(policy.target_stat)} 
+                    <span class="${directionClass}">${direction}</span>
+                </span>
+                <span>Ongoing: ${formatCurrency(costs.ongoing)}/mo</span>
+                <span>Passed tick ${law.passed_tick || '?'}</span>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Toggle major sector accordion
+ */
+function toggleMajorSector(key) {
+    const el = document.getElementById(`sector-${key}`);
+    el.classList.toggle('expanded');
+}
+
+/**
+ * Toggle minor sector accordion
+ */
+function toggleMinorSector(majorKey, minorKey) {
+    const el = document.getElementById(`minor-${majorKey}-${minorKey}`);
+    el.classList.toggle('expanded');
+}
+
+/**
+ * Open the propose bill modal
+ */
+function openProposeModal() {
+    selectedPolicy = null;
+    
+    // Generate preamble
+    const preamble = `This bill, put forth in the legislature of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to amend the standing statutes regarding the selected sector.`;
+    document.getElementById('article-preamble').textContent = preamble;
+    
+    // Populate sector dropdown
+    const sectorSelect = document.getElementById('sector-select');
+    sectorSelect.innerHTML = '<option value="">-- Choose a sector --</option>';
+    
+    MAJOR_SECTORS.forEach(sector => {
+        const sectorPolicies = getCompatiblePolicies(sector.key);
+        if (sectorPolicies.length > 0) {
+            sectorSelect.innerHTML += `<option value="${sector.key}">${sector.label}</option>`;
+        }
+    });
+    
+    // Show party ideologies
+    const ideo1 = currentFaction.ideology_value_1 || 'Unknown';
+    const ideo2 = currentFaction.ideology_value_2 || 'Unknown';
+    document.getElementById('party-ideologies').textContent = `${ideo1} + ${ideo2}`;
+    
+    // Reset form
+    document.getElementById('ideology-hint').style.display = 'none';
+    document.getElementById('policy-group').style.display = 'none';
+    document.getElementById('submit-bill-btn').disabled = true;
+    
+    // Show modal
+    document.getElementById('propose-modal').classList.add('active');
+}
+
+/**
+ * Close the modal
+ */
+function closeModal() {
+    document.getElementById('propose-modal').classList.remove('active');
+}
+
+/**
+ * Handle sector selection change
+ */
+function onSectorChange() {
+    const sector = document.getElementById('sector-select').value;
+    
+    if (!sector) {
+        document.getElementById('ideology-hint').style.display = 'none';
+        document.getElementById('policy-group').style.display = 'none';
+        return;
+    }
+    
+    // Update preamble
+    const sectorLabel = MAJOR_SECTORS.find(s => s.key === sector)?.label || sector;
+    const preamble = `This bill, put forth in the legislature of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to amend the standing statutes regarding ${sectorLabel}.`;
+    document.getElementById('article-preamble').textContent = preamble;
+    
+    // Show ideology hint
+    document.getElementById('ideology-hint').style.display = 'block';
+    
+    // Get compatible policies
+    const policies = getCompatiblePolicies(sector);
+    renderPolicyOptions(policies);
+    
+    document.getElementById('policy-group').style.display = 'block';
+}
+
+/**
+ * Get policies compatible with player's ideology
+ */
+function getCompatiblePolicies(sector) {
+    const ideo1 = (currentFaction.ideology_value_1 || '').toUpperCase();
+    const ideo2 = (currentFaction.ideology_value_2 || '').toUpperCase();
+    
+    return allPolicies.filter(p => 
+        p.major_sector === sector &&
+        (p.ideology.toUpperCase() === ideo1 || p.ideology.toUpperCase() === ideo2)
+    );
+}
+
+/**
+ * Render policy options in the modal
+ */
+function renderPolicyOptions(policies) {
+    const container = document.getElementById('policy-options');
+    
+    if (policies.length === 0) {
+        container.innerHTML = '<div class="no-law">No compatible policies available in this sector.</div>';
+        return;
+    }
+    
+    container.innerHTML = policies.map(policy => {
+        const costs = calculateCosts(policy);
+        const direction = policy.stat_direction === 'UP' ? '↑' : '↓';
+        const directionClass = policy.stat_direction === 'UP' ? 'effect-up' : 'effect-down';
+        
+        // Check if this conflicts with an active law
+        const conflictingLaw = activeLaws.find(law => 
+            law.policies?.conflict_group && 
+            law.policies.conflict_group === policy.conflict_group
+        );
+        
+        return `
+            <div class="policy-option" data-policy-id="${policy.id}" onclick="selectPolicy('${policy.id}')">
+                <div class="policy-option-header">
+                    <div class="policy-option-name">${policy.policy_name}</div>
+                    <div class="policy-option-ideology">${policy.ideology}</div>
+                </div>
+                <div class="policy-option-desc">${policy.description}</div>
+                <div class="policy-option-effects">
+                    <span class="effect-stat">
+                        ${formatStatName(policy.target_stat)} 
+                        <span class="${directionClass}">${direction}</span>
+                    </span>
+                    <span class="effect-cost">
+                        Upfront: ${formatCurrency(costs.upfront)} | 
+                        Ongoing: ${formatCurrency(costs.ongoing)}/mo
+                    </span>
+                </div>
+                ${conflictingLaw ? `<div style="color: #ff9800; font-size: 0.75rem; margin-top: 8px;">⚠️ Will repeal: ${conflictingLaw.policies.policy_name}</div>` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+/**
+ * Select a policy
+ */
+function selectPolicy(policyId) {
+    selectedPolicy = allPolicies.find(p => p.id === policyId);
+    
+    // Update UI
+    document.querySelectorAll('.policy-option').forEach(el => {
+        el.classList.remove('selected');
+    });
+    document.querySelector(`[data-policy-id="${policyId}"]`).classList.add('selected');
+    
+    // Enable submit button
+    document.getElementById('submit-bill-btn').disabled = false;
+}
+
+/**
+ * Submit the bill
+ */
+async function submitBill() {
+    if (!selectedPolicy) return;
+    
+    // Check AP
+    if ((currentFaction.action_points || 0) < 2) {
+        alert('Not enough Action Points!');
+        return;
+    }
+    
+    try {
+        // Get current shard tick
+        const { data: shard } = await _supabase
+            .from('shard')
+            .select('current_tick')
+            .eq('name', 'Alpha Shard')
+            .single();
+        
+        const currentTick = shard?.current_tick || 0;
+        
+        // Generate preamble
+        const sectorLabel = MAJOR_SECTORS.find(s => s.key === selectedPolicy.major_sector)?.label || selectedPolicy.major_sector;
+        const preamble = `Article I. This bill, put forth in the legislature of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to amend the standing statutes regarding ${sectorLabel}.\n\nArticle II. Be it enacted that ${selectedPolicy.policy_name}: ${selectedPolicy.description}`;
+        
+        // Create the bill
+        const { data: bill, error: billError } = await _supabase
+            .from('bills')
+            .insert({
+                nation_id: currentNation.id,
+                policy_id: selectedPolicy.id,
+                proposed_by: currentFaction.id,
+                proposed_tick: currentTick,
+                preamble: preamble,
+                status: 'voting',
+                votes_for: 0,
+                votes_against: 0,
+                voting_ends_tick: currentTick + 3
+            })
+            .select()
+            .single();
+        
+        if (billError) throw billError;
+        
+        // Deduct AP
+        const { error: apError } = await _supabase
+            .from('factions')
+            .update({ action_points: currentFaction.action_points - 2 })
+            .eq('id', currentFaction.id);
+        
+        if (apError) throw apError;
+        
+        // Update local state
+        currentFaction.action_points -= 2;
+        
+        // Refresh cache
+        await refreshGameState();
+        
+        // Close modal and reload
+        closeModal();
+        await loadLawsData();
+        renderLawsPage();
+        
+        alert(`Bill proposed successfully! Voting ends at tick ${currentTick + 3}.`);
+        
+    } catch (error) {
+        console.error('Error submitting bill:', error);
+        alert('Error submitting bill. Please try again.');
+    }
+}
+
+/**
+ * Calculate costs based on nation stats
+ */
+function calculateCosts(policy) {
+    const population = currentNation.population || 10000000;
+    const popMultiplier = population / 10000000;
+    
+    let statMultiplier = 1;
+    if (policy.cost_scaling_stat_2) {
+        const statValue = currentNation[policy.cost_scaling_stat_2] || 50;
+        statMultiplier = statValue / 50;
+    }
+    
+    return {
+        upfront: Math.round(policy.upfront_cost * popMultiplier * statMultiplier),
+        ongoing: Math.round(policy.ongoing_cost * popMultiplier * statMultiplier)
+    };
+}
+
+/**
+ * Format stat name for display
+ */
+function formatStatName(stat) {
+    return stat.charAt(0).toUpperCase() + stat.slice(1).replace(/_/g, ' ');
+}
+
+/**
+ * Format minor sector name
+ */
+function formatMinorSector(key) {
+    return key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+/**
+ * Format currency
+ */
+function formatCurrency(amount) {
+    if (amount === 0) return '$0';
+    const absAmount = Math.abs(amount);
+    const sign = amount < 0 ? '-' : '';
+    
+    if (absAmount >= 1000000000) {
+        return `${sign}$${(absAmount / 1000000000).toFixed(1)}B`;
+    } else if (absAmount >= 1000000) {
+        return `${sign}$${(absAmount / 1000000).toFixed(0)}M`;
+    } else if (absAmount >= 1000) {
+        return `${sign}$${(absAmount / 1000).toFixed(0)}K`;
+    }
+    return `${sign}$${absAmount}`;
+}
 </script>
 
 </body>
