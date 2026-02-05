@@ -18,7 +18,12 @@
             border-radius: 12px;
             padding: 24px;
             margin-bottom: 24px;
+        }
+        .administration-header {
             text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #333;
         }
         .administration-title {
             font-size: 1.5rem;
@@ -26,18 +31,68 @@
             color: #ffcc00;
             text-transform: uppercase;
             letter-spacing: 2px;
-            margin-bottom: 12px;
+            margin-bottom: 8px;
         }
         .administration-subtitle {
             font-size: 0.85rem;
             color: #888;
-            margin-bottom: 16px;
+        }
+        .administration-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+        }
+        .admin-section {
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 16px;
+        }
+        .admin-section-title {
+            font-size: 0.7rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+        .admin-person-name {
+            font-size: 1.1rem;
+            color: #e0e0e0;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        .admin-person-details {
+            font-size: 0.8rem;
+            color: #aaa;
+        }
+        .admin-person-party {
+            color: #ffcc00;
+            font-weight: bold;
+        }
+        .admin-approval {
+            text-align: center;
+        }
+        .admin-approval-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .admin-approval-value.medium {
+            color: #ff9800;
+        }
+        .admin-approval-value.low {
+            color: #ff4444;
+        }
+        .admin-approval-label {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 4px;
         }
         .coalition-parties {
             display: flex;
             justify-content: center;
             gap: 8px;
             flex-wrap: wrap;
+            margin-top: 16px;
         }
         .coalition-party-tag {
             background: #333;
@@ -71,18 +126,25 @@
             border-left: 4px solid #ffcc00;
         }
         .ministry-title {
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             font-weight: bold;
             color: #ffcc00;
-            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
         }
-        .ministry-holder {
+        .minister-name {
+            font-size: 1rem;
+            color: #e0e0e0;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        .minister-details {
             font-size: 0.8rem;
             color: #aaa;
         }
-        .ministry-holder .party-name {
+        .minister-party {
             color: #4CAF50;
-            font-weight: bold;
         }
         .no-government {
             background: #1a1a1a;
@@ -147,6 +209,8 @@ const MINISTRY_NAMES = {
 let currentNation = null;
 let currentFaction = null;
 let partyData = [];
+let coalitionData = null;
+let ministryData = [];
 
 // Initialize page
 initPage('government', async (state) => {
@@ -185,20 +249,32 @@ async function renderGovernmentPage() {
     
     try {
         // Fetch all required data
-        const [electionData, coalitionData, ministryData] = await Promise.all([
+        const [electionData, coalition, ministries] = await Promise.all([
             fetchLatestElection(),
             fetchActiveCoalition(),
             fetchMinistries()
         ]);
         
+        coalitionData = coalition;
+        ministryData = ministries;
+        
         // Get party seat data from election results
         partyData = electionData?.results?.votes || [];
+        
+        // Calculate government approval if coalition exists
+        let governmentApproval = null;
+        if (coalition) {
+            governmentApproval = await calculateGovernmentApproval(coalition.party_ids);
+        }
+        
+        // Get Prime Minister from ministries
+        const primeMinister = ministries?.find(m => m.ministry_key === 'prime_minister');
         
         // Build the page
         const html = `
             <div class="panel-padding">
                 <!-- Administration Box -->
-                ${renderAdministrationBox(coalitionData, partyData)}
+                ${renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval)}
                 
                 <!-- Government Structure -->
                 <div class="section-header">Government Structure</div>
@@ -219,7 +295,7 @@ async function renderGovernmentPage() {
                 
                 <!-- Cabinet / Ministries -->
                 <div class="section-header">Cabinet</div>
-                ${renderCabinet(ministryData, coalitionData)}
+                ${renderCabinet(ministries, coalition)}
                 
                 <!-- Parliament -->
                 <div class="section-header">Current Parliamentary Makeup</div>
@@ -299,10 +375,43 @@ async function fetchMinistries() {
 }
 
 /**
+ * Calculate government approval (median of coalition party approvals)
+ */
+async function calculateGovernmentApproval(partyIds) {
+    const { data: parties, error } = await _supabase
+        .from('factions')
+        .select('approval_rating')
+        .in('id', partyIds);
+    
+    if (error || !parties || parties.length === 0) return null;
+    
+    // Get approval ratings and sort
+    const approvals = parties.map(p => p.approval_rating || 0).sort((a, b) => a - b);
+    
+    // Calculate median
+    const mid = Math.floor(approvals.length / 2);
+    if (approvals.length % 2 === 0) {
+        return Math.round((approvals[mid - 1] + approvals[mid]) / 2);
+    } else {
+        return approvals[mid];
+    }
+}
+
+/**
+ * Get party name by ID
+ */
+function getPartyNameById(partyId) {
+    const party = partyData.find(p => p.party_id === partyId);
+    return party ? party.party_name : 'Unknown';
+}
+
+/**
  * Render the Administration box
  */
-function renderAdministrationBox(coalition, parties) {
-    const headOfState = currentNation.head_of_state_last_name || 'Unknown';
+function renderAdministrationBox(coalition, parties, primeMinister, governmentApproval) {
+    const headOfStateFirst = currentNation.head_of_state_first_name || 'Unknown';
+    const headOfStateLast = currentNation.head_of_state_last_name || 'Unknown';
+    const headOfStateAge = currentNation.head_of_state_age || '—';
     
     // Check if we have a formed government
     if (!coalition && parties.length > 0) {
@@ -313,8 +422,28 @@ function renderAdministrationBox(coalition, parties) {
             // Single party government
             return `
                 <div class="administration-box">
-                    <div class="administration-title">${headOfState} Administration</div>
-                    <div class="administration-subtitle">Single Party Government</div>
+                    <div class="administration-header">
+                        <div class="administration-title">${headOfStateLast} Administration</div>
+                        <div class="administration-subtitle">Single Party Government</div>
+                    </div>
+                    <div class="administration-content">
+                        <div class="admin-section">
+                            <div class="admin-section-title">Head of State</div>
+                            <div class="admin-person-name">${headOfStateFirst} ${headOfStateLast}</div>
+                            <div class="admin-person-details">
+                                Age ${headOfStateAge} • <span class="admin-person-party">${majorityParty.party_name}</span>
+                            </div>
+                        </div>
+                        <div class="admin-section">
+                            <div class="admin-section-title">Prime Minister</div>
+                            <div class="admin-person-name">—</div>
+                            <div class="admin-person-details">To be appointed</div>
+                        </div>
+                        <div class="admin-section admin-approval">
+                            <div class="admin-section-title">Government Approval</div>
+                            <div class="admin-approval-value">—</div>
+                        </div>
+                    </div>
                     <div class="coalition-parties">
                         <div class="coalition-party-tag">
                             ${majorityParty.party_name}<span class="seats">${majorityParty.seats} Seats</span>
@@ -336,7 +465,27 @@ function renderAdministrationBox(coalition, parties) {
     }
     
     if (coalition) {
-        // Coalition government
+        // Get lead party (for head of state affiliation)
+        const leadParty = parties.find(p => p.party_id === coalition.lead_party_id);
+        const leadPartyName = leadParty ? leadParty.party_name : 'Unknown';
+        
+        // Prime Minister details
+        const pmName = primeMinister 
+            ? `${primeMinister.minister_first_name} ${primeMinister.minister_last_name}`
+            : '—';
+        const pmAge = primeMinister?.minister_age || '—';
+        const pmParty = primeMinister 
+            ? getPartyNameById(primeMinister.party_id) 
+            : '—';
+        
+        // Approval styling
+        let approvalClass = '';
+        if (governmentApproval !== null) {
+            if (governmentApproval < 35) approvalClass = 'low';
+            else if (governmentApproval < 50) approvalClass = 'medium';
+        }
+        
+        // Coalition parties
         const coalitionParties = coalition.party_ids.map(partyId => {
             const party = parties.find(p => p.party_id === partyId);
             return party || { party_name: 'Unknown', seats: 0 };
@@ -344,8 +493,31 @@ function renderAdministrationBox(coalition, parties) {
         
         return `
             <div class="administration-box">
-                <div class="administration-title">${headOfState} Administration</div>
-                <div class="administration-subtitle">Coalition Government</div>
+                <div class="administration-header">
+                    <div class="administration-title">${headOfStateLast} Administration</div>
+                    <div class="administration-subtitle">Coalition Government</div>
+                </div>
+                <div class="administration-content">
+                    <div class="admin-section">
+                        <div class="admin-section-title">Head of State</div>
+                        <div class="admin-person-name">${headOfStateFirst} ${headOfStateLast}</div>
+                        <div class="admin-person-details">
+                            Age ${headOfStateAge} • <span class="admin-person-party">${leadPartyName}</span>
+                        </div>
+                    </div>
+                    <div class="admin-section">
+                        <div class="admin-section-title">Prime Minister</div>
+                        <div class="admin-person-name">${pmName}</div>
+                        <div class="admin-person-details">
+                            ${pmAge !== '—' ? `Age ${pmAge} • ` : ''}<span class="admin-person-party">${pmParty}</span>
+                        </div>
+                    </div>
+                    <div class="admin-section admin-approval">
+                        <div class="admin-section-title">Government Approval</div>
+                        <div class="admin-approval-value ${approvalClass}">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div>
+                        <div class="admin-approval-label">Coalition Median</div>
+                    </div>
+                </div>
                 <div class="coalition-parties">
                     ${coalitionParties.map((party, index) => `
                         ${index > 0 ? '<span class="coalition-divider">|</span>' : ''}
@@ -361,8 +533,10 @@ function renderAdministrationBox(coalition, parties) {
     // Fallback - no election data
     return `
         <div class="administration-box">
-            <div class="administration-title">${headOfState} Administration</div>
-            <div class="administration-subtitle">Caretaker Government</div>
+            <div class="administration-header">
+                <div class="administration-title">${headOfStateLast} Administration</div>
+                <div class="administration-subtitle">Caretaker Government</div>
+            </div>
             <div class="coalition-parties">
                 <div class="coalition-party-tag" style="background: #444; color: #888;">
                     Awaiting Election Results
@@ -377,29 +551,28 @@ function renderAdministrationBox(coalition, parties) {
  */
 function renderCabinet(ministries, coalition) {
     if (!ministries || ministries.length === 0) {
-        // No ministries assigned yet - show placeholder
-        if (coalition) {
-            // Coalition exists but ministries not saved
-            const allocations = coalition.ministry_allocations || {};
+        // No ministries in database - check coalition for fallback
+        if (coalition && coalition.ministry_allocations) {
+            const allocations = coalition.ministry_allocations;
             
-            if (Object.keys(allocations).length > 0) {
-                // Build cabinet from coalition allocations
-                const cards = Object.entries(allocations).map(([key, partyId]) => {
+            const cards = Object.entries(allocations)
+                .filter(([key]) => key !== 'prime_minister') // PM shown in admin box
+                .map(([key, partyId]) => {
                     const party = partyData.find(p => p.party_id === partyId);
                     const ministryName = MINISTRY_NAMES[key] || key;
                     
                     return `
                         <div class="ministry-card">
                             <div class="ministry-title">${ministryName}</div>
-                            <div class="ministry-holder">
-                                Held by <span class="party-name">${party?.party_name || 'Unknown'}</span>
+                            <div class="minister-name">To be appointed</div>
+                            <div class="minister-details">
+                                <span class="minister-party">${party?.party_name || 'Unknown'}</span>
                             </div>
                         </div>
                     `;
                 }).join('');
-                
-                return `<div class="ministry-grid">${cards}</div>`;
-            }
+            
+            return `<div class="ministry-grid">${cards}</div>`;
         }
         
         return `
@@ -409,19 +582,26 @@ function renderCabinet(ministries, coalition) {
         `;
     }
     
-    // Render from ministries table
-    const cards = ministries.map(m => {
-        const partyName = m.factions?.faction_name || 'Vacant';
-        
-        return `
-            <div class="ministry-card">
-                <div class="ministry-title">${m.ministry_name}</div>
-                <div class="ministry-holder">
-                    Held by <span class="party-name">${partyName}</span>
+    // Render from ministries table (excluding PM which is in admin box)
+    const cards = ministries
+        .filter(m => m.ministry_key !== 'prime_minister')
+        .map(m => {
+            const partyName = m.factions?.faction_name || 'Unknown';
+            const ministerName = m.minister_first_name && m.minister_last_name
+                ? `${m.minister_first_name} ${m.minister_last_name}`
+                : 'Vacant';
+            const ministerAge = m.minister_age || null;
+            
+            return `
+                <div class="ministry-card">
+                    <div class="ministry-title">${m.ministry_name}</div>
+                    <div class="minister-name">${ministerName}</div>
+                    <div class="minister-details">
+                        ${ministerAge ? `Age ${ministerAge} • ` : ''}<span class="minister-party">${partyName}</span>
+                    </div>
                 </div>
-            </div>
-        `;
-    }).join('');
+            `;
+        }).join('');
     
     return `<div class="ministry-grid">${cards}</div>`;
 }
