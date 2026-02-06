@@ -11,6 +11,12 @@
     <link rel="stylesheet" href="css/dashboard.css">
     
     <style>
+        html, body {
+            overflow-x: hidden;
+            overflow-y: auto !important;
+            min-height: 100vh;
+        }
+        
         .bill-page {
             display: grid;
             grid-template-columns: 1fr 350px;
@@ -18,6 +24,7 @@
             padding: 20px;
             max-width: 1400px;
             margin: 0 auto;
+            min-height: calc(100vh - 80px);
         }
         
         @media (max-width: 900px) {
@@ -39,6 +46,12 @@
         }
         .back-link:hover {
             color: #ffcc00;
+        }
+        
+        /* Bill Main Wrapper */
+        .bill-main-wrapper {
+            min-width: 0;
+            overflow: visible;
         }
         
         /* Bill Main Content */
@@ -328,9 +341,10 @@
         .bill-sidebar {
             display: flex;
             flex-direction: column;
-            height: calc(100vh - 120px);
+            max-height: calc(100vh - 120px);
             position: sticky;
             top: 80px;
+            align-self: start;
         }
         
         .chat-container {
@@ -497,9 +511,20 @@
             padding: 60px;
             color: #888;
         }
+        
+        /* Scroll Fix - Override any dashboard.css restrictions */
+        html {
+            overflow-y: scroll !important;
+            height: auto !important;
+        }
+        body {
+            overflow-y: auto !important;
+            height: auto !important;
+            min-height: 100vh;
+        }
     </style>
 </head>
-<body>
+<body style="overflow-y: auto !important;">
 
 <!-- ===== TOP BAR ===== -->
 <div id="top-bar"></div>
