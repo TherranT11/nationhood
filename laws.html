@@ -210,6 +210,7 @@
         .stance-btn.reject { background: #ff4444; color: #fff; }
         .stance-btn.add-article { background: #2196F3; color: #fff; }
         .stance-btn.send-floor { background: #ffcc00; color: #000; font-weight: bold; }
+        .stance-btn.retract { background: #666; color: #fff; }
         
         /* Floor voting section */
         .floor-bill {
@@ -755,6 +756,7 @@ let currentNation = null;
 let currentFaction = null;
 let currentSeats = 0;
 let allPartySeats = {};
+let allParties = [];
 let allPolicies = [];
 let activeLaws = [];
 let committeeBills = [];
@@ -806,6 +808,15 @@ initPage('laws', async (state) => {
  */
 async function loadLawsData() {
     try {
+        // Get all parties in nation
+        const { data: parties } = await _supabase
+            .from('factions')
+            .select('id, faction_name, is_npc')
+            .eq('nation_id', currentNation.id)
+            .eq('faction_type', 'party');
+        
+        allParties = parties || [];
+        
         // Get current party seats from latest election
         const { data: election } = await _supabase
             .from('elections')
@@ -965,35 +976,54 @@ function renderCommitteeBill(bill) {
             </div>
             
             <div class="party-stances">
-                ${renderPartyStances(bill, isSponsor, myStance, hasEnough)}
+                ${renderAllPartyStances(bill, isSponsor, myStance, hasEnough, support)}
             </div>
         </div>
     `;
 }
 
 /**
- * Render party stances for a committee bill
+ * Render all party stances for a committee bill
  */
-function renderPartyStances(bill, isSponsor, myStance, hasEnough) {
-    return `
-        <div class="party-stance-row">
-            <div class="party-stance-info">
-                <span class="party-stance-name">${currentFaction?.faction_name || 'Your Party'}</span>
-                <span class="party-stance-seats">(${currentSeats} seats)</span>
+function renderAllPartyStances(bill, isSponsor, myStance, hasEnough, support) {
+    return allParties.map(party => {
+        const partySeats = allPartySeats[party.id] || 0;
+        const isCurrentParty = party.id === currentFaction?.id;
+        const isPartyTheSponsor = party.id === bill.proposed_by;
+        const partyStance = support.find(s => s.faction_id === party.id);
+        
+        let actionHtml = '';
+        
+        if (isPartyTheSponsor) {
+            actionHtml = `
+                <span class="stance-badge stance-sponsor">SPONSOR</span>
+                ${isCurrentParty && hasEnough ? `<button class="stance-btn send-floor" onclick="sendToFloor('${bill.id}')">Send to Floor</button>` : ''}
+                ${isCurrentParty ? `<button class="stance-btn retract" onclick="retractBill('${bill.id}')">Retract</button>` : ''}
+            `;
+        } else if (partyStance) {
+            actionHtml = `<span class="stance-badge stance-${partyStance.stance}">${partyStance.stance.toUpperCase()}</span>`;
+        } else if (isCurrentParty) {
+            actionHtml = `
+                <button class="stance-btn accept" onclick="setStance('${bill.id}', 'accept')">Accept</button>
+                <button class="stance-btn reject" onclick="setStance('${bill.id}', 'reject')">Reject</button>
+                <button class="stance-btn add-article" onclick="openCommitteeAddModal('${bill.id}')">+ Add Article</button>
+            `;
+        } else {
+            actionHtml = `<span class="stance-badge stance-pending">PENDING</span>`;
+        }
+        
+        return `
+            <div class="party-stance-row">
+                <div class="party-stance-info">
+                    <span class="party-stance-name">${party.faction_name}${party.is_npc ? ' [AI]' : ''}</span>
+                    <span class="party-stance-seats">(${partySeats} seats)</span>
+                </div>
+                <div class="party-stance-actions">
+                    ${actionHtml}
+                </div>
             </div>
-            <div class="party-stance-actions">
-                ${isSponsor 
-                    ? `<span class="stance-badge stance-sponsor">SPONSOR</span>
-                       ${hasEnough ? `<button class="stance-btn send-floor" onclick="sendToFloor('${bill.id}')">Send to Floor</button>` : ''}`
-                    : myStance 
-                        ? `<span class="stance-badge stance-${myStance.stance}">${myStance.stance.toUpperCase()}</span>`
-                        : `<button class="stance-btn accept" onclick="setStance('${bill.id}', 'accept')">Accept</button>
-                           <button class="stance-btn reject" onclick="setStance('${bill.id}', 'reject')">Reject</button>
-                           <button class="stance-btn add-article" onclick="openCommitteeAddModal('${bill.id}')">+ Add Article</button>`
-                }
-            </div>
-        </div>
-    `;
+        `;
+    }).join('');
 }
 
 /**
@@ -1349,6 +1379,9 @@ async function submitToCommittee() {
         
         currentFaction.action_points -= 2;
         
+        // Trigger NPC voting
+        await _supabase.rpc('process_npc_committee_votes', { p_nation_id: currentNation.id });
+        
         closeModal();
         await loadLawsData();
         renderLawsPage();
@@ -1385,6 +1418,46 @@ async function setStance(billId, stance) {
     } catch (error) {
         console.error('Error setting stance:', error);
         alert('Error setting stance.');
+    }
+}
+
+/**
+ * Retract a bill from committee
+ */
+async function retractBill(billId) {
+    if (!confirm('Are you sure you want to retract this bill? This cannot be undone.')) {
+        return;
+    }
+    
+    try {
+        // Delete bill support first (foreign key)
+        await _supabase
+            .from('bill_support')
+            .delete()
+            .eq('bill_id', billId);
+        
+        // Delete bill articles (foreign key)
+        await _supabase
+            .from('bill_articles')
+            .delete()
+            .eq('bill_id', billId);
+        
+        // Delete the bill
+        const { error } = await _supabase
+            .from('bills')
+            .delete()
+            .eq('id', billId);
+        
+        if (error) throw error;
+        
+        await loadLawsData();
+        renderLawsPage();
+        
+        alert('Bill retracted.');
+        
+    } catch (error) {
+        console.error('Error retracting bill:', error);
+        alert('Error retracting bill.');
     }
 }
 
