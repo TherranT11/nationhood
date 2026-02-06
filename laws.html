@@ -247,9 +247,13 @@
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
         }
-        .clickable-bill:hover {
+        .floor-bill.clickable-bill:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(76, 175, 80, 0.3);
+        }
+        .committee-bill.clickable-bill:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 152, 0, 0.3);
         }
         .article-desc {
             font-size: 0.8rem;
@@ -974,7 +978,7 @@ function renderCommitteeBill(bill) {
     const myStance = support.find(s => s.faction_id === currentFaction?.id);
     
     return `
-        <div class="committee-bill">
+        <div class="committee-bill clickable-bill" onclick="window.location.href='bill.html?id=${bill.id}'">
             <div class="committee-bill-header">
                 <div>
                     <div class="committee-bill-name">${bill.bill_name || 'Unnamed Bill'}</div>
@@ -997,15 +1001,13 @@ function renderCommitteeBill(bill) {
                         <div class="article-info">
                             <span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>
                             <span class="article-ideology">${art.policies?.ideology || ''}</span>
-                            <div class="article-author">Added by ${art.factions?.faction_name || 'Unknown'}</div>
+                            <div class="article-desc">${art.policies?.description || ''}</div>
                         </div>
                     </div>
                 `).join('')}
             </div>
             
-            <div class="party-stances">
-                ${renderAllPartyStances(bill, isSponsor, myStance, hasEnough, support)}
-            </div>
+            <div class="click-hint" style="color: #ff9800;">Click to view full bill & negotiate →</div>
         </div>
     `;
 }
