@@ -947,26 +947,34 @@
             const nationsHTML = await Promise.all(nations.map(async (nation) => {
                 const { data: players } = await _supabase
                     .from('factions')
-                    .select('id, faction_name, is_npc')
+                    .select('id, faction_name, is_npc, seats')
                     .eq('nation_id', nation.id)
                     .eq('faction_type', 'party')
                     .eq('is_npc', false);
                 
                 const playersHTML = players && players.length > 0
-                    ? players.map(player => `
-                        <div class="player-item">
-                            <div class="player-info">
-                                <div class="player-party">${player.faction_name}</div>
-                                <div class="player-id">ID: ${player.id.substring(0, 8)}...</div>
-                            </div>
-                            <button class="btn-remove" 
-                                    data-player-id="${player.id}" 
-                                    data-nation-id="${nation.id}" 
-                                    data-party-name="${player.faction_name}">
-                                Remove
-                            </button>
-                        </div>
-                    `).join('')
+? players.map(player => `
+    <div class="player-item">
+        <div class="player-info">
+            <div class="player-party">${player.faction_name} (${player.seats || 0} seats)</div>
+            <div class="player-id">ID: ${player.id.substring(0, 8)}...</div>
+        </div>
+        <div style="display:flex; gap:6px;">
+            <button class="btn-remove" 
+                    data-player-id="${player.id}" 
+                    data-nation-id="${nation.id}" 
+                    data-party-name="${player.faction_name}">
+                Kick
+            </button>
+            <button class="btn-remove" style="background:#aa0000;"
+                    data-delete-id="${player.id}" 
+                    data-nation-id="${nation.id}" 
+                    data-party-name="${player.faction_name}">
+                DELETE
+            </button>
+        </div>
+    </div>
+`).join('')
                     : '<div class="no-players">No players in this nation</div>';
                 
                 return `
@@ -982,14 +990,22 @@
             
             grid.innerHTML = nationsHTML.join('');
             
-            document.querySelectorAll('.btn-remove').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const playerId = this.getAttribute('data-player-id');
-                    const nationId = this.getAttribute('data-nation-id');
-                    const partyName = this.getAttribute('data-party-name');
-                    removePlayer(playerId, nationId, partyName);
-                });
-            });
+document.querySelectorAll('[data-player-id]').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const playerId = this.getAttribute('data-player-id');
+        const nationId = this.getAttribute('data-nation-id');
+        const partyName = this.getAttribute('data-party-name');
+        removePlayer(playerId, nationId, partyName);
+    });
+});
+
+document.querySelectorAll('[data-delete-id]').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const playerId = this.getAttribute('data-delete-id');
+        const partyName = this.getAttribute('data-party-name');
+        deleteParty(playerId, partyName);
+    });
+});
         } catch (error) {
             console.error('Error loading nations:', error);
         }
@@ -1011,6 +1027,24 @@
             alert('❌ Error: ' + error.message);
         }
     }
+
+    async function deleteParty(factionId, partyName) {
+    if (!confirm(`⚠️ PERMANENTLY DELETE "${partyName}"?\n\nThis will:\n• Delete the party completely\n• Redistribute their seats\n• Delete their user account\n\nThis cannot be undone!`)) return;
+
+    try {
+        const { data, error } = await _supabase.rpc('admin_delete_party', {
+            p_faction_id: factionId
+        });
+
+        if (error) throw error;
+
+        alert(`✅ "${partyName}" deleted!\n\nSeats redistributed: ${data.seats_redistributed}\nRemaining parties: ${data.remaining_parties}`);
+        await loadStats();
+        await loadNations();
+    } catch (error) {
+        alert('❌ Error: ' + error.message);
+    }
+}
     
     async function resetShard() {
         if (!confirm('⚠️ RESET ENTIRE SHARD? This cannot be undone!')) return;
