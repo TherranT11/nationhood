@@ -242,6 +242,32 @@
         .votes-for { color: #4CAF50; font-weight: bold; }
         .votes-against { color: #ff4444; font-weight: bold; }
         
+        /* Clickable Floor Bill */
+        .clickable-bill {
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .clickable-bill:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.3);
+        }
+        .article-desc {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 4px;
+            font-style: italic;
+        }
+        .click-hint {
+            text-align: right;
+            font-size: 0.8rem;
+            color: #4CAF50;
+            margin-top: 12px;
+            opacity: 0.7;
+        }
+        .clickable-bill:hover .click-hint {
+            opacity: 1;
+        }
+        
         /* Sector Accordion */
         .sector-accordion {
             margin-bottom: 16px;
@@ -886,7 +912,7 @@ function renderFloorBills() {
     return `
         <div class="section-header" style="color: #4CAF50;">On The Floor</div>
         ${floorBills.map(bill => `
-            <div class="floor-bill">
+            <div class="floor-bill clickable-bill" onclick="window.location.href='bill.html?id=${bill.id}'">
                 <div class="committee-bill-header">
                     <div>
                         <div class="floor-bill-name">${bill.bill_name || 'Unnamed Bill'}</div>
@@ -900,6 +926,7 @@ function renderFloorBills() {
                             <div class="article-info">
                                 <span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>
                                 <span class="article-ideology">${art.policies?.ideology || ''}</span>
+                                <div class="article-desc">${art.policies?.description || ''}</div>
                             </div>
                         </div>
                     `).join('')}
@@ -908,6 +935,7 @@ function renderFloorBills() {
                     <span class="votes-for">✓ ${bill.votes_for || 0} For</span>
                     <span class="votes-against">✗ ${bill.votes_against || 0} Against</span>
                 </div>
+                <div class="click-hint">Click to view full bill & vote →</div>
             </div>
         `).join('')}
     `;
