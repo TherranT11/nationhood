@@ -762,15 +762,18 @@
         confirmBtn.disabled = !isValid;
     }
     
-    async function createParty() {
-        const confirmBtn = document.getElementById('confirm-btn');
-        confirmBtn.disabled = true;
-        confirmBtn.textContent = 'CREATING...';
+   async function createParty() {
+    const confirmBtn = document.getElementById('confirm-btn');
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'CREATING...';
+    
+    // Clear state cache since we're about to change faction data
+    sessionStorage.removeItem('nationhood_state');
+    
+    try {
+        const nation = nationData;
         
-        try {
-            const nation = nationData;
-            
-            if (isAutocracy) {
+        if (isAutocracy) {
                 // --- AUTOCRACY JOIN ---
                 const partyName = document.getElementById('party-name').value;
                 const partyAbbr = document.getElementById('party-abbr').value;
