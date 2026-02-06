@@ -192,9 +192,12 @@
 
             // STEP 1: Create the User in Supabase Auth
             const { data: authData, error: authError } = await _supabase.auth.signUp({
-                email,
-                password,
-            });
+    email,
+    password,
+    options: {
+        emailRedirectTo: 'https://therrant11.github.io/nationhood/login.html'
+    }
+});
 
             if (authError) throw authError;
 
