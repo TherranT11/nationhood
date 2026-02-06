@@ -209,11 +209,22 @@
 
             // STEP 3: Create the Faction Record (without nation_id yet)
 if (authData.user) {
-    alert("Faction Created! Now choose your nation.");
-    // Small delay to let the trigger create the faction row
-    setTimeout(() => {
-        window.location.href = "map.html";
-    }, 1500);
+    document.querySelector('.signup-card').innerHTML = `
+        <h2 style="color: #ffcc00;">Check Your Email</h2>
+        <div style="text-align: center; padding: 30px 0;">
+            <div style="font-size: 3rem; margin-bottom: 20px;">📧</div>
+            <p style="color: #ccc; font-size: 1.1rem; line-height: 1.6;">
+                A confirmation link has been sent to<br>
+                <strong style="color: #ffcc00;">${email}</strong>
+            </p>
+            <p style="color: #888; font-size: 0.9rem; margin-top: 20px;">
+                Click the link in your email to activate your faction, then choose your nation.
+            </p>
+            <a href="login.html" style="display: inline-block; margin-top: 30px; padding: 12px 30px; background: #ffcc00; color: #000; font-weight: bold; border-radius: 4px; text-decoration: none;">
+                GO TO LOGIN
+            </a>
+        </div>
+    `;
 }
             }
         } catch (error) {
