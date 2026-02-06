@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bill Details | Nationhood Alpha</title>
+    
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Shared Styles -->
+    <link rel="stylesheet" href="css/dashboard.css">
+    
+    <style>
+        .bill-page {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 24px;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        @media (max-width: 900px) {
+            .bill-page {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* Back Link */
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #888;
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin-bottom: 16px;
+            transition: color 0.2s;
+        }
+        .back-link:hover {
+            color: #ffcc00;
+        }
+        
+        /* Bill Main Content */
+        .bill-main {
+            background: #1a1a1a;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .bill-header {
+            background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+            padding: 24px;
+            border-bottom: 3px solid #ffcc00;
+        }
+        
+        .bill-status {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }
+        .bill-status.committee { background: #ff9800; color: #000; }
+        .bill-status.floor { background: #4CAF50; color: #fff; }
+        .bill-status.passed { background: #2196F3; color: #fff; }
+        .bill-status.failed { background: #ff4444; color: #fff; }
+        
+        .bill-title {
+            font-size: 1.8rem;
+            color: #ffcc00;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        
+        .bill-sponsor {
+            color: #888;
+            font-size: 0.9rem;
+        }
+        
+        .bill-meta {
+            display: flex;
+            gap: 24px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #333;
+        }
+        
+        .bill-meta-item {
+            text-align: center;
+        }
+        
+        .bill-meta-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #ffcc00;
+        }
+        
+        .bill-meta-label {
+            font-size: 0.75rem;
+            color: #888;
+            text-transform: uppercase;
+        }
+        
+        /* Articles */
+        .bill-articles {
+            padding: 24px;
+        }
+        
+        .article {
+            background: #252525;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+            border-left: 4px solid #444;
+        }
+        
+        .article.preamble {
+            border-left-color: #ffcc00;
+            background: #2a2a1a;
+        }
+        
+        .article-number {
+            font-size: 0.75rem;
+            color: #ffcc00;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        
+        .article-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #e0e0e0;
+            margin-bottom: 8px;
+        }
+        
+        .article-ideology {
+            display: inline-block;
+            font-size: 0.7rem;
+            background: #4CAF50;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        
+        .article-description {
+            color: #aaa;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            margin-bottom: 12px;
+            font-style: italic;
+        }
+        
+        .article-costs {
+            display: flex;
+            gap: 24px;
+            padding-top: 12px;
+            border-top: 1px solid #333;
+        }
+        
+        .cost-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .cost-label {
+            font-size: 0.8rem;
+            color: #888;
+        }
+        
+        .cost-value {
+            font-weight: bold;
+            color: #ff9800;
+        }
+        
+        .cost-value.negative {
+            color: #4CAF50;
+        }
+        
+        .article-stat-effect {
+            margin-top: 8px;
+            font-size: 0.85rem;
+        }
+        
+        .stat-up { color: #4CAF50; }
+        .stat-down { color: #ff4444; }
+        
+        /* Totals */
+        .bill-totals {
+            background: #252525;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 0 24px 24px;
+            display: flex;
+            justify-content: space-around;
+            border: 2px solid #ffcc00;
+        }
+        
+        .total-item {
+            text-align: center;
+        }
+        
+        .total-label {
+            font-size: 0.75rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        
+        .total-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #ff9800;
+        }
+        
+        .total-value.revenue {
+            color: #4CAF50;
+        }
+        
+        /* Voting Section */
+        .voting-section {
+            padding: 24px;
+            border-top: 2px solid #333;
+            background: #1e1e1e;
+        }
+        
+        .voting-title {
+            font-size: 1rem;
+            color: #ffcc00;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+        }
+        
+        .voting-buttons {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .vote-btn {
+            flex: 1;
+            padding: 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .vote-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .vote-btn.yes {
+            background: #4CAF50;
+            color: white;
+        }
+        .vote-btn.yes:hover:not(:disabled) {
+            background: #388E3C;
+            transform: translateY(-2px);
+        }
+        
+        .vote-btn.no {
+            background: #ff4444;
+            color: white;
+        }
+        .vote-btn.no:hover:not(:disabled) {
+            background: #cc0000;
+            transform: translateY(-2px);
+        }
+        
+        .vote-btn.abstain {
+            background: #666;
+            color: white;
+        }
+        .vote-btn.abstain:hover:not(:disabled) {
+            background: #555;
+            transform: translateY(-2px);
+        }
+        
+        .vote-btn.selected {
+            box-shadow: 0 0 0 3px #ffcc00;
+        }
+        
+        .current-vote {
+            margin-top: 16px;
+            padding: 12px;
+            background: #252525;
+            border-radius: 6px;
+            text-align: center;
+        }
+        
+        .current-vote-label {
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 4px;
+        }
+        
+        .current-vote-value {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+        
+        .current-vote-value.yes { color: #4CAF50; }
+        .current-vote-value.no { color: #ff4444; }
+        .current-vote-value.abstain { color: #888; }
+        
+        .voting-ended {
+            text-align: center;
+            padding: 20px;
+            color: #888;
+            font-style: italic;
+        }
+        
+        /* Chat Sidebar */
+        .bill-sidebar {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 120px);
+            position: sticky;
+            top: 80px;
+        }
+        
+        .chat-container {
+            background: #1a1a1a;
+            border-radius: 12px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .chat-header {
+            padding: 16px;
+            background: #252525;
+            border-bottom: 1px solid #333;
+        }
+        
+        .chat-title {
+            font-size: 0.9rem;
+            color: #ffcc00;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: bold;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .chat-message {
+            background: #252525;
+            border-radius: 8px;
+            padding: 12px;
+        }
+        
+        .chat-message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .chat-message-author {
+            font-weight: bold;
+            color: #ffcc00;
+            font-size: 0.85rem;
+        }
+        
+        .chat-message-time {
+            font-size: 0.7rem;
+            color: #666;
+        }
+        
+        .chat-message-text {
+            color: #e0e0e0;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        
+        .chat-empty {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            padding: 40px 20px;
+        }
+        
+        .chat-input-area {
+            padding: 16px;
+            border-top: 1px solid #333;
+            background: #1e1e1e;
+        }
+        
+        .chat-input-wrapper {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .chat-input {
+            flex: 1;
+            padding: 12px;
+            background: #252525;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-size: 0.9rem;
+            resize: none;
+        }
+        
+        .chat-input:focus {
+            outline: none;
+            border-color: #ffcc00;
+        }
+        
+        .chat-send-btn {
+            padding: 12px 20px;
+            background: #ffcc00;
+            border: none;
+            border-radius: 6px;
+            color: #121212;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .chat-send-btn:hover {
+            background: #e6b800;
+        }
+        
+        .chat-send-btn:disabled {
+            background: #444;
+            color: #666;
+            cursor: not-allowed;
+        }
+        
+        /* Vote Tally */
+        .vote-tally {
+            background: #252525;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        
+        .vote-tally-title {
+            font-size: 0.8rem;
+            color: #888;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+        }
+        
+        .vote-tally-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #333;
+        }
+        
+        .vote-tally-row:last-child {
+            border-bottom: none;
+        }
+        
+        .vote-tally-label {
+            color: #e0e0e0;
+        }
+        
+        .vote-tally-value {
+            font-weight: bold;
+        }
+        
+        .vote-tally-value.for { color: #4CAF50; }
+        .vote-tally-value.against { color: #ff4444; }
+        .vote-tally-value.abstain { color: #888; }
+        
+        /* Loading */
+        .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ===== TOP BAR ===== -->
+<div id="top-bar"></div>
+
+<!-- ===== BILL PAGE ===== -->
+<div class="bill-page" id="bill-page" style="display: none;">
+    <!-- Main Content -->
+    <div class="bill-main-wrapper">
+        <a href="laws.html" class="back-link">← Back to Laws</a>
+        
+        <div class="bill-main">
+            <div class="bill-header">
+                <div class="bill-status" id="bill-status">FLOOR</div>
+                <div class="bill-title" id="bill-title">Loading...</div>
+                <div class="bill-sponsor" id="bill-sponsor">Proposed by ...</div>
+                
+                <div class="bill-meta">
+                    <div class="bill-meta-item">
+                        <div class="bill-meta-value" id="meta-votes-for">0</div>
+                        <div class="bill-meta-label">Votes For</div>
+                    </div>
+                    <div class="bill-meta-item">
+                        <div class="bill-meta-value" id="meta-votes-against">0</div>
+                        <div class="bill-meta-label">Votes Against</div>
+                    </div>
+                    <div class="bill-meta-item">
+                        <div class="bill-meta-value" id="meta-ends-tick">—</div>
+                        <div class="bill-meta-label">Voting Ends</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bill-articles" id="bill-articles">
+                <!-- Articles rendered here -->
+            </div>
+            
+            <div class="bill-totals" id="bill-totals">
+                <div class="total-item">
+                    <div class="total-label">Total Upfront Cost</div>
+                    <div class="total-value" id="total-upfront">$0</div>
+                </div>
+                <div class="total-item">
+                    <div class="total-label">Total Ongoing Cost</div>
+                    <div class="total-value" id="total-ongoing">$0/mo</div>
+                </div>
+            </div>
+            
+            <div class="voting-section" id="voting-section">
+                <div class="voting-title">Cast Your Vote</div>
+                <div class="voting-buttons">
+                    <button class="vote-btn yes" onclick="castVote('yes')">✓ Vote Yes</button>
+                    <button class="vote-btn no" onclick="castVote('no')">✗ Vote No</button>
+                    <button class="vote-btn abstain" onclick="castVote('abstain')">— Abstain</button>
+                </div>
+                <div class="current-vote" id="current-vote" style="display: none;">
+                    <div class="current-vote-label">Your current vote:</div>
+                    <div class="current-vote-value" id="current-vote-value">—</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Sidebar: Chat -->
+    <div class="bill-sidebar">
+        <div class="vote-tally" id="vote-tally">
+            <div class="vote-tally-title">Current Tally</div>
+            <div class="vote-tally-row">
+                <span class="vote-tally-label">For</span>
+                <span class="vote-tally-value for" id="tally-for">0 seats</span>
+            </div>
+            <div class="vote-tally-row">
+                <span class="vote-tally-label">Against</span>
+                <span class="vote-tally-value against" id="tally-against">0 seats</span>
+            </div>
+            <div class="vote-tally-row">
+                <span class="vote-tally-label">Abstain</span>
+                <span class="vote-tally-value abstain" id="tally-abstain">0 seats</span>
+            </div>
+        </div>
+        
+        <div class="chat-container">
+            <div class="chat-header">
+                <div class="chat-title">💬 Bill Discussion</div>
+            </div>
+            
+            <div class="chat-messages" id="chat-messages">
+                <div class="chat-empty">No comments yet. Be the first to speak!</div>
+            </div>
+            
+            <div class="chat-input-area">
+                <div class="chat-input-wrapper">
+                    <textarea class="chat-input" id="chat-input" placeholder="Share your thoughts..." rows="2"></textarea>
+                    <button class="chat-send-btn" onclick="sendComment()">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading State -->
+<div id="loading-state" class="loading-container">
+    <div class="loading-spinner"></div>
+    <div>Loading bill...</div>
+</div>
+
+<!-- Scripts -->
+<script src="js/supabase-client.js"></script>
+<script src="js/common.js"></script>
+
+<script>
+/**
+ * Bill Detail Page
+ */
+
+let currentBill = null;
+let currentFaction = null;
+let currentNation = null;
+let currentSeats = 0;
+let myVote = null;
+let allPartySeats = {};
+
+// Get bill ID from URL
+const urlParams = new URLSearchParams(window.location.search);
+const billId = urlParams.get('id');
+
+// Initialize
+initPage('laws', async (state) => {
+    const { nation, faction } = state;
+    
+    currentNation = nation;
+    currentFaction = faction;
+    
+    if (!billId) {
+        document.getElementById('loading-state').innerHTML = `
+            <div style="text-align: center; color: #ff4444;">
+                <h2>No Bill Selected</h2>
+                <p>Please select a bill from the <a href="laws.html" style="color: #ffcc00;">Laws</a> page.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    await loadBillData();
+    await loadComments();
+    
+    document.getElementById('loading-state').style.display = 'none';
+    document.getElementById('bill-page').style.display = 'grid';
+    
+    // Set up real-time comments subscription
+    setupRealtimeComments();
+});
+
+/**
+ * Load bill data
+ */
+async function loadBillData() {
+    try {
+        // Get bill with articles and support
+        const { data: bill, error } = await _supabase
+            .from('bills')
+            .select(`
+                *,
+                factions(faction_name),
+                bill_articles(*, policies(*), factions(faction_name)),
+                bill_support(*)
+            `)
+            .eq('id', billId)
+            .single();
+        
+        if (error) throw error;
+        
+        currentBill = bill;
+        
+        // Get party seats
+        const { data: election } = await _supabase
+            .from('elections')
+            .select('results')
+            .eq('nation_id', bill.nation_id)
+            .eq('status', 'completed')
+            .order('election_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        
+        if (election?.results?.seats) {
+            election.results.seats.forEach(s => {
+                allPartySeats[s.party_id] = s.seats;
+            });
+            currentSeats = allPartySeats[currentFaction?.id] || 0;
+        }
+        
+        // Check my current vote
+        const mySupport = bill.bill_support?.find(s => s.faction_id === currentFaction?.id);
+        if (mySupport) {
+            myVote = mySupport.stance;
+        }
+        
+        renderBill();
+        
+    } catch (error) {
+        console.error('Error loading bill:', error);
+        document.getElementById('loading-state').innerHTML = `
+            <div style="text-align: center; color: #ff4444;">
+                <h2>Error Loading Bill</h2>
+                <p>${error.message}</p>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Render bill details
+ */
+function renderBill() {
+    const bill = currentBill;
+    
+    // Status
+    const statusEl = document.getElementById('bill-status');
+    statusEl.textContent = bill.status.toUpperCase();
+    statusEl.className = `bill-status ${bill.status}`;
+    
+    // Title and sponsor
+    document.getElementById('bill-title').textContent = bill.bill_name || 'Unnamed Bill';
+    document.getElementById('bill-sponsor').textContent = `Proposed by ${bill.factions?.faction_name || 'Unknown'}`;
+    
+    // Meta
+    document.getElementById('meta-votes-for').textContent = bill.votes_for || 0;
+    document.getElementById('meta-votes-against').textContent = bill.votes_against || 0;
+    document.getElementById('meta-ends-tick').textContent = bill.voting_ends_tick ? `Tick ${bill.voting_ends_tick}` : '—';
+    
+    // Articles
+    const articles = (bill.bill_articles || []).sort((a, b) => a.article_number - b.article_number);
+    let totalUpfront = 0;
+    let totalOngoing = 0;
+    
+    const articlesHtml = `
+        <!-- Preamble -->
+        <div class="article preamble">
+            <div class="article-number">Article I</div>
+            <div class="article-title">Preamble</div>
+            <div class="article-description">
+                ${bill.preamble || `This bill, put forth in the legislature of the nation, seeks to enact the following provisions.`}
+            </div>
+        </div>
+        
+        ${articles.map(art => {
+            const policy = art.policies;
+            if (!policy) return '';
+            
+            totalUpfront += policy.upfront_cost || 0;
+            totalOngoing += policy.ongoing_cost || 0;
+            
+            const direction = policy.stat_direction === 'UP' ? '↑' : '↓';
+            const directionClass = policy.stat_direction === 'UP' ? 'stat-up' : 'stat-down';
+            
+            return `
+                <div class="article">
+                    <div class="article-number">Article ${art.article_number}</div>
+                    <div class="article-title">
+                        ${policy.policy_name}
+                        <span class="article-ideology">${policy.ideology}</span>
+                    </div>
+                    <div class="article-description">${policy.description}</div>
+                    <div class="article-stat-effect">
+                        Effect: <span class="${directionClass}">${direction} ${policy.target_stat}</span>
+                    </div>
+                    <div class="article-costs">
+                        <div class="cost-item">
+                            <span class="cost-label">Upfront:</span>
+                            <span class="cost-value ${policy.upfront_cost < 0 ? 'negative' : ''}">${formatCurrency(policy.upfront_cost)}</span>
+                        </div>
+                        <div class="cost-item">
+                            <span class="cost-label">Ongoing:</span>
+                            <span class="cost-value ${policy.ongoing_cost < 0 ? 'negative' : ''}">${formatCurrency(policy.ongoing_cost)}/mo</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('')}
+    `;
+    
+    document.getElementById('bill-articles').innerHTML = articlesHtml;
+    
+    // Totals
+    document.getElementById('total-upfront').textContent = formatCurrency(totalUpfront);
+    document.getElementById('total-upfront').className = `total-value ${totalUpfront < 0 ? 'revenue' : ''}`;
+    document.getElementById('total-ongoing').textContent = `${formatCurrency(totalOngoing)}/mo`;
+    document.getElementById('total-ongoing').className = `total-value ${totalOngoing < 0 ? 'revenue' : ''}`;
+    
+    // Vote tally
+    updateVoteTally();
+    
+    // Show current vote
+    if (myVote) {
+        document.getElementById('current-vote').style.display = 'block';
+        const voteValueEl = document.getElementById('current-vote-value');
+        voteValueEl.textContent = myVote.toUpperCase();
+        voteValueEl.className = `current-vote-value ${myVote}`;
+        
+        // Highlight selected button
+        document.querySelectorAll('.vote-btn').forEach(btn => btn.classList.remove('selected'));
+        document.querySelector(`.vote-btn.${myVote}`)?.classList.add('selected');
+    }
+    
+    // Disable voting if not on floor
+    if (bill.status !== 'floor') {
+        document.querySelectorAll('.vote-btn').forEach(btn => btn.disabled = true);
+        document.getElementById('voting-section').innerHTML = `
+            <div class="voting-ended">
+                ${bill.status === 'passed' ? '✓ This bill has passed.' : 
+                  bill.status === 'failed' ? '✗ This bill has failed.' : 
+                  'Voting has not begun.'}
+            </div>
+        `;
+    }
+}
+
+/**
+ * Update vote tally display
+ */
+function updateVoteTally() {
+    const support = currentBill.bill_support || [];
+    
+    let forSeats = 0;
+    let againstSeats = 0;
+    let abstainSeats = 0;
+    
+    support.forEach(s => {
+        if (s.stance === 'yes' || s.stance === 'accept') forSeats += s.seat_count;
+        else if (s.stance === 'no' || s.stance === 'reject') againstSeats += s.seat_count;
+        else if (s.stance === 'abstain') abstainSeats += s.seat_count;
+    });
+    
+    document.getElementById('tally-for').textContent = `${forSeats} seats`;
+    document.getElementById('tally-against').textContent = `${againstSeats} seats`;
+    document.getElementById('tally-abstain').textContent = `${abstainSeats} seats`;
+}
+
+/**
+ * Cast a vote
+ */
+async function castVote(vote) {
+    if (!currentFaction || currentBill.status !== 'floor') return;
+    
+    try {
+        const { error } = await _supabase
+            .from('bill_support')
+            .upsert({
+                bill_id: billId,
+                faction_id: currentFaction.id,
+                stance: vote,
+                seat_count: currentSeats
+            }, { onConflict: 'bill_id,faction_id' });
+        
+        if (error) throw error;
+        
+        myVote = vote;
+        
+        // Update UI
+        document.getElementById('current-vote').style.display = 'block';
+        const voteValueEl = document.getElementById('current-vote-value');
+        voteValueEl.textContent = vote.toUpperCase();
+        voteValueEl.className = `current-vote-value ${vote}`;
+        
+        document.querySelectorAll('.vote-btn').forEach(btn => btn.classList.remove('selected'));
+        document.querySelector(`.vote-btn.${vote}`)?.classList.add('selected');
+        
+        // Reload to update tally
+        await loadBillData();
+        
+    } catch (error) {
+        console.error('Error casting vote:', error);
+        alert('Error casting vote: ' + error.message);
+    }
+}
+
+/**
+ * Load comments
+ */
+async function loadComments() {
+    try {
+        const { data: comments, error } = await _supabase
+            .from('bill_comments')
+            .select('*, factions(faction_name)')
+            .eq('bill_id', billId)
+            .order('created_at', { ascending: true });
+        
+        if (error) throw error;
+        
+        renderComments(comments || []);
+        
+    } catch (error) {
+        console.error('Error loading comments:', error);
+    }
+}
+
+/**
+ * Render comments
+ */
+function renderComments(comments) {
+    const container = document.getElementById('chat-messages');
+    
+    if (comments.length === 0) {
+        container.innerHTML = '<div class="chat-empty">No comments yet. Be the first to speak!</div>';
+        return;
+    }
+    
+    container.innerHTML = comments.map(comment => `
+        <div class="chat-message">
+            <div class="chat-message-header">
+                <span class="chat-message-author">${comment.factions?.faction_name || 'Unknown'}</span>
+                <span class="chat-message-time">${formatTime(comment.created_at)}</span>
+            </div>
+            <div class="chat-message-text">${escapeHtml(comment.comment_text)}</div>
+        </div>
+    `).join('');
+    
+    // Scroll to bottom
+    container.scrollTop = container.scrollHeight;
+}
+
+/**
+ * Send a comment
+ */
+async function sendComment() {
+    const input = document.getElementById('chat-input');
+    const text = input.value.trim();
+    
+    if (!text || !currentFaction) return;
+    
+    try {
+        const { error } = await _supabase
+            .from('bill_comments')
+            .insert({
+                bill_id: billId,
+                faction_id: currentFaction.id,
+                comment_text: text
+            });
+        
+        if (error) throw error;
+        
+        input.value = '';
+        await loadComments();
+        
+    } catch (error) {
+        console.error('Error sending comment:', error);
+        alert('Error sending comment: ' + error.message);
+    }
+}
+
+/**
+ * Setup realtime comments subscription
+ */
+function setupRealtimeComments() {
+    _supabase
+        .channel('bill-comments')
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'bill_comments',
+            filter: `bill_id=eq.${billId}`
+        }, () => {
+            loadComments();
+        })
+        .subscribe();
+}
+
+/**
+ * Format currency
+ */
+function formatCurrency(amount) {
+    if (amount === 0) return '$0';
+    
+    const absAmount = Math.abs(amount);
+    const sign = amount < 0 ? '+' : '-';
+    
+    if (absAmount >= 1000000000) {
+        return `${sign}$${(absAmount / 1000000000).toFixed(1)}B`;
+    } else if (absAmount >= 1000000) {
+        return `${sign}$${(absAmount / 1000000).toFixed(0)}M`;
+    } else if (absAmount >= 1000) {
+        return `${sign}$${(absAmount / 1000).toFixed(0)}K`;
+    }
+    return `${sign}$${absAmount}`;
+}
+
+/**
+ * Format time
+ */
+function formatTime(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now - date;
+    
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    return date.toLocaleDateString();
+}
+
+/**
+ * Escape HTML
+ */
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Enter to send comment
+document.getElementById('chat-input')?.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendComment();
+    }
+});
+</script>
+
+</body>
+</html>
