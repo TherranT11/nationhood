@@ -198,15 +198,6 @@
 
             if (authError) throw authError;
 
-            // STEP 2: Get Alpha Shard ID
-            const { data: shard, error: shardError } = await _supabase
-                .from('shard')
-                .select('id')
-                .eq('name', 'Alpha Shard')
-                .single();
-
-            if (shardError) throw new Error('Could not find Alpha Shard');
-
           // STEP 3: Show confirmation screen
             if (authData.user) {
                 document.querySelector('.signup-card').innerHTML = `
