@@ -210,7 +210,10 @@
             // STEP 3: Create the Faction Record (without nation_id yet)
 if (authData.user) {
     alert("Faction Created! Now choose your nation.");
-    window.location.href = "map.html";
+    // Small delay to let the trigger create the faction row
+    setTimeout(() => {
+        window.location.href = "map.html";
+    }, 1500);
 }
             }
         } catch (error) {
