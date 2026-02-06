@@ -4,13 +4,9 @@
     <meta charset="UTF-8">
     <title>Elections | Nationhood Alpha</title>
     
-    <!-- Supabase SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
-    <!-- Shared Styles -->
     <link rel="stylesheet" href="css/dashboard.css">
     
-    <!-- Page-specific styles -->
     <style>
         .ministry-grid {
             display: grid;
@@ -170,34 +166,172 @@
         .nav-buttons .action-btn {
             min-width: 150px;
         }
+
+        /* Autocracy-specific styles */
+        .strongman-banner {
+            background: linear-gradient(135deg, #2a1a1a 0%, #1a1a1a 100%);
+            border: 1px solid #ff4444;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        .strongman-icon {
+            font-size: 3rem;
+        }
+        .strongman-details {
+            flex: 1;
+        }
+        .strongman-label {
+            font-size: 0.7rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        .strongman-name-display {
+            font-size: 1.4rem;
+            color: #ff4444;
+            font-weight: bold;
+            margin: 4px 0;
+        }
+        .strongman-meta {
+            font-size: 0.85rem;
+            color: #888;
+        }
+        .shakeup-banner {
+            background: linear-gradient(135deg, #3a1a1a 0%, #1a1a1a 100%);
+            border: 2px solid #ff4444;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 24px;
+            text-align: center;
+            animation: pulse-border 2s infinite;
+        }
+        @keyframes pulse-border {
+            0%, 100% { border-color: #ff4444; }
+            50% { border-color: #ff8888; }
+        }
+        .shakeup-title {
+            font-size: 1.5rem;
+            color: #ff4444;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+        }
+        .shakeup-desc {
+            color: #aaa;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+        .shakeup-sides {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 20px;
+            align-items: center;
+            margin: 20px 0;
+        }
+        .shakeup-side {
+            background: #252525;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+        .shakeup-side.ruling {
+            border: 2px solid #ffcc00;
+        }
+        .shakeup-side.seizing {
+            border: 2px solid #ff4444;
+        }
+        .shakeup-side-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        .shakeup-side.ruling .shakeup-side-label { color: #ffcc00; }
+        .shakeup-side.seizing .shakeup-side-label { color: #ff4444; }
+        .shakeup-side-name {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #e0e0e0;
+            margin-bottom: 4px;
+        }
+        .shakeup-side-seats {
+            font-size: 0.85rem;
+            color: #888;
+        }
+        .shakeup-vs {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #ff4444;
+        }
+        .shakeup-vote-buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .shakeup-vote-btn {
+            padding: 14px 40px;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: 0.3s;
+        }
+        .shakeup-vote-btn.ruling-btn {
+            background: #ffcc00;
+            color: #000;
+        }
+        .shakeup-vote-btn.ruling-btn:hover {
+            background: #e6b800;
+        }
+        .shakeup-vote-btn.seizing-btn {
+            background: #ff4444;
+            color: white;
+        }
+        .shakeup-vote-btn.seizing-btn:hover {
+            background: #cc0000;
+        }
+        .shakeup-vote-btn:disabled {
+            background: #444;
+            color: #888;
+            cursor: not-allowed;
+        }
+        .shakeup-voted {
+            color: #4CAF50;
+            font-weight: bold;
+            font-size: 1rem;
+            margin-top: 16px;
+        }
     </style>
 </head>
 <body>
 
-<!-- ===== TOP BAR (rendered by common.js) ===== -->
 <div id="top-bar"></div>
 
-<!-- ===== CONTENT AREA ===== -->
 <div id="content-area">
-    <!-- Loading state shown initially -->
     <div class="loading-container">
         <div class="loading-spinner"></div>
-        <div>Loading election data...</div>
+        <div>Loading...</div>
     </div>
 </div>
 
-<!-- Shared Scripts -->
 <script src="js/supabase-client.js"></script>
 <script src="js/common.js"></script>
 
-<!-- Page-Specific Script -->
 <script>
 /**
- * Elections Page
- * Campaign actions, election results, coalition formation with ministry allocation
+ * Elections / Internal Affairs Page
+ * Detects government type and shows appropriate actions
  */
 
-// Page state
 let currentFaction = null;
 let currentNation = null;
 let currentElectionId = null;
@@ -205,13 +339,13 @@ let coalitionParties = [];
 let selectedCoalitionParties = [];
 let totalSeatsInNation = 120;
 let majorityThreshold = 61;
+let isAutocracy = false;
 
-// Ministry allocation state
-let coalitionStep = 1; // 1 = select parties, 2 = allocate ministries
+// Ministry state
+let coalitionStep = 1;
 let ministryAllocations = {};
 let partyMinistryLimits = {};
 
-// Ministry definitions
 const MINISTRIES = [
     { key: 'prime_minister', name: 'Prime Minister', description: 'Head of government, sets national agenda and policy priorities.', locked: true },
     { key: 'interior', name: 'Ministry of the Interior', description: 'Oversees domestic affairs, local governments, and civil administration.' },
@@ -226,7 +360,6 @@ const MINISTRIES = [
     { key: 'security', name: 'Ministry of Security', description: 'Handles intelligence and counter-terrorism operations.', inactive: true }
 ];
 
-// NPC ministry preferences (randomized per session)
 let npcPreferences = {};
 
 // Initialize page
@@ -247,16 +380,377 @@ initPage('elections', async (state) => {
         return;
     }
     
-    await renderElectionsPage();
+    // Detect government type
+    isAutocracy = (nation.government_type === 'Autocracy');
+    
+    // Update page title
+    if (isAutocracy) {
+        document.title = 'Internal Affairs | Nationhood Alpha';
+    }
+    
+    if (isAutocracy) {
+        await renderAutocracyPage();
+    } else {
+        await renderElectionsPage();
+    }
 });
 
+// ===================================================================
+// AUTOCRACY PAGE
+// ===================================================================
+
+async function renderAutocracyPage() {
+    // Get other factions for targeting
+    const { data: otherFactions } = await _supabase
+        .from('factions')
+        .select('id, faction_name, seats, approval_rating')
+        .eq('nation_id', currentNation.id)
+        .eq('faction_type', 'party')
+        .eq('is_npc', false)
+        .neq('id', currentFaction.id);
+
+    // Get all factions for seat display
+    const { data: allFactions } = await _supabase
+        .from('factions')
+        .select('id, faction_name, seats, approval_rating')
+        .eq('nation_id', currentNation.id)
+        .eq('faction_type', 'party')
+        .eq('is_npc', false)
+        .order('seats', { ascending: false });
+
+    const isRulingFaction = allFactions && allFactions.length > 0 && allFactions[0].id === currentFaction.id;
+
+    // Check for active shakeup
+    const { data: activeShakeup } = await _supabase
+        .from('shakeups')
+        .select('*')
+        .eq('nation_id', currentNation.id)
+        .eq('status', 'voting')
+        .limit(1)
+        .maybeSingle();
+
+    // Build target options
+    const targetOptions = (otherFactions || []).map(f => 
+        `<option value="${f.id}">${f.faction_name} (${f.seats} seats)</option>`
+    ).join('');
+
+    // Build faction standings
+    const standingsHTML = (allFactions || []).map((f, i) => {
+        const isYou = f.id === currentFaction.id;
+        const barWidth = Math.max(2, (f.seats / 120) * 100);
+        return `
+            <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: ${isYou ? '#2a2a1a' : '#1a1a1a'}; border-radius: 4px; margin-bottom: 8px; ${isYou ? 'border-left: 3px solid #ffcc00;' : ''}">
+                <div style="width: 24px; text-align: center; font-size: 1.2rem;">${i === 0 ? '👑' : ''}</div>
+                <div style="flex: 1;">
+                    <div style="font-weight: bold; color: ${isYou ? '#ffcc00' : '#e0e0e0'}; font-size: 0.9rem;">
+                        ${f.faction_name} ${isYou ? '(You)' : ''}
+                        ${i === 0 ? '<span style="color: #ff4444; font-size: 0.75rem; margin-left: 8px;">RULING</span>' : ''}
+                    </div>
+                    <div style="margin-top: 6px; background: #333; height: 6px; border-radius: 3px; overflow: hidden;">
+                        <div style="width: ${barWidth}%; height: 100%; background: ${isYou ? '#ffcc00' : '#666'}; border-radius: 3px;"></div>
+                    </div>
+                </div>
+                <div style="text-align: right; min-width: 80px;">
+                    <div style="font-size: 1.1rem; font-weight: bold; color: #ffcc00;">${f.seats}</div>
+                    <div style="font-size: 0.7rem; color: #888;">seats</div>
+                </div>
+                <div style="text-align: right; min-width: 60px;">
+                    <div style="font-size: 0.9rem; color: #4CAF50;">${f.approval_rating || 0}%</div>
+                    <div style="font-size: 0.7rem; color: #888;">approval</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const html = `
+        <div class="panel-padding">
+            <!-- Strongman Banner -->
+            <div class="strongman-banner">
+                <div class="strongman-icon">🏛️</div>
+                <div class="strongman-details">
+                    <div class="strongman-label">Strongman Leader of ${currentNation.name}</div>
+                    <div class="strongman-name-display">
+                        ${currentNation.head_of_state_first_name || 'Unknown'} ${currentNation.head_of_state_last_name || 'Leader'}
+                    </div>
+                    <div class="strongman-meta">
+                        Age ${currentNation.head_of_state_age || '??'} · Rules until dead or deposed · 
+                        Stability: <span style="color: ${currentNation.stability < 20 ? '#ff4444' : currentNation.stability < 50 ? '#ff9800' : '#4CAF50'};">${currentNation.stability}%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Shakeup (if any) -->
+            <div id="shakeup-section" style="display: ${activeShakeup ? 'block' : 'none'};">
+                ${activeShakeup ? renderShakeupUI(activeShakeup, allFactions) : ''}
+            </div>
+
+            <!-- Faction Standings -->
+            <div class="section-header">Faction Standings</div>
+            <div style="margin-bottom: 24px;">
+                ${standingsHTML || '<div style="color: #666; text-align: center; padding: 20px;">No factions yet</div>'}
+            </div>
+
+            <!-- Party Stats -->
+            <div class="section-header">Your Faction Resources</div>
+            <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
+                <div class="stat-card">
+                    <div class="stat-label">Action Points</div>
+                    <div class="stat-value" id="party-ap">${currentFaction.action_points || 0}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Seats</div>
+                    <div class="stat-value" id="party-seats">${currentFaction.seats || 0} / 120</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Approval Rating</div>
+                    <div class="stat-value" id="party-approval">${currentFaction.approval_rating || 0}%</div>
+                </div>
+            </div>
+
+            <!-- Autocracy Actions -->
+            <div class="section-header">Actions</div>
+            <div class="action-grid">
+                <!-- Give Speech -->
+                <div class="action-card">
+                    <div class="action-header">
+                        <div class="action-title">Give Speech</div>
+                        <div class="action-cost">2 AP</div>
+                    </div>
+                    <div class="action-desc">Address the people to boost your faction's approval. Roll 1D3 for approval gain.</div>
+                    <button class="action-btn" onclick="doGiveSpeech()">Give Speech</button>
+                </div>
+
+                <!-- Spread Rumors -->
+                <div class="action-card">
+                    <div class="action-header">
+                        <div class="action-title">Spread Rumors</div>
+                        <div class="action-cost">3 AP</div>
+                    </div>
+                    <div class="action-desc">Target a rival faction: steal 1D3 seats from them. Costs 1D3 national stability.</div>
+                    <div style="margin: 10px 0;">
+                        <select id="rumor-target" class="action-select">
+                            <option value="">Select Target Faction...</option>
+                            ${targetOptions}
+                        </select>
+                    </div>
+                    <button class="action-btn action-btn-risk" onclick="doSpreadRumors()">Spread Rumors</button>
+                </div>
+
+                <!-- Seize Power -->
+                <div class="action-card" style="border-left-color: #ff4444;">
+                    <div class="action-header">
+                        <div class="action-title" style="color: #ff4444;">Seize Power</div>
+                        <div class="action-cost">15 AP</div>
+                    </div>
+                    <div class="action-desc">
+                        Attempt to overthrow the ruling faction. Triggers a Shakeup where all factions must choose sides.
+                        <br><br>
+                        <strong style="color: #ff9800;">Losing side:</strong> -25 seats, -20% approval
+                    </div>
+                    <button class="action-btn" style="background: #ff4444;" onclick="doSeizePower()" ${isRulingFaction ? 'disabled title="You are the ruling faction"' : ''}>
+                        ${isRulingFaction ? '👑 You Rule' : '⚔️ Seize Power'}
+                    </button>
+                </div>
+            </div>
+
+            <!-- Action Log -->
+            <div class="section-header" style="margin-top: 30px;">Recent Actions</div>
+            <div id="action-log" class="action-log">
+                <div class="action-log-empty">No actions taken yet.</div>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('content-area').innerHTML = html;
+    await loadActionLog();
+}
+
 /**
- * Render the full elections page
+ * Render the shakeup voting UI
  */
+function renderShakeupUI(shakeup, allFactions) {
+    const votes = shakeup.votes || [];
+    const myVote = votes.find(v => v.faction_id === currentFaction.id);
+    
+    const rulingFaction = allFactions?.find(f => f.id === shakeup.ruling_faction_id);
+    const seizingFaction = allFactions?.find(f => f.id === shakeup.initiated_by);
+    
+    const rulingVoters = votes.filter(v => v.side === 'ruling').map(v => {
+        const f = allFactions?.find(af => af.id === v.faction_id);
+        return f ? f.faction_name : 'Unknown';
+    });
+    const seizingVoters = votes.filter(v => v.side === 'seizing').map(v => {
+        const f = allFactions?.find(af => af.id === v.faction_id);
+        return f ? f.faction_name : 'Unknown';
+    });
+
+    const totalFactions = allFactions?.length || 0;
+    const totalVotes = votes.length;
+    const allVoted = totalVotes >= totalFactions;
+
+    return `
+        <div class="shakeup-banner">
+            <div class="shakeup-title">⚔️ SHAKEUP IN PROGRESS ⚔️</div>
+            <div class="shakeup-desc">
+                ${shakeup.trigger_type === 'low_stability' ? 'Low stability has triggered a power struggle!' : 'A faction is attempting to seize power!'}
+                <br>All factions must choose a side.
+            </div>
+            
+            <div class="shakeup-sides">
+                <div class="shakeup-side ruling">
+                    <div class="shakeup-side-label">Ruling Faction</div>
+                    <div class="shakeup-side-name">${rulingFaction?.faction_name || 'Unknown'}</div>
+                    <div class="shakeup-side-seats">${rulingFaction?.seats || 0} seats</div>
+                    <div style="margin-top: 8px; font-size: 0.8rem; color: #aaa;">
+                        Supporters: ${rulingVoters.length > 0 ? rulingVoters.join(', ') : 'None yet'}
+                    </div>
+                </div>
+                
+                <div class="shakeup-vs">VS</div>
+                
+                <div class="shakeup-side seizing">
+                    <div class="shakeup-side-label">Seizing Faction</div>
+                    <div class="shakeup-side-name">${seizingFaction?.faction_name || 'Unknown'}</div>
+                    <div class="shakeup-side-seats">${seizingFaction?.seats || 0} seats</div>
+                    <div style="margin-top: 8px; font-size: 0.8rem; color: #aaa;">
+                        Supporters: ${seizingVoters.length > 0 ? seizingVoters.join(', ') : 'None yet'}
+                    </div>
+                </div>
+            </div>
+
+            ${myVote ? `
+                <div class="shakeup-voted">✓ You sided with the ${myVote.side} faction</div>
+            ` : `
+                <div class="shakeup-vote-buttons">
+                    <button class="shakeup-vote-btn ruling-btn" onclick="voteShakeup('${shakeup.id}', 'ruling')">
+                        Side with Ruling
+                    </button>
+                    <button class="shakeup-vote-btn seizing-btn" onclick="voteShakeup('${shakeup.id}', 'seizing')">
+                        Side with Seizing
+                    </button>
+                </div>
+            `}
+
+            <div style="margin-top: 16px; font-size: 0.85rem; color: #888;">
+                Votes cast: ${totalVotes} / ${totalFactions}
+                ${allVoted ? '<br><button class="action-btn" style="margin-top: 12px;" onclick="resolveActiveShakeup(\'' + shakeup.id + '\')">Resolve Shakeup</button>' : ''}
+            </div>
+        </div>
+    `;
+}
+
+// ===================================================================
+// AUTOCRACY ACTIONS
+// ===================================================================
+
+async function doGiveSpeech() {
+    try {
+        const { data, error } = await _supabase.rpc('action_give_speech', {
+            p_faction_id: currentFaction.id
+        });
+        if (error) throw error;
+        if (data.success) {
+            alert('✅ ' + data.message);
+            currentFaction.action_points = data.new_ap;
+            currentFaction.approval_rating = data.new_approval;
+            await renderAutocracyPage();
+        } else {
+            alert('❌ ' + data.message);
+        }
+    } catch (error) {
+        alert('❌ Error: ' + error.message);
+    }
+}
+
+async function doSpreadRumors() {
+    const targetId = document.getElementById('rumor-target')?.value;
+    if (!targetId) { alert('Select a target faction!'); return; }
+    
+    try {
+        const { data, error } = await _supabase.rpc('action_spread_rumors', {
+            p_faction_id: currentFaction.id,
+            p_target_id: targetId
+        });
+        if (error) throw error;
+        if (data.success) {
+            alert('✅ ' + data.message);
+            currentFaction.action_points = data.new_ap;
+            await renderAutocracyPage();
+        } else {
+            alert('❌ ' + data.message);
+        }
+    } catch (error) {
+        alert('❌ Error: ' + error.message);
+    }
+}
+
+async function doSeizePower() {
+    if (!confirm('⚔️ SEIZE POWER?\n\nThis costs 15 AP and triggers a Shakeup.\nAll factions must choose sides.\nThe losing side loses 25 seats and 20% approval.\n\nProceed?')) return;
+    
+    try {
+        const { data, error } = await _supabase.rpc('action_seize_power', {
+            p_faction_id: currentFaction.id
+        });
+        if (error) throw error;
+        if (data.success) {
+            alert('⚔️ ' + data.message);
+            currentFaction.action_points = data.new_ap;
+            await renderAutocracyPage();
+        } else {
+            alert('❌ ' + data.message);
+        }
+    } catch (error) {
+        alert('❌ Error: ' + error.message);
+    }
+}
+
+async function voteShakeup(shakeupId, side) {
+    if (!confirm(`Side with the ${side} faction? This cannot be changed.`)) return;
+    
+    try {
+        const { data, error } = await _supabase.rpc('vote_on_shakeup', {
+            p_shakeup_id: shakeupId,
+            p_faction_id: currentFaction.id,
+            p_side: side
+        });
+        if (error) throw error;
+        if (data.success) {
+            alert('✅ ' + data.message);
+            await renderAutocracyPage();
+        } else {
+            alert('❌ ' + data.message);
+        }
+    } catch (error) {
+        alert('❌ Error: ' + error.message);
+    }
+}
+
+async function resolveActiveShakeup(shakeupId) {
+    if (!confirm('Resolve this shakeup? The losing side will lose seats and approval.')) return;
+    
+    try {
+        const { data, error } = await _supabase.rpc('resolve_shakeup', {
+            p_shakeup_id: shakeupId
+        });
+        if (error) throw error;
+        if (data.success) {
+            alert('⚔️ ' + data.message);
+            await renderAutocracyPage();
+        } else {
+            alert('❌ ' + data.message);
+        }
+    } catch (error) {
+        alert('❌ Error: ' + error.message);
+    }
+}
+
+// ===================================================================
+// DEMOCRACY PAGE (original elections code)
+// ===================================================================
+
 async function renderElectionsPage() {
     const html = `
         <div class="panel-padding">
-            <!-- Election Results (only shows after an election) -->
             <div id="election-results-section" style="display: none;">
                 <div class="section-header">Election Results — <span id="election-year">2000</span></div>
                 <div class="info-block" style="margin-bottom: 24px;">
@@ -264,9 +758,7 @@ async function renderElectionsPage() {
                 </div>
             </div>
 
-            <!-- Coalition Formation Section -->
             <div id="coalition-formation-section" style="display: none;">
-                <!-- Step Indicator -->
                 <div class="step-indicator" id="step-indicator">
                     <div class="step active" data-step="1">
                         <div class="step-number">1</div>
@@ -282,7 +774,6 @@ async function renderElectionsPage() {
                     </div>
                 </div>
 
-                <!-- Step 1: Coalition Selection Screen -->
                 <div id="coalition-step-1" style="display: none;">
                     <div class="section-header">Form Coalition Government</div>
                     <div class="info-block" style="margin-bottom: 24px; background: #1a1a1a; border-left: 3px solid #ff9800;">
@@ -305,7 +796,6 @@ async function renderElectionsPage() {
                         </div>
                     </div>
 
-                    <!-- Value Conflicts Display -->
                     <div id="coalition-conflicts" style="display: none; margin-bottom: 20px;">
                         <div class="info-block" style="border-left: 3px solid #ff4444;">
                             <div style="font-size: 0.9rem; color: #ff4444; font-weight: bold; margin-bottom: 8px;">⚠ Ideological Conflicts Detected</div>
@@ -317,13 +807,9 @@ async function renderElectionsPage() {
                         </div>
                     </div>
 
-                    <!-- Party Selection Grid -->
                     <div class="section-header">Select Coalition Partners</div>
-                    <div id="coalition-party-grid" class="coalition-grid">
-                        <!-- Parties will be inserted here by JavaScript -->
-                    </div>
+                    <div id="coalition-party-grid" class="coalition-grid"></div>
 
-                    <!-- Navigation Buttons -->
                     <div class="nav-buttons">
                         <button id="step1-next-btn" class="action-btn" onclick="goToStep(2)" disabled>
                             Next: Allocate Ministries →
@@ -331,7 +817,6 @@ async function renderElectionsPage() {
                     </div>
                 </div>
 
-                <!-- Step 2: Ministry Allocation -->
                 <div id="coalition-step-2" style="display: none;">
                     <div class="section-header">Allocate Ministries</div>
                     <div class="info-block" style="margin-bottom: 20px; background: #1a1a1a; border-left: 3px solid #2196F3;">
@@ -340,54 +825,30 @@ async function renderElectionsPage() {
                             and no more than their seat percentage allows.
                         </div>
                     </div>
-
-                    <!-- Allocation Summary -->
-                    <div class="allocation-summary" id="allocation-summary">
-                        <!-- Party allocation bars will be inserted here -->
-                    </div>
-
-                    <!-- Ministry Grid -->
-                    <div class="ministry-grid" id="ministry-grid">
-                        <!-- Ministry cards will be inserted here -->
-                    </div>
-
-                    <!-- Navigation Buttons -->
+                    <div class="allocation-summary" id="allocation-summary"></div>
+                    <div class="ministry-grid" id="ministry-grid"></div>
                     <div class="nav-buttons">
-                        <button class="action-btn" style="background: #444;" onclick="goToStep(1)">
-                            ← Back
-                        </button>
-                        <button id="step2-next-btn" class="action-btn" onclick="proposeCoalition()" disabled>
-                            Propose Coalition
-                        </button>
+                        <button class="action-btn" style="background: #444;" onclick="goToStep(1)">← Back</button>
+                        <button id="step2-next-btn" class="action-btn" onclick="proposeCoalition()" disabled>Propose Coalition</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Coalition Proposals List (shows when proposals exist) -->
             <div id="coalition-proposals-section" style="display: none;">
                 <div class="section-header">Coalition Proposals</div>
                 <div class="info-block" style="margin-bottom: 16px; background: #1a1a1a; border-left: 3px solid #4CAF50;">
                     <div style="font-size: 0.85rem; color: #aaa;">
                         All parties must vote on each coalition proposal. The proposal with the most votes wins.
-                        If no coalition achieves majority support, a Hung Parliament occurs (-2 Stability).
                     </div>
                 </div>
-                <div id="coalition-proposals-list">
-                    <!-- Proposals will be inserted here -->
-                </div>
-                
-                <!-- Resolve Voting Button (only for admin/game master) -->
+                <div id="coalition-proposals-list"></div>
                 <div style="margin-top: 24px; text-align: center;">
                     <button class="action-btn action-btn-risk" onclick="resolveCoalitionVoting()" style="max-width: 400px;">
                         Resolve Coalition Voting
                     </button>
-                    <div style="margin-top: 8px; font-size: 0.8rem; color: #666;">
-                        Only click when all parties have voted
-                    </div>
                 </div>
             </div>
             
-            <!-- Party Stats Header -->
             <div class="section-header">Your Party Resources</div>
             <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
                 <div class="stat-card">
@@ -404,10 +865,8 @@ async function renderElectionsPage() {
                 </div>
             </div>
 
-            <!-- Campaign Actions -->
             <div class="section-header">Campaign Actions</div>
             <div class="action-grid">
-                <!-- Grassroots Rally -->
                 <div class="action-card">
                     <div class="action-header">
                         <div class="action-title">Grassroots Rally</div>
@@ -417,7 +876,6 @@ async function renderElectionsPage() {
                     <button class="action-btn" onclick="performAction('rally')">Organize Rally</button>
                 </div>
 
-                <!-- Attack Ad -->
                 <div class="action-card">
                     <div class="action-header">
                         <div class="action-title">Attack Ad</div>
@@ -432,7 +890,6 @@ async function renderElectionsPage() {
                     <button class="action-btn" onclick="performAction('attack')">Launch Attack Ad</button>
                 </div>
 
-                <!-- Fundraiser -->
                 <div class="action-card">
                     <div class="action-header">
                         <div class="action-title">Fundraiser</div>
@@ -442,13 +899,12 @@ async function renderElectionsPage() {
                     <button class="action-btn" onclick="performAction('fundraiser')">Host Fundraiser</button>
                 </div>
 
-                <!-- Lobby Interest Group -->
                 <div class="action-card">
                     <div class="action-header">
                         <div class="action-title">Lobby Interest Group</div>
                         <div class="action-cost">5 AP • Free</div>
                     </div>
-                    <div class="action-desc">Lobby an interest group for funding. Roll 1D6 × $100k. Requires policy commitment!</div>
+                    <div class="action-desc">Lobby an interest group for funding. Roll 1D6 × $100k.</div>
                     <div style="margin: 10px 0;">
                         <select id="lobby-target" class="action-select">
                             <option value="">Select Interest Group...</option>
@@ -458,13 +914,11 @@ async function renderElectionsPage() {
                 </div>
             </div>
 
-            <!-- Action Log -->
             <div class="section-header" style="margin-top: 30px;">Recent Actions</div>
             <div id="action-log" class="action-log">
                 <div class="action-log-empty">No actions taken yet this campaign.</div>
             </div>
 
-            <!-- Next Election -->
             <div class="section-header" style="margin-top: 30px;">Upcoming Elections</div>
             <div id="election-info" class="info-block">
                 <div class="info-row">
@@ -481,7 +935,6 @@ async function renderElectionsPage() {
     
     document.getElementById('content-area').innerHTML = html;
     
-    // Load all data
     await loadElectionResults();
     await checkCoalitionStatus();
     await populatePartyStats();
@@ -490,24 +943,67 @@ async function renderElectionsPage() {
     await loadElectionInfo();
 }
 
-/**
- * Populate party resource stats
- */
-async function populatePartyStats() {
+// ===================================================================
+// SHARED FUNCTIONS
+// ===================================================================
+
+async function loadActionLog() {
     if (!currentFaction) return;
     
+    const { data: actions } = await _supabase
+        .from('campaign_actions')
+        .select('*')
+        .eq('party_id', currentFaction.id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+    
+    const logDiv = document.getElementById('action-log');
+    if (!logDiv) return;
+    
+    if (!actions || actions.length === 0) {
+        logDiv.innerHTML = '<div class="action-log-empty">No actions taken yet.</div>';
+        return;
+    }
+    
+    logDiv.innerHTML = actions.map(a => {
+        const date = new Date(a.created_at).toLocaleString();
+        let message = '';
+        
+        if (a.action_type === 'rally') {
+            message = `Grassroots Rally: Gained ${a.result?.approval_gain || 0}% approval`;
+        } else if (a.action_type === 'attack_ad') {
+            message = `Attack Ad vs ${a.result?.target || 'Unknown'}: -${a.result?.approval_loss || 0}% to their approval`;
+        } else if (a.action_type === 'fundraiser') {
+            message = `Fundraiser: Raised $${(a.result?.money_raised || 0).toLocaleString()}`;
+        } else if (a.action_type === 'lobby') {
+            message = `Lobbied ${a.result?.group_name || 'Unknown'}: Received $${(a.result?.payout || 0).toLocaleString()}`;
+        } else if (a.action_type === 'spread_rumors') {
+            message = `Spread Rumors vs ${a.result?.target || 'Unknown'}: Stole ${a.result?.seats_stolen || 0} seats, -${a.result?.stability_loss || 0} stability`;
+        } else if (a.action_type === 'give_speech') {
+            message = `Gave Speech: +${a.result?.approval_gain || 0}% approval`;
+        }
+        
+        return `<div class="action-log-item">
+            <div class="action-log-time">Tick ${a.tick_performed} • ${date}</div>
+            <div class="action-log-message">${message}</div>
+        </div>`;
+    }).join('');
+}
+
+// ===================================================================
+// DEMOCRACY-ONLY FUNCTIONS (unchanged from original)
+// ===================================================================
+
+async function populatePartyStats() {
+    if (!currentFaction) return;
     document.getElementById('party-ap').textContent = currentFaction.action_points || 0;
     document.getElementById('party-funds').textContent = '$' + (currentFaction.party_funds || 0).toLocaleString();
     document.getElementById('party-approval').textContent = (currentFaction.approval_rating || 0) + '%';
 }
 
-/**
- * Populate attack target and lobby dropdowns
- */
 async function populateDropdowns() {
     if (!currentFaction || !currentNation) return;
     
-    // Get other parties for attack target
     const { data: parties } = await _supabase
         .from('factions')
         .select('id, faction_name')
@@ -523,7 +1019,6 @@ async function populateDropdowns() {
         });
     }
     
-    // Get interest groups for lobbying
     const { data: groups } = await _supabase
         .from('interest_groups')
         .select('id, group_name')
@@ -540,51 +1035,6 @@ async function populateDropdowns() {
     }
 }
 
-/**
- * Load recent action log
- */
-async function loadActionLog() {
-    if (!currentFaction) return;
-    
-    const { data: actions } = await _supabase
-        .from('campaign_actions')
-        .select('*')
-        .eq('party_id', currentFaction.id)
-        .order('created_at', { ascending: false })
-        .limit(5);
-    
-    const logDiv = document.getElementById('action-log');
-    if (!logDiv) return;
-    
-    if (!actions || actions.length === 0) {
-        logDiv.innerHTML = '<div class="action-log-empty">No actions taken yet this campaign.</div>';
-        return;
-    }
-    
-    logDiv.innerHTML = actions.map(a => {
-        const date = new Date(a.created_at).toLocaleString();
-        let message = '';
-        
-        if (a.action_type === 'rally') {
-            message = `Grassroots Rally: Gained ${a.result?.approval_gain || 0}% approval`;
-        } else if (a.action_type === 'attack_ad') {
-            message = `Attack Ad vs ${a.result?.target || 'Unknown'}: -${a.result?.approval_loss || 0}% to their approval`;
-        } else if (a.action_type === 'fundraiser') {
-            message = `Fundraiser: Raised $${(a.result?.money_raised || 0).toLocaleString()}`;
-        } else if (a.action_type === 'lobby') {
-            message = `Lobbied ${a.result?.group_name || 'Unknown'}: Received $${(a.result?.payout || 0).toLocaleString()}`;
-        }
-        
-        return `<div class="action-log-item">
-            <div class="action-log-time">Tick ${a.tick_performed} • ${date}</div>
-            <div class="action-log-message">${message}</div>
-        </div>`;
-    }).join('');
-}
-
-/**
- * Load upcoming election info
- */
 async function loadElectionInfo() {
     if (!currentNation) return;
     
@@ -606,15 +1056,11 @@ async function loadElectionInfo() {
     if (election && shard) {
         const nextElectionEl = document.getElementById('next-election-tick');
         const ticksUntilEl = document.getElementById('ticks-until-election');
-        
         if (nextElectionEl) nextElectionEl.textContent = 'Tick ' + election.election_tick;
         if (ticksUntilEl) ticksUntilEl.textContent = (election.election_tick - shard.current_tick) + ' ticks';
     }
 }
 
-/**
- * Load election results
- */
 async function loadElectionResults() {
     if (!currentNation) return;
     
@@ -628,11 +1074,7 @@ async function loadElectionResults() {
             .limit(1)
             .maybeSingle();
         
-        if (error) {
-            console.error('Error loading election:', error);
-            return;
-        }
-        
+        if (error) { console.error('Error loading election:', error); return; }
         if (!election || !election.results) {
             document.getElementById('election-results-section').style.display = 'none';
             return;
@@ -640,759 +1082,206 @@ async function loadElectionResults() {
         
         document.getElementById('election-results-section').style.display = 'block';
         
-        // Get date from shard based on election tick
-        const { data: shard } = await _supabase
-            .from('shard')
-            .select('current_date, current_tick')
-            .eq('name', 'Alpha Shard')
-            .single();
+        const { data: shard } = await _supabase.from('shard').select('current_date, current_tick').eq('name', 'Alpha Shard').single();
         
         if (shard) {
-            const months = ['January', 'February', 'March', 'April', 'May', 'June', 
-                           'July', 'August', 'September', 'October', 'November', 'December'];
-            
+            const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
             const currentMonth = shard.current_date.split(', ')[0];
             const currentYear = parseInt(shard.current_date.split(', ')[1]);
             const currentMonthIndex = months.indexOf(currentMonth);
-            
             const tickDiff = shard.current_tick - election.election_tick;
-            
             let electionMonthIndex = currentMonthIndex - tickDiff;
             let electionYear = currentYear;
-            
-            while (electionMonthIndex < 0) {
-                electionMonthIndex += 12;
-                electionYear -= 1;
-            }
-            
-            const electionMonth = months[electionMonthIndex % 12];
-            document.getElementById('election-year').textContent = `${electionMonth}, ${electionYear}`;
+            while (electionMonthIndex < 0) { electionMonthIndex += 12; electionYear -= 1; }
+            document.getElementById('election-year').textContent = `${months[electionMonthIndex % 12]}, ${electionYear}`;
         }
         
         const results = election.results.votes || [];
-        const resultsHTML = results.map(r => {
-            const votes = r.votes || 0;
-            const percentage = r.vote_percentage || 0;
-            const seats = r.seats || 0;
-            
-            return `<div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid #222; align-items: center;">
+        document.getElementById('election-results-list').innerHTML = results.map(r => `
+            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid #222; align-items: center;">
                 <span style="font-size: 0.9rem; color: #ffcc00; font-weight: bold;">${r.party_name}</span>
-                <span style="font-size: 0.85rem; color: #aaa; text-align: right;">${votes.toLocaleString()} Votes</span>
-                <span style="font-size: 0.85rem; color: #aaa; text-align: right;">${percentage}%</span>
-                <span style="font-size: 0.85rem; font-weight: bold; color: #4CAF50; text-align: right;">${seats} Seats</span>
-            </div>`;
-        }).join('');
-        
-        document.getElementById('election-results-list').innerHTML = resultsHTML;
-        
-    } catch (error) {
-        console.error('Error in loadElectionResults:', error);
-    }
+                <span style="font-size: 0.85rem; color: #aaa; text-align: right;">${(r.votes || 0).toLocaleString()} Votes</span>
+                <span style="font-size: 0.85rem; color: #aaa; text-align: right;">${r.vote_percentage || 0}%</span>
+                <span style="font-size: 0.85rem; font-weight: bold; color: #4CAF50; text-align: right;">${r.seats || 0} Seats</span>
+            </div>
+        `).join('');
+    } catch (error) { console.error('Error in loadElectionResults:', error); }
 }
 
-/**
- * Perform a campaign action
- */
 async function performAction(actionType) {
     if (!currentFaction) return;
-    
     let result;
-    
     try {
         if (actionType === 'rally') {
-            const { data, error } = await _supabase.rpc('action_grassroots_rally', { 
-                player_party_id: currentFaction.id 
-            });
-            if (error) throw error;
-            result = data[0];
-        } 
-        else if (actionType === 'attack') {
+            const { data, error } = await _supabase.rpc('action_grassroots_rally', { player_party_id: currentFaction.id });
+            if (error) throw error; result = data[0];
+        } else if (actionType === 'attack') {
             const targetId = document.getElementById('attack-target').value;
             if (!targetId) { alert('Please select a target party!'); return; }
-            const { data, error } = await _supabase.rpc('action_attack_ad', { 
-                player_party_id: currentFaction.id,
-                target_party_id: targetId
-            });
-            if (error) throw error;
-            result = data[0];
-        }
-        else if (actionType === 'fundraiser') {
-            const { data, error } = await _supabase.rpc('action_fundraiser', { 
-                player_party_id: currentFaction.id 
-            });
-            if (error) throw error;
-            result = data[0];
-        }
-        else if (actionType === 'lobby') {
+            const { data, error } = await _supabase.rpc('action_attack_ad', { player_party_id: currentFaction.id, target_party_id: targetId });
+            if (error) throw error; result = data[0];
+        } else if (actionType === 'fundraiser') {
+            const { data, error } = await _supabase.rpc('action_fundraiser', { player_party_id: currentFaction.id });
+            if (error) throw error; result = data[0];
+        } else if (actionType === 'lobby') {
             const groupId = document.getElementById('lobby-target').value;
             if (!groupId) { alert('Please select an interest group!'); return; }
-            const { data, error } = await _supabase.rpc('action_lobby_interest_group', { 
-                player_party_id: currentFaction.id,
-                interest_group_id: groupId
-            });
-            if (error) throw error;
-            result = data[0];
+            const { data, error } = await _supabase.rpc('action_lobby_interest_group', { player_party_id: currentFaction.id, interest_group_id: groupId });
+            if (error) throw error; result = data[0];
         }
-        
         if (result && result.success) {
             alert('✅ ' + result.message);
-            
             currentFaction.action_points = result.new_ap;
             currentFaction.party_funds = result.new_funds;
             if (result.new_approval) currentFaction.approval_rating = result.new_approval;
-            
             await populatePartyStats();
             await loadActionLog();
-            
             sessionStorage.removeItem('nationhood_state');
         } else {
             alert('❌ ' + (result ? result.message : 'Action failed'));
         }
-        
-    } catch (error) {
-        console.error('Action error:', error);
-        alert('❌ Error: ' + error.message);
-    }
+    } catch (error) { console.error('Action error:', error); alert('❌ Error: ' + error.message); }
 }
 
-// ===== COALITION FUNCTIONS =====
-
-/**
- * Check if coalition formation is needed
- */
+// Coalition functions (unchanged)
 async function checkCoalitionStatus() {
     if (!currentNation) return;
-    
-    const { data: election } = await _supabase
-        .from('elections')
-        .select('*')
-        .eq('nation_id', currentNation.id)
-        .eq('status', 'completed')
-        .order('election_tick', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-    
+    const { data: election } = await _supabase.from('elections').select('*').eq('nation_id', currentNation.id).eq('status', 'completed').order('election_tick', { ascending: false }).limit(1).maybeSingle();
     if (!election) return;
-    
     currentElectionId = election.id;
-    
-    const { data: coalitionCheck } = await _supabase
-        .rpc('check_coalition_needed', {
-            p_nation_id: currentNation.id,
-            p_election_id: election.id
-        });
-    
+    const { data: coalitionCheck } = await _supabase.rpc('check_coalition_needed', { p_nation_id: currentNation.id, p_election_id: election.id });
     if (!coalitionCheck || coalitionCheck.length === 0) return;
-    
     const check = coalitionCheck[0];
-    
     if (check.needs_coalition) {
         coalitionParties = election.results.votes || election.results.seats || [];
-        
-        const { data: activeCoalition } = await _supabase
-            .from('active_coalitions')
-            .select('*')
-            .eq('election_id', election.id)
-            .limit(1)
-            .maybeSingle();
-        
+        const { data: activeCoalition } = await _supabase.from('active_coalitions').select('*').eq('election_id', election.id).limit(1).maybeSingle();
         if (activeCoalition) return;
-        
-        const { data: existingProposals } = await _supabase
-            .from('coalition_proposals')
-            .select('*')
-            .eq('election_id', election.id)
-            .eq('status', 'pending');
-        
-        if (existingProposals && existingProposals.length > 0) {
-            showCoalitionProposals(existingProposals);
-        } else {
-            generateNPCPreferences();
-            showCoalitionFormation();
-        }
+        const { data: existingProposals } = await _supabase.from('coalition_proposals').select('*').eq('election_id', election.id).eq('status', 'pending');
+        if (existingProposals && existingProposals.length > 0) { showCoalitionProposals(existingProposals); }
+        else { generateNPCPreferences(); showCoalitionFormation(); }
     }
 }
 
-/**
- * Generate random ministry preferences for NPC parties
- */
 function generateNPCPreferences() {
     npcPreferences = {};
-    
     const availableMinistries = MINISTRIES.filter(m => !m.locked && !m.inactive).map(m => m.key);
-    
     coalitionParties.forEach(party => {
         if (party.party_id !== currentFaction.id) {
             const shuffled = [...availableMinistries].sort(() => Math.random() - 0.5);
-            npcPreferences[party.party_id] = {
-                preferred: shuffled.slice(0, 2 + Math.floor(Math.random() * 2)),
-                partyName: party.party_name
-            };
+            npcPreferences[party.party_id] = { preferred: shuffled.slice(0, 2 + Math.floor(Math.random() * 2)), partyName: party.party_name };
         }
     });
 }
 
-/**
- * Show coalition formation UI
- */
 function showCoalitionFormation() {
     document.getElementById('coalition-formation-section').style.display = 'block';
     document.getElementById('coalition-proposals-section').style.display = 'none';
-    
-    coalitionStep = 1;
-    goToStep(1);
+    coalitionStep = 1; goToStep(1);
 }
 
-/**
- * Navigate between coalition steps
- */
 function goToStep(step) {
     coalitionStep = step;
-    
-    document.querySelectorAll('.step').forEach(s => {
-        const stepNum = parseInt(s.dataset.step);
-        s.classList.remove('active', 'completed');
-        if (stepNum < step) s.classList.add('completed');
-        if (stepNum === step) s.classList.add('active');
-    });
-    
+    document.querySelectorAll('.step').forEach(s => { const sn = parseInt(s.dataset.step); s.classList.remove('active','completed'); if (sn < step) s.classList.add('completed'); if (sn === step) s.classList.add('active'); });
     document.getElementById('coalition-step-1').style.display = step === 1 ? 'block' : 'none';
     document.getElementById('coalition-step-2').style.display = step === 2 ? 'block' : 'none';
-    
-    if (step === 1) {
-        showCoalitionSelection();
-    } else if (step === 2) {
-        showMinistryAllocation();
-    }
+    if (step === 1) showCoalitionSelection(); else if (step === 2) showMinistryAllocation();
 }
 
-/**
- * Show coalition selection UI (Step 1)
- */
 function showCoalitionSelection() {
     totalSeatsInNation = coalitionParties.reduce((sum, p) => sum + (p.seats || 0), 0);
     majorityThreshold = Math.floor(totalSeatsInNation / 2) + 1;
-    
     document.getElementById('coalition-required-seats').textContent = `${majorityThreshold} / ${totalSeatsInNation}`;
-    
-    if (selectedCoalitionParties.length === 0) {
-        selectedCoalitionParties = [currentFaction.id];
-    }
-    
+    if (selectedCoalitionParties.length === 0) selectedCoalitionParties = [currentFaction.id];
     const grid = document.getElementById('coalition-party-grid');
     grid.innerHTML = coalitionParties.map(party => {
         const isPlayerParty = party.party_id === currentFaction.id;
         const isSelected = selectedCoalitionParties.includes(party.party_id);
-        
-        return `
-            <div class="coalition-party-card ${isSelected ? 'selected' : ''} ${isPlayerParty ? 'locked' : ''}" 
-                 onclick="${isPlayerParty ? '' : `toggleCoalitionParty('${party.party_id}')`}"
-                 data-party-id="${party.party_id}">
-                <div class="coalition-party-header">
-                    <div class="coalition-party-name">${party.party_name}</div>
-                    <div class="coalition-party-seats">${party.seats} seats</div>
-                </div>
-                <div style="font-size: 0.8rem; color: #888;">
-                    ${party.vote_percentage}% of vote
-                </div>
-                <div class="coalition-party-values" id="party-values-${party.party_id}">
-                </div>
-            </div>
-        `;
+        return `<div class="coalition-party-card ${isSelected ? 'selected' : ''} ${isPlayerParty ? 'locked' : ''}" onclick="${isPlayerParty ? '' : `toggleCoalitionParty('${party.party_id}')`}" data-party-id="${party.party_id}"><div class="coalition-party-header"><div class="coalition-party-name">${party.party_name}</div><div class="coalition-party-seats">${party.seats} seats</div></div><div style="font-size: 0.8rem; color: #888;">${party.vote_percentage}% of vote</div><div class="coalition-party-values" id="party-values-${party.party_id}"></div></div>`;
     }).join('');
-    
     coalitionParties.forEach(party => loadPartyValues(party.party_id));
-    
     updateCoalitionSeats();
 }
 
-/**
- * Load party ideology values
- */
 async function loadPartyValues(partyId) {
-    const { data: party } = await _supabase
-        .from('factions')
-        .select('ideology_value_1, ideology_value_2')
-        .eq('id', partyId)
-        .single();
-    
+    const { data: party } = await _supabase.from('factions').select('ideology_value_1, ideology_value_2').eq('id', partyId).single();
     if (party) {
         const container = document.getElementById(`party-values-${partyId}`);
         if (container) {
             const values = [party.ideology_value_1, party.ideology_value_2].filter(Boolean);
-            container.innerHTML = values.map(v => 
-                `<span class="ideology-tag tag-${v.toLowerCase()}">${v}</span>`
-            ).join('');
+            container.innerHTML = values.map(v => `<span class="ideology-tag tag-${v.toLowerCase()}">${v}</span>`).join('');
         }
     }
 }
 
-/**
- * Toggle party selection for coalition
- */
 function toggleCoalitionParty(partyId) {
     const index = selectedCoalitionParties.indexOf(partyId);
-    if (index > -1) {
-        selectedCoalitionParties.splice(index, 1);
-    } else {
-        selectedCoalitionParties.push(partyId);
-    }
-    
+    if (index > -1) selectedCoalitionParties.splice(index, 1); else selectedCoalitionParties.push(partyId);
     const card = document.querySelector(`.coalition-party-card[data-party-id="${partyId}"]`);
-    if (card) {
-        card.classList.toggle('selected');
-    }
-    
+    if (card) card.classList.toggle('selected');
     updateCoalitionSeats();
 }
 
-/**
- * Update coalition seat count display
- */
 function updateCoalitionSeats() {
-    const totalSeats = selectedCoalitionParties.reduce((sum, partyId) => {
-        const party = coalitionParties.find(p => p.party_id === partyId);
-        return sum + (party ? party.seats : 0);
-    }, 0);
-    
+    const totalSeats = selectedCoalitionParties.reduce((sum, partyId) => { const party = coalitionParties.find(p => p.party_id === partyId); return sum + (party ? party.seats : 0); }, 0);
     const seatsEl = document.getElementById('coalition-current-seats');
-    if (seatsEl) {
-        seatsEl.textContent = totalSeats;
-        seatsEl.style.color = totalSeats >= majorityThreshold ? '#4CAF50' : '#ff4444';
-    }
-    
+    if (seatsEl) { seatsEl.textContent = totalSeats; seatsEl.style.color = totalSeats >= majorityThreshold ? '#4CAF50' : '#ff4444'; }
     const nextBtn = document.getElementById('step1-next-btn');
-    if (nextBtn) {
-        nextBtn.disabled = totalSeats < majorityThreshold;
-    }
-    
-    if (selectedCoalitionParties.length > 1) {
-        checkValueConflicts();
-    } else {
-        const conflictsEl = document.getElementById('coalition-conflicts');
-        if (conflictsEl) conflictsEl.style.display = 'none';
-    }
+    if (nextBtn) nextBtn.disabled = totalSeats < majorityThreshold;
+    if (selectedCoalitionParties.length > 1) checkValueConflicts();
+    else { const ce = document.getElementById('coalition-conflicts'); if (ce) ce.style.display = 'none'; }
 }
 
-/**
- * Check for ideological conflicts in coalition
- */
 async function checkValueConflicts() {
-    const { data: conflicts } = await _supabase
-        .rpc('calculate_value_conflicts', {
-            p_party_ids: selectedCoalitionParties
-        });
-    
+    const { data: conflicts } = await _supabase.rpc('calculate_value_conflicts', { p_party_ids: selectedCoalitionParties });
     if (conflicts && conflicts.length > 0) {
         const conflict = conflicts[0];
-        
         if (conflict.stability_penalty > 0) {
             document.getElementById('coalition-conflicts').style.display = 'block';
             document.getElementById('coalition-stability-penalty').textContent = `-${conflict.stability_penalty}`;
-            
             const conflictsList = JSON.parse(conflict.conflicts);
-            document.getElementById('coalition-conflicts-list').innerHTML = conflictsList
-                .map(c => `• ${c.conflict}`)
-                .join('<br>');
-        } else {
-            document.getElementById('coalition-conflicts').style.display = 'none';
-        }
+            document.getElementById('coalition-conflicts-list').innerHTML = conflictsList.map(c => `• ${c.conflict}`).join('<br>');
+        } else { document.getElementById('coalition-conflicts').style.display = 'none'; }
     }
 }
 
-/**
- * Show ministry allocation UI (Step 2)
- */
-function showMinistryAllocation() {
-    calculateMinistryLimits();
-    
-    const largestParty = coalitionParties
-        .filter(p => selectedCoalitionParties.includes(p.party_id))
-        .sort((a, b) => b.seats - a.seats)[0];
-    
-    ministryAllocations = {
-        prime_minister: largestParty.party_id
-    };
-    
-    renderAllocationSummary();
-    renderMinistryGrid();
-    validateAllocation();
-}
+function showMinistryAllocation() { calculateMinistryLimits(); const lp = coalitionParties.filter(p => selectedCoalitionParties.includes(p.party_id)).sort((a,b) => b.seats - a.seats)[0]; ministryAllocations = { prime_minister: lp.party_id }; renderAllocationSummary(); renderMinistryGrid(); validateAllocation(); }
+function calculateMinistryLimits() { const ts = selectedCoalitionParties.reduce((s, pid) => { const p = coalitionParties.find(x => x.party_id === pid); return s + (p ? p.seats : 0); }, 0); const am = MINISTRIES.filter(m => !m.inactive).length; partyMinistryLimits = {}; selectedCoalitionParties.forEach(pid => { const p = coalitionParties.find(x => x.party_id === pid); if (p) { const sp = p.seats / ts; partyMinistryLimits[pid] = { name: p.party_name, seats: p.seats, percentage: sp, min: 1, max: Math.max(1, Math.floor(sp * am)) }; } }); }
+function renderAllocationSummary() { const se = document.getElementById('allocation-summary'); se.innerHTML = `<div style="font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Ministry Allocation</div>` + selectedCoalitionParties.map(pid => { const l = partyMinistryLimits[pid]; const cc = Object.values(ministryAllocations).filter(p => p === pid).length; let fc = ''; if (cc > l.max) fc = 'over'; else if (cc < l.min) fc = 'under'; return `<div class="allocation-row"><span class="allocation-party">${l.name}</span><div class="allocation-count"><div class="allocation-bar"><div class="allocation-fill ${fc}" style="width: ${Math.min(100, (cc / l.max) * 100)}%"></div></div><span class="allocation-text">${cc} / ${l.max} max</span></div></div>`; }).join(''); }
+function renderMinistryGrid() { document.getElementById('ministry-grid').innerHTML = MINISTRIES.map(m => { const il = m.locked, ii = m.inactive; const po = selectedCoalitionParties.map(pid => { const p = coalitionParties.find(x => x.party_id === pid); return `<option value="${pid}" ${ministryAllocations[m.key] === pid ? 'selected' : ''}>${p?.party_name || 'Unknown'}</option>`; }).join(''); let ph = ''; if (!il && !ii) { for (const [nid, prefs] of Object.entries(npcPreferences)) { if (selectedCoalitionParties.includes(nid) && prefs.preferred.includes(m.key)) { ph = `<div class="npc-preference ${ministryAllocations[m.key] === nid ? 'happy' : 'unhappy'}">${prefs.partyName} ${ministryAllocations[m.key] === nid ? '✓ wants this' : 'would prefer this'}</div>`; break; } } } return `<div class="ministry-card ${il ? 'locked' : ''} ${ii ? 'inactive' : ''}"><div class="ministry-name">${m.name}</div><div class="ministry-desc">${m.description}</div>${ii ? '<div style="font-size:0.75rem;color:#666;font-style:italic;">Requires enabling legislation</div>' : `<select class="ministry-select" onchange="updateMinistryAllocation('${m.key}', this.value)" ${il ? 'disabled' : ''}>${il ? '' : '<option value="">Select Party...</option>'}${po}</select>${ph}`}</div>`; }).join(''); }
+function updateMinistryAllocation(mk, pid) { if (pid) ministryAllocations[mk] = pid; else delete ministryAllocations[mk]; renderAllocationSummary(); renderMinistryGrid(); validateAllocation(); }
+function validateAllocation() { const am = MINISTRIES.filter(m => !m.inactive); const aa = am.every(m => ministryAllocations[m.key]); let wl = true; for (const pid of selectedCoalitionParties) { const l = partyMinistryLimits[pid]; const c = Object.values(ministryAllocations).filter(p => p === pid).length; if (c < l.min || c > l.max) { wl = false; break; } } const pb = document.getElementById('step2-next-btn'); if (pb) pb.disabled = !aa || !wl; }
 
-/**
- * Calculate ministry limits for each party
- */
-function calculateMinistryLimits() {
-    const totalSeats = selectedCoalitionParties.reduce((sum, partyId) => {
-        const party = coalitionParties.find(p => p.party_id === partyId);
-        return sum + (party ? party.seats : 0);
-    }, 0);
-    
-    const activeMinistries = MINISTRIES.filter(m => !m.inactive).length;
-    
-    partyMinistryLimits = {};
-    selectedCoalitionParties.forEach(partyId => {
-        const party = coalitionParties.find(p => p.party_id === partyId);
-        if (party) {
-            const seatPercentage = party.seats / totalSeats;
-            partyMinistryLimits[partyId] = {
-                name: party.party_name,
-                seats: party.seats,
-                percentage: seatPercentage,
-                min: 1,
-                max: Math.max(1, Math.floor(seatPercentage * activeMinistries))
-            };
-        }
-    });
-}
-
-/**
- * Render allocation summary
- */
-function renderAllocationSummary() {
-    const summaryEl = document.getElementById('allocation-summary');
-    
-    const rows = selectedCoalitionParties.map(partyId => {
-        const limits = partyMinistryLimits[partyId];
-        const currentCount = Object.values(ministryAllocations).filter(p => p === partyId).length;
-        
-        let fillClass = '';
-        if (currentCount > limits.max) fillClass = 'over';
-        else if (currentCount < limits.min) fillClass = 'under';
-        
-        const fillWidth = Math.min(100, (currentCount / limits.max) * 100);
-        
-        return `
-            <div class="allocation-row">
-                <span class="allocation-party">${limits.name}</span>
-                <div class="allocation-count">
-                    <div class="allocation-bar">
-                        <div class="allocation-fill ${fillClass}" style="width: ${fillWidth}%"></div>
-                    </div>
-                    <span class="allocation-text">${currentCount} / ${limits.max} max</span>
-                </div>
-            </div>
-        `;
-    }).join('');
-    
-    summaryEl.innerHTML = `
-        <div style="font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">
-            Ministry Allocation
-        </div>
-        ${rows}
-    `;
-}
-
-/**
- * Render ministry grid
- */
-function renderMinistryGrid() {
-    const gridEl = document.getElementById('ministry-grid');
-    
-    const cards = MINISTRIES.map(ministry => {
-        const isLocked = ministry.locked;
-        const isInactive = ministry.inactive;
-        
-        const partyOptions = selectedCoalitionParties.map(partyId => {
-            const party = coalitionParties.find(p => p.party_id === partyId);
-            const selected = ministryAllocations[ministry.key] === partyId ? 'selected' : '';
-            return `<option value="${partyId}" ${selected}>${party?.party_name || 'Unknown'}</option>`;
-        }).join('');
-        
-        let preferenceHint = '';
-        if (!isLocked && !isInactive) {
-            for (const [npcId, prefs] of Object.entries(npcPreferences)) {
-                if (selectedCoalitionParties.includes(npcId) && prefs.preferred.includes(ministry.key)) {
-                    const isAssigned = ministryAllocations[ministry.key] === npcId;
-                    preferenceHint = `
-                        <div class="npc-preference ${isAssigned ? 'happy' : 'unhappy'}">
-                            ${prefs.partyName} ${isAssigned ? '✓ wants this ministry' : 'would prefer this ministry'}
-                        </div>
-                    `;
-                    break;
-                }
-            }
-        }
-        
-        return `
-            <div class="ministry-card ${isLocked ? 'locked' : ''} ${isInactive ? 'inactive' : ''}">
-                <div class="ministry-name">${ministry.name}</div>
-                <div class="ministry-desc">${ministry.description}</div>
-                ${isInactive ? `
-                    <div style="font-size: 0.75rem; color: #666; font-style: italic;">
-                        Requires enabling legislation
-                    </div>
-                ` : `
-                    <select class="ministry-select" 
-                            onchange="updateMinistryAllocation('${ministry.key}', this.value)"
-                            ${isLocked ? 'disabled' : ''}>
-                        ${isLocked ? '' : '<option value="">Select Party...</option>'}
-                        ${partyOptions}
-                    </select>
-                    ${preferenceHint}
-                `}
-            </div>
-        `;
-    }).join('');
-    
-    gridEl.innerHTML = cards;
-}
-
-/**
- * Update ministry allocation
- */
-function updateMinistryAllocation(ministryKey, partyId) {
-    if (partyId) {
-        ministryAllocations[ministryKey] = partyId;
-    } else {
-        delete ministryAllocations[ministryKey];
-    }
-    
-    renderAllocationSummary();
-    renderMinistryGrid();
-    validateAllocation();
-}
-
-/**
- * Validate ministry allocation
- */
-function validateAllocation() {
-    const activeMinistries = MINISTRIES.filter(m => !m.inactive);
-    const allAssigned = activeMinistries.every(m => ministryAllocations[m.key]);
-    
-    let withinLimits = true;
-    for (const partyId of selectedCoalitionParties) {
-        const limits = partyMinistryLimits[partyId];
-        const count = Object.values(ministryAllocations).filter(p => p === partyId).length;
-        if (count < limits.min || count > limits.max) {
-            withinLimits = false;
-            break;
-        }
-    }
-    
-    const proposeBtn = document.getElementById('step2-next-btn');
-    if (proposeBtn) {
-        proposeBtn.disabled = !allAssigned || !withinLimits;
-    }
-}
-
-/**
- * Propose a coalition with ministry allocations
- */
 async function proposeCoalition() {
-    if (selectedCoalitionParties.length === 0 || !currentElectionId) {
-        alert('❌ Error: No parties selected');
-        return;
-    }
-    
+    if (selectedCoalitionParties.length === 0 || !currentElectionId) { alert('❌ No parties selected'); return; }
     try {
-        const { data, error } = await _supabase.rpc('propose_coalition', {
-            p_proposer_party_id: currentFaction.id,
-            p_nation_id: currentNation.id,
-            p_election_id: currentElectionId,
-            p_party_ids: selectedCoalitionParties
-        });
-        
+        const { data, error } = await _supabase.rpc('propose_coalition', { p_proposer_party_id: currentFaction.id, p_nation_id: currentNation.id, p_election_id: currentElectionId, p_party_ids: selectedCoalitionParties });
         if (error) throw error;
-        
         const result = data[0];
         if (result.success) {
-            await _supabase
-                .from('coalition_proposals')
-                .update({ ministry_allocations: ministryAllocations })
-                .eq('id', result.coalition_id);
-            
+            await _supabase.from('coalition_proposals').update({ ministry_allocations: ministryAllocations }).eq('id', result.coalition_id);
             alert(`✅ ${result.message}\n\nTotal Seats: ${result.total_seats}\nStability Penalty: -${result.stability_penalty}`);
-            
             await checkCoalitionStatus();
-        } else {
-            alert(`❌ ${result.message}`);
-        }
-    } catch (error) {
-        console.error('Coalition proposal error:', error);
-        alert('❌ Error proposing coalition: ' + error.message);
-    }
+        } else { alert(`❌ ${result.message}`); }
+    } catch (error) { alert('❌ Error: ' + error.message); }
 }
 
-/**
- * Show coalition proposals UI
- */
 async function showCoalitionProposals(proposals) {
     document.getElementById('coalition-formation-section').style.display = 'none';
     document.getElementById('coalition-proposals-section').style.display = 'block';
-    
     const container = document.getElementById('coalition-proposals-list');
-    
-    const proposalsWithVotes = await Promise.all(proposals.map(async (proposal) => {
-        const { data: votes } = await _supabase
-            .from('coalition_votes')
-            .select('*')
-            .eq('coalition_proposal_id', proposal.id);
-        
-        const acceptVotes = votes?.filter(v => v.vote === 'accept').length || 0;
-        const rejectVotes = votes?.filter(v => v.vote === 'reject').length || 0;
-        const userVote = votes?.find(v => v.party_id === currentFaction.id);
-        
-        return { ...proposal, acceptVotes, rejectVotes, userVote };
-    }));
-    
-    container.innerHTML = proposalsWithVotes.map(proposal => {
-        const conflicts = JSON.parse(proposal.value_conflicts || '[]');
-        const ministries = proposal.ministry_allocations || {};
-        
-        const ministrySummary = Object.entries(ministries).map(([key, partyId]) => {
-            const ministry = MINISTRIES.find(m => m.key === key);
-            const party = coalitionParties.find(p => p.party_id === partyId);
-            return `<div style="font-size: 0.75rem; color: #aaa; padding: 4px 0; border-bottom: 1px solid #333;">
-                <span style="color: #888;">${ministry?.name || key}:</span> 
-                <span style="color: #ffcc00;">${party?.party_name || 'Unknown'}</span>
-            </div>`;
-        }).join('');
-        
-        return `
-            <div class="coalition-proposal-card" style="background: #1e1e1e; border-radius: 8px; padding: 20px; margin-bottom: 16px; border-left: 4px solid #ffcc00;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
-                    <div>
-                        <div style="font-size: 1.1rem; color: #ffcc00; font-weight: bold;">
-                            Coalition Proposal
-                        </div>
-                        <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">
-                            Proposed by ${getPartyName(proposal.proposer_party_id)}
-                        </div>
-                    </div>
-                    <div style="text-align: right;">
-                        <div style="font-size: 1.3rem; color: #4CAF50; font-weight: bold;">
-                            ${proposal.total_seats} seats
-                        </div>
-                        <div style="font-size: 0.8rem; color: #888;">
-                            ${proposal.seat_percentage}%
-                        </div>
-                    </div>
-                </div>
-                
-                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;">
-                    ${proposal.party_ids.map(id => `
-                        <div style="background: #333; padding: 6px 12px; border-radius: 4px; font-size: 0.8rem; color: #e0e0e0;">
-                            ${getPartyName(id)}
-                        </div>
-                    `).join('')}
-                </div>
-                
-                ${Object.keys(ministries).length > 0 ? `
-                    <div style="background: #252525; border-radius: 6px; padding: 12px; margin-bottom: 16px;">
-                        <div style="font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
-                            Ministry Allocation
-                        </div>
-                        ${ministrySummary}
-                    </div>
-                ` : ''}
-                
-                ${proposal.stability_penalty > 0 ? `
-                    <div style="padding: 12px; background: #2a1a1a; border-left: 3px solid #ff4444; border-radius: 4px; margin-bottom: 16px;">
-                        <div style="font-size: 0.85rem; color: #ff4444; font-weight: bold;">
-                            ⚠ Stability Penalty: -${proposal.stability_penalty}
-                        </div>
-                        <div style="font-size: 0.8rem; color: #aaa; margin-top: 4px;">
-                            ${conflicts.map(c => c.conflict).join(', ')}
-                        </div>
-                    </div>
-                ` : ''}
-                
-                <div style="display: flex; gap: 12px; margin-bottom: 12px;">
-                    <button style="flex: 1; padding: 12px; background: ${proposal.userVote?.vote === 'accept' ? '#2a4a2a' : '#4CAF50'}; border: none; border-radius: 4px; color: white; font-weight: bold; cursor: ${proposal.userVote ? 'not-allowed' : 'pointer'};"
-                            onclick="voteOnCoalition('${proposal.id}', 'accept')"
-                            ${proposal.userVote ? 'disabled' : ''}>
-                        ${proposal.userVote?.vote === 'accept' ? '✓ Accepted' : 'Accept'}
-                    </button>
-                    <button style="flex: 1; padding: 12px; background: ${proposal.userVote?.vote === 'reject' ? '#4a2a2a' : '#ff4444'}; border: none; border-radius: 4px; color: white; font-weight: bold; cursor: ${proposal.userVote ? 'not-allowed' : 'pointer'};"
-                            onclick="voteOnCoalition('${proposal.id}', 'reject')"
-                            ${proposal.userVote ? 'disabled' : ''}>
-                        ${proposal.userVote?.vote === 'reject' ? '✓ Rejected' : 'Reject'}
-                    </button>
-                </div>
-                
-                <div style="display: flex; justify-content: center; gap: 20px; font-size: 0.85rem;">
-                    <span style="color: #4CAF50;">✓ ${proposal.acceptVotes} Accept</span>
-                    <span style="color: #ff4444;">✗ ${proposal.rejectVotes} Reject</span>
-                </div>
-            </div>
-        `;
-    }).join('');
+    const pwv = await Promise.all(proposals.map(async (p) => { const { data: votes } = await _supabase.from('coalition_votes').select('*').eq('coalition_proposal_id', p.id); return { ...p, acceptVotes: votes?.filter(v => v.vote === 'accept').length || 0, rejectVotes: votes?.filter(v => v.vote === 'reject').length || 0, userVote: votes?.find(v => v.party_id === currentFaction.id) }; }));
+    container.innerHTML = pwv.map(p => { const ms = p.ministry_allocations || {}; const mhtml = Object.entries(ms).map(([k,pid]) => { const m = MINISTRIES.find(x => x.key === k); const pa = coalitionParties.find(x => x.party_id === pid); return `<div style="font-size:0.75rem;color:#aaa;padding:4px 0;border-bottom:1px solid #333;"><span style="color:#888;">${m?.name || k}:</span> <span style="color:#ffcc00;">${pa?.party_name || 'Unknown'}</span></div>`; }).join(''); return `<div style="background:#1e1e1e;border-radius:8px;padding:20px;margin-bottom:16px;border-left:4px solid #ffcc00;"><div style="display:flex;justify-content:space-between;margin-bottom:16px;"><div><div style="font-size:1.1rem;color:#ffcc00;font-weight:bold;">Coalition Proposal</div><div style="font-size:0.8rem;color:#888;margin-top:4px;">Proposed by ${getPartyName(p.proposer_party_id)}</div></div><div style="text-align:right;"><div style="font-size:1.3rem;color:#4CAF50;font-weight:bold;">${p.total_seats} seats</div></div></div>${Object.keys(ms).length > 0 ? `<div style="background:#252525;border-radius:6px;padding:12px;margin-bottom:16px;">${mhtml}</div>` : ''}<div style="display:flex;gap:12px;margin-bottom:12px;"><button style="flex:1;padding:12px;background:${p.userVote?.vote === 'accept' ? '#2a4a2a' : '#4CAF50'};border:none;border-radius:4px;color:white;font-weight:bold;cursor:${p.userVote ? 'not-allowed' : 'pointer'};" onclick="voteOnCoalition('${p.id}','accept')" ${p.userVote ? 'disabled' : ''}>${p.userVote?.vote === 'accept' ? '✓ Accepted' : 'Accept'}</button><button style="flex:1;padding:12px;background:${p.userVote?.vote === 'reject' ? '#4a2a2a' : '#ff4444'};border:none;border-radius:4px;color:white;font-weight:bold;cursor:${p.userVote ? 'not-allowed' : 'pointer'};" onclick="voteOnCoalition('${p.id}','reject')" ${p.userVote ? 'disabled' : ''}>${p.userVote?.vote === 'reject' ? '✓ Rejected' : 'Reject'}</button></div><div style="display:flex;justify-content:center;gap:20px;font-size:0.85rem;"><span style="color:#4CAF50;">✓ ${p.acceptVotes} Accept</span><span style="color:#ff4444;">✗ ${p.rejectVotes} Reject</span></div></div>`; }).join('');
 }
 
-/**
- * Get party name from coalition parties list
- */
-function getPartyName(partyId) {
-    const party = coalitionParties.find(p => p.party_id === partyId);
-    return party ? party.party_name : 'Unknown Party';
-}
+function getPartyName(partyId) { const p = coalitionParties.find(x => x.party_id === partyId); return p ? p.party_name : 'Unknown Party'; }
 
-/**
- * Vote on a coalition proposal
- */
 async function voteOnCoalition(coalitionId, vote) {
-    try {
-        const { data, error } = await _supabase.rpc('vote_on_coalition', {
-            p_coalition_id: coalitionId,
-            p_party_id: currentFaction.id,
-            p_vote: vote
-        });
-        
-        if (error) throw error;
-        
-        const result = data[0];
-        if (result.success) {
-            alert(`✅ ${result.message}`);
-            
-            const { data: proposals } = await _supabase
-                .from('coalition_proposals')
-                .select('*')
-                .eq('election_id', currentElectionId)
-                .eq('status', 'pending');
-            
-            if (proposals) {
-                showCoalitionProposals(proposals);
-            }
-        } else {
-            alert(`❌ ${result.message}`);
-        }
-    } catch (error) {
-        console.error('Vote error:', error);
-        alert('❌ Error voting: ' + error.message);
-    }
+    try { const { data, error } = await _supabase.rpc('vote_on_coalition', { p_coalition_id: coalitionId, p_party_id: currentFaction.id, p_vote: vote }); if (error) throw error; const r = data[0]; if (r.success) { alert(`✅ ${r.message}`); const { data: proposals } = await _supabase.from('coalition_proposals').select('*').eq('election_id', currentElectionId).eq('status', 'pending'); if (proposals) showCoalitionProposals(proposals); } else { alert(`❌ ${r.message}`); } } catch (error) { alert('❌ Error: ' + error.message); }
 }
 
-/**
- * Resolve coalition voting (admin function)
- */
 async function resolveCoalitionVoting() {
-    if (!confirm('Are you sure you want to resolve coalition voting? This will finalize the government formation.')) {
-        return;
-    }
-    
-    try {
-        const { data, error } = await _supabase.rpc('resolve_coalition_voting', {
-            p_nation_id: currentNation.id,
-            p_election_id: currentElectionId
-        });
-        
-        if (error) throw error;
-        
-        const result = data[0];
-        alert(`${result.success ? '✅' : '❌'} ${result.message}`);
-        
-        if (result.success) {
-            document.getElementById('coalition-formation-section').style.display = 'none';
-            document.getElementById('coalition-proposals-section').style.display = 'none';
-            
-            sessionStorage.removeItem('nationhood_state');
-            location.reload();
-        }
-    } catch (error) {
-        console.error('Resolve voting error:', error);
-        alert('❌ Error resolving: ' + error.message);
-    }
+    if (!confirm('Resolve coalition voting?')) return;
+    try { const { data, error } = await _supabase.rpc('resolve_coalition_voting', { p_nation_id: currentNation.id, p_election_id: currentElectionId }); if (error) throw error; const r = data[0]; alert(`${r.success ? '✅' : '❌'} ${r.message}`); if (r.success) { document.getElementById('coalition-formation-section').style.display = 'none'; document.getElementById('coalition-proposals-section').style.display = 'none'; sessionStorage.removeItem('nationhood_state'); location.reload(); } } catch (error) { alert('❌ Error: ' + error.message); }
 }
 </script>
 
