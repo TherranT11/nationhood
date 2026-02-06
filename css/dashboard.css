@@ -672,8 +672,11 @@ body {
 .land:hover { fill: #fff5cc; filter: drop-shadow(0 0 8px rgba(255,245,204,0.5)); }
 #Melizea:hover { fill: #fff5cc; filter: drop-shadow(0 0 8px rgba(255,245,204,0.5)); }
 #Avelia:hover { fill: #ffcccc; filter: drop-shadow(0 0 8px rgba(255,153,153,0.5)); }
+#Sangreza { fill: #4a7fc4; }
+#Sangreza:hover { fill: #6699dd; filter: drop-shadow(0 0 8px rgba(102,153,221,0.5)); }
 #Melizea.selected-nation { fill: #ffcc00 !important; filter: drop-shadow(0 0 15px rgba(255,204,0,0.8)) !important; }
 #Avelia.selected-nation { fill: #ff9999 !important; filter: drop-shadow(0 0 15px rgba(255,153,153,0.8)) !important; }
+#Sangreza.selected-nation { fill: #2196F3 !important; filter: drop-shadow(0 0 15px rgba(33,150,243,0.8)) !important; }
 .continent-bg { fill: #1a1a1a; stroke: #2a2a2a; stroke-width: 1.5; pointer-events: none; }
 .capital-dot { fill: #1a1a1a; pointer-events: none; }
 .capital-name { fill: #1a1a1a; font-size: 4px; font-family: sans-serif; font-weight: bold; pointer-events: none; }
