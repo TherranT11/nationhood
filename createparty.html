@@ -29,6 +29,10 @@
             box-shadow: 0 20px 60px rgba(0,0,0,0.8);
         }
         
+        .container.autocracy {
+            border-top-color: #ff4444;
+        }
+        
         h1 {
             color: #ffcc00;
             margin: 0 0 10px 0;
@@ -36,6 +40,10 @@
             text-align: center;
             text-transform: uppercase;
             letter-spacing: 3px;
+        }
+        
+        .container.autocracy h1 {
+            color: #ff4444;
         }
         
         .subtitle {
@@ -130,7 +138,6 @@
             text-transform: uppercase;
         }
         
-        /* Ideology colors */
         .ideology-liberty .ideology-name { color: #9C27B0; }
         .ideology-equality .ideology-name { color: #E91E63; }
         .ideology-freedom .ideology-name { color: #2196F3; }
@@ -292,19 +299,86 @@
             padding: 40px;
             color: #888;
         }
+
+        /* Autocracy-specific styles */
+        .autocracy-info {
+            background: #2a1a1a;
+            border: 1px solid #ff4444;
+            border-radius: 8px;
+            padding: 25px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .autocracy-info .strongman-title {
+            font-size: 0.75rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+        }
+        .autocracy-info .strongman-name {
+            font-size: 1.6rem;
+            color: #ff4444;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        .autocracy-info .strongman-age {
+            font-size: 0.9rem;
+            color: #888;
+        }
+        .autocracy-info .strongman-desc {
+            font-size: 0.85rem;
+            color: #aaa;
+            margin-top: 15px;
+            line-height: 1.5;
+        }
+        .autocracy-warning {
+            background: #252525;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            color: #aaa;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        .faction-number {
+            text-align: center;
+            font-size: 1.2rem;
+            color: #ffcc00;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>Create Your Party</h1>
+<div class="container" id="main-container">
+    <h1 id="page-title">Create Your Party</h1>
     <div class="subtitle" id="nation-subtitle">Loading...</div>
-    <div class="flavor-text">
+    <div class="flavor-text" id="flavor-text">
         Your political party will start fresh, with zero seats in the legislature but high hopes to earn votes.
     </div>
     
-    <!-- Ideologies Section -->
-    <div class="ideologies-section">
+    <!-- Autocracy Info (hidden by default) -->
+    <div id="autocracy-section" style="display: none;">
+        <div class="autocracy-info">
+            <div class="strongman-title">Strongman Leader</div>
+            <div class="strongman-name" id="strongman-name">—</div>
+            <div class="strongman-age" id="strongman-age">—</div>
+            <div class="strongman-desc">Rules until dead or deposed. All factions operate under the Strongman's regime.</div>
+        </div>
+        <div class="autocracy-warning">
+            <strong>⚠️ Autocracy Rules:</strong><br>
+            • Factions are named automatically<br>
+            • Maximum 4 factions per autocracy<br>
+            • No elections — power is seized, not voted for<br>
+            • Seats are split evenly among all factions
+        </div>
+        <div class="faction-number" id="faction-number">You will be Faction #1</div>
+    </div>
+
+    <!-- Ideologies Section (hidden for autocracy) -->
+    <div class="ideologies-section" id="ideologies-section">
         <h2>Choose Your Ideologies</h2>
         <div class="ideology-instruction">
             Select <strong>exactly 2 ideologies</strong> from different axes. When you select one ideology, its opposite will be disabled.
@@ -386,23 +460,23 @@
         </div>
     </div>
     
-    <!-- Party Naming Section -->
-    <div class="naming-section">
-        <h2>Name Your Party</h2>
+    <!-- Party Naming Section (modified for autocracy) -->
+    <div class="naming-section" id="naming-section">
+        <h2 id="naming-title">Name Your Party</h2>
         
-        <div class="selected-ideologies" style="margin-bottom: 25px;">
+        <div class="selected-ideologies" style="margin-bottom: 25px;" id="ideology-display">
             <span class="selected-label">Selected Ideologies:</span>
             <div class="selected-tags" id="selected-tags">
                 <span style="color: #666;">None selected (pick 2)</span>
             </div>
         </div>
 
-        <div class="input-group">
+        <div class="input-group" id="name-group">
             <label class="input-label">Party Name</label>
             <input type="text" id="party-name" placeholder="e.g., The Progressive Workers Alliance" maxlength="100">
         </div>
         
-        <div class="input-group">
+        <div class="input-group" id="abbr-group">
             <label class="input-label">Abbreviation (3 characters)</label>
             <input type="text" id="party-abbr" placeholder="e.g., PWA" maxlength="3" style="text-transform: uppercase;">
             <div class="char-counter"><span id="abbr-counter">0</span>/3</div>
@@ -426,13 +500,38 @@
     let currentUser = null;
     let selectedNation = null;
     let selectedIdeologies = [];
+    let isAutocracy = false;
+    let nationData = null;
+    let factionNumber = 1;
     
-    // Get nation from URL parameter
+    // Sangreza National Front faction names
+    const AUTOCRACY_FACTION_NAMES = [
+        'Security Directorate',
+        'Vanguard Front',
+        'Committee for State Security',
+        'Solidarity Wing',
+        'National Oversight Commission',
+        'Department of Public Order',
+        'Command Council',
+        'National Defense League',
+        'Sovereignty Bloc',
+        'Strategy & Logistics Group',
+        'Patriotic Union',
+        'Central Secretariat',
+        'Administrative Cadre',
+        'General Assembly of Labor',
+        'Planning & Development Board',
+        'Technocratic Circle',
+        'Foreign Affairs Bureau',
+        'Civic Renewal Society',
+        'Industrial Cooperation Group',
+        'Scientific Advancement Front'
+    ];
+    
     const urlParams = new URLSearchParams(window.location.search);
     const nationParam = urlParams.get('nation');
     
     async function init() {
-        // Check if user is logged in
         const { data: { user } } = await _supabase.auth.getUser();
         if (!user) {
             window.location.href = "login.html";
@@ -454,17 +553,136 @@
             return;
         }
         
-        // Get nation from URL
         if (!nationParam) {
             showError('No nation specified. Please select a nation first.');
             return;
         }
         
-        // Capitalize nation name
         selectedNation = nationParam.charAt(0).toUpperCase() + nationParam.slice(1);
         document.getElementById('nation-subtitle').textContent = `Joining ${selectedNation}`;
         
-        // Setup event listeners
+        // Fetch nation data to check government type
+        const { data: nation, error: nationError } = await _supabase
+            .from('nations')
+            .select('*')
+            .eq('name', selectedNation)
+            .single();
+        
+        if (nationError || !nation) {
+            showError('Nation not found: ' + selectedNation);
+            return;
+        }
+        
+        nationData = nation;
+        
+        // Check government type
+        if (nation.government_type === 'Autocracy') {
+            isAutocracy = true;
+            await setupAutocracyMode(nation);
+        } else {
+            setupDemocracyMode();
+        }
+    }
+    
+    /**
+     * Configure the page for autocracy mode
+     */
+    async function setupAutocracyMode(nation) {
+        const container = document.getElementById('main-container');
+        container.classList.add('autocracy');
+        
+        // Update titles
+        document.getElementById('page-title').textContent = 'Join the Regime';
+        document.getElementById('flavor-text').textContent = 
+            `${selectedNation} is ruled by an iron fist. Your faction will operate within the Sangreza National Front, vying for influence and power.`;
+        
+        // Show autocracy info
+        document.getElementById('autocracy-section').style.display = 'block';
+        document.getElementById('strongman-name').textContent = 
+            (nation.head_of_state_first_name || 'Unknown') + ' ' + (nation.head_of_state_last_name || 'Leader');
+        document.getElementById('strongman-age').textContent = 
+            'Age ' + (nation.head_of_state_age || '??');
+        
+        // Count existing factions to determine number and taken names
+        const { data: existingFactions, count } = await _supabase
+            .from('factions')
+            .select('id, faction_name', { count: 'exact' })
+            .eq('nation_id', nation.id)
+            .eq('faction_type', 'party')
+            .eq('is_npc', false);
+        
+        factionNumber = (count || 0) + 1;
+        
+        if (factionNumber > nation.max_parties) {
+            showError(`${selectedNation} already has the maximum ${nation.max_parties} factions. You cannot join.`);
+            document.getElementById('confirm-btn').disabled = true;
+            return;
+        }
+        
+        document.getElementById('faction-number').textContent = `You will be Faction #${factionNumber}`;
+        
+        // Build list of taken names
+        const takenNames = (existingFactions || []).map(f => f.faction_name);
+        
+        // Replace party name input with dropdown
+        const nameGroup = document.getElementById('name-group');
+        const availableNames = AUTOCRACY_FACTION_NAMES.filter(n => !takenNames.includes(n));
+        
+        nameGroup.innerHTML = `
+            <label class="input-label">Choose Your Faction</label>
+            <select id="party-name" style="
+                width: 100%;
+                padding: 12px;
+                background: #1a1a1a;
+                border: 2px solid #444;
+                color: white;
+                border-radius: 4px;
+                font-size: 1rem;
+                box-sizing: border-box;
+            ">
+                <option value="">— Select a faction name —</option>
+                ${availableNames.map(n => `<option value="${n}">${n}</option>`).join('')}
+            </select>
+            <div style="font-size: 0.75rem; color: #666; margin-top: 5px;">
+                ${takenNames.length > 0 ? 'Already taken: ' + takenNames.join(', ') : 'All faction names are available'}
+            </div>
+        `;
+        
+        // Auto-generate abbreviation from selection
+        document.getElementById('party-name').addEventListener('change', function() {
+            const name = this.value;
+            if (name) {
+                // Generate abbreviation from first letters of each word
+                const abbr = name.split(/[\s&]+/).filter(w => w.length > 0).map(w => w[0].toUpperCase()).join('').slice(0, 3);
+                document.getElementById('party-abbr').value = abbr;
+                document.getElementById('abbr-counter').textContent = abbr.length;
+            } else {
+                document.getElementById('party-abbr').value = '';
+                document.getElementById('abbr-counter').textContent = '0';
+            }
+            validateAutocracyForm();
+        });
+        
+        // Hide abbreviation input (auto-generated)
+        document.getElementById('party-abbr').disabled = true;
+        
+        // Hide ideology section
+        document.getElementById('ideologies-section').style.display = 'none';
+        document.getElementById('ideology-display').style.display = 'none';
+        document.getElementById('naming-title').textContent = 'Your Faction';
+        
+        document.getElementById('confirm-btn').textContent = 'JOIN THE REGIME';
+    }
+    
+    function validateAutocracyForm() {
+        const name = document.getElementById('party-name').value;
+        document.getElementById('confirm-btn').disabled = !name;
+    }
+    
+    /**
+     * Configure the page for democracy mode (default behavior)
+     */
+    function setupDemocracyMode() {
         setupIdeologySelection();
         setupInputValidation();
     }
@@ -479,27 +697,20 @@
                 const ideology = card.getAttribute('data-ideology');
                 const opposite = card.getAttribute('data-opposite');
                 
-                // If already selected, deselect it
                 if (card.classList.contains('selected')) {
                     card.classList.remove('selected');
                     selectedIdeologies = selectedIdeologies.filter(i => i !== ideology);
                     
-                    // Re-enable the opposite
                     const oppositeCard = document.querySelector(`[data-ideology="${opposite}"]`);
                     if (oppositeCard) {
                         oppositeCard.classList.remove('disabled');
                     }
                 } else {
-                    // Check if we already have 2 selected
-                    if (selectedIdeologies.length >= 2) {
-                        return;
-                    }
+                    if (selectedIdeologies.length >= 2) return;
                     
-                    // Select this card
                     card.classList.add('selected');
                     selectedIdeologies.push(ideology);
                     
-                    // Disable the opposite
                     const oppositeCard = document.querySelector(`[data-ideology="${opposite}"]`);
                     if (oppositeCard) {
                         oppositeCard.classList.add('disabled');
@@ -552,60 +763,92 @@
     }
     
     async function createParty() {
-        const partyName = document.getElementById('party-name').value.trim();
-        const partyAbbr = document.getElementById('party-abbr').value.trim();
         const confirmBtn = document.getElementById('confirm-btn');
-        
         confirmBtn.disabled = true;
         confirmBtn.textContent = 'CREATING...';
         
         try {
-            // Get nation ID
-            const { data: nation, error: nationError } = await _supabase
-                .from('nations')
-                .select('id')
-                .eq('name', selectedNation)
-                .single();
+            const nation = nationData;
             
-            if (nationError) throw nationError;
-            
-            // Update faction with party info
-            const { error: updateError } = await _supabase
-                .from('factions')
-                .update({
-                    faction_type: 'party',
-                    faction_name: partyName,
-                    nation_id: nation.id,
-                    nation: selectedNation,
-                    ideology_value_1: selectedIdeologies[0],
-                    ideology_value_2: selectedIdeologies[1],
-                    abbreviation: partyAbbr
-                })
-                .eq('id', currentUser.id);
-            
-          if (updateError) throw updateError;
+            if (isAutocracy) {
+                // --- AUTOCRACY JOIN ---
+                const partyName = document.getElementById('party-name').value;
+                const partyAbbr = document.getElementById('party-abbr').value;
+                
+                if (!partyName) { showError('Please select a faction name.'); confirmBtn.disabled = false; confirmBtn.textContent = 'JOIN THE REGIME'; return; }
+                
+                // Update faction record
+                const { error: updateError } = await _supabase
+                    .from('factions')
+                    .update({
+                        faction_type: 'party',
+                        faction_name: partyName,
+                        nation_id: nation.id,
+                        nation: selectedNation,
+                        abbreviation: partyAbbr,
+                        ideology_value_1: null,
+                        ideology_value_2: null
+                    })
+                    .eq('id', currentUser.id);
+                
+                if (updateError) throw updateError;
+                
+                // Call autocracy join to handle seat distribution
+                const { data: joinResult, error: joinError } = await _supabase
+                    .rpc('autocracy_join_nation', {
+                        p_faction_id: currentUser.id,
+                        p_nation_id: nation.id
+                    });
+                
+                if (joinError) throw joinError;
+                
+                if (joinResult && !joinResult.success) {
+                    throw new Error(joinResult.message);
+                }
+                
+                const seatsAssigned = joinResult?.seats_assigned || 0;
+                alert(`🏛️ ${partyName} has joined the regime in ${selectedNation}!\n\nYou have been assigned ${seatsAssigned} seats.\n${factionNumber === 1 ? '\nAs the first faction, you serve under the Strongman.' : ''}`);
+                window.location.href = 'world.html';
+                
+            } else {
+                // --- DEMOCRACY JOIN (original flow) ---
+                const partyName = document.getElementById('party-name').value.trim();
+                const partyAbbr = document.getElementById('party-abbr').value.trim();
+                
+                const { error: updateError } = await _supabase
+                    .from('factions')
+                    .update({
+                        faction_type: 'party',
+                        faction_name: partyName,
+                        nation_id: nation.id,
+                        nation: selectedNation,
+                        ideology_value_1: selectedIdeologies[0],
+                        ideology_value_2: selectedIdeologies[1],
+                        abbreviation: partyAbbr
+                    })
+                    .eq('id', currentUser.id);
+                
+                if (updateError) throw updateError;
 
-// Check if NPCs should be removed (2+ player parties now in nation)
-const { data: npcResult, error: npcError } = await _supabase
-    .rpc('remove_npcs_and_redistribute_seats', { p_nation_id: nation.id });
+                // Check if NPCs should be removed (2+ player parties)
+                const { data: npcResult, error: npcError } = await _supabase
+                    .rpc('remove_npcs_and_redistribute_seats', { p_nation_id: nation.id });
 
-if (npcError) {
-    console.warn('NPC removal check failed (non-blocking):', npcError);
-} else if (npcResult?.action === 'npcs_removed') {
-    console.log(`Removed ${npcResult.npcs_deleted} NPC parties, redistributed ${npcResult.seats_redistributed} seats.`);
-}
-
-// Success! Redirect to dashboard
-            
-            // Success! Redirect to dashboard
-            alert(`🎉 ${partyName} has been created! Welcome to the ${selectedNation} political scene.`);
-            window.location.href = 'world.html';
+                if (npcError) {
+                    console.warn('NPC removal check failed (non-blocking):', npcError);
+                } else if (npcResult?.action === 'npcs_removed') {
+                    console.log(`Removed ${npcResult.npcs_deleted} NPC parties, redistributed ${npcResult.seats_redistributed} seats.`);
+                }
+                
+                alert(`🎉 ${partyName} has been created! Welcome to the ${selectedNation} political scene.`);
+                window.location.href = 'world.html';
+            }
             
         } catch (error) {
             console.error('Error creating party:', error);
             showError('Error creating party: ' + error.message);
             confirmBtn.disabled = false;
-            confirmBtn.textContent = 'CONFIRM & CREATE PARTY';
+            confirmBtn.textContent = isAutocracy ? 'JOIN THE REGIME' : 'CONFIRM & CREATE PARTY';
         }
     }
     
@@ -616,7 +859,7 @@ if (npcError) {
     }
     
     function goBack() {
-        window.location.href = selectedNation.toLowerCase() + '.html';
+        window.location.href = 'world.html';
     }
     
     init();
