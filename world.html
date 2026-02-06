@@ -73,8 +73,11 @@
  * Displays the world map and nation intel
  */
 
+let userFaction = null;
+
 // Initialize page
 initPage('world', async (state) => {
+    userFaction = state.faction;
     setupWorldMap();
 });
 
@@ -169,9 +172,7 @@ function renderNationIntel(nation) {
         ` : ''}
         
         <div style="margin-top: 20px;">
-            <a href="nation.html" style="color: #2196F3; font-size: 0.85rem;">
-                View Full Details →
-            </a>
+            ${getNationButton(nation)}
         </div>
     `;
 }
@@ -307,6 +308,42 @@ function intelRow(label, value, color) {
             <span style="font-size:0.88rem;color:${color};font-weight:bold;">${value}</span>
         </div>
     `;
+}
+
+/**
+ * Get the appropriate button for the nation sidebar
+ * - No nation assigned: show JOIN NATION
+ * - Viewing own nation: show VIEW NATION
+ * - Viewing other nation: show VIEW NATION (as intel only)
+ */
+function getNationButton(nation) {
+    const hasNation = userFaction && userFaction.nation_id;
+    const isOwnNation = hasNation && userFaction.nation_id === nation.id;
+    
+    if (!hasNation) {
+        // User hasn't joined a nation yet — show JOIN button
+        return `
+            <button onclick="joinNation('${nation.name}')" 
+                style="width:100%; padding:14px; background:#4CAF50; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:0.95rem; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:0.3s;">
+                JOIN ${nation.name.toUpperCase()}
+            </button>
+        `;
+    }
+    
+    // User has a nation — show VIEW button
+    return `
+        <button onclick="window.location.href='${nation.name.toLowerCase()}.html'" 
+            style="width:100%; padding:14px; background:#ffcc00; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:0.95rem; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:0.3s;">
+            VIEW ${nation.name.toUpperCase()}
+        </button>
+    `;
+}
+
+/**
+ * Join a nation — redirects to createparty.html
+ */
+function joinNation(nationName) {
+    window.location.href = `createparty.html?nation=${nationName.toLowerCase()}`;
 }
 
 /**
