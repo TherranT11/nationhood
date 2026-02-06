@@ -1,38 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Parties | Nationhood Alpha</title>
-    
-    <!-- Supabase SDK -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
-    <!-- Shared Styles -->
-    <link rel="stylesheet" href="css/dashboard.css">
-</head>
-<body>
-
-<!-- ===== TOP BAR (rendered by common.js) ===== -->
-<div id="top-bar"></div>
-
-<!-- ===== CONTENT AREA ===== -->
-<div id="content-area">
-    <!-- Loading state shown initially -->
-    <div class="loading-container">
-        <div class="loading-spinner"></div>
-        <div>Loading parties...</div>
-    </div>
-</div>
-
-<!-- Shared Scripts -->
-<script src="js/supabase-client.js"></script>
-<script src="js/common.js"></script>
-
-<!-- Page-Specific Script -->
-<script>
 /**
  * Parties Page
- * Displays all political parties in the nation
+ * Displays all political parties/factions in the nation
  */
 
 // Initialize page
@@ -57,13 +25,19 @@ initPage('parties', async (state) => {
  * Render the parties page content
  */
 async function renderPartiesPage(nation, faction) {
+    // Terminology based on government type
+    const isAutocracy = nation.government_type === 'Autocracy';
+    const termPlural = isAutocracy ? 'Factions' : 'Parties';
+    const termSingular = isAutocracy ? 'Faction' : 'Party';
+    const headerText = isAutocracy ? 'Internal Factions' : 'Political Parties';
+    
     // Show loading in content area
     document.getElementById('content-area').innerHTML = `
         <div class="panel-padding">
-            <div class="section-header">Political Parties in ${nation.name}</div>
+            <div class="section-header">${headerText} in ${nation.name}</div>
             <div class="loading-container" style="height: 200px;">
                 <div class="loading-spinner"></div>
-                <div>Loading parties...</div>
+                <div>Loading ${termPlural.toLowerCase()}...</div>
             </div>
         </div>
     `;
@@ -82,33 +56,41 @@ async function renderPartiesPage(nation, faction) {
         if (!parties || parties.length === 0) {
             document.getElementById('content-area').innerHTML = `
                 <div class="panel-padding">
-                    <div class="section-header">Political Parties in ${nation.name}</div>
+                    <div class="section-header">${headerText} in ${nation.name}</div>
                     <div style="text-align: center; color: #666; padding: 40px;">
-                        No political parties in this nation yet.
+                        No ${termPlural.toLowerCase()} in this nation yet.
                     </div>
                 </div>
             `;
             return;
         }
         
-        // Get the most recent election to determine seats
-        const { data: election } = await _supabase
-            .from('elections')
-            .select('*')
-            .eq('nation_id', nation.id)
-            .eq('status', 'completed')
-            .order('election_tick', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+        // Get the most recent election to determine seats (skip for autocracies)
+        let election = null;
+        if (!isAutocracy) {
+            const { data: electionData } = await _supabase
+                .from('elections')
+                .select('*')
+                .eq('nation_id', nation.id)
+                .eq('status', 'completed')
+                .order('election_tick', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            election = electionData;
+        }
         
-        // Get active coalition to determine government/opposition status
-        const { data: coalition } = await _supabase
-            .from('active_coalitions')
-            .select('party_ids, lead_party_id')
-            .eq('nation_id', nation.id)
-            .order('formed_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+        // Get active coalition to determine government/opposition status (skip for autocracies)
+        let coalition = null;
+        if (!isAutocracy) {
+            const { data: coalitionData } = await _supabase
+                .from('active_coalitions')
+                .select('party_ids, lead_party_id')
+                .eq('nation_id', nation.id)
+                .order('formed_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            coalition = coalitionData;
+        }
         
         const coalitionPartyIds = coalition?.party_ids || [];
         const leadPartyId = coalition?.lead_party_id;
@@ -118,19 +100,24 @@ async function renderPartiesPage(nation, faction) {
         
         // Build party cards
         const partiesHTML = parties.map(party => {
-            // Get seats from election results
+            // Get seats - for autocracies, use faction's seats directly
             let seats = 0;
-            if (election && election.results && election.results.seats) {
+            if (isAutocracy) {
+                seats = party.seats || 0;
+            } else if (election && election.results && election.results.seats) {
                 const partyResult = election.results.seats.find(s => s.party_id === party.id);
                 seats = partyResult?.seats || 0;
             }
             
-            // Determine status based on coalition membership
+            // Determine status based on coalition membership (different for autocracies)
             let status = 'opposition';
             let statusText = 'Opposition';
             
-            if (coalitionPartyIds.includes(party.id)) {
-                // Party is in the coalition
+            if (isAutocracy) {
+                // In autocracies, all factions are part of the regime
+                status = 'government';
+                statusText = 'Regime';
+            } else if (coalitionPartyIds.includes(party.id)) {
                 if (party.id === leadPartyId) {
                     status = 'government';
                     statusText = 'Lead Party';
@@ -139,7 +126,6 @@ async function renderPartiesPage(nation, faction) {
                     statusText = 'Coalition';
                 }
             } else if (seats >= majorityThreshold) {
-                // Single party majority (no coalition needed)
                 status = 'government';
                 statusText = 'Government';
             }
@@ -156,7 +142,7 @@ async function renderPartiesPage(nation, faction) {
                             <div class="party-display-name">
                                 ${party.faction_name}
                                 ${party.is_npc ? '<span class="party-npc-badge">AI</span>' : ''}
-                                ${isYourParty ? '<span style="color: #ffcc00; font-size: 0.75rem; margin-left: 8px;">★ YOUR PARTY</span>' : ''}
+                                ${isYourParty ? `<span style="color: #ffcc00; font-size: 0.75rem; margin-left: 8px;">★ YOUR ${termSingular.toUpperCase()}</span>` : ''}
                             </div>
                             <div class="party-display-abbr">${party.abbreviation || '—'}</div>
                         </div>
@@ -168,6 +154,7 @@ async function renderPartiesPage(nation, faction) {
                     <div class="party-display-ideologies">
                         ${party.ideology_value_1 ? `<span class="ideology-tag tag-${party.ideology_value_1.toLowerCase()}">${party.ideology_value_1}</span>` : ''}
                         ${party.ideology_value_2 ? `<span class="ideology-tag tag-${party.ideology_value_2.toLowerCase()}">${party.ideology_value_2}</span>` : ''}
+                        ${isAutocracy && !party.ideology_value_1 ? '<span style="color: #666; font-style: italic;">Regime Faction</span>' : ''}
                     </div>
                     
                     <div class="party-display-stats">
@@ -184,7 +171,7 @@ async function renderPartiesPage(nation, faction) {
                             <div class="party-stat-value">${party.action_points || 0}</div>
                         </div>
                         <div class="party-stat-item">
-                            <div class="party-stat-label">Party Funds</div>
+                            <div class="party-stat-label">${termSingular} Funds</div>
                             <div class="party-stat-value">$${(party.party_funds || 0).toLocaleString()}</div>
                         </div>
                     </div>
@@ -192,28 +179,28 @@ async function renderPartiesPage(nation, faction) {
             `;
         }).join('');
         
-        // Count government vs opposition
-        const governmentCount = parties.filter(p => coalitionPartyIds.includes(p.id)).length;
-        const oppositionCount = parties.length - governmentCount;
+        // Count government vs opposition (for democracies)
+        const governmentCount = isAutocracy ? parties.length : parties.filter(p => coalitionPartyIds.includes(p.id)).length;
+        const oppositionCount = isAutocracy ? 0 : parties.length - governmentCount;
         
         // Render full page
         document.getElementById('content-area').innerHTML = `
             <div class="panel-padding">
-                <div class="section-header">Political Parties in ${nation.name}</div>
+                <div class="section-header">${headerText} in ${nation.name}</div>
                 
                 <!-- Summary Stats -->
                 <div class="stat-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
                     <div class="stat-card">
-                        <div class="stat-label">Total Parties</div>
+                        <div class="stat-label">Total ${termPlural}</div>
                         <div class="stat-value">${parties.length}</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label">Government</div>
+                        <div class="stat-label">${isAutocracy ? 'In Regime' : 'Government'}</div>
                         <div class="stat-value" style="color: #4CAF50;">${governmentCount}</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label">Opposition</div>
-                        <div class="stat-value" style="color: #ff4444;">${oppositionCount}</div>
+                        <div class="stat-label">${isAutocracy ? 'Max Factions' : 'Opposition'}</div>
+                        <div class="stat-value" style="color: ${isAutocracy ? '#ffcc00' : '#ff4444'};">${isAutocracy ? (nation.max_parties || 4) : oppositionCount}</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">Total Seats</div>
@@ -232,15 +219,11 @@ async function renderPartiesPage(nation, faction) {
         console.error('Error loading parties:', error);
         document.getElementById('content-area').innerHTML = `
             <div class="panel-padding">
-                <div class="section-header">Political Parties in ${nation.name}</div>
+                <div class="section-header">${headerText} in ${nation.name}</div>
                 <div style="text-align: center; color: #ff4444; padding: 40px;">
-                    Error loading parties. Please refresh the page.
+                    Error loading ${termPlural.toLowerCase()}. Please refresh the page.
                 </div>
             </div>
         `;
     }
 }
-</script>
-
-</body>
-</html>
