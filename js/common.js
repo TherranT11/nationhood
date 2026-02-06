@@ -68,7 +68,7 @@ async function loadGameState() {
     // Get authenticated user
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) {
-        window.location.href = 'index.html';
+        window.location.href = 'login.html';
         return null;
     }
     
