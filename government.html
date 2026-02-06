@@ -530,16 +530,18 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
         `;
     }
     
-    // Fallback - no election data
+ // Fallback - no election data
+    const isAutocracy = currentNation.government_type === 'Autocracy';
+    
     return `
         <div class="administration-box">
             <div class="administration-header">
                 <div class="administration-title">${headOfStateLast} Administration</div>
-                <div class="administration-subtitle">Caretaker Government</div>
+                <div class="administration-subtitle">${isAutocracy ? 'National Government' : 'Caretaker Government'}</div>
             </div>
             <div class="coalition-parties">
                 <div class="coalition-party-tag" style="background: #444; color: #888;">
-                    Awaiting Election Results
+                    ${isAutocracy ? 'No Elections Held' : 'Awaiting Election Results'}
                 </div>
             </div>
         </div>
