@@ -58,6 +58,15 @@
             line-height: 1.6;
         }
         
+        .info-box {
+            background: #1a2a1a;
+            border-left: 4px solid #4CAF50;
+            padding: 15px;
+            margin: 20px 0;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+        
         .input-group {
             margin-bottom: 25px;
         }
@@ -71,7 +80,7 @@
             letter-spacing: 1px;
         }
         
-        input[type="password"] {
+        input[type="password"], select {
             width: 100%;
             padding: 12px;
             background: #2a2a2a;
@@ -81,7 +90,7 @@
             font-size: 1rem;
         }
         
-        input[type="password"]:focus {
+        input[type="password"]:focus, select:focus {
             outline: none;
             border-color: #ff4444;
         }
@@ -130,6 +139,15 @@
         
         .btn-primary:hover {
             background: #e6b800;
+        }
+        
+        .btn-success {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #388E3C;
         }
         
         .btn-secondary {
@@ -229,6 +247,10 @@
         
         .admin-panel.danger {
             border-top-color: #ff4444;
+        }
+        
+        .admin-panel.success {
+            border-top-color: #4CAF50;
         }
         
         .nation-grid {
@@ -356,6 +378,83 @@
         .logout-btn:hover {
             background: #cc0000;
         }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 0;
+            margin-top: 30px;
+        }
+        .tab {
+            padding: 15px 30px;
+            background: #252525;
+            border: none;
+            border-radius: 8px 8px 0 0;
+            color: #888;
+            font-size: 0.9rem;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+        }
+        .tab:hover {
+            background: #333;
+            color: #e0e0e0;
+        }
+        .tab.active {
+            background: #1e1e1e;
+            color: #ffcc00;
+        }
+        .tab-content {
+            display: none;
+            background: #1e1e1e;
+            border-radius: 0 8px 8px 8px;
+            padding: 30px;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Election Results */
+        .election-results {
+            background: #252525;
+            border-radius: 6px;
+            padding: 20px;
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .result-party {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: #1a1a1a;
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+        .result-party-name {
+            font-weight: bold;
+            color: #e0e0e0;
+        }
+        .result-party-seats {
+            color: #ffcc00;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+        .result-bar {
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+        .result-bar-fill {
+            height: 100%;
+            background: #ffcc00;
+        }
     </style>
 </head>
 <body>
@@ -412,67 +511,107 @@
             </div>
         </div>
         
-        <!-- Shard Info -->
-        <div class="shard-info">
-            <h2>Shard Status</h2>
-            <div class="info-row">
-                <span class="info-label">Shard Name:</span>
-                <span class="info-value" id="info-name">Loading...</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Current Date:</span>
-                <span class="info-value" id="info-date">Loading...</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Current Tick:</span>
-                <span class="info-value" id="info-tick">Loading...</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Next Tick At:</span>
-                <span class="info-value" id="info-next-tick">Loading...</span>
-            </div>
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('shard')">Shard</button>
+            <button class="tab" onclick="showTab('elections')">Elections</button>
+            <button class="tab" onclick="showTab('npcs')">NPCs</button>
+            <button class="tab" onclick="showTab('players')">Players</button>
+            <button class="tab" onclick="showTab('danger')">Danger Zone</button>
         </div>
         
-        <div class="admin-grid">
-            <!-- Shard Reset Panel -->
-            <div class="admin-panel danger">
-                <h2>🔥 Reset Shard</h2>
-                <div class="warning">
-                    <strong>⚠️ DANGER ZONE</strong><br>
-                    Resets the entire Alpha Shard to January 2000.<br><br>
-                    This will:<br>
-                    • Reset game date to January, 2000<br>
-                    • Reset current_tick to 0<br>
-                    • Set next tick to 8 hours from now<br>
-                    • Reset ALL nation stats to defaults<br>
-                    • Kick out ALL players (forces re-selection)<br>
-                    • Clear ALL party data<br>
-                    • Does NOT delete user accounts
+        <!-- Shard Tab -->
+        <div class="tab-content active" id="tab-shard">
+            <h2>📊 Shard Status</h2>
+            <div class="shard-info">
+                <div class="info-row">
+                    <span class="info-label">Shard Name:</span>
+                    <span class="info-value" id="info-name">Loading...</span>
                 </div>
-                <button class="btn btn-danger btn-full" id="reset-btn" onclick="resetShard()">
-                    🔥 RESET ALPHA SHARD 🔥
-                </button>
-                <div id="reset-status" class="status info hidden"></div>
+                <div class="info-row">
+                    <span class="info-label">Current Date:</span>
+                    <span class="info-value" id="info-date">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Current Tick:</span>
+                    <span class="info-value" id="info-tick">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Next Tick At:</span>
+                    <span class="info-value" id="info-next-tick">Loading...</span>
+                </div>
             </div>
             
-            <!-- NPC Management Panel -->
-            <div class="admin-panel">
-                <h2>🤖 NPC Parties</h2>
-                <p style="color: #888; font-size: 0.9rem; margin-bottom: 15px;">
-                    Generate NPCs for nations with 0-1 real players only.
-                </p>
-                <button class="btn btn-primary btn-full" onclick="generateAllNPCs()">
-                    Generate NPCs (All Nations)
-                </button>
-                <button class="btn btn-warning btn-full" onclick="runNPCActions()">
-                    Run NPC Actions (Manual)
-                </button>
-                <div id="npc-status" class="status info hidden"></div>
+            <button class="btn btn-primary" onclick="advanceTick()">
+                ⏭️ Advance Tick Manually
+            </button>
+            <div id="tick-status" class="status info hidden"></div>
+        </div>
+        
+        <!-- Elections Tab -->
+        <div class="tab-content" id="tab-elections">
+            <h2>🗳️ Run Election</h2>
+            
+            <div class="info-box">
+                <strong>ℹ️ Manual Election</strong><br>
+                Run an election immediately for any nation. This bypasses the normal election schedule.
+            </div>
+            
+            <div class="input-group">
+                <label>Select Nation</label>
+                <select id="election-nation-select" onchange="onElectionNationSelect()">
+                    <option value="">-- Choose a nation --</option>
+                </select>
+            </div>
+            
+            <div id="election-nation-info" class="shard-info hidden">
+                <div class="info-row">
+                    <span class="info-label">Total Seats:</span>
+                    <span class="info-value" id="election-info-seats">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Eligible Voters:</span>
+                    <span class="info-value" id="election-info-voters">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Parties:</span>
+                    <span class="info-value" id="election-info-parties">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Last Election:</span>
+                    <span class="info-value" id="election-info-last">-</span>
+                </div>
+            </div>
+            
+            <button class="btn btn-success btn-full" id="run-election-btn" disabled onclick="runElection()">
+                🗳️ RUN ELECTION NOW
+            </button>
+            
+            <div id="election-status" class="status info hidden"></div>
+            
+            <div id="election-results" class="election-results hidden">
+                <h3 style="color: #4CAF50; margin-bottom: 15px;">📊 Election Results</h3>
+                <div id="election-results-content"></div>
             </div>
         </div>
         
-        <!-- Player Management -->
-        <div class="admin-panel" style="margin-top: 30px;">
+        <!-- NPCs Tab -->
+        <div class="tab-content" id="tab-npcs">
+            <h2>🤖 NPC Parties</h2>
+            <p style="color: #888; font-size: 0.9rem; margin-bottom: 15px;">
+                Generate NPCs for nations with 0-1 real players only.
+            </p>
+            <button class="btn btn-primary btn-full" onclick="generateAllNPCs()">
+                Generate NPCs (All Nations)
+            </button>
+            <button class="btn btn-warning btn-full" style="margin-top: 10px;" onclick="runNPCActions()">
+                Run NPC Actions (Manual)
+            </button>
+            <div id="npc-status" class="status info hidden"></div>
+        </div>
+        
+        <!-- Players Tab -->
+        <div class="tab-content" id="tab-players">
             <h2>👥 Player Management</h2>
             <p style="color: #888; font-size: 0.9rem; margin-bottom: 15px;">
                 Remove players from nations. They can log in and select a new nation.
@@ -480,6 +619,27 @@
             <div class="nation-grid" id="nations-grid">
                 <!-- Nations will be loaded here -->
             </div>
+        </div>
+        
+        <!-- Danger Zone Tab -->
+        <div class="tab-content" id="tab-danger">
+            <h2>🔥 Danger Zone</h2>
+            <div class="warning">
+                <strong>⚠️ DANGER ZONE</strong><br>
+                Resets the entire Alpha Shard to January 2000.<br><br>
+                This will:<br>
+                • Reset game date to January, 2000<br>
+                • Reset current_tick to 0<br>
+                • Set next tick to 8 hours from now<br>
+                • Reset ALL nation stats to defaults<br>
+                • Kick out ALL players (forces re-selection)<br>
+                • Clear ALL party data<br>
+                • Does NOT delete user accounts
+            </div>
+            <button class="btn btn-danger btn-full" id="reset-btn" onclick="resetShard()">
+                🔥 RESET ALPHA SHARD 🔥
+            </button>
+            <div id="reset-status" class="status info hidden"></div>
         </div>
     </div>
 </div>
@@ -491,6 +651,17 @@
     
     const ADMIN_PASSWORD = 'nationhood2000';
     let isAuthenticated = false;
+    let nations = [];
+    let selectedElectionNation = null;
+    
+    // Tab switching
+    function showTab(tabName) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        
+        document.querySelector(`.tab[onclick="showTab('${tabName}')"]`).classList.add('active');
+        document.getElementById(`tab-${tabName}`).classList.add('active');
+    }
     
     function authenticate() {
         const password = document.getElementById('admin-password').value;
@@ -519,6 +690,7 @@
         await loadShardInfo();
         await loadStats();
         await loadNations();
+        await loadElectionNations();
     }
     
     async function loadShardInfo() {
@@ -585,6 +757,179 @@
         }
     }
     
+    async function loadElectionNations() {
+        try {
+            const { data } = await _supabase
+                .from('nations')
+                .select('id, name, total_seats, eligible_voters')
+                .order('name');
+            
+            nations = data || [];
+            
+            const select = document.getElementById('election-nation-select');
+            select.innerHTML = '<option value="">-- Choose a nation --</option>';
+            
+            nations.forEach(nation => {
+                select.innerHTML += `<option value="${nation.id}">${nation.name}</option>`;
+            });
+        } catch (error) {
+            console.error('Error loading nations for elections:', error);
+        }
+    }
+    
+    async function onElectionNationSelect() {
+        const nationId = document.getElementById('election-nation-select').value;
+        const infoDiv = document.getElementById('election-nation-info');
+        const btn = document.getElementById('run-election-btn');
+        
+        if (!nationId) {
+            infoDiv.classList.add('hidden');
+            btn.disabled = true;
+            selectedElectionNation = null;
+            return;
+        }
+        
+        selectedElectionNation = nations.find(n => n.id === nationId);
+        
+        // Get party count
+        const { count: partyCount } = await _supabase
+            .from('factions')
+            .select('*', { count: 'exact', head: true })
+            .eq('nation_id', nationId)
+            .eq('faction_type', 'party');
+        
+        // Get last election
+        const { data: lastElection } = await _supabase
+            .from('elections')
+            .select('election_tick')
+            .eq('nation_id', nationId)
+            .eq('status', 'completed')
+            .order('election_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        
+        document.getElementById('election-info-seats').textContent = selectedElectionNation.total_seats || 120;
+        document.getElementById('election-info-voters').textContent = (selectedElectionNation.eligible_voters || 0).toLocaleString();
+        document.getElementById('election-info-parties').textContent = partyCount || 0;
+        document.getElementById('election-info-last').textContent = lastElection ? `Tick ${lastElection.election_tick}` : 'Never';
+        
+        infoDiv.classList.remove('hidden');
+        btn.disabled = false;
+    }
+    
+    async function runElection() {
+        if (!selectedElectionNation) return;
+        
+        const status = document.getElementById('election-status');
+        const resultsDiv = document.getElementById('election-results');
+        const resultsContent = document.getElementById('election-results-content');
+        const btn = document.getElementById('run-election-btn');
+        
+        btn.disabled = true;
+        btn.textContent = '⏳ Running Election...';
+        status.className = 'status info';
+        status.textContent = 'Simulating election...';
+        status.classList.remove('hidden');
+        resultsDiv.classList.add('hidden');
+        
+        try {
+            // Call the election function
+            const { data, error } = await _supabase.rpc('run_election', {
+                p_nation_id: selectedElectionNation.id
+            });
+            
+            if (error) throw error;
+            
+            // Get the results
+            const { data: election } = await _supabase
+                .from('elections')
+                .select('results')
+                .eq('nation_id', selectedElectionNation.id)
+                .eq('status', 'completed')
+                .order('election_tick', { ascending: false })
+                .limit(1)
+                .single();
+            
+            if (election?.results?.seats) {
+                const totalSeats = selectedElectionNation.total_seats || 120;
+                
+                resultsContent.innerHTML = election.results.seats
+                    .sort((a, b) => b.seats - a.seats)
+                    .map(result => `
+                        <div class="result-party">
+                            <div>
+                                <div class="result-party-name">${result.party_name}</div>
+                                <div class="result-bar" style="width: 200px;">
+                                    <div class="result-bar-fill" style="width: ${(result.seats / totalSeats) * 100}%"></div>
+                                </div>
+                            </div>
+                            <div class="result-party-seats">${result.seats} seats</div>
+                        </div>
+                    `).join('');
+                
+                resultsDiv.classList.remove('hidden');
+            }
+            
+            status.className = 'status success';
+            status.textContent = `✅ Election completed for ${selectedElectionNation.name}!`;
+            
+        } catch (error) {
+            console.error('Election error:', error);
+            status.className = 'status error';
+            status.textContent = '❌ Error: ' + error.message;
+        }
+        
+        btn.disabled = false;
+        btn.textContent = '🗳️ RUN ELECTION NOW';
+    }
+    
+    async function advanceTick() {
+        const status = document.getElementById('tick-status');
+        status.className = 'status info';
+        status.textContent = 'Advancing tick...';
+        status.classList.remove('hidden');
+        
+        try {
+            // Increment tick
+            await _supabase.rpc('process_tick');
+            
+            status.className = 'status success';
+            status.textContent = '✅ Tick advanced successfully!';
+            
+            await loadShardInfo();
+            await loadStats();
+        } catch (error) {
+            // Fallback: manual tick advance
+            try {
+                const { data: shard } = await _supabase
+                    .from('shard')
+                    .select('current_tick')
+                    .eq('name', 'Alpha Shard')
+                    .single();
+                
+                await _supabase
+                    .from('shard')
+                    .update({ current_tick: (shard.current_tick || 0) + 1 })
+                    .eq('name', 'Alpha Shard');
+                
+                // Restore AP
+                await _supabase
+                    .from('factions')
+                    .update({ action_points: 10 })
+                    .lt('action_points', 10);
+                
+                status.className = 'status success';
+                status.textContent = '✅ Tick advanced (fallback method)!';
+                
+                await loadShardInfo();
+                await loadStats();
+            } catch (fallbackError) {
+                status.className = 'status error';
+                status.textContent = '❌ Error: ' + fallbackError.message;
+            }
+        }
+    }
+    
     async function loadNations() {
         try {
             const { data: nations } = await _supabase
@@ -637,7 +982,6 @@
             
             grid.innerHTML = nationsHTML.join('');
             
-            // Add click handlers to all remove buttons
             document.querySelectorAll('.btn-remove').forEach(btn => {
                 btn.addEventListener('click', function() {
                     const playerId = this.getAttribute('data-player-id');
@@ -651,161 +995,95 @@
         }
     }
     
-async function removePlayer(playerId, nationId, partyName) {
-    console.log('Attempting to remove:', playerId, nationId, partyName);
-    
-    if (!confirm(`Remove ${partyName} from this nation?\n\nThis will mark their party as abandoned. They can create a new party in a different nation.`)) {
-        return;
-    }
-    
-    try {
-        // Instead of deleting, set nation_id to NULL and mark as abandoned
-        const { data, error } = await _supabase
-            .from('factions')
-            .update({ 
-                nation_id: null,
-                abandoned_at: new Date().toISOString()
-            })
-            .eq('id', playerId);
+    async function removePlayer(playerId, nationId, partyName) {
+        if (!confirm(`Remove ${partyName} from this nation?`)) return;
         
-        if (error) {
-            console.error('Supabase error:', error);
-            throw error;
+        try {
+            await _supabase
+                .from('factions')
+                .update({ nation_id: null, abandoned_at: new Date().toISOString() })
+                .eq('id', playerId);
+            
+            alert('✅ Player removed!');
+            await loadStats();
+            await loadNations();
+        } catch (error) {
+            alert('❌ Error: ' + error.message);
         }
-        
-        console.log('Update result:', data);
-        alert('✅ Player removed successfully! Party will remain until next election.');
-        
-        // Reload data
-        await loadStats();
-        await loadNations();
-    } catch (error) {
-        console.error('Error removing player:', error);
-        alert('❌ Error: ' + error.message);
     }
-}
     
     async function resetShard() {
-        if (!isAuthenticated) return;
-        
-        if (!confirm('⚠️ ARE YOU ABSOLUTELY SURE? ⚠️\n\nThis will reset the entire Alpha Shard to January 2000.\n\nThis CANNOT be undone!')) {
-            return;
-        }
+        if (!confirm('⚠️ RESET ENTIRE SHARD? This cannot be undone!')) return;
         
         const btn = document.getElementById('reset-btn');
         const status = document.getElementById('reset-status');
         
         btn.disabled = true;
-        btn.textContent = '⏳ RESETTING...';
         status.className = 'status info';
-        status.textContent = 'Starting reset...';
+        status.textContent = 'Resetting...';
         status.classList.remove('hidden');
         
         try {
             const nextTick = new Date();
             nextTick.setHours(nextTick.getHours() + 8);
             
-            status.textContent = 'Step 1/3: Resetting shard data...';
-            await _supabase
-                .from('shard')
-                .update({
-                    current_date: 'January, 2000',
-                    current_tick: 0,
-                    next_tick_at: nextTick.toISOString()
-                })
-                .eq('name', 'Alpha Shard');
+            await _supabase.from('shard').update({
+                current_date: 'January, 2000',
+                current_tick: 0,
+                next_tick_at: nextTick.toISOString()
+            }).eq('name', 'Alpha Shard');
             
-            status.textContent = 'Step 2/3: Resetting nation stats...';
-            const { data: nations } = await _supabase.from('nations').select('id');
-            for (const nation of nations) {
-                await _supabase.from('nations').update({
-                    religious: 50,
-                    stability: 50,
-                    civil_unrest: 50,
-                    terrorism: 50,
-                    legitimacy: 50,
-                    efficiency: 50,
-                    GDP: 50,
-                    debt: 50
-                }).eq('id', nation.id);
-            }
-            
-            status.textContent = 'Step 3/3: Clearing player data...';
             await _supabase.from('factions').update({
                 nation_id: null,
-                nation: 'Pending',
-                faction_type: 'pending',
-                faction_name: 'Unnamed Faction',
-                abbreviation: null,
-                ideology_value_1: null,
-                ideology_value_2: null,
-                ideology_value_3: null,
-                ideology_value_4: null
+                faction_type: 'pending'
             }).not('nation_id', 'is', null);
             
             status.className = 'status success';
-            status.textContent = `✅ RESET COMPLETE! Next tick: ${nextTick.toLocaleString()}`;
-            
-            btn.textContent = '🔥 RESET ALPHA SHARD 🔥';
-            btn.disabled = false;
-            
+            status.textContent = '✅ Shard reset complete!';
             await loadAllData();
         } catch (error) {
-            console.error('Reset error:', error);
             status.className = 'status error';
-            status.textContent = '❌ ERROR: ' + error.message;
-            btn.textContent = '🔥 RESET ALPHA SHARD 🔥';
-            btn.disabled = false;
+            status.textContent = '❌ Error: ' + error.message;
         }
+        
+        btn.disabled = false;
     }
     
     async function generateAllNPCs() {
-        if (!confirm('Generate NPC parties for ALL nations with 0-1 real players?')) return;
+        if (!confirm('Generate NPCs for all nations?')) return;
         
         const status = document.getElementById('npc-status');
         status.className = 'status info';
-        status.textContent = 'Generating NPCs...';
+        status.textContent = 'Generating...';
         status.classList.remove('hidden');
         
         try {
             const { data: nations } = await _supabase.from('nations').select('id');
-            let successCount = 0;
-            
             for (const nation of nations) {
-                const { data } = await _supabase.rpc('generate_npc_parties_for_nation', {
-                    p_nation_id: nation.id
-                });
-                if (data && data[0]?.success) successCount++;
+                await _supabase.rpc('generate_npc_parties_for_nation', { p_nation_id: nation.id });
             }
-            
             status.className = 'status success';
-            status.textContent = `✅ ${successCount} nations updated with NPCs`;
+            status.textContent = '✅ NPCs generated!';
             await loadStats();
-            await loadNations();
         } catch (error) {
             status.className = 'status error';
-            status.textContent = '❌ ERROR: ' + error.message;
+            status.textContent = '❌ Error: ' + error.message;
         }
     }
     
     async function runNPCActions() {
-        if (!confirm('Run NPC party actions?')) return;
-        
         const status = document.getElementById('npc-status');
         status.className = 'status info';
         status.textContent = 'Running NPC actions...';
         status.classList.remove('hidden');
         
         try {
-            const { data, error } = await _supabase.rpc('run_all_npc_party_actions');
-            if (error) throw error;
-            
-            const summary = data.map(d => `${d.party_name}: ${d.action_taken}`).join('\n');
+            await _supabase.rpc('run_all_npc_party_actions');
             status.className = 'status success';
-            status.textContent = `✅ ${data.length} actions taken:\n${summary}`;
+            status.textContent = '✅ NPC actions complete!';
         } catch (error) {
             status.className = 'status error';
-            status.textContent = '❌ ERROR: ' + error.message;
+            status.textContent = '❌ Error: ' + error.message;
         }
     }
     
