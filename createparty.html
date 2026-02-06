@@ -583,7 +583,19 @@
                 })
                 .eq('id', currentUser.id);
             
-            if (updateError) throw updateError;
+          if (updateError) throw updateError;
+
+// Check if NPCs should be removed (2+ player parties now in nation)
+const { data: npcResult, error: npcError } = await _supabase
+    .rpc('remove_npcs_and_redistribute_seats', { p_nation_id: nation.id });
+
+if (npcError) {
+    console.warn('NPC removal check failed (non-blocking):', npcError);
+} else if (npcResult?.action === 'npcs_removed') {
+    console.log(`Removed ${npcResult.npcs_deleted} NPC parties, redistributed ${npcResult.seats_redistributed} seats.`);
+}
+
+// Success! Redirect to dashboard
             
             // Success! Redirect to dashboard
             alert(`🎉 ${partyName} has been created! Welcome to the ${selectedNation} political scene.`);
