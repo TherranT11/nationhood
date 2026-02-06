@@ -208,25 +208,10 @@
             if (shardError) throw new Error('Could not find Alpha Shard');
 
             // STEP 3: Create the Faction Record (without nation_id yet)
-            if (authData.user) {
-                const tempName = email.split('@')[0] + "'s Faction";
-                
-                const { error: dbError } = await _supabase
-                    .from('factions')
-                    .insert([{ 
-                        id: authData.user.id,
-                        shard_id: shard.id,
-                        nation_id: null, // Will be set when they choose on the map
-                        faction_name: tempName,
-                        faction_type: selectedFactionType,
-                        nation: 'Pending' // Temporary placeholder
-                    }]);
-
-                if (dbError) throw dbError;
-
-                // Success! Send them to map to choose nation
-                alert("Faction Created! Now choose your nation.");
-                window.location.href = "map.html";
+if (authData.user) {
+    alert("Faction Created! Now choose your nation.");
+    window.location.href = "map.html";
+}
             }
         } catch (error) {
             console.error('Signup error:', error);
