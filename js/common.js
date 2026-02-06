@@ -79,10 +79,10 @@ async function loadGameState() {
         .eq('id', user.id)
         .single();
     
-    if (factionError || !faction || faction.faction_type !== 'party') {
-        window.location.href = 'nation-selection.html';
-        return null;
-    }
+if (factionError || !faction) {
+    window.location.href = 'signup.html';
+    return null;
+}
     
     // Get nation
     let nation = null;
