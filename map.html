@@ -247,17 +247,28 @@
         currentUser = user;
 
         // Load faction data (just to verify user exists)
-        const { data: faction, error: factionError } = await _supabase
-            .from('factions')
-            .select('*')
-            .eq('id', user.id)
-            .single();
+     let faction = null;
+let retries = 3;
+while (retries > 0) {
+    const { data, error } = await _supabase
+        .from('factions')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+    
+    if (data) {
+        faction = data;
+        break;
+    }
+    retries--;
+    if (retries > 0) await new Promise(r => setTimeout(r, 1000));
+}
 
-        if (factionError || !faction) {
-            alert('Faction not found. Please sign up.');
-            window.location.href = 'signup.html';
-            return;
-        }
+if (!faction) {
+    alert('Faction not found. Please sign up.');
+    window.location.href = 'signup.html';
+    return;
+}
 
         currentFaction = faction;
         
