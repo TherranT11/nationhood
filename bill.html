@@ -297,9 +297,8 @@ async function loadBillData() {
         allPartySeats = seatData.allPartySeats;
         currentSeats = seatData.currentSeats;
 
-        // Shared head faction detection
         if (isAutocracy) {
-            const hf = detectHeadFaction(allParties, allPartySeats, currentFaction?.id);
+            const hf = await detectHeadFaction(_supabase, bill.nation_id, allParties, allPartySeats, currentFaction?.id);
             headFactionId = hf.headFactionId;
             isHeadFaction = hf.isHeadFaction;
         }
@@ -404,7 +403,36 @@ function renderSidebar() {
     const bill = currentBill, isCommittee = bill.status === 'committee', isFloor = bill.status === 'floor';
     const isSponsor = bill.proposed_by === currentFaction?.id;
     let html = '';
-    if (isCommittee) {
+
+    if (isCommittee && isAutocracy) {
+        // AUTOCRACY COMMITTEE: No support voting — head faction enacts, others propose amendments
+        html = `<div class="support-box">
+            <div class="support-box-header"><div class="support-box-title">Decree Status</div></div>
+            <div class="support-box-content">
+                <div style="text-align:center; padding: 12px 0;">
+                    ${isHeadFaction
+                        ? '<div style="color: #ff4444; font-weight: bold; font-size: 0.9rem;">⚡ You may enact this decree</div><div style="color: #888; font-size: 0.8rem; margin-top: 4px;">Use the Enact Decree button below</div>'
+                        : `<div style="color: #888; font-size: 0.85rem;">Awaiting <span style="color: #ff4444; font-weight: bold;">${allParties.find(p => p.id === headFactionId)?.faction_name || 'Head Faction'}</span> to enact</div>`
+                    }
+                </div>
+            </div>
+            ${amendmentRequests.length > 0 ? `
+                <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Amendment Requests</div></div>
+                <div class="support-box-content">
+                    ${amendmentRequests.map(req => `<div class="amendment-request">
+                        <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
+                        <div class="amendment-policy">+ Add: ${req.policies?.policy_name || 'Unknown'}</div>
+                        ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
+                    </div>`).join('')}
+                </div>` : `
+                <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Amendment Requests</div></div>
+                <div class="no-amendments">No pending amendments</div>
+            `}
+            ${!isSponsor ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Amendment</button></div>` : ''}
+        </div>`;
+
+    } else if (isCommittee) {
+        // DEMOCRACY COMMITTEE: support panel with percentages
         const support = calculateBillSupport(bill.bill_support, bill.proposed_by, allPartySeats);
         const billSupport = bill.bill_support || [];
         html = `<div class="support-box">
@@ -432,6 +460,7 @@ function renderSidebar() {
                 </div>` : (!isSponsor ? `<div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Amendment Requests</div></div><div class="no-amendments">No pending amendments</div>` : '')}
             ${!isSponsor ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Amendment</button></div>` : ''}
         </div>`;
+
     } else if (isFloor) {
         const support = bill.bill_support || [];
         let f=0,a=0,ab=0;
