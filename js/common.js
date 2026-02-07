@@ -55,7 +55,7 @@ function setCachedState(user, faction, nation, shard) {
  * Uses cache if fresh, otherwise fetches from Supabase
  * @returns {Promise<{user, faction, nation, shard}>}
  */
-async function loadGameState() {
+async function loadGameState(requireFaction = true) {
     // Check cache first
     const cached = getCachedState();
     if (cached) {
