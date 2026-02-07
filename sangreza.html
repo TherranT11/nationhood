@@ -457,16 +457,16 @@
             const { data: { user } } = await _supabase.auth.getUser();
             if (!user) { window.location.href = "login.html"; return; }
             currentUser = user;
-
-// Check if user already belongs to a nation
-const { data: existingFaction } = await _supabase
-    .from('factions')
-    .select('nation_id, nation')
-    .eq('id', user.id)
-    .eq('faction_type', 'party')
-    .single();
-
-const alreadyInNation = existingFaction && existingFaction.nation_id;
+            
+            // Check if user already belongs to a nation
+            const { data: existingFaction } = await _supabase
+                .from('factions')
+                .select('nation_id')
+                .eq('id', user.id)
+                .eq('faction_type', 'party')
+                .single();
+            
+            const alreadyInNation = existingFaction && existingFaction.nation_id;
             
             const { data: nation, error: nationError } = await _supabase
                 .from('nations')
@@ -491,9 +491,7 @@ const alreadyInNation = existingFaction && existingFaction.nation_id;
                 .eq('is_npc', false)
                 .order('seats', { ascending: false });
             
-            displayNationData(nation, interestGroups, parties || [], playerFactions || [], alreadyInNation);
-
-            
+            displayNationData(nation, interestGroups || [], factions || [], alreadyInNation);
             
         } catch (error) {
             console.error('Error loading nation data:', error);
@@ -504,7 +502,7 @@ const alreadyInNation = existingFaction && existingFaction.nation_id;
         }
     }
     
-    function displayNationData(nation, interestGroups, factions) {
+    function displayNationData(nation, interestGroups, factions, alreadyInNation = false) {
         const fmt = (n) => (n === null || n === undefined) ? 'N/A' : n.toLocaleString();
         
         // Strongman
@@ -580,6 +578,11 @@ const alreadyInNation = existingFaction && existingFaction.nation_id;
         
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
+        
+        // Hide join button if user is already in a nation
+        if (alreadyInNation) {
+            document.getElementById('continue-btn').style.display = 'none';
+        }
     }
     
     function goBack() {
