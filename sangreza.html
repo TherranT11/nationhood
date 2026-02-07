@@ -457,6 +457,16 @@
             const { data: { user } } = await _supabase.auth.getUser();
             if (!user) { window.location.href = "login.html"; return; }
             currentUser = user;
+
+// Check if user already belongs to a nation
+const { data: existingFaction } = await _supabase
+    .from('factions')
+    .select('nation_id, nation')
+    .eq('id', user.id)
+    .eq('faction_type', 'party')
+    .single();
+
+const alreadyInNation = existingFaction && existingFaction.nation_id;
             
             const { data: nation, error: nationError } = await _supabase
                 .from('nations')
@@ -481,7 +491,9 @@
                 .eq('is_npc', false)
                 .order('seats', { ascending: false });
             
-            displayNationData(nation, interestGroups || [], factions || []);
+            displayNationData(nation, interestGroups, parties || [], playerFactions || [], alreadyInNation);
+
+            
             
         } catch (error) {
             console.error('Error loading nation data:', error);
