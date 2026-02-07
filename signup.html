@@ -77,7 +77,7 @@
             text-transform: uppercase;
         }
         
-        .btn-join { width: 100%; padding: 15px; background: #ffcc00; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; color: #000; }
+        .btn-join { width: 100%; padding: 15px; background: #ffcc00; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; color: #000; font-size: 1rem; }
         .btn-join:hover { background: #e6b800; }
         .btn-join:disabled { background: #666; cursor: not-allowed; }
         .login-link { text-align: center; margin-top: 15px; font-size: 0.8rem; }
@@ -207,8 +207,16 @@
         submitBtn.textContent = 'CREATING FACTION...';
         
         try {
-            const email = document.getElementById('email').value;
+            const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
+
+            if (!email || !password) {
+                throw new Error('Please enter both email and password.');
+            }
+
+            if (password.length < 6) {
+                throw new Error('Password must be at least 6 characters.');
+            }
 
             const { data: authData, error: authError } = await _supabase.auth.signUp({
                 email,
@@ -220,9 +228,15 @@
 
             if (authError) throw authError;
 
-            // If email confirmation is enabled, user won't have a session yet.
-            // Show the "check your email" state.
+            // Email confirmation required (normal flow)
             if (authData.user && !authData.session) {
+                // Supabase returns empty identities array for duplicate emails
+                // (to prevent email enumeration, it doesn't throw an error)
+                if (authData.user.identities && authData.user.identities.length === 0) {
+                    throw new Error('An account with this email already exists. Try logging in instead.');
+                }
+
+                // Legitimate new signup — show confirmation screen
                 document.getElementById('confirm-email-display').textContent = email;
                 document.getElementById('signup-state').style.display = 'none';
                 document.getElementById('confirm-state').style.display = 'block';
@@ -231,8 +245,13 @@
 
             // If confirmation is disabled (legacy/fallback), user is logged in immediately
             if (authData.user && authData.session) {
-                window.location.href = "world.html";
+                window.location.href = 'world.html';
+                return;
             }
+
+            // Fallback — neither condition met (shouldn't happen, but prevents freeze)
+            throw new Error('Something went wrong. This email may already be registered — try logging in.');
+
         } catch (error) {
             console.error('Signup error:', error);
             errorMsg.textContent = error.message || 'Signup failed. Please try again.';
