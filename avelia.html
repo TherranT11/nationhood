@@ -365,6 +365,16 @@
             }
             currentUser = user;
             
+            // Check if user already belongs to a nation
+            const { data: existingFaction } = await _supabase
+                .from('factions')
+                .select('nation_id')
+                .eq('id', user.id)
+                .eq('faction_type', 'party')
+                .single();
+            
+            const alreadyInNation = existingFaction && existingFaction.nation_id;
+            
             // Load nation data
             const { data: nation, error: nationError } = await _supabase
                 .from('nations')
@@ -399,7 +409,7 @@
                 .eq('faction_type', 'party');
             
             // Display the data
-            displayNationData(nation, interestGroups, parties || [], playerFactions || []);
+            displayNationData(nation, interestGroups, parties || [], playerFactions || [], alreadyInNation);
             
         } catch (error) {
             console.error('Error loading nation data:', error);
@@ -414,9 +424,6 @@
     
     function getIdeologyTags(group) {
         const ideologies = [];
-        
-        // Your database stores ideology names as text in ideology_value_1, ideology_value_2, etc.
-        // Each interest group simply supports certain ideologies (binary: yes or no)
         
         if (group.ideology_value_1) {
             ideologies.push(group.ideology_value_1.toUpperCase());
@@ -434,7 +441,7 @@
         return ideologies;
     }
     
-    function displayNationData(nation, interestGroups, parties, playerFactions) {
+    function displayNationData(nation, interestGroups, parties, playerFactions, alreadyInNation = false) {
         // Format numbers
         const formatNumber = (num) => {
             if (num === null || num === undefined) return 'N/A';
@@ -481,7 +488,7 @@
             ...parties.map(p => ({ ...p, isPlayer: false })),
             ...playerFactions.map(f => ({
                 name: f.faction_name,
-                seats: 0, // Player parties start with 0 seats
+                seats: 0,
                 isPlayer: true,
                 is_npc: false
             }))
@@ -513,6 +520,11 @@
         // Show content, hide loading
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
+        
+        // Hide join button if user is already in a nation
+        if (alreadyInNation) {
+            document.getElementById('continue-btn').style.display = 'none';
+        }
     }
     
     function goBack() {
