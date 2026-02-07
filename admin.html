@@ -611,15 +611,26 @@
         </div>
         
         <!-- Players Tab -->
-        <div class="tab-content" id="tab-players">
-            <h2>👥 Player Management</h2>
-            <p style="color: #888; font-size: 0.9rem; margin-bottom: 15px;">
-                Remove players from nations. They can log in and select a new nation.
-            </p>
-            <div class="nation-grid" id="nations-grid">
-                <!-- Nations will be loaded here -->
-            </div>
-        </div>
+     <!-- Players Tab -->
+<div class="tab-content" id="tab-players">
+    <h2>👥 Player Management</h2>
+    <p style="color: #888; font-size: 0.9rem; margin-bottom: 15px;">
+        View all players, their nation status, and manage accounts.
+    </p>
+    
+    <!-- Filter buttons -->
+    <div style="margin-bottom:20px; display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-secondary" style="padding:8px 16px; font-size:0.8rem;" onclick="filterPlayers('all')">All</button>
+        <button class="btn btn-success" style="padding:8px 16px; font-size:0.8rem;" onclick="filterPlayers('active')">In Nation</button>
+        <button class="btn btn-warning" style="padding:8px 16px; font-size:0.8rem;" onclick="filterPlayers('orphaned')">No Nation</button>
+    </div>
+    
+    <!-- Player count -->
+    <div id="player-count" style="color:#888; font-size:0.85rem; margin-bottom:15px;"></div>
+    
+    <!-- Player list -->
+    <div id="players-list"></div>
+</div>
         
         <!-- Danger Zone Tab -->
         <div class="tab-content" id="tab-danger">
@@ -930,93 +941,101 @@
         }
     }
     
-    async function loadNations() {
-        try {
-            const { data: nations } = await _supabase
-                .from('nations')
-                .select('*')
-                .order('name');
-            
-            const grid = document.getElementById('nations-grid');
-            
-            if (!nations || nations.length === 0) {
-                grid.innerHTML = '<div class="no-players">No nations found</div>';
-                return;
-            }
-            
-            const nationsHTML = await Promise.all(nations.map(async (nation) => {
-                const { data: players } = await _supabase
-                    .from('factions')
-                    .select('id, faction_name, is_npc, seats')
-                    .eq('nation_id', nation.id)
-                    .eq('faction_type', 'party')
-                    .eq('is_npc', false);
-                
-                const playersHTML = players && players.length > 0
-? players.map(player => `
-    <div class="player-item">
-        <div class="player-info">
-            <div class="player-party">${player.faction_name} (${player.seats || 0} seats)</div>
-            <div class="player-id">ID: ${player.id.substring(0, 8)}...</div>
-        </div>
-        <div style="display:flex; gap:6px;">
-            <button class="btn-remove" 
-                    data-player-id="${player.id}" 
-                    data-nation-id="${nation.id}" 
-                    data-party-name="${player.faction_name}">
-                Kick
-            </button>
-            <button class="btn-remove" style="background:#aa0000;"
-                    data-delete-id="${player.id}" 
-                    data-nation-id="${nation.id}" 
-                    data-party-name="${player.faction_name}">
-                DELETE
-            </button>
-        </div>
-    </div>
-`).join('')
-                    : '<div class="no-players">No players in this nation</div>';
-                
-                return `
-                    <div class="nation-card">
-                        <div class="nation-name">${nation.name}</div>
-                        ${playersHTML}
-                        <div style="font-size: 0.8rem; color: #666; margin-top: 10px;">
-                            ${players?.length || 0} player(s)
-                        </div>
-                    </div>
-                `;
-            }));
-            
-            grid.innerHTML = nationsHTML.join('');
+async function loadNations() {
+    // This now loads ALL players
+    await loadAllPlayers('all');
+}
 
-// Show orphaned players (no nation)
-const { data: orphans } = await _supabase
-    .from('factions')
-    .select('id, faction_name, is_npc')
-    .is('nation_id', null)
-    .eq('is_npc', false);
+let allPlayersCache = [];
 
-if (orphans && orphans.length > 0) {
-    grid.innerHTML += `
-        <div class="nation-card" style="border-color:#ff4444;">
-            <div class="nation-name" style="color:#ff4444;">⚠️ No Nation (Orphaned)</div>
-            ${orphans.map(p => `
-                <div class="player-item" style="border-left-color:#ff4444;">
-                    <div class="player-info">
-                        <div class="player-party">${p.faction_name || 'Unnamed'}</div>
-                        <div class="player-id">ID: ${p.id.substring(0, 8)}...</div>
+async function loadAllPlayers(filter) {
+    try {
+        const playersList = document.getElementById('players-list');
+        playersList.innerHTML = '<div class="no-players">Loading...</div>';
+
+        // Get all human factions
+        const { data: factions } = await _supabase
+            .from('factions')
+            .select('id, faction_name, abbreviation, faction_type, nation_id, nation, seats, approval_rating, action_points, is_npc')
+            .eq('is_npc', false)
+            .order('faction_name');
+
+        allPlayersCache = factions || [];
+
+        renderPlayers(filter);
+    } catch (error) {
+        console.error('Error loading players:', error);
+        document.getElementById('players-list').innerHTML = '<div class="no-players" style="color:#ff4444;">Error loading players</div>';
+    }
+}
+
+function filterPlayers(filter) {
+    renderPlayers(filter);
+}
+
+function renderPlayers(filter) {
+    const playersList = document.getElementById('players-list');
+    const countDiv = document.getElementById('player-count');
+
+    let filtered = allPlayersCache;
+    if (filter === 'active') {
+        filtered = allPlayersCache.filter(p => p.nation_id);
+    } else if (filter === 'orphaned') {
+        filtered = allPlayersCache.filter(p => !p.nation_id);
+    }
+
+    countDiv.textContent = `Showing ${filtered.length} of ${allPlayersCache.length} player(s)`;
+
+    if (filtered.length === 0) {
+        playersList.innerHTML = '<div class="no-players">No players found</div>';
+        return;
+    }
+
+    playersList.innerHTML = filtered.map(player => {
+        const hasNation = !!player.nation_id;
+        const borderColor = hasNation ? '#4CAF50' : '#ff4444';
+        const statusBadge = hasNation
+            ? `<span style="background:#1a2a1a; color:#4CAF50; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">${player.nation || 'Unknown'}</span>`
+            : `<span style="background:#2a1a1a; color:#ff4444; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NO NATION</span>`;
+
+        const statsHTML = hasNation ? `
+            <div style="display:flex; gap:12px; margin-top:6px; font-size:0.75rem; color:#888;">
+                <span>Seats: <strong style="color:#ffcc00;">${player.seats || 0}</strong></span>
+                <span>Approval: <strong style="color:#ffcc00;">${player.approval_rating || 0}%</strong></span>
+                <span>AP: <strong style="color:#ffcc00;">${player.action_points || 0}</strong></span>
+                <span>Type: <strong style="color:#aaa;">${player.faction_type || '—'}</strong></span>
+            </div>
+        ` : `
+            <div style="margin-top:6px; font-size:0.75rem; color:#ff4444; font-style:italic;">
+                Not assigned to any nation — can rejoin via world map
+            </div>
+        `;
+
+        return `
+            <div class="player-item" style="border-left-color:${borderColor}; margin-bottom:10px;">
+                <div class="player-info" style="flex:1;">
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+                        <span class="player-party">${player.faction_name || 'Unnamed'} ${player.abbreviation ? '[' + player.abbreviation + ']' : ''}</span>
+                        ${statusBadge}
                     </div>
-                    <button class="btn-remove" style="background:#aa0000;"
-                        data-delete-id="${p.id}" 
-                        data-party-name="${p.faction_name || 'Unnamed'}">
+                    <div class="player-id">ID: ${player.id}</div>
+                    ${statsHTML}
+                </div>
+                <div style="display:flex; gap:6px; flex-direction:column;">
+                    ${hasNation ? `
+                        <button class="btn-remove" style="font-size:0.75rem; padding:6px 12px;"
+                            onclick="removePlayer('${player.id}', '${player.nation_id}', '${(player.faction_name || '').replace(/'/g, "\\'")}')">
+                            KICK
+                        </button>
+                    ` : ''}
+                    <button class="btn-remove" style="background:#aa0000; font-size:0.75rem; padding:6px 12px;"
+                        onclick="deleteParty('${player.id}', '${(player.faction_name || '').replace(/'/g, "\\'")}')">
                         DELETE
                     </button>
                 </div>
-            `).join('')}
-            <div style="font-size:0.8rem;color:#666;margin-top:10px;">${orphans.length} orphaned player(s)</div>
-        </div>
-    `;
+            </div>
+        `;
+    }).join('');
 }
             
 document.querySelectorAll('[data-player-id]').forEach(btn => {
