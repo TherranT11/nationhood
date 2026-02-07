@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nationhood | Factions & Demands</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-deep: #0a0a0f;
+            --bg-card: #12121a;
+            --bg-card-hover: #1a1a25;
+            --bg-surface: #1e1e2a;
+            --gold: #d4a843;
+            --gold-dim: #9e7a2e;
+            --gold-bright: #f0c850;
+            --red: #c0392b;
+            --red-soft: #2a1515;
+            --green: #27ae60;
+            --green-soft: #152a18;
+            --blue: #2980b9;
+            --blue-soft: #151e2a;
+            --purple: #8e44ad;
+            --purple-soft: #1e152a;
+            --text: #d4d0c8;
+            --text-dim: #7a7670;
+            --text-faint: #4a4640;
+            --border: #2a2a35;
+            --border-gold: #3a3020;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            background: var(--bg-deep);
+            color: var(--text);
+            font-family: 'Crimson Text', Georgia, serif;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+        
+        /* Header */
+        .page-header {
+            background: linear-gradient(180deg, #15151f 0%, var(--bg-deep) 100%);
+            border-bottom: 1px solid var(--border-gold);
+            padding: 30px 40px;
+            position: relative;
+            overflow: hidden;
+        }
+        .page-header::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--gold), transparent);
+        }
+        .header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-title {
+            font-family: 'Cinzel', serif;
+            font-size: 1.8rem;
+            font-weight: 900;
+            color: var(--gold);
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+        .header-subtitle {
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            margin-top: 4px;
+            font-style: italic;
+        }
+        .header-nav {
+            display: flex;
+            gap: 12px;
+        }
+        .nav-btn {
+            padding: 10px 20px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-dim);
+            font-family: 'Cinzel', serif;
+            font-size: 0.8rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+        }
+        .nav-btn:hover {
+            border-color: var(--gold-dim);
+            color: var(--gold);
+        }
+        
+        /* Main Content */
+        .main-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 30px 40px;
+        }
+        
+        /* Loading / Auth states */
+        .state-message {
+            text-align: center;
+            padding: 80px 20px;
+        }
+        .state-message h2 {
+            font-family: 'Cinzel', serif;
+            color: var(--gold);
+            font-size: 1.4rem;
+            margin-bottom: 10px;
+        }
+        .state-message p {
+            color: var(--text-dim);
+            font-size: 1rem;
+        }
+        
+        /* Nation Header Bar */
+        .nation-bar {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 20px 25px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .nation-bar-left h2 {
+            font-family: 'Cinzel', serif;
+            color: var(--gold);
+            font-size: 1.3rem;
+            letter-spacing: 2px;
+        }
+        .nation-bar-left span {
+            color: var(--text-dim);
+            font-size: 0.9rem;
+        }
+        .nation-bar-stats {
+            display: flex;
+            gap: 25px;
+        }
+        .nation-mini-stat {
+            text-align: center;
+        }
+        .nation-mini-stat .value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--gold-bright);
+        }
+        .nation-mini-stat .label {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        /* Section Tabs */
+        .section-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 0;
+        }
+        .section-tab {
+            padding: 14px 28px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-bottom: none;
+            border-radius: 6px 6px 0 0;
+            color: var(--text-dim);
+            font-family: 'Cinzel', serif;
+            font-size: 0.8rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+        }
+        .section-tab:hover {
+            color: var(--text);
+            background: var(--bg-card-hover);
+        }
+        .section-tab.active {
+            color: var(--gold);
+            background: var(--bg-surface);
+            border-color: var(--border-gold);
+        }
+        .section-content {
+            display: none;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 0 6px 6px 6px;
+            padding: 30px;
+        }
+        .section-content.active {
+            display: block;
+        }
+        
+        /* Active Demands */
+        .demand-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--gold-dim);
+            border-radius: 0 6px 6px 0;
+            padding: 25px;
+            margin-bottom: 20px;
+            transition: border-color 0.2s;
+        }
+        .demand-card:hover {
+            border-left-color: var(--gold);
+        }
+        .demand-card.urgent {
+            border-left-color: var(--red);
+            background: linear-gradient(90deg, var(--red-soft), var(--bg-card) 30%);
+        }
+        .demand-card.met {
+            border-left-color: var(--green);
+            background: linear-gradient(90deg, var(--green-soft), var(--bg-card) 30%);
+            opacity: 0.7;
+        }
+        .demand-card.failed {
+            border-left-color: #555;
+            opacity: 0.5;
+        }
+        
+        .demand-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+        .demand-bloc-name {
+            font-family: 'Cinzel', serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--gold);
+        }
+        .demand-bloc-voters {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+        .demand-deadline {
+            text-align: right;
+        }
+        .demand-deadline-label {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .demand-deadline-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        .deadline-ok { color: var(--gold); }
+        .deadline-warning { color: #e67e22; }
+        .deadline-critical { color: var(--red); }
+        
+        .demand-body {
+            font-size: 1.05rem;
+            line-height: 1.7;
+            color: var(--text);
+            margin-bottom: 18px;
+            font-style: italic;
+        }
+        
+        .demand-requirement {
+            background: var(--bg-deep);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .demand-stat-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        .demand-stat-name {
+            font-family: 'Cinzel', serif;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--text);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .demand-stat-current {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+        .demand-stat-arrow {
+            font-size: 1.2rem;
+            margin: 0 8px;
+        }
+        .demand-stat-target {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            padding: 4px 12px;
+            border-radius: 3px;
+            font-weight: 700;
+        }
+        .target-low { background: #1a2a3a; color: #5dade2; border: 1px solid #2980b9; }
+        .target-moderate { background: #2a2a1a; color: #f0c850; border: 1px solid #d4a843; }
+        .target-high { background: #1a2a1a; color: #58d68d; border: 1px solid #27ae60; }
+        
+        .demand-penalty {
+            font-size: 0.8rem;
+            color: var(--red);
+            font-weight: 600;
+        }
+        
+        .demand-status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .badge-active { background: var(--blue-soft); color: var(--blue); border: 1px solid var(--blue); }
+        .badge-met { background: var(--green-soft); color: var(--green); border: 1px solid var(--green); }
+        .badge-failed { background: var(--red-soft); color: var(--red); border: 1px solid var(--red); }
+        
+        /* Voter Bloc List */
+        .bloc-list-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: border-color 0.2s;
+        }
+        .bloc-list-card:hover {
+            border-color: var(--gold-dim);
+        }
+        .bloc-list-left {
+            flex: 1;
+        }
+        .bloc-list-name {
+            font-family: 'Cinzel', serif;
+            color: var(--gold);
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .bloc-list-desc {
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            font-style: italic;
+        }
+        .bloc-list-tags {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        .bloc-ideology-tag {
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: var(--purple-soft);
+            color: #bb8fce;
+            border: 1px solid var(--purple);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .bloc-list-right {
+            text-align: right;
+            margin-left: 20px;
+        }
+        .bloc-voter-count {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--gold-bright);
+        }
+        .bloc-voter-label {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .bloc-demand-count {
+            font-size: 0.8rem;
+            margin-top: 6px;
+        }
+        
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 50px 20px;
+            color: var(--text-dim);
+        }
+        .empty-state-icon {
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+        .empty-state h3 {
+            font-family: 'Cinzel', serif;
+            color: var(--text-faint);
+            font-size: 1rem;
+            margin-bottom: 8px;
+        }
+        .empty-state p {
+            font-size: 0.9rem;
+        }
+        
+        /* History */
+        .history-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 18px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+        .history-row-left {
+            flex: 1;
+        }
+        .history-bloc {
+            font-weight: 700;
+            color: var(--text);
+        }
+        .history-stat {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .page-header { padding: 20px; }
+            .main-content { padding: 20px; }
+            .header-inner { flex-direction: column; gap: 15px; }
+            .nation-bar { flex-direction: column; gap: 15px; text-align: center; }
+            .demand-header { flex-direction: column; gap: 10px; }
+            .demand-requirement { flex-direction: column; }
+            .demand-stat-info { flex-wrap: wrap; }
+            .bloc-list-card { flex-direction: column; text-align: center; }
+            .bloc-list-right { margin-left: 0; margin-top: 10px; }
+            .stat-pref-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="page-header">
+    <div class="header-inner">
+        <div>
+            <div class="header-title">Factions & Demands</div>
+            <div class="header-subtitle">The people have spoken — will you listen?</div>
+        </div>
+        <div class="header-nav">
+            <a href="world.html" class="nav-btn">← World Map</a>
+        </div>
+    </div>
+</div>
+
+<div class="main-content">
+    <!-- Loading State -->
+    <div id="state-loading" class="state-message">
+        <h2>Loading...</h2>
+        <p>Gathering intelligence on the factions...</p>
+    </div>
+    
+    <!-- Not in a nation -->
+    <div id="state-no-nation" class="state-message" style="display:none;">
+        <h2>No Nation Selected</h2>
+        <p>You must join a nation to view its factions and demands.</p>
+        <a href="world.html" class="nav-btn" style="display:inline-block; margin-top:20px;">Go to World Map</a>
+    </div>
+    
+    <!-- Main Content (shown when authenticated + in a nation) -->
+    <div id="main-factions" style="display:none;">
+        
+        <!-- Nation Bar -->
+        <div class="nation-bar">
+            <div class="nation-bar-left">
+                <h2 id="faction-nation-name">—</h2>
+                <span id="faction-party-name">—</span>
+            </div>
+            <div class="nation-bar-stats">
+                <div class="nation-mini-stat">
+                    <div class="value" id="faction-total-blocs">—</div>
+                    <div class="label">Voter Blocs</div>
+                </div>
+                <div class="nation-mini-stat">
+                    <div class="value" id="faction-active-demands">—</div>
+                    <div class="label">Active Demands</div>
+                </div>
+                <div class="nation-mini-stat">
+                    <div class="value" id="faction-approval">—</div>
+                    <div class="label">Your Approval</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tabs -->
+        <div class="section-tabs">
+            <button class="section-tab active" onclick="showSection('demands')">Active Demands</button>
+            <button class="section-tab" onclick="showSection('blocs')">Voter Blocs</button>
+            <button class="section-tab" onclick="showSection('history')">History</button>
+        </div>
+        
+        <!-- Active Demands Section -->
+        <div class="section-content active" id="section-demands">
+            <div id="demands-list">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📭</div>
+                    <h3>No Active Demands</h3>
+                    <p>The voter blocs are quiet... for now.</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Voter Blocs Section -->
+        <div class="section-content" id="section-blocs">
+            <div id="blocs-list">
+                <div class="empty-state">
+                    <div class="empty-state-icon">🏛️</div>
+                    <h3>No Voter Blocs</h3>
+                    <p>No organized voter blocs exist in this nation yet.</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- History Section -->
+        <div class="section-content" id="section-history">
+            <div id="history-list">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📜</div>
+                    <h3>No History Yet</h3>
+                    <p>Past demands will appear here once they are met or expire.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
+    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+    
+    let currentUser = null;
+    let currentFaction = null;
+    let currentNation = null;
+    let currentTick = 0;
+    
+    // Tab switching
+    function showSection(name) {
+        document.querySelectorAll('.section-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.section-content').forEach(t => t.classList.remove('active'));
+        document.querySelector(`.section-tab[onclick="showSection('${name}')"]`).classList.add('active');
+        document.getElementById(`section-${name}`).classList.add('active');
+    }
+    
+    // Initialize
+    async function init() {
+        try {
+            // Check auth
+            const { data: { user } } = await _supabase.auth.getUser();
+            
+            if (!user) {
+                window.location.href = 'index.html';
+                return;
+            }
+            
+            currentUser = user;
+            
+            // Get player's faction
+            const { data: faction } = await _supabase
+                .from('factions')
+                .select('*, nations(*)')
+                .eq('id', user.id)
+                .single();
+            
+            if (!faction || !faction.nation_id) {
+                document.getElementById('state-loading').style.display = 'none';
+                document.getElementById('state-no-nation').style.display = 'block';
+                return;
+            }
+            
+            currentFaction = faction;
+            currentNation = faction.nations;
+            
+            // Get current tick
+            const { data: shard } = await _supabase
+                .from('shard')
+                .select('current_tick')
+                .eq('name', 'Alpha Shard')
+                .single();
+            currentTick = shard?.current_tick || 0;
+            
+            // Show main content
+            document.getElementById('state-loading').style.display = 'none';
+            document.getElementById('main-factions').style.display = 'block';
+            
+            // Populate header
+            document.getElementById('faction-nation-name').textContent = currentNation.name;
+            document.getElementById('faction-party-name').textContent = `${faction.faction_name} [${faction.abbreviation || '—'}]`;
+            document.getElementById('faction-approval').textContent = (faction.approval_rating || 0) + '%';
+            
+            // Load everything
+            await loadAll();
+            
+        } catch (error) {
+            console.error('Init error:', error);
+            document.getElementById('state-loading').innerHTML = `
+                <h2>Error</h2>
+                <p style="color:#c0392b;">${error.message}</p>
+            `;
+        }
+    }
+    
+    async function loadAll() {
+        await Promise.all([
+            loadActiveDemands(),
+            loadVoterBlocs(),
+            loadHistory()
+        ]);
+    }
+    
+    async function loadActiveDemands() {
+        const container = document.getElementById('demands-list');
+        
+        try {
+            const { data: demands, error } = await _supabase
+                .from('voter_bloc_demands')
+                .select('*, voter_blocs(voter_count, ideology_1, ideology_2, ideology_3, ideology_4, ideology_5)')
+                .eq('nation_id', currentNation.id)
+                .eq('status', 'active')
+                .order('deadline_tick', { ascending: true });
+            
+            if (error) throw error;
+            
+            document.getElementById('faction-active-demands').textContent = demands?.length || 0;
+            
+            if (!demands || demands.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <h3>No Active Demands</h3>
+                        <p>The voter blocs are quiet... for now.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Get current nation stats for comparison
+            const { data: nationData } = await _supabase
+                .from('nations')
+                .select('*')
+                .eq('id', currentNation.id)
+                .single();
+            
+            container.innerHTML = demands.map(demand => {
+                const ticksLeft = demand.deadline_tick - currentTick;
+                const urgency = ticksLeft <= 2 ? 'critical' : ticksLeft <= 4 ? 'warning' : 'ok';
+                const cardClass = ticksLeft <= 2 ? 'urgent' : '';
+                
+                const currentVal = nationData?.[demand.target_stat] ?? '?';
+                const statDisplay = demand.target_stat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                
+                const targetClass = demand.desired_range === 'high' ? 'target-high' : 
+                                    demand.desired_range === 'low' ? 'target-low' : 'target-moderate';
+                const targetText = demand.desired_range === 'high' ? '70-100' : 
+                                   demand.desired_range === 'low' ? '0-30' : '31-69';
+                
+                const voterCount = demand.voter_blocs?.voter_count || 0;
+                
+                // Check if trending in right direction
+                const isMovingRight = (demand.desired_range === 'high' && currentVal > demand.current_value) ||
+                                      (demand.desired_range === 'low' && currentVal < demand.current_value) ||
+                                      (demand.desired_range === 'moderate' && Math.abs(currentVal - 50) < Math.abs(demand.current_value - 50));
+                
+                return `
+                    <div class="demand-card ${cardClass}">
+                        <div class="demand-header">
+                            <div>
+                                <div class="demand-bloc-name">${demand.bloc_name}</div>
+                                <div class="demand-bloc-voters">${voterCount.toLocaleString()} voters in this bloc</div>
+                            </div>
+                            <div class="demand-deadline">
+                                <div class="demand-deadline-label">Deadline</div>
+                                <div class="demand-deadline-value deadline-${urgency}">
+                                    ${ticksLeft > 0 ? ticksLeft + ' month' + (ticksLeft !== 1 ? 's' : '') : 'OVERDUE'}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="demand-body">
+                            "${demand.demand_text}"
+                        </div>
+                        
+                        <div class="demand-requirement">
+                            <div class="demand-stat-info">
+                                <span class="demand-stat-name">${statDisplay}</span>
+                                <span class="demand-stat-current" style="color:${isMovingRight ? 'var(--green)' : 'var(--red)'}">
+                                    ${currentVal}
+                                </span>
+                                <span class="demand-stat-arrow">${isMovingRight ? '→' : '→'}</span>
+                                <span class="demand-stat-target ${targetClass}">${targetText}</span>
+                            </div>
+                            <div>
+                                <span class="demand-penalty">⚠ -${demand.approval_penalty}% approval on failure</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+        } catch (error) {
+            console.error('Error loading demands:', error);
+            container.innerHTML = `<div class="empty-state"><p style="color:var(--red);">Error loading demands</p></div>`;
+        }
+    }
+    
+    async function loadVoterBlocs() {
+        const container = document.getElementById('blocs-list');
+        
+        try {
+            const { data: blocs, error } = await _supabase
+                .from('voter_blocs')
+                .select('*')
+                .eq('nation_id', currentNation.id)
+                .eq('is_active', true)
+                .order('voter_count', { ascending: false });
+            
+            if (error) throw error;
+            
+            document.getElementById('faction-total-blocs').textContent = blocs?.length || 0;
+            
+            if (!blocs || blocs.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🏛️</div>
+                        <h3>No Voter Blocs</h3>
+                        <p>No organized voter blocs exist in this nation yet.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Get demand counts per bloc
+            const { data: demandCounts } = await _supabase
+                .from('voter_bloc_demands')
+                .select('voter_bloc_id, status')
+                .eq('nation_id', currentNation.id)
+                .eq('status', 'active');
+            
+            const demandCountMap = {};
+            (demandCounts || []).forEach(d => {
+                demandCountMap[d.voter_bloc_id] = (demandCountMap[d.voter_bloc_id] || 0) + 1;
+            });
+            
+            container.innerHTML = blocs.map(bloc => {
+                const ideologies = [bloc.ideology_1, bloc.ideology_2, bloc.ideology_3, bloc.ideology_4, bloc.ideology_5].filter(Boolean);
+                const activeDemands = demandCountMap[bloc.id] || 0;
+                
+                const ideologyTags = ideologies.map(i => 
+                    `<span class="bloc-ideology-tag">${i}</span>`
+                ).join('');
+                
+                return `
+                    <div class="bloc-list-card">
+                        <div class="bloc-list-left">
+                            <div class="bloc-list-name">${bloc.bloc_name}</div>
+                            ${bloc.description ? `<div class="bloc-list-desc">"${bloc.description}"</div>` : ''}
+                            <div class="bloc-list-tags">${ideologyTags}</div>
+                        </div>
+                        <div class="bloc-list-right">
+                            <div class="bloc-voter-count">${(bloc.voter_count || 0).toLocaleString()}</div>
+                            <div class="bloc-voter-label">Voters</div>
+                            <div class="bloc-demand-count" style="color:${activeDemands > 0 ? 'var(--gold)' : 'var(--text-dim)'};">
+                                ${activeDemands > 0 ? `${activeDemands} active demand${activeDemands > 1 ? 's' : ''}` : 'No active demands'}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+        } catch (error) {
+            console.error('Error loading blocs:', error);
+            container.innerHTML = `<div class="empty-state"><p style="color:var(--red);">Error loading voter blocs</p></div>`;
+        }
+    }
+    
+    async function loadHistory() {
+        const container = document.getElementById('history-list');
+        
+        try {
+            const { data: history, error } = await _supabase
+                .from('voter_bloc_demands')
+                .select('*')
+                .eq('nation_id', currentNation.id)
+                .in('status', ['met', 'failed'])
+                .order('resolved_at_tick', { ascending: false })
+                .limit(30);
+            
+            if (error) throw error;
+            
+            if (!history || history.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📜</div>
+                        <h3>No History Yet</h3>
+                        <p>Past demands will appear here once they are met or expire.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = history.map(item => {
+                const statDisplay = item.target_stat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                const isMet = item.status === 'met';
+                
+                return `
+                    <div class="history-row">
+                        <div class="history-row-left">
+                            <span class="history-bloc">${item.bloc_name}</span>
+                            <span class="history-stat"> — wanted ${statDisplay} to be ${item.desired_range}</span>
+                        </div>
+                        <div>
+                            <span class="demand-status-badge ${isMet ? 'badge-met' : 'badge-failed'}">
+                                ${isMet ? '✓ MET' : '✗ FAILED'}
+                            </span>
+                            <span style="color:var(--text-dim); font-size:0.8rem; margin-left:10px;">
+                                Tick ${item.resolved_at_tick || '?'}
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+        } catch (error) {
+            console.error('Error loading history:', error);
+            container.innerHTML = `<div class="empty-state"><p style="color:var(--red);">Error loading history</p></div>`;
+        }
+    }
+    
+    // Auto-refresh every 60 seconds
+    setInterval(() => {
+        if (currentNation) loadAll();
+    }, 60000);
+    
+    // Initialize on load
+    init();
+</script>
+
+</body>
+</html>
