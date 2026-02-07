@@ -80,8 +80,10 @@ async function loadGameState() {
         .single();
     
 if (factionError || !faction) {
-    window.location.href = 'signup.html';
-    return null;
+    if (requireFaction) {
+        window.location.href = 'world.html';
+        return null;
+    }
 }
     
     // Get nation
@@ -439,18 +441,11 @@ function applyPopulationGrowth(nation) {
  * @param {string} activeTab - The tab ID for this page
  * @param {function} onReady - Callback when state is loaded
  */
-async function initPage(activeTab, onReady) {
-    // Render top bar immediately (with loading state)
+async function initPage(activeTab, onReady, requireFaction = true) {
     renderTopBar(activeTab);
-    
-    // Load game state
-    const state = await loadGameState();
-    if (!state) return; // Redirect happened
-    
-    // Update top bar with real data (now includes nation)
+    const state = await loadGameState(requireFaction);
+    if (!state) return;
     updateTopBarInfo(state.faction, state.shard, state.nation);
-    
-    // Call page-specific initialization
     if (onReady) {
         await onReady(state);
     }
