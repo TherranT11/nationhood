@@ -92,85 +92,105 @@
             line-height: 1.5;
             color: #aaa;
         }
+        .confirm-box {
+            text-align: center;
+            padding: 20px 0;
+            display: none;
+        }
+        .confirm-box .confirm-icon { font-size: 2.5rem; margin-bottom: 16px; }
+        .confirm-box .confirm-title { color: #ffcc00; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
+        .confirm-box .confirm-desc { color: #888; font-size: 0.9rem; line-height: 1.6; }
+        .confirm-box .confirm-email { color: #ffcc00; font-weight: bold; }
+        .confirm-box .confirm-note { color: #666; font-size: 0.8rem; margin-top: 16px; }
     </style>
 </head>
 <body>
 
 <div class="signup-card">
-    <h2>Establish Faction</h2>
-    
-    <div class="info-note">
-        <strong style="color: #4CAF50;">Welcome to Alpha Shard!</strong><br>
-        You'll choose your nation after creating your account.
-    </div>
-    
-    <form id="signup-form">
-        <div class="input-group">
-            <label>Email Address</label>
-            <input type="email" id="email" placeholder="commander@example.com" required>
+    <!-- Signup Form -->
+    <div id="signup-state">
+        <h2>Establish Faction</h2>
+        
+        <div class="info-note">
+            <strong style="color: #4CAF50;">Welcome to Alpha Shard!</strong><br>
+            You'll choose your nation after creating your account.
         </div>
         
-        <div class="input-group">
-            <label>Password</label>
-            <input type="password" id="password" minlength="6" required>
-        </div>
-        
-        <div class="input-group">
-            <label>Choose Your Faction Path</label>
-            <div class="faction-types">
-                <!-- Political Party - Available -->
-                <div class="faction-option available selected" data-type="party">
-                    <div class="faction-title">Political Party</div>
-                    <div class="faction-desc">Shape laws, influence policy, and guide your nation's future through political power.</div>
-                </div>
-                
-                <!-- Corporation - Coming Soon -->
-                <div class="faction-option disabled" data-type="corp">
-                    <span class="coming-soon">Coming Soon</span>
-                    <div class="faction-title">Corporation</div>
-                    <div class="faction-desc">Control wealth, trade, and economic power to influence the nation.</div>
-                </div>
-                
-                <!-- Military Branch - Coming Soon -->
-                <div class="faction-option disabled" data-type="military">
-                    <span class="coming-soon">Coming Soon</span>
-                    <div class="faction-title">Military Branch</div>
-                    <div class="faction-desc">Command forces, ensure security, and project strength for your nation.</div>
+        <form id="signup-form">
+            <div class="input-group">
+                <label>Email Address</label>
+                <input type="email" id="email" placeholder="commander@example.com" required>
+            </div>
+            
+            <div class="input-group">
+                <label>Password</label>
+                <input type="password" id="password" minlength="6" required>
+            </div>
+            
+            <div class="input-group">
+                <label>Choose Your Faction Path</label>
+                <div class="faction-types">
+                    <!-- Political Party - Available -->
+                    <div class="faction-option available selected" data-type="party">
+                        <div class="faction-title">Political Party</div>
+                        <div class="faction-desc">Shape laws, influence policy, and guide your nation's future through political power.</div>
+                    </div>
+                    
+                    <!-- Corporation - Coming Soon -->
+                    <div class="faction-option disabled" data-type="corp">
+                        <span class="coming-soon">Coming Soon</span>
+                        <div class="faction-title">Corporation</div>
+                        <div class="faction-desc">Control wealth, trade, and economic power to influence the nation.</div>
+                    </div>
+                    
+                    <!-- Military Branch - Coming Soon -->
+                    <div class="faction-option disabled" data-type="military">
+                        <span class="coming-soon">Coming Soon</span>
+                        <div class="faction-title">Military Branch</div>
+                        <div class="faction-desc">Command forces, ensure security, and project strength for your nation.</div>
+                    </div>
                 </div>
             </div>
-        </div>
+            
+            <button type="submit" class="btn-join" id="submit-btn">CREATE FACTION</button>
+            <div id="error-message" class="error"></div>
+        </form>
         
-        <button type="submit" class="btn-join" id="submit-btn">CREATE FACTION</button>
-        <div id="error-message" class="error"></div>
-    </form>
-    
-    <div class="login-link">
-        Already have a faction? <a href="login.html">Log In</a>
+        <div class="login-link">
+            Already have a faction? <a href="login.html">Log In</a>
+        </div>
+    </div>
+
+    <!-- Email Confirmation State -->
+    <div class="confirm-box" id="confirm-state">
+        <div class="confirm-icon">📧</div>
+        <div class="confirm-title">Confirm Your Email</div>
+        <div class="confirm-desc">
+            We sent a confirmation link to<br>
+            <span class="confirm-email" id="confirm-email-display"></span>
+        </div>
+        <div class="confirm-desc" style="margin-top: 12px;">
+            Click the link in the email to activate your faction, then log in.
+        </div>
+        <div class="confirm-note">Check your spam folder if you don't see it within a few minutes.</div>
+        <div class="login-link" style="margin-top: 24px;">
+            <a href="login.html">← Go to Login</a>
+        </div>
     </div>
 </div>
 
 <script>
-    // Your Supabase credentials
     const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
     const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
-    let selectedFactionType = 'party'; // Default and only option for now
+    let selectedFactionType = 'party';
     
     // Handle faction type selection (only party is clickable)
     document.querySelectorAll('.faction-option').forEach(option => {
         option.addEventListener('click', function() {
-            // Only allow clicking on available options
-            if (this.classList.contains('disabled')) {
-                return;
-            }
-            
-            // Remove selected from all
-            document.querySelectorAll('.faction-option').forEach(opt => 
-                opt.classList.remove('selected')
-            );
-            
-            // Add selected to this one
+            if (this.classList.contains('disabled')) return;
+            document.querySelectorAll('.faction-option').forEach(opt => opt.classList.remove('selected'));
             this.classList.add('selected');
             selectedFactionType = this.getAttribute('data-type');
         });
@@ -190,21 +210,29 @@
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
 
-            // STEP 1: Create the User in Supabase Auth
             const { data: authData, error: authError } = await _supabase.auth.signUp({
-    email,
-    password,
-    options: {
-        emailRedirectTo: 'https://therrant11.github.io/nationhood/login.html'
-    }
-});
+                email,
+                password,
+                options: {
+                    emailRedirectTo: 'https://www.nationhoodgame.com/login.html?confirmed=true'
+                }
+            });
 
             if (authError) throw authError;
 
-       if (authData.user) {
-    alert("Faction Created! Welcome to the continent.");
-    window.location.href = "world.html";
-}
+            // If email confirmation is enabled, user won't have a session yet.
+            // Show the "check your email" state.
+            if (authData.user && !authData.session) {
+                document.getElementById('confirm-email-display').textContent = email;
+                document.getElementById('signup-state').style.display = 'none';
+                document.getElementById('confirm-state').style.display = 'block';
+                return;
+            }
+
+            // If confirmation is disabled (legacy/fallback), user is logged in immediately
+            if (authData.user && authData.session) {
+                window.location.href = "world.html";
+            }
         } catch (error) {
             console.error('Signup error:', error);
             errorMsg.textContent = error.message || 'Signup failed. Please try again.';
