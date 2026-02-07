@@ -88,7 +88,7 @@ if (factionError || !faction) {
     
     // Get nation
     let nation = null;
-    if (faction.nation_id) {
+    if (faction && faction.nation_id) {
         const { data: nationData } = await _supabase
             .from('nations')
             .select('*')
