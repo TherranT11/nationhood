@@ -496,6 +496,199 @@
             border-color: #2196F3;
             color: white;
         }
+        
+        /* Voter Bloc Tool */
+        .ideology-filters {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin: 15px 0;
+        }
+        .ideology-btn {
+            padding: 10px 18px;
+            background: #252525;
+            border: 2px solid #444;
+            border-radius: 20px;
+            color: #888;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.85rem;
+        }
+        .ideology-btn:hover {
+            border-color: #9C27B0;
+            color: #e0e0e0;
+        }
+        .ideology-btn.selected {
+            background: #9C27B0;
+            border-color: #9C27B0;
+            color: white;
+        }
+        .voter-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 12px;
+            margin: 20px 0;
+        }
+        .voter-stat-card {
+            background: #1a1a1a;
+            border-radius: 6px;
+            padding: 15px;
+            text-align: center;
+            border-left: 3px solid #9C27B0;
+        }
+        .voter-stat-label {
+            font-size: 0.75rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 6px;
+        }
+        .voter-stat-value {
+            font-size: 1.5rem;
+            color: #CE93D8;
+            font-weight: bold;
+        }
+        .voter-stat-pct {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 4px;
+        }
+        .bloc-form {
+            background: #1a1a2a;
+            border: 1px solid #9C27B0;
+            border-radius: 6px;
+            padding: 25px;
+            margin: 20px 0;
+        }
+        .bloc-form h3 {
+            color: #CE93D8;
+            font-size: 1rem;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .bloc-form input[type="text"],
+        .bloc-form textarea,
+        .bloc-form select {
+            width: 100%;
+            padding: 12px;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: white;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            font-family: inherit;
+            margin-bottom: 15px;
+        }
+        .bloc-form textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        .bloc-form input:focus,
+        .bloc-form textarea:focus,
+        .bloc-form select:focus {
+            outline: none;
+            border-color: #9C27B0;
+        }
+        .stat-pref-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin: 15px 0;
+        }
+        .stat-pref-item {
+            background: #252525;
+            border-radius: 6px;
+            padding: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .stat-pref-item label {
+            color: #e0e0e0;
+            font-size: 0.85rem;
+            margin-bottom: 0;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+        .stat-pref-item select {
+            width: 130px;
+            padding: 6px 8px;
+            margin-bottom: 0;
+            font-size: 0.8rem;
+        }
+        .existing-blocs {
+            margin-top: 25px;
+        }
+        .bloc-card {
+            background: #252525;
+            border-radius: 6px;
+            padding: 18px;
+            margin-bottom: 12px;
+            border-left: 3px solid #9C27B0;
+        }
+        .bloc-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .bloc-card-name {
+            color: #CE93D8;
+            font-size: 1.1rem;
+            font-weight: bold;
+        }
+        .bloc-card-count {
+            color: #ffcc00;
+            font-weight: bold;
+        }
+        .bloc-card-desc {
+            color: #888;
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+        }
+        .bloc-card-tags {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .bloc-tag {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .bloc-tag.ideology {
+            background: #2a1a2a;
+            color: #CE93D8;
+            border: 1px solid #9C27B0;
+        }
+        .bloc-tag.stat {
+            background: #1a2a1a;
+            color: #4CAF50;
+            border: 1px solid #4CAF50;
+        }
+        .filtered-count-box {
+            background: #2a1a2a;
+            border: 1px solid #9C27B0;
+            border-radius: 6px;
+            padding: 20px;
+            text-align: center;
+            margin: 15px 0;
+        }
+        .filtered-count-big {
+            font-size: 2.5rem;
+            color: #CE93D8;
+            font-weight: bold;
+        }
+        .filtered-count-label {
+            color: #888;
+            font-size: 0.85rem;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -558,6 +751,7 @@
             <button class="tab" onclick="showTab('elections')">Elections</button>
             <button class="tab" onclick="showTab('npcs')">NPCs</button>
             <button class="tab" onclick="showTab('players')">Players</button>
+            <button class="tab" onclick="showTab('voters')">Voters</button>
             <button class="tab" onclick="showTab('danger')">Danger Zone</button>
         </div>
         
@@ -690,6 +884,135 @@
             <div id="players-list"></div>
         </div>
         
+        <!-- Voters Tab -->
+        <div class="tab-content" id="tab-voters">
+            <h2>🗳️ Voter Blocs</h2>
+            
+            <!-- Nation Selector -->
+            <div class="input-group">
+                <label>Select Nation</label>
+                <select id="voter-nation-select" onchange="onVoterNationSelect()">
+                    <option value="">-- Choose a nation --</option>
+                </select>
+            </div>
+            
+            <!-- Existing Blocs List (shows after nation selected) -->
+            <div id="voter-blocs-section" class="hidden">
+                <h3 style="color:#CE93D8; margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">
+                    📋 Existing Voter Blocs
+                </h3>
+                
+                <!-- Bloc list table -->
+                <div id="existing-blocs-list">
+                    <div class="no-players">Loading...</div>
+                </div>
+                
+                <!-- Create New Button -->
+                <button class="btn btn-success btn-full" style="margin-top:20px;" onclick="showCreateBlocForm()">
+                    ➕ CREATE NEW VOTER BLOC
+                </button>
+            </div>
+            
+            <!-- Create Voter Bloc Form (hidden until button clicked) -->
+            <div id="bloc-create-section" class="hidden">
+                <div class="bloc-form">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                        <h3 style="color:#CE93D8; margin:0;">➕ Create New Voter Bloc</h3>
+                        <button class="btn btn-secondary" style="padding:8px 16px; font-size:0.8rem; margin:0;" onclick="hideCreateBlocForm()">← Back to List</button>
+                    </div>
+                    
+                    <!-- Nation display -->
+                    <div style="background:#252525; padding:12px 18px; border-radius:6px; margin-bottom:20px;">
+                        <span style="color:#888;">Nation:</span>
+                        <span style="color:#ffcc00; font-weight:bold;" id="bloc-form-nation">—</span>
+                        <span style="color:#888; margin-left:15px;">Population:</span>
+                        <span style="color:#ffcc00; font-weight:bold;" id="bloc-form-population">—</span>
+                    </div>
+                    
+                    <!-- Ideology Spectrum Selection -->
+                    <label>Ideology Axes <span style="color:#666; font-weight:normal; text-transform:none;">(select 1 to 5 — pick one side per axis)</span></label>
+                    <p style="color:#888; font-size:0.85rem; margin-bottom:15px;">
+                        Must select at least 1 ideology. Click a side to select it.
+                    </p>
+                    
+                    <div id="ideology-spectrums"></div>
+                    
+                    <!-- Bloc Size -->
+                    <div id="bloc-size-section" class="hidden" style="margin-top:20px;">
+                        <label>Bloc Size</label>
+                        <div style="display:flex; gap:15px; align-items:center; margin-bottom:5px;">
+                            <input type="range" id="bloc-size-slider" min="1" max="100" value="50" 
+                                style="flex:1; accent-color:#9C27B0;" oninput="updateBlocSize()">
+                            <span id="bloc-size-pct" style="color:#CE93D8; font-weight:bold; font-size:1.2rem; min-width:50px; text-align:right;">50%</span>
+                        </div>
+                        <div style="color:#888; font-size:0.85rem;">
+                            Estimated voters: <strong style="color:#ffcc00;" id="bloc-size-count">—</strong>
+                            <span style="color:#666;"> of eligible ideology overlap</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Name & Description -->
+                    <div style="margin-top:20px;">
+                        <label>Bloc Name</label>
+                        <input type="text" id="bloc-name" placeholder="e.g. Liberty Hawks, Security First Coalition">
+                        
+                        <label>Description</label>
+                        <textarea id="bloc-description" placeholder="Describe what this voter bloc cares about..."></textarea>
+                    </div>
+                    
+                    <!-- Focus Stats -->
+                    <label>Focus Stats <span style="color:#666; font-weight:normal; text-transform:none;">(select 1 to 10 stats, then set preference)</span></label>
+                    <p style="color:#888; font-size:0.85rem; margin-bottom:15px;">
+                        Low = wants 0–30 | Moderate = wants 31–69 | High = wants 70–100
+                    </p>
+                    
+                    <!-- Governance & Security -->
+                    <div style="margin-bottom:20px;">
+                        <h4 style="color:#2196F3; font-size:0.85rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #333;">
+                            🏛️ Governance & Security
+                        </h4>
+                        <div class="stat-pref-grid" id="stats-governance"></div>
+                    </div>
+                    
+                    <!-- Economics & Labor -->
+                    <div style="margin-bottom:20px;">
+                        <h4 style="color:#4CAF50; font-size:0.85rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #333;">
+                            💰 Economics & Labor
+                        </h4>
+                        <div class="stat-pref-grid" id="stats-economics"></div>
+                    </div>
+                    
+                    <!-- Social & Demographics -->
+                    <div style="margin-bottom:20px;">
+                        <h4 style="color:#ff9800; font-size:0.85rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #333;">
+                            👥 Social & Demographics
+                        </h4>
+                        <div class="stat-pref-grid" id="stats-social"></div>
+                    </div>
+                    
+                    <!-- Resources & Environment -->
+                    <div style="margin-bottom:20px;">
+                        <h4 style="color:#8BC34A; font-size:0.85rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #333;">
+                            🌍 Resources & Environment
+                        </h4>
+                        <div class="stat-pref-grid" id="stats-resources"></div>
+                    </div>
+                    
+                    <!-- Stat count indicator -->
+                    <div style="text-align:center; margin:15px 0;">
+                        <span style="color:#888;">Stats selected: </span>
+                        <strong style="color:#CE93D8;" id="stat-select-count">0</strong>
+                        <span style="color:#888;"> / 10 max</span>
+                    </div>
+                    
+                    <button class="btn btn-success btn-full" id="create-bloc-btn" onclick="createVoterBloc()" disabled>
+                        ✅ CREATE VOTER BLOC
+                    </button>
+                    <div id="bloc-status" class="status success hidden"></div>
+                </div>
+            </div>
+        </div>
+        
         <!-- Danger Zone Tab -->
         <div class="tab-content" id="tab-danger">
             <h2>🔥 Danger Zone</h2>
@@ -761,6 +1084,7 @@
         await loadStats();
         await loadNations();
         await loadElectionNations();
+        await loadVoterNations();
     }
     
     async function loadShardInfo() {
@@ -1257,6 +1581,415 @@
     document.getElementById('admin-password').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') authenticate();
     });
+    
+    // ========== VOTER BLOC TOOL ==========
+    
+    const IDEOLOGY_SPECTRUMS = [
+        { left: 'liberty', right: 'equality', leftLabel: 'Liberty', rightLabel: 'Equality', col_left: 'liberty_voters', col_right: 'equality_voters' },
+        { left: 'freedom', right: 'security', leftLabel: 'Freedom', rightLabel: 'Security', col_left: 'freedom_voters', col_right: 'security_voters' },
+        { left: 'tradition', right: 'progress', leftLabel: 'Tradition', rightLabel: 'Progress', col_left: 'tradition_voters', col_right: 'progress_voters' },
+        { left: 'globalism', right: 'nationalism', leftLabel: 'Globalism', rightLabel: 'Nationalism', col_left: 'globalism_voters', col_right: 'nationalism_voters' },
+        { left: 'competition', right: 'cooperation', leftLabel: 'Competition', rightLabel: 'Cooperation', col_left: 'competition_voters', col_right: 'cooperation_voters' }
+    ];
+    
+    const STAT_CATEGORIES = {
+        governance: {
+            label: 'Governance & Security',
+            stats: ['stability', 'civil_unrest', 'terrorism', 'legitimacy', 'efficiency', 'freedom_index', 'political_violence', 'incarceration_rate', 'press_freedom', 'judicial_independence', 'corruption']
+        },
+        economics: {
+            label: 'Economics & Labor',
+            stats: ['gdp', 'gdp_growth', 'inflation', 'foreign_investment', 'unemployment', 'union_strength', 'trade_balance']
+        },
+        social: {
+            label: 'Social & Demographics',
+            stats: ['standard_of_living', 'happiness', 'crime_rate', 'healthcare_quality', 'literacy', 'social_mobility', 'ethnic_diversity']
+        },
+        resources: {
+            label: 'Resources & Environment',
+            stats: ['arable_land', 'oil_and_gas', 'rare_minerals', 'energy_generation', 'pollution', 'food_prices']
+        }
+    };
+    
+    let selectedVoterNationId = null;
+    let selectedNationData = null;
+    let selectedIdeologies = {}; // { axis_index: 'left' or 'right' }
+    
+    async function loadVoterNations() {
+        try {
+            const { data } = await _supabase
+                .from('nations')
+                .select('id, name, eligible_voters')
+                .order('name');
+            
+            const select = document.getElementById('voter-nation-select');
+            select.innerHTML = '<option value="">-- Choose a nation --</option>';
+            
+            (data || []).forEach(nation => {
+                select.innerHTML += `<option value="${nation.id}">${nation.name} (${(nation.eligible_voters || 0).toLocaleString()} voters)</option>`;
+            });
+        } catch (error) {
+            console.error('Error loading voter nations:', error);
+        }
+    }
+    
+    async function onVoterNationSelect() {
+        const nationId = document.getElementById('voter-nation-select').value;
+        const blocsSection = document.getElementById('voter-blocs-section');
+        const createSection = document.getElementById('bloc-create-section');
+        
+        createSection.classList.add('hidden');
+        
+        if (!nationId) {
+            blocsSection.classList.add('hidden');
+            selectedVoterNationId = null;
+            selectedNationData = null;
+            return;
+        }
+        
+        selectedVoterNationId = nationId;
+        
+        // Load full nation data
+        const { data: nation } = await _supabase
+            .from('nations')
+            .select('*')
+            .eq('id', nationId)
+            .single();
+        
+        selectedNationData = nation;
+        blocsSection.classList.remove('hidden');
+        
+        await loadExistingBlocs(nationId);
+    }
+    
+    function showCreateBlocForm() {
+        if (!selectedNationData) return;
+        
+        const createSection = document.getElementById('bloc-create-section');
+        createSection.classList.remove('hidden');
+        
+        // Reset state
+        selectedIdeologies = {};
+        
+        // Populate nation info
+        document.getElementById('bloc-form-nation').textContent = selectedNationData.name;
+        document.getElementById('bloc-form-population').textContent = (selectedNationData.eligible_voters || 0).toLocaleString();
+        
+        // Render ideology spectrums
+        renderIdeologySpectrums();
+        
+        // Render stat grids
+        renderStatCategory('stats-governance', STAT_CATEGORIES.governance.stats);
+        renderStatCategory('stats-economics', STAT_CATEGORIES.economics.stats);
+        renderStatCategory('stats-social', STAT_CATEGORIES.social.stats);
+        renderStatCategory('stats-resources', STAT_CATEGORIES.resources.stats);
+        
+        // Reset form fields
+        document.getElementById('bloc-name').value = '';
+        document.getElementById('bloc-description').value = '';
+        document.getElementById('bloc-size-slider').value = 50;
+        document.getElementById('bloc-size-section').classList.add('hidden');
+        document.getElementById('stat-select-count').textContent = '0';
+        document.getElementById('create-bloc-btn').disabled = true;
+        
+        // Scroll to form
+        createSection.scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    function hideCreateBlocForm() {
+        document.getElementById('bloc-create-section').classList.add('hidden');
+    }
+    
+    function renderIdeologySpectrums() {
+        const container = document.getElementById('ideology-spectrums');
+        
+        container.innerHTML = IDEOLOGY_SPECTRUMS.map((spec, idx) => {
+            const leftCount = selectedNationData[spec.col_left] || 0;
+            const rightCount = selectedNationData[spec.col_right] || 0;
+            const total = selectedNationData.eligible_voters || 1;
+            const leftPct = ((leftCount / total) * 100).toFixed(1);
+            const rightPct = ((rightCount / total) * 100).toFixed(1);
+            
+            const leftSelected = selectedIdeologies[idx] === 'left';
+            const rightSelected = selectedIdeologies[idx] === 'right';
+            
+            return `
+                <div style="display:flex; gap:10px; margin-bottom:12px; align-items:stretch;">
+                    <button class="ideology-btn ${leftSelected ? 'selected' : ''}" 
+                        style="flex:1; text-align:center; padding:14px 10px; ${leftCount === 0 ? 'opacity:0.4; cursor:not-allowed;' : ''}"
+                        onclick="${leftCount > 0 ? `selectIdeologySide(${idx}, 'left')` : ''}">
+                        <div style="font-size:0.95rem;">${spec.leftLabel}</div>
+                        <div style="font-size:0.8rem; margin-top:4px; opacity:0.7;">${leftCount.toLocaleString()} (${leftPct}%)</div>
+                    </button>
+                    <div style="display:flex; align-items:center; color:#555; font-size:0.8rem; font-weight:bold;">↔</div>
+                    <button class="ideology-btn ${rightSelected ? 'selected' : ''}" 
+                        style="flex:1; text-align:center; padding:14px 10px; ${rightCount === 0 ? 'opacity:0.4; cursor:not-allowed;' : ''}"
+                        onclick="${rightCount > 0 ? `selectIdeologySide(${idx}, 'right')` : ''}">
+                        <div style="font-size:0.95rem;">${spec.rightLabel}</div>
+                        <div style="font-size:0.8rem; margin-top:4px; opacity:0.7;">${rightCount.toLocaleString()} (${rightPct}%)</div>
+                    </button>
+                </div>
+            `;
+        }).join('');
+    }
+    
+    function selectIdeologySide(axisIndex, side) {
+        // Toggle: if already selected, deselect
+        if (selectedIdeologies[axisIndex] === side) {
+            delete selectedIdeologies[axisIndex];
+        } else {
+            selectedIdeologies[axisIndex] = side;
+        }
+        
+        renderIdeologySpectrums();
+        updateBlocFormState();
+    }
+    
+    function updateBlocFormState() {
+        const hasIdeology = Object.keys(selectedIdeologies).length > 0;
+        const sizeSection = document.getElementById('bloc-size-section');
+        
+        if (hasIdeology) {
+            sizeSection.classList.remove('hidden');
+            updateBlocSize();
+        } else {
+            sizeSection.classList.add('hidden');
+        }
+        
+        validateCreateButton();
+    }
+    
+    function updateBlocSize() {
+        const pct = parseInt(document.getElementById('bloc-size-slider').value);
+        document.getElementById('bloc-size-pct').textContent = pct + '%';
+        
+        // Estimate: use the smallest ideology group as the overlap base
+        const total = selectedNationData.eligible_voters || 0;
+        let minCount = total;
+        
+        Object.entries(selectedIdeologies).forEach(([idx, side]) => {
+            const spec = IDEOLOGY_SPECTRUMS[parseInt(idx)];
+            const col = side === 'left' ? spec.col_left : spec.col_right;
+            const count = selectedNationData[col] || 0;
+            if (count < minCount) minCount = count;
+        });
+        
+        const estimated = Math.round(minCount * (pct / 100));
+        document.getElementById('bloc-size-count').textContent = estimated.toLocaleString();
+    }
+    
+    function renderStatCategory(containerId, stats) {
+        const container = document.getElementById(containerId);
+        
+        container.innerHTML = stats.map(stat => {
+            const displayName = stat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            return `
+                <div class="stat-pref-item">
+                    <label>${displayName}</label>
+                    <select id="pref-${stat}" onchange="updateStatCount()">
+                        <option value="">—</option>
+                        <option value="low">Low (0–30)</option>
+                        <option value="moderate">Moderate (31–69)</option>
+                        <option value="high">High (70–100)</option>
+                    </select>
+                </div>
+            `;
+        }).join('');
+    }
+    
+    function getAllStats() {
+        let all = [];
+        Object.values(STAT_CATEGORIES).forEach(cat => {
+            all = all.concat(cat.stats);
+        });
+        return all;
+    }
+    
+    function updateStatCount() {
+        const allStats = getAllStats();
+        let count = 0;
+        allStats.forEach(stat => {
+            const el = document.getElementById(`pref-${stat}`);
+            if (el && el.value) count++;
+        });
+        
+        document.getElementById('stat-select-count').textContent = count;
+        
+        // Enforce max 10
+        if (count > 10) {
+            document.getElementById('stat-select-count').style.color = '#ff4444';
+        } else {
+            document.getElementById('stat-select-count').style.color = '#CE93D8';
+        }
+        
+        validateCreateButton();
+    }
+    
+    function validateCreateButton() {
+        const hasIdeology = Object.keys(selectedIdeologies).length > 0;
+        const allStats = getAllStats();
+        let statCount = 0;
+        allStats.forEach(stat => {
+            const el = document.getElementById(`pref-${stat}`);
+            if (el && el.value) statCount++;
+        });
+        
+        const valid = hasIdeology && statCount >= 1 && statCount <= 10;
+        document.getElementById('create-bloc-btn').disabled = !valid;
+    }
+    
+    async function createVoterBloc() {
+        if (!selectedVoterNationId) return;
+        
+        const name = document.getElementById('bloc-name').value.trim();
+        const description = document.getElementById('bloc-description').value.trim();
+        const pct = parseInt(document.getElementById('bloc-size-slider').value);
+        const status = document.getElementById('bloc-status');
+        
+        if (!name) {
+            alert('Please enter a bloc name.');
+            return;
+        }
+        
+        // Gather selected ideologies
+        const ideologyList = [];
+        Object.entries(selectedIdeologies).forEach(([idx, side]) => {
+            const spec = IDEOLOGY_SPECTRUMS[parseInt(idx)];
+            ideologyList.push(side === 'left' ? spec.leftLabel : spec.rightLabel);
+        });
+        
+        // Calculate voter count
+        const total = selectedNationData.eligible_voters || 0;
+        let minCount = total;
+        Object.entries(selectedIdeologies).forEach(([idx, side]) => {
+            const spec = IDEOLOGY_SPECTRUMS[parseInt(idx)];
+            const col = side === 'left' ? spec.col_left : spec.col_right;
+            const count = selectedNationData[col] || 0;
+            if (count < minCount) minCount = count;
+        });
+        const voterCount = Math.round(minCount * (pct / 100));
+        
+        // Gather stat preferences
+        const statPreferences = {};
+        const allStats = getAllStats();
+        let priorityStat = null;
+        allStats.forEach(stat => {
+            const el = document.getElementById(`pref-${stat}`);
+            if (el && el.value) {
+                statPreferences[stat] = el.value;
+                if (!priorityStat) priorityStat = stat;
+            }
+        });
+        
+        try {
+            const { error } = await _supabase
+                .from('voter_blocs')
+                .insert({
+                    nation_id: selectedVoterNationId,
+                    bloc_name: name,
+                    description: description || null,
+                    voter_count: voterCount,
+                    ideology_1: ideologyList[0] || null,
+                    ideology_2: ideologyList[1] || null,
+                    ideology_3: ideologyList[2] || null,
+                    ideology_4: ideologyList[3] || null,
+                    ideology_5: ideologyList[4] || null,
+                    priority_stat: priorityStat,
+                    stat_preference: priorityStat ? statPreferences[priorityStat] : null,
+                    stat_preferences_full: statPreferences,
+                    is_active: true
+                });
+            
+            if (error) throw error;
+            
+            status.className = 'status success';
+            status.textContent = `✅ "${name}" created with ${voterCount.toLocaleString()} voters!`;
+            status.classList.remove('hidden');
+            
+            setTimeout(() => status.classList.add('hidden'), 4000);
+            
+            await loadExistingBlocs(selectedVoterNationId);
+        } catch (error) {
+            status.className = 'status error';
+            status.textContent = '❌ Error: ' + error.message;
+            status.classList.remove('hidden');
+        }
+    }
+    
+    async function loadExistingBlocs(nationId) {
+        const container = document.getElementById('existing-blocs-list');
+        
+        try {
+            const { data, error } = await _supabase
+                .from('voter_blocs')
+                .select('*')
+                .eq('nation_id', nationId)
+                .order('created_at', { ascending: false });
+            
+            if (error) throw error;
+            
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="no-players">No voter blocs created for this nation yet.</div>';
+                return;
+            }
+            
+            container.innerHTML = data.map(bloc => {
+                const ideologies = [bloc.ideology_1, bloc.ideology_2, bloc.ideology_3, bloc.ideology_4, bloc.ideology_5].filter(Boolean);
+                const statPrefs = bloc.stat_preferences_full || {};
+                
+                const ideologyTags = ideologies.map(i => 
+                    `<span class="bloc-tag ideology">${i}</span>`
+                ).join('');
+                
+                const statTags = Object.entries(statPrefs).map(([stat, pref]) => {
+                    const displayStat = stat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    const emoji = pref === 'high' ? '🔺' : pref === 'low' ? '🔻' : '➡️';
+                    return `<span class="bloc-tag stat">${emoji} ${displayStat}: ${pref}</span>`;
+                }).join('');
+                
+                return `
+                    <div class="bloc-card">
+                        <div class="bloc-card-header">
+                            <span class="bloc-card-name">${bloc.bloc_name}</span>
+                            <span class="bloc-card-count">${(bloc.voter_count || 0).toLocaleString()} voters</span>
+                        </div>
+                        ${bloc.description ? `<div class="bloc-card-desc">${bloc.description}</div>` : ''}
+                        <div class="bloc-card-tags">
+                            ${ideologyTags}
+                        </div>
+                        ${statTags ? `<div class="bloc-card-tags" style="margin-top:6px;">${statTags}</div>` : ''}
+                        <div style="margin-top:12px; display:flex; gap:8px;">
+                            <button class="btn-remove" style="font-size:0.7rem; padding:5px 10px; background:#aa0000;"
+                                onclick="deleteVoterBloc('${bloc.id}', '${bloc.bloc_name.replace(/'/g, "\\'")}')">
+                                DELETE
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Error loading blocs:', error);
+            container.innerHTML = '<div class="no-players" style="color:#ff4444;">Error loading voter blocs</div>';
+        }
+    }
+    
+    async function deleteVoterBloc(blocId, blocName) {
+        if (!confirm(`Delete voter bloc "${blocName}"?`)) return;
+        
+        try {
+            const { error } = await _supabase
+                .from('voter_blocs')
+                .delete()
+                .eq('id', blocId);
+            
+            if (error) throw error;
+            
+            alert(`✅ "${blocName}" deleted.`);
+            await loadExistingBlocs(selectedVoterNationId);
+        } catch (error) {
+            alert('❌ Error: ' + error.message);
+        }
+    }
 </script>
 
 </body>
