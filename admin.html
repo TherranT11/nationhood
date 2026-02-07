@@ -989,6 +989,35 @@
             }));
             
             grid.innerHTML = nationsHTML.join('');
+
+// Show orphaned players (no nation)
+const { data: orphans } = await _supabase
+    .from('factions')
+    .select('id, faction_name, is_npc')
+    .is('nation_id', null)
+    .eq('is_npc', false);
+
+if (orphans && orphans.length > 0) {
+    grid.innerHTML += `
+        <div class="nation-card" style="border-color:#ff4444;">
+            <div class="nation-name" style="color:#ff4444;">⚠️ No Nation (Orphaned)</div>
+            ${orphans.map(p => `
+                <div class="player-item" style="border-left-color:#ff4444;">
+                    <div class="player-info">
+                        <div class="player-party">${p.faction_name || 'Unnamed'}</div>
+                        <div class="player-id">ID: ${p.id.substring(0, 8)}...</div>
+                    </div>
+                    <button class="btn-remove" style="background:#aa0000;"
+                        data-delete-id="${p.id}" 
+                        data-party-name="${p.faction_name || 'Unnamed'}">
+                        DELETE
+                    </button>
+                </div>
+            `).join('')}
+            <div style="font-size:0.8rem;color:#666;margin-top:10px;">${orphans.length} orphaned player(s)</div>
+        </div>
+    `;
+}
             
 document.querySelectorAll('[data-player-id]').forEach(btn => {
     btn.addEventListener('click', function() {
