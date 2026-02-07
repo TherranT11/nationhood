@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nationhood | Policy Builder</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Source+Code+Pro:wght@400;600;700&family=Lora:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0c0c14;
+            --bg-card: #13131f;
+            --bg-input: #1a1a28;
+            --bg-hover: #1e1e30;
+            --border: #2a2a3a;
+            --border-focus: #e6a817;
+            --gold: #e6a817;
+            --gold-dim: #9e7a2e;
+            --gold-bright: #ffd54f;
+            --red: #e74c3c;
+            --green: #2ecc71;
+            --blue: #3498db;
+            --orange: #e67e22;
+            --purple: #9b59b6;
+            --text: #d4d0c8;
+            --text-dim: #7a7670;
+            --text-faint: #4a4640;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Lora', Georgia, serif;
+            min-height: 100vh;
+        }
+
+        /* Auth */
+        .auth-screen {
+            display: flex; align-items: center; justify-content: center;
+            min-height: 100vh; flex-direction: column; gap: 20px;
+        }
+        .auth-screen h1 {
+            font-family: 'Cinzel', serif; color: var(--gold);
+            font-size: 1.6rem; letter-spacing: 3px;
+        }
+        .auth-screen input {
+            padding: 14px 20px; background: var(--bg-input); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 1rem; width: 280px; text-align: center;
+        }
+        .auth-screen input:focus { outline: none; border-color: var(--gold); }
+        .auth-screen button {
+            padding: 12px 30px; background: var(--gold); color: #000; border: none;
+            border-radius: 6px; font-weight: bold; cursor: pointer; font-family: 'Cinzel', serif;
+            letter-spacing: 1px;
+        }
+
+        /* Header */
+        .page-header {
+            background: linear-gradient(180deg, #16162a 0%, var(--bg) 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 20px 30px;
+        }
+        .page-header::before {
+            content: ''; display: block; height: 2px; margin: -20px -30px 20px;
+            background: linear-gradient(90deg, transparent, var(--gold), transparent);
+        }
+        .header-row {
+            max-width: 1400px; margin: 0 auto;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .header-title {
+            font-family: 'Cinzel', serif; font-size: 1.4rem; font-weight: 900;
+            color: var(--gold); letter-spacing: 2px; text-transform: uppercase;
+        }
+        .header-subtitle { font-size: 0.85rem; color: var(--text-dim); margin-top: 2px; }
+        .header-actions { display: flex; gap: 10px; }
+        .btn {
+            padding: 10px 20px; border: none; border-radius: 5px; font-family: 'Cinzel', serif;
+            font-size: 0.8rem; font-weight: 700; cursor: pointer; letter-spacing: 1px;
+            text-transform: uppercase; transition: all 0.2s;
+        }
+        .btn-gold { background: var(--gold); color: #000; }
+        .btn-gold:hover { box-shadow: 0 4px 15px rgba(230, 168, 23, 0.4); }
+        .btn-dim { background: var(--bg-input); color: var(--text-dim); border: 1px solid var(--border); }
+        .btn-dim:hover { border-color: var(--gold-dim); color: var(--text); }
+        .btn-red { background: var(--red); color: #fff; }
+        .btn-red:hover { box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4); }
+        .btn-green { background: var(--green); color: #fff; }
+
+        /* Main */
+        .main { max-width: 1400px; margin: 0 auto; padding: 25px 30px; }
+
+        /* View Toggle */
+        .view-tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+        .view-tab {
+            padding: 12px 24px; background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 6px 6px 0 0; color: var(--text-dim); font-family: 'Cinzel', serif;
+            font-size: 0.8rem; font-weight: 700; cursor: pointer; text-transform: uppercase;
+            letter-spacing: 1px; transition: all 0.2s; border-bottom: none;
+        }
+        .view-tab:hover { color: var(--text); }
+        .view-tab.active { color: var(--gold); background: var(--bg-input); border-color: var(--gold-dim); }
+        .view-panel { display: none; }
+        .view-panel.active { display: block; }
+
+        /* Search & Filter Bar */
+        .filter-bar {
+            display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;
+        }
+        .filter-bar input, .filter-bar select {
+            padding: 10px 14px; background: var(--bg-input); border: 1px solid var(--border);
+            border-radius: 5px; color: var(--text); font-size: 0.85rem; font-family: 'Lora', serif;
+        }
+        .filter-bar input { flex: 1; min-width: 200px; }
+        .filter-bar input:focus, .filter-bar select:focus { outline: none; border-color: var(--gold); }
+        .policy-count { color: var(--text-dim); font-size: 0.85rem; margin-left: auto; }
+
+        /* Policy Table */
+        .policy-table { width: 100%; border-collapse: collapse; }
+        .policy-table th {
+            text-align: left; padding: 12px 14px; background: var(--bg-input);
+            color: var(--gold-dim); font-family: 'Source Code Pro', monospace;
+            font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;
+            border-bottom: 2px solid var(--border);
+        }
+        .policy-table td {
+            padding: 12px 14px; border-bottom: 1px solid var(--border);
+            font-size: 0.85rem; vertical-align: middle;
+        }
+        .policy-table tr:hover { background: var(--bg-hover); }
+        .policy-name-cell { color: var(--gold-bright); font-weight: 700; }
+        .tag {
+            display: inline-block; padding: 2px 8px; border-radius: 3px;
+            font-size: 0.7rem; font-weight: 700; font-family: 'Source Code Pro', monospace;
+            letter-spacing: 0.5px; text-transform: uppercase;
+        }
+        .tag-up { background: #1a2a1a; color: var(--green); border: 1px solid var(--green); }
+        .tag-down { background: #2a1a1a; color: var(--red); border: 1px solid var(--red); }
+        .tag-ideology { background: #1a1a2a; color: #bb8fce; border: 1px solid var(--purple); margin: 1px 2px; }
+        .tag-sector { background: #2a2a1a; color: var(--orange); border: 1px solid var(--orange); }
+        .action-btns { display: flex; gap: 6px; }
+        .action-btn {
+            padding: 5px 10px; border: none; border-radius: 3px;
+            font-size: 0.7rem; cursor: pointer; font-weight: 700;
+            font-family: 'Source Code Pro', monospace; transition: opacity 0.2s;
+        }
+        .action-btn:hover { opacity: 0.8; }
+        .action-btn-edit { background: var(--blue); color: #fff; }
+        .action-btn-del { background: var(--red); color: #fff; }
+        .action-btn-dup { background: var(--purple); color: #fff; }
+
+        /* Builder Form */
+        .builder-section {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 8px; padding: 24px; margin-bottom: 20px;
+        }
+        .builder-section-title {
+            font-family: 'Cinzel', serif; font-size: 0.85rem; color: var(--gold);
+            text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 16px;
+            padding-bottom: 10px; border-bottom: 1px solid var(--border);
+        }
+        .form-row { display: flex; gap: 16px; margin-bottom: 14px; }
+        .form-row > .form-field { flex: 1; }
+        .form-field { margin-bottom: 14px; }
+        .form-field label {
+            display: block; font-size: 0.75rem; color: var(--text-dim);
+            text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
+            font-family: 'Source Code Pro', monospace;
+        }
+        .form-field input, .form-field select, .form-field textarea {
+            width: 100%; padding: 10px 14px; background: var(--bg-input);
+            border: 1px solid var(--border); border-radius: 5px; color: var(--text);
+            font-size: 0.9rem; font-family: 'Lora', serif;
+        }
+        .form-field textarea { min-height: 70px; resize: vertical; line-height: 1.5; }
+        .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
+            outline: none; border-color: var(--gold);
+        }
+        .form-field input[type="range"] {
+            -webkit-appearance: none; height: 6px; background: var(--border);
+            border-radius: 3px; border: none; padding: 0;
+        }
+        .form-field input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 18px; height: 18px;
+            background: var(--gold); border-radius: 50%; cursor: pointer;
+        }
+        .range-row {
+            display: flex; align-items: center; gap: 12px;
+        }
+        .range-row input[type="range"] { flex: 1; }
+        .range-value {
+            font-family: 'Source Code Pro', monospace; color: var(--gold-bright);
+            font-size: 1rem; font-weight: 700; min-width: 50px; text-align: right;
+        }
+
+        /* Direction Toggle */
+        .direction-toggle { display: flex; gap: 0; }
+        .direction-btn {
+            padding: 10px 24px; border: 1px solid var(--border); background: var(--bg-input);
+            color: var(--text-dim); cursor: pointer; font-weight: 700;
+            font-family: 'Source Code Pro', monospace; font-size: 0.85rem; transition: all 0.2s;
+        }
+        .direction-btn:first-child { border-radius: 5px 0 0 5px; }
+        .direction-btn:last-child { border-radius: 0 5px 5px 0; }
+        .direction-btn.active-up { background: #1a2a1a; color: var(--green); border-color: var(--green); }
+        .direction-btn.active-down { background: #2a1a1a; color: var(--red); border-color: var(--red); }
+
+        /* Ideology Spectrum Selector */
+        .ideology-spectrums { margin-bottom: 10px; }
+        .spectrum-row {
+            display: flex; gap: 8px; margin-bottom: 8px; align-items: center;
+        }
+        .spectrum-side {
+            flex: 1; padding: 10px 14px; background: var(--bg-input); border: 2px solid var(--border);
+            border-radius: 5px; text-align: center; cursor: pointer; transition: all 0.2s;
+            font-weight: 700; font-size: 0.85rem;
+        }
+        .spectrum-side:hover { border-color: var(--text-faint); }
+        .spectrum-side.selected { border-color: var(--gold); background: #2a2a1a; color: var(--gold-bright); }
+        .spectrum-sep { color: var(--text-faint); font-size: 0.8rem; font-weight: 700; }
+
+        /* Side Effects */
+        .side-effect-row {
+            display: flex; gap: 10px; align-items: center; margin-bottom: 8px;
+            background: var(--bg-input); padding: 10px; border-radius: 5px;
+        }
+        .side-effect-row select { flex: 1; }
+        .side-effect-row .remove-se {
+            background: var(--red); color: #fff; border: none; border-radius: 3px;
+            padding: 6px 10px; cursor: pointer; font-size: 0.75rem; font-weight: 700;
+        }
+        .add-se-btn {
+            padding: 8px 16px; background: none; border: 2px dashed var(--border);
+            border-radius: 5px; color: var(--gold-dim); cursor: pointer;
+            font-family: 'Cinzel', serif; font-size: 0.8rem; width: 100%; transition: all 0.2s;
+        }
+        .add-se-btn:hover { border-color: var(--gold); color: var(--gold); }
+
+        /* Cost Grid */
+        .cost-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+
+        /* Checkbox */
+        .checkbox-field {
+            display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+            background: var(--bg-input); border-radius: 5px; cursor: pointer;
+        }
+        .checkbox-field input[type="checkbox"] {
+            width: 18px; height: 18px; accent-color: var(--gold);
+        }
+        .checkbox-field span { font-size: 0.9rem; }
+
+        /* Stat Category in Builder */
+        .stat-cat-label {
+            font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 1px; margin: 12px 0 6px; padding-bottom: 4px;
+            border-bottom: 1px solid var(--border);
+        }
+        .cat-gov { color: #3498db; }
+        .cat-econ { color: #2ecc71; }
+        .cat-social { color: #e67e22; }
+        .cat-res { color: #8BC34A; }
+        .cat-other { color: #9b59b6; }
+
+        /* Status bar */
+        .status-bar {
+            padding: 12px 18px; border-radius: 5px; margin-bottom: 16px;
+            font-weight: 700; font-size: 0.9rem; display: none;
+        }
+        .status-bar.success { display: block; background: #1a2a1a; color: var(--green); border: 1px solid var(--green); }
+        .status-bar.error { display: block; background: #2a1a1a; color: var(--red); border: 1px solid var(--red); }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .form-row { flex-direction: column; }
+            .cost-grid { grid-template-columns: 1fr; }
+            .filter-bar { flex-direction: column; }
+            .policy-count { margin-left: 0; }
+        }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<!-- Auth Screen -->
+<div id="auth-screen" class="auth-screen">
+    <h1>⚙️ Policy Builder</h1>
+    <input type="password" id="auth-pw" placeholder="Admin Password" onkeydown="if(event.key==='Enter')checkAuth()">
+    <button onclick="checkAuth()">Enter</button>
+</div>
+
+<!-- Main App (hidden until auth) -->
+<div id="app" class="hidden">
+
+    <!-- Header -->
+    <div class="page-header">
+        <div class="header-row">
+            <div>
+                <div class="header-title">⚙️ Policy Builder</div>
+                <div class="header-subtitle">Create, edit, and manage policies for all nations</div>
+            </div>
+            <div class="header-actions">
+                <a href="admin.html" class="btn btn-dim">← Admin Panel</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="main">
+        <div id="status-bar" class="status-bar"></div>
+
+        <!-- View Tabs -->
+        <div class="view-tabs">
+            <button class="view-tab active" onclick="switchView('list')">📋 All Policies</button>
+            <button class="view-tab" onclick="switchView('builder')">➕ Create Policy</button>
+        </div>
+
+        <!-- ============ LIST VIEW ============ -->
+        <div class="view-panel active" id="view-list">
+            <div class="filter-bar">
+                <input type="text" id="search-input" placeholder="Search policies..." oninput="filterPolicies()">
+                <select id="filter-sector" onchange="filterPolicies()">
+                    <option value="">All Sectors</option>
+                </select>
+                <select id="filter-stat" onchange="filterPolicies()">
+                    <option value="">All Stats</option>
+                </select>
+                <select id="filter-ideology" onchange="filterPolicies()">
+                    <option value="">All Ideologies</option>
+                </select>
+                <span class="policy-count" id="policy-count">— policies</span>
+            </div>
+
+            <div style="overflow-x:auto;">
+                <table class="policy-table">
+                    <thead>
+                        <tr>
+                            <th>Policy Name</th>
+                            <th>Sector</th>
+                            <th>Target Stat</th>
+                            <th>Dir</th>
+                            <th>Δ/Tick</th>
+                            <th>Ideology</th>
+                            <th>Cost</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="policy-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ============ BUILDER VIEW ============ -->
+        <div class="view-panel" id="view-builder">
+
+            <!-- Identity -->
+            <div class="builder-section">
+                <div class="builder-section-title">📝 Policy Identity</div>
+                <div class="form-row">
+                    <div class="form-field">
+                        <label>Policy Name</label>
+                        <input type="text" id="b-name" placeholder="e.g. The Prosperity Gospel Initiative">
+                    </div>
+                </div>
+                <div class="form-field">
+                    <label>Description / Flavor Text</label>
+                    <textarea id="b-desc" placeholder="A brief description of what this policy does and why..."></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-field">
+                        <label>Major Sector</label>
+                        <select id="b-major-sector">
+                            <option value="">-- Select --</option>
+                            <option value="ECONOMICS">💰 Economics</option>
+                            <option value="LABOR">👷 Labor</option>
+                            <option value="EDUCATION">📚 Education</option>
+                            <option value="ENERGY">⚡ Energy</option>
+                            <option value="SOCIAL">🏥 Social</option>
+                            <option value="MILITARY">🛡️ Military & Security</option>
+                            <option value="GOVERNANCE">🏛️ Governance</option>
+                            <option value="IMMIGRATION">🌍 Immigration</option>
+                            <option value="INTERNATIONAL">🌐 International</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label>Minor Sector</label>
+                        <input type="text" id="b-minor-sector" placeholder="e.g. taxation, civil_rights, welfare">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Target Stat -->
+            <div class="builder-section">
+                <div class="builder-section-title">🎯 Target Stat & Direction</div>
+                <div class="form-row">
+                    <div class="form-field">
+                        <label>Target Stat</label>
+                        <select id="b-target-stat">
+                            <option value="">-- Select a stat --</option>
+                            <optgroup label="🏛️ Governance & Security">
+                                <option value="stability">Stability</option>
+                                <option value="civil_unrest">Civil Unrest</option>
+                                <option value="terrorism">Terrorism</option>
+                                <option value="legitimacy">Legitimacy</option>
+                                <option value="efficiency">Efficiency</option>
+                                <option value="freedom_index">Freedom Index</option>
+                                <option value="political_violence">Political Violence</option>
+                                <option value="incarceration_rate">Incarceration Rate</option>
+                                <option value="press_freedom">Press Freedom</option>
+                                <option value="judicial_independence">Judicial Independence</option>
+                                <option value="corruption">Corruption</option>
+                            </optgroup>
+                            <optgroup label="💰 Economics & Labor">
+                                <option value="gdp">GDP</option>
+                                <option value="gdp_growth">GDP Growth</option>
+                                <option value="inflation">Inflation</option>
+                                <option value="foreign_investment">Foreign Investment</option>
+                                <option value="unemployment">Unemployment</option>
+                                <option value="union_strength">Union Strength</option>
+                                <option value="trade_balance">Trade Balance</option>
+                            </optgroup>
+                            <optgroup label="👥 Social & Demographics">
+                                <option value="standard_of_living">Standard of Living</option>
+                                <option value="happiness">Happiness</option>
+                                <option value="crime_rate">Crime Rate</option>
+                                <option value="healthcare_quality">Healthcare Quality</option>
+                                <option value="literacy">Literacy</option>
+                                <option value="social_mobility">Social Mobility</option>
+                                <option value="ethnic_diversity">Ethnic Diversity</option>
+                                <option value="religious">Religious</option>
+                            </optgroup>
+                            <optgroup label="🌍 Resources & Environment">
+                                <option value="arable_land">Arable Land</option>
+                                <option value="oil_and_gas">Oil and Gas</option>
+                                <option value="rare_minerals">Rare Minerals</option>
+                                <option value="energy_generation">Energy Generation</option>
+                                <option value="pollution">Pollution</option>
+                                <option value="food_prices">Food Prices</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label>Direction</label>
+                        <div class="direction-toggle">
+                            <button class="direction-btn active-up" id="dir-up" onclick="setDirection('UP')">▲ UP</button>
+                            <button class="direction-btn" id="dir-down" onclick="setDirection('DOWN')">▼ DOWN</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-field">
+                        <label>Change Per Tick</label>
+                        <div class="range-row">
+                            <input type="range" id="b-change" min="0.1" max="5" step="0.1" value="1" oninput="document.getElementById('b-change-val').textContent=this.value">
+                            <span class="range-value" id="b-change-val">1</span>
+                        </div>
+                    </div>
+                    <div class="form-field">
+                        <label>Duration (Months)</label>
+                        <div class="range-row">
+                            <input type="range" id="b-duration" min="1" max="36" step="1" value="12" oninput="document.getElementById('b-duration-val').textContent=this.value+'mo'">
+                            <span class="range-value" id="b-duration-val">12mo</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-field">
+                        <label>Stat Floor (min value)</label>
+                        <div class="range-row">
+                            <input type="range" id="b-floor" min="0" max="100" step="1" value="0" oninput="document.getElementById('b-floor-val').textContent=this.value">
+                            <span class="range-value" id="b-floor-val">0</span>
+                        </div>
+                    </div>
+                    <div class="form-field">
+                        <label>Stat Ceiling (max value)</label>
+                        <div class="range-row">
+                            <input type="range" id="b-ceiling" min="0" max="100" step="1" value="100" oninput="document.getElementById('b-ceiling-val').textContent=this.value">
+                            <span class="range-value" id="b-ceiling-val">100</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ideologies -->
+            <div class="builder-section">
+                <div class="builder-section-title">🗳️ Ideologies (1–5, no opposing pairs)</div>
+                <div class="ideology-spectrums" id="ideology-builder"></div>
+                <div style="color:var(--text-dim); font-size:0.8rem; margin-top:8px;">
+                    Selected: <strong style="color:var(--gold);" id="ideo-count">0</strong> / 5 — 
+                    <span id="ideo-list" style="color:var(--gold-bright);">None</span>
+                </div>
+            </div>
+
+            <!-- Side Effects -->
+            <div class="builder-section">
+                <div class="builder-section-title">⚡ Side Effects (optional secondary stat changes)</div>
+                <div id="side-effects-container"></div>
+                <button class="add-se-btn" onclick="addSideEffect()">+ Add Side Effect</button>
+            </div>
+
+            <!-- Costs -->
+            <div class="builder-section">
+                <div class="builder-section-title">💰 Financial Impact</div>
+                <div class="cost-grid">
+                    <div class="form-field">
+                        <label>Upfront Cost</label>
+                        <input type="number" id="b-upfront" value="0" min="0" step="1">
+                    </div>
+                    <div class="form-field">
+                        <label>Cost Relief (budget gain)</label>
+                        <input type="number" id="b-relief" value="0" min="0" step="1">
+                    </div>
+                    <div class="form-field">
+                        <label>Ongoing Cost / Tick</label>
+                        <input type="number" id="b-ongoing" value="0" min="0" step="1">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Approval & Flags -->
+            <div class="builder-section">
+                <div class="builder-section-title">📊 Approval & Rules</div>
+                <div class="form-row">
+                    <div class="form-field">
+                        <label>Approval Impact (when passed)</label>
+                        <div class="range-row">
+                            <input type="range" id="b-approval" min="-10" max="10" step="1" value="0" oninput="updateApprovalLabel()">
+                            <span class="range-value" id="b-approval-val" style="min-width:80px;">0 (neutral)</span>
+                        </div>
+                    </div>
+                </div>
+                <label class="checkbox-field">
+                    <input type="checkbox" id="b-one-time">
+                    <span>One-time only — once enacted in a nation, cannot be enacted again</span>
+                </label>
+            </div>
+
+            <!-- Submit -->
+            <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:10px;">
+                <button class="btn btn-dim" onclick="resetBuilder()">Clear Form</button>
+                <button class="btn btn-gold" id="submit-policy-btn" onclick="savePolicy()">✅ Create Policy</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ========== CONFIG ==========
+    const ADMIN_PW = 'nationhood2000';
+    const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
+    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+    const IDEOLOGY_SPECTRUMS = [
+        { left: 'Liberty', right: 'Equality' },
+        { left: 'Freedom', right: 'Security' },
+        { left: 'Tradition', right: 'Progress' },
+        { left: 'Globalism', right: 'Nationalism' },
+        { left: 'Competition', right: 'Cooperation' }
+    ];
+
+    const ALL_STATS = [
+        'stability','civil_unrest','terrorism','legitimacy','efficiency','freedom_index',
+        'political_violence','incarceration_rate','press_freedom','judicial_independence','corruption',
+        'gdp','gdp_growth','inflation','foreign_investment','unemployment','union_strength','trade_balance',
+        'standard_of_living','happiness','crime_rate','healthcare_quality','literacy','social_mobility',
+        'ethnic_diversity','religious',
+        'arable_land','oil_and_gas','rare_minerals','energy_generation','pollution','food_prices'
+    ];
+
+    let allPolicies = [];
+    let filteredPolicies = [];
+    let editingPolicyId = null;
+    let selectedDirection = 'UP';
+    let selectedIdeologies = {}; // { axisIndex: 'left' or 'right' }
+    let sideEffects = []; // [ { stat, direction, amount } ]
+
+    // ========== AUTH ==========
+    function checkAuth() {
+        if (document.getElementById('auth-pw').value === ADMIN_PW) {
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('app').classList.remove('hidden');
+            init();
+        } else {
+            alert('Wrong password.');
+        }
+    }
+
+    // ========== INIT ==========
+    async function init() {
+        await loadPolicies();
+        renderIdeologyBuilder();
+        populateFilterDropdowns();
+        renderPolicyTable();
+    }
+
+    async function loadPolicies() {
+        const { data, error } = await _supabase
+            .from('policies')
+            .select('*')
+            .order('major_sector, minor_sector, policy_name');
+        if (error) { console.error(error); return; }
+        allPolicies = data || [];
+        filteredPolicies = [...allPolicies];
+    }
+
+    // ========== VIEW SWITCHING ==========
+    function switchView(view) {
+        document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+        document.querySelector(`.view-tab[onclick="switchView('${view}')"]`).classList.add('active');
+        document.getElementById(`view-${view}`).classList.add('active');
+    }
+
+    // ========== POLICY LIST ==========
+    function populateFilterDropdowns() {
+        const sectors = [...new Set(allPolicies.map(p => p.major_sector).filter(Boolean))].sort();
+        const stats = [...new Set(allPolicies.map(p => p.target_stat).filter(Boolean))].sort();
+        const ideologies = [...new Set(allPolicies.map(p => p.ideology).filter(Boolean))].sort();
+
+        const sectorSel = document.getElementById('filter-sector');
+        sectorSel.innerHTML = '<option value="">All Sectors</option>' +
+            sectors.map(s => `<option value="${s}">${s}</option>`).join('');
+
+        const statSel = document.getElementById('filter-stat');
+        statSel.innerHTML = '<option value="">All Stats</option>' +
+            stats.map(s => `<option value="${s}">${formatStat(s)}</option>`).join('');
+
+        const ideoSel = document.getElementById('filter-ideology');
+        ideoSel.innerHTML = '<option value="">All Ideologies</option>' +
+            ideologies.map(i => `<option value="${i}">${i}</option>`).join('');
+    }
+
+    function filterPolicies() {
+        const search = document.getElementById('search-input').value.toLowerCase();
+        const sector = document.getElementById('filter-sector').value;
+        const stat = document.getElementById('filter-stat').value;
+        const ideology = document.getElementById('filter-ideology').value;
+
+        filteredPolicies = allPolicies.filter(p => {
+            if (search && !p.policy_name?.toLowerCase().includes(search) && !p.description?.toLowerCase().includes(search)) return false;
+            if (sector && p.major_sector !== sector) return false;
+            if (stat && p.target_stat !== stat) return false;
+            if (ideology && p.ideology !== ideology) return false;
+            return true;
+        });
+        renderPolicyTable();
+    }
+
+    function renderPolicyTable() {
+        document.getElementById('policy-count').textContent = filteredPolicies.length + ' policies';
+        const tbody = document.getElementById('policy-tbody');
+
+        if (filteredPolicies.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--text-dim); padding:30px;">No policies found.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = filteredPolicies.map(p => {
+            const dir = p.stat_direction === 'UP'
+                ? '<span class="tag tag-up">▲ UP</span>'
+                : '<span class="tag tag-down">▼ DOWN</span>';
+
+            const ideologies = p.ideologies
+                ? (Array.isArray(p.ideologies) ? p.ideologies : []).map(i => `<span class="tag tag-ideology">${i}</span>`).join('')
+                : (p.ideology ? `<span class="tag tag-ideology">${p.ideology}</span>` : '—');
+
+            const cost = (p.upfront_cost || 0) > 0 ? `$${p.upfront_cost}` : (p.cost_relief || 0) > 0 ? `+$${p.cost_relief}` : '—';
+
+            return `
+                <tr>
+                    <td class="policy-name-cell">${p.policy_name || '—'}</td>
+                    <td><span class="tag tag-sector">${p.major_sector || '—'}</span><br><span style="font-size:0.75rem;color:var(--text-dim);">${p.minor_sector || ''}</span></td>
+                    <td>${formatStat(p.target_stat)}</td>
+                    <td>${dir}</td>
+                    <td style="font-family:'Source Code Pro',monospace;">${p.stat_change_per_tick || '—'}</td>
+                    <td>${ideologies}</td>
+                    <td style="font-family:'Source Code Pro',monospace;">${cost}</td>
+                    <td>
+                        <div class="action-btns">
+                            <button class="action-btn action-btn-edit" onclick="editPolicy('${p.id}')">Edit</button>
+                            <button class="action-btn action-btn-dup" onclick="duplicatePolicy('${p.id}')">Dup</button>
+                            <button class="action-btn action-btn-del" onclick="deletePolicy('${p.id}', '${(p.policy_name || '').replace(/'/g, "\\'")}')">Del</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // ========== DELETE ==========
+    async function deletePolicy(id, name) {
+        if (!confirm(`Delete policy "${name}"? This cannot be undone.`)) return;
+        const { error } = await _supabase.from('policies').delete().eq('id', id);
+        if (error) { showStatus('Error: ' + error.message, 'error'); return; }
+        showStatus(`"${name}" deleted.`, 'success');
+        await loadPolicies();
+        populateFilterDropdowns();
+        filterPolicies();
+    }
+
+    // ========== DUPLICATE ==========
+    function duplicatePolicy(id) {
+        const p = allPolicies.find(x => x.id === id);
+        if (!p) return;
+        editingPolicyId = null;
+        loadPolicyIntoBuilder(p);
+        document.getElementById('b-name').value = p.policy_name + ' (Copy)';
+        document.getElementById('submit-policy-btn').textContent = '✅ Create Policy';
+        switchView('builder');
+    }
+
+    // ========== EDIT ==========
+    function editPolicy(id) {
+        const p = allPolicies.find(x => x.id === id);
+        if (!p) return;
+        editingPolicyId = id;
+        loadPolicyIntoBuilder(p);
+        document.getElementById('submit-policy-btn').textContent = '💾 Update Policy';
+        switchView('builder');
+    }
+
+    function loadPolicyIntoBuilder(p) {
+        document.getElementById('b-name').value = p.policy_name || '';
+        document.getElementById('b-desc').value = p.description || '';
+        document.getElementById('b-major-sector').value = p.major_sector || '';
+        document.getElementById('b-minor-sector').value = p.minor_sector || '';
+        document.getElementById('b-target-stat').value = p.target_stat || '';
+
+        selectedDirection = p.stat_direction || 'UP';
+        setDirection(selectedDirection);
+
+        document.getElementById('b-change').value = p.stat_change_per_tick || 1;
+        document.getElementById('b-change-val').textContent = p.stat_change_per_tick || 1;
+        document.getElementById('b-duration').value = p.duration_months || 12;
+        document.getElementById('b-duration-val').textContent = (p.duration_months || 12) + 'mo';
+        document.getElementById('b-floor').value = p.stat_floor ?? 0;
+        document.getElementById('b-floor-val').textContent = p.stat_floor ?? 0;
+        document.getElementById('b-ceiling').value = p.stat_ceiling ?? 100;
+        document.getElementById('b-ceiling-val').textContent = p.stat_ceiling ?? 100;
+
+        // Ideologies
+        selectedIdeologies = {};
+        const ideos = p.ideologies || (p.ideology ? [p.ideology] : []);
+        ideos.forEach(ideo => {
+            IDEOLOGY_SPECTRUMS.forEach((spec, idx) => {
+                if (spec.left === ideo) selectedIdeologies[idx] = 'left';
+                if (spec.right === ideo) selectedIdeologies[idx] = 'right';
+            });
+        });
+        renderIdeologyBuilder();
+
+        // Side effects
+        sideEffects = p.side_effects || [];
+        renderSideEffects();
+
+        document.getElementById('b-upfront').value = p.upfront_cost || 0;
+        document.getElementById('b-relief').value = p.cost_relief || 0;
+        document.getElementById('b-ongoing').value = p.ongoing_cost_per_tick || 0;
+        document.getElementById('b-approval').value = p.approval_impact || 0;
+        updateApprovalLabel();
+        document.getElementById('b-one-time').checked = p.one_time_only || false;
+    }
+
+    // ========== BUILDER: DIRECTION ==========
+    function setDirection(dir) {
+        selectedDirection = dir;
+        const up = document.getElementById('dir-up');
+        const down = document.getElementById('dir-down');
+        up.className = 'direction-btn' + (dir === 'UP' ? ' active-up' : '');
+        down.className = 'direction-btn' + (dir === 'DOWN' ? ' active-down' : '');
+    }
+
+    // ========== BUILDER: IDEOLOGY ==========
+    function renderIdeologyBuilder() {
+        const container = document.getElementById('ideology-builder');
+        container.innerHTML = IDEOLOGY_SPECTRUMS.map((spec, idx) => {
+            const leftSel = selectedIdeologies[idx] === 'left' ? 'selected' : '';
+            const rightSel = selectedIdeologies[idx] === 'right' ? 'selected' : '';
+            return `
+                <div class="spectrum-row">
+                    <div class="spectrum-side ${leftSel}" onclick="toggleIdeologyBuilder(${idx}, 'left')">${spec.left}</div>
+                    <span class="spectrum-sep">↔</span>
+                    <div class="spectrum-side ${rightSel}" onclick="toggleIdeologyBuilder(${idx}, 'right')">${spec.right}</div>
+                </div>
+            `;
+        }).join('');
+        updateIdeologyDisplay();
+    }
+
+    function toggleIdeologyBuilder(idx, side) {
+        if (selectedIdeologies[idx] === side) {
+            delete selectedIdeologies[idx];
+        } else {
+            selectedIdeologies[idx] = side;
+        }
+        renderIdeologyBuilder();
+    }
+
+    function updateIdeologyDisplay() {
+        const names = [];
+        Object.entries(selectedIdeologies).forEach(([idx, side]) => {
+            const spec = IDEOLOGY_SPECTRUMS[parseInt(idx)];
+            names.push(side === 'left' ? spec.left : spec.right);
+        });
+        document.getElementById('ideo-count').textContent = names.length;
+        document.getElementById('ideo-list').textContent = names.length > 0 ? names.join(', ') : 'None';
+    }
+
+    function getSelectedIdeologies() {
+        const names = [];
+        Object.entries(selectedIdeologies).forEach(([idx, side]) => {
+            const spec = IDEOLOGY_SPECTRUMS[parseInt(idx)];
+            names.push(side === 'left' ? spec.left : spec.right);
+        });
+        return names;
+    }
+
+    // ========== BUILDER: SIDE EFFECTS ==========
+    function addSideEffect() {
+        sideEffects.push({ stat: '', direction: 'UP', amount: 1 });
+        renderSideEffects();
+    }
+
+    function removeSideEffect(idx) {
+        sideEffects.splice(idx, 1);
+        renderSideEffects();
+    }
+
+    function renderSideEffects() {
+        const container = document.getElementById('side-effects-container');
+        container.innerHTML = sideEffects.map((se, idx) => `
+            <div class="side-effect-row">
+                <select onchange="sideEffects[${idx}].stat=this.value">
+                    <option value="">-- Stat --</option>
+                    ${ALL_STATS.map(s => `<option value="${s}" ${se.stat === s ? 'selected' : ''}>${formatStat(s)}</option>`).join('')}
+                </select>
+                <select onchange="sideEffects[${idx}].direction=this.value" style="width:90px;">
+                    <option value="UP" ${se.direction === 'UP' ? 'selected' : ''}>▲ UP</option>
+                    <option value="DOWN" ${se.direction === 'DOWN' ? 'selected' : ''}>▼ DOWN</option>
+                </select>
+                <input type="number" value="${se.amount || 1}" min="0.1" max="5" step="0.1" style="width:80px;"
+                    onchange="sideEffects[${idx}].amount=parseFloat(this.value)">
+                <button class="remove-se" onclick="removeSideEffect(${idx})">✕</button>
+            </div>
+        `).join('');
+    }
+
+    // ========== BUILDER: APPROVAL ==========
+    function updateApprovalLabel() {
+        const val = parseInt(document.getElementById('b-approval').value);
+        const label = val > 0 ? `+${val} (popular)` : val < 0 ? `${val} (unpopular)` : '0 (neutral)';
+        document.getElementById('b-approval-val').textContent = label;
+        document.getElementById('b-approval-val').style.color = val > 0 ? 'var(--green)' : val < 0 ? 'var(--red)' : 'var(--gold)';
+    }
+
+    // ========== SAVE POLICY ==========
+    async function savePolicy() {
+        const name = document.getElementById('b-name').value.trim();
+        if (!name) { alert('Please enter a policy name.'); return; }
+
+        const targetStat = document.getElementById('b-target-stat').value;
+        if (!targetStat) { alert('Please select a target stat.'); return; }
+
+        const ideologies = getSelectedIdeologies();
+        if (ideologies.length === 0) { alert('Please select at least 1 ideology.'); return; }
+
+        // Clean side effects
+        const cleanSE = sideEffects.filter(se => se.stat && se.amount > 0);
+
+        const policyData = {
+            policy_name: name,
+            description: document.getElementById('b-desc').value.trim() || null,
+            major_sector: document.getElementById('b-major-sector').value || null,
+            minor_sector: document.getElementById('b-minor-sector').value.trim() || null,
+            target_stat: targetStat,
+            stat_direction: selectedDirection,
+            stat_change_per_tick: parseFloat(document.getElementById('b-change').value) || 1,
+            duration_months: parseInt(document.getElementById('b-duration').value) || 12,
+            stat_floor: parseInt(document.getElementById('b-floor').value) || 0,
+            stat_ceiling: parseInt(document.getElementById('b-ceiling').value) || 100,
+            ideology: ideologies[0],
+            ideologies: ideologies,
+            side_effects: cleanSE.length > 0 ? cleanSE : null,
+            upfront_cost: parseFloat(document.getElementById('b-upfront').value) || 0,
+            cost_relief: parseFloat(document.getElementById('b-relief').value) || 0,
+            ongoing_cost_per_tick: parseFloat(document.getElementById('b-ongoing').value) || 0,
+            approval_impact: parseInt(document.getElementById('b-approval').value) || 0,
+            one_time_only: document.getElementById('b-one-time').checked,
+            is_active: true
+        };
+
+        try {
+            if (editingPolicyId) {
+                const { error } = await _supabase.from('policies').update(policyData).eq('id', editingPolicyId);
+                if (error) throw error;
+                showStatus(`"${name}" updated successfully.`, 'success');
+            } else {
+                const { error } = await _supabase.from('policies').insert(policyData);
+                if (error) throw error;
+                showStatus(`"${name}" created successfully.`, 'success');
+            }
+
+            editingPolicyId = null;
+            document.getElementById('submit-policy-btn').textContent = '✅ Create Policy';
+            await loadPolicies();
+            populateFilterDropdowns();
+            filterPolicies();
+            switchView('list');
+        } catch (error) {
+            showStatus('Error: ' + error.message, 'error');
+        }
+    }
+
+    // ========== RESET BUILDER ==========
+    function resetBuilder() {
+        editingPolicyId = null;
+        document.getElementById('b-name').value = '';
+        document.getElementById('b-desc').value = '';
+        document.getElementById('b-major-sector').value = '';
+        document.getElementById('b-minor-sector').value = '';
+        document.getElementById('b-target-stat').value = '';
+        setDirection('UP');
+        document.getElementById('b-change').value = 1;
+        document.getElementById('b-change-val').textContent = '1';
+        document.getElementById('b-duration').value = 12;
+        document.getElementById('b-duration-val').textContent = '12mo';
+        document.getElementById('b-floor').value = 0;
+        document.getElementById('b-floor-val').textContent = '0';
+        document.getElementById('b-ceiling').value = 100;
+        document.getElementById('b-ceiling-val').textContent = '100';
+        selectedIdeologies = {};
+        renderIdeologyBuilder();
+        sideEffects = [];
+        renderSideEffects();
+        document.getElementById('b-upfront').value = 0;
+        document.getElementById('b-relief').value = 0;
+        document.getElementById('b-ongoing').value = 0;
+        document.getElementById('b-approval').value = 0;
+        updateApprovalLabel();
+        document.getElementById('b-one-time').checked = false;
+        document.getElementById('submit-policy-btn').textContent = '✅ Create Policy';
+    }
+
+    // ========== UTILITIES ==========
+    function formatStat(stat) {
+        if (!stat) return '—';
+        return stat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    }
+
+    function showStatus(msg, type) {
+        const bar = document.getElementById('status-bar');
+        bar.className = 'status-bar ' + type;
+        bar.textContent = msg;
+        setTimeout(() => { bar.style.display = 'none'; bar.className = 'status-bar'; }, 5000);
+    }
+</script>
+
+</body>
+</html>
