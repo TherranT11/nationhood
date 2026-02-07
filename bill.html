@@ -236,10 +236,11 @@
 </div>
 <script src="js/supabase-client.js"></script>
 <script src="js/common.js"></script>
+<script src="js/game-common.js"></script>
 <script>
 /**
  * Bill Detail Page
- * FIXES: autocracy seats, ideology filter, head faction enact, vote tally sync
+ * Now uses game-common.js for seats, head faction, policy compat, support calc, vote sync
  */
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
@@ -248,11 +249,12 @@ let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const urlParams = new URLSearchParams(window.location.search);
 const billId = urlParams.get('id');
-const MAJOR_SECTORS = [
-    {key:'ECONOMICS',label:'Economics'},{key:'LABOR',label:'Labor'},{key:'EDUCATION',label:'Education'},
-    {key:'ENERGY',label:'Energy'},{key:'SOCIAL',label:'Social'},{key:'MILITARY',label:'Military & Security'},
-    {key:'GOVERNANCE',label:'Governance'},{key:'IMMIGRATION',label:'Immigration'},{key:'INTERNATIONAL',label:'International'}
-];
+
+// Local wrapper: excludes policies already in this bill
+function _getCompatiblePolicies(sector) {
+    const excludeIds = (currentBill?.bill_articles || []).map(a => a.policy_id);
+    return getCompatiblePolicies(sector, allPolicies, currentFaction, isAutocracy, excludeIds);
+}
 
 initPage('laws', async (state) => {
     const { nation, faction } = state;
@@ -290,28 +292,16 @@ async function loadBillData() {
             .eq('nation_id', bill.nation_id).eq('faction_type', 'party');
         allParties = parties || [];
 
-        // FIX 1: Seat loading — autocracies use factions.seats, democracies try election then fallback
-        if (isAutocracy) {
-            allParties.forEach(p => { allPartySeats[p.id] = p.seats || 0; });
-            currentSeats = currentFaction?.seats || allPartySeats[currentFaction?.id] || 0;
-        } else {
-            const { data: election } = await _supabase
-                .from('elections').select('results')
-                .eq('nation_id', bill.nation_id).eq('status', 'completed')
-                .order('election_tick', { ascending: false }).limit(1).maybeSingle();
-            if (election?.results?.votes) {
-                election.results.votes.forEach(s => { allPartySeats[s.party_id] = s.seats; });
-            } else if (election?.results?.seats) {
-                election.results.seats.forEach(s => { allPartySeats[s.party_id] = s.seats; });
-            }
-            allParties.forEach(p => { if (!allPartySeats[p.id]) allPartySeats[p.id] = p.seats || 0; });
-            currentSeats = allPartySeats[currentFaction?.id] || currentFaction?.seats || 0;
-        }
+        // Shared seat loading (single source of truth)
+        const seatData = await loadSeats(_supabase, bill.nation_id, isAutocracy, allParties, currentFaction?.id);
+        allPartySeats = seatData.allPartySeats;
+        currentSeats = seatData.currentSeats;
 
-        // Determine head faction for autocracy
+        // Shared head faction detection
         if (isAutocracy) {
-            const top = allParties.slice().sort((a,b) => (allPartySeats[b.id]||0) - (allPartySeats[a.id]||0))[0];
-            if (top) { headFactionId = top.id; isHeadFaction = (currentFaction?.id === headFactionId); }
+            const hf = detectHeadFaction(allParties, allPartySeats, currentFaction?.id);
+            headFactionId = hf.headFactionId;
+            isHeadFaction = hf.isHeadFaction;
         }
 
         const { data: policies } = await _supabase.from('policies').select('*').eq('is_active', true);
@@ -356,20 +346,18 @@ function renderBill() {
     renderArticles();
     renderSidebar();
 
-    // FIX 3: Sponsor actions — autocracy head faction can enact
     if (isFloor) {
         document.getElementById('voting-section').style.display = 'block';
         renderCurrentVote();
     } else if (isCommittee) {
         const el = document.getElementById('sponsor-actions');
         if (isAutocracy) {
-            const canEnact = isHeadFaction, canRetract = isSponsor;
-            if (canEnact || canRetract) {
+            if (isHeadFaction || isSponsor) {
                 el.style.display = 'flex';
-                el.innerHTML = `${canEnact ? '<button class="sponsor-btn enact-decree" onclick="enactDecree()">⚡ Enact Decree</button>' : ''}${canRetract ? '<button class="sponsor-btn retract" onclick="retractBill()">Retract Decree</button>' : ''}`;
+                el.innerHTML = `${isHeadFaction ? '<button class="sponsor-btn enact-decree" onclick="enactDecree()">⚡ Enact Decree</button>' : ''}${isSponsor ? '<button class="sponsor-btn retract" onclick="retractBill()">Retract Decree</button>' : ''}`;
             }
         } else if (isSponsor) {
-            const support = calculateSupport();
+            const support = calculateBillSupport(bill.bill_support, bill.proposed_by, allPartySeats);
             el.style.display = 'flex';
             el.innerHTML = `<button class="sponsor-btn send-floor" onclick="sendToFloor()" ${support.percent < 51 ? 'disabled' : ''}>Send to Floor</button><button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>`;
         }
@@ -412,20 +400,12 @@ function renderArticles() {
     document.getElementById('total-ongoing').className = `total-value ${totalOngoing < 0 ? 'revenue' : ''}`;
 }
 
-function calculateSupport() {
-    const support = currentBill.bill_support || [];
-    const sponsorSeats = allPartySeats[currentBill.proposed_by] || 0;
-    const acceptedSeats = support.filter(s => s.stance === 'accept').reduce((sum, s) => sum + s.seat_count, 0);
-    const totalSupport = sponsorSeats + acceptedSeats;
-    return { sponsorSeats, acceptedSeats, totalSupport, percent: Math.round((totalSupport / 120) * 100) };
-}
-
 function renderSidebar() {
     const bill = currentBill, isCommittee = bill.status === 'committee', isFloor = bill.status === 'floor';
     const isSponsor = bill.proposed_by === currentFaction?.id;
     let html = '';
     if (isCommittee) {
-        const support = calculateSupport();
+        const support = calculateBillSupport(bill.bill_support, bill.proposed_by, allPartySeats);
         const billSupport = bill.bill_support || [];
         html = `<div class="support-box">
             <div class="support-box-header"><div class="support-box-title">Support (${support.percent}%)</div></div>
@@ -485,22 +465,8 @@ async function castVote(vote) {
         }, { onConflict: 'bill_id,faction_id' });
         if (error) throw error;
 
-        // Sync vote totals to bills table so laws.html can display them
-        const { data: allVotes } = await _supabase
-            .from('bill_support')
-            .select('stance, seat_count')
-            .eq('bill_id', billId);
-
-        let votesFor = 0, votesAgainst = 0;
-        (allVotes || []).forEach(v => {
-            if (v.stance === 'yes') votesFor += v.seat_count;
-            else if (v.stance === 'no') votesAgainst += v.seat_count;
-        });
-
-        await _supabase.from('bills').update({
-            votes_for: votesFor,
-            votes_against: votesAgainst
-        }).eq('id', billId);
+        // Shared vote tally sync
+        await syncVoteTallies(_supabase, billId);
 
         myVote = vote;
         await loadBillData();
@@ -512,7 +478,7 @@ async function enactDecree() {
     if (!confirm('⚡ ENACT this decree?\n\nThis will send it directly to the floor for a vote.\n\nProceed?')) return;
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const { error } = await _supabase.from('bills').update({ status: 'floor', voting_ends_tick: (shard?.current_tick || 0) + 3 }).eq('id', billId);
+        const { error } = await _supabase.from('bills').update({ status: 'floor', voting_ends_tick: (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS }).eq('id', billId);
         if (error) throw error;
         alert('⚡ Decree sent to the floor!');
         window.location.reload();
@@ -523,7 +489,7 @@ async function sendToFloor() {
     if (!currentFaction || currentBill.proposed_by !== currentFaction.id) return;
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const { error } = await _supabase.from('bills').update({ status: 'floor', voting_ends_tick: (shard?.current_tick || 0) + 3 }).eq('id', billId);
+        const { error } = await _supabase.from('bills').update({ status: 'floor', voting_ends_tick: (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS }).eq('id', billId);
         if (error) throw error;
         alert('Bill sent to the floor!');
         window.location.reload();
@@ -543,6 +509,8 @@ async function retractBill() {
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
+// ==================== AMENDMENTS ====================
+
 function openAmendmentModal() {
     selectedAmendmentPolicy = null;
     document.getElementById('submit-amendment-btn').disabled = true;
@@ -550,26 +518,15 @@ function openAmendmentModal() {
     document.getElementById('amendment-policy-group').style.display = 'none';
     const sel = document.getElementById('amendment-sector');
     sel.innerHTML = '<option value="">-- Choose a sector --</option>';
-    MAJOR_SECTORS.forEach(s => { if (getCompatiblePolicies(s.key).length > 0) sel.innerHTML += `<option value="${s.key}">${s.label}</option>`; });
+    MAJOR_SECTORS.forEach(s => { if (_getCompatiblePolicies(s.key).length > 0) sel.innerHTML += `<option value="${s.key}">${s.label}</option>`; });
     document.getElementById('amendment-modal').classList.add('active');
 }
 function closeAmendmentModal() { document.getElementById('amendment-modal').classList.remove('active'); }
 
-// FIX 2: Autocracy with no ideology can propose any policy
-function getCompatiblePolicies(sector) {
-    const i1 = (currentFaction?.ideology_value_1 || '').toUpperCase();
-    const i2 = (currentFaction?.ideology_value_2 || '').toUpperCase();
-    const billPolicyIds = (currentBill.bill_articles || []).map(a => a.policy_id);
-    if (isAutocracy && !i1 && !i2) {
-        return allPolicies.filter(p => p.major_sector === sector && !billPolicyIds.includes(p.id));
-    }
-    return allPolicies.filter(p => p.major_sector === sector && (p.ideology.toUpperCase() === i1 || p.ideology.toUpperCase() === i2) && !billPolicyIds.includes(p.id));
-}
-
 function onAmendmentSectorChange() {
     const sector = document.getElementById('amendment-sector').value;
     if (!sector) { document.getElementById('amendment-policy-group').style.display = 'none'; return; }
-    const policies = getCompatiblePolicies(sector);
+    const policies = _getCompatiblePolicies(sector);
     document.getElementById('amendment-policies').innerHTML = policies.map(p => `<div class="policy-option" data-policy-id="${p.id}" onclick="selectAmendmentPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name}</div><div class="policy-option-desc">${p.description}</div></div>`).join('');
     document.getElementById('amendment-policy-group').style.display = 'block';
 }
@@ -606,6 +563,8 @@ async function respondToAmendment(reqId, response) {
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
+// ==================== CHAT ====================
+
 async function loadComments() {
     try {
         const { data, error } = await _supabase.from('bill_comments').select('*, factions(faction_name)').eq('bill_id', billId).order('created_at', { ascending: true });
@@ -636,6 +595,8 @@ async function sendComment() {
 function setupRealtimeComments() {
     _supabase.channel('bill-comments').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'bill_comments', filter: `bill_id=eq.${billId}` }, () => loadComments()).subscribe();
 }
+
+// ==================== UTILITIES ====================
 
 function formatCurrency(amt) {
     if (amt === 0) return '$0';
