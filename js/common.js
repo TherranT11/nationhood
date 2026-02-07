@@ -79,12 +79,12 @@ async function loadGameState(requireFaction = true) {
         .eq('id', user.id)
         .single();
     
-if (factionError || !faction) {
-    if (requireFaction) {
-        window.location.href = 'world.html';
-        return null;
+    if (factionError || !faction) {
+        if (requireFaction) {
+            window.location.href = 'world.html';
+            return null;
+        }
     }
-}
     
     // Get nation
     let nation = null;
@@ -179,6 +179,7 @@ function renderNavTabs(activeTab) {
         { id: 'laws', label: 'Laws', href: 'laws.html' },
         { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
         { id: 'economy', label: 'Economy', href: 'economy.html' },
+        { id: 'factions', label: 'Factions', href: 'factions.html' },
         { id: 'conflict', label: 'Conflict', href: 'conflict.html' }
     ];
     
