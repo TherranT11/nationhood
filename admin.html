@@ -455,6 +455,47 @@
             height: 100%;
             background: #ffcc00;
         }
+        
+        /* Tick Interval Selector */
+        .tick-interval-box {
+            background: #1a2a2a;
+            border: 1px solid #2196F3;
+            border-radius: 6px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .tick-interval-box h3 {
+            color: #2196F3;
+            font-size: 1rem;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .interval-selector {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+        .interval-btn {
+            padding: 12px 20px;
+            background: #252525;
+            border: 2px solid #444;
+            border-radius: 4px;
+            color: #888;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .interval-btn:hover {
+            border-color: #2196F3;
+            color: #e0e0e0;
+        }
+        .interval-btn.active {
+            background: #2196F3;
+            border-color: #2196F3;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -542,6 +583,24 @@
                 </div>
             </div>
             
+            <!-- Tick Interval Selector -->
+            <div class="tick-interval-box">
+                <h3>⏱️ Tick Interval</h3>
+                <p style="color:#888; font-size:0.85rem; margin-bottom:15px;">
+                    Set how often the game advances. Changes apply after the next tick.
+                </p>
+                <div class="interval-selector">
+                    <button class="interval-btn" data-hours="1" onclick="setTickInterval(1)">1 Hour</button>
+                    <button class="interval-btn" data-hours="2" onclick="setTickInterval(2)">2 Hours</button>
+                    <button class="interval-btn" data-hours="4" onclick="setTickInterval(4)">4 Hours</button>
+                    <button class="interval-btn" data-hours="6" onclick="setTickInterval(6)">6 Hours</button>
+                    <button class="interval-btn" data-hours="8" onclick="setTickInterval(8)">8 Hours</button>
+                    <button class="interval-btn" data-hours="12" onclick="setTickInterval(12)">12 Hours</button>
+                    <button class="interval-btn" data-hours="24" onclick="setTickInterval(24)">24 Hours</button>
+                </div>
+                <div id="interval-status" class="status success hidden"></div>
+            </div>
+            
             <button class="btn btn-primary" onclick="advanceTick()">
                 ⏭️ Advance Tick Manually
             </button>
@@ -611,26 +670,25 @@
         </div>
         
         <!-- Players Tab -->
-     <!-- Players Tab -->
-<div class="tab-content" id="tab-players">
-    <h2>👥 Player Management</h2>
-    <p style="color: #888; font-size: 0.9rem; margin-bottom: 15px;">
-        View all players, their nation status, and manage accounts.
-    </p>
-    
-    <!-- Filter buttons -->
-    <div style="margin-bottom:20px; display:flex; gap:8px; flex-wrap:wrap;">
-        <button class="btn btn-secondary" style="padding:8px 16px; font-size:0.8rem;" onclick="filterPlayers('all')">All</button>
-        <button class="btn btn-success" style="padding:8px 16px; font-size:0.8rem;" onclick="filterPlayers('active')">In Nation</button>
-        <button class="btn btn-warning" style="padding:8px 16px; font-size:0.8rem;" onclick="filterPlayers('orphaned')">No Nation</button>
-    </div>
-    
-    <!-- Player count -->
-    <div id="player-count" style="color:#888; font-size:0.85rem; margin-bottom:15px;"></div>
-    
-    <!-- Player list -->
-    <div id="players-list"></div>
-</div>
+        <div class="tab-content" id="tab-players">
+            <h2>👥 Player Management</h2>
+            <p style="color: #888; font-size: 0.9rem; margin-bottom: 15px;">
+                View all players, their nation status, and manage accounts.
+            </p>
+            
+            <!-- Filter buttons -->
+            <div style="margin-bottom:20px; display:flex; gap:8px; flex-wrap:wrap;">
+                <button class="btn btn-secondary" style="padding:8px 16px; font-size:0.8rem;" onclick="filterPlayers('all')">All</button>
+                <button class="btn btn-success" style="padding:8px 16px; font-size:0.8rem;" onclick="filterPlayers('active')">In Nation</button>
+                <button class="btn btn-warning" style="padding:8px 16px; font-size:0.8rem;" onclick="filterPlayers('orphaned')">No Nation</button>
+            </div>
+            
+            <!-- Player count -->
+            <div id="player-count" style="color:#888; font-size:0.85rem; margin-bottom:15px;"></div>
+            
+            <!-- Player list -->
+            <div id="players-list"></div>
+        </div>
         
         <!-- Danger Zone Tab -->
         <div class="tab-content" id="tab-danger">
@@ -641,7 +699,7 @@
                 This will:<br>
                 • Reset game date to January, 2000<br>
                 • Reset current_tick to 0<br>
-                • Set next tick to 8 hours from now<br>
+                • Set next tick based on current interval<br>
                 • Reset ALL nation stats to defaults<br>
                 • Kick out ALL players (forces re-selection)<br>
                 • Clear ALL party data<br>
@@ -664,6 +722,7 @@
     let isAuthenticated = false;
     let nations = [];
     let selectedElectionNation = null;
+    let currentTickInterval = 1;
     
     // Tab switching
     function showTab(tabName) {
@@ -716,6 +775,10 @@
             document.getElementById('info-date').textContent = shard.current_date || 'Not Set';
             document.getElementById('info-tick').textContent = shard.current_tick || 0;
             
+            // Update tick interval from DB
+            currentTickInterval = shard.tick_interval_hours || 1;
+            updateIntervalButtons();
+            
             if (shard.next_tick_at) {
                 const nextTickDate = new Date(shard.next_tick_at);
                 const now = new Date();
@@ -725,14 +788,54 @@
                     const hours = Math.floor(timeUntil / (1000 * 60 * 60));
                     const minutes = Math.floor((timeUntil % (1000 * 60 * 60)) / (1000 * 60));
                     document.getElementById('info-next-tick').textContent = `${nextTickDate.toLocaleString()} (in ${hours}h ${minutes}m)`;
+                    document.getElementById('info-next-tick').style.color = '#ffcc00';
                 } else {
                     document.getElementById('info-next-tick').textContent = `${nextTickDate.toLocaleString()} (OVERDUE)`;
+                    document.getElementById('info-next-tick').style.color = '#ff4444';
                 }
             } else {
                 document.getElementById('info-next-tick').textContent = 'Not Scheduled';
             }
         } catch (error) {
             console.error('Error loading shard info:', error);
+        }
+    }
+    
+    // Tick Interval functions
+    function updateIntervalButtons() {
+        document.querySelectorAll('.interval-btn').forEach(btn => {
+            const hours = parseInt(btn.getAttribute('data-hours'));
+            if (hours === currentTickInterval) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    }
+    
+    async function setTickInterval(hours) {
+        const status = document.getElementById('interval-status');
+        
+        try {
+            const { error } = await _supabase
+                .from('shard')
+                .update({ tick_interval_hours: hours })
+                .eq('name', 'Alpha Shard');
+            
+            if (error) throw error;
+            
+            currentTickInterval = hours;
+            updateIntervalButtons();
+            
+            status.className = 'status success';
+            status.textContent = `✅ Tick interval set to ${hours} hour${hours > 1 ? 's' : ''}`;
+            status.classList.remove('hidden');
+            
+            setTimeout(() => status.classList.add('hidden'), 3000);
+        } catch (error) {
+            status.className = 'status error';
+            status.textContent = '❌ Error: ' + error.message;
+            status.classList.remove('hidden');
         }
     }
     
@@ -844,14 +947,12 @@
         resultsDiv.classList.add('hidden');
         
         try {
-            // Call the election function
             const { data, error } = await _supabase.rpc('run_election', {
                 p_nation_id: selectedElectionNation.id
             });
             
             if (error) throw error;
             
-            // Get the results
             const { data: election } = await _supabase
                 .from('elections')
                 .select('results')
@@ -901,11 +1002,12 @@
         status.classList.remove('hidden');
         
         try {
-            // Increment tick
-            await _supabase.rpc('process_tick');
+            const { data, error } = await _supabase.rpc('process_tick');
+            
+            if (error) throw error;
             
             status.className = 'status success';
-            status.textContent = '✅ Tick advanced successfully!';
+            status.textContent = `✅ Tick advanced! New tick: ${data?.new_tick || '?'} | Interval: ${data?.interval_hours || currentTickInterval}h`;
             
             await loadShardInfo();
             await loadStats();
@@ -918,9 +1020,15 @@
                     .eq('name', 'Alpha Shard')
                     .single();
                 
+                const nextTick = new Date();
+                nextTick.setHours(nextTick.getHours() + currentTickInterval);
+                
                 await _supabase
                     .from('shard')
-                    .update({ current_tick: (shard.current_tick || 0) + 1 })
+                    .update({
+                        current_tick: (shard.current_tick || 0) + 1,
+                        next_tick_at: nextTick.toISOString()
+                    })
                     .eq('name', 'Alpha Shard');
                 
                 // Restore AP
@@ -941,102 +1049,100 @@
         }
     }
     
-async function loadNations() {
-    // This now loads ALL players
-    await loadAllPlayers('all');
-}
+    async function loadNations() {
+        await loadAllPlayers('all');
+    }
 
-let allPlayersCache = [];
+    let allPlayersCache = [];
 
-async function loadAllPlayers(filter) {
-    try {
-        const playersList = document.getElementById('players-list');
-        playersList.innerHTML = '<div class="no-players">Loading...</div>';
+    async function loadAllPlayers(filter) {
+        try {
+            const playersList = document.getElementById('players-list');
+            playersList.innerHTML = '<div class="no-players">Loading...</div>';
 
-        // Get all human factions
-        const { data: factions } = await _supabase
-            .from('factions')
-            .select('id, faction_name, abbreviation, faction_type, nation_id, nation, seats, approval_rating, action_points, is_npc')
-            .eq('is_npc', false)
-            .order('faction_name');
+            const { data: factions } = await _supabase
+                .from('factions')
+                .select('id, faction_name, abbreviation, faction_type, nation_id, nation, seats, approval_rating, action_points, is_npc')
+                .eq('is_npc', false)
+                .order('faction_name');
 
-        allPlayersCache = factions || [];
+            allPlayersCache = factions || [];
 
+            renderPlayers(filter);
+        } catch (error) {
+            console.error('Error loading players:', error);
+            document.getElementById('players-list').innerHTML = '<div class="no-players" style="color:#ff4444;">Error loading players</div>';
+        }
+    }
+
+    function filterPlayers(filter) {
         renderPlayers(filter);
-    } catch (error) {
-        console.error('Error loading players:', error);
-        document.getElementById('players-list').innerHTML = '<div class="no-players" style="color:#ff4444;">Error loading players</div>';
-    }
-}
-
-function filterPlayers(filter) {
-    renderPlayers(filter);
-}
-
-function renderPlayers(filter) {
-    const playersList = document.getElementById('players-list');
-    const countDiv = document.getElementById('player-count');
-
-    let filtered = allPlayersCache;
-    if (filter === 'active') {
-        filtered = allPlayersCache.filter(p => p.nation_id);
-    } else if (filter === 'orphaned') {
-        filtered = allPlayersCache.filter(p => !p.nation_id);
     }
 
-    countDiv.textContent = `Showing ${filtered.length} of ${allPlayersCache.length} player(s)`;
+    function renderPlayers(filter) {
+        const playersList = document.getElementById('players-list');
+        const countDiv = document.getElementById('player-count');
 
-    if (filtered.length === 0) {
-        playersList.innerHTML = '<div class="no-players">No players found</div>';
-        return;
-    }
+        let filtered = allPlayersCache;
+        if (filter === 'active') {
+            filtered = allPlayersCache.filter(p => p.nation_id);
+        } else if (filter === 'orphaned') {
+            filtered = allPlayersCache.filter(p => !p.nation_id);
+        }
 
-    playersList.innerHTML = filtered.map(player => {
-        const hasNation = !!player.nation_id;
-        const borderColor = hasNation ? '#4CAF50' : '#ff4444';
-        const statusBadge = hasNation
-            ? `<span style="background:#1a2a1a; color:#4CAF50; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">${player.nation || 'Unknown'}</span>`
-            : `<span style="background:#2a1a1a; color:#ff4444; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NO NATION</span>`;
+        countDiv.textContent = `Showing ${filtered.length} of ${allPlayersCache.length} player(s)`;
 
-        const statsHTML = hasNation ? `
-            <div style="display:flex; gap:12px; margin-top:6px; font-size:0.75rem; color:#888;">
-                <span>Seats: <strong style="color:#ffcc00;">${player.seats || 0}</strong></span>
-                <span>Approval: <strong style="color:#ffcc00;">${player.approval_rating || 0}%</strong></span>
-                <span>AP: <strong style="color:#ffcc00;">${player.action_points || 0}</strong></span>
-                <span>Type: <strong style="color:#aaa;">${player.faction_type || '—'}</strong></span>
-            </div>
-        ` : `
-            <div style="margin-top:6px; font-size:0.75rem; color:#ff4444; font-style:italic;">
-                Not assigned to any nation — can rejoin via world map
-            </div>
-        `;
+        if (filtered.length === 0) {
+            playersList.innerHTML = '<div class="no-players">No players found</div>';
+            return;
+        }
 
-        return `
-            <div class="player-item" style="border-left-color:${borderColor}; margin-bottom:10px;">
-                <div class="player-info" style="flex:1;">
-                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
-                        <span class="player-party">${player.faction_name || 'Unnamed'} ${player.abbreviation ? '[' + player.abbreviation + ']' : ''}</span>
-                        ${statusBadge}
+        playersList.innerHTML = filtered.map(player => {
+            const hasNation = !!player.nation_id;
+            const borderColor = hasNation ? '#4CAF50' : '#ff4444';
+            const statusBadge = hasNation
+                ? `<span style="background:#1a2a1a; color:#4CAF50; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">${player.nation || 'Unknown'}</span>`
+                : `<span style="background:#2a1a1a; color:#ff4444; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NO NATION</span>`;
+
+            const statsHTML = hasNation ? `
+                <div style="display:flex; gap:12px; margin-top:6px; font-size:0.75rem; color:#888;">
+                    <span>Seats: <strong style="color:#ffcc00;">${player.seats || 0}</strong></span>
+                    <span>Approval: <strong style="color:#ffcc00;">${player.approval_rating || 0}%</strong></span>
+                    <span>AP: <strong style="color:#ffcc00;">${player.action_points || 0}</strong></span>
+                    <span>Type: <strong style="color:#aaa;">${player.faction_type || '—'}</strong></span>
+                </div>
+            ` : `
+                <div style="margin-top:6px; font-size:0.75rem; color:#ff4444; font-style:italic;">
+                    Not assigned to any nation — can rejoin via world map
+                </div>
+            `;
+
+            return `
+                <div class="player-item" style="border-left-color:${borderColor}; margin-bottom:10px;">
+                    <div class="player-info" style="flex:1;">
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+                            <span class="player-party">${player.faction_name || 'Unnamed'} ${player.abbreviation ? '[' + player.abbreviation + ']' : ''}</span>
+                            ${statusBadge}
+                        </div>
+                        <div class="player-id">ID: ${player.id}</div>
+                        ${statsHTML}
                     </div>
-                    <div class="player-id">ID: ${player.id}</div>
-                    ${statsHTML}
-                </div>
-                <div style="display:flex; gap:6px; flex-direction:column;">
-                    ${hasNation ? `
-                        <button class="btn-remove" style="font-size:0.75rem; padding:6px 12px;"
-                            onclick="removePlayer('${player.id}', '${player.nation_id}', '${(player.faction_name || '').replace(/'/g, "\\'")}')">
-                            KICK
+                    <div style="display:flex; gap:6px; flex-direction:column;">
+                        ${hasNation ? `
+                            <button class="btn-remove" style="font-size:0.75rem; padding:6px 12px;"
+                                onclick="removePlayer('${player.id}', '${player.nation_id}', '${(player.faction_name || '').replace(/'/g, "\\'")}')">
+                                KICK
+                            </button>
+                        ` : ''}
+                        <button class="btn-remove" style="background:#aa0000; font-size:0.75rem; padding:6px 12px;"
+                            onclick="deleteParty('${player.id}', '${(player.faction_name || '').replace(/'/g, "\\'")}')">
+                            DELETE
                         </button>
-                    ` : ''}
-                    <button class="btn-remove" style="background:#aa0000; font-size:0.75rem; padding:6px 12px;"
-                        onclick="deleteParty('${player.id}', '${(player.faction_name || '').replace(/'/g, "\\'")}')">
-                        DELETE
-                    </button>
+                    </div>
                 </div>
-            </div>
-        `;
-    }).join('');
-}
+            `;
+        }).join('');
+    }
     
     async function removePlayer(playerId, nationId, partyName) {
         if (!confirm(`Remove ${partyName} from this nation?`)) return;
@@ -1056,22 +1162,22 @@ function renderPlayers(filter) {
     }
 
     async function deleteParty(factionId, partyName) {
-    if (!confirm(`⚠️ PERMANENTLY DELETE "${partyName}"?\n\nThis will:\n• Delete the party completely\n• Redistribute their seats\n• Delete their user account\n\nThis cannot be undone!`)) return;
+        if (!confirm(`⚠️ PERMANENTLY DELETE "${partyName}"?\n\nThis will:\n• Delete the party completely\n• Redistribute their seats\n• Delete their user account\n\nThis cannot be undone!`)) return;
 
-    try {
-        const { data, error } = await _supabase.rpc('admin_delete_party', {
-            p_faction_id: factionId
-        });
+        try {
+            const { data, error } = await _supabase.rpc('admin_delete_party', {
+                p_faction_id: factionId
+            });
 
-        if (error) throw error;
+            if (error) throw error;
 
-        alert(`✅ "${partyName}" deleted!\n\nSeats redistributed: ${data.seats_redistributed}\nRemaining parties: ${data.remaining_parties}`);
-        await loadStats();
-        await loadNations();
-    } catch (error) {
-        alert('❌ Error: ' + error.message);
+            alert(`✅ "${partyName}" deleted!\n\nSeats redistributed: ${data.seats_redistributed}\nRemaining parties: ${data.remaining_parties}`);
+            await loadStats();
+            await loadNations();
+        } catch (error) {
+            alert('❌ Error: ' + error.message);
+        }
     }
-}
     
     async function resetShard() {
         if (!confirm('⚠️ RESET ENTIRE SHARD? This cannot be undone!')) return;
@@ -1086,7 +1192,7 @@ function renderPlayers(filter) {
         
         try {
             const nextTick = new Date();
-            nextTick.setHours(nextTick.getHours() + 8);
+            nextTick.setHours(nextTick.getHours() + currentTickInterval);
             
             await _supabase.from('shard').update({
                 current_date: 'January, 2000',
