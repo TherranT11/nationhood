@@ -123,8 +123,86 @@ function setupWorldMap() {
 /**
  * Render nation intel in the sidebar
  */
-function renderNationIntel(nation) {
+async function renderNationIntel(nation) {
     const sidebar = document.getElementById('world-intel');
+    
+    // Fetch current party count
+    const { count: partyCount } = await _supabase
+        .from('factions')
+        .select('*', { count: 'exact', head: true })
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party')
+        .eq('is_npc', false);
+    
+    const maxParties = nation.max_parties || (nation.government_type === 'Autocracy' ? 4 : 8);
+    const spotsRemaining = maxParties - (partyCount || 0);
+    const isFull = spotsRemaining <= 0;
+    
+    // Generate base description
+    const baseDescription = generateBaseDescription(nation);
+    
+    // Generate stat-based descriptions
+    const statDescriptions = generateStatDescriptions(nation);
+    
+    // Map nation names to flag URLs
+    const flagUrls = {
+        'Melizea': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Melizea.png',
+        'Avelia': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Avelia.png',
+        'Sangreza': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Sangreza.png'
+    };
+    const flagUrl = flagUrls[nation.name] || null;
+    
+    // Determine terminology based on government type
+    const isAutocracy = nation.government_type === 'Autocracy';
+    const partyLabel = isAutocracy ? 'Factions' : 'Parties';
+    
+    sidebar.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
+            <div>
+                <h3 style="color:#ffcc00;font-size:1.2rem;margin-bottom:4px;">${nation.name}</h3>
+                <p style="color:#888;font-size:0.8rem;margin-bottom:0;font-style:italic;">Capital: ${nation.capital || '—'}</p>
+            </div>
+            ${flagUrl ? `<img src="${flagUrl}" alt="${nation.name} flag" style="width:64px;height:auto;border:1px solid #444;border-radius:3px;" />` : ''}
+        </div>
+        <div style="margin-bottom:16px;"></div>
+        
+        <!-- Party/Faction Count -->
+        <div style="background:${isFull ? '#2a1a1a' : '#1a2a1a'};border:1px solid ${isFull ? '#ff4444' : '#4CAF50'};border-radius:6px;padding:12px;margin-bottom:16px;text-align:center;">
+            <div style="font-size:0.7rem;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">${partyLabel}</div>
+            <div style="font-size:1.4rem;font-weight:bold;color:${isFull ? '#ff4444' : '#4CAF50'};">
+                ${partyCount || 0} / ${maxParties}
+            </div>
+            <div style="font-size:0.75rem;color:${isFull ? '#ff4444' : '#aaa'};margin-top:4px;">
+                ${isFull ? '⚠️ FULL — No spots available' : `${spotsRemaining} spot${spotsRemaining !== 1 ? 's' : ''} remaining`}
+            </div>
+        </div>
+        
+        <!-- Key Stats -->
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">
+            ${intelRow('Population', formatNumber(nation.population), '#ffcc00')}
+            ${intelRow('Government', nation.government_type || '—', '#fff')}
+        </div>
+        
+        <!-- Description -->
+        <div style="font-size:0.82rem;color:#ccc;line-height:1.5;margin-bottom:16px;">
+            ${baseDescription}
+        </div>
+        
+        <!-- Stat-based Insights -->
+        ${statDescriptions.length > 0 ? `
+            <div style="border-top:1px solid #333;padding-top:14px;margin-top:14px;">
+                <div style="font-size:0.7rem;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Intelligence Report</div>
+                <div style="font-size:0.8rem;color:#aaa;line-height:1.6;">
+                    ${statDescriptions.map(d => `<p style="margin-bottom:8px;">• ${d}</p>`).join('')}
+                </div>
+            </div>
+        ` : ''}
+        
+        <div style="margin-top: 20px;">
+            ${getNationButton(nation, isFull)}
+        </div>
+    `;
+}
     
     // Generate base description
     const baseDescription = generateBaseDescription(nation);
@@ -316,12 +394,20 @@ function intelRow(label, value, color) {
  * - Viewing own nation: show VIEW NATION
  * - Viewing other nation: show VIEW NATION (as intel only)
  */
-function getNationButton(nation) {
+function getNationButton(nation, isFull = false) {
     const hasNation = userFaction && userFaction.nation_id;
     const isOwnNation = hasNation && userFaction.nation_id === nation.id;
     
     if (!hasNation) {
-        // User hasn't joined a nation yet — show JOIN button
+        // User hasn't joined a nation yet
+        if (isFull) {
+            return `
+                <button disabled
+                    style="width:100%; padding:14px; background:#444; color:#888; border:none; border-radius:4px; font-weight:bold; font-size:0.95rem; cursor:not-allowed; text-transform:uppercase; letter-spacing:1px;">
+                    NATION FULL
+                </button>
+            `;
+        }
         return `
             <button onclick="joinNation('${nation.name}')" 
                 style="width:100%; padding:14px; background:#4CAF50; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:0.95rem; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:0.3s;">
