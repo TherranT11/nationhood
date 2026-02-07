@@ -5,278 +5,210 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nationhood | Policy Builder</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Source+Code+Pro:wght@400;600;700&family=Lora:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/dashboard.css">
     <style>
-        :root {
-            --bg: #0c0c14;
-            --bg-card: #13131f;
-            --bg-input: #1a1a28;
-            --bg-hover: #1e1e30;
-            --border: #2a2a3a;
-            --border-focus: #e6a817;
-            --gold: #e6a817;
-            --gold-dim: #9e7a2e;
-            --gold-bright: #ffd54f;
-            --red: #e74c3c;
-            --green: #2ecc71;
-            --blue: #3498db;
-            --orange: #e67e22;
-            --purple: #9b59b6;
-            --text: #d4d0c8;
-            --text-dim: #7a7670;
-            --text-faint: #4a4640;
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            background: var(--bg);
-            color: var(--text);
-            font-family: 'Lora', Georgia, serif;
-            min-height: 100vh;
-        }
-
-        /* Auth */
+        /* Auth overlay */
         .auth-screen {
             display: flex; align-items: center; justify-content: center;
             min-height: 100vh; flex-direction: column; gap: 20px;
+            background: #121212;
         }
         .auth-screen h1 {
-            font-family: 'Cinzel', serif; color: var(--gold);
-            font-size: 1.6rem; letter-spacing: 3px;
+            color: #ffcc00; font-size: 1.4rem; text-transform: uppercase;
+            letter-spacing: 3px;
         }
         .auth-screen input {
-            padding: 14px 20px; background: var(--bg-input); border: 1px solid var(--border);
-            border-radius: 6px; color: var(--text); font-size: 1rem; width: 280px; text-align: center;
+            padding: 14px 20px; background: #1a1a1a; border: 1px solid #333;
+            border-radius: 6px; color: #e0e0e0; font-size: 1rem; width: 280px; text-align: center;
         }
-        .auth-screen input:focus { outline: none; border-color: var(--gold); }
+        .auth-screen input:focus { outline: none; border-color: #ffcc00; }
         .auth-screen button {
-            padding: 12px 30px; background: var(--gold); color: #000; border: none;
-            border-radius: 6px; font-weight: bold; cursor: pointer; font-family: 'Cinzel', serif;
-            letter-spacing: 1px;
+            padding: 12px 30px; background: linear-gradient(135deg, #ffcc00 0%, #e6b800 100%);
+            color: #121212; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;
+            font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;
         }
 
-        /* Header */
-        .page-header {
-            background: linear-gradient(180deg, #16162a 0%, var(--bg) 100%);
-            border-bottom: 1px solid var(--border);
-            padding: 20px 30px;
+        /* Sub-tabs for list/builder toggle */
+        .sub-tabs {
+            display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 1px solid #333;
         }
-        .page-header::before {
-            content: ''; display: block; height: 2px; margin: -20px -30px 20px;
-            background: linear-gradient(90deg, transparent, var(--gold), transparent);
+        .sub-tab {
+            padding: 10px 20px; background: transparent; border: none; color: #888;
+            font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; cursor: pointer;
+            border-bottom: 2px solid transparent; transition: color 0.2s, border-color 0.2s;
         }
-        .header-row {
-            max-width: 1400px; margin: 0 auto;
-            display: flex; justify-content: space-between; align-items: center;
-        }
-        .header-title {
-            font-family: 'Cinzel', serif; font-size: 1.4rem; font-weight: 900;
-            color: var(--gold); letter-spacing: 2px; text-transform: uppercase;
-        }
-        .header-subtitle { font-size: 0.85rem; color: var(--text-dim); margin-top: 2px; }
-        .header-actions { display: flex; gap: 10px; }
-        .btn {
-            padding: 10px 20px; border: none; border-radius: 5px; font-family: 'Cinzel', serif;
-            font-size: 0.8rem; font-weight: 700; cursor: pointer; letter-spacing: 1px;
-            text-transform: uppercase; transition: all 0.2s;
-        }
-        .btn-gold { background: var(--gold); color: #000; }
-        .btn-gold:hover { box-shadow: 0 4px 15px rgba(230, 168, 23, 0.4); }
-        .btn-dim { background: var(--bg-input); color: var(--text-dim); border: 1px solid var(--border); }
-        .btn-dim:hover { border-color: var(--gold-dim); color: var(--text); }
-        .btn-red { background: var(--red); color: #fff; }
-        .btn-red:hover { box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4); }
-        .btn-green { background: var(--green); color: #fff; }
-
-        /* Main */
-        .main { max-width: 1400px; margin: 0 auto; padding: 25px 30px; }
-
-        /* View Toggle */
-        .view-tabs { display: flex; gap: 4px; margin-bottom: 20px; }
-        .view-tab {
-            padding: 12px 24px; background: var(--bg-card); border: 1px solid var(--border);
-            border-radius: 6px 6px 0 0; color: var(--text-dim); font-family: 'Cinzel', serif;
-            font-size: 0.8rem; font-weight: 700; cursor: pointer; text-transform: uppercase;
-            letter-spacing: 1px; transition: all 0.2s; border-bottom: none;
-        }
-        .view-tab:hover { color: var(--text); }
-        .view-tab.active { color: var(--gold); background: var(--bg-input); border-color: var(--gold-dim); }
+        .sub-tab:hover { color: #ccc; }
+        .sub-tab.active { color: #ffcc00; border-bottom-color: #ffcc00; }
         .view-panel { display: none; }
         .view-panel.active { display: block; }
 
-        /* Search & Filter Bar */
+        /* Filter bar */
         .filter-bar {
             display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;
         }
         .filter-bar input, .filter-bar select {
-            padding: 10px 14px; background: var(--bg-input); border: 1px solid var(--border);
-            border-radius: 5px; color: var(--text); font-size: 0.85rem; font-family: 'Lora', serif;
+            padding: 10px 14px; background: #1a1a1a; border: 1px solid #333;
+            border-radius: 5px; color: #e0e0e0; font-size: 0.85rem;
         }
         .filter-bar input { flex: 1; min-width: 200px; }
-        .filter-bar input:focus, .filter-bar select:focus { outline: none; border-color: var(--gold); }
-        .policy-count { color: var(--text-dim); font-size: 0.85rem; margin-left: auto; }
+        .filter-bar input:focus, .filter-bar select:focus { outline: none; border-color: #ffcc00; }
+        .policy-count { color: #888; font-size: 0.85rem; margin-left: auto; }
 
-        /* Policy Table */
+        /* Policy table */
         .policy-table { width: 100%; border-collapse: collapse; }
         .policy-table th {
-            text-align: left; padding: 12px 14px; background: var(--bg-input);
-            color: var(--gold-dim); font-family: 'Source Code Pro', monospace;
-            font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;
-            border-bottom: 2px solid var(--border);
+            text-align: left; padding: 12px 14px; background: #1a1a1a;
+            color: #888; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;
+            border-bottom: 2px solid #333;
         }
         .policy-table td {
-            padding: 12px 14px; border-bottom: 1px solid var(--border);
+            padding: 12px 14px; border-bottom: 1px solid #222;
             font-size: 0.85rem; vertical-align: middle;
         }
-        .policy-table tr:hover { background: var(--bg-hover); }
-        .policy-name-cell { color: var(--gold-bright); font-weight: 700; }
+        .policy-table tr:hover { background: #1e1e1e; }
+        .policy-name-cell { color: #ffcc00; font-weight: 700; }
+
+        /* Tags */
         .tag {
             display: inline-block; padding: 2px 8px; border-radius: 3px;
-            font-size: 0.7rem; font-weight: 700; font-family: 'Source Code Pro', monospace;
-            letter-spacing: 0.5px; text-transform: uppercase;
+            font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
         }
-        .tag-up { background: #1a2a1a; color: var(--green); border: 1px solid var(--green); }
-        .tag-down { background: #2a1a1a; color: var(--red); border: 1px solid var(--red); }
-        .tag-ideology { background: #1a1a2a; color: #bb8fce; border: 1px solid var(--purple); margin: 1px 2px; }
-        .tag-sector { background: #2a2a1a; color: var(--orange); border: 1px solid var(--orange); }
+        .tag-up { background: #1a2a1a; color: #4CAF50; border: 1px solid #4CAF50; }
+        .tag-down { background: #2a1a1a; color: #ff4444; border: 1px solid #ff4444; }
+        .tag-ideology { background: #1a1a2a; color: #bb86fc; border: 1px solid #9b59b6; margin: 1px 2px; }
+        .tag-sector { background: #2a2a1a; color: #ff9800; border: 1px solid #ff9800; }
+
+        /* Action buttons in table */
         .action-btns { display: flex; gap: 6px; }
         .action-btn {
             padding: 5px 10px; border: none; border-radius: 3px;
-            font-size: 0.7rem; cursor: pointer; font-weight: 700;
-            font-family: 'Source Code Pro', monospace; transition: opacity 0.2s;
+            font-size: 0.7rem; cursor: pointer; font-weight: 700; transition: opacity 0.2s;
         }
         .action-btn:hover { opacity: 0.8; }
-        .action-btn-edit { background: var(--blue); color: #fff; }
-        .action-btn-del { background: var(--red); color: #fff; }
-        .action-btn-dup { background: var(--purple); color: #fff; }
+        .action-btn-edit { background: #2196F3; color: #fff; }
+        .action-btn-del { background: #ff4444; color: #fff; }
+        .action-btn-dup { background: #9b59b6; color: #fff; }
 
-        /* Builder Form */
+        /* Builder sections */
         .builder-section {
-            background: var(--bg-card); border: 1px solid var(--border);
+            background: #1a1a1a; border: 1px solid #2a2a2a;
             border-radius: 8px; padding: 24px; margin-bottom: 20px;
         }
         .builder-section-title {
-            font-family: 'Cinzel', serif; font-size: 0.85rem; color: var(--gold);
-            text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 16px;
-            padding-bottom: 10px; border-bottom: 1px solid var(--border);
+            font-size: 0.85rem; color: #ffcc00; text-transform: uppercase;
+            letter-spacing: 1.5px; margin-bottom: 16px; padding-bottom: 10px;
+            border-bottom: 1px solid #333; font-weight: bold;
         }
         .form-row { display: flex; gap: 16px; margin-bottom: 14px; }
         .form-row > .form-field { flex: 1; }
         .form-field { margin-bottom: 14px; }
         .form-field label {
-            display: block; font-size: 0.75rem; color: var(--text-dim);
+            display: block; font-size: 0.72rem; color: #888;
             text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
-            font-family: 'Source Code Pro', monospace;
         }
         .form-field input, .form-field select, .form-field textarea {
-            width: 100%; padding: 10px 14px; background: var(--bg-input);
-            border: 1px solid var(--border); border-radius: 5px; color: var(--text);
-            font-size: 0.9rem; font-family: 'Lora', serif;
+            width: 100%; padding: 10px 14px; background: #252525;
+            border: 1px solid #333; border-radius: 5px; color: #e0e0e0; font-size: 0.9rem;
         }
         .form-field textarea { min-height: 70px; resize: vertical; line-height: 1.5; }
         .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
-            outline: none; border-color: var(--gold);
+            outline: none; border-color: #ffcc00;
         }
         .form-field input[type="range"] {
-            -webkit-appearance: none; height: 6px; background: var(--border);
+            -webkit-appearance: none; height: 6px; background: #333;
             border-radius: 3px; border: none; padding: 0;
         }
         .form-field input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none; width: 18px; height: 18px;
-            background: var(--gold); border-radius: 50%; cursor: pointer;
+            background: #ffcc00; border-radius: 50%; cursor: pointer;
         }
-        .range-row {
-            display: flex; align-items: center; gap: 12px;
-        }
+        .range-row { display: flex; align-items: center; gap: 12px; }
         .range-row input[type="range"] { flex: 1; }
         .range-value {
-            font-family: 'Source Code Pro', monospace; color: var(--gold-bright);
-            font-size: 1rem; font-weight: 700; min-width: 50px; text-align: right;
+            color: #ffcc00; font-size: 1rem; font-weight: 700; min-width: 50px; text-align: right;
         }
 
-        /* Direction Toggle */
+        /* Direction toggle */
         .direction-toggle { display: flex; gap: 0; }
         .direction-btn {
-            padding: 10px 24px; border: 1px solid var(--border); background: var(--bg-input);
-            color: var(--text-dim); cursor: pointer; font-weight: 700;
-            font-family: 'Source Code Pro', monospace; font-size: 0.85rem; transition: all 0.2s;
+            padding: 10px 24px; border: 1px solid #333; background: #252525;
+            color: #888; cursor: pointer; font-weight: 700; font-size: 0.85rem; transition: all 0.2s;
         }
         .direction-btn:first-child { border-radius: 5px 0 0 5px; }
         .direction-btn:last-child { border-radius: 0 5px 5px 0; }
-        .direction-btn.active-up { background: #1a2a1a; color: var(--green); border-color: var(--green); }
-        .direction-btn.active-down { background: #2a1a1a; color: var(--red); border-color: var(--red); }
+        .direction-btn.active-up { background: #1a2a1a; color: #4CAF50; border-color: #4CAF50; }
+        .direction-btn.active-down { background: #2a1a1a; color: #ff4444; border-color: #ff4444; }
 
-        /* Ideology Spectrum Selector */
-        .ideology-spectrums { margin-bottom: 10px; }
-        .spectrum-row {
-            display: flex; gap: 8px; margin-bottom: 8px; align-items: center;
-        }
+        /* Ideology spectrum */
+        .spectrum-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
         .spectrum-side {
-            flex: 1; padding: 10px 14px; background: var(--bg-input); border: 2px solid var(--border);
+            flex: 1; padding: 10px 14px; background: #252525; border: 2px solid #333;
             border-radius: 5px; text-align: center; cursor: pointer; transition: all 0.2s;
-            font-weight: 700; font-size: 0.85rem;
+            font-weight: 700; font-size: 0.85rem; color: #e0e0e0;
         }
-        .spectrum-side:hover { border-color: var(--text-faint); }
-        .spectrum-side.selected { border-color: var(--gold); background: #2a2a1a; color: var(--gold-bright); }
-        .spectrum-sep { color: var(--text-faint); font-size: 0.8rem; font-weight: 700; }
+        .spectrum-side:hover { border-color: #555; }
+        .spectrum-side.selected { border-color: #ffcc00; background: #2a2a1a; color: #ffcc00; }
+        .spectrum-sep { color: #555; font-size: 0.8rem; font-weight: 700; }
 
-        /* Side Effects */
+        /* Side effects */
         .side-effect-row {
             display: flex; gap: 10px; align-items: center; margin-bottom: 8px;
-            background: var(--bg-input); padding: 10px; border-radius: 5px;
+            background: #252525; padding: 10px; border-radius: 5px;
         }
         .side-effect-row select { flex: 1; }
         .side-effect-row .remove-se {
-            background: var(--red); color: #fff; border: none; border-radius: 3px;
+            background: #ff4444; color: #fff; border: none; border-radius: 3px;
             padding: 6px 10px; cursor: pointer; font-size: 0.75rem; font-weight: 700;
         }
         .add-se-btn {
-            padding: 8px 16px; background: none; border: 2px dashed var(--border);
-            border-radius: 5px; color: var(--gold-dim); cursor: pointer;
-            font-family: 'Cinzel', serif; font-size: 0.8rem; width: 100%; transition: all 0.2s;
+            padding: 8px 16px; background: none; border: 2px dashed #333;
+            border-radius: 5px; color: #888; cursor: pointer; font-size: 0.8rem; width: 100%;
+            transition: all 0.2s;
         }
-        .add-se-btn:hover { border-color: var(--gold); color: var(--gold); }
+        .add-se-btn:hover { border-color: #ffcc00; color: #ffcc00; }
 
-        /* Cost Grid */
+        /* Cost grid */
         .cost-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
 
         /* Checkbox */
         .checkbox-field {
             display: flex; align-items: center; gap: 10px; padding: 12px 14px;
-            background: var(--bg-input); border-radius: 5px; cursor: pointer;
+            background: #252525; border-radius: 5px; cursor: pointer;
         }
-        .checkbox-field input[type="checkbox"] {
-            width: 18px; height: 18px; accent-color: var(--gold);
-        }
+        .checkbox-field input[type="checkbox"] { width: 18px; height: 18px; accent-color: #ffcc00; }
         .checkbox-field span { font-size: 0.9rem; }
 
-        /* Stat Category in Builder */
-        .stat-cat-label {
-            font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
-            letter-spacing: 1px; margin: 12px 0 6px; padding-bottom: 4px;
-            border-bottom: 1px solid var(--border);
+        /* Gold button */
+        .btn-gold {
+            padding: 10px 20px; border: none; border-radius: 5px; font-size: 0.85rem;
+            font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;
+            background: linear-gradient(135deg, #ffcc00 0%, #e6b800 100%); color: #121212;
+            transition: transform 0.2s, box-shadow 0.2s;
         }
-        .cat-gov { color: #3498db; }
-        .cat-econ { color: #2ecc71; }
-        .cat-social { color: #e67e22; }
-        .cat-res { color: #8BC34A; }
-        .cat-other { color: #9b59b6; }
+        .btn-gold:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(255,204,0,0.4); }
+        .btn-dim {
+            padding: 10px 20px; border: 1px solid #333; border-radius: 5px; font-size: 0.85rem;
+            font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;
+            background: #1a1a1a; color: #888; transition: all 0.2s;
+        }
+        .btn-dim:hover { border-color: #ffcc00; color: #e0e0e0; }
 
         /* Status bar */
         .status-bar {
             padding: 12px 18px; border-radius: 5px; margin-bottom: 16px;
             font-weight: 700; font-size: 0.9rem; display: none;
         }
-        .status-bar.success { display: block; background: #1a2a1a; color: var(--green); border: 1px solid var(--green); }
-        .status-bar.error { display: block; background: #2a1a1a; color: var(--red); border: 1px solid var(--red); }
+        .status-bar.success { display: block; background: #1a2a1a; color: #4CAF50; border: 1px solid #4CAF50; }
+        .status-bar.error { display: block; background: #2a1a1a; color: #ff4444; border: 1px solid #ff4444; }
 
-        /* Responsive */
+        .hidden { display: none !important; }
+
         @media (max-width: 900px) {
             .form-row { flex-direction: column; }
             .cost-grid { grid-template-columns: 1fr; }
             .filter-bar { flex-direction: column; }
             .policy-count { margin-left: 0; }
         }
-        .hidden { display: none !important; }
     </style>
 </head>
 <body>
@@ -288,256 +220,265 @@
     <button onclick="checkAuth()">Enter</button>
 </div>
 
-<!-- Main App (hidden until auth) -->
+<!-- Main App -->
 <div id="app" class="hidden">
 
-    <!-- Header -->
-    <div class="page-header">
-        <div class="header-row">
-            <div>
-                <div class="header-title">⚙️ Policy Builder</div>
-                <div class="header-subtitle">Create, edit, and manage policies for all nations</div>
+    <!-- Top Bar (admin version — no player session) -->
+    <div id="top-bar">
+        <div class="top-bar-row1">
+            <div class="top-bar-left">
+                <div class="nation-badge">
+                    <span class="nation-name">Admin</span>
+                </div>
+                <div class="tick-info">
+                    <div class="tick-item">
+                        <div class="tick-label">Tool</div>
+                        <div class="tick-value">Policy Builder</div>
+                    </div>
+                </div>
             </div>
-            <div class="header-actions">
-                <a href="admin.html" class="btn btn-dim">← Admin Panel</a>
+            <div class="top-bar-right">
+                <a href="admin.html" class="party-badge" style="text-decoration:none;">← Admin Panel</a>
             </div>
         </div>
+        <nav class="nav-tabs">
+            <a href="admin.html" class="nav-tab">Admin</a>
+            <a href="policyadmin.html" class="nav-tab active">Policies</a>
+        </nav>
     </div>
 
-    <div class="main">
-        <div id="status-bar" class="status-bar"></div>
+    <!-- Content Area -->
+    <div id="content-area">
+        <div class="panel-padding">
+            <div id="status-bar" class="status-bar"></div>
 
-        <!-- View Tabs -->
-        <div class="view-tabs">
-            <button class="view-tab active" onclick="switchView('list')">📋 All Policies</button>
-            <button class="view-tab" onclick="switchView('builder')">➕ Create Policy</button>
-        </div>
+            <div class="section-header">Policy Administration</div>
 
-        <!-- ============ LIST VIEW ============ -->
-        <div class="view-panel active" id="view-list">
-            <div class="filter-bar">
-                <input type="text" id="search-input" placeholder="Search policies..." oninput="filterPolicies()">
-                <select id="filter-sector" onchange="filterPolicies()">
-                    <option value="">All Sectors</option>
-                </select>
-                <select id="filter-stat" onchange="filterPolicies()">
-                    <option value="">All Stats</option>
-                </select>
-                <select id="filter-ideology" onchange="filterPolicies()">
-                    <option value="">All Ideologies</option>
-                </select>
-                <span class="policy-count" id="policy-count">— policies</span>
+            <div class="sub-tabs">
+                <button class="sub-tab active" onclick="switchView('list')">📋 All Policies</button>
+                <button class="sub-tab" onclick="switchView('builder')">➕ Create Policy</button>
             </div>
 
-            <div style="overflow-x:auto;">
-                <table class="policy-table">
-                    <thead>
-                        <tr>
-                            <th>Policy Name</th>
-                            <th>Sector</th>
-                            <th>Target Stat</th>
-                            <th>Dir</th>
-                            <th>Δ/Tick</th>
-                            <th>Ideology</th>
-                            <th>Cost</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="policy-tbody"></tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- ============ BUILDER VIEW ============ -->
-        <div class="view-panel" id="view-builder">
-
-            <!-- Identity -->
-            <div class="builder-section">
-                <div class="builder-section-title">📝 Policy Identity</div>
-                <div class="form-row">
-                    <div class="form-field">
-                        <label>Policy Name</label>
-                        <input type="text" id="b-name" placeholder="e.g. The Prosperity Gospel Initiative">
-                    </div>
+            <!-- ============ LIST VIEW ============ -->
+            <div class="view-panel active" id="view-list">
+                <div class="filter-bar">
+                    <input type="text" id="search-input" placeholder="Search policies..." oninput="filterPolicies()">
+                    <select id="filter-sector" onchange="filterPolicies()"><option value="">All Sectors</option></select>
+                    <select id="filter-stat" onchange="filterPolicies()"><option value="">All Stats</option></select>
+                    <select id="filter-ideology" onchange="filterPolicies()"><option value="">All Ideologies</option></select>
+                    <span class="policy-count" id="policy-count">— policies</span>
                 </div>
-                <div class="form-field">
-                    <label>Description / Flavor Text</label>
-                    <textarea id="b-desc" placeholder="A brief description of what this policy does and why..."></textarea>
-                </div>
-                <div class="form-row">
-                    <div class="form-field">
-                        <label>Major Sector</label>
-                        <select id="b-major-sector">
-                            <option value="">-- Select --</option>
-                            <option value="ECONOMICS">💰 Economics</option>
-                            <option value="LABOR">👷 Labor</option>
-                            <option value="EDUCATION">📚 Education</option>
-                            <option value="ENERGY">⚡ Energy</option>
-                            <option value="SOCIAL">🏥 Social</option>
-                            <option value="MILITARY">🛡️ Military & Security</option>
-                            <option value="GOVERNANCE">🏛️ Governance</option>
-                            <option value="IMMIGRATION">🌍 Immigration</option>
-                            <option value="INTERNATIONAL">🌐 International</option>
-                        </select>
-                    </div>
-                    <div class="form-field">
-                        <label>Minor Sector</label>
-                        <input type="text" id="b-minor-sector" placeholder="e.g. taxation, civil_rights, welfare">
-                    </div>
+                <div style="overflow-x:auto;">
+                    <table class="policy-table">
+                        <thead>
+                            <tr>
+                                <th>Policy Name</th>
+                                <th>Sector</th>
+                                <th>Target Stat</th>
+                                <th>Dir</th>
+                                <th>Δ/Tick</th>
+                                <th>Ideology</th>
+                                <th>Cost</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="policy-tbody"></tbody>
+                    </table>
                 </div>
             </div>
 
-            <!-- Target Stat -->
-            <div class="builder-section">
-                <div class="builder-section-title">🎯 Target Stat & Direction</div>
-                <div class="form-row">
-                    <div class="form-field">
-                        <label>Target Stat</label>
-                        <select id="b-target-stat">
-                            <option value="">-- Select a stat --</option>
-                            <optgroup label="🏛️ Governance & Security">
-                                <option value="stability">Stability</option>
-                                <option value="civil_unrest">Civil Unrest</option>
-                                <option value="terrorism">Terrorism</option>
-                                <option value="legitimacy">Legitimacy</option>
-                                <option value="efficiency">Efficiency</option>
-                                <option value="freedom_index">Freedom Index</option>
-                                <option value="political_violence">Political Violence</option>
-                                <option value="incarceration_rate">Incarceration Rate</option>
-                                <option value="press_freedom">Press Freedom</option>
-                                <option value="judicial_independence">Judicial Independence</option>
-                                <option value="corruption">Corruption</option>
-                            </optgroup>
-                            <optgroup label="💰 Economics & Labor">
-                                <option value="gdp">GDP</option>
-                                <option value="gdp_growth">GDP Growth</option>
-                                <option value="inflation">Inflation</option>
-                                <option value="foreign_investment">Foreign Investment</option>
-                                <option value="unemployment">Unemployment</option>
-                                <option value="union_strength">Union Strength</option>
-                                <option value="trade_balance">Trade Balance</option>
-                            </optgroup>
-                            <optgroup label="👥 Social & Demographics">
-                                <option value="standard_of_living">Standard of Living</option>
-                                <option value="happiness">Happiness</option>
-                                <option value="crime_rate">Crime Rate</option>
-                                <option value="healthcare_quality">Healthcare Quality</option>
-                                <option value="literacy">Literacy</option>
-                                <option value="social_mobility">Social Mobility</option>
-                                <option value="ethnic_diversity">Ethnic Diversity</option>
-                                <option value="religious">Religious</option>
-                            </optgroup>
-                            <optgroup label="🌍 Resources & Environment">
-                                <option value="arable_land">Arable Land</option>
-                                <option value="oil_and_gas">Oil and Gas</option>
-                                <option value="rare_minerals">Rare Minerals</option>
-                                <option value="energy_generation">Energy Generation</option>
-                                <option value="pollution">Pollution</option>
-                                <option value="food_prices">Food Prices</option>
-                            </optgroup>
-                        </select>
-                    </div>
-                    <div class="form-field">
-                        <label>Direction</label>
-                        <div class="direction-toggle">
-                            <button class="direction-btn active-up" id="dir-up" onclick="setDirection('UP')">▲ UP</button>
-                            <button class="direction-btn" id="dir-down" onclick="setDirection('DOWN')">▼ DOWN</button>
-                        </div>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-field">
-                        <label>Change Per Tick</label>
-                        <div class="range-row">
-                            <input type="range" id="b-change" min="0.1" max="5" step="0.1" value="1" oninput="document.getElementById('b-change-val').textContent=this.value">
-                            <span class="range-value" id="b-change-val">1</span>
+            <!-- ============ BUILDER VIEW ============ -->
+            <div class="view-panel" id="view-builder">
+
+                <!-- Identity -->
+                <div class="builder-section">
+                    <div class="builder-section-title">📝 Policy Identity</div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Policy Name</label>
+                            <input type="text" id="b-name" placeholder="e.g. The Prosperity Gospel Initiative">
                         </div>
                     </div>
                     <div class="form-field">
-                        <label>Duration (Months)</label>
-                        <div class="range-row">
-                            <input type="range" id="b-duration" min="1" max="36" step="1" value="12" oninput="document.getElementById('b-duration-val').textContent=this.value+'mo'">
-                            <span class="range-value" id="b-duration-val">12mo</span>
+                        <label>Description / Flavor Text</label>
+                        <textarea id="b-desc" placeholder="A brief description of what this policy does and why..."></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Major Sector</label>
+                            <select id="b-major-sector">
+                                <option value="">-- Select --</option>
+                                <option value="ECONOMICS">💰 Economics</option>
+                                <option value="LABOR">👷 Labor</option>
+                                <option value="EDUCATION">📚 Education</option>
+                                <option value="ENERGY">⚡ Energy</option>
+                                <option value="SOCIAL">🏥 Social</option>
+                                <option value="MILITARY">🛡️ Military & Security</option>
+                                <option value="GOVERNANCE">🏛️ Governance</option>
+                                <option value="IMMIGRATION">🌍 Immigration</option>
+                                <option value="INTERNATIONAL">🌐 International</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label>Minor Sector</label>
+                            <input type="text" id="b-minor-sector" placeholder="e.g. taxation, civil_rights, welfare">
                         </div>
                     </div>
                 </div>
-                <div class="form-row">
-                    <div class="form-field">
-                        <label>Stat Floor (min value)</label>
-                        <div class="range-row">
-                            <input type="range" id="b-floor" min="0" max="100" step="1" value="0" oninput="document.getElementById('b-floor-val').textContent=this.value">
-                            <span class="range-value" id="b-floor-val">0</span>
+
+                <!-- Target Stat -->
+                <div class="builder-section">
+                    <div class="builder-section-title">🎯 Target Stat & Direction</div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Target Stat</label>
+                            <select id="b-target-stat">
+                                <option value="">-- Select a stat --</option>
+                                <optgroup label="🏛️ Governance & Security">
+                                    <option value="stability">Stability</option>
+                                    <option value="civil_unrest">Civil Unrest</option>
+                                    <option value="terrorism">Terrorism</option>
+                                    <option value="legitimacy">Legitimacy</option>
+                                    <option value="efficiency">Efficiency</option>
+                                    <option value="freedom_index">Freedom Index</option>
+                                    <option value="political_violence">Political Violence</option>
+                                    <option value="incarceration_rate">Incarceration Rate</option>
+                                    <option value="press_freedom">Press Freedom</option>
+                                    <option value="judicial_independence">Judicial Independence</option>
+                                    <option value="corruption">Corruption</option>
+                                </optgroup>
+                                <optgroup label="💰 Economics & Labor">
+                                    <option value="gdp">GDP</option>
+                                    <option value="gdp_growth">GDP Growth</option>
+                                    <option value="inflation">Inflation</option>
+                                    <option value="foreign_investment">Foreign Investment</option>
+                                    <option value="unemployment">Unemployment</option>
+                                    <option value="union_strength">Union Strength</option>
+                                    <option value="trade_balance">Trade Balance</option>
+                                </optgroup>
+                                <optgroup label="👥 Social & Demographics">
+                                    <option value="standard_of_living">Standard of Living</option>
+                                    <option value="happiness">Happiness</option>
+                                    <option value="crime_rate">Crime Rate</option>
+                                    <option value="healthcare_quality">Healthcare Quality</option>
+                                    <option value="literacy">Literacy</option>
+                                    <option value="social_mobility">Social Mobility</option>
+                                    <option value="ethnic_diversity">Ethnic Diversity</option>
+                                    <option value="religious">Religious</option>
+                                </optgroup>
+                                <optgroup label="🌍 Resources & Environment">
+                                    <option value="arable_land">Arable Land</option>
+                                    <option value="oil_and_gas">Oil and Gas</option>
+                                    <option value="rare_minerals">Rare Minerals</option>
+                                    <option value="energy_generation">Energy Generation</option>
+                                    <option value="pollution">Pollution</option>
+                                    <option value="food_prices">Food Prices</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label>Direction</label>
+                            <div class="direction-toggle">
+                                <button class="direction-btn active-up" id="dir-up" onclick="setDirection('UP')">▲ UP</button>
+                                <button class="direction-btn" id="dir-down" onclick="setDirection('DOWN')">▼ DOWN</button>
+                            </div>
                         </div>
                     </div>
-                    <div class="form-field">
-                        <label>Stat Ceiling (max value)</label>
-                        <div class="range-row">
-                            <input type="range" id="b-ceiling" min="0" max="100" step="1" value="100" oninput="document.getElementById('b-ceiling-val').textContent=this.value">
-                            <span class="range-value" id="b-ceiling-val">100</span>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Change Per Tick</label>
+                            <div class="range-row">
+                                <input type="range" id="b-change" min="0.1" max="5" step="0.1" value="1" oninput="document.getElementById('b-change-val').textContent=this.value">
+                                <span class="range-value" id="b-change-val">1</span>
+                            </div>
+                        </div>
+                        <div class="form-field">
+                            <label>Duration (Months)</label>
+                            <div class="range-row">
+                                <input type="range" id="b-duration" min="1" max="36" step="1" value="12" oninput="document.getElementById('b-duration-val').textContent=this.value+'mo'">
+                                <span class="range-value" id="b-duration-val">12mo</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Stat Floor (min value)</label>
+                            <div class="range-row">
+                                <input type="range" id="b-floor" min="0" max="100" step="1" value="0" oninput="document.getElementById('b-floor-val').textContent=this.value">
+                                <span class="range-value" id="b-floor-val">0</span>
+                            </div>
+                        </div>
+                        <div class="form-field">
+                            <label>Stat Ceiling (max value)</label>
+                            <div class="range-row">
+                                <input type="range" id="b-ceiling" min="0" max="100" step="1" value="100" oninput="document.getElementById('b-ceiling-val').textContent=this.value">
+                                <span class="range-value" id="b-ceiling-val">100</span>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Ideologies -->
-            <div class="builder-section">
-                <div class="builder-section-title">🗳️ Ideologies (1–5, no opposing pairs)</div>
-                <div class="ideology-spectrums" id="ideology-builder"></div>
-                <div style="color:var(--text-dim); font-size:0.8rem; margin-top:8px;">
-                    Selected: <strong style="color:var(--gold);" id="ideo-count">0</strong> / 5 — 
-                    <span id="ideo-list" style="color:var(--gold-bright);">None</span>
-                </div>
-            </div>
-
-            <!-- Side Effects -->
-            <div class="builder-section">
-                <div class="builder-section-title">⚡ Side Effects (optional secondary stat changes)</div>
-                <div id="side-effects-container"></div>
-                <button class="add-se-btn" onclick="addSideEffect()">+ Add Side Effect</button>
-            </div>
-
-            <!-- Costs -->
-            <div class="builder-section">
-                <div class="builder-section-title">💰 Financial Impact</div>
-                <div class="cost-grid">
-                    <div class="form-field">
-                        <label>Upfront Cost</label>
-                        <input type="number" id="b-upfront" value="0" min="0" step="1">
-                    </div>
-                    <div class="form-field">
-                        <label>Cost Relief (budget gain)</label>
-                        <input type="number" id="b-relief" value="0" min="0" step="1">
-                    </div>
-                    <div class="form-field">
-                        <label>Ongoing Cost / Tick</label>
-                        <input type="number" id="b-ongoing" value="0" min="0" step="1">
+                <!-- Ideologies -->
+                <div class="builder-section">
+                    <div class="builder-section-title">🗳️ Ideologies (1–5, no opposing pairs)</div>
+                    <div id="ideology-builder"></div>
+                    <div style="color:#888; font-size:0.8rem; margin-top:8px;">
+                        Selected: <strong style="color:#ffcc00;" id="ideo-count">0</strong> / 5 —
+                        <span id="ideo-list" style="color:#ffcc00;">None</span>
                     </div>
                 </div>
-            </div>
 
-            <!-- Approval & Flags -->
-            <div class="builder-section">
-                <div class="builder-section-title">📊 Approval & Rules</div>
-                <div class="form-row">
-                    <div class="form-field">
-                        <label>Approval Impact (when passed)</label>
-                        <div class="range-row">
-                            <input type="range" id="b-approval" min="-10" max="10" step="1" value="0" oninput="updateApprovalLabel()">
-                            <span class="range-value" id="b-approval-val" style="min-width:80px;">0 (neutral)</span>
+                <!-- Side Effects -->
+                <div class="builder-section">
+                    <div class="builder-section-title">⚡ Side Effects (optional secondary stat changes)</div>
+                    <div id="side-effects-container"></div>
+                    <button class="add-se-btn" onclick="addSideEffect()">+ Add Side Effect</button>
+                </div>
+
+                <!-- Costs -->
+                <div class="builder-section">
+                    <div class="builder-section-title">💰 Financial Impact</div>
+                    <div class="cost-grid">
+                        <div class="form-field">
+                            <label>Upfront Cost</label>
+                            <input type="number" id="b-upfront" value="0" min="0" step="1">
+                        </div>
+                        <div class="form-field">
+                            <label>Cost Relief (budget gain)</label>
+                            <input type="number" id="b-relief" value="0" min="0" step="1">
+                        </div>
+                        <div class="form-field">
+                            <label>Ongoing Cost / Tick</label>
+                            <input type="number" id="b-ongoing" value="0" min="0" step="1">
                         </div>
                     </div>
                 </div>
-                <label class="checkbox-field">
-                    <input type="checkbox" id="b-one-time">
-                    <span>One-time only — once enacted in a nation, cannot be enacted again</span>
-                </label>
+
+                <!-- Approval & Flags -->
+                <div class="builder-section">
+                    <div class="builder-section-title">📊 Approval & Rules</div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Approval Impact (when passed)</label>
+                            <div class="range-row">
+                                <input type="range" id="b-approval" min="-10" max="10" step="1" value="0" oninput="updateApprovalLabel()">
+                                <span class="range-value" id="b-approval-val" style="min-width:80px;">0 (neutral)</span>
+                            </div>
+                        </div>
+                    </div>
+                    <label class="checkbox-field">
+                        <input type="checkbox" id="b-one-time">
+                        <span>One-time only — once enacted in a nation, cannot be enacted again</span>
+                    </label>
+                </div>
+
+                <!-- Submit -->
+                <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:10px; margin-bottom:40px;">
+                    <button class="btn-dim" onclick="resetBuilder()">Clear Form</button>
+                    <button class="btn-gold" id="submit-policy-btn" onclick="savePolicy()">✅ Create Policy</button>
+                </div>
             </div>
 
-            <!-- Submit -->
-            <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:10px;">
-                <button class="btn btn-dim" onclick="resetBuilder()">Clear Form</button>
-                <button class="btn btn-gold" id="submit-policy-btn" onclick="savePolicy()">✅ Create Policy</button>
-            </div>
         </div>
     </div>
 </div>
@@ -570,8 +511,8 @@
     let filteredPolicies = [];
     let editingPolicyId = null;
     let selectedDirection = 'UP';
-    let selectedIdeologies = {}; // { axisIndex: 'left' or 'right' }
-    let sideEffects = []; // [ { stat, direction, amount } ]
+    let selectedIdeologies = {};
+    let sideEffects = [];
 
     // ========== AUTH ==========
     function checkAuth() {
@@ -604,9 +545,9 @@
 
     // ========== VIEW SWITCHING ==========
     function switchView(view) {
-        document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
-        document.querySelector(`.view-tab[onclick="switchView('${view}')"]`).classList.add('active');
+        document.querySelector(`.sub-tab[onclick="switchView('${view}')"]`).classList.add('active');
         document.getElementById(`view-${view}`).classList.add('active');
     }
 
@@ -616,16 +557,11 @@
         const stats = [...new Set(allPolicies.map(p => p.target_stat).filter(Boolean))].sort();
         const ideologies = [...new Set(allPolicies.map(p => p.ideology).filter(Boolean))].sort();
 
-        const sectorSel = document.getElementById('filter-sector');
-        sectorSel.innerHTML = '<option value="">All Sectors</option>' +
+        document.getElementById('filter-sector').innerHTML = '<option value="">All Sectors</option>' +
             sectors.map(s => `<option value="${s}">${s}</option>`).join('');
-
-        const statSel = document.getElementById('filter-stat');
-        statSel.innerHTML = '<option value="">All Stats</option>' +
+        document.getElementById('filter-stat').innerHTML = '<option value="">All Stats</option>' +
             stats.map(s => `<option value="${s}">${formatStat(s)}</option>`).join('');
-
-        const ideoSel = document.getElementById('filter-ideology');
-        ideoSel.innerHTML = '<option value="">All Ideologies</option>' +
+        document.getElementById('filter-ideology').innerHTML = '<option value="">All Ideologies</option>' +
             ideologies.map(i => `<option value="${i}">${i}</option>`).join('');
     }
 
@@ -650,7 +586,7 @@
         const tbody = document.getElementById('policy-tbody');
 
         if (filteredPolicies.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--text-dim); padding:30px;">No policies found.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#888; padding:30px;">No policies found.</td></tr>';
             return;
         }
 
@@ -668,12 +604,12 @@
             return `
                 <tr>
                     <td class="policy-name-cell">${p.policy_name || '—'}</td>
-                    <td><span class="tag tag-sector">${p.major_sector || '—'}</span><br><span style="font-size:0.75rem;color:var(--text-dim);">${p.minor_sector || ''}</span></td>
+                    <td><span class="tag tag-sector">${p.major_sector || '—'}</span><br><span style="font-size:0.75rem;color:#888;">${p.minor_sector || ''}</span></td>
                     <td>${formatStat(p.target_stat)}</td>
                     <td>${dir}</td>
-                    <td style="font-family:'Source Code Pro',monospace;">${p.stat_change_per_tick || '—'}</td>
+                    <td style="font-family:monospace;">${p.stat_change_per_tick || '—'}</td>
                     <td>${ideologies}</td>
-                    <td style="font-family:'Source Code Pro',monospace;">${cost}</td>
+                    <td style="font-family:monospace;">${cost}</td>
                     <td>
                         <div class="action-btns">
                             <button class="action-btn action-btn-edit" onclick="editPolicy('${p.id}')">Edit</button>
@@ -737,7 +673,6 @@
         document.getElementById('b-ceiling').value = p.stat_ceiling ?? 100;
         document.getElementById('b-ceiling-val').textContent = p.stat_ceiling ?? 100;
 
-        // Ideologies
         selectedIdeologies = {};
         const ideos = p.ideologies || (p.ideology ? [p.ideology] : []);
         ideos.forEach(ideo => {
@@ -748,7 +683,6 @@
         });
         renderIdeologyBuilder();
 
-        // Side effects
         sideEffects = p.side_effects || [];
         renderSideEffects();
 
@@ -849,7 +783,7 @@
         const val = parseInt(document.getElementById('b-approval').value);
         const label = val > 0 ? `+${val} (popular)` : val < 0 ? `${val} (unpopular)` : '0 (neutral)';
         document.getElementById('b-approval-val').textContent = label;
-        document.getElementById('b-approval-val').style.color = val > 0 ? 'var(--green)' : val < 0 ? 'var(--red)' : 'var(--gold)';
+        document.getElementById('b-approval-val').style.color = val > 0 ? '#4CAF50' : val < 0 ? '#ff4444' : '#ffcc00';
     }
 
     // ========== SAVE POLICY ==========
@@ -863,7 +797,6 @@
         const ideologies = getSelectedIdeologies();
         if (ideologies.length === 0) { alert('Please select at least 1 ideology.'); return; }
 
-        // Clean side effects
         const cleanSE = sideEffects.filter(se => se.stat && se.amount > 0);
 
         const policyData = {
