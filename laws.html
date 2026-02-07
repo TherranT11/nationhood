@@ -349,7 +349,7 @@ initPage('laws', async (state) => {
     await loadLawsData();
     
     if (isAutocracy) {
-        const hf = detectHeadFaction(allParties, allPartySeats, currentFaction?.id);
+        const hf = await detectHeadFaction(_supabase, currentNation.id, allParties, allPartySeats, currentFaction?.id);
         headFactionId = hf.headFactionId;
         isHeadFaction = hf.isHeadFaction;
     }
