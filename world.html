@@ -79,7 +79,7 @@ let userFaction = null;
 initPage('world', async (state) => {
     userFaction = state.faction;
     setupWorldMap();
-});
+}, false);
 
 /**
  * Setup click handlers for the world map
