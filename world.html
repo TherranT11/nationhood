@@ -12,9 +12,9 @@
 
     <style>
         /* Default nation fill colors (unselected) */
-        #Melizea.land { fill: #e6c84b; }    /* soft yellow */
-        #Avelia.land { fill: #d98a9b; }      /* soft pink */
-        #Sangreza.land { fill: #4a9edd; }    /* blue */
+        #Melizea.land { fill: #e6c84b; }
+        #Avelia.land { fill: #d98a9b; }
+        #Sangreza.land { fill: #4a9edd; }
 
         /* Selected overrides */
         #Melizea.land.selected-nation { fill: #ffd700; }
@@ -89,16 +89,13 @@ function setupWorldMap() {
         path.addEventListener('click', async (e) => {
             e.stopPropagation();
             
-            // Update selection highlight
             document.querySelectorAll('.land').forEach(l => l.classList.remove('selected-nation'));
             e.target.classList.add('selected-nation');
             
-            // Get nation name from data attribute
             const name = e.target.getAttribute('data-nation-name');
             const sidebar = document.getElementById('world-intel');
             sidebar.innerHTML = '<p style="color:#888;font-style:italic;">Loading ' + name + '…</p>';
             
-            // Fetch nation data
             try {
                 const { data: nation, error } = await _supabase
                     .from('nations')
@@ -138,21 +135,16 @@ async function renderNationIntel(nation) {
     const spotsRemaining = maxParties - (partyCount || 0);
     const isFull = spotsRemaining <= 0;
     
-    // Generate base description
     const baseDescription = generateBaseDescription(nation);
-    
-    // Generate stat-based descriptions
     const statDescriptions = generateStatDescriptions(nation);
     
-    // Map nation names to flag URLs
     const flagUrls = {
         'Melizea': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Melizea.png',
         'Avelia': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Avelia.png',
-        'Sangreza': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Sangreza.png'
+        'Sangreza': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/sangreza.png'
     };
     const flagUrl = flagUrls[nation.name] || null;
     
-    // Determine terminology based on government type
     const isAutocracy = nation.government_type === 'Autocracy';
     const partyLabel = isAutocracy ? 'Factions' : 'Parties';
     
@@ -203,57 +195,6 @@ async function renderNationIntel(nation) {
         </div>
     `;
 }
-    
-    // Generate base description
-    const baseDescription = generateBaseDescription(nation);
-    
-    // Generate stat-based descriptions
-    const statDescriptions = generateStatDescriptions(nation);
-    
-    // Map nation names to flag URLs
-    const flagUrls = {
-        'Melizea': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Melizea.png',
-        'Avelia': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Avelia.png',
-        'Sangreza': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Sangreza.png'
-    };
-    const flagUrl = flagUrls[nation.name] || null;
-    
-    sidebar.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
-            <div>
-                <h3 style="color:#ffcc00;font-size:1.2rem;margin-bottom:4px;">${nation.name}</h3>
-                <p style="color:#888;font-size:0.8rem;margin-bottom:0;font-style:italic;">Capital: ${nation.capital || '—'}</p>
-            </div>
-            ${flagUrl ? `<img src="${flagUrl}" alt="${nation.name} flag" style="width:64px;height:auto;border:1px solid #444;border-radius:3px;" />` : ''}
-        </div>
-        <div style="margin-bottom:16px;"></div>
-        
-        <!-- Key Stats -->
-        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">
-            ${intelRow('Population', formatNumber(nation.population), '#ffcc00')}
-            ${intelRow('Government', nation.government_type || '—', '#fff')}
-        </div>
-        
-        <!-- Description -->
-        <div style="font-size:0.82rem;color:#ccc;line-height:1.5;margin-bottom:16px;">
-            ${baseDescription}
-        </div>
-        
-        <!-- Stat-based Insights -->
-        ${statDescriptions.length > 0 ? `
-            <div style="border-top:1px solid #333;padding-top:14px;margin-top:14px;">
-                <div style="font-size:0.7rem;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Intelligence Report</div>
-                <div style="font-size:0.8rem;color:#aaa;line-height:1.6;">
-                    ${statDescriptions.map(d => `<p style="margin-bottom:8px;">• ${d}</p>`).join('')}
-                </div>
-            </div>
-        ` : ''}
-        
-        <div style="margin-top: 20px;">
-            ${getNationButton(nation)}
-        </div>
-    `;
-}
 
 /**
  * Generate base description based on population size
@@ -283,95 +224,32 @@ function generateBaseDescription(nation) {
 function generateStatDescriptions(nation) {
     const descriptions = [];
     
-    // === RESOURCES (75+) ===
-    if (nation.arable_land >= 75) {
-        descriptions.push("Fertile agricultural lands produce abundant crops, making this country a regional breadbasket.");
-    }
-    if (nation.rare_minerals >= 75) {
-        descriptions.push("Rich deposits of rare earth minerals make this country a key player in global supply chains.");
-    }
-    if (nation.oil_and_gas >= 75) {
-        descriptions.push("Vast petroleum reserves have shaped the economy and grant significant geopolitical leverage.");
-    }
-    
-    // === PROBLEMS (60+) ===
-    if (nation.civil_unrest >= 60) {
-        descriptions.push("Civil unrest is widespread, with protests and riots frequently disrupting daily life.");
-    }
-    if (nation.crime_rate >= 60) {
-        descriptions.push("High crime rates plague urban centers, straining law enforcement resources.");
-    }
-    if (nation.pollution >= 60) {
-        descriptions.push("Industrial pollution has caused significant environmental damage across the nation.");
-    }
-    if (nation.corruption >= 60) {
-        descriptions.push("Government corruption is endemic, eroding public trust in institutions.");
-    }
-    if (nation.terrorism >= 60) {
-        descriptions.push("Domestic terrorism poses an ongoing security threat to the population.");
-    }
-    if (nation.political_violence >= 60) {
-        descriptions.push("Political violence is common, with clashes between opposing factions.");
-    }
-    if (nation.poverty_rate >= 60) {
-        descriptions.push("Widespread poverty affects a significant portion of the population.");
-    }
-    if (nation.unemployment >= 60) {
-        descriptions.push("High unemployment has left many citizens struggling to find work.");
-    }
-    
-    // === POSITIVE TRAITS (70+) ===
-    if (nation.happiness >= 70) {
-        descriptions.push("Citizens report high levels of satisfaction and national well-being.");
-    }
-    if (nation.literacy >= 85) {
-        descriptions.push("A highly educated population drives innovation and economic growth.");
-    }
-    if (nation.healthcare_quality >= 70) {
-        descriptions.push("Quality healthcare ensures a high standard of living for citizens.");
-    }
-    if (nation.freedom_index >= 70) {
-        descriptions.push("Strong civil liberties protect individual rights and freedoms.");
-    }
-    if (nation.standard_of_living >= 70) {
-        descriptions.push("A high standard of living provides comfort and opportunity for most citizens.");
-    }
-    
-    // === NEGATIVE TRAITS (30 or below) ===
-    if (nation.stability <= 30) {
-        descriptions.push("Political instability threatens the nation's future and deters foreign investment.");
-    }
-    if (nation.freedom_index <= 30) {
-        descriptions.push("Civil liberties remain heavily restricted under authoritarian governance.");
-    }
-    if (nation.legitimacy <= 30) {
-        descriptions.push("The government struggles to maintain public trust and legitimacy.");
-    }
-    if (nation.happiness <= 30) {
-        descriptions.push("National morale is low, with widespread dissatisfaction among the populace.");
-    }
-    if (nation.healthcare_quality <= 30) {
-        descriptions.push("Healthcare infrastructure is severely lacking, affecting public health outcomes.");
-    }
-    
-    // === ECONOMIC (special thresholds) ===
-    if (nation.GDP >= 100) {
-        descriptions.push("A powerful economy makes this country a major force in regional trade.");
-    }
-    if (nation.debt >= 80) {
-        descriptions.push("Mounting national debt threatens long-term economic stability.");
-    }
-    if (nation.inflation >= 70) {
-        descriptions.push("Runaway inflation has eroded purchasing power and savings.");
-    }
-    
-    // === DEMOGRAPHIC ===
-    if (nation.population_growth <= 30) {
-        descriptions.push("Population decline poses challenges for the workforce and social services.");
-    }
-    if (nation.emigration >= 70) {
-        descriptions.push("Brain drain is a serious concern as skilled workers seek opportunities abroad.");
-    }
+    if (nation.arable_land >= 75) descriptions.push("Fertile agricultural lands produce abundant crops, making this country a regional breadbasket.");
+    if (nation.rare_minerals >= 75) descriptions.push("Rich deposits of rare earth minerals make this country a key player in global supply chains.");
+    if (nation.oil_and_gas >= 75) descriptions.push("Vast petroleum reserves have shaped the economy and grant significant geopolitical leverage.");
+    if (nation.civil_unrest >= 60) descriptions.push("Civil unrest is widespread, with protests and riots frequently disrupting daily life.");
+    if (nation.crime_rate >= 60) descriptions.push("High crime rates plague urban centers, straining law enforcement resources.");
+    if (nation.pollution >= 60) descriptions.push("Industrial pollution has caused significant environmental damage across the nation.");
+    if (nation.corruption >= 60) descriptions.push("Government corruption is endemic, eroding public trust in institutions.");
+    if (nation.terrorism >= 60) descriptions.push("Domestic terrorism poses an ongoing security threat to the population.");
+    if (nation.political_violence >= 60) descriptions.push("Political violence is common, with clashes between opposing factions.");
+    if (nation.poverty_rate >= 60) descriptions.push("Widespread poverty affects a significant portion of the population.");
+    if (nation.unemployment >= 60) descriptions.push("High unemployment has left many citizens struggling to find work.");
+    if (nation.happiness >= 70) descriptions.push("Citizens report high levels of satisfaction and national well-being.");
+    if (nation.literacy >= 85) descriptions.push("A highly educated population drives innovation and economic growth.");
+    if (nation.healthcare_quality >= 70) descriptions.push("Quality healthcare ensures a high standard of living for citizens.");
+    if (nation.freedom_index >= 70) descriptions.push("Strong civil liberties protect individual rights and freedoms.");
+    if (nation.standard_of_living >= 70) descriptions.push("A high standard of living provides comfort and opportunity for most citizens.");
+    if (nation.stability <= 30) descriptions.push("Political instability threatens the nation's future and deters foreign investment.");
+    if (nation.freedom_index <= 30) descriptions.push("Civil liberties remain heavily restricted under authoritarian governance.");
+    if (nation.legitimacy <= 30) descriptions.push("The government struggles to maintain public trust and legitimacy.");
+    if (nation.happiness <= 30) descriptions.push("National morale is low, with widespread dissatisfaction among the populace.");
+    if (nation.healthcare_quality <= 30) descriptions.push("Healthcare infrastructure is severely lacking, affecting public health outcomes.");
+    if (nation.GDP >= 100) descriptions.push("A powerful economy makes this country a major force in regional trade.");
+    if (nation.debt >= 80) descriptions.push("Mounting national debt threatens long-term economic stability.");
+    if (nation.inflation >= 70) descriptions.push("Runaway inflation has eroded purchasing power and savings.");
+    if (nation.population_growth <= 30) descriptions.push("Population decline poses challenges for the workforce and social services.");
+    if (nation.emigration >= 70) descriptions.push("Brain drain is a serious concern as skilled workers seek opportunities abroad.");
     
     return descriptions;
 }
@@ -390,39 +268,18 @@ function intelRow(label, value, color) {
 
 /**
  * Get the appropriate button for the nation sidebar
- * - No nation assigned: show JOIN NATION
- * - Viewing own nation: show VIEW NATION
- * - Viewing other nation: show VIEW NATION (as intel only)
  */
 function getNationButton(nation, isFull = false) {
     const hasNation = userFaction && userFaction.nation_id;
-    const isOwnNation = hasNation && userFaction.nation_id === nation.id;
     
     if (!hasNation) {
-        // User hasn't joined a nation yet
         if (isFull) {
-            return `
-                <button disabled
-                    style="width:100%; padding:14px; background:#444; color:#888; border:none; border-radius:4px; font-weight:bold; font-size:0.95rem; cursor:not-allowed; text-transform:uppercase; letter-spacing:1px;">
-                    NATION FULL
-                </button>
-            `;
+            return `<button disabled style="width:100%; padding:14px; background:#444; color:#888; border:none; border-radius:4px; font-weight:bold; font-size:0.95rem; cursor:not-allowed; text-transform:uppercase; letter-spacing:1px;">NATION FULL</button>`;
         }
-        return `
-            <button onclick="joinNation('${nation.name}')" 
-                style="width:100%; padding:14px; background:#4CAF50; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:0.95rem; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:0.3s;">
-                JOIN ${nation.name.toUpperCase()}
-            </button>
-        `;
+        return `<button onclick="joinNation('${nation.name}')" style="width:100%; padding:14px; background:#4CAF50; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:0.95rem; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:0.3s;">JOIN ${nation.name.toUpperCase()}</button>`;
     }
     
-    // User has a nation — show VIEW button
-    return `
-        <button onclick="window.location.href='${nation.name.toLowerCase()}.html'" 
-            style="width:100%; padding:14px; background:#ffcc00; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:0.95rem; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:0.3s;">
-            VIEW ${nation.name.toUpperCase()}
-        </button>
-    `;
+    return `<button onclick="window.location.href='${nation.name.toLowerCase()}.html'" style="width:100%; padding:14px; background:#ffcc00; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:0.95rem; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:0.3s;">VIEW ${nation.name.toUpperCase()}</button>`;
 }
 
 /**
@@ -430,16 +287,6 @@ function getNationButton(nation, isFull = false) {
  */
 function joinNation(nationName) {
     window.location.href = `createparty.html?nation=${nationName.toLowerCase()}`;
-}
-
-/**
- * Get color based on stability value
- */
-function getStabilityColor(value) {
-    if (value == null) return '#666';
-    if (value >= 70) return '#4CAF50';
-    if (value >= 40) return '#ff9800';
-    return '#ff4444';
 }
 </script>
 
