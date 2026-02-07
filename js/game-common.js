@@ -4,12 +4,13 @@
  * Single source of truth for:
  *   - Seat loading (autocracy vs democracy)
  *   - Head faction detection
+ *   - Coalition fetching (government_formations → active_coalitions)
  *   - Policy compatibility filtering
  *   - Bill support calculation
  *   - Vote tally syncing
  *   - Game constants & utility formatters
  *
- * Used by: laws.html, bill.html (and any future legislative pages)
+ * Used by: laws.html, bill.html, government.html, parties.html
  */
 
 // ==================== CONSTANTS ====================
@@ -142,6 +143,58 @@ async function detectHeadFaction(supabase, nationId, allParties, allPartySeats, 
         headFactionId: top.id,
         isHeadFaction: currentFactionId === top.id
     };
+}
+
+
+// ==================== COALITION FETCHING ====================
+
+/**
+ * Fetch the active coalition/government for a nation.
+ *
+ * Checks government_formations (status='formed') first, then falls back
+ * to active_coalitions. Returns a normalised object with party_ids,
+ * lead_party_id, and ministry_allocations so every consumer gets the
+ * same shape.
+ *
+ * @param {object} supabase  - Supabase client
+ * @param {string} nationId  - Nation UUID
+ * @returns {Promise<object|null>} Normalised coalition object or null
+ */
+async function fetchActiveCoalition(supabase, nationId) {
+    // Try government_formations first (newer system)
+    const { data: newGov } = await supabase
+        .from('government_formations')
+        .select('*')
+        .eq('nation_id', nationId)
+        .eq('status', 'formed')
+        .order('formed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (newGov) {
+        const pmPartyId = newGov.ministry_assignments?.prime_minister || newGov.proposed_by;
+        return {
+            id: newGov.id,
+            nation_id: newGov.nation_id,
+            election_id: newGov.election_id,
+            party_ids: newGov.party_ids || [],
+            lead_party_id: pmPartyId,
+            ministry_allocations: newGov.ministry_assignments || {},
+            formed_at: newGov.formed_at,
+            _source: 'government_formations'
+        };
+    }
+
+    // Fallback: active_coalitions table
+    const { data } = await supabase
+        .from('active_coalitions')
+        .select('*')
+        .eq('nation_id', nationId)
+        .order('formed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    return data;
 }
 
 
