@@ -259,7 +259,7 @@ async function renderGovernmentPage() {
     try {
         const [electionData, coalition, ministries, partiesRes] = await Promise.all([
             fetchLatestElection(),
-            fetchActiveCoalition(),
+            fetchActiveCoalition(_supabase, currentNation.id),  // ← shared function
             fetchMinistries(),
             _supabase.from('factions')
                 .select('id, faction_name, is_npc, seats, approval_rating, loyalty, action_points')
@@ -344,26 +344,7 @@ async function fetchLatestElection() {
     return data;
 }
 
-async function fetchActiveCoalition() {
-    const { data: newGov } = await _supabase.from('government_formations').select('*')
-        .eq('nation_id', currentNation.id).eq('status', 'formed')
-        .order('formed_at', { ascending: false }).limit(1).maybeSingle();
-
-    if (newGov) {
-        const pmPartyId = newGov.ministry_assignments?.prime_minister || newGov.proposed_by;
-        return {
-            id: newGov.id, nation_id: newGov.nation_id, election_id: newGov.election_id,
-            party_ids: newGov.party_ids || [], lead_party_id: pmPartyId,
-            ministry_allocations: newGov.ministry_assignments || {},
-            formed_at: newGov.formed_at, _source: 'government_formations'
-        };
-    }
-
-    const { data } = await _supabase.from('active_coalitions').select('*')
-        .eq('nation_id', currentNation.id)
-        .order('formed_at', { ascending: false }).limit(1).maybeSingle();
-    return data;
-}
+// NOTE: fetchActiveCoalition is now in game-common.js
 
 async function fetchMinistries() {
     const { data } = await _supabase.from('ministries').select('*, factions(faction_name)')
