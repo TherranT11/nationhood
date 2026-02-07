@@ -27,6 +27,7 @@
 <!-- Shared Scripts -->
 <script src="js/supabase-client.js"></script>
 <script src="js/common.js"></script>
+<script src="js/game-common.js"></script>
 
 <!-- Page-Specific Script -->
 <script>
@@ -111,24 +112,17 @@ async function renderPartiesPage(nation, faction) {
             election = electionData;
         }
         
-        // Get active coalition to determine government/opposition status (skip for autocracies)
+        // Get active coalition using shared function (skip for autocracies)
         let coalition = null;
         if (!isAutocracy) {
-            const { data: coalitionData } = await _supabase
-                .from('active_coalitions')
-                .select('party_ids, lead_party_id')
-                .eq('nation_id', nation.id)
-                .order('formed_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-            coalition = coalitionData;
+            coalition = await fetchActiveCoalition(_supabase, nation.id);
         }
         
         const coalitionPartyIds = coalition?.party_ids || [];
         const leadPartyId = coalition?.lead_party_id;
         
-        const totalSeats = 120;
-        const majorityThreshold = 61;
+        const totalSeats = GAME_CONFIG.TOTAL_SEATS;
+        const majorityThreshold = GAME_CONFIG.MAJORITY_SEATS;
         
         // Build party cards
         const partiesHTML = parties.map(party => {
