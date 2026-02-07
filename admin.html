@@ -14,497 +14,133 @@
             min-height: 100vh;
             padding: 20px;
         }
-        
-        .admin-container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        
+        .admin-container { max-width: 1400px; margin: 0 auto; }
         .login-box {
-            background: #1e1e1e;
-            padding: 40px;
-            border-radius: 8px;
-            border-top: 4px solid #ff4444;
-            max-width: 600px;
-            margin: 100px auto;
+            background: #1e1e1e; padding: 40px; border-radius: 8px;
+            border-top: 4px solid #ff4444; max-width: 600px; margin: 100px auto;
             box-shadow: 0 20px 60px rgba(0,0,0,0.8);
         }
-        
-        h1 {
-            color: #ff4444;
-            font-size: 2rem;
-            text-align: center;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            margin-bottom: 20px;
-        }
-        
-        h2 {
-            color: #ffcc00;
-            font-size: 1.5rem;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #333;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        .warning {
-            background: #2a1a1a;
-            border-left: 4px solid #ff4444;
-            padding: 15px;
-            margin: 20px 0;
-            font-size: 0.9rem;
-            line-height: 1.6;
-        }
-        
-        .info-box {
-            background: #1a2a1a;
-            border-left: 4px solid #4CAF50;
-            padding: 15px;
-            margin: 20px 0;
-            font-size: 0.9rem;
-            line-height: 1.6;
-        }
-        
-        .input-group {
-            margin-bottom: 25px;
-        }
-        
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 0.9rem;
-            color: #888;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        input[type="password"], select {
-            width: 100%;
-            padding: 12px;
-            background: #2a2a2a;
-            border: 1px solid #444;
-            color: white;
-            border-radius: 4px;
-            font-size: 1rem;
-        }
-        
-        input[type="password"]:focus, select:focus {
-            outline: none;
-            border-color: #ff4444;
-        }
-        
-        .btn {
-            padding: 15px 30px;
-            border: none;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 4px;
-            font-size: 0.9rem;
-            transition: 0.3s;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-right: 10px;
-            margin-bottom: 10px;
-        }
-        
-        .btn-full {
-            width: 100%;
-            margin-right: 0;
-        }
-        
-        .btn-danger {
-            background: #ff4444;
-            color: white;
-        }
-        
-        .btn-danger:hover {
-            background: #cc0000;
-        }
-        
-        .btn-warning {
-            background: #ff9800;
-            color: white;
-        }
-        
-        .btn-warning:hover {
-            background: #f57c00;
-        }
-        
-        .btn-primary {
-            background: #ffcc00;
-            color: #121212;
-        }
-        
-        .btn-primary:hover {
-            background: #e6b800;
-        }
-        
-        .btn-success {
-            background: #4CAF50;
-            color: white;
-        }
-        
-        .btn-success:hover {
-            background: #388E3C;
-        }
-        
-        .btn-secondary {
-            background: #444;
-            color: white;
-        }
-        
-        .btn-secondary:hover {
-            background: #555;
-        }
-        
-        .btn:disabled {
-            background: #666;
-            cursor: not-allowed;
-            opacity: 0.5;
-        }
-        
-        .status {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-        
-        .status.error {
-            background: #2a1a1a;
-            color: #ff4444;
-            border: 1px solid #ff4444;
-        }
-        
-        .status.success {
-            background: #1a2a1a;
-            color: #4CAF50;
-            border: 1px solid #4CAF50;
-        }
-        
-        .status.info {
-            background: #1a1a2a;
-            color: #2196F3;
-            border: 1px solid #2196F3;
-        }
-        
-        .hidden {
-            display: none;
-        }
-        
-        .shard-info {
-            background: #252525;
-            padding: 20px;
-            border-radius: 6px;
-            margin: 20px 0;
-        }
-        
-        .info-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-            font-size: 0.9rem;
-        }
-        
-        .info-label {
-            color: #888;
-        }
-        
-        .info-value {
-            color: #ffcc00;
-            font-weight: bold;
-        }
-        
-        .back-link {
-            text-align: center;
-            margin-top: 20px;
-        }
-        
-        .back-link a {
-            color: #2196F3;
-            text-decoration: none;
-        }
-        
-        .back-link a:hover {
-            text-decoration: underline;
-        }
-        
-        .admin-grid {
+        h1 { color: #ff4444; font-size: 2rem; text-align: center; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px; }
+        h2 { color: #ffcc00; font-size: 1.5rem; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #333; text-transform: uppercase; letter-spacing: 1px; }
+        .warning { background: #2a1a1a; border-left: 4px solid #ff4444; padding: 15px; margin: 20px 0; font-size: 0.9rem; line-height: 1.6; }
+        .info-box { background: #1a2a1a; border-left: 4px solid #4CAF50; padding: 15px; margin: 20px 0; font-size: 0.9rem; line-height: 1.6; }
+        .input-group { margin-bottom: 25px; }
+        label { display: block; margin-bottom: 8px; font-size: 0.9rem; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        input[type="password"], select { width: 100%; padding: 12px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 4px; font-size: 1rem; }
+        input[type="password"]:focus, select:focus { outline: none; border-color: #ff4444; }
+        .btn { padding: 15px 30px; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; font-size: 0.9rem; transition: 0.3s; text-transform: uppercase; letter-spacing: 1px; margin-right: 10px; margin-bottom: 10px; }
+        .btn-full { width: 100%; margin-right: 0; }
+        .btn-danger { background: #ff4444; color: white; }
+        .btn-danger:hover { background: #cc0000; }
+        .btn-warning { background: #ff9800; color: white; }
+        .btn-warning:hover { background: #f57c00; }
+        .btn-primary { background: #ffcc00; color: #121212; }
+        .btn-primary:hover { background: #e6b800; }
+        .btn-success { background: #4CAF50; color: white; }
+        .btn-success:hover { background: #388E3C; }
+        .btn-secondary { background: #444; color: white; }
+        .btn-secondary:hover { background: #555; }
+        .btn:disabled { background: #666; cursor: not-allowed; opacity: 0.5; }
+        .status { margin-top: 20px; padding: 15px; border-radius: 4px; font-weight: bold; }
+        .status.error { background: #2a1a1a; color: #ff4444; border: 1px solid #ff4444; }
+        .status.success { background: #1a2a1a; color: #4CAF50; border: 1px solid #4CAF50; }
+        .status.info { background: #1a1a2a; color: #2196F3; border: 1px solid #2196F3; }
+        .hidden { display: none; }
+        .shard-info { background: #252525; padding: 20px; border-radius: 6px; margin: 20px 0; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.9rem; align-items: center; }
+        .info-label { color: #888; }
+        .info-value { color: #ffcc00; font-weight: bold; }
+        .back-link { text-align: center; margin-top: 20px; }
+        .back-link a { color: #2196F3; text-decoration: none; }
+        .back-link a:hover { text-decoration: underline; }
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: #1a1a1a; border-radius: 6px; padding: 20px; text-align: center; border-top: 3px solid #ffcc00; }
+        .stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .stat-value { font-size: 2rem; color: #ffcc00; font-weight: bold; }
+        .logout-btn { position: fixed; top: 20px; right: 20px; background: #ff4444; border: none; border-radius: 4px; color: white; padding: 10px 20px; cursor: pointer; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; font-size: 0.8rem; z-index: 1000; }
+        .logout-btn:hover { background: #cc0000; }
+
+        /* Tabs */
+        .tabs { display: flex; gap: 4px; margin-bottom: 0; margin-top: 30px; flex-wrap: wrap; }
+        .tab { padding: 15px 30px; background: #252525; border: none; border-radius: 8px 8px 0 0; color: #888; font-size: 0.9rem; font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; transition: all 0.2s; }
+        .tab:hover { background: #333; color: #e0e0e0; }
+        .tab.active { background: #1e1e1e; color: #ffcc00; }
+        .tab-content { display: none; background: #1e1e1e; border-radius: 0 8px 8px 8px; padding: 30px; }
+        .tab-content.active { display: block; }
+
+        /* Election Results */
+        .election-results { background: #252525; border-radius: 6px; padding: 20px; margin-top: 20px; max-height: 400px; overflow-y: auto; }
+        .result-party { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #1a1a1a; border-radius: 4px; margin-bottom: 8px; }
+        .result-party-name { font-weight: bold; color: #e0e0e0; }
+        .result-party-seats { color: #ffcc00; font-weight: bold; font-size: 1.2rem; }
+        .result-bar { height: 4px; background: #333; border-radius: 2px; margin-top: 8px; overflow: hidden; }
+        .result-bar-fill { height: 100%; background: #ffcc00; }
+
+        /* Tick Interval */
+        .tick-interval-box { background: #1a2a2a; border: 1px solid #2196F3; border-radius: 6px; padding: 20px; margin: 20px 0; }
+        .tick-interval-box h3 { color: #2196F3; font-size: 1rem; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; }
+        .interval-selector { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
+        .interval-btn { padding: 12px 20px; background: #252525; border: 2px solid #444; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+        .interval-btn:hover { border-color: #2196F3; color: #e0e0e0; }
+        .interval-btn.active { background: #2196F3; border-color: #2196F3; color: white; }
+
+        /* Player items */
+        .player-item { background: #1a1a1a; padding: 12px; margin-bottom: 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #4CAF50; }
+        .player-info { flex: 1; margin-right: 10px; }
+        .player-party { color: #ffcc00; font-size: 0.85rem; font-weight: bold; margin-bottom: 4px; }
+        .player-id { color: #666; font-size: 0.75rem; }
+        .btn-remove { background: #ff4444; border: none; border-radius: 4px; color: white; padding: 8px 16px; cursor: pointer; font-size: 0.8rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0; }
+        .btn-remove:hover { background: #cc0000; }
+        .no-players { color: #666; font-style: italic; padding: 20px; text-align: center; }
+
+        /* ===== VOTER IDEOLOGY TOOL ===== */
+        .axis-slider-row {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-            gap: 20px;
-            margin-top: 30px;
-        }
-        
-        .admin-panel {
-            background: #1e1e1e;
-            padding: 30px;
-            border-radius: 8px;
-            border-top: 3px solid #ffcc00;
-        }
-        
-        .admin-panel.danger {
-            border-top-color: #ff4444;
-        }
-        
-        .admin-panel.success {
-            border-top-color: #4CAF50;
-        }
-        
-        .nation-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-        
-        .nation-card {
-            background: #252525;
-            border-radius: 6px;
-            padding: 20px;
-            border: 1px solid #333;
-        }
-        
-        .nation-name {
-            color: #ffcc00;
-            font-size: 1.2rem;
-            font-weight: bold;
-            margin-bottom: 15px;
-        }
-        
-        .player-item {
-            background: #1a1a1a;
-            padding: 12px;
-            margin-bottom: 8px;
-            border-radius: 4px;
-            display: flex;
-            justify-content: space-between;
+            grid-template-columns: 120px 1fr 120px;
+            gap: 12px;
             align-items: center;
-            border-left: 3px solid #4CAF50;
+            padding: 14px 0;
+            border-bottom: 1px solid #1a1a1a;
         }
-        
-        .player-info {
+        .axis-label-left, .axis-label-right {
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        .axis-label-left { text-align: right; }
+        .axis-label-right { text-align: left; }
+        .axis-label-left .axis-pct, .axis-label-right .axis-pct {
+            display: block;
+            font-size: 0.75rem;
+            color: #888;
+            font-weight: normal;
+            margin-top: 2px;
+        }
+        .axis-slider-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .axis-slider-wrap input[type="range"] {
             flex: 1;
-            margin-right: 10px;
+            accent-color: #ffcc00;
+            height: 6px;
         }
-        
-        .player-party {
-            color: #ffcc00;
+        .axis-value-display {
+            min-width: 45px;
+            text-align: center;
             font-size: 0.85rem;
             font-weight: bold;
-            margin-bottom: 4px;
-        }
-        
-        .player-id {
-            color: #666;
-            font-size: 0.75rem;
-        }
-        
-        .btn-remove {
-            background: #ff4444;
-            border: none;
-            border-radius: 4px;
-            color: white;
-            padding: 8px 16px;
-            cursor: pointer;
-            font-size: 0.8rem;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            flex-shrink: 0;
-            position: relative;
-            z-index: 100;
-        }
-        
-        .btn-remove:hover {
-            background: #cc0000;
-        }
-        
-        .no-players {
-            color: #666;
-            font-style: italic;
-            padding: 20px;
-            text-align: center;
-        }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-        
-        .stat-card {
-            background: #1a1a1a;
-            border-radius: 6px;
-            padding: 20px;
-            text-align: center;
-            border-top: 3px solid #ffcc00;
-        }
-        
-        .stat-label {
-            font-size: 0.75rem;
-            color: #888;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 8px;
-        }
-        
-        .stat-value {
-            font-size: 2rem;
-            color: #ffcc00;
-            font-weight: bold;
-        }
-        
-        .logout-btn {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #ff4444;
-            border: none;
-            border-radius: 4px;
-            color: white;
-            padding: 10px 20px;
-            cursor: pointer;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            font-size: 0.8rem;
-            z-index: 1000;
-        }
-        
-        .logout-btn:hover {
-            background: #cc0000;
-        }
-        
-        /* Tabs */
-        .tabs {
-            display: flex;
-            gap: 4px;
-            margin-bottom: 0;
-            margin-top: 30px;
-        }
-        .tab {
-            padding: 15px 30px;
-            background: #252525;
-            border: none;
-            border-radius: 8px 8px 0 0;
-            color: #888;
-            font-size: 0.9rem;
-            font-weight: bold;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            transition: all 0.2s;
-        }
-        .tab:hover {
-            background: #333;
-            color: #e0e0e0;
-        }
-        .tab.active {
-            background: #1e1e1e;
             color: #ffcc00;
         }
-        .tab-content {
-            display: none;
-            background: #1e1e1e;
-            border-radius: 0 8px 8px 8px;
-            padding: 30px;
-        }
-        .tab-content.active {
-            display: block;
-        }
-        
-        /* Election Results */
-        .election-results {
-            background: #252525;
-            border-radius: 6px;
-            padding: 20px;
-            margin-top: 20px;
-            max-height: 400px;
-            overflow-y: auto;
-        }
-        .result-party {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px;
-            background: #1a1a1a;
-            border-radius: 4px;
-            margin-bottom: 8px;
-        }
-        .result-party-name {
-            font-weight: bold;
-            color: #e0e0e0;
-        }
-        .result-party-seats {
-            color: #ffcc00;
-            font-weight: bold;
-            font-size: 1.2rem;
-        }
-        .result-bar {
-            height: 4px;
-            background: #333;
-            border-radius: 2px;
-            margin-top: 8px;
-            overflow: hidden;
-        }
-        .result-bar-fill {
-            height: 100%;
-            background: #ffcc00;
-        }
-        
-        /* Tick Interval Selector */
-        .tick-interval-box {
-            background: #1a2a2a;
-            border: 1px solid #2196F3;
-            border-radius: 6px;
-            padding: 20px;
-            margin: 20px 0;
-        }
-        .tick-interval-box h3 {
-            color: #2196F3;
-            font-size: 1rem;
-            margin-bottom: 15px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        .interval-selector {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-bottom: 15px;
-        }
-        .interval-btn {
-            padding: 12px 20px;
-            background: #252525;
-            border: 2px solid #444;
-            border-radius: 4px;
-            color: #888;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .interval-btn:hover {
-            border-color: #2196F3;
-            color: #e0e0e0;
-        }
-        .interval-btn.active {
-            background: #2196F3;
-            border-color: #2196F3;
-            color: white;
-        }
-        
-        /* Voter Bloc Tool */
-        .ideology-filters {
+
+        /* Combo pills */
+        .combo-pills {
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
             margin: 15px 0;
         }
-        .ideology-btn {
+        .combo-pill {
             padding: 10px 18px;
             background: #252525;
             border: 2px solid #444;
@@ -514,181 +150,71 @@
             cursor: pointer;
             transition: all 0.2s;
             font-size: 0.85rem;
+            user-select: none;
         }
-        .ideology-btn:hover {
-            border-color: #9C27B0;
-            color: #e0e0e0;
-        }
-        .ideology-btn.selected {
-            background: #9C27B0;
-            border-color: #9C27B0;
-            color: white;
-        }
-        .voter-stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-            gap: 12px;
-            margin: 20px 0;
-        }
-        .voter-stat-card {
-            background: #1a1a1a;
-            border-radius: 6px;
-            padding: 15px;
-            text-align: center;
-            border-left: 3px solid #9C27B0;
-        }
-        .voter-stat-label {
-            font-size: 0.75rem;
-            color: #888;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 6px;
-        }
-        .voter-stat-value {
-            font-size: 1.5rem;
-            color: #CE93D8;
-            font-weight: bold;
-        }
-        .voter-stat-pct {
-            font-size: 0.8rem;
-            color: #666;
-            margin-top: 4px;
-        }
-        .bloc-form {
-            background: #1a1a2a;
-            border: 1px solid #9C27B0;
-            border-radius: 6px;
-            padding: 25px;
-            margin: 20px 0;
-        }
-        .bloc-form h3 {
-            color: #CE93D8;
-            font-size: 1rem;
-            margin-bottom: 15px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        .bloc-form input[type="text"],
-        .bloc-form textarea,
-        .bloc-form select {
-            width: 100%;
-            padding: 12px;
-            background: #2a2a2a;
-            border: 1px solid #444;
-            color: white;
-            border-radius: 4px;
-            font-size: 0.9rem;
-            font-family: inherit;
-            margin-bottom: 15px;
-        }
-        .bloc-form textarea {
-            min-height: 80px;
-            resize: vertical;
-        }
-        .bloc-form input:focus,
-        .bloc-form textarea:focus,
-        .bloc-form select:focus {
-            outline: none;
-            border-color: #9C27B0;
-        }
-        .stat-pref-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin: 15px 0;
-        }
-        .stat-pref-item {
-            background: #252525;
-            border-radius: 6px;
-            padding: 12px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .stat-pref-item label {
-            color: #e0e0e0;
-            font-size: 0.85rem;
-            margin-bottom: 0;
-            text-transform: none;
-            letter-spacing: 0;
-        }
-        .stat-pref-item select {
-            width: 130px;
-            padding: 6px 8px;
-            margin-bottom: 0;
-            font-size: 0.8rem;
-        }
-        .existing-blocs {
-            margin-top: 25px;
-        }
-        .bloc-card {
-            background: #252525;
-            border-radius: 6px;
-            padding: 18px;
-            margin-bottom: 12px;
-            border-left: 3px solid #9C27B0;
-        }
-        .bloc-card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-        .bloc-card-name {
-            color: #CE93D8;
-            font-size: 1.1rem;
-            font-weight: bold;
-        }
-        .bloc-card-count {
-            color: #ffcc00;
-            font-weight: bold;
-        }
-        .bloc-card-desc {
-            color: #888;
-            font-size: 0.85rem;
-            margin-bottom: 10px;
-        }
-        .bloc-card-tags {
-            display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-        }
-        .bloc-tag {
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 0.7rem;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .bloc-tag.ideology {
-            background: #2a1a2a;
-            color: #CE93D8;
-            border: 1px solid #9C27B0;
-        }
-        .bloc-tag.stat {
-            background: #1a2a1a;
-            color: #4CAF50;
-            border: 1px solid #4CAF50;
-        }
-        .filtered-count-box {
+        .combo-pill:hover { border-color: #9C27B0; color: #e0e0e0; }
+        .combo-pill.active { background: #9C27B0; border-color: #9C27B0; color: white; }
+        .combo-pill.disabled { opacity: 0.3; cursor: not-allowed; border-color: #333; }
+        .combo-pill.disabled:hover { border-color: #333; color: #888; }
+
+        .combo-result-box {
             background: #2a1a2a;
             border: 1px solid #9C27B0;
-            border-radius: 6px;
-            padding: 20px;
+            border-radius: 8px;
+            padding: 24px;
             text-align: center;
             margin: 15px 0;
         }
-        .filtered-count-big {
+        .combo-result-pct {
             font-size: 2.5rem;
             color: #CE93D8;
             font-weight: bold;
         }
-        .filtered-count-label {
+        .combo-result-count {
+            font-size: 1.1rem;
+            color: #ffcc00;
+            margin-top: 6px;
+        }
+        .combo-result-label {
             color: #888;
             font-size: 0.85rem;
-            margin-top: 5px;
+            margin-top: 8px;
         }
+
+        /* Generated blocs list */
+        .bloc-preview-card {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: #252525;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            border-left: 3px solid #9C27B0;
+        }
+        .bloc-preview-name { font-weight: bold; color: #CE93D8; font-size: 0.9rem; }
+        .bloc-preview-tags {
+            display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;
+        }
+        .bloc-preview-tag {
+            font-size: 0.65rem; padding: 2px 7px; border-radius: 10px;
+            background: #3a1a3a; color: #CE93D8; border: 1px solid #5a2a5a;
+        }
+        .bloc-preview-count { color: #ffcc00; font-weight: bold; font-size: 0.9rem; white-space: nowrap; margin-left: 12px; }
+        .bloc-preview-pct { color: #888; font-size: 0.75rem; margin-left: 4px; }
+
+        .eligible-input {
+            width: 160px;
+            padding: 8px 12px;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: #ffcc00;
+            border-radius: 4px;
+            font-size: 0.95rem;
+            font-weight: bold;
+            text-align: right;
+        }
+        .eligible-input:focus { outline: none; border-color: #ffcc00; }
     </style>
 </head>
 <body>
@@ -697,24 +223,17 @@
 <div id="login-section">
     <div class="login-box">
         <h1>⚠️ Admin Panel ⚠️</h1>
-        
         <div class="warning">
             <strong>⚠️ RESTRICTED ACCESS</strong><br>
             This panel contains dangerous operations. Unauthorized access is prohibited.
         </div>
-        
         <div class="input-group">
             <label>Admin Password</label>
             <input type="password" id="admin-password" placeholder="Enter admin password">
         </div>
-        
         <button class="btn btn-danger btn-full" onclick="authenticate()">AUTHENTICATE</button>
-        
         <div id="auth-error" class="status error hidden"></div>
-        
-        <div class="back-link">
-            <a href="index.html">← Back to Game</a>
-        </div>
+        <div class="back-link"><a href="index.html">← Back to Game</a></div>
     </div>
 </div>
 
@@ -722,29 +241,16 @@
 <div id="admin-section" class="hidden">
     <div class="admin-container">
         <button class="logout-btn" onclick="logout()">Logout</button>
-        
         <h1>🛡️ Admin Control Panel</h1>
-        
+
         <!-- Global Stats -->
         <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-label">Total Nations</div>
-                <div class="stat-value" id="stat-nations">—</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Total Players</div>
-                <div class="stat-value" id="stat-players">—</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Active Parties</div>
-                <div class="stat-value" id="stat-parties">—</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Current Tick</div>
-                <div class="stat-value" id="stat-tick">—</div>
-            </div>
+            <div class="stat-card"><div class="stat-label">Total Nations</div><div class="stat-value" id="stat-nations">—</div></div>
+            <div class="stat-card"><div class="stat-label">Total Players</div><div class="stat-value" id="stat-players">—</div></div>
+            <div class="stat-card"><div class="stat-label">Active Parties</div><div class="stat-value" id="stat-parties">—</div></div>
+            <div class="stat-card"><div class="stat-label">Current Tick</div><div class="stat-value" id="stat-tick">—</div></div>
         </div>
-        
+
         <!-- Tabs -->
         <div class="tabs">
             <button class="tab active" onclick="showTab('shard')">Shard</button>
@@ -754,35 +260,19 @@
             <button class="tab" onclick="showTab('voters')">Voters</button>
             <button class="tab" onclick="showTab('danger')">Danger Zone</button>
         </div>
-        
-        <!-- Shard Tab -->
+
+        <!-- ==================== SHARD TAB ==================== -->
         <div class="tab-content active" id="tab-shard">
             <h2>📊 Shard Status</h2>
             <div class="shard-info">
-                <div class="info-row">
-                    <span class="info-label">Shard Name:</span>
-                    <span class="info-value" id="info-name">Loading...</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Current Date:</span>
-                    <span class="info-value" id="info-date">Loading...</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Current Tick:</span>
-                    <span class="info-value" id="info-tick">Loading...</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Next Tick At:</span>
-                    <span class="info-value" id="info-next-tick">Loading...</span>
-                </div>
+                <div class="info-row"><span class="info-label">Shard Name:</span><span class="info-value" id="info-name">Loading...</span></div>
+                <div class="info-row"><span class="info-label">Current Date:</span><span class="info-value" id="info-date">Loading...</span></div>
+                <div class="info-row"><span class="info-label">Current Tick:</span><span class="info-value" id="info-tick">Loading...</span></div>
+                <div class="info-row"><span class="info-label">Next Tick At:</span><span class="info-value" id="info-next-tick">Loading...</span></div>
             </div>
-            
-            <!-- Tick Interval Selector -->
             <div class="tick-interval-box">
                 <h3>⏱️ Tick Interval</h3>
-                <p style="color:#888; font-size:0.85rem; margin-bottom:15px;">
-                    Set how often the game advances. Changes apply after the next tick.
-                </p>
+                <p style="color:#888; font-size:0.85rem; margin-bottom:15px;">Set how often the game advances. Changes apply after the next tick.</p>
                 <div class="interval-selector">
                     <button class="interval-btn" data-hours="1" onclick="setTickInterval(1)">1 Hour</button>
                     <button class="interval-btn" data-hours="2" onclick="setTickInterval(2)">2 Hours</button>
@@ -794,100 +284,61 @@
                 </div>
                 <div id="interval-status" class="status success hidden"></div>
             </div>
-            
-            <button class="btn btn-primary" onclick="advanceTick()">
-                ⏭️ Advance Tick Manually
-            </button>
+            <button class="btn btn-primary" onclick="advanceTick()">⏭️ Advance Tick Manually</button>
             <div id="tick-status" class="status info hidden"></div>
         </div>
-        
-        <!-- Elections Tab -->
+
+        <!-- ==================== ELECTIONS TAB ==================== -->
         <div class="tab-content" id="tab-elections">
             <h2>🗳️ Run Election</h2>
-            
-            <div class="info-box">
-                <strong>ℹ️ Manual Election</strong><br>
-                Run an election immediately for any nation. This bypasses the normal election schedule.
-            </div>
-            
+            <div class="info-box"><strong>ℹ️ Manual Election</strong><br>Run an election immediately for any nation. This bypasses the normal election schedule.</div>
             <div class="input-group">
                 <label>Select Nation</label>
-                <select id="election-nation-select" onchange="onElectionNationSelect()">
-                    <option value="">-- Choose a nation --</option>
-                </select>
+                <select id="election-nation-select" onchange="onElectionNationSelect()"><option value="">-- Choose a nation --</option></select>
             </div>
-            
             <div id="election-nation-info" class="shard-info hidden">
-                <div class="info-row">
-                    <span class="info-label">Total Seats:</span>
-                    <span class="info-value" id="election-info-seats">-</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Eligible Voters:</span>
-                    <span class="info-value" id="election-info-voters">-</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Parties:</span>
-                    <span class="info-value" id="election-info-parties">-</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Last Election:</span>
-                    <span class="info-value" id="election-info-last">-</span>
-                </div>
+                <div class="info-row"><span class="info-label">Total Seats:</span><span class="info-value" id="election-info-seats">-</span></div>
+                <div class="info-row"><span class="info-label">Eligible Voters:</span><span class="info-value" id="election-info-voters">-</span></div>
+                <div class="info-row"><span class="info-label">Parties:</span><span class="info-value" id="election-info-parties">-</span></div>
+                <div class="info-row"><span class="info-label">Last Election:</span><span class="info-value" id="election-info-last">-</span></div>
             </div>
-            
-            <button class="btn btn-success btn-full" id="run-election-btn" disabled onclick="runElection()">
-                🗳️ RUN ELECTION NOW
-            </button>
-            
+            <button class="btn btn-success btn-full" id="run-election-btn" disabled onclick="runElection()">🗳️ RUN ELECTION NOW</button>
             <div id="election-status" class="status info hidden"></div>
-            
             <div id="election-results" class="election-results hidden">
                 <h3 style="color: #4CAF50; margin-bottom: 15px;">📊 Election Results</h3>
                 <div id="election-results-content"></div>
             </div>
         </div>
-        
-        <!-- NPCs Tab -->
+
+        <!-- ==================== NPCS TAB ==================== -->
         <div class="tab-content" id="tab-npcs">
             <h2>🤖 NPC Parties</h2>
-            <p style="color: #888; font-size: 0.9rem; margin-bottom: 15px;">
-                Generate NPCs for nations with 0-1 real players only.
-            </p>
-            <button class="btn btn-primary btn-full" onclick="generateAllNPCs()">
-                Generate NPCs (All Nations)
-            </button>
-            <button class="btn btn-warning btn-full" style="margin-top: 10px;" onclick="runNPCActions()">
-                Run NPC Actions (Manual)
-            </button>
+            <p style="color: #888; font-size: 0.9rem; margin-bottom: 15px;">Generate NPCs for nations with 0-1 real players only.</p>
+            <button class="btn btn-primary btn-full" onclick="generateAllNPCs()">Generate NPCs (All Nations)</button>
+            <button class="btn btn-warning btn-full" style="margin-top: 10px;" onclick="runNPCActions()">Run NPC Actions (Manual)</button>
             <div id="npc-status" class="status info hidden"></div>
         </div>
-        
-        <!-- Players Tab -->
+
+        <!-- ==================== PLAYERS TAB ==================== -->
         <div class="tab-content" id="tab-players">
             <h2>👥 Player Management</h2>
-            <p style="color: #888; font-size: 0.9rem; margin-bottom: 15px;">
-                View all players, their nation status, and manage accounts.
-            </p>
-            
-            <!-- Filter buttons -->
+            <p style="color: #888; font-size: 0.9rem; margin-bottom: 15px;">View all players, their nation status, and manage accounts.</p>
             <div style="margin-bottom:20px; display:flex; gap:8px; flex-wrap:wrap;">
                 <button class="btn btn-secondary" style="padding:8px 16px; font-size:0.8rem;" onclick="filterPlayers('all')">All</button>
                 <button class="btn btn-success" style="padding:8px 16px; font-size:0.8rem;" onclick="filterPlayers('active')">In Nation</button>
                 <button class="btn btn-warning" style="padding:8px 16px; font-size:0.8rem;" onclick="filterPlayers('orphaned')">No Nation</button>
             </div>
-            
-            <!-- Player count -->
             <div id="player-count" style="color:#888; font-size:0.85rem; margin-bottom:15px;"></div>
-            
-            <!-- Player list -->
             <div id="players-list"></div>
         </div>
-        
-        <!-- Voters Tab -->
+
+        <!-- ==================== VOTERS TAB ==================== -->
         <div class="tab-content" id="tab-voters">
-            <h2>🗳️ Voter Blocs</h2>
-            
+            <h2>🗳️ Nation Ideology Breakdown</h2>
+            <p style="color:#888; font-size:0.9rem; margin-bottom:20px;">
+                Adjust ideology axis splits per nation, preview voter combinations, and auto-generate voter blocs.
+            </p>
+
             <!-- Nation Selector -->
             <div class="input-group">
                 <label>Select Nation</label>
@@ -895,125 +346,91 @@
                     <option value="">-- Choose a nation --</option>
                 </select>
             </div>
-            
-            <!-- Existing Blocs List (shows after nation selected) -->
-            <div id="voter-blocs-section" class="hidden">
-                <h3 style="color:#CE93D8; margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">
-                    📋 Existing Voter Blocs
-                </h3>
-                
-                <!-- Bloc list table -->
-                <div id="existing-blocs-list">
-                    <div class="no-players">Loading...</div>
+
+            <!-- Everything below hidden until nation selected -->
+            <div id="voter-nation-info" class="hidden">
+
+                <!-- Population & Eligible Voters -->
+                <div class="shard-info">
+                    <div class="info-row">
+                        <span class="info-label">Total Population:</span>
+                        <span class="info-value" id="voter-pop-display">—</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Eligible Voters:</span>
+                        <span style="display:flex; align-items:center; gap:10px;">
+                            <input type="number" id="voter-eligible-input" class="eligible-input" min="0">
+                            <span id="voter-eligible-pct" style="color:#888; font-size:0.85rem;"></span>
+                        </span>
+                    </div>
                 </div>
-                
-                <!-- Create New Button -->
-                <button class="btn btn-success btn-full" style="margin-top:20px;" onclick="showCreateBlocForm()">
-                    ➕ CREATE NEW VOTER BLOC
+
+                <!-- Ideology Axis Sliders -->
+                <div style="margin:24px 0;">
+                    <h3 style="color:#ffcc00; font-size:1rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:16px;">
+                        Ideology Axes
+                    </h3>
+                    <p style="color:#888; font-size:0.85rem; margin-bottom:16px;">
+                        Each slider sets the population split. Distance from 50% determines salience (how many people care about that issue).
+                    </p>
+                    <div id="ideology-sliders-container"></div>
+                </div>
+
+                <!-- Save Axes -->
+                <div style="display:flex; gap:12px; align-items:center; margin-bottom:30px;">
+                    <button class="btn btn-primary" onclick="saveAxes()">💾 SAVE AXES</button>
+                    <button class="btn btn-secondary" onclick="resetAxesToSaved()">↩ Reset</button>
+                    <span id="axes-save-status" style="font-weight:bold;"></span>
+                </div>
+
+                <!-- Divider -->
+                <div style="border-top:2px solid #333; margin:30px 0;"></div>
+
+                <!-- Combination Viewer -->
+                <h3 style="color:#CE93D8; font-size:1rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
+                    🔍 Combination Viewer
+                </h3>
+                <p style="color:#888; font-size:0.85rem; margin-bottom:16px;">
+                    Click ideologies to see estimated population overlap. You cannot select both sides of the same axis.
+                </p>
+                <div class="combo-pills" id="combo-pills-container"></div>
+                <div id="combo-result-container"></div>
+
+                <!-- Divider -->
+                <div style="border-top:2px solid #333; margin:30px 0;"></div>
+
+                <!-- Generate Voter Blocs -->
+                <h3 style="color:#4CAF50; font-size:1rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
+                    ⚙️ Generate Voter Blocs
+                </h3>
+                <p style="color:#888; font-size:0.85rem; margin-bottom:16px;">
+                    Auto-generates all ideology combination blocs from the current axis values.
+                    <strong style="color:#ff9800;">This will DELETE all existing voter blocs for this nation.</strong>
+                </p>
+                <button class="btn btn-success btn-full" onclick="generateVoterBlocs()">
+                    🔄 WIPE & GENERATE VOTER BLOCS
                 </button>
-            </div>
-            
-            <!-- Create Voter Bloc Form (hidden until button clicked) -->
-            <div id="bloc-create-section" class="hidden">
-                <div class="bloc-form">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                        <h3 style="color:#CE93D8; margin:0;">➕ Create New Voter Bloc</h3>
-                        <button class="btn btn-secondary" style="padding:8px 16px; font-size:0.8rem; margin:0;" onclick="hideCreateBlocForm()">← Back to List</button>
-                    </div>
-                    
-                    <!-- Nation display -->
-                    <div style="background:#252525; padding:12px 18px; border-radius:6px; margin-bottom:20px;">
-                        <span style="color:#888;">Nation:</span>
-                        <span style="color:#ffcc00; font-weight:bold;" id="bloc-form-nation">—</span>
-                        <span style="color:#888; margin-left:15px;">Population:</span>
-                        <span style="color:#ffcc00; font-weight:bold;" id="bloc-form-population">—</span>
-                    </div>
-                    
-                    <!-- Ideology Spectrum Selection -->
-                    <label>Ideology Axes <span style="color:#666; font-weight:normal; text-transform:none;">(select 1 to 5 — pick one side per axis)</span></label>
-                    <p style="color:#888; font-size:0.85rem; margin-bottom:15px;">
-                        Must select at least 1 ideology. Click a side to select it.
-                    </p>
-                    
-                    <div id="ideology-spectrums"></div>
-                    
-                    <!-- Bloc Size -->
-                    <div id="bloc-size-section" class="hidden" style="margin-top:20px;">
-                        <label>Bloc Size</label>
-                        <div style="display:flex; gap:15px; align-items:center; margin-bottom:5px;">
-                            <input type="range" id="bloc-size-slider" min="1" max="100" value="50" 
-                                style="flex:1; accent-color:#9C27B0;" oninput="updateBlocSize()">
-                            <span id="bloc-size-pct" style="color:#CE93D8; font-weight:bold; font-size:1.2rem; min-width:50px; text-align:right;">50%</span>
-                        </div>
-                        <div style="color:#888; font-size:0.85rem;">
-                            Estimated voters: <strong style="color:#ffcc00;" id="bloc-size-count">—</strong>
-                            <span style="color:#666;"> of eligible ideology overlap</span>
-                        </div>
-                    </div>
-                    
-                    <!-- Name & Description -->
-                    <div style="margin-top:20px;">
-                        <label>Bloc Name</label>
-                        <input type="text" id="bloc-name" placeholder="e.g. Liberty Hawks, Security First Coalition">
-                        
-                        <label>Description</label>
-                        <textarea id="bloc-description" placeholder="Describe what this voter bloc cares about..."></textarea>
-                    </div>
-                    
-                    <!-- Focus Stats -->
-                    <label>Focus Stats <span style="color:#666; font-weight:normal; text-transform:none;">(select 1 to 10 stats, then set preference)</span></label>
-                    <p style="color:#888; font-size:0.85rem; margin-bottom:15px;">
-                        Low = wants 0–30 | Moderate = wants 31–69 | High = wants 70–100
-                    </p>
-                    
-                    <!-- Governance & Security -->
-                    <div style="margin-bottom:20px;">
-                        <h4 style="color:#2196F3; font-size:0.85rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #333;">
-                            🏛️ Governance & Security
-                        </h4>
-                        <div class="stat-pref-grid" id="stats-governance"></div>
-                    </div>
-                    
-                    <!-- Economics & Labor -->
-                    <div style="margin-bottom:20px;">
-                        <h4 style="color:#4CAF50; font-size:0.85rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #333;">
-                            💰 Economics & Labor
-                        </h4>
-                        <div class="stat-pref-grid" id="stats-economics"></div>
-                    </div>
-                    
-                    <!-- Social & Demographics -->
-                    <div style="margin-bottom:20px;">
-                        <h4 style="color:#ff9800; font-size:0.85rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #333;">
-                            👥 Social & Demographics
-                        </h4>
-                        <div class="stat-pref-grid" id="stats-social"></div>
-                    </div>
-                    
-                    <!-- Resources & Environment -->
-                    <div style="margin-bottom:20px;">
-                        <h4 style="color:#8BC34A; font-size:0.85rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #333;">
-                            🌍 Resources & Environment
-                        </h4>
-                        <div class="stat-pref-grid" id="stats-resources"></div>
-                    </div>
-                    
-                    <!-- Stat count indicator -->
-                    <div style="text-align:center; margin:15px 0;">
-                        <span style="color:#888;">Stats selected: </span>
-                        <strong style="color:#CE93D8;" id="stat-select-count">0</strong>
-                        <span style="color:#888;"> / 10 max</span>
-                    </div>
-                    
-                    <button class="btn btn-success btn-full" id="create-bloc-btn" onclick="createVoterBloc()" disabled>
-                        ✅ CREATE VOTER BLOC
-                    </button>
-                    <div id="bloc-status" class="status success hidden"></div>
+                <div id="generate-status" class="status success hidden" style="margin-top:15px;"></div>
+
+                <!-- Generated blocs preview -->
+                <div id="generated-blocs-preview" class="hidden" style="margin-top:20px;">
+                    <h3 style="color:#CE93D8; font-size:1rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">
+                        📋 Generated Blocs (<span id="bloc-count-display">0</span>)
+                    </h3>
+                    <div id="generated-blocs-list"></div>
+                </div>
+
+                <!-- Existing blocs -->
+                <div style="margin-top:30px;">
+                    <h3 style="color:#888; font-size:0.9rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">
+                        Current Voter Blocs in Database
+                    </h3>
+                    <div id="existing-blocs-display"></div>
                 </div>
             </div>
         </div>
-        
-        <!-- Danger Zone Tab -->
+
+        <!-- ==================== DANGER ZONE TAB ==================== -->
         <div class="tab-content" id="tab-danger">
             <h2>🔥 Danger Zone</h2>
             <div class="warning">
@@ -1028,9 +445,7 @@
                 • Clear ALL party data<br>
                 • Does NOT delete user accounts
             </div>
-            <button class="btn btn-danger btn-full" id="reset-btn" onclick="resetShard()">
-                🔥 RESET ALPHA SHARD 🔥
-            </button>
+            <button class="btn btn-danger btn-full" id="reset-btn" onclick="resetShard()">🔥 RESET ALPHA SHARD 🔥</button>
             <div id="reset-status" class="status info hidden"></div>
         </div>
     </div>
@@ -1040,45 +455,39 @@
     const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
     const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
-    
+
     const ADMIN_PASSWORD = 'nationhood2000';
     let isAuthenticated = false;
     let nations = [];
     let selectedElectionNation = null;
     let currentTickInterval = 1;
-    
-    // Tab switching
+
+    // ==================== AUTH & TABS ====================
     function showTab(tabName) {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-        
         document.querySelector(`.tab[onclick="showTab('${tabName}')"]`).classList.add('active');
         document.getElementById(`tab-${tabName}`).classList.add('active');
     }
-    
     function authenticate() {
         const password = document.getElementById('admin-password').value;
         const errorDiv = document.getElementById('auth-error');
-        
         if (password === ADMIN_PASSWORD) {
             isAuthenticated = true;
             document.getElementById('login-section').classList.add('hidden');
             document.getElementById('admin-section').classList.remove('hidden');
             loadAllData();
             errorDiv.classList.add('hidden');
-        } else {
-            errorDiv.textContent = 'Invalid password. Access denied.';
-            errorDiv.classList.remove('hidden');
-        }
+        } else { errorDiv.textContent = 'Invalid password. Access denied.'; errorDiv.classList.remove('hidden'); }
     }
-    
     function logout() {
         isAuthenticated = false;
         document.getElementById('login-section').classList.remove('hidden');
         document.getElementById('admin-section').classList.add('hidden');
         document.getElementById('admin-password').value = '';
     }
-    
+    document.getElementById('admin-password').addEventListener('keypress', (e) => { if (e.key === 'Enter') authenticate(); });
+
     async function loadAllData() {
         await loadShardInfo();
         await loadStats();
@@ -1086,911 +495,593 @@
         await loadElectionNations();
         await loadVoterNations();
     }
-    
+
+    // ==================== SHARD TAB ====================
     async function loadShardInfo() {
         try {
-            const { data: shard } = await _supabase
-                .from('shard')
-                .select('*')
-                .eq('name', 'Alpha Shard')
-                .single();
-            
+            const { data: shard } = await _supabase.from('shard').select('*').eq('name', 'Alpha Shard').single();
             document.getElementById('info-name').textContent = shard.name;
             document.getElementById('info-date').textContent = shard.current_date || 'Not Set';
             document.getElementById('info-tick').textContent = shard.current_tick || 0;
-            
-            // Update tick interval from DB
             currentTickInterval = shard.tick_interval_hours || 1;
             updateIntervalButtons();
-            
             if (shard.next_tick_at) {
                 const nextTickDate = new Date(shard.next_tick_at);
-                const now = new Date();
-                const timeUntil = nextTickDate - now;
-                
+                const timeUntil = nextTickDate - new Date();
                 if (timeUntil > 0) {
-                    const hours = Math.floor(timeUntil / (1000 * 60 * 60));
-                    const minutes = Math.floor((timeUntil % (1000 * 60 * 60)) / (1000 * 60));
+                    const hours = Math.floor(timeUntil / (1000*60*60));
+                    const minutes = Math.floor((timeUntil % (1000*60*60)) / (1000*60));
                     document.getElementById('info-next-tick').textContent = `${nextTickDate.toLocaleString()} (in ${hours}h ${minutes}m)`;
                     document.getElementById('info-next-tick').style.color = '#ffcc00';
                 } else {
                     document.getElementById('info-next-tick').textContent = `${nextTickDate.toLocaleString()} (OVERDUE)`;
                     document.getElementById('info-next-tick').style.color = '#ff4444';
                 }
-            } else {
-                document.getElementById('info-next-tick').textContent = 'Not Scheduled';
-            }
-        } catch (error) {
-            console.error('Error loading shard info:', error);
-        }
+            } else { document.getElementById('info-next-tick').textContent = 'Not Scheduled'; }
+        } catch (error) { console.error('Error loading shard info:', error); }
     }
-    
-    // Tick Interval functions
     function updateIntervalButtons() {
         document.querySelectorAll('.interval-btn').forEach(btn => {
-            const hours = parseInt(btn.getAttribute('data-hours'));
-            if (hours === currentTickInterval) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
-            }
+            btn.classList.toggle('active', parseInt(btn.getAttribute('data-hours')) === currentTickInterval);
         });
     }
-    
     async function setTickInterval(hours) {
         const status = document.getElementById('interval-status');
-        
         try {
-            const { error } = await _supabase
-                .from('shard')
-                .update({ tick_interval_hours: hours })
-                .eq('name', 'Alpha Shard');
-            
+            const { error } = await _supabase.from('shard').update({ tick_interval_hours: hours }).eq('name', 'Alpha Shard');
             if (error) throw error;
-            
-            currentTickInterval = hours;
-            updateIntervalButtons();
-            
-            status.className = 'status success';
-            status.textContent = `✅ Tick interval set to ${hours} hour${hours > 1 ? 's' : ''}`;
-            status.classList.remove('hidden');
-            
+            currentTickInterval = hours; updateIntervalButtons();
+            status.className = 'status success'; status.textContent = `✅ Tick interval set to ${hours} hour${hours > 1 ? 's' : ''}`; status.classList.remove('hidden');
             setTimeout(() => status.classList.add('hidden'), 3000);
+        } catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; status.classList.remove('hidden'); }
+    }
+    async function advanceTick() {
+        const status = document.getElementById('tick-status');
+        status.className = 'status info'; status.textContent = 'Advancing tick...'; status.classList.remove('hidden');
+        try {
+            const { data, error } = await _supabase.rpc('process_tick');
+            if (error) throw error;
+            status.className = 'status success'; status.textContent = `✅ Tick advanced! New tick: ${data?.new_tick || '?'}`;
+            await loadShardInfo(); await loadStats();
         } catch (error) {
-            status.className = 'status error';
-            status.textContent = '❌ Error: ' + error.message;
-            status.classList.remove('hidden');
+            try {
+                const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+                const nextTick = new Date(); nextTick.setHours(nextTick.getHours() + currentTickInterval);
+                await _supabase.from('shard').update({ current_tick: (shard.current_tick || 0) + 1, next_tick_at: nextTick.toISOString() }).eq('name', 'Alpha Shard');
+                await _supabase.from('factions').update({ action_points: 10 }).lt('action_points', 10);
+                status.className = 'status success'; status.textContent = '✅ Tick advanced (fallback method)!';
+                await loadShardInfo(); await loadStats();
+            } catch (fbErr) { status.className = 'status error'; status.textContent = '❌ Error: ' + fbErr.message; }
         }
     }
-    
+
+    // ==================== STATS ====================
     async function loadStats() {
         try {
-            const { count: nationCount } = await _supabase
-                .from('nations')
-                .select('*', { count: 'exact', head: true });
-            
-            const { count: playerCount } = await _supabase
-                .from('factions')
-                .select('*', { count: 'exact', head: true })
-                .eq('faction_type', 'party')
-                .eq('is_npc', false);
-            
-            const { count: partyCount } = await _supabase
-                .from('factions')
-                .select('*', { count: 'exact', head: true })
-                .eq('faction_type', 'party');
-            
-            const { data: shard } = await _supabase
-                .from('shard')
-                .select('current_tick')
-                .eq('name', 'Alpha Shard')
-                .single();
-            
+            const { count: nationCount } = await _supabase.from('nations').select('*', { count: 'exact', head: true });
+            const { count: playerCount } = await _supabase.from('factions').select('*', { count: 'exact', head: true }).eq('faction_type', 'party').eq('is_npc', false);
+            const { count: partyCount } = await _supabase.from('factions').select('*', { count: 'exact', head: true }).eq('faction_type', 'party');
+            const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
             document.getElementById('stat-nations').textContent = nationCount || 0;
             document.getElementById('stat-players').textContent = playerCount || 0;
             document.getElementById('stat-parties').textContent = partyCount || 0;
             document.getElementById('stat-tick').textContent = shard?.current_tick || 0;
-        } catch (error) {
-            console.error('Error loading stats:', error);
-        }
+        } catch (error) { console.error('Error loading stats:', error); }
     }
-    
+
+    // ==================== ELECTIONS TAB ====================
     async function loadElectionNations() {
         try {
-            const { data } = await _supabase
-                .from('nations')
-                .select('id, name, total_seats, eligible_voters')
-                .order('name');
-            
+            const { data } = await _supabase.from('nations').select('id, name, total_seats, eligible_voters').order('name');
             nations = data || [];
-            
             const select = document.getElementById('election-nation-select');
             select.innerHTML = '<option value="">-- Choose a nation --</option>';
-            
-            nations.forEach(nation => {
-                select.innerHTML += `<option value="${nation.id}">${nation.name}</option>`;
-            });
-        } catch (error) {
-            console.error('Error loading nations for elections:', error);
-        }
+            nations.forEach(n => { select.innerHTML += `<option value="${n.id}">${n.name}</option>`; });
+        } catch (error) { console.error(error); }
     }
-    
     async function onElectionNationSelect() {
         const nationId = document.getElementById('election-nation-select').value;
         const infoDiv = document.getElementById('election-nation-info');
         const btn = document.getElementById('run-election-btn');
-        
-        if (!nationId) {
-            infoDiv.classList.add('hidden');
-            btn.disabled = true;
-            selectedElectionNation = null;
-            return;
-        }
-        
+        if (!nationId) { infoDiv.classList.add('hidden'); btn.disabled = true; selectedElectionNation = null; return; }
         selectedElectionNation = nations.find(n => n.id === nationId);
-        
-        // Get party count
-        const { count: partyCount } = await _supabase
-            .from('factions')
-            .select('*', { count: 'exact', head: true })
-            .eq('nation_id', nationId)
-            .eq('faction_type', 'party');
-        
-        // Get last election
-        const { data: lastElection } = await _supabase
-            .from('elections')
-            .select('election_tick')
-            .eq('nation_id', nationId)
-            .eq('status', 'completed')
-            .order('election_tick', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        
+        const { count: partyCount } = await _supabase.from('factions').select('*', { count: 'exact', head: true }).eq('nation_id', nationId).eq('faction_type', 'party');
+        const { data: lastElection } = await _supabase.from('elections').select('election_tick').eq('nation_id', nationId).eq('status', 'completed').order('election_tick', { ascending: false }).limit(1).maybeSingle();
         document.getElementById('election-info-seats').textContent = selectedElectionNation.total_seats || 120;
         document.getElementById('election-info-voters').textContent = (selectedElectionNation.eligible_voters || 0).toLocaleString();
         document.getElementById('election-info-parties').textContent = partyCount || 0;
         document.getElementById('election-info-last').textContent = lastElection ? `Tick ${lastElection.election_tick}` : 'Never';
-        
-        infoDiv.classList.remove('hidden');
-        btn.disabled = false;
+        infoDiv.classList.remove('hidden'); btn.disabled = false;
     }
-    
     async function runElection() {
         if (!selectedElectionNation) return;
-        
         const status = document.getElementById('election-status');
         const resultsDiv = document.getElementById('election-results');
         const resultsContent = document.getElementById('election-results-content');
         const btn = document.getElementById('run-election-btn');
-        
-        btn.disabled = true;
-        btn.textContent = '⏳ Running Election...';
-        status.className = 'status info';
-        status.textContent = 'Simulating election...';
-        status.classList.remove('hidden');
-        resultsDiv.classList.add('hidden');
-        
+        btn.disabled = true; btn.textContent = '⏳ Running Election...';
+        status.className = 'status info'; status.textContent = 'Simulating election...'; status.classList.remove('hidden'); resultsDiv.classList.add('hidden');
         try {
-            const { data, error } = await _supabase.rpc('run_election', {
-                p_nation_id: selectedElectionNation.id
-            });
-            
+            const { data, error } = await _supabase.rpc('run_election', { p_nation_id: selectedElectionNation.id });
             if (error) throw error;
-            
-            const { data: election } = await _supabase
-                .from('elections')
-                .select('results')
-                .eq('nation_id', selectedElectionNation.id)
-                .eq('status', 'completed')
-                .order('election_tick', { ascending: false })
-                .limit(1)
-                .single();
-            
+            const { data: election } = await _supabase.from('elections').select('results').eq('nation_id', selectedElectionNation.id).eq('status', 'completed').order('election_tick', { ascending: false }).limit(1).single();
             if (election?.results?.seats) {
                 const totalSeats = selectedElectionNation.total_seats || 120;
-                
-                resultsContent.innerHTML = election.results.seats
-                    .sort((a, b) => b.seats - a.seats)
-                    .map(result => `
-                        <div class="result-party">
-                            <div>
-                                <div class="result-party-name">${result.party_name}</div>
-                                <div class="result-bar" style="width: 200px;">
-                                    <div class="result-bar-fill" style="width: ${(result.seats / totalSeats) * 100}%"></div>
-                                </div>
-                            </div>
-                            <div class="result-party-seats">${result.seats} seats</div>
-                        </div>
-                    `).join('');
-                
+                resultsContent.innerHTML = election.results.seats.sort((a, b) => b.seats - a.seats).map(r => `<div class="result-party"><div><div class="result-party-name">${r.party_name}</div><div class="result-bar" style="width:200px;"><div class="result-bar-fill" style="width:${(r.seats/totalSeats)*100}%"></div></div></div><div class="result-party-seats">${r.seats} seats</div></div>`).join('');
                 resultsDiv.classList.remove('hidden');
             }
-            
-            status.className = 'status success';
-            status.textContent = `✅ Election completed for ${selectedElectionNation.name}!`;
-            
-        } catch (error) {
-            console.error('Election error:', error);
-            status.className = 'status error';
-            status.textContent = '❌ Error: ' + error.message;
-        }
-        
-        btn.disabled = false;
-        btn.textContent = '🗳️ RUN ELECTION NOW';
+            status.className = 'status success'; status.textContent = `✅ Election completed for ${selectedElectionNation.name}!`;
+        } catch (error) { console.error(error); status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
+        btn.disabled = false; btn.textContent = '🗳️ RUN ELECTION NOW';
     }
-    
-    async function advanceTick() {
-        const status = document.getElementById('tick-status');
-        status.className = 'status info';
-        status.textContent = 'Advancing tick...';
-        status.classList.remove('hidden');
-        
+
+    // ==================== NPCS TAB ====================
+    async function generateAllNPCs() {
+        if (!confirm('Generate NPCs for all nations?')) return;
+        const status = document.getElementById('npc-status');
+        status.className = 'status info'; status.textContent = 'Generating...'; status.classList.remove('hidden');
         try {
-            const { data, error } = await _supabase.rpc('process_tick');
-            
-            if (error) throw error;
-            
-            status.className = 'status success';
-            status.textContent = `✅ Tick advanced! New tick: ${data?.new_tick || '?'} | Interval: ${data?.interval_hours || currentTickInterval}h`;
-            
-            await loadShardInfo();
-            await loadStats();
-        } catch (error) {
-            // Fallback: manual tick advance
-            try {
-                const { data: shard } = await _supabase
-                    .from('shard')
-                    .select('current_tick')
-                    .eq('name', 'Alpha Shard')
-                    .single();
-                
-                const nextTick = new Date();
-                nextTick.setHours(nextTick.getHours() + currentTickInterval);
-                
-                await _supabase
-                    .from('shard')
-                    .update({
-                        current_tick: (shard.current_tick || 0) + 1,
-                        next_tick_at: nextTick.toISOString()
-                    })
-                    .eq('name', 'Alpha Shard');
-                
-                // Restore AP
-                await _supabase
-                    .from('factions')
-                    .update({ action_points: 10 })
-                    .lt('action_points', 10);
-                
-                status.className = 'status success';
-                status.textContent = '✅ Tick advanced (fallback method)!';
-                
-                await loadShardInfo();
-                await loadStats();
-            } catch (fallbackError) {
-                status.className = 'status error';
-                status.textContent = '❌ Error: ' + fallbackError.message;
-            }
-        }
+            const { data: allNations } = await _supabase.from('nations').select('id');
+            for (const nation of allNations) { await _supabase.rpc('generate_npc_parties_for_nation', { p_nation_id: nation.id }); }
+            status.className = 'status success'; status.textContent = '✅ NPCs generated!'; await loadStats();
+        } catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
     }
-    
-    async function loadNations() {
-        await loadAllPlayers('all');
+    async function runNPCActions() {
+        const status = document.getElementById('npc-status');
+        status.className = 'status info'; status.textContent = 'Running NPC actions...'; status.classList.remove('hidden');
+        try { await _supabase.rpc('run_all_npc_party_actions'); status.className = 'status success'; status.textContent = '✅ NPC actions complete!'; }
+        catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
     }
 
+    // ==================== PLAYERS TAB ====================
     let allPlayersCache = [];
-
+    async function loadNations() { await loadAllPlayers('all'); }
     async function loadAllPlayers(filter) {
         try {
-            const playersList = document.getElementById('players-list');
-            playersList.innerHTML = '<div class="no-players">Loading...</div>';
-
-            const { data: factions } = await _supabase
-                .from('factions')
-                .select('id, faction_name, abbreviation, faction_type, nation_id, nation, seats, approval_rating, action_points, is_npc')
-                .eq('is_npc', false)
-                .order('faction_name');
-
+            document.getElementById('players-list').innerHTML = '<div class="no-players">Loading...</div>';
+            const { data: factions } = await _supabase.from('factions').select('id, faction_name, abbreviation, faction_type, nation_id, nation, seats, approval_rating, action_points, is_npc').eq('is_npc', false).order('faction_name');
             allPlayersCache = factions || [];
-
             renderPlayers(filter);
-        } catch (error) {
-            console.error('Error loading players:', error);
-            document.getElementById('players-list').innerHTML = '<div class="no-players" style="color:#ff4444;">Error loading players</div>';
-        }
+        } catch (error) { console.error(error); document.getElementById('players-list').innerHTML = '<div class="no-players" style="color:#ff4444;">Error loading players</div>'; }
     }
-
-    function filterPlayers(filter) {
-        renderPlayers(filter);
-    }
-
+    function filterPlayers(filter) { renderPlayers(filter); }
     function renderPlayers(filter) {
         const playersList = document.getElementById('players-list');
         const countDiv = document.getElementById('player-count');
-
         let filtered = allPlayersCache;
-        if (filter === 'active') {
-            filtered = allPlayersCache.filter(p => p.nation_id);
-        } else if (filter === 'orphaned') {
-            filtered = allPlayersCache.filter(p => !p.nation_id);
-        }
-
+        if (filter === 'active') filtered = allPlayersCache.filter(p => p.nation_id);
+        else if (filter === 'orphaned') filtered = allPlayersCache.filter(p => !p.nation_id);
         countDiv.textContent = `Showing ${filtered.length} of ${allPlayersCache.length} player(s)`;
-
-        if (filtered.length === 0) {
-            playersList.innerHTML = '<div class="no-players">No players found</div>';
-            return;
-        }
-
+        if (filtered.length === 0) { playersList.innerHTML = '<div class="no-players">No players found</div>'; return; }
         playersList.innerHTML = filtered.map(player => {
             const hasNation = !!player.nation_id;
             const borderColor = hasNation ? '#4CAF50' : '#ff4444';
             const statusBadge = hasNation
                 ? `<span style="background:#1a2a1a; color:#4CAF50; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">${player.nation || 'Unknown'}</span>`
                 : `<span style="background:#2a1a1a; color:#ff4444; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NO NATION</span>`;
-
-            const statsHTML = hasNation ? `
-                <div style="display:flex; gap:12px; margin-top:6px; font-size:0.75rem; color:#888;">
-                    <span>Seats: <strong style="color:#ffcc00;">${player.seats || 0}</strong></span>
-                    <span>Approval: <strong style="color:#ffcc00;">${player.approval_rating || 0}%</strong></span>
-                    <span>AP: <strong style="color:#ffcc00;">${player.action_points || 0}</strong></span>
-                    <span>Type: <strong style="color:#aaa;">${player.faction_type || '—'}</strong></span>
-                </div>
-            ` : `
-                <div style="margin-top:6px; font-size:0.75rem; color:#ff4444; font-style:italic;">
-                    Not assigned to any nation — can rejoin via world map
-                </div>
-            `;
-
-            return `
-                <div class="player-item" style="border-left-color:${borderColor}; margin-bottom:10px;">
-                    <div class="player-info" style="flex:1;">
-                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
-                            <span class="player-party">${player.faction_name || 'Unnamed'} ${player.abbreviation ? '[' + player.abbreviation + ']' : ''}</span>
-                            ${statusBadge}
-                        </div>
-                        <div class="player-id">ID: ${player.id}</div>
-                        ${statsHTML}
-                    </div>
-                    <div style="display:flex; gap:6px; flex-direction:column;">
-                        ${hasNation ? `
-                            <button class="btn-remove" style="font-size:0.75rem; padding:6px 12px;"
-                                onclick="removePlayer('${player.id}', '${player.nation_id}', '${(player.faction_name || '').replace(/'/g, "\\'")}')">
-                                KICK
-                            </button>
-                        ` : ''}
-                        <button class="btn-remove" style="background:#aa0000; font-size:0.75rem; padding:6px 12px;"
-                            onclick="deleteParty('${player.id}', '${(player.faction_name || '').replace(/'/g, "\\'")}')">
-                            DELETE
-                        </button>
-                    </div>
-                </div>
-            `;
+            const statsHTML = hasNation ? `<div style="display:flex; gap:12px; margin-top:6px; font-size:0.75rem; color:#888;"><span>Seats: <strong style="color:#ffcc00;">${player.seats||0}</strong></span><span>Approval: <strong style="color:#ffcc00;">${player.approval_rating||0}%</strong></span><span>AP: <strong style="color:#ffcc00;">${player.action_points||0}</strong></span></div>` : `<div style="margin-top:6px; font-size:0.75rem; color:#ff4444; font-style:italic;">Not assigned to any nation</div>`;
+            return `<div class="player-item" style="border-left-color:${borderColor}; margin-bottom:10px;"><div class="player-info" style="flex:1;"><div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;"><span class="player-party">${player.faction_name||'Unnamed'} ${player.abbreviation ? '['+player.abbreviation+']' : ''}</span>${statusBadge}</div><div class="player-id">ID: ${player.id}</div>${statsHTML}</div><div style="display:flex; gap:6px; flex-direction:column;">${hasNation ? `<button class="btn-remove" style="font-size:0.75rem; padding:6px 12px;" onclick="removePlayer('${player.id}', '${player.nation_id}', '${(player.faction_name||'').replace(/'/g,"\\'")}')">KICK</button>` : ''}<button class="btn-remove" style="background:#aa0000; font-size:0.75rem; padding:6px 12px;" onclick="deleteParty('${player.id}', '${(player.faction_name||'').replace(/'/g,"\\'")}')">DELETE</button></div></div>`;
         }).join('');
     }
-    
     async function removePlayer(playerId, nationId, partyName) {
         if (!confirm(`Remove ${partyName} from this nation?`)) return;
-        
-        try {
-            await _supabase
-                .from('factions')
-                .update({ nation_id: null, abandoned_at: new Date().toISOString() })
-                .eq('id', playerId);
-            
-            alert('✅ Player removed!');
-            await loadStats();
-            await loadNations();
-        } catch (error) {
-            alert('❌ Error: ' + error.message);
-        }
+        try { await _supabase.from('factions').update({ nation_id: null, abandoned_at: new Date().toISOString() }).eq('id', playerId); alert('✅ Player removed!'); await loadStats(); await loadNations(); } catch (error) { alert('❌ Error: ' + error.message); }
     }
-
     async function deleteParty(factionId, partyName) {
-        if (!confirm(`⚠️ PERMANENTLY DELETE "${partyName}"?\n\nThis will:\n• Delete the party completely\n• Redistribute their seats\n• Delete their user account\n\nThis cannot be undone!`)) return;
-
-        try {
-            const { data, error } = await _supabase.rpc('admin_delete_party', {
-                p_faction_id: factionId
-            });
-
-            if (error) throw error;
-
-            alert(`✅ "${partyName}" deleted!\n\nSeats redistributed: ${data.seats_redistributed}\nRemaining parties: ${data.remaining_parties}`);
-            await loadStats();
-            await loadNations();
-        } catch (error) {
-            alert('❌ Error: ' + error.message);
-        }
+        if (!confirm(`⚠️ PERMANENTLY DELETE "${partyName}"?`)) return;
+        try { const { data, error } = await _supabase.rpc('admin_delete_party', { p_faction_id: factionId }); if (error) throw error; alert(`✅ "${partyName}" deleted!`); await loadStats(); await loadNations(); } catch (error) { alert('❌ Error: ' + error.message); }
     }
-    
+
+    // ==================== DANGER ZONE ====================
     async function resetShard() {
         if (!confirm('⚠️ RESET ENTIRE SHARD? This cannot be undone!')) return;
-        
-        const btn = document.getElementById('reset-btn');
-        const status = document.getElementById('reset-status');
-        
-        btn.disabled = true;
-        status.className = 'status info';
-        status.textContent = 'Resetting...';
-        status.classList.remove('hidden');
-        
+        const btn = document.getElementById('reset-btn'); const status = document.getElementById('reset-status');
+        btn.disabled = true; status.className = 'status info'; status.textContent = 'Resetting...'; status.classList.remove('hidden');
         try {
-            const nextTick = new Date();
-            nextTick.setHours(nextTick.getHours() + currentTickInterval);
-            
-            await _supabase.from('shard').update({
-                current_date: 'January, 2000',
-                current_tick: 0,
-                next_tick_at: nextTick.toISOString()
-            }).eq('name', 'Alpha Shard');
-            
-            await _supabase.from('factions').update({
-                nation_id: null,
-                faction_type: 'pending'
-            }).not('nation_id', 'is', null);
-            
-            status.className = 'status success';
-            status.textContent = '✅ Shard reset complete!';
-            await loadAllData();
-        } catch (error) {
-            status.className = 'status error';
-            status.textContent = '❌ Error: ' + error.message;
-        }
-        
+            const nextTick = new Date(); nextTick.setHours(nextTick.getHours() + currentTickInterval);
+            await _supabase.from('shard').update({ current_date: 'January, 2000', current_tick: 0, next_tick_at: nextTick.toISOString() }).eq('name', 'Alpha Shard');
+            await _supabase.from('factions').update({ nation_id: null, faction_type: 'pending' }).not('nation_id', 'is', null);
+            status.className = 'status success'; status.textContent = '✅ Shard reset complete!'; await loadAllData();
+        } catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
         btn.disabled = false;
     }
-    
-    async function generateAllNPCs() {
-        if (!confirm('Generate NPCs for all nations?')) return;
-        
-        const status = document.getElementById('npc-status');
-        status.className = 'status info';
-        status.textContent = 'Generating...';
-        status.classList.remove('hidden');
-        
-        try {
-            const { data: nations } = await _supabase.from('nations').select('id');
-            for (const nation of nations) {
-                await _supabase.rpc('generate_npc_parties_for_nation', { p_nation_id: nation.id });
-            }
-            status.className = 'status success';
-            status.textContent = '✅ NPCs generated!';
-            await loadStats();
-        } catch (error) {
-            status.className = 'status error';
-            status.textContent = '❌ Error: ' + error.message;
-        }
-    }
-    
-    async function runNPCActions() {
-        const status = document.getElementById('npc-status');
-        status.className = 'status info';
-        status.textContent = 'Running NPC actions...';
-        status.classList.remove('hidden');
-        
-        try {
-            await _supabase.rpc('run_all_npc_party_actions');
-            status.className = 'status success';
-            status.textContent = '✅ NPC actions complete!';
-        } catch (error) {
-            status.className = 'status error';
-            status.textContent = '❌ Error: ' + error.message;
-        }
-    }
-    
-    document.getElementById('admin-password').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') authenticate();
-    });
-    
-    // ========== VOTER BLOC TOOL ==========
-    
-    const IDEOLOGY_SPECTRUMS = [
-        { left: 'liberty', right: 'equality', leftLabel: 'Liberty', rightLabel: 'Equality', col_left: 'liberty_voters', col_right: 'equality_voters' },
-        { left: 'freedom', right: 'security', leftLabel: 'Freedom', rightLabel: 'Security', col_left: 'freedom_voters', col_right: 'security_voters' },
-        { left: 'tradition', right: 'progress', leftLabel: 'Tradition', rightLabel: 'Progress', col_left: 'tradition_voters', col_right: 'progress_voters' },
-        { left: 'globalism', right: 'nationalism', leftLabel: 'Globalism', rightLabel: 'Nationalism', col_left: 'globalism_voters', col_right: 'nationalism_voters' },
-        { left: 'competition', right: 'cooperation', leftLabel: 'Competition', rightLabel: 'Cooperation', col_left: 'competition_voters', col_right: 'cooperation_voters' }
+
+
+    // ================================================================
+    //                    VOTER IDEOLOGY TOOL
+    // ================================================================
+
+    // Axis definitions — column is what's stored in the nations table.
+    // The stored value represents the LEFT-side percentage (0-100).
+    // Right side = 100 - stored value.
+    const VOTER_AXES = [
+        { column: 'liberty_voters',     left: 'Liberty',     right: 'Equality' },
+        { column: 'competition_voters', left: 'Competition', right: 'Cooperation' },
+        { column: 'tradition_voters',   left: 'Tradition',   right: 'Progress' },
+        { column: 'security_voters',    left: 'Security',    right: 'Freedom' },
+        { column: 'globalism_voters',   left: 'Globalism',   right: 'Nationalism' }
     ];
-    
-    const STAT_CATEGORIES = {
-        governance: {
-            label: 'Governance & Security',
-            stats: ['stability', 'civil_unrest', 'terrorism', 'legitimacy', 'efficiency', 'freedom_index', 'political_violence', 'incarceration_rate', 'press_freedom', 'judicial_independence', 'corruption']
-        },
-        economics: {
-            label: 'Economics & Labor',
-            stats: ['gdp', 'gdp_growth', 'inflation', 'foreign_investment', 'unemployment', 'union_strength', 'trade_balance']
-        },
-        social: {
-            label: 'Social & Demographics',
-            stats: ['standard_of_living', 'happiness', 'crime_rate', 'healthcare_quality', 'literacy', 'social_mobility', 'ethnic_diversity']
-        },
-        resources: {
-            label: 'Resources & Environment',
-            stats: ['arable_land', 'oil_and_gas', 'rare_minerals', 'energy_generation', 'pollution', 'food_prices']
+
+    // Opposing ideology map
+    const OPPOSITES = {};
+    VOTER_AXES.forEach(a => { OPPOSITES[a.left] = a.right; OPPOSITES[a.right] = a.left; });
+
+    // All 10 ideology names
+    const ALL_IDEOLOGIES = VOTER_AXES.flatMap(a => [a.left, a.right]);
+
+    // State
+    let voterNationData = null;
+    let savedAxes = {};        // snapshot of saved values for "Reset"
+    let currentAxes = {};      // current slider values
+    let comboPills = new Set(); // selected ideologies in combo viewer
+
+    // ---- Salience formula ----
+    // Distance from 50 determines how many people define themselves on this axis.
+    // At 50: 15% care. At 100: 100% care. Linear interpolation.
+    function calcSalience(value) {
+        const dist = Math.abs(value - 50) / 50; // 0 to 1
+        return 0.15 + 0.85 * dist;
+    }
+
+    // ---- Probability that a random person holds a specific ideology ----
+    // e.g. P(Liberty) = salience * (liberty_voters / 100)
+    function ideologyProbability(ideology) {
+        for (const axis of VOTER_AXES) {
+            if (ideology === axis.left) {
+                const val = currentAxes[axis.column] ?? 50;
+                return calcSalience(val) * (val / 100);
+            }
+            if (ideology === axis.right) {
+                const val = currentAxes[axis.column] ?? 50;
+                return calcSalience(val) * ((100 - val) / 100);
+            }
         }
-    };
-    
-    let selectedVoterNationId = null;
-    let selectedNationData = null;
-    let selectedIdeologies = {}; // { axis_index: 'left' or 'right' }
-    
+        return 0;
+    }
+
+    // ---- P(apathetic on axis) = 1 - salience ----
+    function axisSalience(axisIndex) {
+        const col = VOTER_AXES[axisIndex].column;
+        return calcSalience(currentAxes[col] ?? 50);
+    }
+
+    // ---- Load voter nations dropdown ----
     async function loadVoterNations() {
         try {
-            const { data } = await _supabase
-                .from('nations')
-                .select('id, name, eligible_voters')
-                .order('name');
-            
+            const { data } = await _supabase.from('nations').select('id, name, population, eligible_voters').order('name');
             const select = document.getElementById('voter-nation-select');
             select.innerHTML = '<option value="">-- Choose a nation --</option>';
-            
-            (data || []).forEach(nation => {
-                select.innerHTML += `<option value="${nation.id}">${nation.name} (${(nation.eligible_voters || 0).toLocaleString()} voters)</option>`;
+            (data || []).forEach(n => {
+                select.innerHTML += `<option value="${n.id}">${n.name} — Pop: ${(n.population||0).toLocaleString()}</option>`;
             });
-        } catch (error) {
-            console.error('Error loading voter nations:', error);
-        }
+        } catch (error) { console.error(error); }
     }
-    
+
+    // ---- Nation selected ----
     async function onVoterNationSelect() {
         const nationId = document.getElementById('voter-nation-select').value;
-        const blocsSection = document.getElementById('voter-blocs-section');
-        const createSection = document.getElementById('bloc-create-section');
-        
-        createSection.classList.add('hidden');
-        
-        if (!nationId) {
-            blocsSection.classList.add('hidden');
-            selectedVoterNationId = null;
-            selectedNationData = null;
-            return;
-        }
-        
-        selectedVoterNationId = nationId;
-        
-        // Load full nation data
-        const { data: nation } = await _supabase
-            .from('nations')
-            .select('*')
-            .eq('id', nationId)
-            .single();
-        
-        selectedNationData = nation;
-        blocsSection.classList.remove('hidden');
-        
-        await loadExistingBlocs(nationId);
+        const infoDiv = document.getElementById('voter-nation-info');
+
+        if (!nationId) { infoDiv.classList.add('hidden'); voterNationData = null; return; }
+
+        const { data: nation } = await _supabase.from('nations').select('*').eq('id', nationId).single();
+        voterNationData = nation;
+
+        // Snapshot saved axes
+        savedAxes = {};
+        currentAxes = {};
+        VOTER_AXES.forEach(a => {
+            const val = nation[a.column] ?? 50;
+            savedAxes[a.column] = val;
+            currentAxes[a.column] = val;
+        });
+
+        // Reset combo viewer
+        comboPills = new Set();
+
+        // Populate UI
+        document.getElementById('voter-pop-display').textContent = (nation.population || 0).toLocaleString();
+        document.getElementById('voter-eligible-input').value = nation.eligible_voters || 0;
+        document.getElementById('voter-eligible-input').max = nation.population || 0;
+        updateEligiblePct();
+
+        renderIdeologySliders();
+        renderComboPills();
+        document.getElementById('combo-result-container').innerHTML = '';
+        document.getElementById('generated-blocs-preview').classList.add('hidden');
+
+        await loadExistingBlocsDisplay(nationId);
+
+        infoDiv.classList.remove('hidden');
     }
-    
-    function showCreateBlocForm() {
-        if (!selectedNationData) return;
-        
-        const createSection = document.getElementById('bloc-create-section');
-        createSection.classList.remove('hidden');
-        
-        // Reset state
-        selectedIdeologies = {};
-        
-        // Populate nation info
-        document.getElementById('bloc-form-nation').textContent = selectedNationData.name;
-        document.getElementById('bloc-form-population').textContent = (selectedNationData.eligible_voters || 0).toLocaleString();
-        
-        // Render ideology spectrums
-        renderIdeologySpectrums();
-        
-        // Render stat grids
-        renderStatCategory('stats-governance', STAT_CATEGORIES.governance.stats);
-        renderStatCategory('stats-economics', STAT_CATEGORIES.economics.stats);
-        renderStatCategory('stats-social', STAT_CATEGORIES.social.stats);
-        renderStatCategory('stats-resources', STAT_CATEGORIES.resources.stats);
-        
-        // Reset form fields
-        document.getElementById('bloc-name').value = '';
-        document.getElementById('bloc-description').value = '';
-        document.getElementById('bloc-size-slider').value = 50;
-        document.getElementById('bloc-size-section').classList.add('hidden');
-        document.getElementById('stat-select-count').textContent = '0';
-        document.getElementById('create-bloc-btn').disabled = true;
-        
-        // Scroll to form
-        createSection.scrollIntoView({ behavior: 'smooth' });
+
+    function updateEligiblePct() {
+        const pop = voterNationData?.population || 1;
+        const eligible = parseInt(document.getElementById('voter-eligible-input').value) || 0;
+        const pct = ((eligible / pop) * 100).toFixed(1);
+        document.getElementById('voter-eligible-pct').textContent = `(${pct}% of population)`;
     }
-    
-    function hideCreateBlocForm() {
-        document.getElementById('bloc-create-section').classList.add('hidden');
-    }
-    
-    function renderIdeologySpectrums() {
-        const container = document.getElementById('ideology-spectrums');
-        
-        container.innerHTML = IDEOLOGY_SPECTRUMS.map((spec, idx) => {
-            const leftCount = selectedNationData[spec.col_left] || 0;
-            const rightCount = selectedNationData[spec.col_right] || 0;
-            const total = selectedNationData.eligible_voters || 1;
-            const leftPct = ((leftCount / total) * 100).toFixed(1);
-            const rightPct = ((rightCount / total) * 100).toFixed(1);
-            
-            const leftSelected = selectedIdeologies[idx] === 'left';
-            const rightSelected = selectedIdeologies[idx] === 'right';
-            
+
+    // Listen for eligible voter changes
+    document.getElementById('voter-eligible-input').addEventListener('input', updateEligiblePct);
+
+    // ---- Render ideology sliders ----
+    function renderIdeologySliders() {
+        const container = document.getElementById('ideology-sliders-container');
+        container.innerHTML = VOTER_AXES.map((axis, i) => {
+            const val = currentAxes[axis.column] ?? 50;
+            const rightVal = 100 - val;
+            const salience = calcSalience(val);
+            const salPct = (salience * 100).toFixed(0);
+
             return `
-                <div style="display:flex; gap:10px; margin-bottom:12px; align-items:stretch;">
-                    <button class="ideology-btn ${leftSelected ? 'selected' : ''}" 
-                        style="flex:1; text-align:center; padding:14px 10px; ${leftCount === 0 ? 'opacity:0.4; cursor:not-allowed;' : ''}"
-                        onclick="${leftCount > 0 ? `selectIdeologySide(${idx}, 'left')` : ''}">
-                        <div style="font-size:0.95rem;">${spec.leftLabel}</div>
-                        <div style="font-size:0.8rem; margin-top:4px; opacity:0.7;">${leftCount.toLocaleString()} (${leftPct}%)</div>
-                    </button>
-                    <div style="display:flex; align-items:center; color:#555; font-size:0.8rem; font-weight:bold;">↔</div>
-                    <button class="ideology-btn ${rightSelected ? 'selected' : ''}" 
-                        style="flex:1; text-align:center; padding:14px 10px; ${rightCount === 0 ? 'opacity:0.4; cursor:not-allowed;' : ''}"
-                        onclick="${rightCount > 0 ? `selectIdeologySide(${idx}, 'right')` : ''}">
-                        <div style="font-size:0.95rem;">${spec.rightLabel}</div>
-                        <div style="font-size:0.8rem; margin-top:4px; opacity:0.7;">${rightCount.toLocaleString()} (${rightPct}%)</div>
-                    </button>
+                <div class="axis-slider-row">
+                    <div class="axis-label-left" style="color:${val >= 50 ? '#CE93D8' : '#888'};">
+                        ${axis.left}
+                        <span class="axis-pct">${val}%</span>
+                    </div>
+                    <div class="axis-slider-wrap">
+                        <input type="range" min="0" max="100" value="${val}"
+                            oninput="onAxisSliderChange(${i}, this.value)">
+                        <div class="axis-value-display" title="Salience: ${salPct}% of people care about this axis">
+                            ⚡${salPct}%
+                        </div>
+                    </div>
+                    <div class="axis-label-right" style="color:${rightVal >= 50 ? '#CE93D8' : '#888'};">
+                        ${axis.right}
+                        <span class="axis-pct">${rightVal}%</span>
+                    </div>
                 </div>
             `;
         }).join('');
     }
-    
-    function selectIdeologySide(axisIndex, side) {
-        // Toggle: if already selected, deselect
-        if (selectedIdeologies[axisIndex] === side) {
-            delete selectedIdeologies[axisIndex];
-        } else {
-            selectedIdeologies[axisIndex] = side;
-        }
-        
-        renderIdeologySpectrums();
-        updateBlocFormState();
+
+    function onAxisSliderChange(axisIndex, value) {
+        const col = VOTER_AXES[axisIndex].column;
+        currentAxes[col] = parseInt(value);
+        renderIdeologySliders();
+        // Update combo result if pills are selected
+        if (comboPills.size > 0) updateComboResult();
     }
-    
-    function updateBlocFormState() {
-        const hasIdeology = Object.keys(selectedIdeologies).length > 0;
-        const sizeSection = document.getElementById('bloc-size-section');
-        
-        if (hasIdeology) {
-            sizeSection.classList.remove('hidden');
-            updateBlocSize();
-        } else {
-            sizeSection.classList.add('hidden');
-        }
-        
-        validateCreateButton();
+
+    function resetAxesToSaved() {
+        VOTER_AXES.forEach(a => { currentAxes[a.column] = savedAxes[a.column]; });
+        renderIdeologySliders();
+        if (comboPills.size > 0) updateComboResult();
+        document.getElementById('axes-save-status').textContent = '↩ Reset to saved values';
+        document.getElementById('axes-save-status').style.color = '#888';
     }
-    
-    function updateBlocSize() {
-        const pct = parseInt(document.getElementById('bloc-size-slider').value);
-        document.getElementById('bloc-size-pct').textContent = pct + '%';
-        
-        // Estimate: use the smallest ideology group as the overlap base
-        const total = selectedNationData.eligible_voters || 0;
-        let minCount = total;
-        
-        Object.entries(selectedIdeologies).forEach(([idx, side]) => {
-            const spec = IDEOLOGY_SPECTRUMS[parseInt(idx)];
-            const col = side === 'left' ? spec.col_left : spec.col_right;
-            const count = selectedNationData[col] || 0;
-            if (count < minCount) minCount = count;
-        });
-        
-        const estimated = Math.round(minCount * (pct / 100));
-        document.getElementById('bloc-size-count').textContent = estimated.toLocaleString();
-    }
-    
-    function renderStatCategory(containerId, stats) {
-        const container = document.getElementById(containerId);
-        
-        container.innerHTML = stats.map(stat => {
-            const displayName = stat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-            return `
-                <div class="stat-pref-item">
-                    <label>${displayName}</label>
-                    <select id="pref-${stat}" onchange="updateStatCount()">
-                        <option value="">—</option>
-                        <option value="low">Low (0–30)</option>
-                        <option value="moderate">Moderate (31–69)</option>
-                        <option value="high">High (70–100)</option>
-                    </select>
-                </div>
-            `;
-        }).join('');
-    }
-    
-    function getAllStats() {
-        let all = [];
-        Object.values(STAT_CATEGORIES).forEach(cat => {
-            all = all.concat(cat.stats);
-        });
-        return all;
-    }
-    
-    function updateStatCount() {
-        const allStats = getAllStats();
-        let count = 0;
-        allStats.forEach(stat => {
-            const el = document.getElementById(`pref-${stat}`);
-            if (el && el.value) count++;
-        });
-        
-        document.getElementById('stat-select-count').textContent = count;
-        
-        // Enforce max 10
-        if (count > 10) {
-            document.getElementById('stat-select-count').style.color = '#ff4444';
-        } else {
-            document.getElementById('stat-select-count').style.color = '#CE93D8';
-        }
-        
-        validateCreateButton();
-    }
-    
-    function validateCreateButton() {
-        const hasIdeology = Object.keys(selectedIdeologies).length > 0;
-        const allStats = getAllStats();
-        let statCount = 0;
-        allStats.forEach(stat => {
-            const el = document.getElementById(`pref-${stat}`);
-            if (el && el.value) statCount++;
-        });
-        
-        const valid = hasIdeology && statCount >= 1 && statCount <= 10;
-        document.getElementById('create-bloc-btn').disabled = !valid;
-    }
-    
-    async function createVoterBloc() {
-        if (!selectedVoterNationId) return;
-        
-        const name = document.getElementById('bloc-name').value.trim();
-        const description = document.getElementById('bloc-description').value.trim();
-        const pct = parseInt(document.getElementById('bloc-size-slider').value);
-        const status = document.getElementById('bloc-status');
-        
-        if (!name) {
-            alert('Please enter a bloc name.');
-            return;
-        }
-        
-        // Gather selected ideologies
-        const ideologyList = [];
-        Object.entries(selectedIdeologies).forEach(([idx, side]) => {
-            const spec = IDEOLOGY_SPECTRUMS[parseInt(idx)];
-            ideologyList.push(side === 'left' ? spec.leftLabel : spec.rightLabel);
-        });
-        
-        // Calculate voter count
-        const total = selectedNationData.eligible_voters || 0;
-        let minCount = total;
-        Object.entries(selectedIdeologies).forEach(([idx, side]) => {
-            const spec = IDEOLOGY_SPECTRUMS[parseInt(idx)];
-            const col = side === 'left' ? spec.col_left : spec.col_right;
-            const count = selectedNationData[col] || 0;
-            if (count < minCount) minCount = count;
-        });
-        const voterCount = Math.round(minCount * (pct / 100));
-        
-        // Gather stat preferences
-        const statPreferences = {};
-        const allStats = getAllStats();
-        let priorityStat = null;
-        allStats.forEach(stat => {
-            const el = document.getElementById(`pref-${stat}`);
-            if (el && el.value) {
-                statPreferences[stat] = el.value;
-                if (!priorityStat) priorityStat = stat;
-            }
-        });
-        
+
+    async function saveAxes() {
+        if (!voterNationData) return;
+        const statusEl = document.getElementById('axes-save-status');
+
+        const updateObj = {};
+        VOTER_AXES.forEach(a => { updateObj[a.column] = currentAxes[a.column]; });
+
+        // Also save eligible voters
+        updateObj.eligible_voters = parseInt(document.getElementById('voter-eligible-input').value) || 0;
+
         try {
-            const { error } = await _supabase
-                .from('voter_blocs')
-                .insert({
-                    nation_id: selectedVoterNationId,
-                    bloc_name: name,
-                    description: description || null,
-                    voter_count: voterCount,
-                    ideology_1: ideologyList[0] || null,
-                    ideology_2: ideologyList[1] || null,
-                    ideology_3: ideologyList[2] || null,
-                    ideology_4: ideologyList[3] || null,
-                    ideology_5: ideologyList[4] || null,
-                    priority_stat: priorityStat,
-                    stat_preference: priorityStat ? statPreferences[priorityStat] : null,
-                    stat_preferences_full: statPreferences,
-                    is_active: true
-                });
-            
+            const { error } = await _supabase.from('nations').update(updateObj).eq('id', voterNationData.id);
             if (error) throw error;
-            
-            status.className = 'status success';
-            status.textContent = `✅ "${name}" created with ${voterCount.toLocaleString()} voters!`;
-            status.classList.remove('hidden');
-            
-            setTimeout(() => status.classList.add('hidden'), 4000);
-            
-            await loadExistingBlocs(selectedVoterNationId);
+
+            // Update snapshots
+            VOTER_AXES.forEach(a => { savedAxes[a.column] = currentAxes[a.column]; });
+            voterNationData.eligible_voters = updateObj.eligible_voters;
+
+            statusEl.textContent = '✅ Saved!';
+            statusEl.style.color = '#4CAF50';
+            setTimeout(() => { statusEl.textContent = ''; }, 3000);
         } catch (error) {
-            status.className = 'status error';
-            status.textContent = '❌ Error: ' + error.message;
-            status.classList.remove('hidden');
+            statusEl.textContent = '❌ ' + error.message;
+            statusEl.style.color = '#ff4444';
         }
     }
-    
-    async function loadExistingBlocs(nationId) {
-        const container = document.getElementById('existing-blocs-list');
-        
+
+    // ---- Combination Viewer ----
+    function renderComboPills() {
+        const container = document.getElementById('combo-pills-container');
+
+        // Figure out which pills should be disabled (opposite of a selected one)
+        const disabledSet = new Set();
+        comboPills.forEach(ideo => {
+            if (OPPOSITES[ideo]) disabledSet.add(OPPOSITES[ideo]);
+        });
+
+        container.innerHTML = ALL_IDEOLOGIES.map(ideo => {
+            const isActive = comboPills.has(ideo);
+            const isDisabled = disabledSet.has(ideo) && !isActive;
+            const cls = isActive ? 'active' : (isDisabled ? 'disabled' : '');
+            return `<div class="combo-pill ${cls}" onclick="${isDisabled ? '' : `toggleComboPill('${ideo}')`}">${ideo}</div>`;
+        }).join('');
+    }
+
+    function toggleComboPill(ideology) {
+        if (comboPills.has(ideology)) {
+            comboPills.delete(ideology);
+        } else {
+            // Don't allow selecting opposite of already-selected
+            if (OPPOSITES[ideology] && comboPills.has(OPPOSITES[ideology])) return;
+            comboPills.add(ideology);
+        }
+        renderComboPills();
+        updateComboResult();
+    }
+
+    function updateComboResult() {
+        const container = document.getElementById('combo-result-container');
+
+        if (comboPills.size === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        const pop = voterNationData?.population || 0;
+        const selected = Array.from(comboPills);
+
+        // Inclusive probability: product of each selected ideology's probability
+        let prob = 1;
+        selected.forEach(ideo => { prob *= ideologyProbability(ideo); });
+
+        const estimated = Math.round(pop * prob);
+        const pct = (prob * 100).toFixed(1);
+
+        container.innerHTML = `
+            <div class="combo-result-box">
+                <div style="color:#888; font-size:0.8rem; margin-bottom:8px;">
+                    ${selected.join(' + ')} voters (inclusive — may hold additional views)
+                </div>
+                <div class="combo-result-pct">${pct}%</div>
+                <div class="combo-result-count">${estimated.toLocaleString()} people</div>
+                <div class="combo-result-label">of ${pop.toLocaleString()} total population</div>
+            </div>
+        `;
+    }
+
+    // ---- Generate Voter Blocs ----
+    async function generateVoterBlocs() {
+        if (!voterNationData) return;
+        if (!confirm('This will DELETE all existing voter blocs for ' + voterNationData.name + ' and generate new ones from the current axis values.\n\nProceed?')) return;
+
+        const statusEl = document.getElementById('generate-status');
+        statusEl.className = 'status info'; statusEl.textContent = 'Generating blocs...'; statusEl.classList.remove('hidden');
+
         try {
-            const { data, error } = await _supabase
-                .from('voter_blocs')
-                .select('*')
-                .eq('nation_id', nationId)
-                .order('created_at', { ascending: false });
-            
-            if (error) throw error;
-            
-            if (!data || data.length === 0) {
-                container.innerHTML = '<div class="no-players">No voter blocs created for this nation yet.</div>';
-                return;
+            // 1. Save axes first
+            const updateObj = {};
+            VOTER_AXES.forEach(a => { updateObj[a.column] = currentAxes[a.column]; });
+            updateObj.eligible_voters = parseInt(document.getElementById('voter-eligible-input').value) || 0;
+            await _supabase.from('nations').update(updateObj).eq('id', voterNationData.id);
+            VOTER_AXES.forEach(a => { savedAxes[a.column] = currentAxes[a.column]; });
+            voterNationData.eligible_voters = updateObj.eligible_voters;
+
+            // 2. Delete existing blocs
+            await _supabase.from('voter_blocs').delete().eq('nation_id', voterNationData.id);
+
+            // 3. Generate all 3^5 = 243 combinations
+            const pop = voterNationData.population || 0;
+            const blocs = [];
+            const states = ['left', 'right', 'none']; // for each axis
+
+            // Recursive combo builder
+            function buildCombos(axisIdx, currentCombo, currentProb) {
+                if (axisIdx === VOTER_AXES.length) {
+                    const ideologies = [];
+                    currentCombo.forEach((state, i) => {
+                        if (state === 'left') ideologies.push(VOTER_AXES[i].left);
+                        else if (state === 'right') ideologies.push(VOTER_AXES[i].right);
+                    });
+                    const count = Math.round(pop * currentProb);
+                    if (count >= 1) {
+                        blocs.push({ ideologies, probability: currentProb, count });
+                    }
+                    return;
+                }
+
+                const val = currentAxes[VOTER_AXES[axisIdx].column] ?? 50;
+                const sal = calcSalience(val);
+                const pLeft = sal * (val / 100);
+                const pRight = sal * ((100 - val) / 100);
+                const pNone = 1 - sal;
+
+                for (const state of states) {
+                    const p = state === 'left' ? pLeft : state === 'right' ? pRight : pNone;
+                    if (currentProb * p * pop < 0.5) continue; // prune tiny branches
+                    currentCombo.push(state);
+                    buildCombos(axisIdx + 1, currentCombo, currentProb * p);
+                    currentCombo.pop();
+                }
             }
-            
-            container.innerHTML = data.map(bloc => {
-                const ideologies = [bloc.ideology_1, bloc.ideology_2, bloc.ideology_3, bloc.ideology_4, bloc.ideology_5].filter(Boolean);
-                const statPrefs = bloc.stat_preferences_full || {};
-                
-                const ideologyTags = ideologies.map(i => 
-                    `<span class="bloc-tag ideology">${i}</span>`
-                ).join('');
-                
-                const statTags = Object.entries(statPrefs).map(([stat, pref]) => {
-                    const displayStat = stat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                    const emoji = pref === 'high' ? '🔺' : pref === 'low' ? '🔻' : '➡️';
-                    return `<span class="bloc-tag stat">${emoji} ${displayStat}: ${pref}</span>`;
-                }).join('');
-                
+
+            buildCombos(0, [], 1);
+
+            // Sort by count descending
+            blocs.sort((a, b) => b.count - a.count);
+
+            // 4. Insert blocs into database
+            const inserts = blocs.map(b => ({
+                nation_id: voterNationData.id,
+                bloc_name: b.ideologies.length > 0 ? b.ideologies.join(' + ') + ' Bloc' : 'Unaligned Bloc',
+                description: b.ideologies.length > 0
+                    ? 'Voters who identify with ' + b.ideologies.join(', ')
+                    : 'Voters with no strong ideological alignment',
+                voter_count: b.count,
+                ideology_1: b.ideologies[0] || null,
+                ideology_2: b.ideologies[1] || null,
+                ideology_3: b.ideologies[2] || null,
+                ideology_4: b.ideologies[3] || null,
+                ideology_5: b.ideologies[4] || null,
+                is_active: true
+            }));
+
+            // Batch insert (supabase handles arrays)
+            if (inserts.length > 0) {
+                const { error } = await _supabase.from('voter_blocs').insert(inserts);
+                if (error) throw error;
+            }
+
+            // 5. Show preview
+            statusEl.className = 'status success';
+            statusEl.textContent = `✅ Generated ${blocs.length} voter blocs for ${voterNationData.name}!`;
+
+            document.getElementById('bloc-count-display').textContent = blocs.length;
+            document.getElementById('generated-blocs-list').innerHTML = blocs.map(b => {
+                const pct = ((b.count / pop) * 100).toFixed(1);
+                const name = b.ideologies.length > 0 ? b.ideologies.join(' + ') : 'Unaligned';
+                const tags = b.ideologies.map(i => `<span class="bloc-preview-tag">${i}</span>`).join('');
                 return `
-                    <div class="bloc-card">
-                        <div class="bloc-card-header">
-                            <span class="bloc-card-name">${bloc.bloc_name}</span>
-                            <span class="bloc-card-count">${(bloc.voter_count || 0).toLocaleString()} voters</span>
+                    <div class="bloc-preview-card">
+                        <div>
+                            <div class="bloc-preview-name">${name}</div>
+                            <div class="bloc-preview-tags">${tags || '<span style="color:#666; font-size:0.75rem;">No ideology</span>'}</div>
                         </div>
-                        ${bloc.description ? `<div class="bloc-card-desc">${bloc.description}</div>` : ''}
-                        <div class="bloc-card-tags">
-                            ${ideologyTags}
-                        </div>
-                        ${statTags ? `<div class="bloc-card-tags" style="margin-top:6px;">${statTags}</div>` : ''}
-                        <div style="margin-top:12px; display:flex; gap:8px;">
-                            <button class="btn-remove" style="font-size:0.7rem; padding:5px 10px; background:#aa0000;"
-                                onclick="deleteVoterBloc('${bloc.id}', '${bloc.bloc_name.replace(/'/g, "\\'")}')">
-                                DELETE
-                            </button>
+                        <div style="text-align:right;">
+                            <span class="bloc-preview-count">${b.count.toLocaleString()}</span>
+                            <span class="bloc-preview-pct">(${pct}%)</span>
                         </div>
                     </div>
                 `;
             }).join('');
+            document.getElementById('generated-blocs-preview').classList.remove('hidden');
+
+            await loadExistingBlocsDisplay(voterNationData.id);
+
         } catch (error) {
-            console.error('Error loading blocs:', error);
-            container.innerHTML = '<div class="no-players" style="color:#ff4444;">Error loading voter blocs</div>';
+            console.error(error);
+            statusEl.className = 'status error';
+            statusEl.textContent = '❌ Error: ' + error.message;
         }
     }
-    
-    async function deleteVoterBloc(blocId, blocName) {
-        if (!confirm(`Delete voter bloc "${blocName}"?`)) return;
-        
+
+    // ---- Show existing blocs from DB ----
+    async function loadExistingBlocsDisplay(nationId) {
+        const container = document.getElementById('existing-blocs-display');
         try {
-            const { error } = await _supabase
-                .from('voter_blocs')
-                .delete()
-                .eq('id', blocId);
-            
+            const { data, error } = await _supabase.from('voter_blocs').select('*').eq('nation_id', nationId).order('voter_count', { ascending: false });
             if (error) throw error;
-            
-            alert(`✅ "${blocName}" deleted.`);
-            await loadExistingBlocs(selectedVoterNationId);
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="no-players">No voter blocs in database for this nation.</div>';
+                return;
+            }
+            const totalPop = voterNationData?.population || 1;
+            const totalBloc = data.reduce((s, b) => s + (b.voter_count || 0), 0);
+            container.innerHTML = `
+                <div style="color:#888; font-size:0.85rem; margin-bottom:12px;">
+                    ${data.length} blocs — ${totalBloc.toLocaleString()} total people
+                    (${((totalBloc / totalPop) * 100).toFixed(1)}% of population)
+                </div>
+                ${data.map(b => {
+                    const ideos = [b.ideology_1, b.ideology_2, b.ideology_3, b.ideology_4, b.ideology_5].filter(Boolean);
+                    const pct = ((b.voter_count / totalPop) * 100).toFixed(1);
+                    return `<div class="bloc-preview-card"><div><div class="bloc-preview-name">${b.bloc_name}</div><div class="bloc-preview-tags">${ideos.map(i => `<span class="bloc-preview-tag">${i}</span>`).join('') || '<span style="color:#666; font-size:0.75rem;">Unaligned</span>'}</div></div><div style="text-align:right;"><span class="bloc-preview-count">${(b.voter_count||0).toLocaleString()}</span><span class="bloc-preview-pct">(${pct}%)</span></div></div>`;
+                }).join('')}
+            `;
         } catch (error) {
-            alert('❌ Error: ' + error.message);
+            console.error(error);
+            container.innerHTML = '<div class="no-players" style="color:#ff4444;">Error loading blocs</div>';
         }
     }
 </script>
-
 </body>
 </html>
