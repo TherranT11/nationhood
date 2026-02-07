@@ -1037,27 +1037,6 @@ function renderPlayers(filter) {
         `;
     }).join('');
 }
-            
-document.querySelectorAll('[data-player-id]').forEach(btn => {
-    btn.addEventListener('click', function() {
-        const playerId = this.getAttribute('data-player-id');
-        const nationId = this.getAttribute('data-nation-id');
-        const partyName = this.getAttribute('data-party-name');
-        removePlayer(playerId, nationId, partyName);
-    });
-});
-
-document.querySelectorAll('[data-delete-id]').forEach(btn => {
-    btn.addEventListener('click', function() {
-        const playerId = this.getAttribute('data-delete-id');
-        const partyName = this.getAttribute('data-party-name');
-        deleteParty(playerId, partyName);
-    });
-});
-        } catch (error) {
-            console.error('Error loading nations:', error);
-        }
-    }
     
     async function removePlayer(playerId, nationId, partyName) {
         if (!confirm(`Remove ${partyName} from this nation?`)) return;
