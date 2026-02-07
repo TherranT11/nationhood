@@ -794,7 +794,15 @@
                     })
                     .eq('id', currentUser.id);
                 
-                if (updateError) throw updateError;
+                if (updateError) {
+    if (updateError.code === '23505') { // Unique violation
+        showError('That faction name was just taken by another player. Please refresh and choose another.');
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'JOIN THE REGIME';
+        return;
+    }
+    throw updateError;
+}
                 
                 // Call autocracy join to handle seat distribution
                 const { data: joinResult, error: joinError } = await _supabase
