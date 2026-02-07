@@ -781,18 +781,18 @@
                 if (!partyName) { showError('Please select a faction name.'); confirmBtn.disabled = false; confirmBtn.textContent = 'JOIN THE REGIME'; return; }
                 
                 // Update faction record
-                const { error: updateError } = await _supabase
-                    .from('factions')
-                    .update({
-                        faction_type: 'party',
-                        faction_name: partyName,
-                        nation_id: nation.id,
-                        nation: selectedNation,
-                        abbreviation: partyAbbr,
-                        ideology_value_1: null,
-                        ideology_value_2: null
-                    })
-                    .eq('id', currentUser.id);
+               const { error: updateError } = await _supabase
+    .from('factions')
+    .upsert({
+        id: currentUser.id,
+        faction_type: 'party',
+        faction_name: partyName,
+        nation_id: nation.id,
+        nation: selectedNation,
+        abbreviation: partyAbbr,
+        ideology_value_1: null,
+        ideology_value_2: null
+    });
                 
                 if (updateError) {
     if (updateError.code === '23505') { // Unique violation
@@ -826,18 +826,18 @@
                 const partyName = document.getElementById('party-name').value.trim();
                 const partyAbbr = document.getElementById('party-abbr').value.trim();
                 
-                const { error: updateError } = await _supabase
-                    .from('factions')
-                    .update({
-                        faction_type: 'party',
-                        faction_name: partyName,
-                        nation_id: nation.id,
-                        nation: selectedNation,
-                        ideology_value_1: selectedIdeologies[0],
-                        ideology_value_2: selectedIdeologies[1],
-                        abbreviation: partyAbbr
-                    })
-                    .eq('id', currentUser.id);
+            const { error: updateError } = await _supabase
+    .from('factions')
+    .upsert({
+        id: currentUser.id,
+        faction_type: 'party',
+        faction_name: partyName,
+        nation_id: nation.id,
+        nation: selectedNation,
+        ideology_value_1: selectedIdeologies[0],
+        ideology_value_2: selectedIdeologies[1],
+        abbreviation: partyAbbr
+    });
                 
                 if (updateError) throw updateError;
 
