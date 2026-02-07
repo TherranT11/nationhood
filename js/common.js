@@ -1,4 +1,4 @@
-//**
+/**
  * game-common.js — Shared game logic for Nationhood Alpha
  *
  * Single source of truth for:
@@ -97,14 +97,42 @@ async function loadSeats(supabase, nationId, isAutocracy, allParties, currentFac
 // ==================== HEAD FACTION ====================
 
 /**
- * Detect the head faction (most seats) for autocracy veto/enact powers.
+ * Detect the head (ruling) faction for autocracy veto/enact powers.
  *
+ * Head faction = the faction whose party holds the Head of State,
+ * stored in nation_governments.head_of_state_party.
+ *
+ * This only changes when:
+ *   - The Head of State dies and the faction with the most seats appoints a new one
+ *   - A faction successfully uses the Seize Power action
+ *
+ * Falls back to most-seats if no nation_governments row exists (legacy data).
+ *
+ * @param {object} supabase         - Supabase client
+ * @param {string} nationId         - Nation UUID
  * @param {Array}  allParties       - Array of party objects
  * @param {Object} allPartySeats    - Map of partyId -> seats
  * @param {string} currentFactionId - Current player's faction UUID
- * @returns {{ headFactionId: string|null, isHeadFaction: boolean }}
+ * @returns {Promise<{ headFactionId: string|null, isHeadFaction: boolean }>}
  */
-function detectHeadFaction(allParties, allPartySeats, currentFactionId) {
+async function detectHeadFaction(supabase, nationId, allParties, allPartySeats, currentFactionId) {
+    // Primary: look up head_of_state_party from nation_governments
+    const { data: gov } = await supabase
+        .from('nation_governments')
+        .select('head_of_state_party')
+        .eq('nation_id', nationId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (gov?.head_of_state_party) {
+        return {
+            headFactionId: gov.head_of_state_party,
+            isHeadFaction: currentFactionId === gov.head_of_state_party
+        };
+    }
+
+    // Fallback: most seats (legacy / unset data)
     const sorted = allParties.slice().sort((a, b) =>
         (allPartySeats[b.id] || 0) - (allPartySeats[a.id] || 0)
     );
