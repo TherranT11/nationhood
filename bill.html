@@ -239,7 +239,7 @@
 <script>
 /**
  * Bill Detail Page
- * FIXES: autocracy seats, ideology filter, head faction enact
+ * FIXES: autocracy seats, ideology filter, head faction enact, vote tally sync
  */
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
@@ -479,8 +479,29 @@ function renderCurrentVote() {
 async function castVote(vote) {
     if (!currentFaction || currentBill.status !== 'floor') return;
     try {
-        const { error } = await _supabase.from('bill_support').upsert({ bill_id: billId, faction_id: currentFaction.id, stance: vote, seat_count: currentSeats }, { onConflict: 'bill_id,faction_id' });
+        const { error } = await _supabase.from('bill_support').upsert({
+            bill_id: billId, faction_id: currentFaction.id,
+            stance: vote, seat_count: currentSeats
+        }, { onConflict: 'bill_id,faction_id' });
         if (error) throw error;
+
+        // Sync vote totals to bills table so laws.html can display them
+        const { data: allVotes } = await _supabase
+            .from('bill_support')
+            .select('stance, seat_count')
+            .eq('bill_id', billId);
+
+        let votesFor = 0, votesAgainst = 0;
+        (allVotes || []).forEach(v => {
+            if (v.stance === 'yes') votesFor += v.seat_count;
+            else if (v.stance === 'no') votesAgainst += v.seat_count;
+        });
+
+        await _supabase.from('bills').update({
+            votes_for: votesFor,
+            votes_against: votesAgainst
+        }).eq('id', billId);
+
         myVote = vote;
         await loadBillData();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
