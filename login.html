@@ -13,13 +13,17 @@
         input { width: 100%; padding: 12px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 4px; box-sizing: border-box; }
         .btn-login { width: 100%; padding: 15px; background: #ffcc00; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; color: #000; }
         .btn-login:hover { background: #e6b800; }
+        .btn-login:disabled { background: #666; cursor: not-allowed; }
         .signup-link { text-align: center; margin-top: 15px; font-size: 0.8rem; }
         .signup-link a { color: #ffcc00; text-decoration: none; }
+        .forgot-link { text-align: right; margin-top: -12px; margin-bottom: 20px; }
+        .forgot-link a { color: #888; text-decoration: none; font-size: 0.8rem; transition: color 0.2s; }
+        .forgot-link a:hover { color: #ffcc00; }
         .error { color: #ff4444; font-size: 0.9rem; margin-top: 10px; text-align: center; }
+        .success { color: #4CAF50; font-size: 0.9rem; margin-top: 10px; text-align: center; }
     </style>
 </head>
 <body>
-
 <div class="login-card">
     <h2>Faction Login</h2>
     <form id="login-form">
@@ -31,47 +35,58 @@
             <label>Password</label>
             <input type="password" id="password" required>
         </div>
-        <button type="submit" class="btn-login">ENTER THE CHRONICLE</button>
+        <div class="forgot-link">
+            <a href="forgot-password.html">Forgot password?</a>
+        </div>
+        <button type="submit" class="btn-login" id="submit-btn">ENTER THE CHRONICLE</button>
         <div id="error-message" class="error"></div>
+        <div id="success-message" class="success"></div>
     </form>
     <div class="signup-link">
         New to the continent? <a href="signup.html">Establish a Faction</a>
     </div>
 </div>
-
 <script>
-    // Your Supabase credentials - CORRECT KEY
     const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
     const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
+    // Show success message if redirected from password reset
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('reset') === 'success') {
+        document.getElementById('success-message').textContent = 'Password updated! You can now log in.';
+    }
+    if (params.get('confirmed') === 'true') {
+        document.getElementById('success-message').textContent = 'Email confirmed! You can now log in.';
+    }
+
     document.getElementById('login-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        
+
+        const submitBtn = document.getElementById('submit-btn');
         const errorMsg = document.getElementById('error-message');
+        const successMsg = document.getElementById('success-message');
         errorMsg.textContent = '';
-        
+        successMsg.textContent = '';
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'LOGGING IN...';
+
         const email = document.getElementById('email').value;
         const password = document.getElementById('password').value;
-
         try {
-            // Sign in with Supabase Auth
             const { data, error } = await _supabase.auth.signInWithPassword({
                 email: email,
                 password: password,
             });
-
             if (error) throw error;
-
-            // Success! Redirect to map
             window.location.href = "world.html";
-            
         } catch (error) {
             console.error('Login error:', error);
             errorMsg.textContent = error.message || 'Login failed. Please try again.';
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'ENTER THE CHRONICLE';
         }
     });
 </script>
-
 </body>
 </html>
