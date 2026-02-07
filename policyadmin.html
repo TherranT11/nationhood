@@ -805,6 +805,7 @@
         const cleanSE = sideEffects.filter(se => se.stat && se.amount > 0);
 
         const policyData = {
+            policy_key: name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),
             policy_name: name,
             description: document.getElementById('b-desc').value.trim() || null,
             major_sector: document.getElementById('b-major-sector').value || null,
