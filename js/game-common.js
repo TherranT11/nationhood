@@ -29,7 +29,7 @@ const MAJOR_SECTORS = [
     { key: 'LABOR',         label: 'Labor',               icon: '👷' },
     { key: 'EDUCATION',     label: 'Education',           icon: '📚' },
     { key: 'ENERGY',        label: 'Energy',              icon: '⚡' },
-    { key: 'SOCIAL',        label: 'Social',              icon: '🏥' },
+    { key: 'WELFARE',       label: 'Welfare',             icon: '🏥' },
     { key: 'MILITARY',      label: 'Military & Security', icon: '🛡️' },
     { key: 'GOVERNANCE',    label: 'Governance',          icon: '🏛️' },
     { key: 'IMMIGRATION',   label: 'Immigration',         icon: '🌍' },
