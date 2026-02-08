@@ -307,6 +307,21 @@ initPage('laws', async (state) => {
     isAutocracy = (nation.government_type === 'Autocracy');
     if (isAutocracy) { termBill = 'Decree'; termBills = 'Decrees'; termDraft = 'Draft Decree'; termPropose = 'Propose Decree'; document.title = 'Decrees | Nationhood Alpha'; }
     await loadLawsData();
+
+    // Auto-resolve any floor bills whose voting window has expired
+    const resolutions = await resolveExpiredVotes(_supabase, currentNation.id);
+    if (resolutions.length > 0) {
+        // Reload data after resolutions
+        await loadLawsData();
+        // Show notification
+        const msgs = resolutions.map(r =>
+            r.result === 'passed'
+                ? '✅ ' + r.billName + ' PASSED (' + r.votesFor + ' for / ' + r.votesAgainst + ' against)'
+                : '❌ ' + r.billName + ' FAILED (' + r.votesFor + ' for / ' + r.votesAgainst + ' against)'
+        );
+        setTimeout(() => { alert('Vote Results:\n\n' + msgs.join('\n')); }, 500);
+    }
+
     if (isAutocracy) {
         const hf = await detectHeadFaction(_supabase, currentNation.id, allParties, allPartySeats, currentFaction?.id);
         headFactionId = hf.headFactionId; isHeadFaction = hf.isHeadFaction;
@@ -554,6 +569,20 @@ async function enactDecree(billId) {
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         await _supabase.from('bills').update({ status: 'floor', voting_ends_tick: (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS }).eq('id', billId);
+
+        // Apply floor ideology penalty
+        const bill = committeeBills.find(b => b.id === billId);
+        if (bill) {
+            const sponsor = allParties.find(p => p.id === bill.proposed_by);
+            if (sponsor) {
+                const opposed = countOpposedArticles(bill.bill_articles || [], sponsor);
+                if (opposed > 0) {
+                    const penalty = calculateIdeologyPenalty('floor', opposed, currentNation?.polarization || 0);
+                    await applyIdeologyPenalty(_supabase, bill.proposed_by, penalty);
+                }
+            }
+        }
+
         alert('⚡ Decree sent to the floor!');
         await loadLawsData(); renderLawsPage();
     } catch (error) { console.error('Enact error:', error); alert('Error: ' + error.message); }
@@ -892,6 +921,17 @@ async function sendToFloor(billId) {
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         await _supabase.from('bills').update({ status: 'floor', voting_ends_tick: (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS }).eq('id', billId);
+
+        // Apply floor ideology penalty
+        const bill = committeeBills.find(b => b.id === billId);
+        if (bill && currentFaction) {
+            const opposed = countOpposedArticles(bill.bill_articles || [], currentFaction);
+            if (opposed > 0) {
+                const penalty = calculateIdeologyPenalty('floor', opposed, currentNation?.polarization || 0);
+                await applyIdeologyPenalty(_supabase, bill.proposed_by, penalty);
+            }
+        }
+
         await loadLawsData(); renderLawsPage();
         alert(termBill + ' sent to the floor!');
     } catch (error) { console.error('Error:', error); alert('Error sending to floor.'); }
