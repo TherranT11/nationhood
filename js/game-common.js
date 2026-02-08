@@ -37,7 +37,6 @@ const MAJOR_SECTORS = [
     { key: 'IMMIGRATION',   label: 'Immigration',         icon: '🌍' },
     { key: 'INTERNATIONAL', label: 'International',       icon: '🌐' }
 ];
-];
 
 // Stats where LOWER is better (inverted approval logic)
 const INVERTED_STATS = [
