@@ -36,8 +36,14 @@
 <script src="js/common.js"></script>
 <script src="js/game-common.js"></script>
 <script>
+let currentFaction = null;
+let currentNation = null;
+
 initPage('parties', async (state) => {
     const { nation, faction } = state;
+    currentFaction = faction;
+    currentNation = nation;
+
     if (!nation) {
         document.getElementById('content-area').innerHTML = `
             <div class="placeholder-panel">
@@ -175,6 +181,76 @@ async function renderPartiesPage(nation, faction) {
         const governmentCount = govParties.length;
         const oppositionCount = oppParties.length;
 
+        // Build campaign actions HTML (democracy only)
+        const campaignActionsHTML = !isAutocracy ? `
+            <div class="section-header" style="margin-top: 30px;">Your Party Resources</div>
+            <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
+                <div class="stat-card">
+                    <div class="stat-label">Action Points</div>
+                    <div class="stat-value" id="party-ap">${faction?.action_points || 0}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Party Funds</div>
+                    <div class="stat-value" id="party-funds">$${(faction?.party_funds || 0).toLocaleString()}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Approval Rating</div>
+                    <div class="stat-value" id="party-approval">${faction?.approval_rating || 0}%</div>
+                </div>
+            </div>
+
+            <div class="section-header">Campaign Actions</div>
+            <div class="action-grid">
+                <div class="action-card">
+                    <div class="action-header">
+                        <div class="action-title">Grassroots Rally</div>
+                        <div class="action-cost">2 AP · $50,000</div>
+                    </div>
+                    <div class="action-desc">Hold a rally to boost your party's approval rating. Roll 1D3 for approval gain.</div>
+                    <button class="action-btn" onclick="performAction('rally')">Organize Rally</button>
+                </div>
+                <div class="action-card">
+                    <div class="action-header">
+                        <div class="action-title">Attack Ad</div>
+                        <div class="action-cost">3 AP · $150,000</div>
+                    </div>
+                    <div class="action-desc">Run attack ads against a rival party. Roll 1D3 to reduce their approval.</div>
+                    <div style="margin: 10px 0;">
+                        <select id="attack-target" class="action-select">
+                            <option value="">Select Target Party...</option>
+                        </select>
+                    </div>
+                    <button class="action-btn" onclick="performAction('attack')">Launch Attack Ad</button>
+                </div>
+                <div class="action-card">
+                    <div class="action-header">
+                        <div class="action-title">Fundraiser</div>
+                        <div class="action-cost">4 AP · Free</div>
+                    </div>
+                    <div class="action-desc">Host a fundraising event. Roll 1D2: 1 = $50k, 2 = $100k raised.</div>
+                    <button class="action-btn" onclick="performAction('fundraiser')">Host Fundraiser</button>
+                </div>
+                <div class="action-card">
+                    <div class="action-header">
+                        <div class="action-title">Lobby Interest Group</div>
+                        <div class="action-cost">5 AP · Free</div>
+                    </div>
+                    <div class="action-desc">Lobby an interest group for funding. Roll 1D6 × $100k.</div>
+                    <div style="margin: 10px 0;">
+                        <select id="lobby-target" class="action-select">
+                            <option value="">Select Interest Group...</option>
+                        </select>
+                    </div>
+                    <button class="action-btn action-btn-risk" onclick="performAction('lobby')">Lobby Group</button>
+                </div>
+            </div>
+
+            <div class="section-header" style="margin-top: 30px;">Recent Actions</div>
+            <div id="action-log" class="action-log">
+                <div class="action-log-empty">No actions taken yet this campaign.</div>
+            </div>
+        ` : '';
+
         document.getElementById('content-area').innerHTML = `
             <div class="panel-padding">
                 <div class="section-header">${headerText} in ${nation.name}</div>
@@ -220,7 +296,15 @@ async function renderPartiesPage(nation, faction) {
                         : '<div class="parties-section-empty">No opposition parties.</div>'
                     }
                 `}
+
+                ${campaignActionsHTML}
             </div>`;
+
+        // Populate dropdowns and load action log for democracy
+        if (!isAutocracy) {
+            await populateDropdowns();
+            await loadActionLog();
+        }
 
     } catch (error) {
         console.error('Error loading parties:', error);
@@ -232,6 +316,110 @@ async function renderPartiesPage(nation, faction) {
                 </div>
             </div>`;
     }
+}
+
+
+// ===================================================================
+// CAMPAIGN ACTIONS (Democracy only)
+// ===================================================================
+
+async function populateDropdowns() {
+    if (!currentFaction || !currentNation) return;
+
+    const { data: parties } = await _supabase
+        .from('factions')
+        .select('id, faction_name')
+        .eq('nation_id', currentNation.id)
+        .eq('faction_type', 'party')
+        .neq('id', currentFaction.id);
+
+    const attackSelect = document.getElementById('attack-target');
+    if (attackSelect && parties) {
+        attackSelect.innerHTML = '<option value="">Select Target Party...</option>';
+        parties.forEach(p => { attackSelect.innerHTML += `<option value="${p.id}">${p.faction_name}</option>`; });
+    }
+
+    const { data: groups } = await _supabase
+        .from('interest_groups')
+        .select('id, group_name')
+        .eq('nation_id', currentNation.id);
+
+    const lobbySelect = document.getElementById('lobby-target');
+    if (lobbySelect) {
+        lobbySelect.innerHTML = '<option value="">Select Interest Group...</option>';
+        if (groups) groups.forEach(g => { lobbySelect.innerHTML += `<option value="${g.id}">${g.group_name}</option>`; });
+    }
+}
+
+async function loadActionLog() {
+    if (!currentFaction) return;
+    const { data: actions } = await _supabase
+        .from('campaign_actions')
+        .select('*')
+        .eq('party_id', currentFaction.id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+    const logDiv = document.getElementById('action-log');
+    if (!logDiv) return;
+
+    if (!actions || actions.length === 0) {
+        logDiv.innerHTML = '<div class="action-log-empty">No actions taken yet.</div>';
+        return;
+    }
+
+    logDiv.innerHTML = actions.map(a => {
+        const date = new Date(a.created_at).toLocaleString();
+        let message = '';
+        if (a.action_type === 'rally') message = `Grassroots Rally: Gained ${a.result?.approval_gain || 0}% approval`;
+        else if (a.action_type === 'attack_ad') message = `Attack Ad vs ${a.result?.target || 'Unknown'}: -${a.result?.approval_loss || 0}% to their approval`;
+        else if (a.action_type === 'fundraiser') message = `Fundraiser: Raised $${(a.result?.money_raised || 0).toLocaleString()}`;
+        else if (a.action_type === 'lobby') message = `Lobbied ${a.result?.group_name || 'Unknown'}: Received $${(a.result?.payout || 0).toLocaleString()}`;
+        else if (a.action_type === 'spread_rumors') message = `Spread Rumors vs ${a.result?.target || 'Unknown'}: Stole ${a.result?.seats_stolen || 0} seats, -${a.result?.stability_loss || 0} stability`;
+        else if (a.action_type === 'give_speech') message = `Gave Speech: +${a.result?.approval_gain || 0}% approval`;
+
+        return `<div class="action-log-item">
+            <div class="action-log-time">Tick ${a.tick_performed} • ${date}</div>
+            <div class="action-log-message">${message}</div>
+        </div>`;
+    }).join('');
+}
+
+async function performAction(actionType) {
+    if (!currentFaction) return;
+    let result;
+    try {
+        if (actionType === 'rally') {
+            const { data, error } = await _supabase.rpc('action_grassroots_rally', { player_party_id: currentFaction.id });
+            if (error) throw error; result = data[0];
+        } else if (actionType === 'attack') {
+            const targetId = document.getElementById('attack-target').value;
+            if (!targetId) { alert('Please select a target party!'); return; }
+            const { data, error } = await _supabase.rpc('action_attack_ad', { player_party_id: currentFaction.id, target_party_id: targetId });
+            if (error) throw error; result = data[0];
+        } else if (actionType === 'fundraiser') {
+            const { data, error } = await _supabase.rpc('action_fundraiser', { player_party_id: currentFaction.id });
+            if (error) throw error; result = data[0];
+        } else if (actionType === 'lobby') {
+            const groupId = document.getElementById('lobby-target').value;
+            if (!groupId) { alert('Please select an interest group!'); return; }
+            const { data, error } = await _supabase.rpc('action_lobby_interest_group', { player_party_id: currentFaction.id, interest_group_id: groupId });
+            if (error) throw error; result = data[0];
+        }
+        if (result && result.success) {
+            alert('✅ ' + result.message);
+            currentFaction.action_points = result.new_ap;
+            currentFaction.party_funds = result.new_funds;
+            if (result.new_approval) currentFaction.approval_rating = result.new_approval;
+            document.getElementById('party-ap').textContent = currentFaction.action_points || 0;
+            document.getElementById('party-funds').textContent = '$' + (currentFaction.party_funds || 0).toLocaleString();
+            document.getElementById('party-approval').textContent = (currentFaction.approval_rating || 0) + '%';
+            await loadActionLog();
+            sessionStorage.removeItem('nationhood_state');
+        } else {
+            alert('❌ ' + (result ? result.message : 'Action failed'));
+        }
+    } catch (error) { console.error('Action error:', error); alert('❌ Error: ' + error.message); }
 }
 </script>
 </body>
