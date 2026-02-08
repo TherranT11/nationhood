@@ -136,8 +136,21 @@ async function renderPartiesPage(nation, faction) {
 
         function buildCard(entry) {
             const { party, seats, status, statusText } = entry;
-            const approvalClass = party.approval_rating >= 50 ? 'good' : party.approval_rating <= 30 ? 'bad' : '';
             const isYourParty = party.id === faction?.id;
+
+            // First stat: Loyalty for autocracy, Approval for democracy
+            let firstStatLabel, firstStatValue, firstStatClass;
+            if (isAutocracy) {
+                const loyalty = party.loyalty ?? 50;
+                firstStatLabel = 'Faction Loyalty';
+                firstStatValue = loyalty + '%';
+                firstStatClass = loyalty >= 50 ? 'good' : loyalty <= 30 ? 'bad' : '';
+            } else {
+                const approval = party.approval_rating || 0;
+                firstStatLabel = 'Approval';
+                firstStatValue = approval + '%';
+                firstStatClass = approval >= 50 ? 'good' : approval <= 30 ? 'bad' : '';
+            }
 
             return `
                 <div class="party-display-card ${isYourParty ? 'your-party' : ''}">
@@ -159,8 +172,8 @@ async function renderPartiesPage(nation, faction) {
                     </div>
                     <div class="party-display-stats">
                         <div class="party-stat-item">
-                            <div class="party-stat-label">Approval</div>
-                            <div class="party-stat-value ${approvalClass}">${party.approval_rating || 0}%</div>
+                            <div class="party-stat-label">${firstStatLabel}</div>
+                            <div class="party-stat-value ${firstStatClass}">${firstStatValue}</div>
                         </div>
                         <div class="party-stat-item">
                             <div class="party-stat-label">Seats</div>
@@ -271,8 +284,8 @@ async function renderPartiesPage(nation, faction) {
                     <div class="stat-value" id="party-seats">${faction?.seats || 0} / ${totalSeats}</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label">Approval Rating</div>
-                    <div class="stat-value" id="party-approval">${faction?.approval_rating || 0}%</div>
+                    <div class="stat-label">Faction Loyalty</div>
+                    <div class="stat-value" id="party-loyalty">${faction?.loyalty ?? 50}%</div>
                 </div>
             </div>
 
@@ -520,10 +533,10 @@ async function populateAutocracyDropdowns() {
 function updateAutocracyUI() {
     const apEl = document.getElementById('party-ap');
     const seatsEl = document.getElementById('party-seats');
-    const approvalEl = document.getElementById('party-approval');
+    const loyaltyEl = document.getElementById('party-loyalty');
     if (apEl) apEl.textContent = currentFaction.action_points || 0;
     if (seatsEl) seatsEl.textContent = (currentFaction.seats || 0) + ' / ' + GAME_CONFIG.TOTAL_SEATS;
-    if (approvalEl) approvalEl.textContent = (currentFaction.approval_rating || 0) + '%';
+    if (loyaltyEl) loyaltyEl.textContent = (currentFaction.loyalty ?? 50) + '%';
 }
 
 async function doGiveSpeech() {
