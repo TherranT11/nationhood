@@ -766,6 +766,7 @@ async function purgeMinister(ministryKey) {
         if (purgeCount >= 2) resultMsg += '\n\n🚨 Regime fatigue: 3rd+ purge in 6 ticks — no boost, double corruption.';
 
         alert(resultMsg);
+        await markFactionActive(_supabase, currentFaction.id);
         await renderGovernmentPage();
     } catch (e) {
         console.error('Purge error:', e);
@@ -794,6 +795,7 @@ async function requestMinistry(ministryKey) {
         }).eq('id', currentFaction.id);
         currentFaction.action_points = Math.max(0, currentFaction.action_points - 1);
 
+        await markFactionActive(_supabase, currentFaction.id);
         await renderGovernmentPage();
     } catch (e) {
         console.error('Request error:', e);
