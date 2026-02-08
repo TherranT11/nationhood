@@ -294,7 +294,7 @@
                     <div class="form-row">
                         <div class="form-field">
                             <label>Sector</label>
-                            <select id="b-sector" onchange="onSectorOrLawChange()">
+                            <select id="b-sector" onchange="populateLawCategories(); onSectorOrLawChange()">
                                 <option value="">-- Select --</option>
                                 <option value="ECONOMICS">💰 Economics</option>
                                 <option value="LABOR">👷 Labor</option>
@@ -309,7 +309,10 @@
                         </div>
                         <div class="form-field">
                             <label>Law Category</label>
-                            <input type="text" id="b-law-category" placeholder="e.g. Secondary Education" oninput="onSectorOrLawChange()">
+                            <select id="b-law-category-select" onchange="onLawCategorySelect()">
+                                <option value="">-- Select sector first --</option>
+                            </select>
+                            <input type="text" id="b-law-category-new" placeholder="e.g. Secondary Education" style="display:none;margin-top:8px;" oninput="onSectorOrLawChange()">
                         </div>
                     </div>
                 </div>
@@ -416,8 +419,8 @@ const STAT_GROUPS = [
     { label: '📋 Taxation', stats: ['income_tax','corporate_tax','sales_tax','tariffs'] },
     { label: '👷 Labor & Employment', stats: ['unemployment','labor_participation','minimum_wage','union_strength','poverty_rate','income_inequality'] },
     { label: '👥 Demographics', stats: ['population','eligible_voters','population_growth','birth_rate','death_rate','median_age','ethnic_diversity'] },
-    { label: '🏥 Healthcare', stats: ['healthcare_quality','hospital_beds','life_expectancy','drug_use', 'healthcare_accessibility'] },
-    { label: '📚 Education', stats: ['literacy_rate','higher_education','academic_immigration','education_accessibility'] },
+    { label: '🏥 Healthcare', stats: ['healthcare_quality','healthcare_accessibility','hospital_beds','life_expectancy','drug_use'] },
+    { label: '📚 Education', stats: ['literacy_rate','higher_education','education_accessibility','academic_immigration'] },
     { label: '🏗️ Infrastructure', stats: ['digital_infrastructure','rail_network','urbanization','energy_generation','renewable_energy'] },
     { label: '⛏️ Resources', stats: ['arable_land','rare_minerals','oil_and_gas','fuel_prices'] },
     { label: '🌿 Environment', stats: ['pollution','carbon_emissions'] },
@@ -612,7 +615,20 @@ function loadPolicyIntoBuilder(p) {
     document.getElementById('b-name').value = p.policy_name || '';
     document.getElementById('b-desc').value = p.description || '';
     document.getElementById('b-sector').value = p.major_sector || '';
-    document.getElementById('b-law-category').value = p.law_category || p.minor_sector || '';
+    populateLawCategories();
+    const lawCatVal = p.law_category || p.minor_sector || '';
+    const select = document.getElementById('b-law-category-select');
+    const newInput = document.getElementById('b-law-category-new');
+    // Check if the value exists in the dropdown
+    const optionExists = [...select.options].some(o => o.value === lawCatVal);
+    if (optionExists) {
+        select.value = lawCatVal;
+        newInput.style.display = 'none';
+    } else if (lawCatVal) {
+        select.value = '__new__';
+        newInput.style.display = 'block';
+        newInput.value = lawCatVal;
+    }
 
     // Ideologies
     selectedIdeologies = new Set(p.ideologies || (p.ideology ? [p.ideology] : []));
@@ -833,7 +849,7 @@ function renderOpposedSlots() {
     document.getElementById('add-opposed-btn').disabled = opposedSlots.length >= 3;
 
     const sector = document.getElementById('b-sector').value;
-    const lawCat = document.getElementById('b-law-category').value.trim().toLowerCase();
+    const lawCat = getLawCategoryValue().toLowerCase();
 
     // Find policies in same sector + law category
     const candidates = allPolicies.filter(p => {
@@ -869,6 +885,52 @@ function renderOpposedSlots() {
     `).join('');
 }
 
+function populateLawCategories() {
+    const sector = document.getElementById('b-sector').value;
+    const select = document.getElementById('b-law-category-select');
+    const newInput = document.getElementById('b-law-category-new');
+    newInput.style.display = 'none';
+    newInput.value = '';
+
+    if (!sector) {
+        select.innerHTML = '<option value="">-- Select sector first --</option>';
+        return;
+    }
+
+    // Get unique law categories from existing policies in this sector
+    const cats = [...new Set(
+        allPolicies
+            .filter(p => (p.major_sector || '').toUpperCase() === sector)
+            .map(p => p.law_category || p.minor_sector || '')
+            .filter(Boolean)
+    )].sort();
+
+    select.innerHTML = '<option value="">-- Select --</option>';
+    cats.forEach(c => { select.innerHTML += '<option value="' + c + '">' + c + '</option>'; });
+    select.innerHTML += '<option value="__new__">+ Create New Category</option>';
+}
+
+function onLawCategorySelect() {
+    const select = document.getElementById('b-law-category-select');
+    const newInput = document.getElementById('b-law-category-new');
+    if (select.value === '__new__') {
+        newInput.style.display = 'block';
+        newInput.focus();
+    } else {
+        newInput.style.display = 'none';
+        newInput.value = '';
+    }
+    onSectorOrLawChange();
+}
+
+function getLawCategoryValue() {
+    const select = document.getElementById('b-law-category-select');
+    if (select.value === '__new__') {
+        return document.getElementById('b-law-category-new').value.trim();
+    }
+    return select.value || '';
+}
+
 function onSectorOrLawChange() {
     renderOpposedSlots();
 }
@@ -881,8 +943,8 @@ async function savePolicy() {
     const sector = document.getElementById('b-sector').value;
     if (!sector) { alert('Select a sector.'); return; }
 
-    const lawCategory = document.getElementById('b-law-category').value.trim();
-    if (!lawCategory) { alert('Enter a law category.'); return; }
+    const lawCategory = getLawCategoryValue();
+    if (!lawCategory) { alert('Select or create a law category.'); return; }
 
     if (selectedIdeologies.size === 0) { alert('Select at least 1 ideology.'); return; }
 
@@ -994,7 +1056,9 @@ function resetBuilder() {
     document.getElementById('b-name').value = '';
     document.getElementById('b-desc').value = '';
     document.getElementById('b-sector').value = '';
-    document.getElementById('b-law-category').value = '';
+    document.getElementById('b-law-category-select').innerHTML = '<option value="">-- Select sector first --</option>';
+    document.getElementById('b-law-category-new').value = '';
+    document.getElementById('b-law-category-new').style.display = 'none';
     selectedIdeologies = new Set();
     renderIdeologyChips();
     startingNations = new Set();
