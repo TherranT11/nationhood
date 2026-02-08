@@ -172,24 +172,29 @@ async function fetchActiveCoalition(supabase, nationId) {
 // ==================== POLICY COMPATIBILITY ====================
 
 /**
- * Get policies compatible with a faction's ideology for a given sector.
+ * Get policies for a given sector. All policies are now available regardless
+ * of faction ideology — but opposed policies carry approval penalties.
+ * Each policy gets an .isOpposed flag so the UI can warn the player.
  */
 function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy, excludePolicyIds = []) {
     const ideo1 = (faction?.ideology_value_1 || '').toUpperCase();
     const ideo2 = (faction?.ideology_value_2 || '').toUpperCase();
+    const factionIdeos = [ideo1, ideo2].filter(Boolean);
 
-    if (isAutocracy && !ideo1 && !ideo2) {
-        return allPolicies.filter(p =>
-            p.major_sector === sector &&
-            !excludePolicyIds.includes(p.id)
-        );
-    }
+    return allPolicies
+        .filter(p => p.major_sector === sector && !excludePolicyIds.includes(p.id))
+        .map(p => {
+            // Check if any of the policy's ideologies match the faction
+            const policyIdeos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
+                ? p.ideologies.map(i => i.toUpperCase())
+                : (p.ideology ? [p.ideology.toUpperCase()] : []);
 
-    return allPolicies.filter(p =>
-        p.major_sector === sector &&
-        (p.ideology.toUpperCase() === ideo1 || p.ideology.toUpperCase() === ideo2) &&
-        !excludePolicyIds.includes(p.id)
-    );
+            const isAligned = factionIdeos.length === 0 ||
+                policyIdeos.length === 0 ||
+                policyIdeos.some(pi => factionIdeos.includes(pi));
+
+            return { ...p, isOpposed: !isAligned };
+        });
 }
 
 
@@ -404,6 +409,115 @@ async function applyEnactmentApproval(supabase, approvalDeltas) {
             .update({ approval_rating: updated })
             .eq('id', factionId);
     }
+}
+
+
+// ==================== IDEOLOGY PENALTY ====================
+
+/**
+ * Count how many articles in a bill are ideologically opposed to the sponsor.
+ *
+ * A policy article is "opposed" if NONE of its ideologies match either of
+ * the sponsor's ideology values. Text-only articles (no policy) are never opposed.
+ *
+ * @param {Array}  articles - Bill articles with policies
+ * @param {Object} sponsor  - Faction with ideology_value_1/2
+ * @returns {number} Count of opposed articles
+ */
+function countOpposedArticles(articles, sponsor) {
+    const ideo1 = (sponsor?.ideology_value_1 || '').toUpperCase();
+    const ideo2 = (sponsor?.ideology_value_2 || '').toUpperCase();
+    const factionIdeos = [ideo1, ideo2].filter(Boolean);
+
+    if (factionIdeos.length === 0) return 0; // No ideology = no opposition
+
+    let opposed = 0;
+    for (const art of articles) {
+        const p = art.policies || art;
+        if (!p || !p.policy_name) continue; // Skip text-only articles
+
+        const policyIdeos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
+            ? p.ideologies.map(i => i.toUpperCase())
+            : (p.ideology ? [p.ideology.toUpperCase()] : []);
+
+        if (policyIdeos.length === 0) continue; // No ideology on policy = neutral
+
+        const hasMatch = policyIdeos.some(pi => factionIdeos.includes(pi));
+        if (!hasMatch) opposed++;
+    }
+    return opposed;
+}
+
+/**
+ * Calculate ideology penalty for the sponsor when a bill reaches a milestone.
+ *
+ * Called at two points:
+ *   1. Bill reaches FLOOR  → -1 per 2 opposed articles (doubled if polarization ≥ 50)
+ *   2. Bill PASSES          → -1 per opposed article, plus -2 per article if polarization ≥ 75
+ *
+ * Polarization thresholds:
+ *   < 50:  floor = -1 per 2,  pass = -1 per 1
+ *   50-74: floor = -1 per 1,  pass = -1 per 1
+ *   75+:   floor = -1 per 1,  pass = -3 per 1 (-1 base + -2 extra)
+ *
+ * @param {string}  stage        - 'floor' or 'passed'
+ * @param {number}  opposedCount - From countOpposedArticles()
+ * @param {number}  polarization - Nation's current polarization stat (0-100)
+ * @returns {number} Negative approval delta for the sponsor (always ≤ 0)
+ */
+function calculateIdeologyPenalty(stage, opposedCount, polarization) {
+    if (opposedCount === 0) return 0;
+
+    const pol = polarization || 0;
+    let penalty = 0;
+
+    if (stage === 'floor') {
+        if (pol >= 50) {
+            // Doubled: -1 per opposed article
+            penalty = -1 * opposedCount;
+        } else {
+            // Normal: -1 per 2 opposed articles (rounded down)
+            penalty = -1 * Math.floor(opposedCount / 2);
+        }
+    } else if (stage === 'passed') {
+        // Base: -1 per opposed article
+        penalty = -1 * opposedCount;
+
+        // Hyperpolarized: additional -2 per opposed article
+        if (pol >= 75) {
+            penalty += -2 * opposedCount;
+        }
+    }
+
+    return penalty;
+}
+
+/**
+ * Apply ideology penalty to the sponsor faction in the database.
+ *
+ * @param {object} supabase   - Supabase client
+ * @param {string} sponsorId  - Faction UUID
+ * @param {number} penalty    - Negative number from calculateIdeologyPenalty()
+ * @returns {Promise<void>}
+ */
+async function applyIdeologyPenalty(supabase, sponsorId, penalty) {
+    if (penalty === 0 || !sponsorId) return;
+
+    const { data: faction } = await supabase
+        .from('factions')
+        .select('approval_rating')
+        .eq('id', sponsorId)
+        .single();
+
+    if (!faction) return;
+
+    const current = faction.approval_rating ?? 50;
+    const updated = Math.max(0, Math.min(100, current + penalty));
+
+    await supabase
+        .from('factions')
+        .update({ approval_rating: updated })
+        .eq('id', sponsorId);
 }
 
 
