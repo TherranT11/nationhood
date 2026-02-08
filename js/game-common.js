@@ -829,11 +829,16 @@ async function advanceTick(supabase) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
-        // 7. Process inactive parties (12-tick warning, 24-tick deletion)
+        // 7. Auto-resolve shakeups that are 1+ ticks old
+        if (nation.government_type === 'Autocracy') {
+            await autoResolveStaleShakeups(supabase, nation.id, newTick);
+        }
+
+        // 8. Process inactive parties (12-tick warning, 24-tick deletion)
         const inactiveResults = await processInactiveParties(supabase, nation, newTick);
         if (inactiveResults.length > 0) summary.inactive = (summary.inactive || []).concat(inactiveResults);
 
-        // 8. Snapshot nation stats to history (for trend arrows)
+        // 9. Snapshot nation stats to history (for trend arrows)
         await snapshotNationHistory(supabase, nation, newTick);
     }
 
@@ -886,6 +891,44 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
         await supabase.from('campaign_actions')
             .update({ result: { ...result, decay_ticks_remaining: newRemaining } })
             .eq('id', action.id);
+    }
+}
+
+
+// ==================== SHAKEUP AUTO-RESOLVE ====================
+
+/**
+ * Auto-resolve shakeups that have been in 'voting' status for 1+ ticks.
+ * 
+ * If not all factions have voted after 1 tick, the shakeup resolves anyway.
+ * Non-voters are treated as abstaining — their seats don't count for either side
+ * and they receive no penalties or rewards.
+ *
+ * Calls the resolve_shakeup RPC which handles all the game logic.
+ *
+ * @param {object} supabase    - Supabase client
+ * @param {string} nationId    - Nation UUID
+ * @param {number} currentTick - Current tick
+ */
+async function autoResolveStaleShakeups(supabase, nationId, currentTick) {
+    const { data: staleShakeups } = await supabase
+        .from('shakeups')
+        .select('id, created_tick')
+        .eq('nation_id', nationId)
+        .eq('status', 'voting')
+        .lte('created_tick', currentTick - 1);
+
+    if (!staleShakeups || staleShakeups.length === 0) return;
+
+    for (const shakeup of staleShakeups) {
+        console.log(`Auto-resolving stale shakeup ${shakeup.id} (created tick ${shakeup.created_tick}, now tick ${currentTick})`);
+        try {
+            const { data, error } = await supabase.rpc('resolve_shakeup', { p_shakeup_id: shakeup.id });
+            if (error) console.error('Auto-resolve shakeup error:', error);
+            else console.log('Auto-resolve result:', data);
+        } catch (e) {
+            console.error('Auto-resolve shakeup exception:', e);
+        }
     }
 }
 
