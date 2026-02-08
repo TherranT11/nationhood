@@ -829,7 +829,11 @@ async function advanceTick(supabase) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
-        // 7. Snapshot nation stats to history (for trend arrows)
+        // 7. Process inactive parties (12-tick warning, 24-tick deletion)
+        const inactiveResults = await processInactiveParties(supabase, nation, newTick);
+        if (inactiveResults.length > 0) summary.inactive = (summary.inactive || []).concat(inactiveResults);
+
+        // 8. Snapshot nation stats to history (for trend arrows)
         await snapshotNationHistory(supabase, nation, newTick);
     }
 
@@ -884,6 +888,233 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
             .eq('id', action.id);
     }
 }
+
+
+// ==================== INACTIVE PARTY PROCESSING ====================
+
+const INACTIVE_WARNING_TICKS = 12;   // No AP spent in 12 ticks → approval set to 1%
+const INACTIVE_DELETION_TICKS = 24;  // No AP spent in 24 ticks → party deleted
+
+/**
+ * Process inactive parties for a nation.
+ *
+ * - 12 ticks with no AP spent → approval set to 1% (one-time warning)
+ * - 24 ticks with no AP spent → party deleted with full cascade:
+ *   - Seats redistributed proportionally to remaining parties
+ *   - Ministers vacated
+ *   - Active bills withdrawn (status → 'abandoned')
+ *   - Bill support votes removed (tallies recalculated)
+ *   - Ministry requests deleted
+ *   - Coalition membership removed (may collapse coalition)
+ *   - If ruling faction in autocracy → next largest party takes over
+ *
+ * Any AP spend resets the clock via last_ap_spent_tick on factions.
+ *
+ * @param {object} supabase    - Supabase client
+ * @param {object} nation      - Full nation row
+ * @param {number} currentTick - Current tick
+ * @returns {Promise<Array>}   List of actions taken
+ */
+async function processInactiveParties(supabase, nation, currentTick) {
+    const { data: parties } = await supabase
+        .from('factions')
+        .select('id, faction_name, seats, approval_rating, last_ap_spent_tick, is_npc')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+
+    if (!parties || parties.length === 0) return [];
+
+    const results = [];
+    const partiesToDelete = [];
+
+    for (const party of parties) {
+        // Skip NPC parties — they're managed by the system
+        if (party.is_npc) continue;
+
+        const lastActive = party.last_ap_spent_tick || 0;
+        const ticksInactive = currentTick - lastActive;
+
+        if (ticksInactive >= INACTIVE_DELETION_TICKS) {
+            // === 24-TICK DELETION ===
+            partiesToDelete.push(party);
+            results.push({
+                action: 'deleted',
+                party: party.faction_name,
+                partyId: party.id,
+                ticksInactive
+            });
+        } else if (ticksInactive >= INACTIVE_WARNING_TICKS) {
+            // === 12-TICK WARNING: Set approval to 1% (only if not already at 1) ===
+            if (party.approval_rating > 1) {
+                await supabase.from('factions')
+                    .update({ approval_rating: 1 })
+                    .eq('id', party.id);
+                results.push({
+                    action: 'warned',
+                    party: party.faction_name,
+                    partyId: party.id,
+                    ticksInactive,
+                    oldApproval: party.approval_rating
+                });
+            }
+        }
+    }
+
+    // Process deletions
+    for (const party of partiesToDelete) {
+        await deleteInactiveParty(supabase, nation, party, parties, currentTick);
+    }
+
+    return results;
+}
+
+/**
+ * Delete an inactive party and handle all cascading effects.
+ *
+ * @param {object} supabase   - Supabase client
+ * @param {object} nation     - Full nation row
+ * @param {object} party      - The party being deleted
+ * @param {Array}  allParties - All parties in the nation (for redistribution)
+ * @param {number} currentTick - Current tick
+ */
+async function deleteInactiveParty(supabase, nation, party, allParties, currentTick) {
+    const partyId = party.id;
+    const seatsToRedistribute = party.seats || 0;
+    const isAutocracy = nation.government_type === 'Autocracy';
+
+    // Get surviving parties (exclude the one being deleted and NPCs without seats)
+    const survivors = allParties.filter(p => p.id !== partyId && !p.is_npc);
+
+    // 1. REDISTRIBUTE SEATS proportionally to remaining parties
+    if (seatsToRedistribute > 0 && survivors.length > 0) {
+        const totalSurvivorSeats = survivors.reduce((sum, p) => sum + (p.seats || 0), 0);
+
+        let seatsGiven = 0;
+        for (let i = 0; i < survivors.length; i++) {
+            const s = survivors[i];
+            let share;
+
+            if (i === survivors.length - 1) {
+                // Last party gets remainder to avoid rounding loss
+                share = seatsToRedistribute - seatsGiven;
+            } else if (totalSurvivorSeats > 0) {
+                share = Math.floor(seatsToRedistribute * ((s.seats || 0) / totalSurvivorSeats));
+            } else {
+                // Equal split if no one has seats
+                share = Math.floor(seatsToRedistribute / survivors.length);
+            }
+
+            if (share > 0) {
+                await supabase.from('factions')
+                    .update({ seats: (s.seats || 0) + share })
+                    .eq('id', s.id);
+                seatsGiven += share;
+            }
+        }
+    }
+
+    // 2. VACATE MINISTERS held by this party
+    await supabase.from('ministries')
+        .update({
+            minister_first_name: null,
+            minister_last_name: null,
+            minister_age: null,
+            party_id: null
+        })
+        .eq('nation_id', nation.id)
+        .eq('party_id', partyId);
+
+    // 3. WITHDRAW ACTIVE BILLS (draft, committee, floor → abandoned)
+    await supabase.from('bills')
+        .update({ status: 'abandoned' })
+        .eq('proposed_by', partyId)
+        .in('status', ['draft', 'committee', 'floor']);
+
+    // 4. REMOVE BILL SUPPORT VOTES and recalculate tallies
+    const { data: supportVotes } = await supabase
+        .from('bill_support')
+        .select('bill_id')
+        .eq('faction_id', partyId);
+
+    const affectedBillIds = [...new Set((supportVotes || []).map(v => v.bill_id))];
+
+    await supabase.from('bill_support')
+        .delete()
+        .eq('faction_id', partyId);
+
+    // Recalculate vote tallies for affected bills
+    for (const billId of affectedBillIds) {
+        await syncVoteTallies(supabase, billId);
+    }
+
+    // 5. DELETE MINISTRY REQUESTS
+    await supabase.from('ministry_requests')
+        .delete()
+        .eq('faction_id', partyId);
+
+    // 6. REMOVE FROM COALITION
+    const { data: coalitions } = await supabase
+        .from('government_formations')
+        .select('id, party_ids, ministry_assignments')
+        .eq('nation_id', nation.id)
+        .eq('status', 'formed');
+
+    for (const coal of (coalitions || [])) {
+        if (coal.party_ids && coal.party_ids.includes(partyId)) {
+            const newPartyIds = coal.party_ids.filter(id => id !== partyId);
+
+            // Remove from ministry assignments
+            const newAssignments = { ...(coal.ministry_assignments || {}) };
+            for (const [key, val] of Object.entries(newAssignments)) {
+                if (val === partyId) delete newAssignments[key];
+            }
+
+            if (newPartyIds.length === 0) {
+                // Coalition collapses entirely
+                await supabase.from('government_formations')
+                    .update({ status: 'collapsed' })
+                    .eq('id', coal.id);
+            } else {
+                await supabase.from('government_formations')
+                    .update({
+                        party_ids: newPartyIds,
+                        ministry_assignments: newAssignments
+                    })
+                    .eq('id', coal.id);
+            }
+        }
+    }
+
+    // 7. HANDLE RULING FACTION in autocracy
+    if (isAutocracy && nation.ruling_faction_id === partyId) {
+        // Transfer to next largest party
+        const nextRuler = survivors
+            .sort((a, b) => (b.seats || 0) - (a.seats || 0))[0];
+
+        if (nextRuler) {
+            await supabase.from('nations')
+                .update({ ruling_faction_id: nextRuler.id })
+                .eq('id', nation.id);
+        } else {
+            await supabase.from('nations')
+                .update({ ruling_faction_id: null })
+                .eq('id', nation.id);
+        }
+    }
+
+    // 8. DELETE CAMPAIGN ACTIONS history
+    await supabase.from('campaign_actions')
+        .delete()
+        .eq('party_id', partyId);
+
+    // 9. DELETE THE PARTY
+    await supabase.from('factions')
+        .delete()
+        .eq('id', partyId);
+
+    console.log(`Deleted inactive party: ${party.faction_name} (${partyId}) from ${nation.name}`);
+}
+
 
 /**
  * Process stat effects for all active laws in a nation for the current tick.
@@ -1090,6 +1321,36 @@ async function snapshotNationHistory(supabase, nation, currentTick) {
         // History table might not have all columns — log but don't fail
         console.warn('History snapshot warning:', err.message);
     });
+}
+
+
+// ==================== INACTIVITY CLOCK ====================
+
+/**
+ * Mark a faction as active by updating last_ap_spent_tick.
+ * Call this whenever a faction spends AP on any action.
+ *
+ * Used by:
+ *   - performAction() in parties.html (rally, attack ad, fundraiser, lobby)
+ *   - doGiveSpeech(), doSpreadRumors(), doSeizePower() in parties.html
+ *   - purgeMinister(), requestMinistry() in government.html
+ *   - draftBill, castVote, etc. in bill.html / laws.html
+ *   - Any Supabase RPC that deducts AP should also update this server-side
+ *
+ * @param {object} supabase    - Supabase client
+ * @param {string} factionId   - Faction UUID
+ * @param {number} [currentTick] - Current game tick (auto-fetched if omitted)
+ */
+async function markFactionActive(supabase, factionId, currentTick) {
+    if (!factionId) return;
+    if (!currentTick) {
+        const { data: shard } = await supabase
+            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        currentTick = shard?.current_tick || 0;
+    }
+    await supabase.from('factions')
+        .update({ last_ap_spent_tick: currentTick })
+        .eq('id', factionId);
 }
 
 
