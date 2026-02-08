@@ -3,7 +3,7 @@
  * - State management (user, faction, nation)
  * - Top bar rendering
  * - Navigation
- * - Tick countdown
+ * - Tick countdown with auto-recovery polling
  * - Population growth calculations
  */
 
@@ -121,6 +121,7 @@ function renderNavTabs(activeTab) {
 
 let tickInterval = null;
 let nextTickAt = null;
+let tickPoller = null;
 
 function updateTopBarInfo(faction, shard, nation) {
     const badge = document.getElementById('party-badge');
@@ -164,6 +165,7 @@ function updateTopBarInfo(faction, shard, nation) {
 
 function startTickCountdown() {
     if (tickInterval) clearInterval(tickInterval);
+    if (tickPoller) { clearInterval(tickPoller); tickPoller = null; }
     tickInterval = setInterval(updateCountdown, 1000);
     updateCountdown();
 }
@@ -172,12 +174,82 @@ function updateCountdown() {
     const el = document.getElementById('tick-countdown');
     if (!el) return;
     if (!nextTickAt) { el.textContent = '—'; return; }
+
     const diff = nextTickAt - Date.now();
-    if (diff <= 0) { el.textContent = 'Processing…'; clearInterval(tickInterval); return; }
+
+    if (diff <= 0) {
+        el.textContent = 'Processing…';
+        clearInterval(tickInterval);
+        pollForNewTick();
+        return;
+    }
+
     const h = Math.floor(diff / 3600000);
     const m = Math.floor((diff % 3600000) / 60000);
     const s = Math.floor((diff % 60000) / 1000);
     el.textContent = h + 'h ' + m + 'm ' + s + 's';
+}
+
+/**
+ * After the countdown reaches zero, poll Supabase every 5 seconds
+ * until a new next_tick_at is detected, then restart the countdown.
+ * This fixes the "stuck on Processing…" bug — previously the interval
+ * was killed and nothing ever checked for the tick to finish.
+ */
+function pollForNewTick() {
+    // Don't start a second poller if one is already running
+    if (tickPoller) return;
+
+    const oldNextTick = nextTickAt ? nextTickAt.getTime() : 0;
+    let attempts = 0;
+    const maxAttempts = 60; // ~5 minutes at 5s intervals
+
+    tickPoller = setInterval(async () => {
+        attempts++;
+
+        try {
+            const { data: shard } = await _supabase
+                .from('shard')
+                .select('next_tick_at, current_tick, current_date')
+                .eq('name', 'Alpha Shard')
+                .single();
+
+            if (shard?.next_tick_at) {
+                const newTime = new Date(shard.next_tick_at).getTime();
+
+                if (newTime > oldNextTick) {
+                    // Tick finished — update the UI
+                    clearInterval(tickPoller);
+                    tickPoller = null;
+
+                    nextTickAt = new Date(shard.next_tick_at);
+
+                    // Update tick number and game date in the top bar
+                    const tickEl = document.getElementById('tick-number');
+                    if (tickEl) tickEl.textContent = shard.current_tick || '—';
+                    const dateEl = document.getElementById('game-date');
+                    if (dateEl) dateEl.textContent = shard.current_date || '—';
+
+                    // Bust the stale sessionStorage cache so any navigation
+                    // or refresh loads fresh data
+                    sessionStorage.removeItem(STATE_KEY);
+
+                    // Restart the countdown with the new target
+                    startTickCountdown();
+                }
+            }
+        } catch (e) {
+            console.warn('Tick poll error:', e);
+        }
+
+        // Safety valve — stop polling after too many attempts
+        if (attempts >= maxAttempts) {
+            clearInterval(tickPoller);
+            tickPoller = null;
+            const el = document.getElementById('tick-countdown');
+            if (el) el.textContent = 'Refresh page';
+        }
+    }, 5000);
 }
 
 
