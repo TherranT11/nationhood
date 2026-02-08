@@ -147,6 +147,9 @@
         .policy-option { background: #252525; border: 2px solid #333; border-radius: 6px; padding: 12px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.2s; }
         .policy-option:hover { border-color: #555; }
         .policy-option.selected { border-color: #2196F3; }
+        .policy-option.opposed { border-color: #ff4444; border-style: dashed; }
+        .policy-option.opposed:hover { border-color: #ff6666; }
+        .policy-option.opposed.selected { border-color: #ff9800; }
         .policy-option-name { font-weight: bold; color: #e0e0e0; }
         .policy-option-desc { font-size: 0.8rem; color: #888; margin-top: 4px; }
         .modal-footer { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #333; }
@@ -646,7 +649,11 @@ function onAmendmentSectorChange() {
     const sector = document.getElementById('amendment-sector').value;
     if (!sector) { document.getElementById('amendment-policy-group').style.display = 'none'; return; }
     const policies = _getCompatiblePolicies(sector);
-    document.getElementById('amendment-policies').innerHTML = policies.map(p => `<div class="policy-option" data-policy-id="${p.id}" onclick="selectAmendmentPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name}</div><div class="policy-option-desc">${p.description || ''}</div></div>`).join('');
+    document.getElementById('amendment-policies').innerHTML = policies.map(p => {
+        const opposedClass = p.isOpposed ? ' opposed' : '';
+        const opposedBadge = p.isOpposed ? ' <span style="display:inline-block;background:#ff4444;color:#fff;padding:2px 7px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚠ Opposed</span>' : '';
+        return `<div class="policy-option${opposedClass}" data-policy-id="${p.id}" onclick="selectAmendmentPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name}${opposedBadge}</div><div class="policy-option-desc">${p.description || ''}</div></div>`;
+    }).join('');
     document.getElementById('amendment-policy-group').style.display = 'block';
 }
 
