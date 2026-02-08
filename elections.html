@@ -1296,16 +1296,70 @@ async function loadActionLog() {
 
 async function loadElectionInfo() {
     if (!currentNation) return;
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const { data: election } = await _supabase
+    const { data: shard } = await _supabase.from('shard').select('current_tick, current_date').eq('name', 'Alpha Shard').single();
+    if (!shard) return;
+
+    const DEFAULT_ELECTION_INTERVAL = 48; // ticks between elections (baseline, can be changed by law)
+
+    // Only fetch elections scheduled in the future (tick > current tick)
+    let { data: election } = await _supabase
         .from('elections').select('*').eq('nation_id', currentNation.id).eq('status', 'scheduled')
+        .gt('election_tick', shard.current_tick)
         .order('election_tick', { ascending: true }).limit(1).maybeSingle();
 
-    if (election && shard) {
-        const nextEl = document.getElementById('next-election-tick');
-        const ticksEl = document.getElementById('ticks-until-election');
-        if (nextEl) nextEl.textContent = 'Tick ' + election.election_tick;
-        if (ticksEl) ticksEl.textContent = (election.election_tick - shard.current_tick) + ' ticks';
+    // Auto-schedule if no future election exists
+    if (!election) {
+        // Find the most recent completed election to base the interval on
+        const { data: lastElection } = await _supabase
+            .from('elections').select('election_tick').eq('nation_id', currentNation.id).eq('status', 'completed')
+            .order('election_tick', { ascending: false }).limit(1).maybeSingle();
+
+        const baseTick = lastElection ? lastElection.election_tick : shard.current_tick;
+        let nextTick = baseTick + DEFAULT_ELECTION_INTERVAL;
+
+        // Ensure it's actually in the future
+        if (nextTick <= shard.current_tick) {
+            nextTick = shard.current_tick + DEFAULT_ELECTION_INTERVAL;
+        }
+
+        const { data: newElection, error } = await _supabase
+            .from('elections')
+            .insert({
+                nation_id: currentNation.id,
+                election_tick: nextTick,
+                status: 'scheduled'
+            })
+            .select()
+            .single();
+
+        if (!error && newElection) {
+            election = newElection;
+            console.log('Auto-scheduled next election at tick', nextTick);
+        } else {
+            console.warn('Failed to auto-schedule election:', error);
+        }
+    }
+
+    const nextEl = document.getElementById('next-election-tick');
+    const ticksEl = document.getElementById('ticks-until-election');
+
+    if (election) {
+        // Convert tick to Month, Year
+        const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        const currentMonth = shard.current_date.split(', ')[0];
+        const currentYear = parseInt(shard.current_date.split(', ')[1]);
+        const currentMonthIndex = months.indexOf(currentMonth);
+        const ticksAhead = election.election_tick - shard.current_tick;
+
+        let electionMonthIndex = currentMonthIndex + ticksAhead;
+        let electionYear = currentYear;
+        while (electionMonthIndex >= 12) { electionMonthIndex -= 12; electionYear += 1; }
+
+        if (nextEl) nextEl.textContent = months[electionMonthIndex] + ', ' + electionYear;
+        if (ticksEl) ticksEl.textContent = ticksAhead + (ticksAhead === 1 ? ' tick' : ' ticks');
+    } else {
+        if (nextEl) nextEl.textContent = 'Not scheduled';
+        if (ticksEl) ticksEl.textContent = '—';
     }
 }
 </script>
