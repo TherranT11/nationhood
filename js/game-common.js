@@ -31,10 +31,12 @@ const MAJOR_SECTORS = [
     { key: 'EDUCATION',     label: 'Education',           icon: '📚' },
     { key: 'ENERGY',        label: 'Energy',              icon: '⚡' },
     { key: 'WELFARE',       label: 'Welfare',             icon: '🏥' },
+    { key: 'SOCIAL',        label: 'Social',              icon: '🤝' },
     { key: 'MILITARY',      label: 'Military & Security', icon: '🛡️' },
     { key: 'GOVERNANCE',    label: 'Governance',          icon: '🏛️' },
     { key: 'IMMIGRATION',   label: 'Immigration',         icon: '🌍' },
     { key: 'INTERNATIONAL', label: 'International',       icon: '🌐' }
+];
 ];
 
 // Stats where LOWER is better (inverted approval logic)
