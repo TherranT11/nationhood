@@ -349,7 +349,8 @@ async function loadLawsData() {
 }
 
 function renderLawsPage() {
-    const canDraft = (currentFaction?.action_points || 0) >= GAME_CONFIG.DRAFT_BILL_AP_COST;
+    const canDraft = (currentFaction?.action_points || 0) >= GAME_CONFIG.DRAFT_BILL_AP_COST && currentSeats > 0;
+const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and cannot propose bills"' : '';
     const pageTitle = isAutocracy ? `Decrees of ${currentNation.name}` : `Bills & Laws of ${currentNation.name}`;
     const html = `
         <div class="panel-padding">
@@ -357,7 +358,7 @@ function renderLawsPage() {
                 <div class="section-header" style="margin-bottom:0;border-bottom:none;">${pageTitle}</div>
                 <div class="laws-header-buttons">
                     <button class="all-laws-btn" onclick="toggleAllLaws()">📋 All Laws</button>
-                    <button class="draft-btn ${isAutocracy ? 'autocracy-btn' : ''}" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'}>
+                    <button class="draft-btn ${isAutocracy ? 'autocracy-btn' : ''}" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'} ${noSeatsTitle}>
                         ${termPropose} <span class="ap-cost">${GAME_CONFIG.DRAFT_BILL_AP_COST} AP</span>
                     </button>
                 </div>
@@ -624,6 +625,7 @@ function toggleMajorSector(key) { document.getElementById('sector-'+key).classLi
 function toggleMinorSector(majorKey, minorKey) { document.getElementById('minor-'+majorKey+'-'+minorKey)?.classList.toggle('expanded'); }
 
 async function rescindLaw(activeLawId, policyName) {
+    if (currentSeats === 0) { alert('Your faction holds no seats and cannot propose bills.'); return; }
     if (!confirm('Propose a bill to rescind "' + policyName + '"?\n\nThis will create a repeal bill and send it to committee for a vote.')) return;
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -832,6 +834,7 @@ function removeArticle(index) {
 
 async function submitToCommittee() {
     if (draftArticles.length === 0) return;
+    if (currentSeats === 0) { alert('Your faction holds no seats and cannot propose bills.'); return; }
     const billName = document.getElementById('bill-name-input').value.trim() || ('Unnamed ' + termBill);
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
