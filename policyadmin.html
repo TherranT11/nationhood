@@ -337,17 +337,23 @@
                 <!-- Section 4: Costs -->
                 <div class="builder-section">
                     <div class="builder-section-title">💰 4. Costs</div>
-                    <div class="cost-grid">
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
                         <div class="form-field">
-                            <label>Upfront Cost ($M)</label>
-                            <input type="number" id="b-upfront" value="0" min="0" step="1">
+                            <label>Upfront Base Cost ($M)</label>
+                            <input type="number" id="b-upfront" value="0" min="0" step="1" oninput="updateCostPreview()">
+                        </div>
+                        <div class="form-field">
+                            <label>Upfront Scaling Stat (or None)</label>
+                            <select id="b-upfront-scaling" onchange="updateCostPreview()">
+                                <option value="">None (flat cost)</option>
+                            </select>
                         </div>
                         <div class="form-field">
                             <label>Ongoing Base Cost ($M/tick)</label>
                             <input type="number" id="b-ongoing-base" value="0" min="0" step="0.1" oninput="updateCostPreview()">
                         </div>
                         <div class="form-field">
-                            <label>Scaling Stat (or None)</label>
+                            <label>Ongoing Scaling Stat (or None)</label>
                             <select id="b-scaling-stat" onchange="updateCostPreview()">
                                 <option value="">None (flat cost)</option>
                             </select>
@@ -544,7 +550,10 @@ function renderPolicyTable() {
 
         // Costs
         const costs = [];
-        if (p.upfront_cost > 0) costs.push(`$${p.upfront_cost}M up`);
+        if (p.upfront_cost > 0) {
+            const upScaling = p.upfront_scaling_stat;
+            costs.push(upScaling ? `$${p.upfront_cost}M×${fmtStat(upScaling)} up` : `$${p.upfront_cost}M up`);
+        }
         if ((p.ongoing_base_cost || p.ongoing_cost_per_tick || 0) > 0) {
             const base = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
             const scaling = p.ongoing_scaling_stat;
@@ -615,6 +624,7 @@ function loadPolicyIntoBuilder(p) {
 
     // Costs
     document.getElementById('b-upfront').value = p.upfront_cost || 0;
+    document.getElementById('b-upfront-scaling').value = p.upfront_scaling_stat || '';
     document.getElementById('b-ongoing-base').value = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
     document.getElementById('b-scaling-stat').value = p.ongoing_scaling_stat || '';
     updateCostPreview();
@@ -689,20 +699,37 @@ function toggleStartingNation(id, checked) {
 
 // ==================== COSTS ====================
 function populateScalingStatDropdown() {
-    document.getElementById('b-scaling-stat').innerHTML = '<option value="">None (flat cost)</option>' + STAT_OPTIONS_HTML;
+    const optionsHTML = '<option value="">None (flat cost)</option>' + STAT_OPTIONS_HTML;
+    document.getElementById('b-scaling-stat').innerHTML = optionsHTML;
+    document.getElementById('b-upfront-scaling').innerHTML = optionsHTML;
 }
 
 function updateCostPreview() {
-    const base = parseFloat(document.getElementById('b-ongoing-base').value) || 0;
-    const stat = document.getElementById('b-scaling-stat').value;
+    const upBase = parseFloat(document.getElementById('b-upfront').value) || 0;
+    const upStat = document.getElementById('b-upfront-scaling').value;
+    const onBase = parseFloat(document.getElementById('b-ongoing-base').value) || 0;
+    const onStat = document.getElementById('b-scaling-stat').value;
     const preview = document.getElementById('cost-preview');
-    if (base <= 0) { preview.style.display = 'none'; return; }
-    preview.style.display = 'block';
-    if (stat) {
-        preview.textContent = `💲 $${base}M × ${fmtStat(stat)} per tick (e.g., if ${fmtStat(stat)} = 50 → $${base * 50}M/tick)`;
-    } else {
-        preview.textContent = `💲 Flat $${base}M per tick`;
+
+    const lines = [];
+    if (upBase > 0) {
+        if (upStat) {
+            lines.push(`💲 Upfront: $${upBase}M × ${fmtStat(upStat)} (e.g., if ${fmtStat(upStat)} = 50 → $${upBase * 50}M)`);
+        } else {
+            lines.push(`💲 Upfront: Flat $${upBase}M`);
+        }
     }
+    if (onBase > 0) {
+        if (onStat) {
+            lines.push(`💲 Ongoing: $${onBase}M × ${fmtStat(onStat)} per tick (e.g., if ${fmtStat(onStat)} = 50 → $${onBase * 50}M/tick)`);
+        } else {
+            lines.push(`💲 Ongoing: Flat $${onBase}M per tick`);
+        }
+    }
+
+    if (lines.length === 0) { preview.style.display = 'none'; return; }
+    preview.style.display = 'block';
+    preview.innerHTML = lines.join('<br>');
 }
 
 // ==================== STAT EFFECTS ====================
@@ -875,6 +902,7 @@ async function savePolicy() {
         ideology: ideologiesArr[0], // keep for backward compat
         ideologies: ideologiesArr,
         upfront_cost: parseFloat(document.getElementById('b-upfront').value) || 0,
+        upfront_scaling_stat: document.getElementById('b-upfront-scaling').value || null,
         ongoing_base_cost: parseFloat(document.getElementById('b-ongoing-base').value) || 0,
         ongoing_scaling_stat: document.getElementById('b-scaling-stat').value || null,
         stat_effects: validEffects.map(e => ({
@@ -972,6 +1000,7 @@ function resetBuilder() {
     startingNations = new Set();
     renderNationChecks();
     document.getElementById('b-upfront').value = 0;
+    document.getElementById('b-upfront-scaling').value = '';
     document.getElementById('b-ongoing-base').value = 0;
     document.getElementById('b-scaling-stat').value = '';
     updateCostPreview();
