@@ -829,16 +829,21 @@ async function advanceTick(supabase) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
-        // 7. Auto-resolve shakeups that are 1+ ticks old
+        // 7. Process faction loyalty (autocracy)
+        if (nation.government_type === 'Autocracy') {
+            await processLoyaltyTick(supabase, nation);
+        }
+
+        // 8. Auto-resolve shakeups that are 1+ ticks old
         if (nation.government_type === 'Autocracy') {
             await autoResolveStaleShakeups(supabase, nation.id, newTick);
         }
 
-        // 8. Process inactive parties (12-tick warning, 24-tick deletion)
+        // 9. Process inactive parties (12-tick warning, 24-tick deletion)
         const inactiveResults = await processInactiveParties(supabase, nation, newTick);
         if (inactiveResults.length > 0) summary.inactive = (summary.inactive || []).concat(inactiveResults);
 
-        // 9. Snapshot nation stats to history (for trend arrows)
+        // 10. Snapshot nation stats to history (for trend arrows)
         await snapshotNationHistory(supabase, nation, newTick);
     }
 
@@ -891,6 +896,87 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
         await supabase.from('campaign_actions')
             .update({ result: { ...result, decay_ticks_remaining: newRemaining } })
             .eq('id', action.id);
+    }
+}
+
+
+// ==================== LOYALTY TICK PROCESSING ====================
+
+/**
+ * Process faction loyalty each tick for autocracies.
+ *
+ * Rules:
+ * - Ruling faction: locked at 100
+ * - Per ministry held: +0.5 loyalty per tick
+ * - No ministries held: -2 loyalty per tick
+ * - Natural drift: 1 point toward 50 per tick (above 50 = -1, below 50 = +1)
+ * - Loyalty clamped 0–100
+ *
+ * @param {object} supabase - Supabase client
+ * @param {object} nation   - Nation record (needs id, ruling_faction_id)
+ */
+async function processLoyaltyTick(supabase, nation) {
+    const rulingId = nation.ruling_faction_id;
+    if (!rulingId) return;
+
+    // Get all non-NPC parties in this nation
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, loyalty, seats')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+
+    if (!factions || factions.length === 0) return;
+
+    // Count ministries per faction
+    const { data: ministries } = await supabase
+        .from('ministries')
+        .select('party_id')
+        .eq('nation_id', nation.id)
+        .not('party_id', 'is', null);
+
+    const ministryCounts = {};
+    if (ministries) {
+        for (const m of ministries) {
+            ministryCounts[m.party_id] = (ministryCounts[m.party_id] || 0) + 1;
+        }
+    }
+
+    for (const faction of factions) {
+        let loyalty = faction.loyalty ?? 50;
+
+        // Ruling faction always 100
+        if (faction.id === rulingId) {
+            if (loyalty !== 100) {
+                await supabase.from('factions')
+                    .update({ loyalty: 100 })
+                    .eq('id', faction.id);
+            }
+            continue;
+        }
+
+        const ministryCount = ministryCounts[faction.id] || 0;
+
+        // Ministry effect
+        if (ministryCount > 0) {
+            loyalty += ministryCount * 0.5;
+        } else {
+            loyalty -= 2;
+        }
+
+        // Natural drift toward 50
+        if (loyalty > 50) {
+            loyalty -= 1;
+        } else if (loyalty < 50) {
+            loyalty += 1;
+        }
+
+        // Clamp 0–100
+        loyalty = Math.max(0, Math.min(100, Math.round(loyalty * 10) / 10));
+
+        await supabase.from('factions')
+            .update({ loyalty })
+            .eq('id', faction.id);
     }
 }
 
