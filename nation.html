@@ -344,10 +344,6 @@ async function loadPreviousTickData(nationId) {
 
 /**
  * Calculate ranking for a stat (1 = best)
- * @param {string} statKey - The stat column name
- * @param {number} value - Current nation's value
- * @param {boolean} inverted - If true, lower is better
- * @returns {number} Rank (1-indexed)
  */
 function calculateRanking(statKey, value, inverted = false) {
     if (value === null || value === undefined) return null;
@@ -358,8 +354,6 @@ function calculateRanking(statKey, value, inverted = false) {
     
     if (values.length === 0) return null;
     
-    // Sort: for normal stats, higher is better (descending)
-    // For inverted stats, lower is better (ascending)
     const sorted = [...values].sort((a, b) => inverted ? a - b : b - a);
     
     return sorted.indexOf(value) + 1;
@@ -367,17 +361,12 @@ function calculateRanking(statKey, value, inverted = false) {
 
 /**
  * Get trend arrow for a stat
- * @param {string} statKey - The stat column name
- * @param {number} currentValue - Current value
- * @param {boolean} inverted - If true, lower is better
- * @returns {string} HTML for trend arrow
  */
 function getTrendArrow(statKey, currentValue, inverted = false) {
     if (!previousTickData || currentValue === null || currentValue === undefined) {
         return '<span class="trend-arrow trend-neutral">―</span>';
     }
     
-    // Handle case mismatch: nations table has "GDP" but history table has "gdp"
     const historyKey = statKey === 'GDP' ? 'gdp' : statKey;
     const previousValue = previousTickData[historyKey];
     if (previousValue === null || previousValue === undefined) {
@@ -387,9 +376,9 @@ function getTrendArrow(statKey, currentValue, inverted = false) {
     const invertedClass = inverted ? ' inverted' : '';
     
     if (currentValue > previousValue) {
-        return `<span class="trend-arrow trend-up${invertedClass}">▲</span>`;
+        return '<span class="trend-arrow trend-up' + invertedClass + '">▲</span>';
     } else if (currentValue < previousValue) {
-        return `<span class="trend-arrow trend-down${invertedClass}">▼</span>`;
+        return '<span class="trend-arrow trend-down' + invertedClass + '">▼</span>';
     } else {
         return '<span class="trend-arrow trend-neutral">―</span>';
     }
@@ -443,17 +432,17 @@ async function renderNationPage(nation) {
             <div class="sector-block">
                 <div class="sector-header"><span class="sector-icon">💰</span> Economic</div>
                 <div class="stat-boxes">
-                    ${renderStatBox('GDP', 'GDP', nation.GDP, 'Gross domestic product in billions', 'currency')}
-                    ${renderStatBox('GDP Growth', 'gdp_growth', nation.gdp_growth, 'Annual economic growth rate')}
-                    ${renderStatBox('National Debt', 'debt', nation.debt, 'Government debt obligations', 'currency', true)}
-                    ${renderStatBox('Debt Growth', 'debt_growth', nation.debt_growth, 'Rate of debt accumulation', null, true)}
-                    ${renderStatBox('Budget', 'budget', nation.budget, 'Government budget surplus/deficit')}
-                    ${renderStatBox('Inflation', 'inflation', nation.inflation, 'Rate of price increases', null, true)}
-                    ${renderStatBox('Interest Rates', 'interest_rates', nation.interest_rates, 'Central bank lending rate')}
-                    ${renderStatBox('Trade Balance', 'trade_balance', nation.trade_balance, 'Exports minus imports')}
-                    ${renderStatBox('Currency Strength', 'currency_strength', nation.currency_strength, 'Value of national currency')}
-                    ${renderStatBox('Foreign Investment', 'foreign_investment', nation.foreign_investment, 'International capital inflow')}
-                    ${renderStatBox('Credit Rating', 'credit', nation.credit, 'National creditworthiness')}
+                    \${renderStatBox('GDP', 'GDP', nation.GDP, 'Gross domestic product in billions', 'currency')}
+                    \${renderStatBox('GDP Growth', 'gdp_growth', nation.gdp_growth, 'Annual economic growth rate')}
+                    \${renderStatBox('National Debt', 'debt', nation.debt, 'Government debt obligations', 'currency', true)}
+                    \${renderStatBox('Debt Growth', 'debt_growth', nation.debt_growth, 'Rate of debt accumulation', null, true)}
+                    \${renderStatBox('Budget', 'budget', nation.budget, 'Government budget surplus/deficit')}
+                    \${renderStatBox('Inflation', 'inflation', nation.inflation, 'Rate of price increases', null, true)}
+                    \${renderStatBox('Interest Rates', 'interest_rates', nation.interest_rates, 'Central bank lending rate')}
+                    \${renderStatBox('Trade Balance', 'trade_balance', nation.trade_balance, 'Exports minus imports')}
+                    \${renderStatBox('Currency Strength', 'currency_strength', nation.currency_strength, 'Value of national currency')}
+                    \${renderStatBox('Foreign Investment', 'foreign_investment', nation.foreign_investment, 'International capital inflow')}
+                    \${renderStatBox('Credit Rating', 'credit', nation.credit, 'National creditworthiness')}
                 </div>
             </div>
             
@@ -461,10 +450,10 @@ async function renderNationPage(nation) {
             <div class="sector-block">
                 <div class="sector-header"><span class="sector-icon">🧾</span> Taxation</div>
                 <div class="stat-boxes">
-                    ${renderStatBox('Income Tax', 'income_tax', nation.income_tax, 'Tax rate on personal income')}
-                    ${renderStatBox('Corporate Tax', 'corporate_tax', nation.corporate_tax, 'Tax rate on business profits')}
-                    ${renderStatBox('Sales Tax', 'sales_tax', nation.sales_tax, 'Tax on goods and services')}
-                    ${renderStatBox('Tariffs', 'tariffs', nation.tariffs, 'Import/export duties')}
+                    \${renderStatBox('Income Tax', 'income_tax', nation.income_tax, 'Tax rate on personal income')}
+                    \${renderStatBox('Corporate Tax', 'corporate_tax', nation.corporate_tax, 'Tax rate on business profits')}
+                    \${renderStatBox('Sales Tax', 'sales_tax', nation.sales_tax, 'Tax on goods and services')}
+                    \${renderStatBox('Tariffs', 'tariffs', nation.tariffs, 'Import/export duties')}
                 </div>
             </div>
             
@@ -472,12 +461,12 @@ async function renderNationPage(nation) {
             <div class="sector-block">
                 <div class="sector-header"><span class="sector-icon">👷</span> Labor & Employment</div>
                 <div class="stat-boxes">
-                    ${renderStatBox('Unemployment', 'unemployment', nation.unemployment, 'Percentage without work', null, true)}
-                    ${renderStatBox('Labor Participation', 'labor_force_participation', nation.labor_force_participation, 'Working-age adults employed')}
-                    ${renderStatBox('Minimum Wage', 'minimum_wage', nation.minimum_wage, 'Lowest legal hourly wage')}
-                    ${renderStatBox('Union Strength', 'union_strength', nation.union_strength, 'Power of labor unions')}
-                    ${renderStatBox('Poverty Rate', 'poverty_rate', nation.poverty_rate, 'Population below poverty line', null, true)}
-                    ${renderStatBox('Income Inequality', 'income_inequality', nation.income_inequality, 'Gap between rich and poor', null, true)}
+                    \${renderStatBox('Unemployment', 'unemployment', nation.unemployment, 'Percentage without work', null, true)}
+                    \${renderStatBox('Labor Participation', 'labor_force_participation', nation.labor_force_participation, 'Working-age adults employed')}
+                    \${renderStatBox('Minimum Wage', 'minimum_wage', nation.minimum_wage, 'Lowest legal hourly wage')}
+                    \${renderStatBox('Union Strength', 'union_strength', nation.union_strength, 'Power of labor unions')}
+                    \${renderStatBox('Poverty Rate', 'poverty_rate', nation.poverty_rate, 'Population below poverty line', null, true)}
+                    \${renderStatBox('Income Inequality', 'income_inequality', nation.income_inequality, 'Gap between rich and poor', null, true)}
                 </div>
             </div>
             
@@ -485,12 +474,12 @@ async function renderNationPage(nation) {
             <div class="sector-block">
                 <div class="sector-header"><span class="sector-icon">👥</span> Demographics</div>
                 <div class="stat-boxes">
-                    ${renderStatBox('Population Growth', 'population_growth', nation.population_growth, 'Rate of population change')}
-                    ${renderStatBox('Birth Rate', 'birth_rate', nation.birth_rate, 'Births per 1,000 people')}
-                    ${renderStatBox('Death Rate', 'death_rate', nation.death_rate, 'Deaths per 1,000 people', null, true)}
-                    ${renderStatBox('Median Age', 'median_age', nation.median_age, 'Average age of population', 'years')}
-                    ${renderStatBox('Eligible Voters', 'eligible_voters', nation.eligible_voters, 'Citizens able to vote')}
-                    ${renderStatBox('Ethnic Diversity', 'ethnic_diversity', nation.ethnic_diversity, 'Cultural heterogeneity')}
+                    \${renderStatBox('Population Growth', 'population_growth', nation.population_growth, 'Rate of population change')}
+                    \${renderStatBox('Birth Rate', 'birth_rate', nation.birth_rate, 'Births per 1,000 people')}
+                    \${renderStatBox('Death Rate', 'death_rate', nation.death_rate, 'Deaths per 1,000 people', null, true)}
+                    \${renderStatBox('Median Age', 'median_age', nation.median_age, 'Average age of population', 'years')}
+                    \${renderStatBox('Eligible Voters', 'eligible_voters', nation.eligible_voters, 'Citizens able to vote')}
+                    \${renderStatBox('Ethnic Diversity', 'ethnic_diversity', nation.ethnic_diversity, 'Cultural heterogeneity')}
                 </div>
             </div>
             
@@ -498,10 +487,11 @@ async function renderNationPage(nation) {
             <div class="sector-block">
                 <div class="sector-header"><span class="sector-icon">🏥</span> Healthcare</div>
                 <div class="stat-boxes">
-                    ${renderStatBox('Healthcare Quality', 'healthcare_quality', nation.healthcare_quality, 'Overall medical care standard')}
-                    ${renderStatBox('Hospital Beds', 'beds_per_100k', nation.beds_per_100k, 'Beds per 100,000 people')}
-                    ${renderStatBox('Life Expectancy', 'lifespan', nation.lifespan, 'Average lifespan in years')}
-                    ${renderStatBox('Drug Use', 'drug_use', nation.drug_use, 'Substance abuse prevalence', null, true)}
+                    \${renderStatBox('Healthcare Quality', 'healthcare_quality', nation.healthcare_quality, 'Overall medical care standard')}
+                    \${renderStatBox('Healthcare Accessibility', 'healthcare_accessibility', nation.healthcare_accessibility, 'Access to medical services across the population')}
+                    \${renderStatBox('Hospital Beds', 'beds_per_100k', nation.beds_per_100k, 'Beds per 100,000 people')}
+                    \${renderStatBox('Life Expectancy', 'lifespan', nation.lifespan, 'Average lifespan in years')}
+                    \${renderStatBox('Drug Use', 'drug_use', nation.drug_use, 'Substance abuse prevalence', null, true)}
                 </div>
             </div>
             
@@ -509,9 +499,10 @@ async function renderNationPage(nation) {
             <div class="sector-block">
                 <div class="sector-header"><span class="sector-icon">🎓</span> Education</div>
                 <div class="stat-boxes">
-                    ${renderStatBox('Literacy Rate', 'literacy', nation.literacy, 'Population able to read/write')}
-                    ${renderStatBox('Higher Education', 'higher_education', nation.higher_education, 'University graduation rate')}
-                    ${renderStatBox('Academic Immigration', 'academic_immigration', nation.academic_immigration, 'Scholars attracted to nation')}
+                    \${renderStatBox('Literacy Rate', 'literacy', nation.literacy, 'Population able to read/write')}
+                    \${renderStatBox('Higher Education', 'higher_education', nation.higher_education, 'University graduation rate')}
+                    \${renderStatBox('Education Accessibility', 'education_accessibility', nation.education_accessibility, 'Access to schooling across the population')}
+                    \${renderStatBox('Academic Immigration', 'academic_immigration', nation.academic_immigration, 'Scholars attracted to nation')}
                 </div>
             </div>
             
@@ -519,11 +510,11 @@ async function renderNationPage(nation) {
             <div class="sector-block">
                 <div class="sector-header"><span class="sector-icon">🏗️</span> Infrastructure</div>
                 <div class="stat-boxes">
-                    ${renderStatBox('Digital Infrastructure', 'digital_infrastructure', nation.digital_infrastructure, 'Internet and tech networks')}
-                    ${renderStatBox('Rail Network', 'rail_network', nation.rail_network, 'Train connectivity')}
-                    ${renderStatBox('Urbanization', 'urbanization', nation.urbanization, 'Population in cities')}
-                    ${renderStatBox('Energy Generation', 'energy_generation', nation.energy_generation, 'Power production capacity')}
-                    ${renderStatBox('Renewable Energy', 'renewable_energy_percentage', nation.renewable_energy_percentage, 'Clean energy percentage')}
+                    \${renderStatBox('Digital Infrastructure', 'digital_infrastructure', nation.digital_infrastructure, 'Internet and tech networks')}
+                    \${renderStatBox('Rail Network', 'rail_network', nation.rail_network, 'Train connectivity')}
+                    \${renderStatBox('Urbanization', 'urbanization', nation.urbanization, 'Population in cities')}
+                    \${renderStatBox('Energy Generation', 'energy_generation', nation.energy_generation, 'Power production capacity')}
+                    \${renderStatBox('Renewable Energy', 'renewable_energy_percentage', nation.renewable_energy_percentage, 'Clean energy percentage')}
                 </div>
             </div>
             
@@ -531,10 +522,10 @@ async function renderNationPage(nation) {
             <div class="sector-block">
                 <div class="sector-header"><span class="sector-icon">⛏️</span> Resources</div>
                 <div class="stat-boxes">
-                    ${renderStatBox('Arable Land', 'arable_land', nation.arable_land, 'Farmable territory')}
-                    ${renderStatBox('Rare Minerals', 'rare_minerals', nation.rare_minerals, 'Valuable mineral deposits')}
-                    ${renderStatBox('Oil & Gas', 'oil_and_gas', nation.oil_and_gas, 'Fossil fuel reserves')}
-                    ${renderStatBox('Fuel Prices', 'fuel_prices', nation.fuel_prices, 'Cost of energy', null, true)}
+                    \${renderStatBox('Arable Land', 'arable_land', nation.arable_land, 'Farmable territory')}
+                    \${renderStatBox('Rare Minerals', 'rare_minerals', nation.rare_minerals, 'Valuable mineral deposits')}
+                    \${renderStatBox('Oil & Gas', 'oil_and_gas', nation.oil_and_gas, 'Fossil fuel reserves')}
+                    \${renderStatBox('Fuel Prices', 'fuel_prices', nation.fuel_prices, 'Cost of energy', null, true)}
                 </div>
             </div>
             
@@ -542,8 +533,8 @@ async function renderNationPage(nation) {
             <div class="sector-block">
                 <div class="sector-header"><span class="sector-icon">🌍</span> Environment</div>
                 <div class="stat-boxes">
-                    ${renderStatBox('Pollution', 'pollution', nation.pollution, 'Air and water contamination', null, true)}
-                    ${renderStatBox('Carbon Emissions', 'carbon_emissions', nation.carbon_emissions, 'Greenhouse gas output', null, true)}
+                    \${renderStatBox('Pollution', 'pollution', nation.pollution, 'Air and water contamination', null, true)}
+                    \${renderStatBox('Carbon Emissions', 'carbon_emissions', nation.carbon_emissions, 'Greenhouse gas output', null, true)}
                 </div>
             </div>
             
@@ -551,12 +542,12 @@ async function renderNationPage(nation) {
             <div class="sector-block">
                 <div class="sector-header"><span class="sector-icon">🏠</span> Social</div>
                 <div class="stat-boxes">
-                    ${renderStatBox('Standard of Living', 'standard_of_living', nation.standard_of_living, 'Quality of life index')}
-                    ${renderStatBox('Happiness', 'happiness', nation.happiness, 'National wellbeing index')}
-                    ${renderStatBox('Social Mobility', 'social_mobility', nation.social_mobility, 'Ability to change class')}
-                    ${renderStatBox('Benefits', 'benefits', nation.benefits, 'Social welfare programs')}
-                    ${renderStatBox('Crime Rate', 'crime_rate', nation.crime_rate, 'Criminal incidents per capita', null, true)}
-                    ${renderStatBox('Incarceration Rate', 'incarceration_rate', nation.incarceration_rate, 'Imprisoned population', null, true)}
+                    \${renderStatBox('Standard of Living', 'standard_of_living', nation.standard_of_living, 'Quality of life index')}
+                    \${renderStatBox('Happiness', 'happiness', nation.happiness, 'National wellbeing index')}
+                    \${renderStatBox('Social Mobility', 'social_mobility', nation.social_mobility, 'Ability to change class')}
+                    \${renderStatBox('Benefits', 'benefits', nation.benefits, 'Social welfare programs')}
+                    \${renderStatBox('Crime Rate', 'crime_rate', nation.crime_rate, 'Criminal incidents per capita', null, true)}
+                    \${renderStatBox('Incarceration Rate', 'incarceration_rate', nation.incarceration_rate, 'Imprisoned population', null, true)}
                 </div>
             </div>
             
@@ -564,14 +555,14 @@ async function renderNationPage(nation) {
             <div class="sector-block">
                 <div class="sector-header"><span class="sector-icon">🏛️</span> Governance</div>
                 <div class="stat-boxes">
-                    ${renderStatBox('Stability', 'stability', nation.stability, 'Government steadiness')}
-                    ${renderStatBox('Legitimacy', 'legitimacy', nation.legitimacy, 'Public trust in government')}
-                    ${renderStatBox('Efficiency', 'efficiency', nation.efficiency, 'Bureaucratic effectiveness')}
-                    ${renderStatBox('Corruption', 'corruption', nation.corruption, 'Abuse of public office', null, true)}
-                    ${renderStatBox('Press Freedom', 'press_freedom', nation.press_freedom, 'Media independence')}
-                    ${renderStatBox('Judicial Independence', 'judicial_independence', nation.judicial_independence, 'Court system fairness')}
-                    ${renderStatBox('Freedom Index', 'freedom_index', nation.freedom_index, 'Civil liberties rating')}
-                    ${renderStatBox('Polarization', 'polarization', nation.polarization, 'Political division', null, true)}
+                    \${renderStatBox('Stability', 'stability', nation.stability, 'Government steadiness')}
+                    \${renderStatBox('Legitimacy', 'legitimacy', nation.legitimacy, 'Public trust in government')}
+                    \${renderStatBox('Efficiency', 'efficiency', nation.efficiency, 'Bureaucratic effectiveness')}
+                    \${renderStatBox('Corruption', 'corruption', nation.corruption, 'Abuse of public office', null, true)}
+                    \${renderStatBox('Press Freedom', 'press_freedom', nation.press_freedom, 'Media independence')}
+                    \${renderStatBox('Judicial Independence', 'judicial_independence', nation.judicial_independence, 'Court system fairness')}
+                    \${renderStatBox('Freedom Index', 'freedom_index', nation.freedom_index, 'Civil liberties rating')}
+                    \${renderStatBox('Polarization', 'polarization', nation.polarization, 'Political division', null, true)}
                 </div>
             </div>
             
@@ -579,9 +570,9 @@ async function renderNationPage(nation) {
             <div class="sector-block">
                 <div class="sector-header"><span class="sector-icon">🛡️</span> Security</div>
                 <div class="stat-boxes">
-                    ${renderStatBox('Civil Unrest', 'civil_unrest', nation.civil_unrest, 'Protests and riots', null, true)}
-                    ${renderStatBox('Terrorism Threat', 'terrorism', nation.terrorism, 'Extremist activity level', null, true)}
-                    ${renderStatBox('Political Violence', 'political_violence', nation.political_violence, 'Politically motivated attacks', null, true)}
+                    \${renderStatBox('Civil Unrest', 'civil_unrest', nation.civil_unrest, 'Protests and riots', null, true)}
+                    \${renderStatBox('Terrorism Threat', 'terrorism', nation.terrorism, 'Extremist activity level', null, true)}
+                    \${renderStatBox('Political Violence', 'political_violence', nation.political_violence, 'Politically motivated attacks', null, true)}
                 </div>
             </div>
             
@@ -589,9 +580,9 @@ async function renderNationPage(nation) {
             <div class="sector-block">
                 <div class="sector-header"><span class="sector-icon">✈️</span> Immigration</div>
                 <div class="stat-boxes">
-                    ${renderStatBox('Immigration', 'immigration', nation.immigration, 'People entering legally')}
-                    ${renderStatBox('Illegal Immigration', 'illegal_immigration', nation.illegal_immigration, 'Undocumented arrivals', null, true)}
-                    ${renderStatBox('Emigration', 'emigration', nation.emigration, 'Citizens leaving (brain drain)', null, true)}
+                    \${renderStatBox('Immigration', 'immigration', nation.immigration, 'People entering legally')}
+                    \${renderStatBox('Illegal Immigration', 'illegal_immigration', nation.illegal_immigration, 'Undocumented arrivals', null, true)}
+                    \${renderStatBox('Emigration', 'emigration', nation.emigration, 'Citizens leaving (brain drain)', null, true)}
                 </div>
             </div>
             
@@ -599,19 +590,19 @@ async function renderNationPage(nation) {
             <div class="sector-block">
                 <div class="sector-header"><span class="sector-icon">🌐</span> International</div>
                 <div class="stat-boxes">
-                    ${renderStatBox('Intl. Reputation', 'international_reputation', nation.international_reputation, 'Global standing and respect')}
-                    ${renderStatBox('Trade Agreements', 'trade_agreements', nation.trade_agreements, 'Active trade deals', 'count')}
-                    ${renderStatBox('Sanctions', 'sanctions', nation.sanctions, 'International penalties', null, true)}
+                    \${renderStatBox('Intl. Reputation', 'international_reputation', nation.international_reputation, 'Global standing and respect')}
+                    \${renderStatBox('Trade Agreements', 'trade_agreements', nation.trade_agreements, 'Active trade deals', 'count')}
+                    \${renderStatBox('Sanctions', 'sanctions', nation.sanctions, 'International penalties', null, true)}
                 </div>
             </div>
             
             <!-- VOTER DEMOGRAPHICS -->
             <div class="sector-block">
                 <div class="sector-header"><span class="sector-icon">🗳️</span> Voter Demographics</div>
-                ${renderVoterAxis('Competition', nation.competition_voters, 'Cooperation')}
-                ${renderVoterAxis('Liberty', nation.liberty_voters, 'Equality')}
-                ${renderVoterAxis('Security', nation.security_voters, 'Freedom')}
-                ${renderVoterAxis('Globalism', nation.globalism_voters, 'Nationalism')}
+                \${renderVoterAxis('Competition', nation.competition_voters, 'Cooperation')}
+                \${renderVoterAxis('Liberty', nation.liberty_voters, 'Equality')}
+                \${renderVoterAxis('Security', nation.security_voters, 'Freedom')}
+                \${renderVoterAxis('Globalism', nation.globalism_voters, 'Nationalism')}
             </div>
             
         </div>
@@ -631,12 +622,10 @@ function renderStatBox(name, statKey, value, description, format = null, inverte
     let colorClass = 'medium';
     if (value !== null && value !== undefined) {
         if (inverted) {
-            // Lower is better
             if (numValue <= 30) colorClass = 'good';
             else if (numValue <= 60) colorClass = 'medium';
             else colorClass = 'bad';
         } else {
-            // Higher is better
             if (numValue >= 70) colorClass = 'good';
             else if (numValue >= 40) colorClass = 'medium';
             else colorClass = 'bad';
@@ -660,22 +649,17 @@ function renderStatBox(name, statKey, value, description, format = null, inverte
     
     // Get ranking
     const rank = calculateRanking(statKey, value, inverted);
-    const rankDisplay = rank ? `#${rank} of ${totalNations}` : '';
+    const rankDisplay = rank ? '#' + rank + ' of ' + totalNations : '';
     const rankClass = rank === 1 ? 'first' : '';
     
-    return `
-        <div class="stat-box ${colorClass}">
-            <div class="stat-box-header">
-                <span class="stat-box-name">${name}</span>
-                <span class="stat-box-value ${colorClass}">
-                    ${formattedValue}
-                    ${trendArrow}
-                </span>
-            </div>
-            <div class="stat-box-desc">${description}</div>
-            ${rankDisplay ? `<div class="stat-box-footer"><span class="ranking-badge ${rankClass}">${rankDisplay}</span></div>` : ''}
-        </div>
-    `;
+    return '<div class="stat-box ' + colorClass + '">' +
+        '<div class="stat-box-header">' +
+            '<span class="stat-box-name">' + name + '</span>' +
+            '<span class="stat-box-value ' + colorClass + '">' + formattedValue + ' ' + trendArrow + '</span>' +
+        '</div>' +
+        '<div class="stat-box-desc">' + description + '</div>' +
+        (rankDisplay ? '<div class="stat-box-footer"><span class="ranking-badge ' + rankClass + '">' + rankDisplay + '</span></div>' : '') +
+    '</div>';
 }
 
 /**
@@ -685,18 +669,16 @@ function renderVoterAxis(leftLabel, leftValue, rightLabel) {
     const leftPct = leftValue ?? 50;
     const rightPct = 100 - leftPct;
     
-    return `
-        <div class="voter-axis">
-            <div class="voter-axis-header">
-                <span class="voter-axis-left">${leftLabel}</span>
-                <span class="voter-axis-right">${rightLabel}</span>
-            </div>
-            <div class="voter-bar-container">
-                <div class="voter-bar-left" style="width: ${leftPct}%">${leftPct}%</div>
-                <div class="voter-bar-right">${rightPct}%</div>
-            </div>
-        </div>
-    `;
+    return '<div class="voter-axis">' +
+        '<div class="voter-axis-header">' +
+            '<span class="voter-axis-left">' + leftLabel + '</span>' +
+            '<span class="voter-axis-right">' + rightLabel + '</span>' +
+        '</div>' +
+        '<div class="voter-bar-container">' +
+            '<div class="voter-bar-left" style="width: ' + leftPct + '%">' + leftPct + '%</div>' +
+            '<div class="voter-bar-right">' + rightPct + '%</div>' +
+        '</div>' +
+    '</div>';
 }
 
 /**
