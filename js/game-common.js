@@ -677,26 +677,32 @@ async function enactBill(supabase, bill, currentTick) {
 }
 
 /**
- * Reverse a policy's accumulated stat effects on a nation.
+ * Schedule a gradual reversal of a policy's accumulated stat effects.
  * Called when a policy is rescinded (opposed auto-removal or repeal bill).
  *
- * Calculates how much the policy changed each stat since activation,
- * then subtracts that amount from the nation's current stat value.
+ * Instead of instantly reverting stats, creates a new "reversal" active_law
+ * that gradually undoes the effects at the same rate they originally applied.
  *
- * @param {object} supabase   - Supabase client
- * @param {object} nation     - Full nation row
- * @param {object} policy     - Policy with stat_effects
- * @param {number} passedTick - Tick when the policy was activated
+ * Example: Universal Healthcare ran for 15 ticks, healthcare_quality went up
+ * +1/tick for 12 ticks (duration capped). Reversal creates a new entry that
+ * ticks healthcare_quality DOWN -1/tick for 12 ticks.
+ *
+ * @param {object} supabase    - Supabase client
+ * @param {object} nation      - Full nation row
+ * @param {object} policy      - Policy with stat_effects
+ * @param {number} passedTick  - Tick when the policy was activated
  * @param {number} currentTick - Current tick
  */
 async function reversePolicy(supabase, nation, policy, passedTick, currentTick) {
     const ticksActive = currentTick - (passedTick || 0);
     if (ticksActive <= 0) return;
 
-    const effects = policy.stat_effects || [];
-    // Legacy fallback
-    if (effects.length === 0 && policy.target_stat) {
-        effects.push({
+    // Gather effects (support new array and legacy single)
+    const sourceEffects = [];
+    if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
+        sourceEffects.push(...policy.stat_effects);
+    } else if (policy.target_stat) {
+        sourceEffects.push({
             stat_key: policy.target_stat,
             direction: (policy.stat_direction || 'UP').toLowerCase(),
             rate: policy.stat_change_per_tick || 1,
@@ -705,19 +711,16 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
         });
     }
 
-    if (effects.length === 0) return;
+    if (sourceEffects.length === 0) return;
 
-    const updates = {};
+    // Build reversed effects — flip direction, duration = how many ticks actually applied
+    const reversalEffects = [];
 
-    for (const eff of effects) {
-        const statKey = eff.stat_key;
-        if (!statKey || nation[statKey] === undefined || nation[statKey] === null) continue;
-
+    for (const eff of sourceEffects) {
         const delay = eff.delay_ticks || 0;
         const duration = eff.duration_ticks || 12;
-        const rate = eff.rate || 1;
 
-        // How many ticks of actual effect have been applied?
+        // How many ticks of effect were actually applied?
         let effectiveTicks = 0;
         if (ticksActive > delay) {
             effectiveTicks = Math.min(ticksActive - delay, duration);
@@ -725,29 +728,27 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
 
         if (effectiveTicks <= 0) continue;
 
-        // Total accumulated change
-        const totalChange = effectiveTicks * rate;
-
-        // Reverse it: if direction was 'up', we added, so now subtract
-        const currentVal = Number(nation[statKey]);
-        let newVal;
-        if (eff.direction === 'up') {
-            newVal = currentVal - totalChange;
-        } else {
-            newVal = currentVal + totalChange;
-        }
-
-        // Clamp 0–100
-        newVal = Math.max(0, Math.min(100, newVal));
-        updates[statKey] = newVal;
-
-        // Also update the in-memory nation object for subsequent calculations
-        nation[statKey] = newVal;
+        reversalEffects.push({
+            stat_key: eff.stat_key,
+            direction: eff.direction === 'up' ? 'down' : 'up',  // Flip direction
+            rate: eff.rate || 1,
+            delay_ticks: 0,          // Reversals start immediately
+            duration_ticks: effectiveTicks  // Only undo what was actually applied
+        });
     }
 
-    if (Object.keys(updates).length > 0) {
-        await supabase.from('nations').update(updates).eq('id', nation.id);
-    }
+    if (reversalEffects.length === 0) return;
+
+    // Insert a reversal active_law — the tick processor will apply it gradually
+    await supabase.from('active_laws').insert({
+        nation_id: nation.id,
+        policy_id: policy.id,
+        passed_tick: currentTick,
+        proposed_by: null,
+        effects_applied_through_tick: currentTick,  // Start processing next tick
+        is_reversal: true,
+        reversal_effects: reversalEffects
+    });
 }
 
 /**
@@ -841,37 +842,44 @@ async function processStatEffects(supabase, nation, currentTick) {
 
     const appliedEffects = [];
     const nationUpdates = {};
+    const lawsToDelete = []; // Completed reversals to clean up
 
     for (const law of activeLaws) {
         const policy = law.policies;
-        if (!policy) continue;
-
         const lastApplied = law.effects_applied_through_tick || 0;
         if (lastApplied >= currentTick) continue; // Already processed
 
         const passedTick = law.passed_tick || 0;
 
-        // Get stat effects (support both new array and legacy single)
-        const effects = [];
-        if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
-            effects.push(...policy.stat_effects);
-        } else if (policy.target_stat) {
-            effects.push({
-                stat_key: policy.target_stat,
-                direction: (policy.stat_direction || 'UP').toLowerCase(),
-                rate: policy.stat_change_per_tick || 1,
-                delay_ticks: 0,
-                duration_ticks: policy.duration_months || 12
-            });
+        // Determine which effects to use:
+        // - Reversal laws use reversal_effects (flipped direction, calculated duration)
+        // - Normal laws use policy.stat_effects or legacy fields
+        let effects = [];
+        const isReversal = law.is_reversal || false;
+
+        if (isReversal && law.reversal_effects && Array.isArray(law.reversal_effects)) {
+            effects = law.reversal_effects;
+        } else if (policy) {
+            if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
+                effects.push(...policy.stat_effects);
+            } else if (policy.target_stat) {
+                effects.push({
+                    stat_key: policy.target_stat,
+                    direction: (policy.stat_direction || 'UP').toLowerCase(),
+                    rate: policy.stat_change_per_tick || 1,
+                    delay_ticks: 0,
+                    duration_ticks: policy.duration_months || 12
+                });
+            }
         }
 
         if (effects.length === 0) {
-            // No stat effects, just mark as processed
             await supabase.from('active_laws').update({ effects_applied_through_tick: currentTick }).eq('id', law.id);
             continue;
         }
 
         let anyEffectApplied = false;
+        let allEffectsComplete = true;
 
         // Process each tick that was missed (handles skipped ticks)
         for (let tick = lastApplied + 1; tick <= currentTick; tick++) {
@@ -883,9 +891,13 @@ async function processStatEffects(supabase, nation, currentTick) {
                 const rate = eff.rate || 1;
                 const statKey = eff.stat_key;
 
+                // Check if all ticks for this effect are done
+                if (ticksSincePassed <= delay + duration) {
+                    allEffectsComplete = false;
+                }
+
                 // Is this tick within the active window?
                 if (ticksSincePassed > delay && ticksSincePassed <= delay + duration) {
-                    // Apply the effect
                     const currentVal = nationUpdates[statKey] !== undefined
                         ? nationUpdates[statKey]
                         : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
@@ -897,13 +909,12 @@ async function processStatEffects(supabase, nation, currentTick) {
                         newVal = currentVal - rate;
                     }
 
-                    // Clamp 0–100
                     newVal = Math.max(0, Math.min(100, newVal));
                     nationUpdates[statKey] = newVal;
                     anyEffectApplied = true;
 
                     appliedEffects.push({
-                        policy: policy.policy_name,
+                        policy: isReversal ? '↩ Reversal: ' + (policy?.policy_name || 'Unknown') : (policy?.policy_name || 'Unknown'),
                         stat: statKey,
                         direction: eff.direction,
                         rate: rate,
@@ -918,11 +929,21 @@ async function processStatEffects(supabase, nation, currentTick) {
         await supabase.from('active_laws').update({
             effects_applied_through_tick: currentTick
         }).eq('id', law.id);
+
+        // If this is a reversal and all effects are complete, delete it
+        if (isReversal && allEffectsComplete) {
+            lawsToDelete.push(law.id);
+        }
     }
 
     // Apply all nation stat updates in one call
     if (Object.keys(nationUpdates).length > 0) {
         await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+    }
+
+    // Clean up completed reversal records
+    for (const id of lawsToDelete) {
+        await supabase.from('active_laws').delete().eq('id', id);
     }
 
     return appliedEffects;
