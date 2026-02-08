@@ -364,7 +364,7 @@
 
                 <!-- Section 5: Stat Effects -->
                 <div class="builder-section">
-                    <div class="builder-section-title">📊 5. Stat Effects (up to 3)</div>
+                    <div class="builder-section-title">📊 5. Stat Effects (up to 10)</div>
                     <div id="stat-effects-container"></div>
                     <button class="add-btn" id="add-effect-btn" onclick="addStatEffect()">+ Add Stat Effect</button>
                     <div class="effect-preview" id="effect-preview" style="display:none;"></div>
@@ -734,7 +734,7 @@ function updateCostPreview() {
 
 // ==================== STAT EFFECTS ====================
 function addStatEffect() {
-    if (statEffects.length >= 3) return;
+    if (statEffects.length >= 10) return;
     statEffects.push({ stat_key: '', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 12 });
     renderStatEffects();
 }
@@ -746,7 +746,7 @@ function removeStatEffect(idx) {
 
 function renderStatEffects() {
     const container = document.getElementById('stat-effects-container');
-    document.getElementById('add-effect-btn').disabled = statEffects.length >= 3;
+    document.getElementById('add-effect-btn').disabled = statEffects.length >= 10;
 
     container.innerHTML = statEffects.map((e, idx) => `
         <div class="stat-effect-card">
