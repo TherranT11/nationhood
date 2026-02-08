@@ -7,8 +7,8 @@
     <link rel="stylesheet" href="css/dashboard.css">
     <style>
         .administration-box {
-            background: linear-gradient(135deg, #1a1a1a 0%, #252525 100%);
-            border: 2px solid #ffcc00;
+            background: linear-gradient(135deg, var(--bg-panel) 0%, var(--bg-card) 100%);
+            border: 2px solid var(--accent);
             border-radius: 12px;
             padding: 24px;
             margin-bottom: 24px;
@@ -17,36 +17,36 @@
             text-align: center;
             margin-bottom: 20px;
             padding-bottom: 16px;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid var(--border-main);
         }
         .administration-title {
             font-size: 1.5rem;
             font-weight: bold;
-            color: #ffcc00;
+            color: var(--accent);
             text-transform: uppercase;
             letter-spacing: 2px;
             margin-bottom: 8px;
         }
-        .administration-subtitle { font-size: 0.85rem; color: #888; }
+        .administration-subtitle { font-size: 0.85rem; color: var(--text-secondary); }
         .administration-content {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
             gap: 20px;
         }
-        .admin-section { background: #1e1e1e; border-radius: 8px; padding: 16px; }
-        .admin-section-title { font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
-        .admin-person-name { font-size: 1.1rem; color: #e0e0e0; font-weight: bold; margin-bottom: 4px; }
-        .admin-person-details { font-size: 0.8rem; color: #aaa; }
-        .admin-person-party { color: #ffcc00; font-weight: bold; }
+        .admin-section { background: var(--bg-panel); border-radius: 8px; padding: 16px; }
+        .admin-section-title { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+        .admin-person-name { font-size: 1.1rem; color: var(--text-primary); font-weight: bold; margin-bottom: 4px; }
+        .admin-person-details { font-size: 0.8rem; color: var(--text-secondary); }
+        .admin-person-party { color: var(--accent); font-weight: bold; }
         .admin-approval { text-align: center; }
-        .admin-approval-value { font-size: 2rem; font-weight: bold; color: #4CAF50; }
-        .admin-approval-value.medium { color: #ff9800; }
-        .admin-approval-value.low { color: #ff4444; }
-        .admin-approval-label { font-size: 0.75rem; color: #888; margin-top: 4px; }
+        .admin-approval-value { font-size: 2rem; font-weight: bold; color: var(--green); }
+        .admin-approval-value.medium { color: var(--orange); }
+        .admin-approval-value.low { color: var(--red); }
+        .admin-approval-label { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; }
         .coalition-parties { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
-        .coalition-party-tag { background: #333; padding: 8px 16px; border-radius: 6px; font-size: 0.9rem; color: #e0e0e0; }
-        .coalition-party-tag .seats { color: #4CAF50; font-weight: bold; margin-left: 6px; }
-        .coalition-divider { color: #555; font-size: 1.2rem; padding: 0 4px; display: flex; align-items: center; }
+        .coalition-party-tag { background: var(--bg-card); padding: 8px 16px; border-radius: 6px; font-size: 0.9rem; color: var(--text-primary); border: 1px solid var(--border-main); }
+        .coalition-party-tag .seats { color: var(--green); font-weight: bold; margin-left: 6px; }
+        .coalition-divider { color: var(--text-dim); font-size: 1.2rem; padding: 0 4px; display: flex; align-items: center; }
         .ministry-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -54,24 +54,24 @@
             margin-top: 16px;
         }
         .ministry-card {
-            background: #1e1e1e;
+            background: var(--bg-panel);
             border-radius: 8px;
             padding: 16px;
-            border-left: 4px solid #ffcc00;
+            border-left: 4px solid var(--accent);
             position: relative;
         }
-        .ministry-card.vacant { border-left-color: #555; }
-        .ministry-title { font-size: 0.8rem; font-weight: bold; color: #ffcc00; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
-        .minister-name { font-size: 1rem; color: #e0e0e0; font-weight: bold; margin-bottom: 4px; }
-        .minister-details { font-size: 0.8rem; color: #aaa; }
-        .minister-party { color: #4CAF50; }
-        .no-government { background: #1a1a1a; border-left: 4px solid #ff9800; border-radius: 8px; padding: 20px; text-align: center; }
-        .no-government-title { color: #ff9800; font-size: 1.1rem; font-weight: bold; margin-bottom: 8px; }
-        .no-government-desc { color: #888; font-size: 0.85rem; }
+        .ministry-card.vacant { border-left-color: var(--text-dim); }
+        .ministry-title { font-size: 0.8rem; font-weight: bold; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+        .minister-name { font-size: 1rem; color: var(--text-primary); font-weight: bold; margin-bottom: 4px; }
+        .minister-details { font-size: 0.8rem; color: var(--text-secondary); }
+        .minister-party { color: var(--green); }
+        .no-government { background: var(--bg-panel); border-left: 4px solid var(--orange); border-radius: 8px; padding: 20px; text-align: center; }
+        .no-government-title { color: var(--orange); font-size: 1.1rem; font-weight: bold; margin-bottom: 8px; }
+        .no-government-desc { color: var(--text-secondary); font-size: 0.85rem; }
 
         /* Ministry action buttons */
         .ministry-actions {
-            display: flex; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #333;
+            display: flex; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-main);
             flex-wrap: wrap; align-items: center;
         }
         .ministry-btn {
@@ -81,32 +81,32 @@
         }
         .ministry-btn:hover { opacity: 0.85; transform: translateY(-1px); }
         .ministry-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
-        .ministry-btn.assign { background: #4CAF50; color: white; }
-        .ministry-btn.purge { background: #ff4444; color: white; }
-        .ministry-btn.request { background: #2196F3; color: white; }
-        .ministry-btn.unrequest { background: #666; color: white; }
+        .ministry-btn.assign { background: var(--green); color: white; }
+        .ministry-btn.purge { background: var(--red); color: white; }
+        .ministry-btn.request { background: var(--blue); color: white; }
+        .ministry-btn.unrequest { background: var(--text-muted); color: white; }
         .ap-cost { opacity: 0.7; font-size: 0.65rem; }
 
         /* Request badges & list */
         .request-badge {
             position: absolute; top: 8px; right: 8px;
-            background: #2196F3; color: white; font-size: 0.65rem;
+            background: var(--blue); color: white; font-size: 0.65rem;
             padding: 2px 8px; border-radius: 10px; font-weight: bold;
         }
         .request-list { margin-top: 8px; }
         .request-item {
             display: flex; justify-content: space-between; align-items: center;
-            background: #252525; border-radius: 4px; padding: 6px 10px; margin-bottom: 4px;
-            font-size: 0.8rem; border-left: 3px solid #2196F3;
+            background: var(--bg-card); border-radius: 4px; padding: 6px 10px; margin-bottom: 4px;
+            font-size: 0.8rem; border-left: 3px solid var(--blue);
         }
-        .request-item-party { color: #2196F3; font-weight: bold; }
+        .request-item-party { color: var(--blue); font-weight: bold; }
         .request-item-actions { display: flex; gap: 4px; }
         .req-btn {
             padding: 3px 8px; border: none; border-radius: 3px;
             font-size: 0.7rem; font-weight: bold; cursor: pointer;
         }
-        .req-btn.deny { background: #ff4444; color: white; }
-        .max-requests-note { font-size: 0.7rem; color: #888; margin-left: 4px; }
+        .req-btn.deny { background: var(--red); color: white; }
+        .max-requests-note { font-size: 0.7rem; color: var(--text-secondary); margin-left: 4px; }
 
         /* Assign Minister Modal */
         .modal-overlay {
@@ -115,41 +115,41 @@
         }
         .modal-overlay.active { display: flex; }
         .modal-content {
-            background: #1a1a1a; border: 2px solid #ffcc00; border-radius: 12px;
+            background: var(--bg-panel); border: 2px solid var(--accent); border-radius: 12px;
             padding: 24px; max-width: 650px; width: 90%; max-height: 85vh; overflow-y: auto;
         }
         .modal-header {
             display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #333;
+            margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-main);
         }
-        .modal-title { font-size: 1.1rem; color: #ffcc00; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
-        .modal-close { background: none; border: none; color: #888; font-size: 1.5rem; cursor: pointer; }
-        .modal-close:hover { color: #fff; }
-        .modal-subtitle { color: #888; font-size: 0.85rem; margin-bottom: 16px; }
+        .modal-title { font-size: 1.1rem; color: var(--accent); font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+        .modal-close { background: none; border: none; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer; }
+        .modal-close:hover { color: var(--text-primary); }
+        .modal-subtitle { color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 16px; }
         .candidate-card {
-            background: #252525; border: 2px solid #333; border-radius: 8px; padding: 16px;
+            background: var(--bg-card); border: 2px solid var(--border-main); border-radius: 8px; padding: 16px;
             margin-bottom: 10px; cursor: pointer; transition: all 0.2s;
             display: flex; justify-content: space-between; align-items: center;
         }
-        .candidate-card:hover { border-color: #ffcc00; background: #2a2a2a; }
-        .candidate-card.selected { border-color: #ffcc00; box-shadow: 0 0 12px rgba(255,204,0,0.2); }
-        .candidate-name { font-size: 1rem; font-weight: bold; color: #e0e0e0; }
-        .candidate-details { font-size: 0.85rem; color: #888; margin-top: 4px; }
+        .candidate-card:hover { border-color: var(--accent); background: var(--bg-hover); }
+        .candidate-card.selected { border-color: var(--accent); box-shadow: 0 0 12px var(--shadow-accent); }
+        .candidate-name { font-size: 1rem; font-weight: bold; color: var(--text-primary); }
+        .candidate-details { font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px; }
         .candidate-party-tag { font-weight: bold; }
-        .candidate-party-tag.ruling { color: #ff4444; }
-        .candidate-party-tag.other { color: #4CAF50; }
-        .ruling-label { font-size: 0.7rem; color: #ff4444; font-weight: bold; }
+        .candidate-party-tag.ruling { color: var(--red); }
+        .candidate-party-tag.other { color: var(--green); }
+        .ruling-label { font-size: 0.7rem; color: var(--red); font-weight: bold; }
         .modal-footer {
             display: flex; justify-content: flex-end; gap: 12px;
-            margin-top: 20px; padding-top: 16px; border-top: 1px solid #333;
+            margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-main);
         }
-        .btn-cancel { padding: 12px 24px; background: #333; border: none; border-radius: 6px; color: #888; cursor: pointer; }
-        .btn-cancel:hover { background: #444; color: #fff; }
+        .btn-cancel { padding: 12px 24px; background: var(--bg-card); border: none; border-radius: 6px; color: var(--text-secondary); cursor: pointer; }
+        .btn-cancel:hover { background: var(--bg-hover); color: var(--text-primary); }
         .btn-submit {
-            padding: 12px 24px; background: linear-gradient(135deg, #ffcc00, #e6b800);
-            border: none; border-radius: 6px; color: #121212; font-weight: bold; cursor: pointer;
+            padding: 12px 24px; background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+            border: none; border-radius: 6px; color: var(--bg-body); font-weight: bold; cursor: pointer;
         }
-        .btn-submit:disabled { background: #333; color: #666; cursor: not-allowed; }
+        .btn-submit:disabled { background: var(--border-main); color: var(--text-muted); cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -437,7 +437,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
             </div>`;
     }
 
-    return '<div class="administration-box"><div class="administration-header"><div class="administration-title">' + hosLast + ' Administration</div><div class="administration-subtitle">Caretaker Government</div></div><div class="coalition-parties"><div class="coalition-party-tag" style="background:#444;color:#888;">Awaiting Election Results</div></div></div>';
+    return '<div class="administration-box"><div class="administration-header"><div class="administration-title">' + hosLast + ' Administration</div><div class="administration-subtitle">Caretaker Government</div></div><div class="coalition-parties"><div class="coalition-party-tag" style="background:var(--bg-hover);color:var(--text-secondary);">Awaiting Election Results</div></div></div>';
 }
 
 // ==================== CABINET ====================
@@ -450,7 +450,7 @@ function renderCabinet(ministries, coalition) {
                 .filter(([key]) => key !== 'prime_minister')
                 .map(([key, partyId]) => {
                     const party = partyData.find(p => p.party_id === partyId);
-                    return `<div class="ministry-card vacant"><div class="ministry-title">${MINISTRY_NAMES[key] || key}</div><div class="minister-name" style="color:#666;">To be appointed</div><div class="minister-details"><span class="minister-party">${party?.party_name || 'Unknown'}</span></div></div>`;
+                    return `<div class="ministry-card vacant"><div class="ministry-title">${MINISTRY_NAMES[key] || key}</div><div class="minister-name" style="color:var(--text-muted);">To be appointed</div><div class="minister-details"><span class="minister-party">${party?.party_name || 'Unknown'}</span></div></div>`;
                 }).join('');
             return `<div class="ministry-grid">${cards}</div>`;
         }
@@ -458,11 +458,11 @@ function renderCabinet(ministries, coalition) {
         if (isAutocracy) {
             const cards = MINISTRY_KEYS_CABINET.map(key => {
                 const requests = ministryRequests.filter(r => r.ministry_key === key);
-                return `<div class="ministry-card vacant"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:#666;">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests)}</div>`;
+                return `<div class="ministry-card vacant"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests)}</div>`;
             }).join('');
             return `<div class="ministry-grid">${cards}</div>`;
         }
-        return '<div class="info-block" style="text-align:center;color:#888;padding:30px;">No cabinet has been formed yet.</div>';
+        return '<div class="info-block" style="text-align:center;color:var(--text-secondary);padding:30px;">No cabinet has been formed yet.</div>';
     }
 
     // Build ministry map
@@ -480,7 +480,7 @@ function renderCabinet(ministries, coalition) {
                 const partyName = m.factions?.faction_name || 'Unknown';
                 return `<div class="ministry-card"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${m.minister_first_name} ${m.minister_last_name}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party">${partyName}</span></div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests)}</div>`;
             } else {
-                return `<div class="ministry-card vacant"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:#666;">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests)}</div>`;
+                return `<div class="ministry-card vacant"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests)}</div>`;
             }
         }).join('');
         return `<div class="ministry-grid">${cards}</div>`;
@@ -714,9 +714,9 @@ function drawParliament(parties) {
     fmt.forEach(p => { for (let i = 0; i < p.seats; i++) seats.push(p.color); });
     const dots = genDots(seats.length, rows, cx, cy);
     let c = '';
-    dots.forEach((d, i) => { if (i < seats.length) c += `<circle cx="${d.x}" cy="${d.y}" r="2.5" fill="${seats[i]}" stroke="#0a0a0a" stroke-width="0.5"/>`; });
-    c += `<text x="${cx}" y="${cy-12}" text-anchor="middle" fill="#ffcc00" font-size="24" font-weight="bold">${total}</text>`;
-    c += `<text x="${cx}" y="${cy+6}" text-anchor="middle" fill="#666" font-size="11">TOTAL SEATS</text>`;
+    dots.forEach((d, i) => { if (i < seats.length) c += `<circle cx="${d.x}" cy="${d.y}" r="2.5" fill="${seats[i]}" stroke="var(--bg-body)" stroke-width="0.5"/>`; });
+    c += `<text x="${cx}" y="${cy-12}" text-anchor="middle" fill="var(--accent)" font-size="24" font-weight="bold">${total}</text>`;
+    c += `<text x="${cx}" y="${cy+6}" text-anchor="middle" fill="var(--text-muted)" font-size="11">TOTAL SEATS</text>`;
     svg.innerHTML = c;
     document.getElementById('parliament-legend').innerHTML = fmt.map(p => `<div class="legend-item"><div class="legend-swatch" style="background:${p.color};"></div>${p.name} (${p.seats})</div>`).join('');
 }
