@@ -208,6 +208,17 @@ async function renderPartiesPage(nation, faction) {
         // Determine ruling faction for autocracy
         const isRulingFaction = isAutocracy && nation.ruling_faction_id === faction?.id;
 
+        // Calculate dynamic Seize Power cost (15 base + 1 per 10-seat deficit)
+        let seizeCost = 15;
+        let seatDeficit = 0;
+        if (isAutocracy && !isRulingFaction && faction) {
+            const rulingParty = parties.find(p => p.id === nation.ruling_faction_id);
+            const rulingSeats = rulingParty?.seats || 0;
+            const mySeats = faction.seats || 0;
+            seatDeficit = Math.max(0, rulingSeats - mySeats);
+            seizeCost = 15 + Math.floor(seatDeficit / 10);
+        }
+
         // Build campaign actions HTML (different for democracy vs autocracy)
         let campaignActionsHTML = '';
 
@@ -313,13 +324,13 @@ async function renderPartiesPage(nation, faction) {
                 <div class="action-card" style="border-left-color: #ff4444;">
                     <div class="action-header">
                         <div class="action-title" style="color: #ff4444;">Seize Power</div>
-                        <div class="action-cost">15 AP</div>
+                        <div class="action-cost">${isRulingFaction ? '—' : seizeCost + ' AP'}</div>
                     </div>
                     <div class="action-desc">
-                        Attempt to overthrow the ruling faction. Triggers a Shakeup where all factions must choose sides.
-                        <br><br><strong style="color: #ff9800;">Losing side:</strong> -25 seats, -20% approval
+                        Attempt to overthrow the ruling faction. Triggers a Shakeup where all factions must choose sides. Seats are redistributed from losers to winners.
+                        ${seatDeficit > 0 ? `<br><br><span style="color: #ff9800; font-size: 0.8rem;">⚠️ Seat deficit: ${seatDeficit} seats → +${Math.floor(seatDeficit / 10)} AP penalty</span>` : ''}
                     </div>
-                    <button class="action-btn" style="background: ${isRulingFaction ? '#555' : '#ff4444'};" onclick="doSeizePower()" ${isRulingFaction ? 'disabled title="You are the ruling faction"' : ''}>
+                    <button class="action-btn" style="background: ${isRulingFaction ? '#555' : '#ff4444'};" onclick="doSeizePower(${seizeCost})" ${isRulingFaction ? 'disabled title="You are the ruling faction"' : ''}>
                         ${isRulingFaction ? '👑 You Rule' : '⚔️ Seize Power'}
                     </button>
                 </div>
@@ -554,8 +565,22 @@ async function doSpreadRumors() {
     } catch (error) { alert('❌ Error: ' + error.message); }
 }
 
-async function doSeizePower() {
-    if (!confirm('⚔️ SEIZE POWER?\n\nThis costs 15 AP and triggers a Shakeup.\nAll factions must choose sides.\nThe losing side loses 25 seats and 20% approval.\n\nProceed?')) return;
+async function doSeizePower(apCost) {
+    apCost = apCost || 15;
+    if (!confirm(
+        '⚔️ SEIZE POWER?\n\n' +
+        'Cost: ' + apCost + ' AP\n\n' +
+        'This triggers a Shakeup — all factions must choose sides.\n\n' +
+        'If you WIN:\n' +
+        '• You become the Ruling Faction\n' +
+        '• Old strongman deposed, new leader installed\n' +
+        '• Ruling faction loses 20 seats, their supporters lose 10 each\n' +
+        '• Your coalition gains those seats + 20 Loyalty\n\n' +
+        'If you LOSE:\n' +
+        '• Your side loses 10 seats each, redistributed to winners\n' +
+        '• 6-tick cooldown before you can try again\n\n' +
+        'Proceed?'
+    )) return;
     try {
         const { data, error } = await _supabase.rpc('action_seize_power', { p_faction_id: currentFaction.id });
         if (error) throw error;
