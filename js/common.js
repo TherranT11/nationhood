@@ -138,6 +138,14 @@ function updateTopBarInfo(faction, shard, nation) {
             nationFlag.alt = nation.name + ' flag';
             nationFlag.style.display = 'block';
         }
+
+        // Rename tabs for autocracies
+        if (nation.government_type === 'Autocracy') {
+            const partiesTab = document.querySelector('.nav-tab[data-tab="parties"]');
+            if (partiesTab) partiesTab.textContent = 'Factions';
+            const electionsTab = document.querySelector('.nav-tab[data-tab="elections"]');
+            if (electionsTab) electionsTab.textContent = 'Regime';
+        }
     } else {
         if (nationName) nationName.textContent = 'No Nation';
     }
