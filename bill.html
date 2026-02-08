@@ -149,6 +149,13 @@
         .btn-submit { padding: 12px 24px; background: #2196F3; border: none; border-radius: 6px; color: white; font-weight: bold; cursor: pointer; }
         .btn-submit:disabled { background: #333; color: #666; cursor: not-allowed; }
         .no-amendments { color: #666; font-style: italic; text-align: center; padding: 20px; font-size: 0.85rem; }
+        .stance-buttons { display: flex; gap: 6px; margin-top: 8px; }
+        .stance-btn { flex: 1; padding: 6px 10px; border: none; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; text-transform: uppercase; transition: all 0.2s; }
+        .stance-btn:hover { opacity: 0.85; }
+        .stance-btn.accept-btn { background: #4CAF50; color: #fff; }
+        .stance-btn.accept-btn.active { background: #388E3C; box-shadow: 0 0 0 2px #ffcc00; }
+        .stance-btn.reject-btn { background: #ff4444; color: #fff; }
+        .stance-btn.reject-btn.active { background: #cc0000; box-shadow: 0 0 0 2px #ffcc00; }
     </style>
 </head>
 <body style="overflow-y: auto !important;">
@@ -238,10 +245,6 @@
 <script src="js/common.js"></script>
 <script src="js/game-common.js"></script>
 <script>
-/**
- * Bill Detail Page
- * Now uses game-common.js for seats, head faction, policy compat, support calc, vote sync
- */
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
@@ -250,7 +253,6 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 const urlParams = new URLSearchParams(window.location.search);
 const billId = urlParams.get('id');
 
-// Local wrapper: excludes policies already in this bill
 function _getCompatiblePolicies(sector) {
     const excludeIds = (currentBill?.bill_articles || []).map(a => a.policy_id);
     return getCompatiblePolicies(sector, allPolicies, currentFaction, isAutocracy, excludeIds);
@@ -292,7 +294,6 @@ async function loadBillData() {
             .eq('nation_id', bill.nation_id).eq('faction_type', 'party');
         allParties = parties || [];
 
-        // Shared seat loading (single source of truth)
         const seatData = await loadSeats(_supabase, bill.nation_id, isAutocracy, allParties, currentFaction?.id);
         allPartySeats = seatData.allPartySeats;
         currentSeats = seatData.currentSeats;
@@ -356,9 +357,8 @@ function renderBill() {
                 el.innerHTML = `${isHeadFaction ? '<button class="sponsor-btn enact-decree" onclick="enactDecree()">⚡ Enact Decree</button>' : ''}${isSponsor ? '<button class="sponsor-btn retract" onclick="retractBill()">Retract Decree</button>' : ''}`;
             }
         } else if (isSponsor) {
-            const support = calculateBillSupport(bill.bill_support, bill.proposed_by, allPartySeats);
             el.style.display = 'flex';
-            el.innerHTML = `<button class="sponsor-btn send-floor" onclick="sendToFloor()" ${support.percent < 51 ? 'disabled' : ''}>Send to Floor</button><button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>`;
+            el.innerHTML = `<button class="sponsor-btn send-floor" onclick="sendToFloor()">Send to Floor</button><button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>`;
         }
     }
 }
@@ -377,20 +377,41 @@ function renderArticles() {
             const p = art.policies;
             if (!p) return '';
             totalUpfront += p.upfront_cost || 0;
-            totalOngoing += p.ongoing_cost || 0;
-            const dir = p.stat_direction === 'UP' ? '↑' : '↓';
-            const cls = p.stat_direction === 'UP' ? 'stat-up' : 'stat-down';
-            return `<div class="article">
-                <div class="article-number">Article ${art.article_number}</div>
-                <div class="article-title">${p.policy_name}<span class="article-ideology">${p.ideology}</span></div>
-                <div class="article-description">${p.description}</div>
-                <div class="article-stat-effect">Effect: <span class="${cls}">${dir} ${p.target_stat}</span></div>
-                <div class="article-costs">
-                    <div class="cost-item"><span class="cost-label">Upfront:</span><span class="cost-value ${p.upfront_cost < 0 ? 'negative' : ''}">${formatCurrency(p.upfront_cost)}</span></div>
-                    <div class="cost-item"><span class="cost-label">Ongoing:</span><span class="cost-value ${p.ongoing_cost < 0 ? 'negative' : ''}">${formatCurrency(p.ongoing_cost)}/mo</span></div>
-                </div>
-                <div class="article-author">Added by ${art.factions?.faction_name || 'Unknown'}</div>
-            </div>`;
+            totalOngoing += p.ongoing_cost_per_tick || p.ongoing_base_cost || p.ongoing_cost || 0;
+
+            // Ideology tags — support new ideologies array and legacy single ideology
+            const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
+            const ideoHTML = ideos.map(i => '<span class="article-ideology">' + i + '</span>').join(' ');
+
+            // Stat effects — support new stat_effects array and legacy single stat
+            let effectsHTML = '';
+            if (p.stat_effects && Array.isArray(p.stat_effects) && p.stat_effects.length > 0) {
+                effectsHTML = p.stat_effects.map(e => {
+                    const dir = e.direction === 'up' ? '↑' : '↓';
+                    const cls = e.direction === 'up' ? 'stat-up' : 'stat-down';
+                    const label = (e.stat_key || '').replace(/_/g, ' ');
+                    return '<span class="' + cls + '">' + dir + ' ' + label + '</span>';
+                }).join(', ');
+            } else if (p.target_stat) {
+                const dir = p.stat_direction === 'UP' ? '↑' : '↓';
+                const cls = p.stat_direction === 'UP' ? 'stat-up' : 'stat-down';
+                effectsHTML = '<span class="' + cls + '">' + dir + ' ' + p.target_stat + '</span>';
+            }
+
+            const upCost = p.upfront_cost || 0;
+            const onCost = p.ongoing_cost_per_tick || p.ongoing_base_cost || p.ongoing_cost || 0;
+
+            return '<div class="article">' +
+                '<div class="article-number">Article ' + art.article_number + '</div>' +
+                '<div class="article-title">' + (p.policy_name || '') + ' ' + ideoHTML + '</div>' +
+                '<div class="article-description">' + (p.description || '') + '</div>' +
+                (effectsHTML ? '<div class="article-stat-effect">Effect: ' + effectsHTML + '</div>' : '') +
+                '<div class="article-costs">' +
+                    '<div class="cost-item"><span class="cost-label">Upfront:</span> <span class="cost-value ' + (upCost < 0 ? 'negative' : '') + '">' + formatCurrency(upCost) + '</span></div>' +
+                    '<div class="cost-item"><span class="cost-label">Ongoing:</span> <span class="cost-value ' + (onCost < 0 ? 'negative' : '') + '">' + formatCurrency(onCost) + '/mo</span></div>' +
+                '</div>' +
+                '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
+            '</div>';
         }).join('')}`;
     document.getElementById('bill-articles').innerHTML = html;
     document.getElementById('total-upfront').textContent = formatCurrency(totalUpfront);
@@ -402,10 +423,10 @@ function renderArticles() {
 function renderSidebar() {
     const bill = currentBill, isCommittee = bill.status === 'committee', isFloor = bill.status === 'floor';
     const isSponsor = bill.proposed_by === currentFaction?.id;
+    const billSupport = bill.bill_support || [];
     let html = '';
 
     if (isCommittee && isAutocracy) {
-        // AUTOCRACY COMMITTEE: No support voting — head faction enacts, others propose amendments
         html = `<div class="support-box">
             <div class="support-box-header"><div class="support-box-title">Decree Status</div></div>
             <div class="support-box-content">
@@ -432,21 +453,33 @@ function renderSidebar() {
         </div>`;
 
     } else if (isCommittee) {
-        // DEMOCRACY COMMITTEE: support panel with percentages
-        const support = calculateBillSupport(bill.bill_support, bill.proposed_by, allPartySeats);
-        const billSupport = bill.bill_support || [];
+        const support = calculateBillSupport(billSupport, bill.proposed_by, allPartySeats);
         html = `<div class="support-box">
             <div class="support-box-header"><div class="support-box-title">Support (${support.percent}%)</div></div>
             <div class="support-box-content">
                 ${allParties.map(party => {
                     const seats = allPartySeats[party.id] || 0;
                     const isSp = party.id === bill.proposed_by;
+                    const isMe = party.id === currentFaction?.id;
                     const stance = billSupport.find(s => s.faction_id === party.id);
                     let sc = 'pending', st = 'PENDING';
                     if (isSp) { sc = 'sponsor'; st = 'SPONSOR'; }
                     else if (stance?.stance === 'accept') { sc = 'accept'; st = 'ACCEPT'; }
                     else if (stance?.stance === 'reject') { sc = 'reject'; st = 'REJECT'; }
-                    return `<div class="support-item"><div><div class="support-party">${party.faction_name}</div><div class="support-seats">${seats} seats</div></div><span class="support-status ${sc}">${st}</span></div>`;
+
+                    // Non-sponsor current player gets Accept/Reject buttons
+                    const actionBtns = (isMe && !isSp) ? `<div class="stance-buttons">
+                        <button class="stance-btn accept-btn ${sc === 'accept' ? 'active' : ''}" onclick="setCommitteeStance('accept')">✓ Accept</button>
+                        <button class="stance-btn reject-btn ${sc === 'reject' ? 'active' : ''}" onclick="setCommitteeStance('reject')">✗ Reject</button>
+                    </div>` : '';
+
+                    return `<div class="support-item" style="flex-direction:column;align-items:stretch;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <div><div class="support-party">${party.faction_name}</div><div class="support-seats">${seats} seats</div></div>
+                            <span class="support-status ${sc}">${st}</span>
+                        </div>
+                        ${actionBtns}
+                    </div>`;
                 }).join('')}
             </div>
             ${amendmentRequests.length > 0 ? `
@@ -462,7 +495,7 @@ function renderSidebar() {
         </div>`;
 
     } else if (isFloor) {
-        const support = bill.bill_support || [];
+        const support = billSupport;
         let f=0,a=0,ab=0;
         support.forEach(s => { if(s.stance==='yes')f+=s.seat_count; else if(s.stance==='no')a+=s.seat_count; else if(s.stance==='abstain')ab+=s.seat_count; });
         html = `<div class="vote-tally"><div class="vote-tally-header"><div class="vote-tally-title">Current Tally</div></div><div class="vote-tally-content">
@@ -473,6 +506,29 @@ function renderSidebar() {
     }
     document.getElementById('sidebar-top').innerHTML = html;
 }
+
+// ==================== COMMITTEE STANCE (NEW) ====================
+
+async function setCommitteeStance(stance) {
+    if (!currentFaction || !currentBill || currentBill.status !== 'committee') return;
+    if (currentBill.proposed_by === currentFaction.id) return; // sponsor can't change stance
+    try {
+        const { error } = await _supabase.from('bill_support').upsert({
+            bill_id: billId,
+            faction_id: currentFaction.id,
+            stance: stance,
+            seat_count: currentSeats
+        }, { onConflict: 'bill_id,faction_id' });
+        if (error) throw error;
+        myVote = stance;
+        await loadBillData();
+    } catch (e) {
+        console.error(e);
+        alert('Error setting stance: ' + e.message);
+    }
+}
+
+// ==================== VOTING / ACTIONS ====================
 
 function renderCurrentVote() {
     if (myVote) {
@@ -493,10 +549,7 @@ async function castVote(vote) {
             stance: vote, seat_count: currentSeats
         }, { onConflict: 'bill_id,faction_id' });
         if (error) throw error;
-
-        // Shared vote tally sync
         await syncVoteTallies(_supabase, billId);
-
         myVote = vote;
         await loadBillData();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
@@ -556,7 +609,7 @@ function onAmendmentSectorChange() {
     const sector = document.getElementById('amendment-sector').value;
     if (!sector) { document.getElementById('amendment-policy-group').style.display = 'none'; return; }
     const policies = _getCompatiblePolicies(sector);
-    document.getElementById('amendment-policies').innerHTML = policies.map(p => `<div class="policy-option" data-policy-id="${p.id}" onclick="selectAmendmentPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name}</div><div class="policy-option-desc">${p.description}</div></div>`).join('');
+    document.getElementById('amendment-policies').innerHTML = policies.map(p => `<div class="policy-option" data-policy-id="${p.id}" onclick="selectAmendmentPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name}</div><div class="policy-option-desc">${p.description || ''}</div></div>`).join('');
     document.getElementById('amendment-policy-group').style.display = 'block';
 }
 
