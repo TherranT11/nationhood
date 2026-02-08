@@ -99,8 +99,32 @@ async function loadSeats(supabase, nationId, isAutocracy, allParties, currentFac
 
 /**
  * Detect the head (ruling) faction for autocracy veto/enact powers.
+ *
+ * Priority:
+ *   1. nations.ruling_faction_id (authoritative source for autocracies)
+ *   2. nation_governments.head_of_state_party (legacy/democracy fallback)
+ *   3. null (no ruling faction detected)
+ *
+ * NOTE: We no longer fall back to "most seats = ruling" — that was the bug.
+ * The ruling faction is explicitly set and only changes via Shakeup resolution
+ * or when the strongman dies.
  */
 async function detectHeadFaction(supabase, nationId, allParties, allPartySeats, currentFactionId) {
+    // 1. Check nations.ruling_faction_id (primary source for autocracies)
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('ruling_faction_id')
+        .eq('id', nationId)
+        .single();
+
+    if (nation?.ruling_faction_id) {
+        return {
+            headFactionId: nation.ruling_faction_id,
+            isHeadFaction: currentFactionId === nation.ruling_faction_id
+        };
+    }
+
+    // 2. Legacy fallback: nation_governments table
     const { data: gov } = await supabase
         .from('nation_governments')
         .select('head_of_state_party')
@@ -116,15 +140,8 @@ async function detectHeadFaction(supabase, nationId, allParties, allPartySeats, 
         };
     }
 
-    const sorted = allParties.slice().sort((a, b) =>
-        (allPartySeats[b.id] || 0) - (allPartySeats[a.id] || 0)
-    );
-    const top = sorted[0];
-    if (!top) return { headFactionId: null, isHeadFaction: false };
-    return {
-        headFactionId: top.id,
-        isHeadFaction: currentFactionId === top.id
-    };
+    // 3. No ruling faction found — do NOT fall back to seat sorting
+    return { headFactionId: null, isHeadFaction: false };
 }
 
 
@@ -683,10 +700,6 @@ async function enactBill(supabase, bill, currentTick) {
  * Instead of instantly reverting stats, creates a new "reversal" active_law
  * that gradually undoes the effects at the same rate they originally applied.
  *
- * Example: Universal Healthcare ran for 15 ticks, healthcare_quality went up
- * +1/tick for 12 ticks (duration capped). Reversal creates a new entry that
- * ticks healthcare_quality DOWN -1/tick for 12 ticks.
- *
  * @param {object} supabase    - Supabase client
  * @param {object} nation      - Full nation row
  * @param {object} policy      - Policy with stat_effects
@@ -811,7 +824,12 @@ async function advanceTick(supabase) {
         const resolutions = await resolveExpiredVotes(supabase, nation.id);
         if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
 
-        // 6. Snapshot nation stats to history (for trend arrows)
+        // 6. Process purge approval decay (autocracy scapegoat mechanic)
+        if (nation.government_type === 'Autocracy') {
+            await processPurgeDecay(supabase, nation.id, newTick);
+        }
+
+        // 7. Snapshot nation stats to history (for trend arrows)
         await snapshotNationHistory(supabase, nation, newTick);
     }
 
@@ -819,13 +837,56 @@ async function advanceTick(supabase) {
 }
 
 /**
- * Process stat effects for all active laws in a nation for the current tick.
+ * Process purge approval decay for autocracies.
  *
- * For each active law:
- *   - Look at each stat_effect
- *   - If current tick falls within [passed_tick + delay, passed_tick + delay + duration]
- *   - Apply the rate to the nation's stat
- *   - Update effects_applied_through_tick so we don't double-apply
+ * When a ruling faction purges a minister, they get a temporary approval boost.
+ * This function applies -1 approval per tick until the decay is exhausted.
+ * Decay info is stored in campaign_actions result.decay_ticks_remaining.
+ *
+ * @param {object} supabase    - Supabase client
+ * @param {string} nationId    - Nation UUID
+ * @param {number} currentTick - Current tick
+ */
+async function processPurgeDecay(supabase, nationId, currentTick) {
+    // Find purge actions with remaining decay
+    const { data: purgeActions } = await supabase
+        .from('campaign_actions')
+        .select('id, party_id, result')
+        .eq('nation_id', nationId)
+        .eq('action_type', 'purge_minister');
+
+    if (!purgeActions || purgeActions.length === 0) return;
+
+    for (const action of purgeActions) {
+        const result = action.result;
+        if (!result || !result.decay_ticks_remaining || result.decay_ticks_remaining <= 0) continue;
+
+        const decayRate = result.decay_rate || 1;
+
+        // Apply -1 approval to the faction that did the purge
+        const { data: faction } = await supabase
+            .from('factions')
+            .select('approval_rating')
+            .eq('id', action.party_id)
+            .single();
+
+        if (faction) {
+            const newApproval = Math.max(0, (faction.approval_rating ?? 50) - decayRate);
+            await supabase.from('factions')
+                .update({ approval_rating: newApproval })
+                .eq('id', action.party_id);
+        }
+
+        // Decrement remaining ticks
+        const newRemaining = result.decay_ticks_remaining - 1;
+        await supabase.from('campaign_actions')
+            .update({ result: { ...result, decay_ticks_remaining: newRemaining } })
+            .eq('id', action.id);
+    }
+}
+
+/**
+ * Process stat effects for all active laws in a nation for the current tick.
  *
  * @param {object} supabase    - Supabase client
  * @param {object} nation      - Full nation row
@@ -951,9 +1012,6 @@ async function processStatEffects(supabase, nation, currentTick) {
 
 /**
  * Process ongoing costs for all active laws in a nation.
- *
- * Deducts ongoing_base_cost (optionally scaled by a stat) from nation's budget.
- * Tracks accumulated cost on active_laws.ongoing_accumulated.
  *
  * @param {object} supabase    - Supabase client
  * @param {object} nation      - Full nation row
