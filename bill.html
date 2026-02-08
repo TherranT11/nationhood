@@ -108,9 +108,14 @@
         .vote-tally-value.for { color: #4CAF50; }
         .vote-tally-value.against { color: #ff4444; }
         .vote-tally-value.abstain { color: #888; }
-        .add-amendment-section { padding: 16px; border-top: 1px solid #333; }
-        .add-amendment-btn { width: 100%; padding: 12px; background: #2196F3; border: none; border-radius: 6px; color: white; font-weight: bold; cursor: pointer; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; transition: background 0.2s; }
+        .add-amendment-section { padding: 16px; border-top: 1px solid #333; display: flex; gap: 8px; }
+        .add-amendment-btn { flex: 1; padding: 12px; background: #2196F3; border: none; border-radius: 6px; color: white; font-weight: bold; cursor: pointer; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; transition: background 0.2s; }
         .add-amendment-btn:hover { background: #1976D2; }
+        .add-text-amendment-btn { flex: 1; padding: 12px; background: #444; border: none; border-radius: 6px; color: #ccc; font-weight: bold; cursor: pointer; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; transition: background 0.2s; }
+        .add-text-amendment-btn:hover { background: #555; }
+        .text-article-input { width: 100%; min-height: 80px; padding: 12px; background: #252525; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 0.9rem; resize: vertical; font-family: inherit; }
+        .text-article-input:focus { outline: none; border-color: #2196F3; }
+        .amendment-text { color: #aaa; font-size: 0.82rem; font-style: italic; margin-bottom: 8px; white-space: pre-wrap; }
         .chat-container { background: #1a1a1a; border-radius: 12px; flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 300px; }
         .chat-header { padding: 16px; background: #252525; border-bottom: 1px solid #333; }
         .chat-title { font-size: 0.85rem; color: #ffcc00; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
@@ -241,6 +246,30 @@
         </div>
     </div>
 </div>
+
+<!-- Text Amendment Modal -->
+<div class="modal-overlay" id="text-amendment-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title">Propose Text Amendment</div>
+            <button class="modal-close" onclick="closeTextAmendmentModal()">&times;</button>
+        </div>
+        <p style="color: #aaa; margin-bottom: 16px; font-size: 0.9rem;">Write a freeform text article to propose adding to this bill.</p>
+        <div class="form-group">
+            <label class="form-label">Article Title</label>
+            <input type="text" class="form-input" id="text-amendment-title" placeholder="e.g., Transitional Provisions">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Article Text</label>
+            <textarea class="text-article-input" id="text-amendment-body" placeholder="Write the full text of this article..."></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeTextAmendmentModal()">Cancel</button>
+            <button class="btn-submit" onclick="submitTextAmendment()">Propose Text Amendment</button>
+        </div>
+    </div>
+</div>
+
 <script src="js/supabase-client.js"></script>
 <script src="js/common.js"></script>
 <script src="js/game-common.js"></script>
@@ -375,7 +404,15 @@ function renderArticles() {
         </div>
         ${articles.map(art => {
             const p = art.policies;
-            if (!p) return '';
+            if (!p) {
+                // Text-only article
+                return '<div class="article" style="border-left:3px solid #2196F3;">' +
+                    '<div class="article-number">Article ' + art.article_number + ' <span style="color:#2196F3;font-size:0.7rem;">TEXT</span></div>' +
+                    '<div class="article-title">' + (art.article_title || 'Untitled Provision') + '</div>' +
+                    '<div class="article-description" style="white-space:pre-wrap;">' + (art.article_text || '') + '</div>' +
+                    '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
+                '</div>';
+            }
             totalUpfront += p.upfront_cost || 0;
             totalOngoing += p.ongoing_cost_per_tick || p.ongoing_base_cost || p.ongoing_cost || 0;
 
@@ -442,14 +479,14 @@ function renderSidebar() {
                 <div class="support-box-content">
                     ${amendmentRequests.map(req => `<div class="amendment-request">
                         <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
-                        <div class="amendment-policy">+ Add: ${req.policies?.policy_name || 'Unknown'}</div>
+                        ${req.policy_id ? `<div class="amendment-policy">+ Add: ${req.policies?.policy_name || "Unknown"}</div>` : `<div class="amendment-policy">+ Text: ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
                         ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
                     </div>`).join('')}
                 </div>` : `
                 <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Amendment Requests</div></div>
                 <div class="no-amendments">No pending amendments</div>
             `}
-            ${!isSponsor ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Amendment</button></div>` : ''}
+            ${!isSponsor ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Amendment</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button></div>` : ''}
         </div>`;
 
     } else if (isCommittee) {
@@ -487,11 +524,11 @@ function renderSidebar() {
                 <div class="support-box-content">
                     ${amendmentRequests.map(req => `<div class="amendment-request">
                         <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
-                        <div class="amendment-policy">+ Add: ${req.policies?.policy_name || 'Unknown'}</div>
+                        ${req.policy_id ? `<div class="amendment-policy">+ Add: ${req.policies?.policy_name || "Unknown"}</div>` : `<div class="amendment-policy">+ Text: ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
                         ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
                     </div>`).join('')}
                 </div>` : (!isSponsor ? `<div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Amendment Requests</div></div><div class="no-amendments">No pending amendments</div>` : '')}
-            ${!isSponsor ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Amendment</button></div>` : ''}
+            ${!isSponsor ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Amendment</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button></div>` : ''}
         </div>`;
 
     } else if (isFloor) {
@@ -638,10 +675,40 @@ async function respondToAmendment(reqId, response) {
         if (response === 'accepted') {
             const req = amendmentRequests.find(r => r.id === reqId);
             const maxArt = Math.max(...(currentBill.bill_articles || []).map(a => a.article_number), 1);
-            await _supabase.from('bill_articles').insert({ bill_id: billId, policy_id: req.policy_id, article_number: maxArt + 1, added_by: req.faction_id });
+            if (req.policy_id) {
+                await _supabase.from('bill_articles').insert({ bill_id: billId, policy_id: req.policy_id, article_number: maxArt + 1, added_by: req.faction_id });
+            } else {
+                await _supabase.from('bill_articles').insert({ bill_id: billId, policy_id: null, article_number: maxArt + 1, added_by: req.faction_id, article_title: req.article_title, article_text: req.article_text });
+            }
             await _supabase.from('bill_support').upsert({ bill_id: billId, faction_id: req.faction_id, stance: 'accept', seat_count: allPartySeats[req.faction_id] || 0 }, { onConflict: 'bill_id,faction_id' });
         }
         await loadBillData();
+    } catch (e) { console.error(e); alert('Error: ' + e.message); }
+}
+
+// ==================== TEXT AMENDMENTS ====================
+
+function openTextAmendmentModal() {
+    document.getElementById('text-amendment-title').value = '';
+    document.getElementById('text-amendment-body').value = '';
+    document.getElementById('text-amendment-modal').classList.add('active');
+}
+function closeTextAmendmentModal() { document.getElementById('text-amendment-modal').classList.remove('active'); }
+
+async function submitTextAmendment() {
+    const title = document.getElementById('text-amendment-title').value.trim();
+    const body = document.getElementById('text-amendment-body').value.trim();
+    if (!body) { alert('Please enter article text.'); return; }
+    try {
+        const { error } = await _supabase.from('bill_amendment_requests').insert({
+            bill_id: billId, faction_id: currentFaction.id, policy_id: null,
+            request_type: 'add_text', status: 'pending',
+            article_title: title || 'Untitled Provision', article_text: body
+        });
+        if (error) throw error;
+        closeTextAmendmentModal();
+        await loadBillData();
+        alert('Text amendment proposed!');
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
