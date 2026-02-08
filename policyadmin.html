@@ -7,20 +7,15 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="css/dashboard.css">
     <style>
-        /* Override dashboard.css fixed layout for admin tool */
         body { overflow: auto !important; height: auto !important; }
         #content-area { overflow: visible !important; }
 
-        /* Auth overlay */
+        /* Auth */
         .auth-screen {
             display: flex; align-items: center; justify-content: center;
-            min-height: 100vh; flex-direction: column; gap: 20px;
-            background: #121212;
+            min-height: 100vh; flex-direction: column; gap: 20px; background: #121212;
         }
-        .auth-screen h1 {
-            color: #ffcc00; font-size: 1.4rem; text-transform: uppercase;
-            letter-spacing: 3px;
-        }
+        .auth-screen h1 { color: #ffcc00; font-size: 1.4rem; text-transform: uppercase; letter-spacing: 3px; }
         .auth-screen input {
             padding: 14px 20px; background: #1a1a1a; border: 1px solid #333;
             border-radius: 6px; color: #e0e0e0; font-size: 1rem; width: 280px; text-align: center;
@@ -32,10 +27,8 @@
             font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;
         }
 
-        /* Sub-tabs for list/builder toggle */
-        .sub-tabs {
-            display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 1px solid #333;
-        }
+        /* Sub-tabs */
+        .sub-tabs { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 1px solid #333; }
         .sub-tab {
             padding: 10px 20px; background: transparent; border: none; color: #888;
             font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; cursor: pointer;
@@ -47,9 +40,7 @@
         .view-panel.active { display: block; }
 
         /* Filter bar */
-        .filter-bar {
-            display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;
-        }
+        .filter-bar { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
         .filter-bar input, .filter-bar select {
             padding: 10px 14px; background: #1a1a1a; border: 1px solid #333;
             border-radius: 5px; color: #e0e0e0; font-size: 0.85rem;
@@ -65,24 +56,18 @@
             color: #888; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;
             border-bottom: 2px solid #333;
         }
-        .policy-table td {
-            padding: 12px 14px; border-bottom: 1px solid #222;
-            font-size: 0.85rem; vertical-align: middle;
-        }
+        .policy-table td { padding: 12px 14px; border-bottom: 1px solid #222; font-size: 0.85rem; vertical-align: top; }
         .policy-table tr:hover { background: #1e1e1e; }
         .policy-name-cell { color: #ffcc00; font-weight: 700; }
 
         /* Tags */
-        .tag {
-            display: inline-block; padding: 2px 8px; border-radius: 3px;
-            font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
-        }
+        .tag { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
         .tag-up { background: #1a2a1a; color: #4CAF50; border: 1px solid #4CAF50; }
         .tag-down { background: #2a1a1a; color: #ff4444; border: 1px solid #ff4444; }
         .tag-ideology { background: #1a1a2a; color: #bb86fc; border: 1px solid #9b59b6; margin: 1px 2px; }
         .tag-sector { background: #2a2a1a; color: #ff9800; border: 1px solid #ff9800; }
 
-        /* Action buttons in table */
+        /* Actions */
         .action-btns { display: flex; gap: 6px; }
         .action-btn {
             padding: 5px 10px; border: none; border-radius: 3px;
@@ -93,7 +78,7 @@
         .action-btn-del { background: #ff4444; color: #fff; }
         .action-btn-dup { background: #9b59b6; color: #fff; }
 
-        /* Builder sections */
+        /* Builder */
         .builder-section {
             background: #1a1a1a; border: 1px solid #2a2a2a;
             border-radius: 8px; padding: 24px; margin-bottom: 20px;
@@ -115,74 +100,91 @@
             border: 1px solid #333; border-radius: 5px; color: #e0e0e0; font-size: 0.9rem;
         }
         .form-field textarea { min-height: 70px; resize: vertical; line-height: 1.5; }
-        .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
-            outline: none; border-color: #ffcc00;
-        }
-        .form-field input[type="range"] {
-            -webkit-appearance: none; height: 6px; background: #333;
-            border-radius: 3px; border: none; padding: 0;
-        }
-        .form-field input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none; width: 18px; height: 18px;
-            background: #ffcc00; border-radius: 50%; cursor: pointer;
-        }
-        .range-row { display: flex; align-items: center; gap: 12px; }
-        .range-row input[type="range"] { flex: 1; }
-        .range-value {
-            color: #ffcc00; font-size: 1rem; font-weight: 700; min-width: 50px; text-align: right;
-        }
+        .form-field input:focus, .form-field select:focus, .form-field textarea:focus { outline: none; border-color: #ffcc00; }
 
-        /* Direction toggle */
-        .direction-toggle { display: flex; gap: 0; }
-        .direction-btn {
-            padding: 10px 24px; border: 1px solid #333; background: #252525;
-            color: #888; cursor: pointer; font-weight: 700; font-size: 0.85rem; transition: all 0.2s;
+        /* Ideology chips */
+        .ideology-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+        .ideology-chip {
+            padding: 8px 16px; background: #252525; border: 2px solid #333; border-radius: 20px;
+            color: #888; font-weight: 700; cursor: pointer; transition: all 0.2s;
+            font-size: 0.82rem; user-select: none;
         }
-        .direction-btn:first-child { border-radius: 5px 0 0 5px; }
-        .direction-btn:last-child { border-radius: 0 5px 5px 0; }
-        .direction-btn.active-up { background: #1a2a1a; color: #4CAF50; border-color: #4CAF50; }
-        .direction-btn.active-down { background: #2a1a1a; color: #ff4444; border-color: #ff4444; }
+        .ideology-chip:hover { border-color: #bb86fc; color: #e0e0e0; }
+        .ideology-chip.selected { background: #2a1a3a; border-color: #bb86fc; color: #bb86fc; }
+        .ideology-chip.disabled { opacity: 0.3; cursor: not-allowed; }
+        .ideology-chip.disabled:hover { border-color: #333; color: #888; }
 
-        /* Ideology spectrum */
-        .spectrum-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
-        .spectrum-side {
-            flex: 1; padding: 10px 14px; background: #252525; border: 2px solid #333;
-            border-radius: 5px; text-align: center; cursor: pointer; transition: all 0.2s;
-            font-weight: 700; font-size: 0.85rem; color: #e0e0e0;
+        /* Nation checkboxes */
+        .nation-checks { display: flex; flex-wrap: wrap; gap: 12px; }
+        .nation-check-item {
+            display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+            background: #252525; border-radius: 6px; cursor: pointer; transition: background 0.2s;
         }
-        .spectrum-side:hover { border-color: #555; }
-        .spectrum-side.selected { border-color: #ffcc00; background: #2a2a1a; color: #ffcc00; }
-        .spectrum-sep { color: #555; font-size: 0.8rem; font-weight: 700; }
-
-        /* Side effects */
-        .side-effect-row {
-            display: flex; gap: 10px; align-items: center; margin-bottom: 8px;
-            background: #252525; padding: 10px; border-radius: 5px;
-        }
-        .side-effect-row select { flex: 1; }
-        .side-effect-row .remove-se {
-            background: #ff4444; color: #fff; border: none; border-radius: 3px;
-            padding: 6px 10px; cursor: pointer; font-size: 0.75rem; font-weight: 700;
-        }
-        .add-se-btn {
-            padding: 8px 16px; background: none; border: 2px dashed #333;
-            border-radius: 5px; color: #888; cursor: pointer; font-size: 0.8rem; width: 100%;
-            transition: all 0.2s;
-        }
-        .add-se-btn:hover { border-color: #ffcc00; color: #ffcc00; }
+        .nation-check-item:hover { background: #2a2a2a; }
+        .nation-check-item input { width: 18px; height: 18px; accent-color: #ffcc00; cursor: pointer; }
+        .nation-check-item span { font-size: 0.9rem; }
 
         /* Cost grid */
         .cost-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
 
-        /* Checkbox */
-        .checkbox-field {
-            display: flex; align-items: center; gap: 10px; padding: 12px 14px;
-            background: #252525; border-radius: 5px; cursor: pointer;
+        /* Stat effect rows */
+        .stat-effect-card {
+            background: #252525; border: 1px solid #333; border-radius: 6px;
+            padding: 16px; margin-bottom: 12px; position: relative;
         }
-        .checkbox-field input[type="checkbox"] { width: 18px; height: 18px; accent-color: #ffcc00; }
-        .checkbox-field span { font-size: 0.9rem; }
+        .stat-effect-card .se-header {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
+        }
+        .stat-effect-card .se-label { font-size: 0.75rem; color: #ffcc00; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
+        .se-remove {
+            background: #ff4444; color: #fff; border: none; border-radius: 3px;
+            padding: 4px 10px; cursor: pointer; font-size: 0.72rem; font-weight: 700;
+        }
+        .se-remove:hover { background: #ff6666; }
+        .se-fields { display: grid; grid-template-columns: 1fr 100px 100px 100px 100px; gap: 10px; align-items: end; }
+        .se-fields .form-field { margin-bottom: 0; }
+        .se-fields .form-field input, .se-fields .form-field select { padding: 8px 10px; font-size: 0.85rem; }
 
-        /* Gold button */
+        /* Direction toggle compact */
+        .dir-toggle { display: flex; gap: 0; }
+        .dir-btn {
+            padding: 8px 14px; border: 1px solid #333; background: #1a1a1a;
+            color: #888; cursor: pointer; font-weight: 700; font-size: 0.8rem; transition: all 0.2s;
+        }
+        .dir-btn:first-child { border-radius: 4px 0 0 4px; }
+        .dir-btn:last-child { border-radius: 0 4px 4px 0; }
+        .dir-btn.sel-up { background: #1a2a1a; color: #4CAF50; border-color: #4CAF50; }
+        .dir-btn.sel-down { background: #2a1a1a; color: #ff4444; border-color: #ff4444; }
+
+        .add-btn {
+            padding: 10px 16px; background: none; border: 2px dashed #333;
+            border-radius: 5px; color: #888; cursor: pointer; font-size: 0.8rem;
+            width: 100%; transition: all 0.2s; font-weight: bold;
+        }
+        .add-btn:hover { border-color: #ffcc00; color: #ffcc00; }
+        .add-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .add-btn:disabled:hover { border-color: #333; color: #888; }
+
+        /* Opposed policies */
+        .opposed-row {
+            display: flex; gap: 10px; align-items: center; margin-bottom: 8px;
+        }
+        .opposed-row select { flex: 1; padding: 8px 10px; background: #252525; border: 1px solid #333; border-radius: 5px; color: #e0e0e0; font-size: 0.85rem; }
+        .opposed-row select:focus { outline: none; border-color: #ffcc00; }
+
+        /* Formula preview */
+        .formula-preview {
+            background: #1a2a2a; border: 1px solid #2196F3; border-radius: 6px;
+            padding: 12px 16px; margin-top: 12px; font-size: 0.85rem; color: #64B5F6;
+        }
+
+        /* Effect preview */
+        .effect-preview {
+            background: #1a2a1a; border: 1px solid #4CAF50; border-radius: 6px;
+            padding: 12px 16px; margin-top: 12px; font-size: 0.82rem; color: #81C784; line-height: 1.7;
+        }
+
+        /* Buttons */
         .btn-gold {
             padding: 10px 20px; border: none; border-radius: 5px; font-size: 0.85rem;
             font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;
@@ -197,7 +199,6 @@
         }
         .btn-dim:hover { border-color: #ffcc00; color: #e0e0e0; }
 
-        /* Status bar */
         .status-bar {
             padding: 12px 18px; border-radius: 5px; margin-bottom: 16px;
             font-weight: 700; font-size: 0.9rem; display: none;
@@ -210,6 +211,7 @@
         @media (max-width: 900px) {
             .form-row { flex-direction: column; }
             .cost-grid { grid-template-columns: 1fr; }
+            .se-fields { grid-template-columns: 1fr 1fr; }
             .filter-bar { flex-direction: column; }
             .policy-count { margin-left: 0; }
         }
@@ -217,29 +219,18 @@
 </head>
 <body>
 
-<!-- Auth Screen -->
 <div id="auth-screen" class="auth-screen">
     <h1>⚙️ Policy Builder</h1>
     <input type="password" id="auth-pw" placeholder="Admin Password" onkeydown="if(event.key==='Enter')checkAuth()">
     <button onclick="checkAuth()">Enter</button>
 </div>
 
-<!-- Main App -->
 <div id="app" class="hidden">
-
-    <!-- Top Bar (admin version — no player session) -->
     <div id="top-bar">
         <div class="top-bar-row1">
             <div class="top-bar-left">
-                <div class="nation-badge">
-                    <span class="nation-name">Admin</span>
-                </div>
-                <div class="tick-info">
-                    <div class="tick-item">
-                        <div class="tick-label">Tool</div>
-                        <div class="tick-value">Policy Builder</div>
-                    </div>
-                </div>
+                <div class="nation-badge"><span class="nation-name">Admin</span></div>
+                <div class="tick-info"><div class="tick-item"><div class="tick-label">Tool</div><div class="tick-value">Policy Builder</div></div></div>
             </div>
             <div class="top-bar-right">
                 <a href="admin.html" class="party-badge" style="text-decoration:none;">← Admin Panel</a>
@@ -251,11 +242,9 @@
         </nav>
     </div>
 
-    <!-- Content Area -->
     <div id="content-area">
         <div class="panel-padding">
             <div id="status-bar" class="status-bar"></div>
-
             <div class="section-header">Policy Administration</div>
 
             <div class="sub-tabs">
@@ -268,7 +257,6 @@
                 <div class="filter-bar">
                     <input type="text" id="search-input" placeholder="Search policies..." oninput="filterPolicies()">
                     <select id="filter-sector" onchange="filterPolicies()"><option value="">All Sectors</option></select>
-                    <select id="filter-stat" onchange="filterPolicies()"><option value="">All Stats</option></select>
                     <select id="filter-ideology" onchange="filterPolicies()"><option value="">All Ideologies</option></select>
                     <span class="policy-count" id="policy-count">— policies</span>
                 </div>
@@ -277,12 +265,10 @@
                         <thead>
                             <tr>
                                 <th>Policy Name</th>
-                                <th>Sector</th>
-                                <th>Target Stat</th>
-                                <th>Dir</th>
-                                <th>Δ/Tick</th>
-                                <th>Ideology</th>
-                                <th>Cost</th>
+                                <th>Sector / Law</th>
+                                <th>Stat Effects</th>
+                                <th>Ideologies</th>
+                                <th>Costs</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -294,23 +280,21 @@
             <!-- ============ BUILDER VIEW ============ -->
             <div class="view-panel" id="view-builder">
 
-                <!-- Identity -->
+                <!-- Section 1: Identity -->
                 <div class="builder-section">
-                    <div class="builder-section-title">📝 Policy Identity</div>
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label>Policy Name</label>
-                            <input type="text" id="b-name" placeholder="e.g. The Prosperity Gospel Initiative">
-                        </div>
+                    <div class="builder-section-title">📝 1. Policy Identity</div>
+                    <div class="form-field">
+                        <label>Policy Name</label>
+                        <input type="text" id="b-name" placeholder="e.g. Vocational-Technical Tracking">
                     </div>
                     <div class="form-field">
-                        <label>Description / Flavor Text</label>
-                        <textarea id="b-desc" placeholder="A brief description of what this policy does and why..."></textarea>
+                        <label>Description</label>
+                        <textarea id="b-desc" placeholder="At age 14, students are sorted into trade-based education..."></textarea>
                     </div>
                     <div class="form-row">
                         <div class="form-field">
-                            <label>Major Sector</label>
-                            <select id="b-major-sector">
+                            <label>Sector</label>
+                            <select id="b-sector" onchange="onSectorOrLawChange()">
                                 <option value="">-- Select --</option>
                                 <option value="ECONOMICS">💰 Economics</option>
                                 <option value="LABOR">👷 Labor</option>
@@ -324,578 +308,693 @@
                             </select>
                         </div>
                         <div class="form-field">
-                            <label>Minor Sector</label>
-                            <input type="text" id="b-minor-sector" placeholder="e.g. taxation, civil_rights, welfare">
+                            <label>Law Category</label>
+                            <input type="text" id="b-law-category" placeholder="e.g. Secondary Education" oninput="onSectorOrLawChange()">
                         </div>
                     </div>
                 </div>
 
-                <!-- Target Stat -->
+                <!-- Section 2: Ideologies -->
                 <div class="builder-section">
-                    <div class="builder-section-title">🎯 Target Stat & Direction</div>
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label>Target Stat</label>
-                            <select id="b-target-stat">
-                                <option value="">-- Select a stat --</option>
-                                <optgroup label="🏛️ Governance & Security">
-                                    <option value="stability">Stability</option>
-                                    <option value="civil_unrest">Civil Unrest</option>
-                                    <option value="terrorism">Terrorism</option>
-                                    <option value="legitimacy">Legitimacy</option>
-                                    <option value="efficiency">Efficiency</option>
-                                    <option value="freedom_index">Freedom Index</option>
-                                    <option value="political_violence">Political Violence</option>
-                                    <option value="incarceration_rate">Incarceration Rate</option>
-                                    <option value="press_freedom">Press Freedom</option>
-                                    <option value="judicial_independence">Judicial Independence</option>
-                                    <option value="corruption">Corruption</option>
-                                </optgroup>
-                                <optgroup label="💰 Economics & Labor">
-                                    <option value="gdp">GDP</option>
-                                    <option value="gdp_growth">GDP Growth</option>
-                                    <option value="inflation">Inflation</option>
-                                    <option value="foreign_investment">Foreign Investment</option>
-                                    <option value="unemployment">Unemployment</option>
-                                    <option value="union_strength">Union Strength</option>
-                                    <option value="trade_balance">Trade Balance</option>
-                                </optgroup>
-                                <optgroup label="👥 Social & Demographics">
-                                    <option value="standard_of_living">Standard of Living</option>
-                                    <option value="happiness">Happiness</option>
-                                    <option value="crime_rate">Crime Rate</option>
-                                    <option value="healthcare_quality">Healthcare Quality</option>
-                                    <option value="literacy">Literacy</option>
-                                    <option value="social_mobility">Social Mobility</option>
-                                    <option value="ethnic_diversity">Ethnic Diversity</option>
-                                    <option value="religious">Religious</option>
-                                </optgroup>
-                                <optgroup label="🌍 Resources & Environment">
-                                    <option value="arable_land">Arable Land</option>
-                                    <option value="oil_and_gas">Oil and Gas</option>
-                                    <option value="rare_minerals">Rare Minerals</option>
-                                    <option value="energy_generation">Energy Generation</option>
-                                    <option value="pollution">Pollution</option>
-                                    <option value="food_prices">Food Prices</option>
-                                </optgroup>
-                            </select>
-                        </div>
-                        <div class="form-field">
-                            <label>Direction</label>
-                            <div class="direction-toggle">
-                                <button class="direction-btn active-up" id="dir-up" onclick="setDirection('UP')">▲ UP</button>
-                                <button class="direction-btn" id="dir-down" onclick="setDirection('DOWN')">▼ DOWN</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label>Change Per Tick</label>
-                            <div class="range-row">
-                                <input type="range" id="b-change" min="0.1" max="5" step="0.1" value="1" oninput="document.getElementById('b-change-val').textContent=this.value">
-                                <span class="range-value" id="b-change-val">1</span>
-                            </div>
-                        </div>
-                        <div class="form-field">
-                            <label>Duration (Months)</label>
-                            <div class="range-row">
-                                <input type="range" id="b-duration" min="1" max="36" step="1" value="12" oninput="document.getElementById('b-duration-val').textContent=this.value+'mo'">
-                                <span class="range-value" id="b-duration-val">12mo</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label>Stat Floor (min value)</label>
-                            <div class="range-row">
-                                <input type="range" id="b-floor" min="0" max="100" step="1" value="0" oninput="document.getElementById('b-floor-val').textContent=this.value">
-                                <span class="range-value" id="b-floor-val">0</span>
-                            </div>
-                        </div>
-                        <div class="form-field">
-                            <label>Stat Ceiling (max value)</label>
-                            <div class="range-row">
-                                <input type="range" id="b-ceiling" min="0" max="100" step="1" value="100" oninput="document.getElementById('b-ceiling-val').textContent=this.value">
-                                <span class="range-value" id="b-ceiling-val">100</span>
-                            </div>
-                        </div>
+                    <div class="builder-section-title">🗳️ 2. Ideologies (select 1–3)</div>
+                    <div class="ideology-chips" id="ideology-chips"></div>
+                    <div style="color:#888; font-size:0.8rem; margin-top:10px;">
+                        Selected: <strong style="color:#ffcc00;" id="ideo-count">0</strong> / 3 —
+                        <span id="ideo-list" style="color:#bb86fc;">None</span>
                     </div>
                 </div>
 
-                <!-- Ideologies -->
+                <!-- Section 3: Starting Status -->
                 <div class="builder-section">
-                    <div class="builder-section-title">🗳️ Ideologies (1–5, no opposing pairs)</div>
-                    <div id="ideology-builder"></div>
-                    <div style="color:#888; font-size:0.8rem; margin-top:8px;">
-                        Selected: <strong style="color:#ffcc00;" id="ideo-count">0</strong> / 5 —
-                        <span id="ideo-list" style="color:#ffcc00;">None</span>
-                    </div>
+                    <div class="builder-section-title">🌍 3. Starting Status</div>
+                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
+                        Which nations have this policy active at game start?
+                        <span style="color:#ff9800;">Active = ongoing cost runs, stat effects do NOT fire (stats are pre-set).</span>
+                    </p>
+                    <div class="nation-checks" id="nation-checks">Loading nations...</div>
                 </div>
 
-                <!-- Side Effects -->
+                <!-- Section 4: Costs -->
                 <div class="builder-section">
-                    <div class="builder-section-title">⚡ Side Effects (optional secondary stat changes)</div>
-                    <div id="side-effects-container"></div>
-                    <button class="add-se-btn" onclick="addSideEffect()">+ Add Side Effect</button>
-                </div>
-
-                <!-- Costs -->
-                <div class="builder-section">
-                    <div class="builder-section-title">💰 Financial Impact</div>
+                    <div class="builder-section-title">💰 4. Costs</div>
                     <div class="cost-grid">
                         <div class="form-field">
-                            <label>Upfront Cost</label>
+                            <label>Upfront Cost ($M)</label>
                             <input type="number" id="b-upfront" value="0" min="0" step="1">
                         </div>
                         <div class="form-field">
-                            <label>Cost Relief (budget gain)</label>
-                            <input type="number" id="b-relief" value="0" min="0" step="1">
+                            <label>Ongoing Base Cost ($M/tick)</label>
+                            <input type="number" id="b-ongoing-base" value="0" min="0" step="0.1" oninput="updateCostPreview()">
                         </div>
                         <div class="form-field">
-                            <label>Ongoing Cost / Tick</label>
-                            <input type="number" id="b-ongoing" value="0" min="0" step="1">
+                            <label>Scaling Stat (or None)</label>
+                            <select id="b-scaling-stat" onchange="updateCostPreview()">
+                                <option value="">None (flat cost)</option>
+                            </select>
                         </div>
                     </div>
+                    <div class="formula-preview" id="cost-preview" style="display:none;"></div>
                 </div>
 
-                <!-- Approval & Flags -->
+                <!-- Section 5: Stat Effects -->
                 <div class="builder-section">
-                    <div class="builder-section-title">📊 Approval & Rules</div>
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label>Approval Impact (when passed)</label>
-                            <div class="range-row">
-                                <input type="range" id="b-approval" min="-10" max="10" step="1" value="0" oninput="updateApprovalLabel()">
-                                <span class="range-value" id="b-approval-val" style="min-width:80px;">0 (neutral)</span>
-                            </div>
-                        </div>
+                    <div class="builder-section-title">📊 5. Stat Effects (up to 3)</div>
+                    <div id="stat-effects-container"></div>
+                    <button class="add-btn" id="add-effect-btn" onclick="addStatEffect()">+ Add Stat Effect</button>
+                    <div class="effect-preview" id="effect-preview" style="display:none;"></div>
+                </div>
+
+                <!-- Section 6: Opposed Policies -->
+                <div class="builder-section">
+                    <div class="builder-section-title">⚔️ 6. Opposed Policies (up to 3, same law category)</div>
+                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
+                        Policies that cannot coexist. Activating this policy will auto-rescind any opposed active policy.
+                    </p>
+                    <div id="opposed-container"></div>
+                    <button class="add-btn" id="add-opposed-btn" onclick="addOpposedSlot()">+ Add Opposed Policy</button>
+                    <div id="opposed-note" style="color:#666; font-size:0.8rem; margin-top:8px; display:none;">
+                        Select a sector and law category first to see available policies.
                     </div>
-                    <label class="checkbox-field">
-                        <input type="checkbox" id="b-one-time">
-                        <span>One-time only — once enacted in a nation, cannot be enacted again</span>
-                    </label>
                 </div>
 
                 <!-- Submit -->
                 <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:10px; margin-bottom:40px;">
                     <button class="btn-dim" onclick="resetBuilder()">Clear Form</button>
-                    <button class="btn-gold" id="submit-policy-btn" onclick="savePolicy()">✅ Create Policy</button>
+                    <button class="btn-gold" id="submit-btn" onclick="savePolicy()">✅ Create Policy</button>
                 </div>
             </div>
-
         </div>
     </div>
 </div>
 
 <script>
-    // ========== CONFIG ==========
-    const ADMIN_PW = 'nationhood2000';
-    const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
-    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+// ==================== CONFIG ====================
+const ADMIN_PW = 'nationhood2000';
+const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
+const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
-    const IDEOLOGY_SPECTRUMS = [
-        { left: 'Liberty', right: 'Equality' },
-        { left: 'Freedom', right: 'Security' },
-        { left: 'Tradition', right: 'Progress' },
-        { left: 'Globalism', right: 'Nationalism' },
-        { left: 'Competition', right: 'Cooperation' }
-    ];
+const IDEOLOGY_SPECTRUMS = [
+    { left: 'Liberty', right: 'Equality' },
+    { left: 'Freedom', right: 'Security' },
+    { left: 'Tradition', right: 'Progress' },
+    { left: 'Globalism', right: 'Nationalism' },
+    { left: 'Competition', right: 'Cooperation' }
+];
+const ALL_IDEOLOGIES = IDEOLOGY_SPECTRUMS.flatMap(s => [s.left, s.right]);
+const OPPOSITES = {};
+IDEOLOGY_SPECTRUMS.forEach(s => { OPPOSITES[s.left] = s.right; OPPOSITES[s.right] = s.left; });
 
-    const ALL_STATS = [
-        'stability','civil_unrest','terrorism','legitimacy','efficiency','freedom_index',
-        'political_violence','incarceration_rate','press_freedom','judicial_independence','corruption',
-        'gdp','gdp_growth','inflation','foreign_investment','unemployment','union_strength','trade_balance',
-        'standard_of_living','happiness','crime_rate','healthcare_quality','literacy','social_mobility',
-        'ethnic_diversity','religious',
-        'arable_land','oil_and_gas','rare_minerals','energy_generation','pollution','food_prices'
-    ];
+const STAT_GROUPS = [
+    { label: '💰 Economic', stats: ['gdp','gdp_growth','national_debt','debt_growth','budget','inflation','interest_rates','trade_balance','currency_strength','foreign_investment','credit_rating'] },
+    { label: '📋 Taxation', stats: ['income_tax','corporate_tax','sales_tax','tariffs'] },
+    { label: '👷 Labor & Employment', stats: ['unemployment','labor_participation','minimum_wage','union_strength','poverty_rate','income_inequality'] },
+    { label: '👥 Demographics', stats: ['population_growth','birth_rate','death_rate','median_age','eligible_voters','ethnic_diversity'] },
+    { label: '🏥 Healthcare', stats: ['healthcare_quality','hospital_beds','life_expectancy','drug_use'] },
+    { label: '📚 Education', stats: ['literacy_rate','higher_education','academic_immigration'] },
+    { label: '🏗️ Infrastructure', stats: ['digital_infrastructure','rail_network','urbanization','energy_generation','renewable_energy'] },
+    { label: '⛏️ Resources', stats: ['arable_land','rare_minerals','oil_and_gas','fuel_prices'] },
+    { label: '🌿 Environment', stats: ['pollution','carbon_emissions'] },
+    { label: '🏠 Social', stats: ['standard_of_living','happiness','social_mobility','benefits','crime_rate','incarceration_rate'] },
+    { label: '🏛️ Governance', stats: ['stability','legitimacy','efficiency','corruption','press_freedom','judicial_independence','freedom_index','polarization'] },
+    { label: '🔒 Security', stats: ['civil_unrest','terrorism_threat','political_violence'] },
+    { label: '🌍 Immigration', stats: ['immigration','illegal_immigration','emigration'] },
+    { label: '🌐 International', stats: ['intl_reputation','trade_agreements','sanctions'] }
+];
 
-    let allPolicies = [];
-    let filteredPolicies = [];
-    let editingPolicyId = null;
-    let selectedDirection = 'UP';
-    let selectedIdeologies = {};
-    let sideEffects = [];
+// Flatten for dropdown building
+function buildStatOptions() {
+    return STAT_GROUPS.map(g =>
+        `<optgroup label="${g.label}">${g.stats.map(s => `<option value="${s}">${fmtStat(s)}</option>`).join('')}</optgroup>`
+    ).join('');
+}
+const STAT_OPTIONS_HTML = buildStatOptions();
 
-    // ========== AUTH ==========
-    function checkAuth() {
-        if (document.getElementById('auth-pw').value === ADMIN_PW) {
-            document.getElementById('auth-screen').classList.add('hidden');
-            document.getElementById('app').classList.remove('hidden');
-            init();
+// ==================== STATE ====================
+let allPolicies = [];
+let filteredPolicies = [];
+let allNations = [];
+let editingPolicyId = null;
+
+// Builder state
+let selectedIdeologies = new Set();
+let statEffects = []; // array of { stat_key, direction, rate, delay_ticks, duration_ticks }
+let opposedSlots = []; // array of policy UUIDs or ''
+let startingNations = new Set(); // nation IDs
+
+// ==================== AUTH ====================
+function checkAuth() {
+    if (document.getElementById('auth-pw').value === ADMIN_PW) {
+        document.getElementById('auth-screen').classList.add('hidden');
+        document.getElementById('app').classList.remove('hidden');
+        init();
+    } else { alert('Wrong password.'); }
+}
+
+// ==================== INIT ====================
+async function init() {
+    await Promise.all([loadPolicies(), loadNations()]);
+    populateFilterDropdowns();
+    populateScalingStatDropdown();
+    renderIdeologyChips();
+    renderNationChecks();
+    renderPolicyTable();
+}
+
+async function loadPolicies() {
+    const { data, error } = await _supabase.from('policies').select('*').order('major_sector, minor_sector, policy_name');
+    if (error) { console.error(error); return; }
+    allPolicies = data || [];
+    filteredPolicies = [...allPolicies];
+}
+
+async function loadNations() {
+    const { data } = await _supabase.from('nations').select('id, name').order('name');
+    allNations = data || [];
+}
+
+// ==================== VIEW SWITCHING ====================
+function switchView(view) {
+    document.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+    document.querySelector(`.sub-tab[onclick="switchView('${view}')"]`).classList.add('active');
+    document.getElementById(`view-${view}`).classList.add('active');
+}
+
+// ==================== LIST VIEW ====================
+function populateFilterDropdowns() {
+    const sectors = [...new Set(allPolicies.map(p => p.major_sector).filter(Boolean))].sort();
+    const ideologies = new Set();
+    allPolicies.forEach(p => {
+        if (p.ideologies && Array.isArray(p.ideologies)) p.ideologies.forEach(i => ideologies.add(i));
+        else if (p.ideology) ideologies.add(p.ideology);
+    });
+
+    document.getElementById('filter-sector').innerHTML = '<option value="">All Sectors</option>' +
+        sectors.map(s => `<option value="${s}">${s}</option>`).join('');
+    document.getElementById('filter-ideology').innerHTML = '<option value="">All Ideologies</option>' +
+        [...ideologies].sort().map(i => `<option value="${i}">${i}</option>`).join('');
+}
+
+function filterPolicies() {
+    const search = document.getElementById('search-input').value.toLowerCase();
+    const sector = document.getElementById('filter-sector').value;
+    const ideology = document.getElementById('filter-ideology').value;
+
+    filteredPolicies = allPolicies.filter(p => {
+        if (search && !(p.policy_name || '').toLowerCase().includes(search) && !(p.description || '').toLowerCase().includes(search)) return false;
+        if (sector && p.major_sector !== sector) return false;
+        if (ideology) {
+            const pIdeos = p.ideologies || (p.ideology ? [p.ideology] : []);
+            if (!pIdeos.includes(ideology)) return false;
+        }
+        return true;
+    });
+    renderPolicyTable();
+}
+
+function renderPolicyTable() {
+    document.getElementById('policy-count').textContent = filteredPolicies.length + ' policies';
+    const tbody = document.getElementById('policy-tbody');
+
+    if (filteredPolicies.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#888; padding:30px;">No policies found.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filteredPolicies.map(p => {
+        // Ideologies
+        const ideos = p.ideologies || (p.ideology ? [p.ideology] : []);
+        const ideoHTML = ideos.map(i => `<span class="tag tag-ideology">${i}</span>`).join(' ') || '—';
+
+        // Stat effects
+        let effectsHTML = '—';
+        if (p.stat_effects && Array.isArray(p.stat_effects) && p.stat_effects.length > 0) {
+            effectsHTML = p.stat_effects.map(e => {
+                const arrow = e.direction === 'up' ? '▲' : '▼';
+                const cls = e.direction === 'up' ? 'tag-up' : 'tag-down';
+                return `<span class="tag ${cls}">${fmtStat(e.stat_key)} ${arrow} ${e.rate}/t</span>`;
+            }).join(' ');
+        } else if (p.target_stat) {
+            // Legacy single stat
+            const arrow = p.stat_direction === 'UP' ? '▲' : '▼';
+            const cls = p.stat_direction === 'UP' ? 'tag-up' : 'tag-down';
+            effectsHTML = `<span class="tag ${cls}">${fmtStat(p.target_stat)} ${arrow} ${p.stat_change_per_tick || '?'}/t</span>`;
+        }
+
+        // Costs
+        const costs = [];
+        if (p.upfront_cost > 0) costs.push(`$${p.upfront_cost}M up`);
+        if ((p.ongoing_base_cost || p.ongoing_cost_per_tick || 0) > 0) {
+            const base = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
+            const scaling = p.ongoing_scaling_stat;
+            costs.push(scaling ? `$${base}M×${fmtStat(scaling)}/t` : `$${base}M/t`);
+        }
+        const costHTML = costs.length > 0 ? costs.join('<br>') : '—';
+
+        // Law category
+        const law = p.law_category || p.minor_sector || '';
+
+        return `<tr>
+            <td class="policy-name-cell">${p.policy_name || '—'}</td>
+            <td><span class="tag tag-sector">${p.major_sector || '—'}</span><br><span style="font-size:0.75rem;color:#888;">${law}</span></td>
+            <td>${effectsHTML}</td>
+            <td>${ideoHTML}</td>
+            <td style="font-size:0.8rem; font-family:monospace;">${costHTML}</td>
+            <td><div class="action-btns">
+                <button class="action-btn action-btn-edit" onclick="editPolicy('${p.id}')">Edit</button>
+                <button class="action-btn action-btn-dup" onclick="duplicatePolicy('${p.id}')">Dup</button>
+                <button class="action-btn action-btn-del" onclick="deletePolicy('${p.id}', '${(p.policy_name || '').replace(/'/g, "\\'")}')">Del</button>
+            </div></td>
+        </tr>`;
+    }).join('');
+}
+
+// ==================== DELETE / DUPLICATE ====================
+async function deletePolicy(id, name) {
+    if (!confirm(`Delete policy "${name}"?`)) return;
+    const { error } = await _supabase.from('policies').delete().eq('id', id);
+    if (error) { showStatus('Error: ' + error.message, 'error'); return; }
+    showStatus(`"${name}" deleted.`, 'success');
+    await loadPolicies(); populateFilterDropdowns(); filterPolicies();
+}
+
+function duplicatePolicy(id) {
+    const p = allPolicies.find(x => x.id === id);
+    if (!p) return;
+    editingPolicyId = null;
+    loadPolicyIntoBuilder(p);
+    document.getElementById('b-name').value = p.policy_name + ' (Copy)';
+    document.getElementById('submit-btn').textContent = '✅ Create Policy';
+    switchView('builder');
+}
+
+function editPolicy(id) {
+    const p = allPolicies.find(x => x.id === id);
+    if (!p) return;
+    editingPolicyId = id;
+    loadPolicyIntoBuilder(p);
+    document.getElementById('submit-btn').textContent = '💾 Update Policy';
+    switchView('builder');
+}
+
+// ==================== LOAD INTO BUILDER ====================
+function loadPolicyIntoBuilder(p) {
+    document.getElementById('b-name').value = p.policy_name || '';
+    document.getElementById('b-desc').value = p.description || '';
+    document.getElementById('b-sector').value = p.major_sector || '';
+    document.getElementById('b-law-category').value = p.law_category || p.minor_sector || '';
+
+    // Ideologies
+    selectedIdeologies = new Set(p.ideologies || (p.ideology ? [p.ideology] : []));
+    renderIdeologyChips();
+
+    // Starting nations (we'll need to look up nation_policies or active_laws — for now just clear)
+    startingNations = new Set();
+    renderNationChecks();
+
+    // Costs
+    document.getElementById('b-upfront').value = p.upfront_cost || 0;
+    document.getElementById('b-ongoing-base').value = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
+    document.getElementById('b-scaling-stat').value = p.ongoing_scaling_stat || '';
+    updateCostPreview();
+
+    // Stat effects
+    if (p.stat_effects && Array.isArray(p.stat_effects)) {
+        statEffects = p.stat_effects.map(e => ({ ...e }));
+    } else if (p.target_stat) {
+        // Legacy: convert single stat to new format
+        statEffects = [{
+            stat_key: p.target_stat,
+            direction: (p.stat_direction || 'UP').toLowerCase(),
+            rate: p.stat_change_per_tick || 1,
+            delay_ticks: 0,
+            duration_ticks: p.duration_months || 12
+        }];
+    } else {
+        statEffects = [];
+    }
+    renderStatEffects();
+
+    // Opposed
+    opposedSlots = (p.opposed_policy_ids || []).filter(Boolean);
+    renderOpposedSlots();
+}
+
+// ==================== IDEOLOGY CHIPS ====================
+function renderIdeologyChips() {
+    const container = document.getElementById('ideology-chips');
+    const disabledSet = new Set();
+    selectedIdeologies.forEach(ideo => { if (OPPOSITES[ideo]) disabledSet.add(OPPOSITES[ideo]); });
+
+    container.innerHTML = ALL_IDEOLOGIES.map(ideo => {
+        const sel = selectedIdeologies.has(ideo);
+        const dis = disabledSet.has(ideo) && !sel;
+        const full = !sel && selectedIdeologies.size >= 3;
+        const cls = sel ? 'selected' : (dis || full) ? 'disabled' : '';
+        const click = (dis || full) && !sel ? '' : `toggleIdeology('${ideo}')`;
+        return `<div class="ideology-chip ${cls}" onclick="${click}">${ideo}</div>`;
+    }).join('');
+
+    document.getElementById('ideo-count').textContent = selectedIdeologies.size;
+    document.getElementById('ideo-list').textContent = selectedIdeologies.size > 0 ? [...selectedIdeologies].join(', ') : 'None';
+}
+
+function toggleIdeology(ideo) {
+    if (selectedIdeologies.has(ideo)) {
+        selectedIdeologies.delete(ideo);
+    } else {
+        if (selectedIdeologies.size >= 3) return;
+        if (OPPOSITES[ideo] && selectedIdeologies.has(OPPOSITES[ideo])) return;
+        selectedIdeologies.add(ideo);
+    }
+    renderIdeologyChips();
+}
+
+// ==================== NATION CHECKS ====================
+function renderNationChecks() {
+    const container = document.getElementById('nation-checks');
+    if (allNations.length === 0) { container.innerHTML = '<span style="color:#666;">No nations found.</span>'; return; }
+    container.innerHTML = allNations.map(n => `
+        <label class="nation-check-item">
+            <input type="checkbox" value="${n.id}" ${startingNations.has(n.id) ? 'checked' : ''} onchange="toggleStartingNation('${n.id}', this.checked)">
+            <span>${n.name}</span>
+        </label>
+    `).join('');
+}
+
+function toggleStartingNation(id, checked) {
+    if (checked) startingNations.add(id); else startingNations.delete(id);
+}
+
+// ==================== COSTS ====================
+function populateScalingStatDropdown() {
+    document.getElementById('b-scaling-stat').innerHTML = '<option value="">None (flat cost)</option>' + STAT_OPTIONS_HTML;
+}
+
+function updateCostPreview() {
+    const base = parseFloat(document.getElementById('b-ongoing-base').value) || 0;
+    const stat = document.getElementById('b-scaling-stat').value;
+    const preview = document.getElementById('cost-preview');
+    if (base <= 0) { preview.style.display = 'none'; return; }
+    preview.style.display = 'block';
+    if (stat) {
+        preview.textContent = `💲 $${base}M × ${fmtStat(stat)} per tick (e.g., if ${fmtStat(stat)} = 50 → $${base * 50}M/tick)`;
+    } else {
+        preview.textContent = `💲 Flat $${base}M per tick`;
+    }
+}
+
+// ==================== STAT EFFECTS ====================
+function addStatEffect() {
+    if (statEffects.length >= 3) return;
+    statEffects.push({ stat_key: '', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 12 });
+    renderStatEffects();
+}
+
+function removeStatEffect(idx) {
+    statEffects.splice(idx, 1);
+    renderStatEffects();
+}
+
+function renderStatEffects() {
+    const container = document.getElementById('stat-effects-container');
+    document.getElementById('add-effect-btn').disabled = statEffects.length >= 3;
+
+    container.innerHTML = statEffects.map((e, idx) => `
+        <div class="stat-effect-card">
+            <div class="se-header">
+                <span class="se-label">Effect ${idx + 1}</span>
+                <button class="se-remove" onclick="removeStatEffect(${idx})">✕ Remove</button>
+            </div>
+            <div class="se-fields">
+                <div class="form-field">
+                    <label>Stat</label>
+                    <select onchange="statEffects[${idx}].stat_key=this.value; updateEffectPreview()">
+                        <option value="">-- Select --</option>
+                        ${STAT_OPTIONS_HTML.replace(`value="${e.stat_key}"`, `value="${e.stat_key}" selected`)}
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label>Dir</label>
+                    <div class="dir-toggle">
+                        <button class="dir-btn ${e.direction === 'up' ? 'sel-up' : ''}" onclick="statEffects[${idx}].direction='up'; renderStatEffects()">▲</button>
+                        <button class="dir-btn ${e.direction === 'down' ? 'sel-down' : ''}" onclick="statEffects[${idx}].direction='down'; renderStatEffects()">▼</button>
+                    </div>
+                </div>
+                <div class="form-field">
+                    <label>Rate/tick</label>
+                    <input type="number" value="${e.rate}" min="0.1" max="5" step="0.1" onchange="statEffects[${idx}].rate=parseFloat(this.value); updateEffectPreview()">
+                </div>
+                <div class="form-field">
+                    <label>Delay</label>
+                    <input type="number" value="${e.delay_ticks}" min="0" max="24" step="1" onchange="statEffects[${idx}].delay_ticks=parseInt(this.value); updateEffectPreview()">
+                </div>
+                <div class="form-field">
+                    <label>Duration</label>
+                    <input type="number" value="${e.duration_ticks}" min="1" max="60" step="1" onchange="statEffects[${idx}].duration_ticks=parseInt(this.value); updateEffectPreview()">
+                </div>
+            </div>
+        </div>
+    `).join('');
+
+    // Fix selected values for stat dropdowns (the replace trick doesn't always work)
+    const selects = container.querySelectorAll('.stat-effect-card select');
+    selects.forEach((sel, idx) => { if (statEffects[idx]?.stat_key) sel.value = statEffects[idx].stat_key; });
+
+    updateEffectPreview();
+}
+
+function updateEffectPreview() {
+    const preview = document.getElementById('effect-preview');
+    const valid = statEffects.filter(e => e.stat_key);
+    if (valid.length === 0) { preview.style.display = 'none'; return; }
+    preview.style.display = 'block';
+
+    let html = '<strong>Timeline Preview:</strong><br>';
+    html += 'Tick 0: Policy activated. Upfront cost deducted. Ongoing cost begins.<br>';
+
+    valid.forEach((e, i) => {
+        const arrow = e.direction === 'up' ? '▲ +' : '▼ -';
+        const start = e.delay_ticks + 1;
+        const end = e.delay_ticks + e.duration_ticks;
+        if (e.delay_ticks > 0) {
+            html += `Tick 1–${e.delay_ticks}: ${fmtStat(e.stat_key)} in delay (no change)<br>`;
+        }
+        html += `Tick ${start}–${end}: ${fmtStat(e.stat_key)} ${arrow}${e.rate}/tick (${e.duration_ticks} ticks)<br>`;
+    });
+
+    const maxTick = Math.max(...valid.map(e => e.delay_ticks + e.duration_ticks));
+    html += `Tick ${maxTick + 1}+: All effects complete. Changes baked in. Ongoing cost continues.`;
+    preview.innerHTML = html;
+}
+
+// ==================== OPPOSED POLICIES ====================
+function addOpposedSlot() {
+    if (opposedSlots.length >= 3) return;
+    opposedSlots.push('');
+    renderOpposedSlots();
+}
+
+function removeOpposedSlot(idx) {
+    opposedSlots.splice(idx, 1);
+    renderOpposedSlots();
+}
+
+function renderOpposedSlots() {
+    const container = document.getElementById('opposed-container');
+    document.getElementById('add-opposed-btn').disabled = opposedSlots.length >= 3;
+
+    const sector = document.getElementById('b-sector').value;
+    const lawCat = document.getElementById('b-law-category').value.trim().toLowerCase();
+
+    // Find policies in same sector + law category
+    const candidates = allPolicies.filter(p => {
+        if (editingPolicyId && p.id === editingPolicyId) return false;
+        const pSector = (p.major_sector || '').toUpperCase();
+        const pLaw = (p.law_category || p.minor_sector || '').trim().toLowerCase();
+        return pSector === sector && pLaw === lawCat && lawCat !== '';
+    });
+
+    if (opposedSlots.length === 0) { container.innerHTML = ''; return; }
+
+    const note = document.getElementById('opposed-note');
+    if (!sector || !lawCat) {
+        note.style.display = 'block';
+        container.innerHTML = opposedSlots.map((_, idx) => `
+            <div class="opposed-row">
+                <select disabled><option>— Set sector & law category first —</option></select>
+                <button class="se-remove" onclick="removeOpposedSlot(${idx})">✕</button>
+            </div>
+        `).join('');
+        return;
+    }
+    note.style.display = 'none';
+
+    container.innerHTML = opposedSlots.map((val, idx) => `
+        <div class="opposed-row">
+            <select onchange="opposedSlots[${idx}]=this.value">
+                <option value="">-- Select policy --</option>
+                ${candidates.map(c => `<option value="${c.id}" ${val === c.id ? 'selected' : ''}>${c.policy_name}</option>`).join('')}
+            </select>
+            <button class="se-remove" onclick="removeOpposedSlot(${idx})">✕</button>
+        </div>
+    `).join('');
+}
+
+function onSectorOrLawChange() {
+    renderOpposedSlots();
+}
+
+// ==================== SAVE POLICY ====================
+async function savePolicy() {
+    const name = document.getElementById('b-name').value.trim();
+    if (!name) { alert('Enter a policy name.'); return; }
+
+    const sector = document.getElementById('b-sector').value;
+    if (!sector) { alert('Select a sector.'); return; }
+
+    const lawCategory = document.getElementById('b-law-category').value.trim();
+    if (!lawCategory) { alert('Enter a law category.'); return; }
+
+    if (selectedIdeologies.size === 0) { alert('Select at least 1 ideology.'); return; }
+
+    const validEffects = statEffects.filter(e => e.stat_key);
+    if (validEffects.length === 0) { alert('Add at least 1 stat effect.'); return; }
+
+    const ideologiesArr = [...selectedIdeologies];
+    const opposedIds = opposedSlots.filter(Boolean);
+
+    const policyData = {
+        policy_key: name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),
+        policy_name: name,
+        description: document.getElementById('b-desc').value.trim() || null,
+        major_sector: sector,
+        minor_sector: lawCategory, // keep for backward compat
+        law_category: lawCategory,
+        ideology: ideologiesArr[0], // keep for backward compat
+        ideologies: ideologiesArr,
+        upfront_cost: parseFloat(document.getElementById('b-upfront').value) || 0,
+        ongoing_base_cost: parseFloat(document.getElementById('b-ongoing-base').value) || 0,
+        ongoing_scaling_stat: document.getElementById('b-scaling-stat').value || null,
+        stat_effects: validEffects.map(e => ({
+            stat_key: e.stat_key,
+            direction: e.direction,
+            rate: e.rate,
+            delay_ticks: e.delay_ticks || 0,
+            duration_ticks: e.duration_ticks || 12
+        })),
+        opposed_policy_ids: opposedIds.length > 0 ? opposedIds : null,
+        // Legacy fields — write defaults so old code doesn't break
+        target_stat: validEffects[0]?.stat_key || null,
+        stat_direction: (validEffects[0]?.direction || 'up').toUpperCase(),
+        stat_change_per_tick: validEffects[0]?.rate || 1,
+        duration_months: validEffects[0]?.duration_ticks || 12,
+        stat_floor: 0,
+        stat_ceiling: 100,
+        ongoing_cost_per_tick: parseFloat(document.getElementById('b-ongoing-base').value) || 0,
+        is_active: true
+    };
+
+    try {
+        if (editingPolicyId) {
+            const { error } = await _supabase.from('policies').update(policyData).eq('id', editingPolicyId);
+            if (error) throw error;
+            showStatus(`"${name}" updated.`, 'success');
         } else {
-            alert('Wrong password.');
-        }
-    }
+            const { data: inserted, error } = await _supabase.from('policies').insert(policyData).select().single();
+            if (error) throw error;
+            showStatus(`"${name}" created.`, 'success');
 
-    // ========== INIT ==========
-    async function init() {
-        await loadPolicies();
-        renderIdeologyBuilder();
-        populateFilterDropdowns();
-        renderPolicyTable();
-    }
+            // Create nation_policies records for starting nations
+            if (startingNations.size > 0 && inserted) {
+                const totalDuration = Math.max(...validEffects.map(e => (e.delay_ticks || 0) + (e.duration_ticks || 12)));
+                const records = [...startingNations].map(nationId => ({
+                    nation_id: nationId,
+                    policy_id: inserted.id,
+                    major_sector: sector,
+                    law_category: lawCategory,
+                    status: 'active',
+                    activated_at_tick: 0,
+                    effects_started: true,
+                    effects_completed: true,
+                    ticks_elapsed: totalDuration
+                }));
 
-    async function loadPolicies() {
-        const { data, error } = await _supabase
-            .from('policies')
-            .select('*')
-            .order('major_sector, minor_sector, policy_name');
-        if (error) { console.error(error); return; }
-        allPolicies = data || [];
-        filteredPolicies = [...allPolicies];
-    }
+                const { error: npError } = await _supabase.from('nation_policies').insert(records);
+                if (npError) {
+                    console.warn('nation_policies insert failed (table may not exist yet):', npError.message);
+                    // Also try active_laws as fallback
+                    const alRecords = [...startingNations].map(nationId => ({
+                        nation_id: nationId,
+                        policy_id: inserted.id,
+                        passed_tick: 0
+                    }));
+                    await _supabase.from('active_laws').insert(alRecords).catch(() => {});
+                }
+            }
 
-    // ========== VIEW SWITCHING ==========
-    function switchView(view) {
-        document.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
-        document.querySelector(`.sub-tab[onclick="switchView('${view}')"]`).classList.add('active');
-        document.getElementById(`view-${view}`).classList.add('active');
-    }
-
-    // ========== POLICY LIST ==========
-    function populateFilterDropdowns() {
-        const sectors = [...new Set(allPolicies.map(p => p.major_sector).filter(Boolean))].sort();
-        const stats = [...new Set(allPolicies.map(p => p.target_stat).filter(Boolean))].sort();
-        const ideologies = [...new Set(allPolicies.map(p => p.ideology).filter(Boolean))].sort();
-
-        document.getElementById('filter-sector').innerHTML = '<option value="">All Sectors</option>' +
-            sectors.map(s => `<option value="${s}">${s}</option>`).join('');
-        document.getElementById('filter-stat').innerHTML = '<option value="">All Stats</option>' +
-            stats.map(s => `<option value="${s}">${formatStat(s)}</option>`).join('');
-        document.getElementById('filter-ideology').innerHTML = '<option value="">All Ideologies</option>' +
-            ideologies.map(i => `<option value="${i}">${i}</option>`).join('');
-    }
-
-    function filterPolicies() {
-        const search = document.getElementById('search-input').value.toLowerCase();
-        const sector = document.getElementById('filter-sector').value;
-        const stat = document.getElementById('filter-stat').value;
-        const ideology = document.getElementById('filter-ideology').value;
-
-        filteredPolicies = allPolicies.filter(p => {
-            if (search && !p.policy_name?.toLowerCase().includes(search) && !p.description?.toLowerCase().includes(search)) return false;
-            if (sector && p.major_sector !== sector) return false;
-            if (stat && p.target_stat !== stat) return false;
-            if (ideology && p.ideology !== ideology) return false;
-            return true;
-        });
-        renderPolicyTable();
-    }
-
-    function renderPolicyTable() {
-        document.getElementById('policy-count').textContent = filteredPolicies.length + ' policies';
-        const tbody = document.getElementById('policy-tbody');
-
-        if (filteredPolicies.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#888; padding:30px;">No policies found.</td></tr>';
-            return;
+            // Update opposed policies — make the relationship two-way
+            if (opposedIds.length > 0 && inserted) {
+                for (const oppId of opposedIds) {
+                    const opp = allPolicies.find(p => p.id === oppId);
+                    if (!opp) continue;
+                    const existing = opp.opposed_policy_ids || [];
+                    if (!existing.includes(inserted.id)) {
+                        existing.push(inserted.id);
+                        await _supabase.from('policies').update({ opposed_policy_ids: existing }).eq('id', oppId);
+                    }
+                }
+            }
         }
 
-        tbody.innerHTML = filteredPolicies.map(p => {
-            const dir = p.stat_direction === 'UP'
-                ? '<span class="tag tag-up">▲ UP</span>'
-                : '<span class="tag tag-down">▼ DOWN</span>';
-
-            const ideologies = p.ideologies
-                ? (Array.isArray(p.ideologies) ? p.ideologies : []).map(i => `<span class="tag tag-ideology">${i}</span>`).join('')
-                : (p.ideology ? `<span class="tag tag-ideology">${p.ideology}</span>` : '—');
-
-            const cost = (p.upfront_cost || 0) > 0 ? `$${p.upfront_cost}` : (p.cost_relief || 0) > 0 ? `+$${p.cost_relief}` : '—';
-
-            return `
-                <tr>
-                    <td class="policy-name-cell">${p.policy_name || '—'}</td>
-                    <td><span class="tag tag-sector">${p.major_sector || '—'}</span><br><span style="font-size:0.75rem;color:#888;">${p.minor_sector || ''}</span></td>
-                    <td>${formatStat(p.target_stat)}</td>
-                    <td>${dir}</td>
-                    <td style="font-family:monospace;">${p.stat_change_per_tick || '—'}</td>
-                    <td>${ideologies}</td>
-                    <td style="font-family:monospace;">${cost}</td>
-                    <td>
-                        <div class="action-btns">
-                            <button class="action-btn action-btn-edit" onclick="editPolicy('${p.id}')">Edit</button>
-                            <button class="action-btn action-btn-dup" onclick="duplicatePolicy('${p.id}')">Dup</button>
-                            <button class="action-btn action-btn-del" onclick="deletePolicy('${p.id}', '${(p.policy_name || '').replace(/'/g, "\\'")}')">Del</button>
-                        </div>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-    }
-
-    // ========== DELETE ==========
-    async function deletePolicy(id, name) {
-        if (!confirm(`Delete policy "${name}"? This cannot be undone.`)) return;
-        const { error } = await _supabase.from('policies').delete().eq('id', id);
-        if (error) { showStatus('Error: ' + error.message, 'error'); return; }
-        showStatus(`"${name}" deleted.`, 'success');
+        editingPolicyId = null;
+        document.getElementById('submit-btn').textContent = '✅ Create Policy';
         await loadPolicies();
         populateFilterDropdowns();
         filterPolicies();
+        switchView('list');
+    } catch (error) {
+        showStatus('Error: ' + error.message, 'error');
+        console.error(error);
     }
+}
 
-    // ========== DUPLICATE ==========
-    function duplicatePolicy(id) {
-        const p = allPolicies.find(x => x.id === id);
-        if (!p) return;
-        editingPolicyId = null;
-        loadPolicyIntoBuilder(p);
-        document.getElementById('b-name').value = p.policy_name + ' (Copy)';
-        document.getElementById('submit-policy-btn').textContent = '✅ Create Policy';
-        switchView('builder');
-    }
+// ==================== RESET ====================
+function resetBuilder() {
+    editingPolicyId = null;
+    document.getElementById('b-name').value = '';
+    document.getElementById('b-desc').value = '';
+    document.getElementById('b-sector').value = '';
+    document.getElementById('b-law-category').value = '';
+    selectedIdeologies = new Set();
+    renderIdeologyChips();
+    startingNations = new Set();
+    renderNationChecks();
+    document.getElementById('b-upfront').value = 0;
+    document.getElementById('b-ongoing-base').value = 0;
+    document.getElementById('b-scaling-stat').value = '';
+    updateCostPreview();
+    statEffects = [];
+    renderStatEffects();
+    opposedSlots = [];
+    renderOpposedSlots();
+    document.getElementById('submit-btn').textContent = '✅ Create Policy';
+}
 
-    // ========== EDIT ==========
-    function editPolicy(id) {
-        const p = allPolicies.find(x => x.id === id);
-        if (!p) return;
-        editingPolicyId = id;
-        loadPolicyIntoBuilder(p);
-        document.getElementById('submit-policy-btn').textContent = '💾 Update Policy';
-        switchView('builder');
-    }
+// ==================== UTILITIES ====================
+function fmtStat(stat) {
+    if (!stat) return '—';
+    return stat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
 
-    function loadPolicyIntoBuilder(p) {
-        document.getElementById('b-name').value = p.policy_name || '';
-        document.getElementById('b-desc').value = p.description || '';
-        document.getElementById('b-major-sector').value = p.major_sector || '';
-        document.getElementById('b-minor-sector').value = p.minor_sector || '';
-        document.getElementById('b-target-stat').value = p.target_stat || '';
-
-        selectedDirection = p.stat_direction || 'UP';
-        setDirection(selectedDirection);
-
-        document.getElementById('b-change').value = p.stat_change_per_tick || 1;
-        document.getElementById('b-change-val').textContent = p.stat_change_per_tick || 1;
-        document.getElementById('b-duration').value = p.duration_months || 12;
-        document.getElementById('b-duration-val').textContent = (p.duration_months || 12) + 'mo';
-        document.getElementById('b-floor').value = p.stat_floor ?? 0;
-        document.getElementById('b-floor-val').textContent = p.stat_floor ?? 0;
-        document.getElementById('b-ceiling').value = p.stat_ceiling ?? 100;
-        document.getElementById('b-ceiling-val').textContent = p.stat_ceiling ?? 100;
-
-        selectedIdeologies = {};
-        const ideos = p.ideologies || (p.ideology ? [p.ideology] : []);
-        ideos.forEach(ideo => {
-            IDEOLOGY_SPECTRUMS.forEach((spec, idx) => {
-                if (spec.left === ideo) selectedIdeologies[idx] = 'left';
-                if (spec.right === ideo) selectedIdeologies[idx] = 'right';
-            });
-        });
-        renderIdeologyBuilder();
-
-        sideEffects = p.side_effects || [];
-        renderSideEffects();
-
-        document.getElementById('b-upfront').value = p.upfront_cost || 0;
-        document.getElementById('b-relief').value = p.cost_relief || 0;
-        document.getElementById('b-ongoing').value = p.ongoing_cost_per_tick || 0;
-        document.getElementById('b-approval').value = p.approval_impact || 0;
-        updateApprovalLabel();
-        document.getElementById('b-one-time').checked = p.one_time_only || false;
-    }
-
-    // ========== BUILDER: DIRECTION ==========
-    function setDirection(dir) {
-        selectedDirection = dir;
-        const up = document.getElementById('dir-up');
-        const down = document.getElementById('dir-down');
-        up.className = 'direction-btn' + (dir === 'UP' ? ' active-up' : '');
-        down.className = 'direction-btn' + (dir === 'DOWN' ? ' active-down' : '');
-    }
-
-    // ========== BUILDER: IDEOLOGY ==========
-    function renderIdeologyBuilder() {
-        const container = document.getElementById('ideology-builder');
-        container.innerHTML = IDEOLOGY_SPECTRUMS.map((spec, idx) => {
-            const leftSel = selectedIdeologies[idx] === 'left' ? 'selected' : '';
-            const rightSel = selectedIdeologies[idx] === 'right' ? 'selected' : '';
-            return `
-                <div class="spectrum-row">
-                    <div class="spectrum-side ${leftSel}" onclick="toggleIdeologyBuilder(${idx}, 'left')">${spec.left}</div>
-                    <span class="spectrum-sep">↔</span>
-                    <div class="spectrum-side ${rightSel}" onclick="toggleIdeologyBuilder(${idx}, 'right')">${spec.right}</div>
-                </div>
-            `;
-        }).join('');
-        updateIdeologyDisplay();
-    }
-
-    function toggleIdeologyBuilder(idx, side) {
-        if (selectedIdeologies[idx] === side) {
-            delete selectedIdeologies[idx];
-        } else {
-            selectedIdeologies[idx] = side;
-        }
-        renderIdeologyBuilder();
-    }
-
-    function updateIdeologyDisplay() {
-        const names = [];
-        Object.entries(selectedIdeologies).forEach(([idx, side]) => {
-            const spec = IDEOLOGY_SPECTRUMS[parseInt(idx)];
-            names.push(side === 'left' ? spec.left : spec.right);
-        });
-        document.getElementById('ideo-count').textContent = names.length;
-        document.getElementById('ideo-list').textContent = names.length > 0 ? names.join(', ') : 'None';
-    }
-
-    function getSelectedIdeologies() {
-        const names = [];
-        Object.entries(selectedIdeologies).forEach(([idx, side]) => {
-            const spec = IDEOLOGY_SPECTRUMS[parseInt(idx)];
-            names.push(side === 'left' ? spec.left : spec.right);
-        });
-        return names;
-    }
-
-    // ========== BUILDER: SIDE EFFECTS ==========
-    function addSideEffect() {
-        sideEffects.push({ stat: '', direction: 'UP', amount: 1 });
-        renderSideEffects();
-    }
-
-    function removeSideEffect(idx) {
-        sideEffects.splice(idx, 1);
-        renderSideEffects();
-    }
-
-    function renderSideEffects() {
-        const container = document.getElementById('side-effects-container');
-        container.innerHTML = sideEffects.map((se, idx) => `
-            <div class="side-effect-row">
-                <select onchange="sideEffects[${idx}].stat=this.value">
-                    <option value="">-- Stat --</option>
-                    ${ALL_STATS.map(s => `<option value="${s}" ${se.stat === s ? 'selected' : ''}>${formatStat(s)}</option>`).join('')}
-                </select>
-                <select onchange="sideEffects[${idx}].direction=this.value" style="width:90px;">
-                    <option value="UP" ${se.direction === 'UP' ? 'selected' : ''}>▲ UP</option>
-                    <option value="DOWN" ${se.direction === 'DOWN' ? 'selected' : ''}>▼ DOWN</option>
-                </select>
-                <input type="number" value="${se.amount || 1}" min="0.1" max="5" step="0.1" style="width:80px;"
-                    onchange="sideEffects[${idx}].amount=parseFloat(this.value)">
-                <button class="remove-se" onclick="removeSideEffect(${idx})">✕</button>
-            </div>
-        `).join('');
-    }
-
-    // ========== BUILDER: APPROVAL ==========
-    function updateApprovalLabel() {
-        const val = parseInt(document.getElementById('b-approval').value);
-        const label = val > 0 ? `+${val} (popular)` : val < 0 ? `${val} (unpopular)` : '0 (neutral)';
-        document.getElementById('b-approval-val').textContent = label;
-        document.getElementById('b-approval-val').style.color = val > 0 ? '#4CAF50' : val < 0 ? '#ff4444' : '#ffcc00';
-    }
-
-    // ========== SAVE POLICY ==========
-    async function savePolicy() {
-        console.log('savePolicy() called');
-        const name = document.getElementById('b-name').value.trim();
-        if (!name) { alert('Please enter a policy name.'); return; }
-
-        const targetStat = document.getElementById('b-target-stat').value;
-        if (!targetStat) { alert('Please select a target stat.'); return; }
-
-        const ideologies = getSelectedIdeologies();
-        if (ideologies.length === 0) { alert('Please select at least 1 ideology.'); return; }
-
-        const cleanSE = sideEffects.filter(se => se.stat && se.amount > 0);
-
-        const policyData = {
-            policy_key: name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),
-            policy_name: name,
-            description: document.getElementById('b-desc').value.trim() || null,
-            major_sector: document.getElementById('b-major-sector').value || null,
-            minor_sector: document.getElementById('b-minor-sector').value.trim() || null,
-            target_stat: targetStat,
-            stat_direction: selectedDirection,
-            stat_change_per_tick: parseFloat(document.getElementById('b-change').value) || 1,
-            duration_months: parseInt(document.getElementById('b-duration').value) || 12,
-            stat_floor: parseInt(document.getElementById('b-floor').value) || 0,
-            stat_ceiling: parseInt(document.getElementById('b-ceiling').value) || 100,
-            ideology: ideologies[0],
-            ideologies: ideologies,
-            side_effects: cleanSE.length > 0 ? cleanSE : null,
-            upfront_cost: parseFloat(document.getElementById('b-upfront').value) || 0,
-            cost_relief: parseFloat(document.getElementById('b-relief').value) || 0,
-            ongoing_cost_per_tick: parseFloat(document.getElementById('b-ongoing').value) || 0,
-            approval_impact: parseInt(document.getElementById('b-approval').value) || 0,
-            one_time_only: document.getElementById('b-one-time').checked,
-            is_active: true
-        };
-
-        console.log('Sending policyData:', policyData);
-
-        try {
-            if (editingPolicyId) {
-                const { error } = await _supabase.from('policies').update(policyData).eq('id', editingPolicyId);
-                if (error) throw error;
-                showStatus(`"${name}" updated successfully.`, 'success');
-            } else {
-                const { error } = await _supabase.from('policies').insert(policyData);
-                if (error) throw error;
-                showStatus(`"${name}" created successfully.`, 'success');
-            }
-
-            editingPolicyId = null;
-            document.getElementById('submit-policy-btn').textContent = '✅ Create Policy';
-            await loadPolicies();
-            populateFilterDropdowns();
-            filterPolicies();
-            switchView('list');
-        } catch (error) {
-            showStatus('Error: ' + error.message, 'error');
-        }
-    }
-
-    // ========== RESET BUILDER ==========
-    function resetBuilder() {
-        editingPolicyId = null;
-        document.getElementById('b-name').value = '';
-        document.getElementById('b-desc').value = '';
-        document.getElementById('b-major-sector').value = '';
-        document.getElementById('b-minor-sector').value = '';
-        document.getElementById('b-target-stat').value = '';
-        setDirection('UP');
-        document.getElementById('b-change').value = 1;
-        document.getElementById('b-change-val').textContent = '1';
-        document.getElementById('b-duration').value = 12;
-        document.getElementById('b-duration-val').textContent = '12mo';
-        document.getElementById('b-floor').value = 0;
-        document.getElementById('b-floor-val').textContent = '0';
-        document.getElementById('b-ceiling').value = 100;
-        document.getElementById('b-ceiling-val').textContent = '100';
-        selectedIdeologies = {};
-        renderIdeologyBuilder();
-        sideEffects = [];
-        renderSideEffects();
-        document.getElementById('b-upfront').value = 0;
-        document.getElementById('b-relief').value = 0;
-        document.getElementById('b-ongoing').value = 0;
-        document.getElementById('b-approval').value = 0;
-        updateApprovalLabel();
-        document.getElementById('b-one-time').checked = false;
-        document.getElementById('submit-policy-btn').textContent = '✅ Create Policy';
-    }
-
-    // ========== UTILITIES ==========
-    function formatStat(stat) {
-        if (!stat) return '—';
-        return stat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    }
-
-    function showStatus(msg, type) {
-        const bar = document.getElementById('status-bar');
-        bar.className = 'status-bar ' + type;
-        bar.textContent = msg;
-        bar.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        console.log('Policy Builder [' + type + ']:', msg);
-        setTimeout(() => { bar.style.display = 'none'; bar.className = 'status-bar'; }, 5000);
-    }
+function showStatus(msg, type) {
+    const bar = document.getElementById('status-bar');
+    bar.className = 'status-bar ' + type;
+    bar.textContent = msg;
+    bar.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => { bar.style.display = 'none'; bar.className = 'status-bar'; }, 5000);
+}
 </script>
-
 </body>
 </html>
