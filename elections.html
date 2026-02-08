@@ -1044,34 +1044,24 @@ async function formGovernment() {
 // ===================================================================
 
 async function renderAutocracyPage() {
-    const { data: otherFactions } = await _supabase
-        .from('factions').select('id, faction_name, seats, approval_rating')
-        .eq('nation_id', currentNation.id).eq('faction_type', 'party').eq('is_npc', false).neq('id', currentFaction.id);
-
     const { data: allFactions } = await _supabase
         .from('factions').select('id, faction_name, seats, approval_rating')
         .eq('nation_id', currentNation.id).eq('faction_type', 'party').eq('is_npc', false)
         .order('seats', { ascending: false });
 
-    const isRulingFaction = allFactions && allFactions.length > 0 && allFactions[0].id === currentFaction.id;
-
     const { data: activeShakeup } = await _supabase
         .from('shakeups').select('*').eq('nation_id', currentNation.id).eq('status', 'voting').limit(1).maybeSingle();
-
-    const targetOptions = (otherFactions || []).map(f =>
-        `<option value="${f.id}">${f.faction_name} (${f.seats} seats)</option>`
-    ).join('');
 
     const standingsHTML = (allFactions || []).map((f, i) => {
         const isYou = f.id === currentFaction.id;
         const barWidth = Math.max(2, (f.seats / 120) * 100);
         return `
             <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: ${isYou ? '#2a2a1a' : '#1a1a1a'}; border-radius: 4px; margin-bottom: 8px; ${isYou ? 'border-left: 3px solid #ffcc00;' : ''}">
-                <div style="width: 24px; text-align: center; font-size: 1.2rem;">${i === 0 ? '👑' : ''}</div>
+                <div style="width: 24px; text-align: center; font-size: 1.2rem;">${f.id === currentNation.ruling_faction_id ? '👑' : ''}</div>
                 <div style="flex: 1;">
                     <div style="font-weight: bold; color: ${isYou ? '#ffcc00' : '#e0e0e0'}; font-size: 0.9rem;">
                         ${f.faction_name} ${isYou ? '(You)' : ''}
-                        ${i === 0 ? '<span style="color: #ff4444; font-size: 0.75rem; margin-left: 8px;">RULING</span>' : ''}
+                        ${f.id === currentNation.ruling_faction_id ? '<span style="color: #ff4444; font-size: 0.75rem; margin-left: 8px;">RULING</span>' : ''}
                     </div>
                     <div style="margin-top: 6px; background: #333; height: 6px; border-radius: 3px; overflow: hidden;">
                         <div style="width: ${barWidth}%; height: 100%; background: ${isYou ? '#ffcc00' : '#666'}; border-radius: 3px;"></div>
@@ -1110,48 +1100,10 @@ async function renderAutocracyPage() {
             <div style="margin-bottom: 24px;">
                 ${standingsHTML || '<div style="color: #666; text-align: center; padding: 20px;">No factions yet</div>'}
             </div>
-
-            <div class="section-header">Your Faction Resources</div>
-            <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
-                <div class="stat-card"><div class="stat-label">Action Points</div><div class="stat-value" id="party-ap">${currentFaction.action_points || 0}</div></div>
-                <div class="stat-card"><div class="stat-label">Seats</div><div class="stat-value" id="party-seats">${currentFaction.seats || 0} / 120</div></div>
-                <div class="stat-card"><div class="stat-label">Approval Rating</div><div class="stat-value" id="party-approval">${currentFaction.approval_rating || 0}%</div></div>
-            </div>
-
-            <div class="section-header">Actions</div>
-            <div class="action-grid">
-                <div class="action-card">
-                    <div class="action-header"><div class="action-title">Give Speech</div><div class="action-cost">2 AP</div></div>
-                    <div class="action-desc">Address the people to boost your faction's approval. Roll 1D3 for approval gain.</div>
-                    <button class="action-btn" onclick="doGiveSpeech()">Give Speech</button>
-                </div>
-                <div class="action-card">
-                    <div class="action-header"><div class="action-title">Spread Rumors</div><div class="action-cost">3 AP</div></div>
-                    <div class="action-desc">Target a rival faction: steal 1D3 seats from them. Costs 1D3 national stability.</div>
-                    <div style="margin: 10px 0;">
-                        <select id="rumor-target" class="action-select"><option value="">Select Target Faction...</option>${targetOptions}</select>
-                    </div>
-                    <button class="action-btn action-btn-risk" onclick="doSpreadRumors()">Spread Rumors</button>
-                </div>
-                <div class="action-card" style="border-left-color: #ff4444;">
-                    <div class="action-header"><div class="action-title" style="color: #ff4444;">Seize Power</div><div class="action-cost">15 AP</div></div>
-                    <div class="action-desc">
-                        Attempt to overthrow the ruling faction. Triggers a Shakeup where all factions must choose sides.
-                        <br><br><strong style="color: #ff9800;">Losing side:</strong> -25 seats, -20% approval
-                    </div>
-                    <button class="action-btn" style="background: #ff4444;" onclick="doSeizePower()" ${isRulingFaction ? 'disabled title="You are the ruling faction"' : ''}>
-                        ${isRulingFaction ? '👑 You Rule' : '⚔️ Seize Power'}
-                    </button>
-                </div>
-            </div>
-
-            <div class="section-header" style="margin-top: 30px;">Recent Actions</div>
-            <div id="action-log" class="action-log"><div class="action-log-empty">No actions taken yet.</div></div>
         </div>
     `;
 
     document.getElementById('content-area').innerHTML = html;
-    await loadActionLog();
 }
 
 function renderShakeupUI(shakeup, allFactions) {
@@ -1208,36 +1160,6 @@ function renderShakeupUI(shakeup, allFactions) {
 // AUTOCRACY ACTIONS
 // ===================================================================
 
-async function doGiveSpeech() {
-    try {
-        const { data, error } = await _supabase.rpc('action_give_speech', { p_faction_id: currentFaction.id });
-        if (error) throw error;
-        if (data.success) { alert('✅ ' + data.message); currentFaction.action_points = data.new_ap; currentFaction.approval_rating = data.new_approval; await renderAutocracyPage(); }
-        else { alert('❌ ' + data.message); }
-    } catch (error) { alert('❌ Error: ' + error.message); }
-}
-
-async function doSpreadRumors() {
-    const targetId = document.getElementById('rumor-target')?.value;
-    if (!targetId) { alert('Select a target faction!'); return; }
-    try {
-        const { data, error } = await _supabase.rpc('action_spread_rumors', { p_faction_id: currentFaction.id, p_target_id: targetId });
-        if (error) throw error;
-        if (data.success) { alert('✅ ' + data.message); currentFaction.action_points = data.new_ap; await renderAutocracyPage(); }
-        else { alert('❌ ' + data.message); }
-    } catch (error) { alert('❌ Error: ' + error.message); }
-}
-
-async function doSeizePower() {
-    if (!confirm('⚔️ SEIZE POWER?\n\nThis costs 15 AP and triggers a Shakeup.\nAll factions must choose sides.\nThe losing side loses 25 seats and 20% approval.\n\nProceed?')) return;
-    try {
-        const { data, error } = await _supabase.rpc('action_seize_power', { p_faction_id: currentFaction.id });
-        if (error) throw error;
-        if (data.success) { alert('⚔️ ' + data.message); currentFaction.action_points = data.new_ap; await renderAutocracyPage(); }
-        else { alert('❌ ' + data.message); }
-    } catch (error) { alert('❌ Error: ' + error.message); }
-}
-
 async function voteShakeup(shakeupId, side) {
     if (!confirm(`Side with the ${side} faction? This cannot be changed.`)) return;
     try {
@@ -1260,39 +1182,8 @@ async function resolveActiveShakeup(shakeupId) {
 
 
 // ===================================================================
-// SHARED FUNCTIONS (autocracy action log + election info)
+// SHARED FUNCTIONS (election info)
 // ===================================================================
-
-async function loadActionLog() {
-    if (!currentFaction) return;
-    const { data: actions } = await _supabase
-        .from('campaign_actions').select('*').eq('party_id', currentFaction.id)
-        .order('created_at', { ascending: false }).limit(5);
-
-    const logDiv = document.getElementById('action-log');
-    if (!logDiv) return;
-
-    if (!actions || actions.length === 0) {
-        logDiv.innerHTML = '<div class="action-log-empty">No actions taken yet.</div>';
-        return;
-    }
-
-    logDiv.innerHTML = actions.map(a => {
-        const date = new Date(a.created_at).toLocaleString();
-        let message = '';
-        if (a.action_type === 'rally') message = `Grassroots Rally: Gained ${a.result?.approval_gain || 0}% approval`;
-        else if (a.action_type === 'attack_ad') message = `Attack Ad vs ${a.result?.target || 'Unknown'}: -${a.result?.approval_loss || 0}% to their approval`;
-        else if (a.action_type === 'fundraiser') message = `Fundraiser: Raised $${(a.result?.money_raised || 0).toLocaleString()}`;
-        else if (a.action_type === 'lobby') message = `Lobbied ${a.result?.group_name || 'Unknown'}: Received $${(a.result?.payout || 0).toLocaleString()}`;
-        else if (a.action_type === 'spread_rumors') message = `Spread Rumors vs ${a.result?.target || 'Unknown'}: Stole ${a.result?.seats_stolen || 0} seats, -${a.result?.stability_loss || 0} stability`;
-        else if (a.action_type === 'give_speech') message = `Gave Speech: +${a.result?.approval_gain || 0}% approval`;
-
-        return `<div class="action-log-item">
-            <div class="action-log-time">Tick ${a.tick_performed} • ${date}</div>
-            <div class="action-log-message">${message}</div>
-        </div>`;
-    }).join('');
-}
 
 async function loadElectionInfo() {
     if (!currentNation) return;
