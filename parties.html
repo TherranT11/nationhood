@@ -181,8 +181,15 @@ async function renderPartiesPage(nation, faction) {
         const governmentCount = govParties.length;
         const oppositionCount = oppParties.length;
 
-        // Build campaign actions HTML (democracy only)
-        const campaignActionsHTML = !isAutocracy ? `
+        // Determine ruling faction for autocracy
+        const isRulingFaction = isAutocracy && nation.ruling_faction_id === faction?.id;
+
+        // Build campaign actions HTML (different for democracy vs autocracy)
+        let campaignActionsHTML = '';
+
+        if (!isAutocracy) {
+            // === DEMOCRACY ACTIONS ===
+            campaignActionsHTML = `
             <div class="section-header" style="margin-top: 30px;">Your Party Resources</div>
             <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
                 <div class="stat-card">
@@ -200,7 +207,7 @@ async function renderPartiesPage(nation, faction) {
             </div>
 
             <div class="section-header">Campaign Actions</div>
-            <div class="action-grid">
+            <div class="action-grid" style="grid-template-columns: repeat(4, 1fr);">
                 <div class="action-card">
                     <div class="action-header">
                         <div class="action-title">Grassroots Rally</div>
@@ -249,7 +256,70 @@ async function renderPartiesPage(nation, faction) {
             <div id="action-log" class="action-log">
                 <div class="action-log-empty">No actions taken yet this campaign.</div>
             </div>
-        ` : '';
+        `;
+        } else {
+            // === AUTOCRACY ACTIONS ===
+            campaignActionsHTML = `
+            <div class="section-header" style="margin-top: 30px;">Your Faction Resources</div>
+            <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
+                <div class="stat-card">
+                    <div class="stat-label">Action Points</div>
+                    <div class="stat-value" id="party-ap">${faction?.action_points || 0}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Seats</div>
+                    <div class="stat-value" id="party-seats">${faction?.seats || 0} / ${totalSeats}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Approval Rating</div>
+                    <div class="stat-value" id="party-approval">${faction?.approval_rating || 0}%</div>
+                </div>
+            </div>
+
+            <div class="section-header">Faction Actions</div>
+            <div class="action-grid" style="grid-template-columns: repeat(4, 1fr);">
+                <div class="action-card">
+                    <div class="action-header">
+                        <div class="action-title">Give Speech</div>
+                        <div class="action-cost">2 AP</div>
+                    </div>
+                    <div class="action-desc">Address the people to boost your faction's approval. Roll 1D3 for approval gain.</div>
+                    <button class="action-btn" onclick="doGiveSpeech()">Give Speech</button>
+                </div>
+                <div class="action-card">
+                    <div class="action-header">
+                        <div class="action-title">Spread Rumors</div>
+                        <div class="action-cost">3 AP</div>
+                    </div>
+                    <div class="action-desc">Target a rival faction: steal 1D3 seats from them. Costs 1D3 national stability.</div>
+                    <div style="margin: 10px 0;">
+                        <select id="rumor-target" class="action-select">
+                            <option value="">Select Target Faction...</option>
+                        </select>
+                    </div>
+                    <button class="action-btn action-btn-risk" onclick="doSpreadRumors()">Spread Rumors</button>
+                </div>
+                <div class="action-card" style="border-left-color: #ff4444;">
+                    <div class="action-header">
+                        <div class="action-title" style="color: #ff4444;">Seize Power</div>
+                        <div class="action-cost">15 AP</div>
+                    </div>
+                    <div class="action-desc">
+                        Attempt to overthrow the ruling faction. Triggers a Shakeup where all factions must choose sides.
+                        <br><br><strong style="color: #ff9800;">Losing side:</strong> -25 seats, -20% approval
+                    </div>
+                    <button class="action-btn" style="background: ${isRulingFaction ? '#555' : '#ff4444'};" onclick="doSeizePower()" ${isRulingFaction ? 'disabled title="You are the ruling faction"' : ''}>
+                        ${isRulingFaction ? '👑 You Rule' : '⚔️ Seize Power'}
+                    </button>
+                </div>
+            </div>
+
+            <div class="section-header" style="margin-top: 30px;">Recent Actions</div>
+            <div id="action-log" class="action-log">
+                <div class="action-log-empty">No actions taken yet.</div>
+            </div>
+        `;
+        }
 
         document.getElementById('content-area').innerHTML = `
             <div class="panel-padding">
@@ -300,11 +370,13 @@ async function renderPartiesPage(nation, faction) {
                 ${campaignActionsHTML}
             </div>`;
 
-        // Populate dropdowns and load action log for democracy
+        // Populate dropdowns and load action log
         if (!isAutocracy) {
             await populateDropdowns();
-            await loadActionLog();
+        } else {
+            await populateAutocracyDropdowns();
         }
+        await loadActionLog();
 
     } catch (error) {
         console.error('Error loading parties:', error);
@@ -420,6 +492,83 @@ async function performAction(actionType) {
             alert('❌ ' + (result ? result.message : 'Action failed'));
         }
     } catch (error) { console.error('Action error:', error); alert('❌ Error: ' + error.message); }
+}
+
+
+// ===================================================================
+// AUTOCRACY ACTIONS (Give Speech, Spread Rumors, Seize Power)
+// ===================================================================
+
+async function populateAutocracyDropdowns() {
+    if (!currentFaction || !currentNation) return;
+
+    const { data: factions } = await _supabase
+        .from('factions')
+        .select('id, faction_name, seats')
+        .eq('nation_id', currentNation.id)
+        .eq('faction_type', 'party')
+        .neq('id', currentFaction.id);
+
+    const rumorSelect = document.getElementById('rumor-target');
+    if (rumorSelect && factions) {
+        rumorSelect.innerHTML = '<option value="">Select Target Faction...</option>';
+        factions.forEach(f => { rumorSelect.innerHTML += `<option value="${f.id}">${f.faction_name} (${f.seats} seats)</option>`; });
+    }
+}
+
+function updateAutocracyUI() {
+    const apEl = document.getElementById('party-ap');
+    const seatsEl = document.getElementById('party-seats');
+    const approvalEl = document.getElementById('party-approval');
+    if (apEl) apEl.textContent = currentFaction.action_points || 0;
+    if (seatsEl) seatsEl.textContent = (currentFaction.seats || 0) + ' / ' + GAME_CONFIG.TOTAL_SEATS;
+    if (approvalEl) approvalEl.textContent = (currentFaction.approval_rating || 0) + '%';
+}
+
+async function doGiveSpeech() {
+    try {
+        const { data, error } = await _supabase.rpc('action_give_speech', { p_faction_id: currentFaction.id });
+        if (error) throw error;
+        if (data.success) {
+            alert('✅ ' + data.message);
+            currentFaction.action_points = data.new_ap;
+            currentFaction.approval_rating = data.new_approval;
+            updateAutocracyUI();
+            await loadActionLog();
+            sessionStorage.removeItem('nationhood_state');
+        } else { alert('❌ ' + data.message); }
+    } catch (error) { alert('❌ Error: ' + error.message); }
+}
+
+async function doSpreadRumors() {
+    const targetId = document.getElementById('rumor-target')?.value;
+    if (!targetId) { alert('Select a target faction!'); return; }
+    try {
+        const { data, error } = await _supabase.rpc('action_spread_rumors', { p_faction_id: currentFaction.id, p_target_id: targetId });
+        if (error) throw error;
+        if (data.success) {
+            alert('✅ ' + data.message);
+            currentFaction.action_points = data.new_ap;
+            updateAutocracyUI();
+            await loadActionLog();
+            sessionStorage.removeItem('nationhood_state');
+        } else { alert('❌ ' + data.message); }
+    } catch (error) { alert('❌ Error: ' + error.message); }
+}
+
+async function doSeizePower() {
+    if (!confirm('⚔️ SEIZE POWER?\n\nThis costs 15 AP and triggers a Shakeup.\nAll factions must choose sides.\nThe losing side loses 25 seats and 20% approval.\n\nProceed?')) return;
+    try {
+        const { data, error } = await _supabase.rpc('action_seize_power', { p_faction_id: currentFaction.id });
+        if (error) throw error;
+        if (data.success) {
+            alert('⚔️ ' + data.message);
+            currentFaction.action_points = data.new_ap;
+            updateAutocracyUI();
+            await loadActionLog();
+            sessionStorage.removeItem('nationhood_state');
+        } else { alert('❌ ' + data.message); }
+    } catch (error) { alert('❌ Error: ' + error.message); }
 }
 </script>
 </body>
