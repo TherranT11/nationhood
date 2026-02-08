@@ -22,6 +22,17 @@
         .parties-section-empty {
             color: #666; font-style: italic; text-align: center; padding: 20px;
         }
+        /* Action cards: flex column with buttons pinned to bottom */
+        .action-grid .action-card {
+            display: flex;
+            flex-direction: column;
+        }
+        .action-grid .action-card .action-desc {
+            flex: 1;
+        }
+        .action-grid .action-card .action-btn {
+            margin-top: auto;
+        }
     </style>
 </head>
 <body>
@@ -220,7 +231,7 @@ async function renderPartiesPage(nation, faction) {
             </div>
 
             <div class="section-header">Campaign Actions</div>
-            <div class="action-grid" style="grid-template-columns: repeat(4, 1fr);">
+            <div class="action-grid" style="grid-template-columns: repeat(3, 1fr);">
                 <div class="action-card">
                     <div class="action-header">
                         <div class="action-title">Grassroots Rally</div>
@@ -250,19 +261,6 @@ async function renderPartiesPage(nation, faction) {
                     <div class="action-desc">Host a fundraising event. Roll 1D2: 1 = $50k, 2 = $100k raised.</div>
                     <button class="action-btn" onclick="performAction('fundraiser')">Host Fundraiser</button>
                 </div>
-                <div class="action-card">
-                    <div class="action-header">
-                        <div class="action-title">Lobby Interest Group</div>
-                        <div class="action-cost">5 AP · Free</div>
-                    </div>
-                    <div class="action-desc">Lobby an interest group for funding. Roll 1D6 × $100k.</div>
-                    <div style="margin: 10px 0;">
-                        <select id="lobby-target" class="action-select">
-                            <option value="">Select Interest Group...</option>
-                        </select>
-                    </div>
-                    <button class="action-btn action-btn-risk" onclick="performAction('lobby')">Lobby Group</button>
-                </div>
             </div>
 
             <div class="section-header" style="margin-top: 30px;">Recent Actions</div>
@@ -290,7 +288,7 @@ async function renderPartiesPage(nation, faction) {
             </div>
 
             <div class="section-header">Faction Actions</div>
-            <div class="action-grid" style="grid-template-columns: repeat(4, 1fr);">
+            <div class="action-grid" style="grid-template-columns: repeat(3, 1fr);">
                 <div class="action-card">
                     <div class="action-header">
                         <div class="action-title">Give Speech</div>
@@ -423,17 +421,6 @@ async function populateDropdowns() {
         attackSelect.innerHTML = '<option value="">Select Target Party...</option>';
         parties.forEach(p => { attackSelect.innerHTML += `<option value="${p.id}">${p.faction_name}</option>`; });
     }
-
-    const { data: groups } = await _supabase
-        .from('interest_groups')
-        .select('id, group_name')
-        .eq('nation_id', currentNation.id);
-
-    const lobbySelect = document.getElementById('lobby-target');
-    if (lobbySelect) {
-        lobbySelect.innerHTML = '<option value="">Select Interest Group...</option>';
-        if (groups) groups.forEach(g => { lobbySelect.innerHTML += `<option value="${g.id}">${g.group_name}</option>`; });
-    }
 }
 
 async function loadActionLog() {
@@ -484,11 +471,6 @@ async function performAction(actionType) {
             if (error) throw error; result = data[0];
         } else if (actionType === 'fundraiser') {
             const { data, error } = await _supabase.rpc('action_fundraiser', { player_party_id: currentFaction.id });
-            if (error) throw error; result = data[0];
-        } else if (actionType === 'lobby') {
-            const groupId = document.getElementById('lobby-target').value;
-            if (!groupId) { alert('Please select an interest group!'); return; }
-            const { data, error } = await _supabase.rpc('action_lobby_interest_group', { player_party_id: currentFaction.id, interest_group_id: groupId });
             if (error) throw error; result = data[0];
         }
         if (result && result.success) {
