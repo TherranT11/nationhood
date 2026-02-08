@@ -646,7 +646,8 @@ async function enactBill(supabase, bill, currentTick) {
                 nation_id: bill.nation_id,
                 policy_id: policy.id,
                 passed_tick: currentTick,
-                proposed_by: bill.proposed_by
+                proposed_by: bill.proposed_by,
+                effects_applied_through_tick: currentTick  // Effects start next tick
             });
         }
     }
@@ -759,6 +760,257 @@ async function failBill(supabase, bill) {
     await supabase.from('bills').update({
         status: 'failed'
     }).eq('id', bill.id);
+}
+
+
+// ==================== TICK PROCESSOR ====================
+
+/**
+ * Advance the game by one tick and process all effects.
+ *
+ * Call this from admin panel or automated scheduler.
+ * 
+ * Flow:
+ *   1. Increment shard.current_tick
+ *   2. For each nation: process stat effects from active laws
+ *   3. For each nation: process ongoing costs from active laws
+ *   4. Resolve any expired floor votes
+ *
+ * @param {object} supabase - Supabase client
+ * @returns {Promise<object>} Summary of what happened this tick
+ */
+async function advanceTick(supabase) {
+    // 1. Increment tick
+    const { data: shard } = await supabase
+        .from('shard')
+        .select('current_tick')
+        .eq('name', 'Alpha Shard')
+        .single();
+    if (!shard) throw new Error('Shard not found');
+
+    const newTick = (shard.current_tick || 0) + 1;
+    await supabase.from('shard').update({ current_tick: newTick }).eq('name', 'Alpha Shard');
+
+    // 2. Load all nations
+    const { data: nations } = await supabase.from('nations').select('*');
+    if (!nations || nations.length === 0) return { tick: newTick, nations: 0 };
+
+    const summary = { tick: newTick, nations: nations.length, effects: [], costs: [], resolutions: [] };
+
+    for (const nation of nations) {
+        // 3. Process stat effects
+        const effectResults = await processStatEffects(supabase, nation, newTick);
+        if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });
+
+        // 4. Process ongoing costs
+        const costResult = await processOngoingCosts(supabase, nation, newTick);
+        if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
+
+        // 5. Resolve expired votes for this nation
+        const resolutions = await resolveExpiredVotes(supabase, nation.id);
+        if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
+
+        // 6. Snapshot nation stats to history (for trend arrows)
+        await snapshotNationHistory(supabase, nation, newTick);
+    }
+
+    return summary;
+}
+
+/**
+ * Process stat effects for all active laws in a nation for the current tick.
+ *
+ * For each active law:
+ *   - Look at each stat_effect
+ *   - If current tick falls within [passed_tick + delay, passed_tick + delay + duration]
+ *   - Apply the rate to the nation's stat
+ *   - Update effects_applied_through_tick so we don't double-apply
+ *
+ * @param {object} supabase    - Supabase client
+ * @param {object} nation      - Full nation row
+ * @param {number} currentTick - The new tick number
+ * @returns {Promise<Array>}   List of effects applied
+ */
+async function processStatEffects(supabase, nation, currentTick) {
+    const { data: activeLaws } = await supabase
+        .from('active_laws')
+        .select('*, policies(*)')
+        .eq('nation_id', nation.id);
+
+    if (!activeLaws || activeLaws.length === 0) return [];
+
+    const appliedEffects = [];
+    const nationUpdates = {};
+
+    for (const law of activeLaws) {
+        const policy = law.policies;
+        if (!policy) continue;
+
+        const lastApplied = law.effects_applied_through_tick || 0;
+        if (lastApplied >= currentTick) continue; // Already processed
+
+        const passedTick = law.passed_tick || 0;
+
+        // Get stat effects (support both new array and legacy single)
+        const effects = [];
+        if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
+            effects.push(...policy.stat_effects);
+        } else if (policy.target_stat) {
+            effects.push({
+                stat_key: policy.target_stat,
+                direction: (policy.stat_direction || 'UP').toLowerCase(),
+                rate: policy.stat_change_per_tick || 1,
+                delay_ticks: 0,
+                duration_ticks: policy.duration_months || 12
+            });
+        }
+
+        if (effects.length === 0) {
+            // No stat effects, just mark as processed
+            await supabase.from('active_laws').update({ effects_applied_through_tick: currentTick }).eq('id', law.id);
+            continue;
+        }
+
+        let anyEffectApplied = false;
+
+        // Process each tick that was missed (handles skipped ticks)
+        for (let tick = lastApplied + 1; tick <= currentTick; tick++) {
+            const ticksSincePassed = tick - passedTick;
+
+            for (const eff of effects) {
+                const delay = eff.delay_ticks || 0;
+                const duration = eff.duration_ticks || 12;
+                const rate = eff.rate || 1;
+                const statKey = eff.stat_key;
+
+                // Is this tick within the active window?
+                if (ticksSincePassed > delay && ticksSincePassed <= delay + duration) {
+                    // Apply the effect
+                    const currentVal = nationUpdates[statKey] !== undefined
+                        ? nationUpdates[statKey]
+                        : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
+
+                    let newVal;
+                    if (eff.direction === 'up') {
+                        newVal = currentVal + rate;
+                    } else {
+                        newVal = currentVal - rate;
+                    }
+
+                    // Clamp 0–100
+                    newVal = Math.max(0, Math.min(100, newVal));
+                    nationUpdates[statKey] = newVal;
+                    anyEffectApplied = true;
+
+                    appliedEffects.push({
+                        policy: policy.policy_name,
+                        stat: statKey,
+                        direction: eff.direction,
+                        rate: rate,
+                        tick: tick,
+                        newValue: newVal
+                    });
+                }
+            }
+        }
+
+        // Mark this law as processed through current tick
+        await supabase.from('active_laws').update({
+            effects_applied_through_tick: currentTick
+        }).eq('id', law.id);
+    }
+
+    // Apply all nation stat updates in one call
+    if (Object.keys(nationUpdates).length > 0) {
+        await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+    }
+
+    return appliedEffects;
+}
+
+/**
+ * Process ongoing costs for all active laws in a nation.
+ *
+ * Deducts ongoing_base_cost (optionally scaled by a stat) from nation's budget.
+ * Tracks accumulated cost on active_laws.ongoing_accumulated.
+ *
+ * @param {object} supabase    - Supabase client
+ * @param {object} nation      - Full nation row
+ * @param {number} currentTick - Current tick
+ * @returns {Promise<object>}  { totalCost, details }
+ */
+async function processOngoingCosts(supabase, nation, currentTick) {
+    const { data: activeLaws } = await supabase
+        .from('active_laws')
+        .select('*, policies(*)')
+        .eq('nation_id', nation.id);
+
+    if (!activeLaws || activeLaws.length === 0) return { totalCost: 0, details: [] };
+
+    let totalCost = 0;
+    const details = [];
+
+    for (const law of activeLaws) {
+        const policy = law.policies;
+        if (!policy) continue;
+
+        const baseCost = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
+        if (baseCost === 0) continue;
+
+        let tickCost = baseCost;
+
+        // Apply scaling if configured
+        if (policy.ongoing_scaling_stat && nation[policy.ongoing_scaling_stat] !== undefined) {
+            const scalingVal = Number(nation[policy.ongoing_scaling_stat]) || 1;
+            tickCost = baseCost * (scalingVal / 50); // Normalize: stat=50 → 1x, stat=100 → 2x
+        }
+
+        totalCost += tickCost;
+
+        // Track accumulated cost
+        const newAccum = (law.ongoing_accumulated || 0) + tickCost;
+        await supabase.from('active_laws').update({
+            ongoing_accumulated: newAccum
+        }).eq('id', law.id);
+
+        details.push({ policy: policy.policy_name, cost: tickCost });
+    }
+
+    // Deduct from nation's budget
+    if (totalCost !== 0) {
+        const currentBudget = nation.budget || 0;
+        const newBudget = currentBudget - totalCost;
+        await supabase.from('nations').update({ budget: newBudget }).eq('id', nation.id);
+    }
+
+    return { totalCost, details };
+}
+
+/**
+ * Save a snapshot of nation stats for trend tracking.
+ *
+ * @param {object} supabase    - Supabase client
+ * @param {object} nation      - Full nation row
+ * @param {number} currentTick - Current tick
+ */
+async function snapshotNationHistory(supabase, nation, currentTick) {
+    // Copy all numeric nation fields to history
+    const snapshot = { nation_id: nation.id, tick: currentTick };
+
+    // Copy all stat fields (exclude non-stat columns)
+    const exclude = ['id', 'name', 'capital', 'government_type', 'created_at', 'updated_at', 'shard_id'];
+    for (const [key, val] of Object.entries(nation)) {
+        if (!exclude.includes(key) && typeof val === 'number') {
+            snapshot[key] = val;
+        }
+    }
+
+    await supabase.from('nations_history').upsert(snapshot, {
+        onConflict: 'nation_id,tick'
+    }).catch(err => {
+        // History table might not have all columns — log but don't fail
+        console.warn('History snapshot warning:', err.message);
+    });
 }
 
 
