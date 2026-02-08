@@ -8,7 +8,7 @@
     <style>
         html { overflow-y: scroll !important; height: auto !important; }
         body { overflow-y: auto !important; height: auto !important; min-height: 100vh; }
-        .bill-page { display: grid; grid-template-columns: 1fr 380px; gap: 24px; padding: 20px; max-width: 1400px; margin: 0 auto; min-height: calc(100vh - 80px); }
+        .bill-page { display: grid; grid-template-columns: 1fr 420px; gap: 24px; padding: 24px; max-width: 1600px; margin: 0 auto; min-height: calc(100vh - 80px); }
         @media (max-width: 900px) { .bill-page { grid-template-columns: 1fr; } }
         .back-link { display: inline-flex; align-items: center; gap: 8px; color: #888; text-decoration: none; font-size: 0.9rem; margin-bottom: 16px; transition: color 0.2s; }
         .back-link:hover { color: #ffcc00; }
@@ -22,6 +22,13 @@
         .bill-status.floor { background: #4CAF50; color: #fff; }
         .bill-status.passed { background: #2196F3; color: #fff; }
         .bill-status.failed { background: #ff4444; color: #fff; }
+        .bill-status.repeal { background: #ff4444; color: #fff; }
+        .bill-type-badge { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-left: 10px; }
+        .bill-type-badge.repeal { background: #ff4444; color: #fff; }
+        .repeal-notice { background: #2a1a1a; border: 2px solid #ff4444; border-radius: 8px; padding: 20px; margin: 16px 0; text-align: center; }
+        .repeal-notice-icon { font-size: 2rem; margin-bottom: 8px; }
+        .repeal-notice-text { color: #ff4444; font-size: 1rem; font-weight: bold; margin-bottom: 4px; }
+        .repeal-notice-sub { color: #888; font-size: 0.85rem; }
         .bill-title { font-size: 1.8rem; color: #ffcc00; font-weight: bold; margin-bottom: 8px; }
         .bill-sponsor { color: #888; font-size: 0.9rem; }
         .bill-voting-ends { margin-top: 12px; font-size: 0.9rem; color: #aaa; }
@@ -368,7 +375,10 @@ function renderBill() {
     statusEl.textContent = bill.status.toUpperCase();
     statusEl.className = `bill-status ${bill.status}`;
     document.getElementById('bill-title').textContent = bill.bill_name || 'Unnamed Bill';
-    document.getElementById('bill-sponsor').textContent = `Proposed by ${bill.factions?.faction_name || 'Unknown'}`;
+    if (bill.bill_type === 'repeal') {
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal">⚠ Repeal</span>';
+    }
+    document.getElementById('bill-sponsor').textContent = 'Proposed by ' + (bill.factions?.faction_name || 'Unknown');
 
     if (isFloor && bill.voting_ends_tick) {
         document.getElementById('bill-voting-ends').style.display = 'block';
@@ -397,6 +407,25 @@ function renderBill() {
 
 function renderArticles() {
     const bill = currentBill;
+
+    // Repeal bills show a repeal notice instead of articles
+    if (bill.bill_type === 'repeal') {
+        document.getElementById('bill-articles').innerHTML =
+            '<div class="article preamble">' +
+                '<div class="article-number">Article I</div>' +
+                '<div class="article-title">Preamble</div>' +
+                '<div class="article-description">' + (bill.preamble || 'This bill seeks to rescind an existing law.') + '</div>' +
+            '</div>' +
+            '<div class="repeal-notice">' +
+                '<div class="repeal-notice-icon">🗑️</div>' +
+                '<div class="repeal-notice-text">This bill proposes to rescind an active law</div>' +
+                '<div class="repeal-notice-sub">If passed, the targeted law will be removed and its effects reversed.</div>' +
+            '</div>';
+        document.getElementById('total-upfront').textContent = '$0M';
+        document.getElementById('total-ongoing').textContent = '$0M/mo';
+        return;
+    }
+
     const articles = (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number);
     let totalUpfront = 0, totalOngoing = 0;
     const html = `
