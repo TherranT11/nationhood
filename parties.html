@@ -487,6 +487,7 @@ async function performAction(actionType) {
             document.getElementById('party-funds').textContent = '$' + (currentFaction.party_funds || 0).toLocaleString();
             document.getElementById('party-approval').textContent = (currentFaction.approval_rating || 0) + '%';
             await loadActionLog();
+            await markFactionActive(_supabase, currentFaction.id);
             sessionStorage.removeItem('nationhood_state');
         } else {
             alert('❌ ' + (result ? result.message : 'Action failed'));
@@ -535,6 +536,7 @@ async function doGiveSpeech() {
             currentFaction.approval_rating = data.new_approval;
             updateAutocracyUI();
             await loadActionLog();
+            await markFactionActive(_supabase, currentFaction.id);
             sessionStorage.removeItem('nationhood_state');
         } else { alert('❌ ' + data.message); }
     } catch (error) { alert('❌ Error: ' + error.message); }
@@ -551,6 +553,7 @@ async function doSpreadRumors() {
             currentFaction.action_points = data.new_ap;
             updateAutocracyUI();
             await loadActionLog();
+            await markFactionActive(_supabase, currentFaction.id);
             sessionStorage.removeItem('nationhood_state');
         } else { alert('❌ ' + data.message); }
     } catch (error) { alert('❌ Error: ' + error.message); }
@@ -566,6 +569,7 @@ async function doSeizePower() {
             currentFaction.action_points = data.new_ap;
             updateAutocracyUI();
             await loadActionLog();
+            await markFactionActive(_supabase, currentFaction.id);
             sessionStorage.removeItem('nationhood_state');
         } else { alert('❌ ' + data.message); }
     } catch (error) { alert('❌ Error: ' + error.message); }
