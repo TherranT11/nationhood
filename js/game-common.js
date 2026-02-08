@@ -521,6 +521,247 @@ async function applyIdeologyPenalty(supabase, sponsorId, penalty) {
 }
 
 
+// ==================== BILL RESOLUTION ENGINE ====================
+
+/**
+ * Check all floor bills whose voting window has expired and resolve them.
+ * Call this on laws.html load (or from a tick processor).
+ *
+ * @param {object} supabase  - Supabase client
+ * @param {string} nationId  - Nation UUID
+ * @returns {Promise<Array>} Array of { billId, result: 'passed'|'failed', ... }
+ */
+async function resolveExpiredVotes(supabase, nationId) {
+    // Get current tick
+    const { data: shard } = await supabase
+        .from('shard')
+        .select('current_tick')
+        .eq('name', 'Alpha Shard')
+        .single();
+    if (!shard) return [];
+    const currentTick = shard.current_tick;
+
+    // Find floor bills past their voting deadline
+    const { data: expiredBills, error } = await supabase
+        .from('bills')
+        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+        .eq('nation_id', nationId)
+        .eq('status', 'floor')
+        .lte('voting_ends_tick', currentTick);
+
+    if (error || !expiredBills || expiredBills.length === 0) return [];
+
+    const results = [];
+
+    for (const bill of expiredBills) {
+        // Tally votes
+        let votesFor = 0, votesAgainst = 0;
+        (bill.bill_support || []).forEach(s => {
+            if (s.stance === 'yes') votesFor += s.seat_count;
+            else if (s.stance === 'no') votesAgainst += s.seat_count;
+        });
+
+        const totalVoted = votesFor + votesAgainst;
+        const passed = totalVoted > 0 && votesFor >= Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.MAJORITY_THRESHOLD);
+
+        if (passed) {
+            await enactBill(supabase, bill, currentTick);
+            results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst });
+        } else {
+            await failBill(supabase, bill);
+            results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst });
+        }
+    }
+
+    return results;
+}
+
+/**
+ * Enact a passed bill:
+ *  1. Mark bill as 'passed'
+ *  2. For repeal bills: remove the targeted active law and reverse its stats
+ *  3. For regular bills: add each policy article to active_laws
+ *     - Auto-rescind opposed active policies (reverse their stats)
+ *  4. Apply ideology penalties to sponsor
+ *  5. Apply enactment approval to all voting parties
+ *
+ * @param {object} supabase    - Supabase client
+ * @param {object} bill        - Full bill object with bill_articles, bill_support, factions
+ * @param {number} currentTick - Current game tick
+ */
+async function enactBill(supabase, bill, currentTick) {
+    // 1. Mark bill as passed
+    await supabase.from('bills').update({
+        status: 'passed',
+        passed_tick: currentTick
+    }).eq('id', bill.id);
+
+    // Load nation for stat calculations
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('*')
+        .eq('id', bill.nation_id)
+        .single();
+    if (!nation) return;
+
+    // Load all current active laws for this nation
+    const { data: currentActiveLaws } = await supabase
+        .from('active_laws')
+        .select('*, policies(*)')
+        .eq('nation_id', bill.nation_id);
+
+    // 2. Handle REPEAL bills
+    if (bill.bill_type === 'repeal' && bill.repeal_active_law_id) {
+        const targetLaw = (currentActiveLaws || []).find(l => l.id === bill.repeal_active_law_id);
+        if (targetLaw && targetLaw.policies) {
+            // Reverse the repealed policy's stat effects
+            await reversePolicy(supabase, nation, targetLaw.policies, targetLaw.passed_tick, currentTick);
+            // Remove from active_laws
+            await supabase.from('active_laws').delete().eq('id', bill.repeal_active_law_id);
+        }
+    }
+    // 3. Handle regular ENACT bills
+    else {
+        const articles = (bill.bill_articles || []).filter(a => a.policy_id);
+
+        for (const art of articles) {
+            const policy = art.policies;
+            if (!policy) continue;
+
+            // Check for opposed active policies and auto-rescind them
+            if (policy.opposed_policy_ids && Array.isArray(policy.opposed_policy_ids)) {
+                for (const opposedId of policy.opposed_policy_ids) {
+                    const opposedLaw = (currentActiveLaws || []).find(l => l.policy_id === opposedId);
+                    if (opposedLaw && opposedLaw.policies) {
+                        // Reverse the opposed policy's accumulated stat effects
+                        await reversePolicy(supabase, nation, opposedLaw.policies, opposedLaw.passed_tick, currentTick);
+                        // Remove from active_laws
+                        await supabase.from('active_laws').delete().eq('id', opposedLaw.id);
+                    }
+                }
+            }
+
+            // Add new policy to active_laws
+            await supabase.from('active_laws').insert({
+                nation_id: bill.nation_id,
+                policy_id: policy.id,
+                passed_tick: currentTick,
+                proposed_by: bill.proposed_by
+            });
+        }
+    }
+
+    // 4. Ideology penalties for sponsor
+    const sponsorFaction = bill.factions;
+    if (sponsorFaction) {
+        const opposed = countOpposedArticles(bill.bill_articles || [], sponsorFaction);
+        if (opposed > 0) {
+            const penalty = calculateIdeologyPenalty('passed', opposed, nation.polarization || 0);
+            await applyIdeologyPenalty(supabase, bill.proposed_by, penalty);
+        }
+    }
+
+    // 5. Enactment approval for all voting parties
+    const approvalDeltas = calculateEnactmentApproval(
+        nation,
+        bill.bill_articles || [],
+        bill.bill_support || [],
+        bill.proposed_by
+    );
+    await applyEnactmentApproval(supabase, approvalDeltas);
+
+    // Reload nation to get updated stats (after reversals), then apply new policy effects
+    // Note: stat effects tick-by-tick application will be handled by the tick processor
+    // At enactment, we just record the law — effects accumulate over time
+}
+
+/**
+ * Reverse a policy's accumulated stat effects on a nation.
+ * Called when a policy is rescinded (opposed auto-removal or repeal bill).
+ *
+ * Calculates how much the policy changed each stat since activation,
+ * then subtracts that amount from the nation's current stat value.
+ *
+ * @param {object} supabase   - Supabase client
+ * @param {object} nation     - Full nation row
+ * @param {object} policy     - Policy with stat_effects
+ * @param {number} passedTick - Tick when the policy was activated
+ * @param {number} currentTick - Current tick
+ */
+async function reversePolicy(supabase, nation, policy, passedTick, currentTick) {
+    const ticksActive = currentTick - (passedTick || 0);
+    if (ticksActive <= 0) return;
+
+    const effects = policy.stat_effects || [];
+    // Legacy fallback
+    if (effects.length === 0 && policy.target_stat) {
+        effects.push({
+            stat_key: policy.target_stat,
+            direction: (policy.stat_direction || 'UP').toLowerCase(),
+            rate: policy.stat_change_per_tick || 1,
+            delay_ticks: 0,
+            duration_ticks: policy.duration_months || 12
+        });
+    }
+
+    if (effects.length === 0) return;
+
+    const updates = {};
+
+    for (const eff of effects) {
+        const statKey = eff.stat_key;
+        if (!statKey || nation[statKey] === undefined || nation[statKey] === null) continue;
+
+        const delay = eff.delay_ticks || 0;
+        const duration = eff.duration_ticks || 12;
+        const rate = eff.rate || 1;
+
+        // How many ticks of actual effect have been applied?
+        let effectiveTicks = 0;
+        if (ticksActive > delay) {
+            effectiveTicks = Math.min(ticksActive - delay, duration);
+        }
+
+        if (effectiveTicks <= 0) continue;
+
+        // Total accumulated change
+        const totalChange = effectiveTicks * rate;
+
+        // Reverse it: if direction was 'up', we added, so now subtract
+        const currentVal = Number(nation[statKey]);
+        let newVal;
+        if (eff.direction === 'up') {
+            newVal = currentVal - totalChange;
+        } else {
+            newVal = currentVal + totalChange;
+        }
+
+        // Clamp 0–100
+        newVal = Math.max(0, Math.min(100, newVal));
+        updates[statKey] = newVal;
+
+        // Also update the in-memory nation object for subsequent calculations
+        nation[statKey] = newVal;
+    }
+
+    if (Object.keys(updates).length > 0) {
+        await supabase.from('nations').update(updates).eq('id', nation.id);
+    }
+}
+
+/**
+ * Mark a bill as failed.
+ *
+ * @param {object} supabase - Supabase client
+ * @param {object} bill     - Full bill object
+ */
+async function failBill(supabase, bill) {
+    await supabase.from('bills').update({
+        status: 'failed'
+    }).eq('id', bill.id);
+}
+
+
 // ==================== UTILITY FORMATTERS ====================
 
 function formatStatName(stat) {
