@@ -208,15 +208,24 @@ async function renderPartiesPage(nation, faction) {
         // Determine ruling faction for autocracy
         const isRulingFaction = isAutocracy && nation.ruling_faction_id === faction?.id;
 
-        // Calculate dynamic Seize Power cost (15 base + 1 per 10-seat deficit)
+        // Calculate dynamic Seize Power cost (15 base + 1 per 10-seat deficit, loyalty modifier)
         let seizeCost = 15;
         let seatDeficit = 0;
+        let loyaltyModifier = 0;
         if (isAutocracy && !isRulingFaction && faction) {
             const rulingParty = parties.find(p => p.id === nation.ruling_faction_id);
             const rulingSeats = rulingParty?.seats || 0;
             const mySeats = faction.seats || 0;
+            const myLoyalty = faction.loyalty ?? 50;
             seatDeficit = Math.max(0, rulingSeats - mySeats);
             seizeCost = 15 + Math.floor(seatDeficit / 10);
+            // Loyalty modifier
+            if (myLoyalty < 15) {
+                loyaltyModifier = -Math.round(seizeCost * 0.2);  // -20%
+            } else if (myLoyalty > 75) {
+                loyaltyModifier = Math.round(seizeCost * 0.1);   // +10%
+            }
+            seizeCost = Math.max(1, seizeCost + loyaltyModifier);
         }
 
         // Build campaign actions HTML (different for democracy vs autocracy)
@@ -305,7 +314,7 @@ async function renderPartiesPage(nation, faction) {
                         <div class="action-title">Give Speech</div>
                         <div class="action-cost">2 AP</div>
                     </div>
-                    <div class="action-desc">Address the people to boost your faction's approval. Roll 1D3 for approval gain.</div>
+                    <div class="action-desc">Rally your faction to strengthen loyalty to the regime. Roll 1D3 for loyalty gain.</div>
                     <button class="action-btn" onclick="doGiveSpeech()">Give Speech</button>
                 </div>
                 <div class="action-card">
@@ -313,7 +322,7 @@ async function renderPartiesPage(nation, faction) {
                         <div class="action-title">Spread Rumors</div>
                         <div class="action-cost">3 AP</div>
                     </div>
-                    <div class="action-desc">Target a rival faction: steal 1D3 seats from them. Costs 1D3 national stability.</div>
+                    <div class="action-desc">Target a rival faction: steal 1D3 seats and reduce their loyalty by 1D2. Costs 1D3 national stability.</div>
                     <div style="margin: 10px 0;">
                         <select id="rumor-target" class="action-select">
                             <option value="">Select Target Faction...</option>
@@ -328,7 +337,9 @@ async function renderPartiesPage(nation, faction) {
                     </div>
                     <div class="action-desc">
                         Attempt to overthrow the ruling faction. Triggers a Shakeup where all factions must choose sides. Seats are redistributed from losers to winners.
-                        ${seatDeficit > 0 ? `<br><br><span style="color: #ff9800; font-size: 0.8rem;">⚠️ Seat deficit: ${seatDeficit} seats → +${Math.floor(seatDeficit / 10)} AP penalty</span>` : ''}
+                        ${seatDeficit > 0 ? `<br><br><span style="color: #ff9800; font-size: 0.8rem;">⚠️ Seat deficit: ${seatDeficit} → +${Math.floor(seatDeficit / 10)} AP</span>` : ''}
+                        ${loyaltyModifier < 0 ? `<br><span style="color: #4CAF50; font-size: 0.8rem;">🔥 Low loyalty discount: ${loyaltyModifier} AP</span>` : ''}
+                        ${loyaltyModifier > 0 ? `<br><span style="color: #ff9800; font-size: 0.8rem;">👑 High loyalty penalty: +${loyaltyModifier} AP</span>` : ''}
                     </div>
                     <button class="action-btn" style="background: ${isRulingFaction ? '#555' : '#ff4444'};" onclick="doSeizePower(${seizeCost})" ${isRulingFaction ? 'disabled title="You are the ruling faction"' : ''}>
                         ${isRulingFaction ? '👑 You Rule' : '⚔️ Seize Power'}
@@ -539,7 +550,7 @@ async function doGiveSpeech() {
         if (data.success) {
             alert('✅ ' + data.message);
             currentFaction.action_points = data.new_ap;
-            currentFaction.approval_rating = data.new_approval;
+            if (data.new_loyalty !== undefined) currentFaction.loyalty = data.new_loyalty;
             updateAutocracyUI();
             await loadActionLog();
             await markFactionActive(_supabase, currentFaction.id);
@@ -557,6 +568,7 @@ async function doSpreadRumors() {
         if (data.success) {
             alert('✅ ' + data.message);
             currentFaction.action_points = data.new_ap;
+            if (data.new_seats !== undefined) currentFaction.seats = data.new_seats;
             updateAutocracyUI();
             await loadActionLog();
             await markFactionActive(_supabase, currentFaction.id);
