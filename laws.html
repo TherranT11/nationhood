@@ -162,6 +162,11 @@
         .policy-option { background:#2a2a2a; border:2px solid #333; border-radius:6px; padding:12px; cursor:pointer; transition:border-color 0.2s; }
         .policy-option:hover { border-color:#555; }
         .policy-option.selected { border-color:#ffcc00; }
+        .policy-option.opposed { border-color:#ff4444; border-style:dashed; }
+        .policy-option.opposed:hover { border-color:#ff6666; }
+        .policy-option.opposed.selected { border-color:#ff9800; }
+        .opposed-badge { display:inline-block; background:#ff4444; color:#fff; padding:2px 7px; border-radius:3px; font-size:0.65rem; font-weight:bold; text-transform:uppercase; margin-left:6px; letter-spacing:0.5px; }
+        .opposed-warning { font-size:0.72rem; color:#ff4444; margin-top:4px; font-style:italic; }
         .policy-option-name { font-weight:bold; color:#e0e0e0; margin-bottom:4px; }
         .policy-option-desc { font-size:0.8rem; color:#888; }
         .policy-option-effects { font-size:0.75rem; color:#666; margin-top:8px; }
@@ -621,7 +626,8 @@ function populateSectorDropdown(selectId) {
     const select = document.getElementById(selectId);
     select.innerHTML = '<option value="">-- Choose a sector --</option>';
     MAJOR_SECTORS.forEach(sector => {
-        if (_getCompatiblePolicies(sector.key).length > 0) select.innerHTML += `<option value="${sector.key}">${sector.label}</option>`;
+        const policies = _getCompatiblePolicies(sector.key);
+        if (policies.length > 0) select.innerHTML += `<option value="${sector.key}">${sector.label}</option>`;
     });
 }
 
@@ -682,10 +688,13 @@ function onSectorChange() {
 
 function renderPolicyOptions(policies, containerId, buttonId) {
     const container = document.getElementById(containerId);
-    if (policies.length === 0) { container.innerHTML = '<div class="no-law">No compatible policies available.</div>'; return; }
+    if (policies.length === 0) { container.innerHTML = '<div class="no-law">No policies available in this sector.</div>'; return; }
     container.innerHTML = policies.map(policy => {
         const ideos = policy.ideologies || (policy.ideology ? [policy.ideology] : []);
         const ideoHTML = ideos.map(i => `<span class="article-ideology">${i}</span>`).join(' ');
+        const opposedClass = policy.isOpposed ? ' opposed' : '';
+        const opposedBadge = policy.isOpposed ? '<span class="opposed-badge">⚠ Opposed</span>' : '';
+        const opposedWarn = policy.isOpposed ? '<div class="opposed-warning">Ideologically opposed — approval penalty if proposed</div>' : '';
         let effectHTML = '';
         if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
             effectHTML = policy.stat_effects.map(e => {
@@ -698,7 +707,7 @@ function renderPolicyOptions(policies, containerId, buttonId) {
             const cls = policy.stat_direction === 'UP' ? 'effect-up' : 'effect-down';
             effectHTML = `${formatStatName(policy.target_stat)} <span class="${cls}">${dir}</span>`;
         }
-        return `<div class="policy-option" data-policy-id="${policy.id}" onclick="selectPolicyOption('${policy.id}','${buttonId}')"><div class="policy-option-name">${policy.policy_name} ${ideoHTML}</div><div class="policy-option-desc">${policy.description || ''}</div><div class="policy-option-effects">${effectHTML}</div></div>`;
+        return `<div class="policy-option${opposedClass}" data-policy-id="${policy.id}" onclick="selectPolicyOption('${policy.id}','${buttonId}')"><div class="policy-option-name">${policy.policy_name} ${ideoHTML} ${opposedBadge}</div><div class="policy-option-desc">${policy.description || ''}</div><div class="policy-option-effects">${effectHTML}</div>${opposedWarn}</div>`;
     }).join('');
 }
 
@@ -711,7 +720,7 @@ function selectPolicyOption(policyId, buttonId) {
 
 function addArticle() {
     if (!selectedPolicy) return;
-    draftArticles.push({ articleNumber: draftArticles.length + 2, policy: selectedPolicy });
+    draftArticles.push({ articleNumber: draftArticles.length + 2, policy: selectedPolicy, isOpposed: selectedPolicy.isOpposed || false });
     renderDraftArticles(); hideAddArticleForm(); selectedPolicy = null;
     if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
 }
@@ -719,6 +728,19 @@ function addArticle() {
 function renderDraftArticles() {
     const container = document.getElementById('draft-articles');
     if (draftArticles.length === 0) { container.innerHTML = ''; return; }
+
+    const opposedCount = draftArticles.filter(a => a.isOpposed).length;
+    const pol = currentNation?.polarization || 0;
+
+    let penaltySummary = '';
+    if (opposedCount > 0) {
+        const floorPen = calculateIdeologyPenalty('floor', opposedCount, pol);
+        const passPen = calculateIdeologyPenalty('passed', opposedCount, pol);
+        penaltySummary = `<div class="opposed-warning" style="margin:12px 0 4px;padding:10px;background:#2a1a1a;border-radius:6px;border:1px solid #ff4444;">
+            ⚠ <strong>${opposedCount} opposed article${opposedCount > 1 ? 's' : ''}</strong> — Floor penalty: <strong>${floorPen}</strong> approval | Pass penalty: <strong>${passPen}</strong> approval${pol >= 50 ? ' <span style="color:#ff9800;">(Polarization ' + pol + '%)</span>' : ''}
+        </div>`;
+    }
+
     container.innerHTML = draftArticles.map((art, index) => {
         if (art.isText) {
             return `<div class="draft-article-card" style="border-left:3px solid #2196F3;">
@@ -732,8 +754,10 @@ function renderDraftArticles() {
         }
         const ideos = art.policy.ideologies || (art.policy.ideology ? [art.policy.ideology] : []);
         const ideoHTML = ideos.map(i => `<span class="article-ideology">${i}</span>`).join(' ');
-        return `<div class="draft-article-card"><div class="draft-article-info"><div class="draft-article-num">Article ${art.articleNumber}</div><div class="draft-article-name">${art.policy.policy_name} ${ideoHTML}</div><div class="draft-article-meta">${art.policy.description || ''}</div></div><button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button></div>`;
-    }).join('');
+        const opposedBadge = art.isOpposed ? ' <span class="opposed-badge">⚠ Opposed</span>' : '';
+        const borderColor = art.isOpposed ? 'border-left:3px solid #ff4444;' : '';
+        return `<div class="draft-article-card" style="${borderColor}"><div class="draft-article-info"><div class="draft-article-num">Article ${art.articleNumber}</div><div class="draft-article-name">${art.policy.policy_name} ${ideoHTML}${opposedBadge}</div><div class="draft-article-meta">${art.policy.description || ''}</div></div><button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button></div>`;
+    }).join('') + penaltySummary;
 }
 
 function removeArticle(index) {
