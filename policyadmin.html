@@ -786,9 +786,9 @@ function updateCostPreview() {
             const info = RAW_SCALING_INFO[onStat];
             if (info) {
                 const ex = onBase * (info.exampleVal / info.divisor);
-                lines.push(`💲 Ongoing: ${fmtCost(onBase)} ${info.unit} per tick (e.g., if ${fmtStat(onStat)} = ${info.example} → ${fmtCost(ex)}/tick));
+                lines.push(`💲 Ongoing: ${fmtCost(onBase)} ${info.unit} per tick (e.g., if ${fmtStat(onStat)} = ${info.example} → ${fmtCost(ex)}/tick)`);
             } else {
-                lines.push(`💲 Ongoing: ${fmtCost(onBase)} × ${fmtStat(onStat)}/50 per tick (e.g., if ${fmtStat(onStat)} = 50 → ${fmtCost(onBase)}/tick);
+                lines.push(`💲 Ongoing: ${fmtCost(onBase)} × ${fmtStat(onStat)}/50 per tick (e.g., if ${fmtStat(onStat)} = 50 → ${fmtCost(onBase)}/tick)`);
             }
         } else {
             lines.push(`💲 Ongoing: Flat ${fmtCost(onBase)} per tick`);
