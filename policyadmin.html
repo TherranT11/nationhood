@@ -412,6 +412,11 @@ const IDEOLOGY_SPECTRUMS = [
 ];
 const ALL_IDEOLOGIES = IDEOLOGY_SPECTRUMS.flatMap(s => [s.left, s.right]);
 const OPPOSITES = {};
+    const RAW_SCALING_INFO = {
+    population: { divisor: 1_000_000, unit: 'per million people', example: '10M', exampleVal: 10_000_000 },
+    gdp: { divisor: 1_000_000_000, unit: 'per $1B GDP', example: '$500B', exampleVal: 500_000_000_000 },
+    debt: { divisor: 1_000_000_000, unit: 'per $1B debt', example: '$200B', exampleVal: 200_000_000_000 }
+};
 IDEOLOGY_SPECTRUMS.forEach(s => { OPPOSITES[s.left] = s.right; OPPOSITES[s.right] = s.left; });
 
 const STAT_GROUPS = [
@@ -730,14 +735,26 @@ function updateCostPreview() {
     const lines = [];
     if (upBase > 0) {
         if (upStat) {
-            lines.push(`💲 Upfront: $${upBase}M × ${fmtStat(upStat)} (e.g., if ${fmtStat(upStat)} = 50 → $${upBase * 50}M)`);
+            const info = RAW_SCALING_INFO[upStat];
+            if (info) {
+                const ex = upBase * (info.exampleVal / info.divisor);
+                lines.push(`💲 Upfront: $${upBase}M ${info.unit} (e.g., if ${fmtStat(upStat)} = ${info.example} → $${ex.toLocaleString()}M)`);
+            } else {
+                lines.push(`💲 Upfront: $${upBase}M × ${fmtStat(upStat)}/50 (e.g., if ${fmtStat(upStat)} = 50 → $${upBase}M)`);
+            }
         } else {
             lines.push(`💲 Upfront: Flat $${upBase}M`);
         }
     }
     if (onBase > 0) {
         if (onStat) {
-            lines.push(`💲 Ongoing: $${onBase}M × ${fmtStat(onStat)} per tick (e.g., if ${fmtStat(onStat)} = 50 → $${onBase * 50}M/tick)`);
+            const info = RAW_SCALING_INFO[onStat];
+            if (info) {
+                const ex = onBase * (info.exampleVal / info.divisor);
+                lines.push(`💲 Ongoing: $${onBase}M ${info.unit} per tick (e.g., if ${fmtStat(onStat)} = ${info.example} → $${ex.toLocaleString()}M/tick)`);
+            } else {
+                lines.push(`💲 Ongoing: $${onBase}M × ${fmtStat(onStat)}/50 per tick (e.g., if ${fmtStat(onStat)} = 50 → $${onBase}M/tick)`);
+            }
         } else {
             lines.push(`💲 Ongoing: Flat $${onBase}M per tick`);
         }
