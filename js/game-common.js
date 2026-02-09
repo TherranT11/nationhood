@@ -60,6 +60,16 @@ const RAW_SCALING_DIVISORS = {
     debt: 1_000_000_000
 };
 
+// Ideology spectrum opposites — only true opposites trigger the "opposed" penalty.
+// Policies with unrelated ideologies are neutral, not opposed.
+const IDEOLOGY_OPPOSITES = {
+    'LIBERTY': 'EQUALITY', 'EQUALITY': 'LIBERTY',
+    'FREEDOM': 'SECURITY', 'SECURITY': 'FREEDOM',
+    'TRADITION': 'PROGRESS', 'PROGRESS': 'TRADITION',
+    'GLOBALISM': 'NATIONALISM', 'NATIONALISM': 'GLOBALISM',
+    'COMPETITION': 'COOPERATION', 'COOPERATION': 'COMPETITION'
+};
+
 
 // ==================== SEAT LOADING ====================
 
@@ -212,19 +222,26 @@ function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy, exclud
     const ideo2 = (faction?.ideology_value_2 || '').toUpperCase();
     const factionIdeos = [ideo1, ideo2].filter(Boolean);
 
+    // Build set of ideologies that are hostile to this faction
+    // e.g. if faction is [COOPERATION, EQUALITY], opposites are [COMPETITION, LIBERTY]
+    const factionOpposites = new Set(
+        factionIdeos.map(fi => IDEOLOGY_OPPOSITES[fi]).filter(Boolean)
+    );
+
     return allPolicies
         .filter(p => p.major_sector === sector && !excludePolicyIds.includes(p.id))
         .map(p => {
-            // Check if any of the policy's ideologies match the faction
             const policyIdeos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
                 ? p.ideologies.map(i => i.toUpperCase())
                 : (p.ideology ? [p.ideology.toUpperCase()] : []);
 
-            const isAligned = factionIdeos.length === 0 ||
-                policyIdeos.length === 0 ||
-                policyIdeos.some(pi => factionIdeos.includes(pi));
+            // A policy is opposed ONLY if it contains a true ideological opposite.
+            // Unrelated ideologies (e.g. Freedom vs Cooperation) are neutral, not opposed.
+            const isOpposed = factionIdeos.length > 0 &&
+                policyIdeos.length > 0 &&
+                policyIdeos.some(pi => factionOpposites.has(pi));
 
-            return { ...p, isOpposed: !isAligned };
+            return { ...p, isOpposed };
         });
 }
 
@@ -462,6 +479,11 @@ function countOpposedArticles(articles, sponsor) {
 
     if (factionIdeos.length === 0) return 0; // No ideology = no opposition
 
+    // Build set of true opposites for this faction
+    const factionOpposites = new Set(
+        factionIdeos.map(fi => IDEOLOGY_OPPOSITES[fi]).filter(Boolean)
+    );
+
     let opposed = 0;
     for (const art of articles) {
         const p = art.policies || art;
@@ -473,8 +495,9 @@ function countOpposedArticles(articles, sponsor) {
 
         if (policyIdeos.length === 0) continue; // No ideology on policy = neutral
 
-        const hasMatch = policyIdeos.some(pi => factionIdeos.includes(pi));
-        if (!hasMatch) opposed++;
+        // Only count as opposed if policy contains a true ideological opposite
+        const hasOpposite = policyIdeos.some(pi => factionOpposites.has(pi));
+        if (hasOpposite) opposed++;
     }
     return opposed;
 }
