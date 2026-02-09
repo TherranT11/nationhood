@@ -134,7 +134,7 @@ async function renderNationIntel(nation) {
     // Fetch party details
     const { data: parties } = await _supabase
         .from('factions')
-        .select('id, faction_name, abbreviation, seats, approval_rating, is_npc, ideologies')
+        .select('id, faction_name, abbreviation, seats, approval_rating, is_npc')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party')
         .order('seats', { ascending: false });
