@@ -102,6 +102,16 @@
         .system-trigger-info { background: #1a1a2a; border: 1px solid #3a3a5a; border-radius: 8px; padding: 14px 18px; margin-bottom: 16px; font-size: 0.82rem; color: #aaa; line-height: 1.5; }
         .system-trigger-info strong { color: #ff9800; }
 
+        /* Placeholder tags */
+        .placeholder-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .placeholder-tag { display: inline-block; background: #2a2a1a; border: 1px solid #ff9800; color: #ff9800; padding: 3px 10px; border-radius: 4px; font-size: 0.75rem; font-family: 'Courier New', monospace; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+        .placeholder-tag:hover { background: #ff9800; color: #121212; }
+
+        /* Preview box */
+        .preview-box { background: #1a2a1a; border: 1px solid #2a4a2a; border-radius: 8px; padding: 14px 18px; margin-top: 12px; }
+        .preview-label { font-size: 0.7rem; color: #4CAF50; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; font-weight: bold; }
+        .preview-text { font-size: 0.88rem; color: #ccc; line-height: 1.5; font-style: italic; }
+
         /* Event Log */
         .log-entry { background: #1a1a1a; border-radius: 6px; padding: 12px 16px; margin-bottom: 8px; border-left: 3px solid #2196F3; }
         .log-entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
@@ -168,11 +178,26 @@ var EVENT_CATEGORIES = [
 ];
 
 var SYSTEM_TRIGGERS = [
-    { key: 'election_completed', label: 'Election Completed', desc: 'Fires when an election finishes and results are tallied.' },
-    { key: 'government_formed', label: 'Government / Coalition Formed', desc: 'Fires when a new coalition or government is officially formed.' },
-    { key: 'shakeup_started', label: 'Shakeup Started', desc: 'Fires when a faction initiates a power shakeup (autocracy).' },
-    { key: 'shakeup_resolved_success', label: 'Shakeup Succeeded', desc: 'Fires when a shakeup vote succeeds and power changes hands.' },
-    { key: 'shakeup_resolved_failed', label: 'Shakeup Failed', desc: 'Fires when a shakeup vote fails and the current ruler holds power.' }
+    { key: 'election_completed', label: 'Election Completed', desc: 'Fires when an election finishes and results are tallied.',
+      placeholders: ['{nation}', '{winner}', '{runner_up}', '{vote_pct}'],
+      example: '{nation} held elections today. {winner} claimed victory with {vote_pct}% of the vote, defeating {runner_up}.',
+      exampleData: { '{nation}': 'Sangreza', '{winner}': 'Vanguard Front', '{runner_up}': 'Sovereignty Bloc', '{vote_pct}': '42' } },
+    { key: 'government_formed', label: 'Government / Coalition Formed', desc: 'Fires when a new coalition or government is officially formed.',
+      placeholders: ['{nation}', '{coalition_parties}', '{leader}', '{seats}'],
+      example: 'A new government has formed in {nation}. {leader} leads a coalition of {coalition_parties} controlling {seats} seats.',
+      exampleData: { '{nation}': 'Melizea', '{coalition_parties}': 'Unity Party, Green Alliance', '{leader}': 'Prime Minister Okafor', '{seats}': '67' } },
+    { key: 'shakeup_started', label: 'Shakeup Started', desc: 'Fires when a faction initiates a power shakeup (autocracy).',
+      placeholders: ['{nation}', '{challenger}', '{ruler}'],
+      example: 'Power struggle in {nation}! {challenger} has launched a bid to overthrow {ruler}.',
+      exampleData: { '{nation}': 'Sangreza', '{challenger}': 'Vanguard Front', '{ruler}': 'Sovereignty Bloc' } },
+    { key: 'shakeup_resolved_success', label: 'Shakeup Succeeded', desc: 'Fires when a shakeup vote succeeds and power changes hands.',
+      placeholders: ['{nation}', '{new_ruler}', '{old_ruler}'],
+      example: 'Regime change in {nation}. {new_ruler} has seized power from {old_ruler} in a dramatic shakeup.',
+      exampleData: { '{nation}': 'Sangreza', '{new_ruler}': 'Vanguard Front', '{old_ruler}': 'Sovereignty Bloc' } },
+    { key: 'shakeup_resolved_failed', label: 'Shakeup Failed', desc: 'Fires when a shakeup vote fails and the current ruler holds power.',
+      placeholders: ['{nation}', '{ruler}', '{challenger}'],
+      example: '{ruler} has crushed the challenge from {challenger} in {nation}, maintaining an iron grip on power.',
+      exampleData: { '{nation}': 'Sangreza', '{ruler}': 'Sovereignty Bloc', '{challenger}': 'Vanguard Front' } }
 ];
 
 // ==================== INIT ====================
@@ -242,9 +267,8 @@ function renderEventList(events) {
                 '<span class="tag tag-cooldown">' + ev.cooldown_ticks + 't cd</span>';
         }
 
-        var counts = (ev.event_descriptions || []).length + ' desc · ' +
-            (et === 'random' ? (ev.event_triggers || []).length + ' trig · ' : '') +
-            (ev.event_effects || []).length + ' fx';
+        var counts = (ev.event_descriptions || []).length + ' desc' +
+            (et === 'random' ? ' · ' + (ev.event_triggers || []).length + ' trig · ' + (ev.event_effects || []).length + ' fx' : '');
 
         return '<div class="event-card ' + (ev.is_active ? 'active' : 'inactive') + '" onclick="editEvent(\'' + ev.id + '\')">' +
             '<div class="event-card-left">' +
@@ -366,9 +390,9 @@ function renderEditor() {
                 // === System-only fields ===
                 '<div id="system-fields" style="' + (!isSys ? 'display:none;' : '') + '">' +
                     '<div class="system-trigger-info">' +
-                        '<strong>System events</strong> fire automatically when a game action occurs (election completed, coalition formed, shakeup resolved). ' +
+                        '<strong>System events</strong> fire automatically when a game action occurs. ' +
                         'No stat triggers or probability roll — the game code fires them directly. ' +
-                        'You can still add multiple descriptions (one randomly picked) and optional stat effects.' +
+                        'Add multiple descriptions (one randomly picked). Use the placeholder tags below in your descriptions.' +
                     '</div>' +
                     '<div class="form-row">' +
                         '<div class="form-group">' +
@@ -380,6 +404,7 @@ function renderEditor() {
                                 }).join('') +
                             '</select>' +
                             '<div class="form-hint" id="system-trigger-desc">' + getSTDesc(currentEvent.system_trigger) + '</div>' +
+                            '<div id="system-placeholders">' + renderPlaceholders(currentEvent.system_trigger) + '</div>' +
                         '</div>' +
                         '<div class="form-group">' +
                             '<label class="form-label">Status</label>' +
@@ -389,6 +414,7 @@ function renderEditor() {
                             '</div>' +
                         '</div>' +
                     '</div>' +
+                    '<div id="system-preview">' + renderPreview(currentEvent.system_trigger) + '</div>' +
                 '</div>' +
 
                 // Descriptions (both types)
@@ -397,7 +423,11 @@ function renderEditor() {
                         '<div class="editor-section-title">📝 Descriptions</div>' +
                         '<button class="btn btn-ghost btn-small" onclick="addDescription()">+ Add</button>' +
                     '</div>' +
-                    '<div class="form-hint" style="margin-bottom:12px;">Multiple descriptions — one randomly chosen each time the event fires. Use {nation} for nation name, {faction} for faction name.</div>' +
+                    '<div class="form-hint" style="margin-bottom:12px;">' +
+                        (isSys
+                            ? 'Multiple descriptions — one randomly chosen each time. Use the placeholder tags from above (e.g. <code style="color:#ff9800;">{nation}</code>, <code style="color:#ff9800;">{winner}</code>) and they\'ll be replaced with real data.'
+                            : 'Multiple descriptions — one randomly chosen each time. Use <code style="color:#ff9800;">{nation}</code> for the nation name.') +
+                    '</div>' +
                     '<div id="descriptions-list">' + renderDescriptions() + '</div>' +
                 '</div>' +
 
@@ -413,14 +443,16 @@ function renderEditor() {
                     '</div>' +
                 '</div>' +
 
-                // Effects (both types)
+                // Effects (random only)
+                '<div id="effects-section" style="' + (isSys ? 'display:none;' : '') + '">' +
                 '<div class="editor-section">' +
                     '<div class="editor-section-header">' +
                         '<div class="editor-section-title">💥 Effects</div>' +
                         '<button class="btn btn-ghost btn-small" onclick="addEffect()">+ Add</button>' +
                     '</div>' +
-                    '<div class="form-hint" style="margin-bottom:12px;">Stat changes when event fires. Negative = decrease. Optional for system events.</div>' +
+                    '<div class="form-hint" style="margin-bottom:12px;">Stat changes when event fires. Negative = decrease.</div>' +
                     '<div id="effects-list">' + renderEffects() + '</div>' +
+                '</div>' +
                 '</div>' +
 
             '</div>' +
@@ -436,7 +468,11 @@ function renderEditor() {
     var eas = document.getElementById('ev-active-sys');
     if (eas) eas.onchange = function() { document.getElementById('ev-active-sys-label').textContent = this.checked ? 'Active' : 'Inactive'; };
     var stSel = document.getElementById('ev-system-trigger');
-    if (stSel) stSel.onchange = function() { document.getElementById('system-trigger-desc').textContent = getSTDesc(this.value); };
+    if (stSel) stSel.onchange = function() {
+        document.getElementById('system-trigger-desc').textContent = getSTDesc(this.value);
+        document.getElementById('system-placeholders').innerHTML = renderPlaceholders(this.value);
+        document.getElementById('system-preview').innerHTML = renderPreview(this.value);
+    };
 }
 
 function switchEventType(type) {
@@ -464,6 +500,42 @@ function getSTDesc(key) {
     if (!key) return 'Select a trigger to see its description.';
     var t = SYSTEM_TRIGGERS.find(function(s) { return s.key === key; });
     return t ? t.desc : '';
+}
+
+function renderPlaceholders(key) {
+    if (!key) return '';
+    var t = SYSTEM_TRIGGERS.find(function(s) { return s.key === key; });
+    if (!t || !t.placeholders) return '';
+    return '<div style="margin-top:10px;">' +
+        '<div class="form-hint" style="margin-bottom:6px;">Available placeholders — click to copy:</div>' +
+        '<div class="placeholder-tags">' +
+            t.placeholders.map(function(p) {
+                return '<span class="placeholder-tag" onclick="copyPlaceholder(\'' + p + '\')" title="Click to copy">' + p + '</span>';
+            }).join('') +
+        '</div>' +
+    '</div>';
+}
+
+function renderPreview(key) {
+    if (!key) return '';
+    var t = SYSTEM_TRIGGERS.find(function(s) { return s.key === key; });
+    if (!t || !t.example) return '';
+    var filled = t.example;
+    if (t.exampleData) {
+        Object.keys(t.exampleData).forEach(function(tag) {
+            filled = filled.split(tag).join('<strong style="color:#ffcc00;">' + t.exampleData[tag] + '</strong>');
+        });
+    }
+    return '<div class="preview-box">' +
+        '<div class="preview-label">✨ Example Output</div>' +
+        '<div class="preview-text">' + filled + '</div>' +
+    '</div>';
+}
+
+function copyPlaceholder(text) {
+    navigator.clipboard.writeText(text).then(function() {
+        // Brief visual feedback — flash the tag
+    }).catch(function() {});
 }
 
 // ==================== DESCRIPTIONS ====================
