@@ -773,12 +773,12 @@ function updateCostPreview() {
             const info = RAW_SCALING_INFO[upStat];
             if (info) {
                 const ex = upBase * (info.exampleVal / info.divisor);
-                lines.push(`💲 Upfront: $${upBase}M ${info.unit} (e.g., if ${fmtStat(upStat)} = ${info.example} → $${ex.toLocaleString()}M)`);
+                lines.push(`💲 Upfront: ${fmtCost(upBase)} ${info.unit} (e.g., if ${fmtStat(upStat)} = ${info.example} → ${fmtCost(ex)})`);
             } else {
-                lines.push(`💲 Upfront: $${upBase}M × ${fmtStat(upStat)}/50 (e.g., if ${fmtStat(upStat)} = 50 → $${upBase}M)`);
+                lines.push(`💲 Upfront: ${fmtCost(upBase)} × ${fmtStat(upStat)}/50 (e.g., if ${fmtStat(upStat)} = 50 → ${fmtCost(upBase)})`);
             }
         } else {
-            lines.push(`💲 Upfront: Flat $${upBase}M`);
+           lines.push(`💲 Upfront: Flat ${fmtCost(upBase)}`);
         }
     }
     if (onBase > 0) {
