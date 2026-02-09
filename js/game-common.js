@@ -2989,3 +2989,117 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
         }
     }
 }
+/**
+ * Resign the current PM.
+ * - Deactivates head_of_government
+ * - Applies -5 approval to PM party (shame)
+ * - Applies -3 stability to nation (vacuum)
+ * - Sets 12-tick cooldown on PM party
+ * - Checks if coalition partner wants PM (by seat order)
+ * - If no taker, coalition collapses → no government state
+ */
+async function resignPM(supabase, nationId, factionId, currentTick) {
+
+    // 1. Deactivate current HOG
+    const { data: hog } = await supabase
+        .from('head_of_government')
+        .select('*')
+        .eq('nation_id', nationId)
+        .eq('faction_id', factionId)
+        .eq('active', true)
+        .single();
+
+    if (!hog) throw new Error('No active PM to resign');
+
+    // Check Survivor trait — cannot resign
+    if (hog.trait_key === 'survivor') {
+        throw new Error('A Survivor cannot resign. They cling to power.');
+    }
+
+    await supabase
+        .from('head_of_government')
+        .update({ active: false })
+        .eq('id', hog.id);
+
+    // 2. Apply -5 approval to resigning party
+    const { data: faction } = await supabase
+        .from('factions')
+        .select('approval_rating')
+        .eq('id', factionId)
+        .single();
+
+    if (faction) {
+        const newApproval = Math.max(0, (faction.approval_rating ?? 50) - 5);
+        await supabase
+            .from('factions')
+            .update({ approval_rating: newApproval })
+            .eq('id', factionId);
+    }
+
+    // 3. Apply -3 stability to nation
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('stability')
+        .eq('id', nationId)
+        .single();
+
+    if (nation) {
+        const newStability = Math.max(0, (nation.stability ?? 50) - 3);
+        await supabase
+            .from('nations')
+            .update({ stability: newStability })
+            .eq('id', nationId);
+    }
+
+    // 4. Set cooldown — this party cannot hold PM for 12 ticks
+    await supabase
+        .from('factions')
+        .update({ pm_cooldown_until: currentTick + 12 })
+        .eq('id', factionId);
+
+    // 5. Check Iron Will — coalition auto-collapses
+    if (hog.trait_key === 'iron_will') {
+        console.log('Iron Will resignation — coalition collapses');
+        return { result: 'coalition_collapsed', reason: 'iron_will' };
+    }
+
+    // 6. Find coalition partners, offer PM by seat order
+    const { data: govFormation } = await supabase
+        .from('government_formations')
+        .select('party_ids')
+        .eq('nation_id', nationId)
+        .eq('status', 'formed')
+        .single();
+
+    if (govFormation) {
+        const partnerIds = (govFormation.party_ids || [])
+            .filter(pid => pid !== factionId);
+
+        // Get partners sorted by seats descending
+        const { data: partners } = await supabase
+            .from('factions')
+            .select('id, faction_name, seats, pm_cooldown_until')
+            .in('id', partnerIds)
+            .order('seats', { ascending: false });
+
+        // Find first eligible partner (not on cooldown)
+        const eligible = (partners || []).find(p =>
+            !p.pm_cooldown_until || p.pm_cooldown_until <= currentTick
+        );
+
+        if (eligible) {
+            // Generate candidates for the new PM party
+            await generatePMCandidates(supabase, nationId, eligible.id, currentTick);
+            console.log(`PM offered to ${eligible.faction_name}`);
+            return {
+                result: 'pm_offered',
+                newPmPartyId: eligible.id,
+                newPmPartyName: eligible.faction_name
+            };
+        }
+    }
+
+    // 7. No eligible partner — coalition collapses
+    console.log('No eligible partner — coalition collapsed');
+    return { result: 'coalition_collapsed', reason: 'no_eligible_partner' };
+}
