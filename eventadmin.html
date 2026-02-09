@@ -198,6 +198,14 @@ var SYSTEM_TRIGGERS = [
       placeholders: ['{nation}', '{ruler}', '{challenger}'],
       example: '{ruler} has crushed the challenge from {challenger} in {nation}, maintaining an iron grip on power.',
       exampleData: { '{nation}': 'Sangreza', '{ruler}': 'Sovereignty Bloc', '{challenger}': 'Vanguard Front' } }
+    { key: 'bill_passed', label: 'Bill Passed', desc: 'Fires when a bill passes the legislature.',
+     placeholders: ['{nation}', '{bill_name}', '{sponsor}', '{votes_for}', '{votes_against}', '{article_count}'],
+     example: 'The legislature of {nation} has passed the {bill_name}, sponsored by {sponsor}. The vote was {votes_for} for and {votes_against} against.',
+     exampleData: { '{nation}': 'Melizea', '{bill_name}': 'Independent Judiciary Act', '{sponsor}': 'New Avelia Party', '{votes_for}': '97', '{votes_against}': '23', '{article_count}': '2' } },
+    { key: 'bill_failed', label: 'Bill Failed', desc: 'Fires when a bill fails to pass the legislature.',
+     placeholders: ['{nation}', '{bill_name}', '{sponsor}', '{votes_for}', '{votes_against}'],
+     example: 'The {bill_name} has been rejected by the legislature of {nation}. The vote was {votes_for} for and {votes_against} against.',
+     exampleData: { '{nation}': 'Melizea', '{bill_name}': 'Tax Reform Act', '{sponsor}': 'Socialist Party', '{votes_for}': '45', '{votes_against}': '75' } },
 ];
 
 // ==================== INIT ====================
