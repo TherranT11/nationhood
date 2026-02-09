@@ -41,7 +41,7 @@
             background: var(--civic-surface);
             border-bottom: 1px solid var(--civic-border);
             position: sticky;
-            top: 70px;
+            top: 0;
             z-index: 50;
         }
         .civic-header-inner {
@@ -463,7 +463,12 @@
     outline: none;
 }
 .scope-nation-select:focus { border-color: var(--civic-accent); }
-        body { overflow-y: auto !important; }
+
+        .civic-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
     </style>
 </head>
 <body>
