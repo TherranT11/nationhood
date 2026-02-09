@@ -9,6 +9,7 @@
  *   - Bill support calculation
  *   - Vote tally syncing
  *   - Enactment approval impact
+ *   - Random event processing
  *   - Game constants & utility formatters
  *
  * Used by: laws.html, bill.html, government.html, parties.html
@@ -786,10 +787,16 @@ async function failBill(supabase, bill) {
  * Call this from admin panel or automated scheduler.
  * 
  * Flow:
- *   1. Increment shard.current_tick
- *   2. For each nation: process stat effects from active laws
- *   3. For each nation: process ongoing costs from active laws
- *   4. Resolve any expired floor votes
+ *   1.  Increment shard.current_tick
+ *   2.  For each nation: process stat effects from active laws
+ *   3.  For each nation: process ongoing costs from active laws
+ *   4.  Resolve any expired floor votes
+ *   5.  Process purge approval decay (autocracy)
+ *   6.  Process faction loyalty (autocracy)
+ *   7.  Auto-resolve stale shakeups (autocracy)
+ *   8.  Process inactive parties
+ *   9.  Snapshot nation stats to history
+ *   10. Process random events
  *
  * @param {object} supabase - Supabase client
  * @returns {Promise<object>} Summary of what happened this tick
@@ -810,7 +817,7 @@ async function advanceTick(supabase) {
     const { data: nations } = await supabase.from('nations').select('*');
     if (!nations || nations.length === 0) return { tick: newTick, nations: 0 };
 
-    const summary = { tick: newTick, nations: nations.length, effects: [], costs: [], resolutions: [] };
+    const summary = { tick: newTick, nations: nations.length, effects: [], costs: [], resolutions: [], events: [] };
 
     for (const nation of nations) {
         // 3. Process stat effects
@@ -846,6 +853,10 @@ async function advanceTick(supabase) {
 
         // 10. Snapshot nation stats to history (for trend arrows)
         await snapshotNationHistory(supabase, nation, newTick);
+
+        // 11. Process random events
+        const eventResults = await processEvents(supabase, nation, newTick);
+        if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
     }
 
     return summary;
@@ -1451,6 +1462,207 @@ async function snapshotNationHistory(supabase, nation, currentTick) {
         // History table might not have all columns — log but don't fail
         console.warn('History snapshot warning:', err.message);
     });
+}
+
+
+// ==================== EVENT TICK PROCESSOR ====================
+
+/**
+ * Process random events for a nation during a tick.
+ *
+ * For each active event template:
+ *   1. Check cooldown — has it fired too recently for this nation?
+ *   2. Check ALL triggers — every condition must be met
+ *   3. Roll probability — random chance even if eligible
+ *   4. If it fires:
+ *      - Pick a random description
+ *      - Apply effects (nation stats, ruling party, or random faction)
+ *      - Log to event_log
+ *
+ * @param {object} supabase    - Supabase client
+ * @param {object} nation      - Full nation row (with current stat values)
+ * @param {number} currentTick - Current tick number
+ * @returns {Promise<Array>}   List of events that fired
+ */
+async function processEvents(supabase, nation, currentTick) {
+    // 1. Load all active event templates with their sub-data
+    const { data: events } = await supabase
+        .from('event_templates')
+        .select('*, event_descriptions(*), event_triggers(*), event_effects(*)')
+        .eq('is_active', true);
+
+    if (!events || events.length === 0) return [];
+
+    // 2. Load recent event log for this nation (for cooldown checks)
+    const { data: recentLog } = await supabase
+        .from('event_log')
+        .select('event_id, fired_at_tick')
+        .eq('nation_id', nation.id)
+        .order('fired_at_tick', { ascending: false })
+        .limit(200);
+
+    // Build a map: event_id → last fired tick
+    const lastFiredMap = {};
+    for (const entry of (recentLog || [])) {
+        if (!lastFiredMap[entry.event_id]) {
+            lastFiredMap[entry.event_id] = entry.fired_at_tick;
+        }
+    }
+
+    const firedEvents = [];
+
+    for (const event of events) {
+        // 3. Cooldown check
+        const lastFired = lastFiredMap[event.id];
+        if (lastFired !== undefined) {
+            const ticksSince = currentTick - lastFired;
+            if (ticksSince < event.cooldown_ticks) continue;
+        }
+
+        // 4. Trigger check — ALL must be met
+        const triggers = event.event_triggers || [];
+        if (triggers.length === 0) continue; // No triggers = never fires
+
+        let allTriggersPass = true;
+        for (const trigger of triggers) {
+            const statValue = nation[trigger.stat_key];
+            if (statValue === null || statValue === undefined) {
+                allTriggersPass = false;
+                break;
+            }
+            const val = Number(statValue);
+            if (trigger.min_value !== null && trigger.min_value !== undefined && val < trigger.min_value) {
+                allTriggersPass = false;
+                break;
+            }
+            if (trigger.max_value !== null && trigger.max_value !== undefined && val > trigger.max_value) {
+                allTriggersPass = false;
+                break;
+            }
+        }
+        if (!allTriggersPass) continue;
+
+        // 5. Probability roll
+        const roll = Math.random() * 100;
+        if (roll >= event.probability) continue;
+
+        // === EVENT FIRES ===
+
+        // 6. Pick random description
+        const descriptions = event.event_descriptions || [];
+        const description = descriptions.length > 0
+            ? descriptions[Math.floor(Math.random() * descriptions.length)].description_text
+            : event.name;
+
+        // 7. Apply effects
+        const effects = event.event_effects || [];
+        const appliedEffects = [];
+        const nationUpdates = {};
+
+        for (const effect of effects) {
+            if (effect.target === 'nation') {
+                // Apply to nation stat
+                const currentVal = nation[effect.stat_key] !== undefined
+                    ? Number(nation[effect.stat_key]) : 50;
+                const newVal = Math.max(0, Math.min(100, currentVal + effect.change_value));
+                nationUpdates[effect.stat_key] = newVal;
+                // Also update the in-memory nation object for subsequent events this tick
+                nation[effect.stat_key] = newVal;
+
+                appliedEffects.push({
+                    stat: effect.stat_key,
+                    change: effect.change_value,
+                    target: 'nation',
+                    old: currentVal,
+                    new: newVal
+                });
+
+            } else if (effect.target === 'ruling_party') {
+                // Apply to ruling faction's stat
+                const rulingId = nation.ruling_faction_id;
+                if (!rulingId) continue;
+
+                const { data: faction } = await supabase
+                    .from('factions')
+                    .select(effect.stat_key)
+                    .eq('id', rulingId)
+                    .single();
+
+                if (faction) {
+                    const currentVal = faction[effect.stat_key] ?? 50;
+                    const newVal = Math.max(0, Math.min(100, currentVal + effect.change_value));
+                    await supabase.from('factions')
+                        .update({ [effect.stat_key]: newVal })
+                        .eq('id', rulingId);
+
+                    appliedEffects.push({
+                        stat: effect.stat_key,
+                        change: effect.change_value,
+                        target: 'ruling_party',
+                        faction_id: rulingId,
+                        old: currentVal,
+                        new: newVal
+                    });
+                }
+
+            } else if (effect.target === 'random_faction') {
+                // Pick a random non-NPC faction in this nation
+                const { data: factions } = await supabase
+                    .from('factions')
+                    .select('id, ' + effect.stat_key)
+                    .eq('nation_id', nation.id)
+                    .eq('faction_type', 'party')
+                    .eq('is_npc', false);
+
+                if (factions && factions.length > 0) {
+                    const target = factions[Math.floor(Math.random() * factions.length)];
+                    const currentVal = target[effect.stat_key] ?? 50;
+                    const newVal = Math.max(0, Math.min(100, currentVal + effect.change_value));
+                    await supabase.from('factions')
+                        .update({ [effect.stat_key]: newVal })
+                        .eq('id', target.id);
+
+                    appliedEffects.push({
+                        stat: effect.stat_key,
+                        change: effect.change_value,
+                        target: 'random_faction',
+                        faction_id: target.id,
+                        old: currentVal,
+                        new: newVal
+                    });
+                }
+            }
+        }
+
+        // Apply nation-level stat updates
+        if (Object.keys(nationUpdates).length > 0) {
+            await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+        }
+
+        // 8. Log the event
+        const targetFactionId = appliedEffects.find(e => e.faction_id)?.faction_id || null;
+        await supabase.from('event_log').insert({
+            event_id: event.id,
+            nation_id: nation.id,
+            event_name: event.name,
+            faction_id: targetFactionId,
+            description_used: description,
+            effects_applied: appliedEffects,
+            category: event.category,
+            fired_at_tick: currentTick
+        });
+
+        firedEvents.push({
+            eventName: event.name,
+            category: event.category,
+            description: description,
+            effects: appliedEffects
+        });
+
+        console.log(`Event fired: "${event.name}" in ${nation.name} (tick ${currentTick})`);
+    }
+
+    return firedEvents;
 }
 
 
