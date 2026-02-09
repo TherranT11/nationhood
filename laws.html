@@ -462,9 +462,10 @@ function filterAllLaws() {
 
         const upCost = p.upfront_cost || 0;
         const onCost = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
+        const fmtC = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + m + 'M';
         const costHTML = [];
-        if (upCost > 0) costHTML.push(`Up: $${upCost}M`);
-        if (onCost > 0) costHTML.push(`On: $${onCost}M/t`);
+        if (upCost > 0) costHTML.push(`Up: ${fmtC(upCost)}`);
+        if (onCost > 0) costHTML.push(`On: ${fmtC(onCost)}/t`);
 
         return `<div class="law-card ${isActive ? 'law-active' : 'law-inactive'}">
             <div class="law-card-header">
