@@ -586,15 +586,15 @@ function renderPolicyTable() {
         }
 
         // Costs
-        const costs = [];
+      const costs = [];
         if (p.upfront_cost > 0) {
             const upScaling = p.upfront_scaling_stat;
-            costs.push(upScaling ? `$${p.upfront_cost}M×${fmtStat(upScaling)} up` : `$${p.upfront_cost}M up`);
+            costs.push(upScaling ? `${fmtCost(p.upfront_cost)}×${fmtStat(upScaling)} up` : `${fmtCost(p.upfront_cost)} up`);
         }
         if ((p.ongoing_base_cost || p.ongoing_cost_per_tick || 0) > 0) {
             const base = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
             const scaling = p.ongoing_scaling_stat;
-            costs.push(scaling ? `$${base}M×${fmtStat(scaling)}/t` : `$${base}M/t`);
+            costs.push(scaling ? `${fmtCost(base)}×${fmtStat(scaling)}/t` : `${fmtCost(base)}/t`);
         }
         const costHTML = costs.length > 0 ? costs.join('<br>') : '—';
 
@@ -1192,6 +1192,10 @@ function resetBuilder() {
 function fmtStat(stat) {
     if (!stat) return '—';
     return stat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+    function fmtCost(m) {
+    if (m >= 1000) return '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B';
+    return '$' + m + 'M';
 }
 
 function showStatus(msg, type) {
