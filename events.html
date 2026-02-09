@@ -832,7 +832,7 @@ function renderPost(ev) {
                     '<button class="engage-btn repost-btn"><span class="engage-icon">🔁</span> ' + engagement.reposts + '</button>' +
                     '<button class="engage-btn like-btn"><span class="engage-icon">♡</span> ' + engagement.likes + '</button>' +
                 '</div>' +
-                '<div class="post-expanded">' +
+                '<div class="post-expanded" onclick="event.stopPropagation()">' +
                     effectsDetailHTML +
                     '<div class="comments-section" id="comments-' + ev.id + '">' +
                         '<div class="comments-title">Replies</div>' +
@@ -840,7 +840,7 @@ function renderPost(ev) {
                         '<div class="comment-input-area">' +
                             '<div class="comment-input-avatar">' + (playerDisplayName ? getInitials(playerDisplayName) : '?') + '</div>' +
                             '<div class="comment-input-wrap">' +
-                                '<input type="text" class="comment-input" id="comment-input-' + ev.id + '" placeholder="Add your take..." maxlength="280" onkeypress="if(event.key===\'Enter\')submitComment(\'' + ev.id + '\')">' +
+                                '<input type="text" class="comment-input" id="comment-input-' + ev.id + '" placeholder="Add your take..." maxlength="280" onclick="event.stopPropagation()" onkeypress="if(event.key===\'Enter\')submitComment(\'' + ev.id + '\')">' +
                                 '<button class="comment-submit" onclick="event.stopPropagation(); submitComment(\'' + ev.id + '\')">Reply</button>' +
                             '</div>' +
                         '</div>' +
