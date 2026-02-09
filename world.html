@@ -130,6 +130,14 @@ async function renderNationIntel(nation) {
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party')
         .eq('is_npc', false);
+
+    // Fetch party details
+    const { data: parties } = await _supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, seats, approval_rating, is_npc, ideologies')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party')
+        .order('seats', { ascending: false });
     
     const maxParties = nation.max_parties || (nation.government_type === 'Autocracy' ? 4 : 8);
     const spotsRemaining = maxParties - (partyCount || 0);
@@ -166,6 +174,28 @@ async function renderNationIntel(nation) {
             </div>
             <div style="font-size:0.75rem;color:${isFull ? '#ff4444' : '#aaa'};margin-top:4px;">
                 ${isFull ? '⚠️ FULL — No spots available' : `${spotsRemaining} spot${spotsRemaining !== 1 ? 's' : ''} remaining`}
+            </div>
+            <button onclick="document.getElementById('party-preview').style.display = document.getElementById('party-preview').style.display === 'none' ? 'block' : 'none'" 
+                style="width:100%;margin-top:10px;padding:8px;background:transparent;border:1px solid #444;border-radius:4px;color:#888;font-size:0.75rem;cursor:pointer;text-transform:uppercase;letter-spacing:1px;transition:0.2s;"
+                onmouseover="this.style.borderColor='#ffcc00';this.style.color='#ffcc00'" 
+                onmouseout="this.style.borderColor='#444';this.style.color='#888'">
+                View Parties ▾
+            </button>
+            <div id="party-preview" style="display:none;margin-top:10px;">
+                ${(parties || []).length === 0 
+                    ? '<p style="color:#666;font-style:italic;font-size:0.8rem;text-align:center;">No parties yet</p>'
+                    : (parties || []).map(p => `
+                        <div style="background:#252525;border-radius:6px;padding:10px 12px;margin-bottom:8px;border-left:3px solid ${p.is_npc ? '#666' : '#ffcc00'};">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                                <div style="font-weight:bold;color:#e0e0e0;font-size:0.85rem;">${p.faction_name}${p.is_npc ? ' <span style="background:#ff9800;color:#000;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:6px;">NPC</span>' : ''}</div>
+                                <div style="font-size:0.75rem;color:#ffcc00;font-weight:bold;">${p.seats || 0} seats</div>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <div style="font-size:0.7rem;color:#888;">${p.abbreviation || ''}</div>
+                                <div style="font-size:0.7rem;color:${(p.approval_rating || 0) >= 50 ? '#4CAF50' : '#ff4444'};">${Math.round(p.approval_rating || 0)}% approval</div>
+                            </div>
+                        </div>
+                    `).join('')}
             </div>
         </div>
         
