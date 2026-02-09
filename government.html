@@ -267,6 +267,14 @@ async function renderGovernmentPage() {
                 .eq('nation_id', currentNation.id).eq('faction_type', 'party')
         ]);
 
+        // Fetch active Head of Government with trait
+        const { data: activeHOG } = await _supabase
+            .from('head_of_government')
+            .select('*, leader_traits(*)')
+            .eq('nation_id', currentNation.id)
+            .eq('active', true)
+            .maybeSingle();
+
         coalitionData = coalition;
         ministryData = ministries;
         partyData = electionData?.results?.votes || [];
@@ -308,7 +316,7 @@ async function renderGovernmentPage() {
 
         document.getElementById('content-area').innerHTML = `
             <div class="panel-padding">
-                ${renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval)}
+                ${renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval, activeHOG)}
 
                 <div class="section-header">Government Structure</div>
                 <div class="info-block">
@@ -368,7 +376,7 @@ function getPartyNameById(partyId) {
 
 // ==================== ADMINISTRATION BOX ====================
 
-function renderAdministrationBox(coalition, parties, primeMinister, governmentApproval) {
+function renderAdministrationBox(coalition, parties, primeMinister, governmentApproval, activeHOG) {
     const hosFirst = currentNation.head_of_state_first_name || 'Unknown';
     const hosLast = currentNation.head_of_state_last_name || 'Unknown';
     const hosAge = currentNation.head_of_state_age || '—';
@@ -399,10 +407,18 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                         <div class="admin-person-details">Age ${hosAge} · <span class="admin-person-party">${rulingPartyName}</span></div>
                         <div style="color: #ff4444; font-size: 0.75rem; margin-top: 6px; font-weight: bold;">Rules until dead or deposed</div>
                     </div>
-                    <div class="admin-section">
+                   <div class="admin-section">
                         <div class="admin-section-title">Prime Minister</div>
-                        <div class="admin-person-name">${pmName}</div>
-                        <div class="admin-person-details">${pmAge !== '—' ? `Age ${pmAge} • ` : ''}<span class="admin-person-party">${pmPartyName}</span></div>
+                        <div class="admin-person-name">${activeHOG ? `${activeHOG.first_name} ${activeHOG.last_name}` : pmName}</div>
+                        <div class="admin-person-details">${activeHOG ? `Age ${activeHOG.age} • ` : (pmAge !== '—' ? `Age ${pmAge} • ` : '')}<span class="admin-person-party">${activeHOG ? (allParties.find(p => p.id === activeHOG.faction_id)?.faction_name || pmPartyName) : pmPartyName}</span></div>
+                        ${activeHOG ? `
+                            <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
+                                <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:#9C27B0;color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
+                                <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${activeHOG.leader_traits?.trait_name || activeHOG.trait_key}</div>
+                                <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
+                                <div style="font-size:0.75rem;color:#ff4444;">▼ ${activeHOG.leader_traits?.downside || ''}</div>
+                            </div>
+                        ` : ''}
                     </div>
                     <div class="admin-section admin-approval">
                         <div class="admin-section-title">Government Approval</div>
@@ -446,7 +462,22 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                 <div class="administration-header"><div class="administration-title">${hosLast} Administration</div><div class="administration-subtitle">Coalition Government</div></div>
                 <div class="administration-content">
                     <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${hosFirst} ${hosLast}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${leadPartyName}</span></div></div>
-                    <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${pmName}</div><div class="admin-person-details">${pmAge !== '—' ? `Age ${pmAge} • ` : ''}<span class="admin-person-party">${pmParty}</span></div></div>
+                    <div class="admin-section">
+                        <div class="admin-section-title">Prime Minister</div>
+                        <div class="admin-person-name">${activeHOG ? `${activeHOG.first_name} ${activeHOG.last_name}` : pmName}</div>
+                        <div class="admin-person-details">${activeHOG ? `Age ${activeHOG.age} • ` : (pmAge !== '—' ? `Age ${pmAge} • ` : '')}<span class="admin-person-party">${pmParty}</span></div>
+                        ${activeHOG ? `
+                            <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
+                                <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:#9C27B0;color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
+                                <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${activeHOG.leader_traits?.trait_name || activeHOG.trait_key}</div>
+                                <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
+                                <div style="font-size:0.75rem;color:#ff4444;">▼ ${activeHOG.leader_traits?.downside || ''}</div>
+                            </div>
+                            ${activeHOG.faction_id === currentFaction?.id ? `
+                                <button class="ministry-btn purge" style="margin-top:10px;" onclick="resignPMAction()">📋 Resign as PM</button>
+                            ` : ''}
+                        ` : ''}
+                    </div>
                     <div class="admin-section admin-approval"><div class="admin-section-title">Government Approval</div><div class="admin-approval-value ${approvalClass}">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div><div class="admin-approval-label">Coalition Median</div></div>
                 </div>
                 <div class="coalition-parties">
@@ -849,6 +880,64 @@ function genDots(total, rows, cx, cy) {
     for (const row of rows) { const n = Math.min(row.dots, total - idx); const step = Math.PI / (n - 1); for (let i = 0; i < n; i++) { const a = Math.PI - i * step; pos.push({ x: cx + row.radius * Math.cos(a), y: cy - row.radius * Math.sin(a) }); idx++; if (idx >= total) return pos; } }
     return pos;
 }
+
+// ==================== RESIGN PM ====================
+
+async function resignPMAction() {
+    if (!currentFaction || !currentNation) return;
+
+    const traitWarning = '';
+    // Check Survivor trait
+    const { data: hog } = await _supabase
+        .from('head_of_government')
+        .select('trait_key')
+        .eq('nation_id', currentNation.id)
+        .eq('faction_id', currentFaction.id)
+        .eq('active', true)
+        .maybeSingle();
+
+    if (hog?.trait_key === 'survivor') {
+        alert('❌ A Survivor cannot resign. They cling to power.');
+        return;
+    }
+
+    if (!confirm(
+        '📋 RESIGN as Prime Minister?\n\n' +
+        'Effects:\n' +
+        '• Your party: -5 Approval\n' +
+        '• Nation: -3 Stability\n' +
+        '• Your party cannot hold PM for 12 ticks (1 year)\n' +
+        '• Coalition partner may take over, or coalition collapses\n\n' +
+        'This cannot be undone. Proceed?'
+    )) return;
+
+    try {
+        const { data: shard } = await _supabase
+            .from('shard')
+            .select('current_tick')
+            .eq('name', 'Alpha Shard')
+            .single();
+
+        const result = await resignPM(
+            _supabase,
+            currentNation.id,
+            currentFaction.id,
+            shard?.current_tick || 0
+        );
+
+        if (result.result === 'pm_offered') {
+            alert(`📋 You have resigned as Prime Minister.\n\n${result.newPmPartyName} has been offered the position.`);
+        } else if (result.result === 'coalition_collapsed') {
+            alert(`📋 You have resigned as Prime Minister.\n\nNo eligible partner — the coalition has collapsed. The nation has no government.`);
+        }
+
+        await renderGovernmentPage();
+    } catch (e) {
+        console.error('Resign error:', e);
+        alert('Error: ' + e.message);
+    }
+}
+    
 </script>
 </body>
 </html>
