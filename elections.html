@@ -1116,6 +1116,7 @@ function renderShakeupUI(shakeup, allFactions) {
     const totalFactions = allFactions?.length || 0;
     const totalVotes = votes.length;
     const allVoted = totalVotes >= totalFactions;
+    const majorityVoted = totalVotes >= Math.ceil(totalFactions / 2);
     const nonVoters = totalFactions - totalVotes;
 
     return `
@@ -1151,7 +1152,7 @@ function renderShakeupUI(shakeup, allFactions) {
             <div style="margin-top: 16px; font-size: 0.85rem; color: #888;">
                 Votes cast: ${totalVotes} / ${totalFactions}
                 ${nonVoters > 0 && !allVoted ? `<br><span style="color: #ff9800;">${nonVoters} faction${nonVoters > 1 ? 's' : ''} haven't voted — they will abstain at next tick</span>` : ''}
-                ${allVoted ? '<br><button class="action-btn" style="margin-top: 12px;" onclick="resolveActiveShakeup(\'' + shakeup.id + '\')">⚔️ Resolve Shakeup Now</button>' : ''}
+                ${(totalVotes >= Math.ceil(totalFactions / 2) && currentFaction.id === shakeup.initiated_by) ? '<br><button class="action-btn" style="margin-top: 12px;" onclick="resolveActiveShakeup(\'' + shakeup.id + '\')">⚔️ Resolve Shakeup Now</button>' : ''}
             </div>
         </div>
     `;
