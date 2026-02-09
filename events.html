@@ -450,6 +450,19 @@
             .civic-header-inner, .civic-feed { padding-left: 12px; padding-right: 12px; }
             .post { padding: 14px 12px; }
         }
+        .scope-nation-select {
+    background: var(--civic-surface);
+    border: 1px solid var(--civic-border);
+    color: var(--civic-text-secondary);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    outline: none;
+}
+.scope-nation-select:focus { border-color: var(--civic-accent); }
     </style>
 </head>
 <body>
@@ -463,9 +476,13 @@
                 <div class="civic-brand-sub" id="civic-date"></div>
             </div>
             <div class="civic-scope">
-                <button class="scope-tab active" data-scope="nation" onclick="setScope('nation')">Your Nation</button>
-                <button class="scope-tab" data-scope="world" onclick="setScope('world')">World</button>
-            </div>
+    <button class="scope-tab active" data-scope="world" onclick="setScope('world')">World</button>
+    <div style="display:flex;align-items:center;flex:1;justify-content:center;">
+        <select id="nation-filter" class="scope-nation-select" onchange="setNationFilter(this.value)">
+            <option value="">All Nations</option>
+        </select>
+    </div>
+</div>
             <div class="civic-filters" id="civic-filters"></div>
         </div>
     </div>
@@ -484,7 +501,9 @@ let allLogs = [];
 let filteredLogs = [];
 let displayedCount = 0;
 const BATCH_SIZE = 20;
-let currentScope = 'nation';
+let currentScope = 'world';
+let currentNationFilter = '';
+let allNations = [];
 let currentCategory = '';
 let currentNation = null;
 let currentFaction = null;
@@ -675,7 +694,36 @@ initPage('events', async (state) => {
     }
 
     document.getElementById('civic-date').textContent = state.shard?.current_date || '';
-    renderFilters();
+renderFilters();
+
+const { data: nations } = await _supabase
+    .from('nations')
+    .select('id, name')
+    .order('name');
+allNations = nations || [];
+const nationSelect = document.getElementById('nation-filter');
+if (nationSelect) {
+    allNations.forEach(function(n) {
+        const opt = document.createElement('option');
+        opt.value = n.id;
+        opt.textContent = n.name;
+        if (currentNation && n.id === currentNation.id) opt.selected = true;
+        nationSelect.appendChild(opt);
+    });
+}
+if (currentNation) {
+    currentNationFilter = currentNation.id;
+    document.getElementById('nation-filter').value = currentNation.id;
+}
+
+await loadEvents();
+
+document.getElementById('content-area').style.display = 'none';
+document.getElementById('civic-wrapper').style.display = 'block';
+
+applyFilters();
+});
+}
     await loadEvents();
 
     document.getElementById('content-area').style.display = 'none';
@@ -693,8 +741,8 @@ async function loadEvents() {
         .order('fired_at_tick', { ascending: false })
         .limit(500);
 
-    if (currentScope === 'nation' && currentNation) {
-        query = query.eq('nation_id', currentNation.id);
+    if (currentNationFilter) {
+        query = query.eq('nation_id', currentNationFilter);
     }
 
     const { data, error } = await query;
@@ -714,9 +762,13 @@ function renderFilters() {
 
 function setScope(scope) {
     currentScope = scope;
-    document.querySelectorAll('.scope-tab').forEach(function(t) {
-        t.classList.toggle('active', t.dataset.scope === scope);
-    });
+    currentNationFilter = '';
+    document.getElementById('nation-filter').value = '';
+    loadEvents().then(function() { applyFilters(); });
+}
+
+function setNationFilter(nationId) {
+    currentNationFilter = nationId;
     loadEvents().then(function() { applyFilters(); });
 }
 
