@@ -1762,23 +1762,42 @@ async function processLoyaltyTick(supabase, nation) {
  * @param {number} currentTick - Current tick
  */
 async function autoResolveStaleShakeups(supabase, nationId, currentTick) {
-    const { data: staleShakeups } = await supabase
+    // Fetch all voting shakeups — filter by age in JS since we store created_at (timestamp), not created_tick
+    const { data: votingShakeups } = await supabase
         .from('shakeups')
-        .select('id, created_tick')
+        .select('id, created_at')
         .eq('nation_id', nationId)
-        .eq('status', 'voting')
-        .lte('created_tick', currentTick - 1);
+        .eq('status', 'voting');
 
-    if (!staleShakeups || staleShakeups.length === 0) return;
+    if (!votingShakeups || votingShakeups.length === 0) return;
 
-    for (const shakeup of staleShakeups) {
-        console.log(`Auto-resolving stale shakeup ${shakeup.id} (created tick ${shakeup.created_tick}, now tick ${currentTick})`);
-        try {
-            const { data, error } = await supabase.rpc('resolve_shakeup', { p_shakeup_id: shakeup.id });
-            if (error) console.error('Auto-resolve shakeup error:', error);
-            else console.log('Auto-resolve result:', data);
-        } catch (e) {
-            console.error('Auto-resolve shakeup exception:', e);
+    // Also grab the shard date info to estimate tick age
+    // Shakeups older than 2 ticks get auto-resolved
+    const AUTO_RESOLVE_TICKS = 2;
+
+    for (const shakeup of votingShakeups) {
+        // Try created_tick first (if column exists), fall back to created_at age estimate
+        let tickAge = AUTO_RESOLVE_TICKS; // default: resolve if we can't determine age
+
+        if (shakeup.created_tick != null) {
+            tickAge = currentTick - shakeup.created_tick;
+        } else if (shakeup.created_at) {
+            // Estimate: each tick ≈ 1 month ≈ 30 days. If created_at is older than 2 "ticks" worth, resolve.
+            const ageMs = Date.now() - new Date(shakeup.created_at).getTime();
+            const ageDays = ageMs / (1000 * 60 * 60 * 24);
+            // Be generous: if it's been more than 1 real day, it's definitely stale
+            tickAge = ageDays >= 1 ? AUTO_RESOLVE_TICKS : 0;
+        }
+
+        if (tickAge >= AUTO_RESOLVE_TICKS) {
+            console.log(`Auto-resolving stale shakeup ${shakeup.id} (age: ${tickAge} ticks, now tick ${currentTick})`);
+            try {
+                const { data, error } = await supabase.rpc('resolve_shakeup', { p_shakeup_id: shakeup.id });
+                if (error) console.error('Auto-resolve shakeup error:', error);
+                else console.log('Auto-resolve result:', data);
+            } catch (e) {
+                console.error('Auto-resolve shakeup exception:', e);
+            }
         }
     }
 }
