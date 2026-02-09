@@ -1030,10 +1030,42 @@ async function formGovernment() {
         });
         if (error) throw error;
         if (data.success) {
+            // Get the PM party from ministry assignments
+            const { data: formation } = await _supabase
+                .from('government_formations')
+                .select('ministry_assignments')
+                .eq('id', activeFormationId)
+                .single();
+
+            const pmPartyId = formation?.ministry_assignments?.prime_minister;
+
+            if (pmPartyId) {
+                // Get current tick
+                const { data: shard } = await _supabase
+                    .from('shard')
+                    .select('current_tick')
+                    .eq('name', 'Alpha Shard')
+                    .single();
+
+                // Generate 3 PM candidates for the PM party
+                await generatePMCandidates(
+                    _supabase,
+                    currentNation.id,
+                    pmPartyId,
+                    shard?.current_tick || 0
+                );
+            }
+
             alert('🏛️ ' + data.message);
             if (realtimeChannel) { _supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
             sessionStorage.removeItem('nationhood_state');
-            location.reload();
+
+            // If current player IS the PM party, send them to candidate selection
+            if (pmPartyId === currentFaction.id) {
+                window.location.href = 'select-pm.html';
+            } else {
+                location.reload();
+            }
         } else { alert('❌ ' + data.message); }
     } catch (err) { alert('❌ Error: ' + err.message); }
 }
