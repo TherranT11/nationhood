@@ -217,7 +217,15 @@ async function fetchActiveCoalition(supabase, nationId) {
  * of faction ideology — but opposed policies carry approval penalties.
  * Each policy gets an .isOpposed flag so the UI can warn the player.
  */
-function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy, excludePolicyIds = []) {
+/**
+ * Get policies for a given sector. All policies are now available regardless
+ * of faction ideology — but opposed policies carry approval penalties.
+ * Each policy gets flags so the UI can warn the player:
+ *   .isOpposed         — true if policy contains a true ideological opposite
+ *   .prerequisiteMissing — true if requires_policy_id isn't in activePolicyIds
+ *   .prerequisiteName  — name of the required policy (for UI display)
+ */
+function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy, excludePolicyIds = [], activePolicyIds = null) {
     const ideo1 = (faction?.ideology_value_1 || '').toUpperCase();
     const ideo2 = (faction?.ideology_value_2 || '').toUpperCase();
     const factionIdeos = [ideo1, ideo2].filter(Boolean);
@@ -241,7 +249,19 @@ function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy, exclud
                 policyIdeos.length > 0 &&
                 policyIdeos.some(pi => factionOpposites.has(pi));
 
-            return { ...p, isOpposed };
+            // Prerequisite check: if this policy requires another to be active
+            let prerequisiteMissing = false;
+            let prerequisiteName = null;
+            if (p.requires_policy_id && activePolicyIds) {
+                if (!activePolicyIds.has(p.requires_policy_id)) {
+                    prerequisiteMissing = true;
+                    // Look up the prerequisite name for display
+                    const prereq = allPolicies.find(pp => pp.id === p.requires_policy_id);
+                    prerequisiteName = prereq?.policy_name || 'Unknown Policy';
+                }
+            }
+
+            return { ...p, isOpposed, prerequisiteMissing, prerequisiteName };
         });
 }
 
