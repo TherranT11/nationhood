@@ -1687,6 +1687,9 @@ async function advanceTick(supabase) {
         const costResult = await processOngoingCosts(supabase, nation, newTick);
         if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
 
+        // 4a. Process PM trait effects
+        await processPMTraitEffects(supabase, nation, newTick);
+
         // 4b. Process elections (democracy only)
         const electionResults = await processElections(supabase, nation, newTick);
         if (electionResults.length > 0) {
@@ -2529,4 +2532,460 @@ function formatStatName(stat) {
 
 function formatMinorSector(key) {
     return key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+// ============================================================
+// PM CANDIDATE SYSTEM — Add to game-common.js
+// ============================================================
+
+// Name pools for candidate generation
+const PM_FIRST_NAMES = [
+    'Elena', 'Karl', 'Sofia', 'Mateo', 'Anya', 'Lukas', 'Isabelle', 'Dominic',
+    'Vera', 'Henrik', 'Nadia', 'Oscar', 'Clara', 'Felix', 'Marta', 'Julian',
+    'Petra', 'Anton', 'Lena', 'Sergio', 'Katrina', 'Mikhail', 'Adira', 'Tomas',
+    'Ingrid', 'Rafael', 'Bianca', 'Emile', 'Daria', 'Gregor', 'Yara', 'Viktor'
+];
+
+const PM_LAST_NAMES = [
+    'Vasquez', 'Brennan', 'Okafor', 'Lindström', 'Moreau', 'Petrov', 'Kowalski',
+    'Richter', 'Fontaine', 'Nakamura', 'Alvarez', 'De Vries', 'Kovacs', 'Delgado',
+    'Hartmann', 'Bergström', 'Rossi', 'Larsson', 'Muller', 'Santiago', 'Volkov',
+    'Tanaka', 'Fischer', 'Barbosa', 'Nowak', 'Reyes', 'Johansson', 'Cruz'
+];
+
+// All 10 ideologies mapped to their axis and direction
+const IDEOLOGY_OPTIONS = [
+    { tag: 'LIBERTY',         axisKey: 'liberty_equality',             direction: -1 },
+    { tag: 'EQUALITY',        axisKey: 'liberty_equality',             direction: 1 },
+    { tag: 'TRADITION',       axisKey: 'tradition_progress',           direction: -1 },
+    { tag: 'PROGRESS',        axisKey: 'tradition_progress',           direction: 1 },
+    { tag: 'SECURITY',        axisKey: 'security_freedom',             direction: -1 },
+    { tag: 'FREEDOM',         axisKey: 'security_freedom',             direction: 1 },
+    { tag: 'NATIONALISM',     axisKey: 'globalism_nationalism',        direction: -1 },
+    { tag: 'GLOBALISM',       axisKey: 'globalism_nationalism',        direction: 1 },
+    { tag: 'INDIVIDUALISM',   axisKey: 'individualism_collectivism',   direction: -1 },
+    { tag: 'COLLECTIVISM',    axisKey: 'individualism_collectivism',   direction: 1 }
+];
+
+const PM_TRAIT_KEYS = [
+    'dealmaker', 'showman', 'ideologue', 'economist', 'reformer',
+    'iron_will', 'popular_champion', 'militarist', 'diplomat',
+    'media_darling', 'hardliner', 'technocrat', 'survivor', 'firebrand'
+];
+
+
+/**
+ * Generate 3 PM candidates for a faction after coalition formation.
+ * 
+ * Ideology selection is WEIGHTED AGAINST the faction's strong axes,
+ * so you rarely get a freebie ideology match.
+ * 
+ * @param {object} supabase - Supabase client
+ * @param {string} nationId - Nation UUID
+ * @param {string} factionId - PM faction UUID
+ * @param {number} currentTick - Current game tick
+ * @returns {Array} - The 3 generated candidates
+ */
+async function generatePMCandidates(supabase, nationId, factionId, currentTick) {
+
+    // 1. Load faction's dynamic ideology scores
+    const factionIdeology = await loadFactionIdeology(supabase, factionId);
+
+    // 2. Clear any existing unselected candidates for this faction/nation
+    await supabase
+        .from('pm_candidates')
+        .delete()
+        .eq('nation_id', nationId)
+        .eq('faction_id', factionId)
+        .eq('selected', false);
+
+    // 3. Weight ideologies — AGAINST strong axes
+    const weightedIdeologies = getWeightedIdeologies(factionIdeology);
+
+    // 4. Pick 3 unique ideologies
+    const chosenIdeologies = [];
+    const availableIdeologies = [...weightedIdeologies];
+    for (let i = 0; i < 3; i++) {
+        const pick = weightedRandomPick(availableIdeologies);
+        chosenIdeologies.push(pick.item);
+        // Remove both ideologies from same axis to avoid duplicates
+        const sameAxis = availableIdeologies.filter(
+            wi => wi.item.axisKey === pick.item.axisKey
+        );
+        sameAxis.forEach(sa => {
+            const idx = availableIdeologies.indexOf(sa);
+            if (idx >= 0) availableIdeologies.splice(idx, 1);
+        });
+    }
+
+    // 5. Pick 3 unique traits
+    const shuffledTraits = [...PM_TRAIT_KEYS].sort(() => Math.random() - 0.5);
+    const chosenTraits = shuffledTraits.slice(0, 3);
+
+    // 6. Generate 3 candidates
+    const usedFirstNames = new Set();
+    const usedLastNames = new Set();
+    const candidates = [];
+
+    for (let i = 0; i < 3; i++) {
+        let firstName, lastName;
+
+        // Ensure unique names
+        do { firstName = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)]; }
+        while (usedFirstNames.has(firstName));
+        usedFirstNames.add(firstName);
+
+        do { lastName = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)]; }
+        while (usedLastNames.has(lastName));
+        usedLastNames.add(lastName);
+
+        const age = 35 + Math.floor(Math.random() * 16); // 35 to 50
+        const ideology = chosenIdeologies[i];
+
+        candidates.push({
+            nation_id: nationId,
+            faction_id: factionId,
+            first_name: firstName,
+            last_name: lastName,
+            age: age,
+            ideology: ideology.tag,
+            ideology_axis: ideology.axisKey,
+            ideology_direction: ideology.direction,
+            trait_key: chosenTraits[i],
+            created_at_tick: currentTick,
+            selected: false
+        });
+    }
+
+    // 7. Insert into DB
+    const { data, error } = await supabase
+        .from('pm_candidates')
+        .insert(candidates)
+        .select();
+
+    if (error) {
+        console.error('Error generating PM candidates:', error);
+        throw error;
+    }
+
+    console.log(`Generated 3 PM candidates for faction ${factionId}`);
+    return data;
+}
+
+
+/**
+ * Weight ideologies AGAINST the faction's current strong positions.
+ * Strong axes get LOW weight (less likely to appear).
+ * Weak/neutral axes get HIGH weight (more likely).
+ * 
+ * This ensures candidates usually push you somewhere uncomfortable.
+ */
+function getWeightedIdeologies(factionIdeology) {
+    if (!factionIdeology) {
+        // No ideology data — equal weights
+        return IDEOLOGY_OPTIONS.map(opt => ({ item: opt, weight: 10 }));
+    }
+
+    return IDEOLOGY_OPTIONS.map(opt => {
+        const score = factionIdeology[opt.axisKey] || 0;
+        const alignment = score * opt.direction; // positive = already aligned
+
+        // If strongly aligned (>40): very low weight (rare to get easy pick)
+        // If neutral (near 0): high weight
+        // If opposed (<-40): medium weight (interesting tension)
+        let weight;
+        if (alignment > 40) {
+            weight = 2;   // Strongly aligned — rare
+        } else if (alignment > 15) {
+            weight = 5;   // Somewhat aligned — uncommon
+        } else if (alignment > -15) {
+            weight = 12;  // Neutral — common
+        } else if (alignment > -40) {
+            weight = 10;  // Somewhat opposed — common
+        } else {
+            weight = 8;   // Strongly opposed — slightly less common
+        }
+
+        return { item: opt, weight };
+    });
+}
+
+
+/**
+ * Weighted random pick from an array of { item, weight } objects.
+ */
+function weightedRandomPick(weightedItems) {
+    const totalWeight = weightedItems.reduce((sum, wi) => sum + wi.weight, 0);
+    let random = Math.random() * totalWeight;
+
+    for (const wi of weightedItems) {
+        random -= wi.weight;
+        if (random <= 0) return wi;
+    }
+    return weightedItems[weightedItems.length - 1];
+}
+
+
+/**
+ * Select a PM candidate — appoints them as Head of Government.
+ * 
+ * 1. Marks candidate as selected
+ * 2. Shifts faction ideology +5 in candidate's direction
+ * 3. Creates head_of_government record
+ * 4. Applies any on-appointment effects (stability bonuses etc.)
+ * 
+ * @param {object} supabase - Supabase client
+ * @param {string} candidateId - The chosen candidate UUID
+ * @param {string} nationId - Nation UUID
+ * @param {string} factionId - PM faction UUID
+ * @param {number} currentTick - Current tick
+ */
+async function selectPMCandidate(supabase, candidateId, nationId, factionId, currentTick) {
+
+    // 1. Fetch candidate
+    const { data: candidate, error: fetchErr } = await supabase
+        .from('pm_candidates')
+        .select('*')
+        .eq('id', candidateId)
+        .single();
+
+    if (fetchErr || !candidate) throw new Error('Candidate not found');
+    if (candidate.faction_id !== factionId) throw new Error('Not your candidate');
+
+    // 2. Mark as selected
+    await supabase
+        .from('pm_candidates')
+        .update({ selected: true })
+        .eq('id', candidateId);
+
+    // 3. Deactivate any existing HOG for this nation
+    await supabase
+        .from('head_of_government')
+        .update({ active: false })
+        .eq('nation_id', nationId)
+        .eq('active', true);
+
+    // 4. Insert new HOG
+    const { error: hogErr } = await supabase
+        .from('head_of_government')
+        .insert({
+            nation_id: nationId,
+            faction_id: factionId,
+            candidate_id: candidateId,
+            first_name: candidate.first_name,
+            last_name: candidate.last_name,
+            age: candidate.age,
+            ideology: candidate.ideology,
+            trait_key: candidate.trait_key,
+            appointed_tick: currentTick,
+            active: true
+        });
+
+    if (hogErr) throw hogErr;
+
+    // 5. Shift faction ideology +5 in candidate's direction
+    const axisKey = candidate.ideology_axis;
+    const shift = 5 * candidate.ideology_direction;
+
+    const factionIdeology = await loadFactionIdeology(supabase, factionId);
+    if (factionIdeology) {
+        const currentVal = factionIdeology[axisKey] || 0;
+        const newVal = Math.max(-100, Math.min(100, currentVal + shift));
+
+        await supabase
+            .from('faction_ideology')
+            .update({ [axisKey]: newVal })
+            .eq('faction_id', factionId);
+
+        console.log(`Ideology shift: ${axisKey} ${currentVal} → ${newVal} (${shift > 0 ? '+' : ''}${shift})`);
+    }
+
+    // 6. Load trait and apply on-appointment effects
+    const { data: trait } = await supabase
+        .from('leader_traits')
+        .select('*')
+        .eq('trait_key', candidate.trait_key)
+        .single();
+
+    if (trait?.effects) {
+        const effects = trait.effects;
+
+        // Apply one-time stability bonus
+        if (effects.on_appoint_stability) {
+            const { data: nation } = await supabase
+                .from('nations')
+                .select('stability')
+                .eq('id', nationId)
+                .single();
+
+            if (nation) {
+                const newStability = Math.min(100, (nation.stability || 50) + effects.on_appoint_stability);
+                await supabase
+                    .from('nations')
+                    .update({ stability: newStability })
+                    .eq('id', nationId);
+
+                console.log(`On-appoint stability: +${effects.on_appoint_stability} → ${newStability}`);
+            }
+        }
+
+        // Apply NPC approval shift (firebrand)
+        if (effects.npc_approval_shift) {
+            const { data: npcParties } = await supabase
+                .from('factions')
+                .select('id, approval_rating')
+                .eq('nation_id', nationId)
+                .eq('is_npc', true)
+                .eq('faction_type', 'party');
+
+            for (const npc of (npcParties || [])) {
+                const newApproval = Math.max(0, Math.min(100,
+                    (npc.approval_rating ?? 50) + effects.npc_approval_shift
+                ));
+                await supabase
+                    .from('factions')
+                    .update({ approval_rating: newApproval })
+                    .eq('id', npc.id);
+            }
+            console.log(`Firebrand: NPC parties shifted by ${effects.npc_approval_shift}`);
+        }
+    }
+
+    console.log(`PM selected: ${candidate.first_name} ${candidate.last_name} (${candidate.trait_key})`);
+    return candidate;
+}
+
+
+/**
+ * Apply per-tick PM trait effects during advanceTick.
+ * Call this once per nation inside the nation loop.
+ * 
+ * @param {object} supabase - Supabase client
+ * @param {object} nation - Nation row
+ * @param {number} currentTick - Current tick
+ */
+async function processPMTraitEffects(supabase, nation, currentTick) {
+
+    // 1. Get active HOG
+    const { data: hog } = await supabase
+        .from('head_of_government')
+        .select('*, leader_traits(*)')
+        .eq('nation_id', nation.id)
+        .eq('active', true)
+        .single();
+
+    if (!hog || !hog.leader_traits?.effects) return;
+
+    const effects = hog.leader_traits.effects;
+    const factionId = hog.faction_id;
+
+    // 2. Apply party_approval_per_tick
+    if (effects.party_approval_per_tick) {
+        const { data: faction } = await supabase
+            .from('factions')
+            .select('approval_rating')
+            .eq('id', factionId)
+            .single();
+
+        if (faction) {
+            const newApproval = Math.max(0, Math.min(100,
+                (faction.approval_rating ?? 50) + effects.party_approval_per_tick
+            ));
+            await supabase
+                .from('factions')
+                .update({ approval_rating: newApproval })
+                .eq('id', factionId);
+        }
+    }
+
+    // 3. Apply nation_stat_per_tick
+    if (effects.nation_stat_per_tick) {
+        const updates = {};
+        for (const [stat, delta] of Object.entries(effects.nation_stat_per_tick)) {
+            const currentVal = nation[stat];
+            if (currentVal !== undefined && currentVal !== null) {
+                updates[stat] = Math.max(0, Math.min(100, currentVal + delta));
+            }
+        }
+        if (Object.keys(updates).length > 0) {
+            await supabase.from('nations').update(updates).eq('id', nation.id);
+        }
+    }
+
+    // 4. Media Darling — conditional approval
+    if (effects.approval_below_50_bonus || effects.approval_above_60_penalty) {
+        const { data: faction } = await supabase
+            .from('factions')
+            .select('approval_rating')
+            .eq('id', factionId)
+            .single();
+
+        if (faction) {
+            let delta = 0;
+            if (faction.approval_rating < 50 && effects.approval_below_50_bonus) {
+                delta = effects.approval_below_50_bonus;
+            } else if (faction.approval_rating > 60 && effects.approval_above_60_penalty) {
+                delta = effects.approval_above_60_penalty;
+            }
+            if (delta !== 0) {
+                const newApproval = Math.max(0, Math.min(100, faction.approval_rating + delta));
+                await supabase
+                    .from('factions')
+                    .update({ approval_rating: newApproval })
+                    .eq('id', factionId);
+            }
+        }
+    }
+
+    // 5. Reformer — opposition parties get approval bonus
+    if (effects.opposition_approval_per_tick) {
+        const { data: oppParties } = await supabase
+            .from('factions')
+            .select('id, approval_rating')
+            .eq('nation_id', nation.id)
+            .eq('faction_type', 'party')
+            .neq('id', factionId);
+
+        // TODO: filter to only actual opposition (not coalition partners)
+        // For now applies to all non-PM parties
+        for (const opp of (oppParties || [])) {
+            const newApproval = Math.max(0, Math.min(100,
+                (opp.approval_rating ?? 50) + effects.opposition_approval_per_tick
+            ));
+            await supabase
+                .from('factions')
+                .update({ approval_rating: newApproval })
+                .eq('id', opp.id);
+        }
+    }
+
+    // 6. Dealmaker — penalty when no bills passed
+    if (effects.no_bill_penalty_per_tick) {
+        // Check if this faction proposed+passed any bill in the last tick
+        const { count } = await supabase
+            .from('bills')
+            .select('*', { count: 'exact', head: true })
+            .eq('nation_id', nation.id)
+            .eq('proposed_by', factionId)
+            .eq('status', 'passed')
+            .eq('passed_tick', currentTick - 1);
+
+        if (!count || count === 0) {
+            const { data: faction } = await supabase
+                .from('factions')
+                .select('approval_rating')
+                .eq('id', factionId)
+                .single();
+
+            if (faction) {
+                const newApproval = Math.max(0, Math.min(100,
+                    (faction.approval_rating ?? 50) + effects.no_bill_penalty_per_tick
+                ));
+                await supabase
+                    .from('factions')
+                    .update({ approval_rating: newApproval })
+                    .eq('id', factionId);
+            }
+        }
+    }
 }
