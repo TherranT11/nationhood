@@ -1355,7 +1355,13 @@ async function resolveExpiredVotes(supabase, nationId) {
     const results = [];
 
     for (const bill of expiredBills) {
-        let votesFor = 0, votesAgainst = 0;
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('name')
+        .eq('id', bill.nation_id)
+        .single();
+    let votesFor = 0, votesAgainst = 0;
+
         (bill.bill_support || []).forEach(s => {
             if (s.stance === 'yes') votesFor += s.seat_count;
             else if (s.stance === 'no') votesAgainst += s.seat_count;
@@ -1364,13 +1370,38 @@ async function resolveExpiredVotes(supabase, nationId) {
         const totalVoted = votesFor + votesAgainst;
         const passed = totalVoted > 0 && votesFor >= Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.MAJORITY_THRESHOLD);
 
-        if (passed) {
-            await enactBill(supabase, bill, currentTick);
-            results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst });
-        } else {
-            await failBill(supabase, bill);
-            results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst });
+       if (passed) {
+    await enactBill(supabase, bill, currentTick);
+    await supabase.rpc('fire_system_event', {
+        p_trigger_key: 'bill_passed',
+        p_nation_id: bill.nation_id,
+        p_tick: currentTick,
+        p_placeholders: {
+            nation: nation?.name || 'Unknown',
+            bill_name: bill.bill_name,
+            sponsor: bill.factions?.faction_name || 'Unknown',
+            votes_for: String(votesFor),
+            votes_against: String(votesAgainst),
+            article_count: String((bill.bill_articles || []).length)
         }
+    });
+    results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst });
+} else {
+    await failBill(supabase, bill);
+    await supabase.rpc('fire_system_event', {
+        p_trigger_key: 'bill_failed',
+        p_nation_id: bill.nation_id,
+        p_tick: currentTick,
+        p_placeholders: {
+            nation: nation?.name || 'Unknown',
+            bill_name: bill.bill_name,
+            sponsor: bill.factions?.faction_name || 'Unknown',
+            votes_for: String(votesFor),
+            votes_against: String(votesAgainst)
+        }
+    });
+    results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst });
+}
     }
 
     return results;
