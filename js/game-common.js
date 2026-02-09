@@ -2540,17 +2540,15 @@ function formatMinorSector(key) {
 
 // Name pools for candidate generation
 const PM_FIRST_NAMES = [
-    'Elena', 'Karl', 'Sofia', 'Mateo', 'Anya', 'Lukas', 'Isabelle', 'Dominic',
-    'Vera', 'Henrik', 'Nadia', 'Oscar', 'Clara', 'Felix', 'Marta', 'Julian',
-    'Petra', 'Anton', 'Lena', 'Sergio', 'Katrina', 'Mikhail', 'Adira', 'Tomas',
-    'Ingrid', 'Rafael', 'Bianca', 'Emile', 'Daria', 'Gregor', 'Yara', 'Viktor'
+    'Alejandro', 'Camila', 'Diego', 'Valentina', 'Mateo', 'Isabela', 'Sebastián', 'Luca',
+    'Andrés', 'Gabriel', 'Joaquín', 'Mariana', 'Carlos', 'Tomas', 'Rafael', 'Edwin',
+    'Emilio', 'Catalina', 'Fernando', 'Renata'
 ];
 
 const PM_LAST_NAMES = [
-    'Vasquez', 'Brennan', 'Okafor', 'Lindström', 'Moreau', 'Petrov', 'Kowalski',
-    'Richter', 'Fontaine', 'Nakamura', 'Alvarez', 'De Vries', 'Kovacs', 'Delgado',
-    'Hartmann', 'Bergström', 'Rossi', 'Larsson', 'Muller', 'Santiago', 'Volkov',
-    'Tanaka', 'Fischer', 'Barbosa', 'Nowak', 'Reyes', 'Johansson', 'Cruz'
+    'Velasco', 'Mendoza', 'Guerrero', 'Salazar', 'Castillo', 'Herrera', 'Morales', 'Ríos',
+    'Delgado', 'Espinoza', 'Guzmán', 'Navarro', 'Córdoba', 'Echeverría', 'Pacheco', 'Montero',
+    'Aguilar', 'Valenzuela', 'Carrasco', 'Ibarra'
 ];
 
 // All 10 ideologies mapped to their axis and direction
