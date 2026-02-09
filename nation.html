@@ -12,230 +12,230 @@
     
     <!-- Page-Specific Styles -->
     <style>
-        /* Nation Overview Header */
-        .nation-overview {
-            background: linear-gradient(135deg, #1e1e1e 0%, #151515 100%);
-            border-bottom: 2px solid #333;
-            padding: 24px;
-        }
-        .nation-overview h1 {
-            color: #ffcc00;
-            font-size: 2rem;
-            text-transform: uppercase;
-            letter-spacing: 3px;
-            margin-bottom: 16px;
-        }
-        .overview-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 16px;
-        }
-        .overview-item {
-            background: #252525;
-            padding: 12px 16px;
-            border-radius: 6px;
-            border-left: 3px solid #ffcc00;
-        }
-        .overview-label {
-            font-size: 0.7rem;
-            color: #888;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 4px;
-        }
-        .overview-value {
-            font-size: 1.1rem;
-            color: #e0e0e0;
-            font-weight: bold;
-        }
-        .overview-value.gold { color: #ffcc00; }
-        
-        /* Crisis Section */
-        .crisis-section {
-            padding: 24px;
-            background: #1a1a1a;
-            border-bottom: 1px solid #333;
-        }
-        .crisis-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-        }
-        .crisis-box {
-            background: #252525;
-            border: 2px dashed #333;
-            border-radius: 8px;
-            padding: 40px;
-            text-align: center;
-            color: #555;
-            font-style: italic;
-        }
-        .crisis-box.active {
-            border: 2px solid #ff4444;
-            background: #2a1a1a;
-            color: #ff4444;
-            font-style: normal;
-        }
-        
-        /* Stats Sections */
-        .stats-section {
-            padding: 24px;
-        }
-        .sector-block {
-            margin-bottom: 32px;
-        }
-        .sector-header {
-            color: #ffcc00;
-            font-size: 0.85rem;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            margin-bottom: 16px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid #333;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .sector-icon {
-            font-size: 1.2rem;
-        }
+    /* Nation Overview Header */
+    .nation-overview {
+        background: var(--topbar-bg);
+        border-bottom: 2px solid var(--border-main);
+        padding: 24px;
+    }
+    .nation-overview h1 {
+        color: var(--accent);
+        font-size: 2rem;
+        text-transform: uppercase;
+        letter-spacing: 3px;
+        margin-bottom: 16px;
+    }
+    .overview-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+    }
+    .overview-item {
+        background: var(--bg-card);
+        padding: 12px 16px;
+        border-radius: 6px;
+        border-left: 3px solid var(--accent);
+    }
+    .overview-label {
+        font-size: 0.7rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 4px;
+    }
+    .overview-value {
+        font-size: 1.1rem;
+        color: var(--text-primary);
+        font-weight: bold;
+    }
+    .overview-value.gold { color: var(--accent); }
+
+    /* Crisis Section */
+    .crisis-section {
+        padding: 24px;
+        background: var(--bg-panel);
+        border-bottom: 1px solid var(--border-main);
+    }
+    .crisis-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+    .crisis-box {
+        background: var(--bg-card);
+        border: 2px dashed var(--border-main);
+        border-radius: 8px;
+        padding: 40px;
+        text-align: center;
+        color: var(--text-dim);
+        font-style: italic;
+    }
+    .crisis-box.active {
+        border: 2px solid var(--red);
+        background: var(--bg-card);
+        color: var(--red);
+        font-style: normal;
+    }
+
+    /* Stats Sections */
+    .stats-section {
+        padding: 24px;
+    }
+    .sector-block {
+        margin-bottom: 32px;
+    }
+    .sector-header {
+        color: var(--accent);
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border-main);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .sector-icon {
+        font-size: 1.2rem;
+    }
+    .stat-boxes {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+    }
+    @media (max-width: 900px) {
         .stat-boxes {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
+            grid-template-columns: repeat(2, 1fr);
         }
-        @media (max-width: 900px) {
-            .stat-boxes {
-                grid-template-columns: repeat(2, 1fr);
-            }
+    }
+    @media (max-width: 600px) {
+        .stat-boxes {
+            grid-template-columns: 1fr;
         }
-        @media (max-width: 600px) {
-            .stat-boxes {
-                grid-template-columns: 1fr;
-            }
-        }
-        
-        /* Individual Stat Box */
-        .stat-box {
-            background: #1e1e1e;
-            border-radius: 6px;
-            padding: 14px;
-            border-left: 4px solid #333;
-            transition: border-color 0.3s;
-        }
-        .stat-box.good { border-left-color: #4CAF50; }
-        .stat-box.medium { border-left-color: #ff9800; }
-        .stat-box.bad { border-left-color: #ff4444; }
-        
-        .stat-box-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 6px;
-        }
-        .stat-box-name {
-            font-size: 0.8rem;
-            color: #e0e0e0;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .stat-box-value {
-            font-size: 1.2rem;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .stat-box-value.good { color: #4CAF50; }
-        .stat-box-value.medium { color: #ff9800; }
-        .stat-box-value.bad { color: #ff4444; }
-        
-        .stat-box-desc {
-            font-size: 0.72rem;
-            color: #666;
-            line-height: 1.4;
-            margin-bottom: 6px;
-        }
-        
-        /* Trend Arrows */
-        .trend-arrow {
-            font-size: 0.9rem;
-            font-weight: bold;
-        }
-        .trend-up { color: #4CAF50; }
-        .trend-down { color: #ff4444; }
-        .trend-neutral { color: #666; }
-        
-        /* For inverted stats, swap colors */
-        .trend-up.inverted { color: #ff4444; }
-        .trend-down.inverted { color: #4CAF50; }
-        
-        /* Ranking Badge */
-        .stat-box-footer {
-            display: flex;
-            justify-content: flex-end;
-            margin-top: 4px;
-        }
-        .ranking-badge {
-            font-size: 0.65rem;
-            color: #888;
-            background: #252525;
-            padding: 2px 6px;
-            border-radius: 3px;
-        }
-        .ranking-badge.first {
-            color: #ffcc00;
-            background: #2a2510;
-        }
-        
-        /* Voter Demographics Special Section */
-        .voter-axis {
-            background: #1e1e1e;
-            border-radius: 6px;
-            padding: 14px;
-            margin-bottom: 12px;
-        }
-        .voter-axis-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .voter-axis-left { color: #2196F3; }
-        .voter-axis-right { color: #ff9800; }
-        .voter-bar-container {
-            height: 24px;
-            background: #333;
-            border-radius: 4px;
-            overflow: hidden;
-            display: flex;
-        }
-        .voter-bar-left {
-            background: linear-gradient(90deg, #2196F3, #64B5F6);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 0.75rem;
-            font-weight: bold;
-        }
-        .voter-bar-right {
-            background: linear-gradient(90deg, #FFB74D, #ff9800);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 0.75rem;
-            font-weight: bold;
-            flex: 1;
-        }
-    </style>
+    }
+
+    /* Individual Stat Box */
+    .stat-box {
+        background: var(--bg-panel);
+        border-radius: 6px;
+        padding: 14px;
+        border-left: 4px solid var(--border-main);
+        transition: border-color 0.3s;
+    }
+    .stat-box.good { border-left-color: var(--green); }
+    .stat-box.medium { border-left-color: var(--orange); }
+    .stat-box.bad { border-left-color: var(--red); }
+
+    .stat-box-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+    }
+    .stat-box-name {
+        font-size: 0.8rem;
+        color: var(--text-primary);
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .stat-box-value {
+        font-size: 1.2rem;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .stat-box-value.good { color: var(--green); }
+    .stat-box-value.medium { color: var(--orange); }
+    .stat-box-value.bad { color: var(--red); }
+
+    .stat-box-desc {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        line-height: 1.4;
+        margin-bottom: 6px;
+    }
+
+    /* Trend Arrows */
+    .trend-arrow {
+        font-size: 0.9rem;
+        font-weight: bold;
+    }
+    .trend-up { color: var(--green); }
+    .trend-down { color: var(--red); }
+    .trend-neutral { color: var(--text-muted); }
+
+    /* For inverted stats, swap colors */
+    .trend-up.inverted { color: var(--red); }
+    .trend-down.inverted { color: var(--green); }
+
+    /* Ranking Badge */
+    .stat-box-footer {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 4px;
+    }
+    .ranking-badge {
+        font-size: 0.65rem;
+        color: var(--text-secondary);
+        background: var(--bg-card);
+        padding: 2px 6px;
+        border-radius: 3px;
+    }
+    .ranking-badge.first {
+        color: var(--accent);
+        background: var(--your-party-bg);
+    }
+
+    /* Voter Demographics Special Section */
+    .voter-axis {
+        background: var(--bg-panel);
+        border-radius: 6px;
+        padding: 14px;
+        margin-bottom: 12px;
+    }
+    .voter-axis-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .voter-axis-left { color: var(--blue); }
+    .voter-axis-right { color: var(--orange); }
+    .voter-bar-container {
+        height: 24px;
+        background: var(--border-main);
+        border-radius: 4px;
+        overflow: hidden;
+        display: flex;
+    }
+    .voter-bar-left {
+        background: linear-gradient(90deg, #2196F3, #64B5F6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 0.75rem;
+        font-weight: bold;
+    }
+    .voter-bar-right {
+        background: linear-gradient(90deg, #FFB74D, #ff9800);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 0.75rem;
+        font-weight: bold;
+        flex: 1;
+    }
+</style>
 </head>
 <body>
 
