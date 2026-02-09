@@ -313,6 +313,7 @@ async function renderGovernmentPage() {
         }
 
         // Check for pending PM candidates (player needs to select)
+        const primeMinister = ministries?.find(m => m.ministry_key === 'prime_minister');
         let hasPendingPMSelection = false;
         if (currentFaction) {
             const { count } = await _supabase
