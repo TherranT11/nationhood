@@ -1103,6 +1103,227 @@ async function applyIdeologyPenalty(supabase, sponsorId, penalty) {
 }
 
 
+// ==================== IDEOLOGY TICK PROCESSOR (PHASE 2) ====================
+
+/**
+ * Process ideology shifts for all factions in a nation based on this tick's
+ * legislative activity (votes, sponsorship, bill passage).
+ *
+ * Called once per nation per tick, AFTER vote resolution (resolveExpiredVotes)
+ * and BEFORE approval calculations.
+ *
+ * Flow per faction:
+ *   1. Query all bills resolved this tick
+ *   2. Categorize each faction's votes (yes/no/sponsor/passed)
+ *   3. Calculate ideology axis shifts
+ *   4. Apply shifts to faction_ideology table
+ *   5. Snapshot to ideology_history
+ *   6. Run drift detection (compare to previous tick)
+ *   7. Fire hypocrisy events + approval penalties
+ *
+ * @param {object} supabase       - Supabase client
+ * @param {object} nation         - Full nation row
+ * @param {number} currentTick    - The new tick number
+ * @param {Array}  resolutions    - Results from resolveExpiredVotes [{billId, result:'passed'|'failed', ...}]
+ * @returns {Promise<Array>}      Array of drift/hypocrisy event objects
+ */
+async function processIdeologyTick(supabase, nation, currentTick, resolutions) {
+    // 1. Get all player factions in this nation (NPCs don't have ideology rows)
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, faction_name, ideology_value_1, ideology_value_2')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party')
+        .eq('is_npc', false);
+
+    if (!factions || factions.length === 0) return [];
+
+    // 2. Use bill IDs from resolutions (already resolved this tick)
+    const resolvedBillIds = (resolutions || []).map(r => r.billId);
+    const passedBillIds = new Set((resolutions || []).filter(r => r.result === 'passed').map(r => r.billId));
+
+    // If no bills were resolved, still snapshot current scores for history
+    if (resolvedBillIds.length === 0) {
+        for (const faction of factions) {
+            await snapshotIdeology(supabase, faction.id, currentTick);
+        }
+        return [];
+    }
+
+    // 3. Fetch full bill data (with articles + policies) for resolved bills
+    const { data: allResolvedBills } = await supabase
+        .from('bills')
+        .select('*, bill_articles(*, policies(*))')
+        .in('id', resolvedBillIds);
+
+    if (!allResolvedBills || allResolvedBills.length === 0) {
+        for (const faction of factions) {
+            await snapshotIdeology(supabase, faction.id, currentTick);
+        }
+        return [];
+    }
+
+    // 4. Get all votes on resolved bills
+    const { data: allVotes } = await supabase
+        .from('bill_support')
+        .select('bill_id, faction_id, stance')
+        .in('bill_id', resolvedBillIds);
+    const allEvents = [];
+
+    // 4. Process each faction
+    for (const faction of factions) {
+        const factionVotes = (allVotes || []).filter(v => v.faction_id === faction.id);
+
+        // Categorize bills by this faction's relationship
+        const votedYesBills = [];
+        const votedNoBills = [];
+        const sponsoredBills = [];
+        const passedBillsYesVote = [];
+
+        for (const bill of allResolvedBills) {
+            const vote = factionVotes.find(v => v.bill_id === bill.id);
+
+            if (bill.proposed_by === faction.id) {
+                sponsoredBills.push(bill);
+            }
+
+            if (vote?.stance === 'yes') {
+                votedYesBills.push(bill);
+                if (passedBillIds.has(bill.id)) {
+                    passedBillsYesVote.push(bill);
+                }
+            } else if (vote?.stance === 'no') {
+                votedNoBills.push(bill);
+            }
+        }
+
+        // Skip if faction had zero involvement — still snapshot
+        if (votedYesBills.length === 0 && votedNoBills.length === 0 && sponsoredBills.length === 0) {
+            await snapshotIdeology(supabase, faction.id, currentTick);
+            continue;
+        }
+
+        // 5. Load current ideology scores
+        const ideologyRow = await loadFactionIdeology(supabase, faction.id);
+        if (!ideologyRow) {
+            console.warn(`No ideology row for ${faction.faction_name} (${faction.id}) — skipping`);
+            continue;
+        }
+
+        const currentScores = extractAxisScores(ideologyRow);
+
+        // 6. Calculate and apply shifts
+        const shifts = calculateIdeologyShifts({
+            votedYesBills,
+            votedNoBills,
+            sponsoredBills,
+            passedBills: passedBillsYesVote
+        });
+
+        const newScores = applyIdeologyShifts(currentScores, shifts);
+
+        // 7. Write updated scores to faction_ideology
+        const updateObj = {};
+        let hasChanges = false;
+        for (const axis of IDEOLOGY_AXES) {
+            if (newScores[axis.key] !== currentScores[axis.key]) {
+                updateObj[axis.key] = newScores[axis.key];
+                hasChanges = true;
+            }
+        }
+
+        if (hasChanges) {
+            const { error: updateError } = await supabase
+                .from('faction_ideology')
+                .update(updateObj)
+                .eq('faction_id', faction.id);
+            if (updateError) console.error(`Ideology update failed for ${faction.faction_name}:`, updateError.message);
+        }
+
+        // 8. Snapshot to ideology_history
+        await snapshotIdeology(supabase, faction.id, currentTick, newScores);
+
+        // 9. Drift detection
+        const previousSnapshot = await loadPreviousIdeologySnapshot(supabase, faction.id, currentTick);
+        if (previousSnapshot) {
+            const previousScores = extractAxisScores(previousSnapshot);
+            const driftEvents = detectIdeologyDrift(newScores, previousScores, ideologyRow, faction.faction_name);
+
+            for (const evt of driftEvents) {
+                allEvents.push({ ...evt, factionId: faction.id, factionName: faction.faction_name });
+
+                // Log as civic event (non-blocking — event_log may have FK constraints)
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    faction_id: faction.id,
+                    event_name: evt.type === 'hypocrisy' ? 'IDEOLOGY_HYPOCRISY' : 'IDEOLOGY_DRIFT',
+                    description_used: evt.message,
+                    category: 'CIVIC',
+                    effects_applied: {
+                        type: evt.type, severity: evt.severity,
+                        axis: evt.axisKey, delta: evt.delta, score: evt.score
+                    },
+                    fired_at_tick: currentTick
+                }).then(({ error }) => {
+                    if (error) console.warn('Ideology event log failed (non-blocking):', error.message);
+                });
+
+                // 10. Apply hypocrisy approval penalty
+                if (evt.type === 'hypocrisy') {
+                    let declaredDir = null;
+                    if (ideologyRow.declared_axis_1 === evt.axisKey) declaredDir = ideologyRow.declared_direction_1;
+                    else if (ideologyRow.declared_axis_2 === evt.axisKey) declaredDir = ideologyRow.declared_direction_2;
+
+                    if (declaredDir !== null) {
+                        const penalty = calculateHypocrisyPenalty(evt.score, declaredDir);
+                        if (penalty < 0) {
+                            const { data: fData } = await supabase
+                                .from('factions').select('approval_rating').eq('id', faction.id).single();
+                            if (fData) {
+                                const newApproval = Math.max(0, (fData.approval_rating ?? 50) + penalty);
+                                await supabase.from('factions')
+                                    .update({ approval_rating: newApproval }).eq('id', faction.id);
+                                console.log(`HYPOCRISY: ${faction.faction_name} approval ${fData.approval_rating} → ${newApproval} (${penalty})`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Log shift summary to console
+        const shiftEntries = Object.entries(shifts).filter(([, v]) => v !== 0);
+        if (shiftEntries.length > 0) {
+            const shiftStr = shiftEntries.map(([axis, delta]) => {
+                const axisDef = IDEOLOGY_AXES.find(a => a.key === axis);
+                const label = delta < 0 ? axisDef?.leftLabel : axisDef?.rightLabel;
+                return `${axis}: ${delta > 0 ? '+' : ''}${delta} → ${newScores[axis]} (${label})`;
+            }).join(', ');
+            console.log(`Ideology shifts for ${faction.faction_name}: ${shiftStr}`);
+        }
+    }
+
+    return allEvents;
+}
+
+/**
+ * Helper: snapshot a faction's current ideology scores to history.
+ * If scores are not provided, loads them from faction_ideology.
+ */
+async function snapshotIdeology(supabase, factionId, tick, scores) {
+    if (!scores) {
+        const row = await loadFactionIdeology(supabase, factionId);
+        if (!row) return;
+        scores = extractAxisScores(row);
+    }
+    const historyRow = { faction_id: factionId, tick };
+    for (const axis of IDEOLOGY_AXES) { historyRow[axis.key] = scores[axis.key]; }
+    await supabase.from('ideology_history')
+        .upsert(historyRow, { onConflict: 'faction_id,tick' })
+        .then(({ error }) => { if (error) console.warn('Ideology snapshot error:', error.message); });
+}
+
+
 // ==================== BILL RESOLUTION ENGINE ====================
 
 /**
@@ -1373,29 +1594,36 @@ async function advanceTick(supabase) {
         const resolutions = await resolveExpiredVotes(supabase, nation.id);
         if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
 
-        // 6. Process purge approval decay (autocracy scapegoat mechanic)
+        // 6. Process ideology shifts from this tick's votes/bills
+        const ideologyEvents = await processIdeologyTick(supabase, nation, newTick, resolutions);
+        if (ideologyEvents.length > 0) {
+            summary.ideology = summary.ideology || [];
+            summary.ideology.push({ nation: nation.name, events: ideologyEvents });
+        }
+
+        // 7. Process purge approval decay (autocracy scapegoat mechanic)
         if (nation.government_type === 'Autocracy') {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
-        // 7. Process faction loyalty (autocracy)
+        // 8. Process faction loyalty (autocracy)
         if (nation.government_type === 'Autocracy') {
             await processLoyaltyTick(supabase, nation);
         }
 
-        // 8. Auto-resolve shakeups that are 1+ ticks old
+        // 9. Auto-resolve shakeups that are 1+ ticks old
         if (nation.government_type === 'Autocracy') {
             await autoResolveStaleShakeups(supabase, nation.id, newTick);
         }
 
-        // 9. Process inactive parties (12-tick warning, 24-tick deletion)
+        // 10. Process inactive parties (12-tick warning, 24-tick deletion)
         const inactiveResults = await processInactiveParties(supabase, nation, newTick);
         if (inactiveResults.length > 0) summary.inactive = (summary.inactive || []).concat(inactiveResults);
 
-        // 10. Snapshot nation stats to history (for trend arrows)
+        // 11. Snapshot nation stats to history (for trend arrows)
         await snapshotNationHistory(supabase, nation, newTick);
 
-        // 11. Process random events
+        // 12. Process random events
         const eventResults = await processEvents(supabase, nation, newTick);
         if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
     }
