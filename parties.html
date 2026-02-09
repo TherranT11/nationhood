@@ -33,6 +33,240 @@
         .action-grid .action-card .action-btn {
             margin-top: auto;
         }
+
+        /* ===== IDEOLOGY SPECTRUM VISUALIZATION ===== */
+        .ideology-spectrum-section {
+            margin-top: 16px;
+            padding-top: 14px;
+            border-top: 1px solid var(--border-light);
+        }
+        .ideology-spectrum-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .ideology-spectrum-title {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: bold;
+        }
+        .ideology-spectrum-toggle {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            transition: transform 0.2s;
+        }
+        .ideology-spectrum-toggle.collapsed {
+            transform: rotate(-90deg);
+        }
+        .ideology-summary-label {
+            font-size: 0.78rem;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+            line-height: 1.5;
+            font-style: italic;
+            opacity: 0.85;
+        }
+        .ideology-axes-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .ideology-axes-container.collapsed {
+            display: none;
+        }
+        .ideology-axis-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .axis-label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            width: 72px;
+            text-align: right;
+            flex-shrink: 0;
+            font-weight: 600;
+        }
+        .axis-label.left { color: var(--text-secondary); }
+        .axis-label.right { color: var(--text-secondary); }
+
+        .axis-bar-container {
+            flex: 1;
+            height: 14px;
+            background: var(--bg-card);
+            border-radius: 7px;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid var(--border-light);
+        }
+
+        /* Center line */
+        .axis-bar-container::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--text-muted);
+            transform: translateX(-1px);
+            z-index: 2;
+            opacity: 0.5;
+        }
+
+        /* Filled portion from center */
+        .axis-bar-fill {
+            position: absolute;
+            top: 2px;
+            bottom: 2px;
+            border-radius: 5px;
+            transition: left 0.6s ease, width 0.6s ease;
+            z-index: 1;
+            opacity: 0.85;
+        }
+
+        /* Score marker dot */
+        .axis-bar-marker {
+            position: absolute;
+            top: 50%;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            transform: translate(-50%, -50%);
+            z-index: 3;
+            transition: left 0.6s ease;
+            box-shadow: 0 0 4px rgba(0,0,0,0.5);
+        }
+
+        .axis-score {
+            font-size: 0.7rem;
+            font-weight: bold;
+            width: 36px;
+            text-align: center;
+            flex-shrink: 0;
+            font-family: 'Courier New', monospace;
+        }
+        .axis-score.positive { color: var(--green); }
+        .axis-score.negative { color: var(--red); }
+        .axis-score.neutral  { color: var(--text-muted); }
+
+        /* Trend arrow next to score */
+        .axis-trend {
+            font-size: 0.65rem;
+            width: 16px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .axis-trend.up   { color: var(--green); }
+        .axis-trend.down { color: var(--red); }
+        .axis-trend.flat { color: var(--text-faint); }
+
+        /* Intensity label under bar */
+        .axis-intensity-label {
+            font-size: 0.62rem;
+            color: var(--text-muted);
+            text-align: center;
+            margin-top: 1px;
+            font-style: italic;
+        }
+
+        /* ===== IDEOLOGY EVENTS FEED ===== */
+        .ideology-events-section {
+            margin-top: 30px;
+        }
+        .ideology-event-item {
+            padding: 12px;
+            background: var(--bg-card);
+            border-radius: 4px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        .ideology-event-item:last-child { margin-bottom: 0; }
+        .ideology-event-icon {
+            font-size: 1.2rem;
+            flex-shrink: 0;
+            width: 28px;
+            text-align: center;
+            padding-top: 2px;
+        }
+        .ideology-event-content { flex: 1; }
+        .ideology-event-message {
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+        .ideology-event-meta {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+        .ideology-event-item.severity-minor {
+            border-left: 3px solid var(--blue);
+        }
+        .ideology-event-item.severity-major {
+            border-left: 3px solid var(--orange);
+        }
+        .ideology-event-item.severity-extreme {
+            border-left: 3px solid var(--red);
+        }
+        .ideology-event-item.hypocrisy {
+            border-left: 3px solid #ff1744;
+            background: rgba(255, 23, 68, 0.08);
+        }
+        body.light-mode .ideology-event-item.hypocrisy {
+            background: rgba(255, 23, 68, 0.06);
+        }
+        .ideology-events-empty {
+            text-align: center;
+            color: var(--text-muted);
+            font-style: italic;
+            padding: 20px;
+        }
+
+        /* ===== YOUR PARTY IDEOLOGY DETAIL PANEL ===== */
+        .your-ideology-panel {
+            background: var(--bg-panel);
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid var(--border-main);
+            margin-bottom: 24px;
+        }
+        .your-ideology-panel .ideology-axes-container {
+            gap: 14px;
+        }
+        .your-ideology-panel .axis-bar-container {
+            height: 18px;
+            border-radius: 9px;
+        }
+        .your-ideology-panel .axis-label {
+            font-size: 0.72rem;
+            width: 85px;
+        }
+        .your-ideology-panel .axis-score {
+            font-size: 0.78rem;
+            width: 40px;
+        }
+        .declared-badge {
+            display: inline-block;
+            background: var(--accent);
+            color: #121212;
+            font-size: 0.55rem;
+            font-weight: bold;
+            padding: 1px 5px;
+            border-radius: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-left: 4px;
+            vertical-align: middle;
+        }
     </style>
 </head>
 <body>
@@ -50,6 +284,11 @@
 let currentFaction = null;
 let currentNation = null;
 
+// Ideology data cache (loaded once per page render)
+let ideologyDataMap = {};   // factionId → faction_ideology row
+let ideologyHistoryMap = {}; // factionId → array of history snapshots
+let ideologyEventsCache = []; // recent drift/hypocrisy events for this nation
+
 initPage('parties', async (state) => {
     const { nation, faction } = state;
     currentFaction = faction;
@@ -66,6 +305,308 @@ initPage('parties', async (state) => {
     }
     await renderPartiesPage(nation, faction);
 });
+
+
+// ===================================================================
+// IDEOLOGY DATA LOADING
+// ===================================================================
+
+/**
+ * Pre-load all ideology data for the nation:
+ *  - faction_ideology rows (current scores)
+ *  - ideology_history (last 2 snapshots per faction for trend arrows)
+ *  - event_log (recent drift/hypocrisy events)
+ */
+async function loadAllIdeologyData(nationId) {
+    ideologyDataMap = {};
+    ideologyHistoryMap = {};
+    ideologyEventsCache = [];
+
+    // 1. Load current ideology scores for all factions
+    const ideologies = await loadNationIdeologies(_supabase, nationId);
+    for (const row of ideologies) {
+        ideologyDataMap[row.faction_id] = row;
+    }
+
+    // 2. Load recent history (last 2 snapshots per faction for trend detection)
+    const factionIds = Object.keys(ideologyDataMap);
+    if (factionIds.length > 0) {
+        const { data: history } = await _supabase
+            .from('ideology_history')
+            .select('*')
+            .in('faction_id', factionIds)
+            .order('tick', { ascending: false })
+            .limit(factionIds.length * 3); // ~3 snapshots per faction
+
+        if (history) {
+            for (const snap of history) {
+                if (!ideologyHistoryMap[snap.faction_id]) {
+                    ideologyHistoryMap[snap.faction_id] = [];
+                }
+                ideologyHistoryMap[snap.faction_id].push(snap);
+            }
+        }
+    }
+
+    // 3. Load recent ideology events for this nation
+    const { data: events } = await _supabase
+        .from('event_log')
+        .select('*')
+        .eq('nation_id', nationId)
+        .in('event_name', ['IDEOLOGY_DRIFT', 'IDEOLOGY_HYPOCRISY'])
+        .order('fired_at_tick', { ascending: false })
+        .limit(20);
+
+    ideologyEventsCache = events || [];
+}
+
+
+// ===================================================================
+// IDEOLOGY SPECTRUM RENDERING
+// ===================================================================
+
+/**
+ * Build the HTML for 5-axis ideology spectrum bars for a party card.
+ * Compact version used inside party display cards.
+ *
+ * @param {string} factionId - Faction UUID
+ * @param {boolean} expanded - Whether to default to expanded (for your party)
+ * @returns {string} HTML string
+ */
+function buildIdeologySpectrum(factionId, expanded = false) {
+    const ideoRow = ideologyDataMap[factionId];
+    if (!ideoRow) {
+        return `
+            <div class="ideology-spectrum-section">
+                <div class="ideology-spectrum-title" style="margin-bottom: 6px;">Ideology Spectrum</div>
+                <div style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">No ideology data yet</div>
+            </div>`;
+    }
+
+    const profile = getFullIdeologyProfile(ideoRow);
+    const summaryParts = profile
+        .filter(p => p.label !== 'Centrist')
+        .map(p => p.label);
+    const summaryText = summaryParts.length > 0
+        ? summaryParts.join(' · ')
+        : 'True Centrist';
+
+    // Get previous snapshot for trend arrows
+    const historySnaps = ideologyHistoryMap[factionId] || [];
+    const prevSnap = historySnaps.length >= 2 ? historySnaps[1] : null;
+
+    const barsHTML = profile.map(p => {
+        const axis = p.axisDef;
+        const score = p.score;
+        const absScore = Math.abs(score);
+
+        // Calculate bar fill position
+        // Score maps -100..+100 to 0%..100% (center = 50%)
+        const pct = ((score + 100) / 200) * 100;
+
+        // Fill starts at center (50%) and extends to score position
+        let fillLeft, fillWidth;
+        if (score < 0) {
+            fillLeft = pct;
+            fillWidth = 50 - pct;
+        } else if (score > 0) {
+            fillLeft = 50;
+            fillWidth = pct - 50;
+        } else {
+            fillLeft = 50;
+            fillWidth = 0;
+        }
+
+        // Color: use the axis color based on which side the score is on
+        const fillColor = score < 0 ? axis.leftColor : axis.rightColor;
+
+        // Score display class
+        const scoreClass = score > 0 ? 'positive' : score < 0 ? 'negative' : 'neutral';
+
+        // Trend arrow from history
+        let trendHTML = '<span class="axis-trend flat">—</span>';
+        if (prevSnap) {
+            const prevScore = prevSnap[axis.key] || 0;
+            const delta = score - prevScore;
+            if (delta > 0) trendHTML = '<span class="axis-trend up">▲</span>';
+            else if (delta < 0) trendHTML = '<span class="axis-trend down">▼</span>';
+        }
+
+        // Declared axis badge
+        let declaredBadge = '';
+        if (ideoRow.declared_axis_1 === axis.key || ideoRow.declared_axis_2 === axis.key) {
+            declaredBadge = '<span class="declared-badge">declared</span>';
+        }
+
+        return `
+            <div class="ideology-axis-row">
+                <span class="axis-label left">${axis.leftLabel}${declaredBadge}</span>
+                <div class="axis-bar-container">
+                    <div class="axis-bar-fill" style="left:${fillLeft}%;width:${fillWidth}%;background:${fillColor};"></div>
+                    <div class="axis-bar-marker" style="left:${pct}%;background:${fillColor};"></div>
+                </div>
+                <span class="axis-label right">${axis.rightLabel}</span>
+                <span class="axis-score ${scoreClass}">${score > 0 ? '+' : ''}${score}</span>
+                ${trendHTML}
+            </div>`;
+    }).join('');
+
+    const collapsedClass = expanded ? '' : 'collapsed';
+    const toggleClass = expanded ? '' : 'collapsed';
+
+    return `
+        <div class="ideology-spectrum-section">
+            <div class="ideology-spectrum-header" onclick="toggleIdeologySpectrum(this)">
+                <span class="ideology-spectrum-title">Ideology Spectrum</span>
+                <span class="ideology-spectrum-toggle ${toggleClass}">▼</span>
+            </div>
+            <div class="ideology-summary-label">${summaryText}</div>
+            <div class="ideology-axes-container ${collapsedClass}">
+                ${barsHTML}
+            </div>
+        </div>`;
+}
+
+/**
+ * Build the "Your Party Ideology" detail panel — larger version with more info.
+ * Shown above the party cards as a dedicated panel for the player's faction.
+ */
+function buildYourIdeologyPanel(factionId) {
+    const ideoRow = ideologyDataMap[factionId];
+    if (!ideoRow) return '';
+
+    const profile = getFullIdeologyProfile(ideoRow);
+    const summaryParts = profile.filter(p => p.label !== 'Centrist').map(p => p.label);
+    const summaryText = summaryParts.length > 0 ? summaryParts.join(' · ') : 'True Centrist';
+
+    const historySnaps = ideologyHistoryMap[factionId] || [];
+    const prevSnap = historySnaps.length >= 2 ? historySnaps[1] : null;
+
+    const barsHTML = profile.map(p => {
+        const axis = p.axisDef;
+        const score = p.score;
+        const pct = ((score + 100) / 200) * 100;
+
+        let fillLeft, fillWidth;
+        if (score < 0) { fillLeft = pct; fillWidth = 50 - pct; }
+        else if (score > 0) { fillLeft = 50; fillWidth = pct - 50; }
+        else { fillLeft = 50; fillWidth = 0; }
+
+        const fillColor = score < 0 ? axis.leftColor : axis.rightColor;
+        const scoreClass = score > 0 ? 'positive' : score < 0 ? 'negative' : 'neutral';
+
+        let trendHTML = '<span class="axis-trend flat">—</span>';
+        if (prevSnap) {
+            const prevScore = prevSnap[axis.key] || 0;
+            const delta = score - prevScore;
+            if (delta > 0) trendHTML = `<span class="axis-trend up">▲ +${delta}</span>`;
+            else if (delta < 0) trendHTML = `<span class="axis-trend down">▼ ${delta}</span>`;
+        }
+
+        let declaredBadge = '';
+        if (ideoRow.declared_axis_1 === axis.key || ideoRow.declared_axis_2 === axis.key) {
+            declaredBadge = ' <span class="declared-badge">declared</span>';
+        }
+
+        return `
+            <div class="ideology-axis-row">
+                <span class="axis-label left">${axis.leftLabel}${declaredBadge}</span>
+                <div class="axis-bar-container">
+                    <div class="axis-bar-fill" style="left:${fillLeft}%;width:${fillWidth}%;background:${fillColor};"></div>
+                    <div class="axis-bar-marker" style="left:${pct}%;background:${fillColor};"></div>
+                </div>
+                <span class="axis-label right">${axis.rightLabel}${declaredBadge}</span>
+                <span class="axis-score ${scoreClass}">${score > 0 ? '+' : ''}${score}</span>
+                ${trendHTML}
+            </div>`;
+    }).join('');
+
+    // Recent events for YOUR faction only
+    const myEvents = ideologyEventsCache
+        .filter(e => e.faction_id === factionId)
+        .slice(0, 5);
+
+    let eventsHTML = '';
+    if (myEvents.length > 0) {
+        eventsHTML = `
+            <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-light);">
+                <div style="font-size:0.7rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; font-weight:bold;">Recent Ideology Shifts</div>
+                ${myEvents.map(e => buildEventItem(e)).join('')}
+            </div>`;
+    }
+
+    return `
+        <div class="your-ideology-panel">
+            <div class="section-header" style="margin-bottom: 8px;">Your Ideology Profile</div>
+            <div class="ideology-summary-label" style="font-size:0.9rem; margin-bottom:16px;">${summaryText}</div>
+            <div class="ideology-axes-container">
+                ${barsHTML}
+            </div>
+            ${eventsHTML}
+        </div>`;
+}
+
+/**
+ * Build a single drift/hypocrisy event item for the feed.
+ */
+function buildEventItem(event) {
+    const effects = event.effects_applied || {};
+    const isHypocrisy = event.event_name === 'IDEOLOGY_HYPOCRISY' || effects.type === 'hypocrisy';
+    const severity = effects.severity || 'minor';
+
+    let icon = '📊';
+    if (isHypocrisy) icon = '⚠️';
+    else if (severity === 'extreme') icon = '🔴';
+    else if (severity === 'major') icon = '🟠';
+    else icon = '🔵';
+
+    const sevClass = isHypocrisy ? 'hypocrisy' : `severity-${severity}`;
+
+    return `
+        <div class="ideology-event-item ${sevClass}">
+            <div class="ideology-event-icon">${icon}</div>
+            <div class="ideology-event-content">
+                <div class="ideology-event-message">${event.description_used || event.event_name}</div>
+                <div class="ideology-event-meta">Tick ${event.fired_at_tick}${effects.axis ? ` · ${effects.axis}` : ''}${effects.delta ? ` · Δ${effects.delta > 0 ? '+' : ''}${effects.delta}` : ''}</div>
+            </div>
+        </div>`;
+}
+
+/**
+ * Build the nation-wide ideology events feed section.
+ */
+function buildIdeologyEventsFeed() {
+    if (ideologyEventsCache.length === 0) {
+        return `
+            <div class="ideology-events-section">
+                <div class="section-header">Ideology Events</div>
+                <div class="ideology-events-empty">No ideology shifts detected yet. Events appear as factions vote on bills.</div>
+            </div>`;
+    }
+
+    const eventsHTML = ideologyEventsCache.slice(0, 15).map(e => buildEventItem(e)).join('');
+
+    return `
+        <div class="ideology-events-section">
+            <div class="section-header">Ideology Events</div>
+            <div style="background:var(--bg-panel); border-radius:6px; padding:16px; max-height:350px; overflow-y:auto;">
+                ${eventsHTML}
+            </div>
+        </div>`;
+}
+
+/** Toggle collapse/expand of spectrum bars in a party card */
+function toggleIdeologySpectrum(headerEl) {
+    const container = headerEl.nextElementSibling.nextElementSibling; // skip summary label
+    const toggle = headerEl.querySelector('.ideology-spectrum-toggle');
+    container.classList.toggle('collapsed');
+    toggle.classList.toggle('collapsed');
+}
+
+
+// ===================================================================
+// MAIN PAGE RENDER
+// ===================================================================
 
 async function renderPartiesPage(nation, faction) {
     const isAutocracy = nation.government_type === 'Autocracy';
@@ -97,6 +638,9 @@ async function renderPartiesPage(nation, faction) {
                 </div>`;
             return;
         }
+
+        // === Load all ideology data in parallel ===
+        await loadAllIdeologyData(nation.id);
 
         let election = null;
         if (!isAutocracy) {
@@ -163,6 +707,9 @@ async function renderPartiesPage(nation, faction) {
                 firstStatClass = approval >= 50 ? 'good' : approval <= 30 ? 'bad' : '';
             }
 
+            // Ideology spectrum bars (expanded by default for your party)
+            const spectrumHTML = buildIdeologySpectrum(party.id, isYourParty);
+
             return `
                 <div class="party-display-card ${isYourParty ? 'your-party' : ''}">
                     <div class="party-card-header">
@@ -199,6 +746,7 @@ async function renderPartiesPage(nation, faction) {
                             <div class="party-stat-value">$${(party.party_funds || 0).toLocaleString()}</div>
                         </div>
                     </div>
+                    ${spectrumHTML}
                 </div>`;
         }
 
@@ -219,11 +767,10 @@ async function renderPartiesPage(nation, faction) {
             const myLoyalty = faction.loyalty ?? 50;
             seatDeficit = Math.max(0, rulingSeats - mySeats);
             seizeCost = 15 + Math.floor(seatDeficit / 10);
-            // Loyalty modifier
             if (myLoyalty < 15) {
-                loyaltyModifier = -Math.round(seizeCost * 0.2);  // -20%
+                loyaltyModifier = -Math.round(seizeCost * 0.2);
             } else if (myLoyalty > 75) {
-                loyaltyModifier = Math.round(seizeCost * 0.1);   // +10%
+                loyaltyModifier = Math.round(seizeCost * 0.1);
             }
             seizeCost = Math.max(1, seizeCost + loyaltyModifier);
         }
@@ -354,6 +901,12 @@ async function renderPartiesPage(nation, faction) {
         `;
         }
 
+        // === Build your ideology detail panel (if player has a faction) ===
+        const yourIdeologyHTML = faction ? buildYourIdeologyPanel(faction.id) : '';
+
+        // === Build ideology events feed ===
+        const ideologyEventsFeedHTML = buildIdeologyEventsFeed();
+
         document.getElementById('content-area').innerHTML = `
             <div class="panel-padding">
                 <div class="section-header">${headerText} in ${nation.name}</div>
@@ -378,6 +931,9 @@ async function renderPartiesPage(nation, faction) {
                     </div>
                 </div>
 
+                <!-- Your Ideology Profile (detailed panel for player) -->
+                ${yourIdeologyHTML}
+
                 ${isAutocracy ? `
                     <!-- Autocracy: single section -->
                     <div class="parties-section-label regime">⚡ Regime Factions</div>
@@ -399,6 +955,9 @@ async function renderPartiesPage(nation, faction) {
                         : '<div class="parties-section-empty">No opposition parties.</div>'
                     }
                 `}
+
+                <!-- Ideology Events Feed -->
+                ${ideologyEventsFeedHTML}
 
                 ${campaignActionsHTML}
             </div>`;
