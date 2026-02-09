@@ -1594,6 +1594,72 @@ async function failBill(supabase, bill) {
  * @param {object} supabase - Supabase client
  * @returns {Promise<object>} Summary of what happened this tick
  */
+
+/**
+ * Process elections for a democracy nation during a tick.
+ * - If an election is scheduled for this tick, run process_election RPC
+ * - After completing, schedule the next election
+ * - If no future election exists, create one
+ */
+async function processElections(supabase, nation, currentTick) {
+    if (nation.government_type === 'Autocracy') return [];
+
+    const results = [];
+
+    // 1. Check for elections due this tick
+    const { data: dueElections } = await supabase
+        .from('elections')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .lte('election_tick', currentTick);
+
+    for (const election of (dueElections || [])) {
+        console.log(`Processing election for ${nation.name} (tick ${currentTick})`);
+
+        const { data, error } = await supabase.rpc('process_election', {
+            election_nation_id: nation.id,
+            election_id: election.id
+        });
+
+        if (error) {
+            console.error('Election processing error:', error);
+            continue;
+        }
+
+        results.push({
+            electionId: election.id,
+            nation: nation.name,
+            result: data
+        });
+    }
+
+    // 2. Ensure a future election is always scheduled
+    const { data: futureElection } = await supabase
+        .from('elections')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .gt('election_tick', currentTick)
+        .limit(1)
+        .maybeSingle();
+
+    if (!futureElection) {
+        const frequency = nation.election_frequency || 48;
+        const nextTick = currentTick + frequency;
+
+        await supabase.from('elections').insert({
+            nation_id: nation.id,
+            election_tick: nextTick,
+            status: 'scheduled'
+        });
+
+        console.log(`Scheduled next election for ${nation.name} at tick ${nextTick}`);
+    }
+
+    return results;
+}
+
 async function advanceTick(supabase) {
     // 1. Increment tick
     const { data: shard } = await supabase
@@ -1621,6 +1687,13 @@ async function advanceTick(supabase) {
         const costResult = await processOngoingCosts(supabase, nation, newTick);
         if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
 
+        // 4b. Process elections (democracy only)
+        const electionResults = await processElections(supabase, nation, newTick);
+        if (electionResults.length > 0) {
+            summary.elections = summary.elections || [];
+            summary.elections.push({ nation: nation.name, elections: electionResults });
+        }
+        
         // 5. Resolve expired votes for this nation
         const resolutions = await resolveExpiredVotes(supabase, nation.id);
         if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
