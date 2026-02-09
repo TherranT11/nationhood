@@ -6,16 +6,14 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="css/dashboard.css">
     <style>
-        body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; }
 
-        /* Layout */
         .admin-container { max-width: 1400px; margin: 0 auto; padding: 24px; }
         .admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 2px solid #ffcc00; padding-bottom: 16px; }
         .admin-title { font-size: 1.6rem; color: #ffcc00; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; }
         .admin-subtitle { font-size: 0.85rem; color: #888; margin-top: 4px; }
         .admin-actions { display: flex; gap: 10px; }
 
-        /* Buttons */
         .btn { padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px; }
         .btn:hover { transform: translateY(-1px); }
         .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
@@ -23,7 +21,6 @@
         .btn-primary:hover { box-shadow: 0 4px 12px rgba(255, 204, 0, 0.3); }
         .btn-danger { background: #ff4444; color: #fff; }
         .btn-danger:hover { box-shadow: 0 4px 12px rgba(255, 68, 68, 0.3); }
-        .btn-success { background: #4CAF50; color: #fff; }
         .btn-ghost { background: #252525; color: #aaa; border: 1px solid #444; }
         .btn-ghost:hover { color: #fff; border-color: #666; }
         .btn-small { padding: 6px 12px; font-size: 0.75rem; }
@@ -32,21 +29,19 @@
         .btn-back { background: none; border: none; color: #888; cursor: pointer; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 6px; margin-bottom: 16px; padding: 0; }
         .btn-back:hover { color: #ffcc00; }
 
-        /* Filters */
         .filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
         .filters input, .filters select { padding: 10px 14px; background: #1a1a1a; border: 1px solid #333; border-radius: 5px; color: #e0e0e0; font-size: 0.85rem; }
         .filters input { flex: 1; min-width: 200px; }
         .filters input:focus, .filters select:focus { outline: none; border-color: #ffcc00; }
         .event-count { color: #888; font-size: 0.85rem; margin-left: auto; }
 
-        /* Event List */
         .event-card { background: #1a1a1a; border-radius: 8px; padding: 16px 20px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.2s; border-left: 4px solid #333; }
         .event-card:hover { background: #222; transform: translateX(4px); }
         .event-card.active { border-left-color: #4CAF50; }
         .event-card.inactive { border-left-color: #666; opacity: 0.6; }
         .event-card-left { flex: 1; }
         .event-card-name { font-weight: bold; color: #ffcc00; font-size: 1rem; margin-bottom: 4px; }
-        .event-card-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.78rem; color: #888; }
+        .event-card-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.78rem; color: #888; align-items: center; }
         .event-card-right { display: flex; align-items: center; gap: 12px; }
         .tag { display: inline-block; padding: 3px 10px; border-radius: 3px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
         .tag-category { background: #1a1a2a; color: #bb86fc; border: 1px solid #9b59b6; }
@@ -57,15 +52,15 @@
         .tag-scope-faction { background: #2a1a2a; color: #e040fb; border: 1px solid #e040fb; }
         .tag-active { background: #1a2a1a; color: #4CAF50; }
         .tag-inactive { background: #2a1a1a; color: #ff4444; }
+        .tag-random { background: #1a2a2a; color: #58a6ff; border: 1px solid #58a6ff; }
+        .tag-system { background: #2a1a2a; color: #ff9800; border: 1px solid #ff9800; }
 
-        /* Editor */
         .editor { background: #141414; border: 2px solid #333; border-radius: 12px; overflow: hidden; }
         .editor-header { background: #1a1a1a; padding: 20px 24px; border-bottom: 2px solid #ffcc00; display: flex; justify-content: space-between; align-items: center; }
         .editor-title { font-size: 1.2rem; color: #ffcc00; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
         .editor-body { padding: 24px; }
         .editor-footer { padding: 16px 24px; background: #1a1a1a; border-top: 1px solid #333; display: flex; justify-content: flex-end; gap: 10px; }
 
-        /* Form */
         .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
         .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
         .form-group { margin-bottom: 16px; }
@@ -75,34 +70,18 @@
         .form-textarea { min-height: 80px; resize: vertical; }
         .form-hint { font-size: 0.75rem; color: #666; margin-top: 4px; }
 
-        /* Section blocks inside editor */
         .editor-section { background: #1a1a1a; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; border: 1px solid #333; }
         .editor-section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
         .editor-section-title { font-size: 0.85rem; color: #ffcc00; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
-        .editor-section-count { font-size: 0.75rem; color: #666; }
 
-        /* Sub-item rows */
-        .sub-item { display: flex; gap: 10px; align-items: center; padding: 10px; background: #252525; border-radius: 6px; margin-bottom: 8px; flex-wrap: wrap; }
-        .sub-item:last-child { margin-bottom: 0; }
-        .sub-item .form-input, .sub-item .form-select, .sub-item .form-textarea { margin-bottom: 0; }
-        .sub-item-text { flex: 1; }
-        .sub-item-text .form-textarea { min-height: 60px; }
-
-        /* Description items */
         .desc-item { background: #252525; border-radius: 6px; padding: 12px; margin-bottom: 8px; display: flex; gap: 10px; align-items: flex-start; }
         .desc-item .form-textarea { flex: 1; min-height: 60px; }
-
-        /* Trigger items */
         .trigger-item { display: grid; grid-template-columns: 1fr 100px 100px 36px; gap: 10px; align-items: center; padding: 10px; background: #252525; border-radius: 6px; margin-bottom: 8px; }
-
-        /* Effect items */
         .effect-item { display: grid; grid-template-columns: 1fr 100px 140px 36px; gap: 10px; align-items: center; padding: 10px; background: #252525; border-radius: 6px; margin-bottom: 8px; }
 
-        /* Empty state */
         .empty-state { text-align: center; color: #666; font-style: italic; padding: 30px 20px; }
         .empty-state-icon { font-size: 2rem; margin-bottom: 8px; }
 
-        /* Toggle switch */
         .toggle-wrapper { display: flex; align-items: center; gap: 8px; }
         .toggle { position: relative; width: 44px; height: 24px; cursor: pointer; }
         .toggle input { opacity: 0; width: 0; height: 0; }
@@ -112,6 +91,17 @@
         .toggle input:checked + .toggle-slider:before { transform: translateX(20px); background: #fff; }
         .toggle-label { font-size: 0.8rem; color: #888; }
 
+        /* Type selector tabs */
+        .type-tabs { display: flex; gap: 0; margin-bottom: 16px; border-radius: 6px; overflow: hidden; border: 1px solid #444; }
+        .type-tab { flex: 1; text-align: center; padding: 10px 16px; font-size: 0.85rem; font-weight: 600; cursor: pointer; background: #1a1a1a; color: #888; border: none; transition: all 0.2s; }
+        .type-tab:first-child { border-right: 1px solid #444; }
+        .type-tab.active { background: #ffcc00; color: #121212; }
+        .type-tab:hover:not(.active) { background: #252525; color: #ccc; }
+
+        /* System trigger info */
+        .system-trigger-info { background: #1a1a2a; border: 1px solid #3a3a5a; border-radius: 8px; padding: 14px 18px; margin-bottom: 16px; font-size: 0.82rem; color: #aaa; line-height: 1.5; }
+        .system-trigger-info strong { color: #ff9800; }
+
         /* Event Log */
         .log-entry { background: #1a1a1a; border-radius: 6px; padding: 12px 16px; margin-bottom: 8px; border-left: 3px solid #2196F3; }
         .log-entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
@@ -120,7 +110,6 @@
         .log-entry-desc { font-size: 0.85rem; color: #aaa; font-style: italic; margin-bottom: 6px; }
         .log-entry-effects { font-size: 0.78rem; color: #888; }
 
-        /* Responsive */
         @media (max-width: 768px) {
             .form-row, .form-row-3 { grid-template-columns: 1fr; }
             .trigger-item, .effect-item { grid-template-columns: 1fr; }
@@ -129,593 +118,571 @@
     </style>
 </head>
 <body>
-<div id="top-bar"></div>
 <div class="admin-container" id="content-area">
     <div class="loading-container"><div class="loading-spinner"></div><div>Loading events...</div></div>
 </div>
 
 <script src="js/supabase-client.js"></script>
-<script src="js/common.js"></script>
-<script src="js/game-common.js"></script>
 <script>
 // ==================== STATE ====================
-let allEvents = [];
-let currentEvent = null; // null = list view, object = editor view
-let isNewEvent = false;
+var allEvents = [];
+var currentEvent = null;
+var isNewEvent = false;
+var editorDescriptions = [];
+var editorTriggers = [];
+var editorEffects = [];
+var deletedDescIds = [], deletedTriggerIds = [], deletedEffectIds = [];
 
-// Descriptions, triggers, effects for current editor session
-let editorDescriptions = []; // { id, description_text, isNew }
-let editorTriggers = [];     // { id, stat_key, min_value, max_value, isNew }
-let editorEffects = [];      // { id, stat_key, change_value, target, isNew }
-let deletedDescIds = [], deletedTriggerIds = [], deletedEffectIds = [];
-
-// ==================== STAT KEYS ====================
-const NATION_STATS = [
-    { key: 'gdp', label: 'GDP' },
-    { key: 'budget', label: 'Budget' },
-    { key: 'debt', label: 'Debt' },
-    { key: 'debt_growth', label: 'Debt Growth' },
-    { key: 'inflation', label: 'Inflation' },
-    { key: 'unemployment', label: 'Unemployment' },
-    { key: 'poverty_rate', label: 'Poverty Rate' },
-    { key: 'income_inequality', label: 'Income Inequality' },
-    { key: 'standard_of_living', label: 'Standard of Living' },
-    { key: 'happiness', label: 'Happiness' },
-    { key: 'population', label: 'Population' },
-    { key: 'birth_rate', label: 'Birth Rate' },
-    { key: 'death_rate', label: 'Death Rate' },
-    { key: 'lifespan', label: 'Lifespan' },
-    { key: 'healthcare_quality', label: 'Healthcare Quality' },
-    { key: 'healthcare_accessibility', label: 'Healthcare Accessibility' },
-    { key: 'hospital_beds', label: 'Hospital Beds' },
-    { key: 'education_quality', label: 'Education Quality' },
-    { key: 'literacy', label: 'Literacy' },
-    { key: 'technology', label: 'Technology' },
-    { key: 'infrastructure', label: 'Infrastructure' },
-    { key: 'immigration', label: 'Immigration' },
-    { key: 'emigration', label: 'Emigration' },
-    { key: 'illegal_immigration', label: 'Illegal Immigration' },
-    { key: 'crime_rate', label: 'Crime Rate' },
-    { key: 'incarceration_rate', label: 'Incarceration Rate' },
-    { key: 'drug_use', label: 'Drug Use' },
-    { key: 'corruption', label: 'Corruption' },
-    { key: 'pollution', label: 'Pollution' },
-    { key: 'carbon_emissions', label: 'Carbon Emissions' },
-    { key: 'fuel_prices', label: 'Fuel Prices' },
-    { key: 'military_strength', label: 'Military Strength' },
-    { key: 'terrorism', label: 'Terrorism' },
-    { key: 'political_violence', label: 'Political Violence' },
-    { key: 'civil_unrest', label: 'Civil Unrest' },
-    { key: 'polarization', label: 'Polarization' },
-    { key: 'sanctions', label: 'Sanctions' },
-    { key: 'trade', label: 'Trade' },
-    { key: 'tourism', label: 'Tourism' },
+// ==================== CONSTANTS ====================
+var NATION_STATS = [
+    { key: 'gdp', label: 'GDP' },{ key: 'budget', label: 'Budget' },{ key: 'debt', label: 'Debt' },
+    { key: 'debt_growth', label: 'Debt Growth' },{ key: 'inflation', label: 'Inflation' },
+    { key: 'unemployment', label: 'Unemployment' },{ key: 'poverty_rate', label: 'Poverty Rate' },
+    { key: 'income_inequality', label: 'Income Inequality' },{ key: 'standard_of_living', label: 'Standard of Living' },
+    { key: 'happiness', label: 'Happiness' },{ key: 'population', label: 'Population' },
+    { key: 'birth_rate', label: 'Birth Rate' },{ key: 'death_rate', label: 'Death Rate' },
+    { key: 'lifespan', label: 'Lifespan' },{ key: 'healthcare_quality', label: 'Healthcare Quality' },
+    { key: 'healthcare_accessibility', label: 'Healthcare Accessibility' },{ key: 'hospital_beds', label: 'Hospital Beds' },
+    { key: 'education_quality', label: 'Education Quality' },{ key: 'literacy', label: 'Literacy' },
+    { key: 'technology', label: 'Technology' },{ key: 'infrastructure', label: 'Infrastructure' },
+    { key: 'immigration', label: 'Immigration' },{ key: 'emigration', label: 'Emigration' },
+    { key: 'illegal_immigration', label: 'Illegal Immigration' },{ key: 'crime_rate', label: 'Crime Rate' },
+    { key: 'incarceration_rate', label: 'Incarceration Rate' },{ key: 'drug_use', label: 'Drug Use' },
+    { key: 'corruption', label: 'Corruption' },{ key: 'pollution', label: 'Pollution' },
+    { key: 'carbon_emissions', label: 'Carbon Emissions' },{ key: 'fuel_prices', label: 'Fuel Prices' },
+    { key: 'military_strength', label: 'Military Strength' },{ key: 'terrorism', label: 'Terrorism' },
+    { key: 'political_violence', label: 'Political Violence' },{ key: 'civil_unrest', label: 'Civil Unrest' },
+    { key: 'polarization', label: 'Polarization' },{ key: 'sanctions', label: 'Sanctions' },
+    { key: 'trade', label: 'Trade' },{ key: 'tourism', label: 'Tourism' },
     { key: 'diplomatic_standing', label: 'Diplomatic Standing' }
 ];
 
-const FACTION_STATS = [
+var FACTION_STATS = [
     { key: 'approval_rating', label: 'Approval Rating' },
     { key: 'loyalty', label: 'Loyalty' }
 ];
 
-const EVENT_CATEGORIES = [
+var EVENT_CATEGORIES = [
     'General', 'Electoral', 'Parties', 'Legal',
     'Economic', 'Military', 'Diplomatic', 'Natural Disaster'
 ];
 
-// ==================== INIT ====================
+var SYSTEM_TRIGGERS = [
+    { key: 'election_completed', label: 'Election Completed', desc: 'Fires when an election finishes and results are tallied.' },
+    { key: 'government_formed', label: 'Government / Coalition Formed', desc: 'Fires when a new coalition or government is officially formed.' },
+    { key: 'shakeup_started', label: 'Shakeup Started', desc: 'Fires when a faction initiates a power shakeup (autocracy).' },
+    { key: 'shakeup_resolved_success', label: 'Shakeup Succeeded', desc: 'Fires when a shakeup vote succeeds and power changes hands.' },
+    { key: 'shakeup_resolved_failed', label: 'Shakeup Failed', desc: 'Fires when a shakeup vote fails and the current ruler holds power.' }
+];
 
-initPage('admin', async (state) => {
+// ==================== INIT ====================
+(async function() {
     await loadAllEvents();
     renderListView();
-});
+})();
 
 async function loadAllEvents() {
-    const { data, error } = await _supabase
+    var r = await _supabase
         .from('event_templates')
         .select('*, event_descriptions(*), event_triggers(*), event_effects(*)')
         .order('created_at', { ascending: false });
-    if (error) { console.error('Error loading events:', error); allEvents = []; }
-    else allEvents = data || [];
+    allEvents = (r.error ? [] : r.data) || [];
 }
 
 // ==================== LIST VIEW ====================
-
 function renderListView() {
     currentEvent = null;
-    const container = document.getElementById('content-area');
-    container.innerHTML = `
-        <div class="admin-header">
-            <div>
-                <div class="admin-title">⚡ Event Manager</div>
-                <div class="admin-subtitle">Create and manage world events that fire based on nation conditions</div>
-            </div>
-            <div class="admin-actions">
-                <button class="btn btn-ghost" onclick="viewRecentLog()">📋 Event Log</button>
-                <button class="btn btn-primary" onclick="createNewEvent()">+ New Event</button>
-            </div>
-        </div>
-        <div class="filters">
-            <input type="text" id="filter-search" placeholder="Search events..." oninput="applyFilters()">
-            <select id="filter-category" onchange="applyFilters()">
-                <option value="">All Categories</option>
-                ${EVENT_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('')}
-            </select>
-            <select id="filter-status" onchange="applyFilters()">
-                <option value="">All Status</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-            </select>
-            <span class="event-count" id="event-count">${allEvents.length} events</span>
-        </div>
-        <div id="event-list"></div>
-    `;
+    document.getElementById('content-area').innerHTML =
+        '<div class="admin-header"><div>' +
+            '<div class="admin-title">⚡ Event Manager</div>' +
+            '<div class="admin-subtitle">Random (stat-triggered) and System (game action–triggered) events</div>' +
+        '</div><div class="admin-actions">' +
+            '<button class="btn btn-ghost" onclick="viewRecentLog()">📋 Event Log</button>' +
+            '<button class="btn btn-primary" onclick="createNewEvent()">+ New Event</button>' +
+        '</div></div>' +
+        '<div class="filters">' +
+            '<input type="text" id="filter-search" placeholder="Search events..." oninput="applyFilters()">' +
+            '<select id="filter-type" onchange="applyFilters()"><option value="">All Types</option><option value="random">Random</option><option value="system">System</option></select>' +
+            '<select id="filter-category" onchange="applyFilters()"><option value="">All Categories</option>' +
+                EVENT_CATEGORIES.map(function(c) { return '<option value="' + c + '">' + c + '</option>'; }).join('') +
+            '</select>' +
+            '<select id="filter-status" onchange="applyFilters()"><option value="">All Status</option><option value="active">Active</option><option value="inactive">Inactive</option></select>' +
+            '<span class="event-count" id="event-count">' + allEvents.length + ' events</span>' +
+        '</div>' +
+        '<div id="event-list"></div>';
     renderEventList(allEvents);
 }
 
 function renderEventList(events) {
-    const container = document.getElementById('event-list');
-    if (events.length === 0) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div>No events found. Create one to get started.</div>';
+    var c = document.getElementById('event-list');
+    if (!events.length) {
+        c.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div>No events found. Create one to get started.</div>';
         return;
     }
-
-    container.innerHTML = events.map(ev => {
-        const descCount = (ev.event_descriptions || []).length;
-        const triggerCount = (ev.event_triggers || []).length;
-        const effectCount = (ev.event_effects || []).length;
-        const scopes = [...new Set((ev.event_effects || []).map(e => e.target))];
-        const scopeTags = scopes.map(s => {
-            if (s === 'ruling_party') return '<span class="tag tag-scope-ruling">Ruling Party</span>';
-            if (s === 'random_faction') return '<span class="tag tag-scope-faction">Random Faction</span>';
+    c.innerHTML = events.map(function(ev) {
+        var et = ev.event_type || 'random';
+        var scopes = {};
+        (ev.event_effects || []).forEach(function(e) { scopes[e.target] = 1; });
+        var scopeTags = Object.keys(scopes).map(function(s) {
+            if (s === 'ruling_party') return '<span class="tag tag-scope-ruling">Ruling</span>';
+            if (s === 'random_faction') return '<span class="tag tag-scope-faction">Faction</span>';
             return '<span class="tag tag-scope-nation">Nation</span>';
         }).join(' ');
 
-        return `<div class="event-card ${ev.is_active ? 'active' : 'inactive'}" onclick="editEvent('${ev.id}')">
-            <div class="event-card-left">
-                <div class="event-card-name">${ev.name}</div>
-                <div class="event-card-meta">
-                    <span class="tag tag-category">${ev.category || 'General'}</span>
-                    <span class="tag tag-prob">${ev.probability}% chance</span>
-                    <span class="tag tag-cooldown">${ev.cooldown_ticks}t cooldown</span>
-                    ${scopeTags}
-                    <span style="color:#666;">${descCount} desc · ${triggerCount} triggers · ${effectCount} effects</span>
-                </div>
-            </div>
-            <div class="event-card-right">
-                <span class="tag ${ev.is_active ? 'tag-active' : 'tag-inactive'}">${ev.is_active ? 'ACTIVE' : 'INACTIVE'}</span>
-            </div>
-        </div>`;
+        var typeTag = et === 'system'
+            ? '<span class="tag tag-system">System</span>'
+            : '<span class="tag tag-random">Random</span>';
+
+        var triggerInfo = '';
+        if (et === 'system' && ev.system_trigger) {
+            var st = SYSTEM_TRIGGERS.find(function(t) { return t.key === ev.system_trigger; });
+            triggerInfo = '<span style="color:#ff9800;">→ ' + (st ? st.label : ev.system_trigger) + '</span>';
+        } else {
+            triggerInfo = '<span class="tag tag-prob">' + ev.probability + '%</span>' +
+                '<span class="tag tag-cooldown">' + ev.cooldown_ticks + 't cd</span>';
+        }
+
+        var counts = (ev.event_descriptions || []).length + ' desc · ' +
+            (et === 'random' ? (ev.event_triggers || []).length + ' trig · ' : '') +
+            (ev.event_effects || []).length + ' fx';
+
+        return '<div class="event-card ' + (ev.is_active ? 'active' : 'inactive') + '" onclick="editEvent(\'' + ev.id + '\')">' +
+            '<div class="event-card-left">' +
+                '<div class="event-card-name">' + escapeHtml(ev.name) + '</div>' +
+                '<div class="event-card-meta">' +
+                    typeTag +
+                    '<span class="tag tag-category">' + (ev.category || 'General') + '</span>' +
+                    triggerInfo + scopeTags +
+                    '<span style="color:#666;">' + counts + '</span>' +
+                '</div>' +
+            '</div>' +
+            '<div class="event-card-right">' +
+                '<span class="tag ' + (ev.is_active ? 'tag-active' : 'tag-inactive') + '">' +
+                    (ev.is_active ? 'ACTIVE' : 'INACTIVE') +
+                '</span>' +
+            '</div>' +
+        '</div>';
     }).join('');
 }
 
 function applyFilters() {
-    const search = (document.getElementById('filter-search')?.value || '').toLowerCase();
-    const category = document.getElementById('filter-category')?.value || '';
-    const status = document.getElementById('filter-status')?.value || '';
-
-    let filtered = allEvents.filter(ev => {
-        if (search && !ev.name.toLowerCase().includes(search)) return false;
-        if (category && ev.category !== category) return false;
+    var search = (document.getElementById('filter-search').value || '').toLowerCase();
+    var type = document.getElementById('filter-type').value;
+    var cat = document.getElementById('filter-category').value;
+    var status = document.getElementById('filter-status').value;
+    var filtered = allEvents.filter(function(ev) {
+        if (search && ev.name.toLowerCase().indexOf(search) === -1) return false;
+        if (type && (ev.event_type || 'random') !== type) return false;
+        if (cat && ev.category !== cat) return false;
         if (status === 'active' && !ev.is_active) return false;
         if (status === 'inactive' && ev.is_active) return false;
         return true;
     });
-
     document.getElementById('event-count').textContent = filtered.length + ' events';
     renderEventList(filtered);
 }
 
 // ==================== CREATE / EDIT ====================
-
 function createNewEvent() {
     isNewEvent = true;
-    currentEvent = {
-        name: '',
-        category: 'General',
-        probability: 50,
-        cooldown_ticks: 6,
-        is_active: true
-    };
-    editorDescriptions = [];
-    editorTriggers = [];
-    editorEffects = [];
+    currentEvent = { name: '', category: 'General', probability: 50, cooldown_ticks: 6, is_active: true, event_type: 'random', system_trigger: '' };
+    editorDescriptions = []; editorTriggers = []; editorEffects = [];
     deletedDescIds = []; deletedTriggerIds = []; deletedEffectIds = [];
     renderEditor();
 }
 
 function editEvent(id) {
-    const ev = allEvents.find(e => e.id === id);
+    var ev = allEvents.find(function(e) { return e.id === id; });
     if (!ev) return;
     isNewEvent = false;
-    currentEvent = { ...ev };
-    editorDescriptions = (ev.event_descriptions || []).map(d => ({ ...d, isNew: false }));
-    editorTriggers = (ev.event_triggers || []).map(t => ({ ...t, isNew: false }));
-    editorEffects = (ev.event_effects || []).map(e => ({ ...e, isNew: false }));
+    currentEvent = Object.assign({}, ev);
+    if (!currentEvent.event_type) currentEvent.event_type = 'random';
+    editorDescriptions = (ev.event_descriptions || []).map(function(d) { return Object.assign({}, d, { isNew: false }); });
+    editorTriggers = (ev.event_triggers || []).map(function(t) { return Object.assign({}, t, { isNew: false }); });
+    editorEffects = (ev.event_effects || []).map(function(e) { return Object.assign({}, e, { isNew: false }); });
     deletedDescIds = []; deletedTriggerIds = []; deletedEffectIds = [];
     renderEditor();
 }
 
 function renderEditor() {
-    const container = document.getElementById('content-area');
-    const title = isNewEvent ? 'Create New Event' : 'Edit Event';
+    var c = document.getElementById('content-area');
+    var title = isNewEvent ? 'Create New Event' : 'Edit Event';
+    var isSys = currentEvent.event_type === 'system';
 
-    container.innerHTML = `
-        <button class="btn-back" onclick="cancelEditor()">← Back to Events</button>
-        <div class="editor">
-            <div class="editor-header">
-                <div class="editor-title">${title}</div>
-                ${!isNewEvent ? `<button class="btn btn-danger btn-small" onclick="deleteEvent('${currentEvent.id}')">🗑 Delete Event</button>` : ''}
-            </div>
-            <div class="editor-body">
+    c.innerHTML =
+        '<button class="btn-back" onclick="cancelEditor()">← Back to Events</button>' +
+        '<div class="editor">' +
+            '<div class="editor-header">' +
+                '<div class="editor-title">' + title + '</div>' +
+                (!isNewEvent ? '<button class="btn btn-danger btn-small" onclick="deleteEvent(\'' + currentEvent.id + '\')">🗑 Delete</button>' : '') +
+            '</div>' +
+            '<div class="editor-body">' +
 
-                <!-- Basic Info -->
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Event Name</label>
-                        <input type="text" class="form-input" id="ev-name" value="${escapeAttr(currentEvent.name || '')}" placeholder="e.g., Economic Recession">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Category</label>
-                        <select class="form-select" id="ev-category">
-                            ${EVENT_CATEGORIES.map(c => `<option value="${c}" ${currentEvent.category === c ? 'selected' : ''}>${c}</option>`).join('')}
-                        </select>
-                    </div>
-                </div>
-                <div class="form-row-3">
-                    <div class="form-group">
-                        <label class="form-label">Probability (%)</label>
-                        <input type="number" class="form-input" id="ev-probability" value="${currentEvent.probability || 50}" min="1" max="100">
-                        <div class="form-hint">Chance per tick when all triggers are met</div>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Cooldown (ticks)</label>
-                        <input type="number" class="form-input" id="ev-cooldown" value="${currentEvent.cooldown_ticks || 6}" min="0">
-                        <div class="form-hint">Minimum ticks between firings per nation</div>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Status</label>
-                        <div class="toggle-wrapper" style="margin-top:8px;">
-                            <label class="toggle">
-                                <input type="checkbox" id="ev-active" ${currentEvent.is_active ? 'checked' : ''}>
-                                <span class="toggle-slider"></span>
-                            </label>
-                            <span class="toggle-label" id="ev-active-label">${currentEvent.is_active ? 'Active' : 'Inactive'}</span>
-                        </div>
-                    </div>
-                </div>
+                // Type tabs
+                '<div class="type-tabs">' +
+                    '<button class="type-tab ' + (!isSys ? 'active' : '') + '" onclick="switchEventType(\'random\')">🎲 Random Event</button>' +
+                    '<button class="type-tab ' + (isSys ? 'active' : '') + '" onclick="switchEventType(\'system\')">⚙️ System Event</button>' +
+                '</div>' +
 
-                <!-- Descriptions -->
-                <div class="editor-section">
-                    <div class="editor-section-header">
-                        <div class="editor-section-title">📝 Descriptions</div>
-                        <button class="btn btn-ghost btn-small" onclick="addDescription()">+ Add</button>
-                    </div>
-                    <div class="form-hint" style="margin-bottom:12px;">Add multiple descriptions — one is randomly chosen each time the event fires.</div>
-                    <div id="descriptions-list">${renderDescriptions()}</div>
-                </div>
+                // Name + Category (shared)
+                '<div class="form-row">' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Event Name</label>' +
+                        '<input type="text" class="form-input" id="ev-name" value="' + escapeAttr(currentEvent.name || '') + '" placeholder="e.g., Economic Recession">' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                        '<label class="form-label">Category</label>' +
+                        '<select class="form-select" id="ev-category">' +
+                            EVENT_CATEGORIES.map(function(cat) {
+                                return '<option value="' + cat + '"' + (currentEvent.category === cat ? ' selected' : '') + '>' + cat + '</option>';
+                            }).join('') +
+                        '</select>' +
+                    '</div>' +
+                '</div>' +
 
-                <!-- Triggers -->
-                <div class="editor-section">
-                    <div class="editor-section-header">
-                        <div class="editor-section-title">🎯 Triggers</div>
-                        <button class="btn btn-ghost btn-small" onclick="addTrigger()">+ Add</button>
-                    </div>
-                    <div class="form-hint" style="margin-bottom:12px;">ALL conditions must be met for the event to be eligible. Leave min or max empty for open-ended ranges.</div>
-                    <div id="triggers-list">${renderTriggers()}</div>
-                </div>
+                // === Random-only fields ===
+                '<div id="random-fields" style="' + (isSys ? 'display:none;' : '') + '">' +
+                    '<div class="form-row-3">' +
+                        '<div class="form-group">' +
+                            '<label class="form-label">Probability (%)</label>' +
+                            '<input type="number" class="form-input" id="ev-probability" value="' + (currentEvent.probability || 50) + '" min="1" max="100">' +
+                            '<div class="form-hint">Chance per tick when triggers met</div>' +
+                        '</div>' +
+                        '<div class="form-group">' +
+                            '<label class="form-label">Cooldown (ticks)</label>' +
+                            '<input type="number" class="form-input" id="ev-cooldown" value="' + (currentEvent.cooldown_ticks || 6) + '" min="0">' +
+                            '<div class="form-hint">Min ticks between firings</div>' +
+                        '</div>' +
+                        '<div class="form-group">' +
+                            '<label class="form-label">Status</label>' +
+                            '<div class="toggle-wrapper" style="margin-top:8px;">' +
+                                '<label class="toggle"><input type="checkbox" id="ev-active" ' + (currentEvent.is_active ? 'checked' : '') + '><span class="toggle-slider"></span></label>' +
+                                '<span class="toggle-label" id="ev-active-label">' + (currentEvent.is_active ? 'Active' : 'Inactive') + '</span>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
 
-                <!-- Effects -->
-                <div class="editor-section">
-                    <div class="editor-section-header">
-                        <div class="editor-section-title">💥 Effects</div>
-                        <button class="btn btn-ghost btn-small" onclick="addEffect()">+ Add</button>
-                    </div>
-                    <div class="form-hint" style="margin-bottom:12px;">Stat changes applied when the event fires. Use negative values to decrease.</div>
-                    <div id="effects-list">${renderEffects()}</div>
-                </div>
+                // === System-only fields ===
+                '<div id="system-fields" style="' + (!isSys ? 'display:none;' : '') + '">' +
+                    '<div class="system-trigger-info">' +
+                        '<strong>System events</strong> fire automatically when a game action occurs (election completed, coalition formed, shakeup resolved). ' +
+                        'No stat triggers or probability roll — the game code fires them directly. ' +
+                        'You can still add multiple descriptions (one randomly picked) and optional stat effects.' +
+                    '</div>' +
+                    '<div class="form-row">' +
+                        '<div class="form-group">' +
+                            '<label class="form-label">System Trigger</label>' +
+                            '<select class="form-select" id="ev-system-trigger">' +
+                                '<option value="">-- Select Trigger --</option>' +
+                                SYSTEM_TRIGGERS.map(function(t) {
+                                    return '<option value="' + t.key + '"' + (currentEvent.system_trigger === t.key ? ' selected' : '') + '>' + t.label + '</option>';
+                                }).join('') +
+                            '</select>' +
+                            '<div class="form-hint" id="system-trigger-desc">' + getSTDesc(currentEvent.system_trigger) + '</div>' +
+                        '</div>' +
+                        '<div class="form-group">' +
+                            '<label class="form-label">Status</label>' +
+                            '<div class="toggle-wrapper" style="margin-top:8px;">' +
+                                '<label class="toggle"><input type="checkbox" id="ev-active-sys" ' + (currentEvent.is_active ? 'checked' : '') + '><span class="toggle-slider"></span></label>' +
+                                '<span class="toggle-label" id="ev-active-sys-label">' + (currentEvent.is_active ? 'Active' : 'Inactive') + '</span>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
 
-            </div>
-            <div class="editor-footer">
-                <button class="btn btn-ghost" onclick="cancelEditor()">Cancel</button>
-                <button class="btn btn-primary" onclick="saveEvent()">💾 Save Event</button>
-            </div>
-        </div>
-    `;
+                // Descriptions (both types)
+                '<div class="editor-section">' +
+                    '<div class="editor-section-header">' +
+                        '<div class="editor-section-title">📝 Descriptions</div>' +
+                        '<button class="btn btn-ghost btn-small" onclick="addDescription()">+ Add</button>' +
+                    '</div>' +
+                    '<div class="form-hint" style="margin-bottom:12px;">Multiple descriptions — one randomly chosen each time the event fires. Use {nation} for nation name, {faction} for faction name.</div>' +
+                    '<div id="descriptions-list">' + renderDescriptions() + '</div>' +
+                '</div>' +
 
-    // Toggle label sync
-    document.getElementById('ev-active')?.addEventListener('change', function() {
-        document.getElementById('ev-active-label').textContent = this.checked ? 'Active' : 'Inactive';
+                // Triggers (random only)
+                '<div id="triggers-section" style="' + (isSys ? 'display:none;' : '') + '">' +
+                    '<div class="editor-section">' +
+                        '<div class="editor-section-header">' +
+                            '<div class="editor-section-title">🎯 Triggers</div>' +
+                            '<button class="btn btn-ghost btn-small" onclick="addTrigger()">+ Add</button>' +
+                        '</div>' +
+                        '<div class="form-hint" style="margin-bottom:12px;">ALL conditions must be met. Leave min/max empty for open-ended ranges.</div>' +
+                        '<div id="triggers-list">' + renderTriggers() + '</div>' +
+                    '</div>' +
+                '</div>' +
+
+                // Effects (both types)
+                '<div class="editor-section">' +
+                    '<div class="editor-section-header">' +
+                        '<div class="editor-section-title">💥 Effects</div>' +
+                        '<button class="btn btn-ghost btn-small" onclick="addEffect()">+ Add</button>' +
+                    '</div>' +
+                    '<div class="form-hint" style="margin-bottom:12px;">Stat changes when event fires. Negative = decrease. Optional for system events.</div>' +
+                    '<div id="effects-list">' + renderEffects() + '</div>' +
+                '</div>' +
+
+            '</div>' +
+            '<div class="editor-footer">' +
+                '<button class="btn btn-ghost" onclick="cancelEditor()">Cancel</button>' +
+                '<button class="btn btn-primary" onclick="saveEvent()">💾 Save Event</button>' +
+            '</div>' +
+        '</div>';
+
+    // Wire up listeners
+    var ea = document.getElementById('ev-active');
+    if (ea) ea.onchange = function() { document.getElementById('ev-active-label').textContent = this.checked ? 'Active' : 'Inactive'; };
+    var eas = document.getElementById('ev-active-sys');
+    if (eas) eas.onchange = function() { document.getElementById('ev-active-sys-label').textContent = this.checked ? 'Active' : 'Inactive'; };
+    var stSel = document.getElementById('ev-system-trigger');
+    if (stSel) stSel.onchange = function() { document.getElementById('system-trigger-desc').textContent = getSTDesc(this.value); };
+}
+
+function switchEventType(type) {
+    syncForm();
+    currentEvent.event_type = type;
+    renderEditor();
+}
+
+function syncForm() {
+    var n = document.getElementById('ev-name'); if (n) currentEvent.name = n.value;
+    var cat = document.getElementById('ev-category'); if (cat) currentEvent.category = cat.value;
+    var p = document.getElementById('ev-probability'); if (p) currentEvent.probability = parseInt(p.value) || 50;
+    var cd = document.getElementById('ev-cooldown'); if (cd) currentEvent.cooldown_ticks = parseInt(cd.value) || 6;
+    var isSys = currentEvent.event_type === 'system';
+    var activeEl = isSys ? document.getElementById('ev-active-sys') : document.getElementById('ev-active');
+    if (activeEl) currentEvent.is_active = activeEl.checked;
+    var st = document.getElementById('ev-system-trigger'); if (st) currentEvent.system_trigger = st.value;
+    // Sync textarea content
+    document.querySelectorAll('#descriptions-list textarea').forEach(function(el, i) {
+        if (editorDescriptions[i]) editorDescriptions[i].description_text = el.value;
     });
 }
 
-// ==================== DESCRIPTIONS ====================
-
-function renderDescriptions() {
-    if (editorDescriptions.length === 0) {
-        return '<div class="empty-state" style="padding:12px;">No descriptions yet. Add at least one.</div>';
-    }
-    return editorDescriptions.map((d, i) => `
-        <div class="desc-item">
-            <textarea class="form-textarea" onchange="editorDescriptions[${i}].description_text=this.value" placeholder="Describe the event as it would appear in the news...">${escapeHtml(d.description_text || '')}</textarea>
-            <button class="btn-icon" onclick="removeDescription(${i})" title="Remove">✕</button>
-        </div>
-    `).join('');
+function getSTDesc(key) {
+    if (!key) return 'Select a trigger to see its description.';
+    var t = SYSTEM_TRIGGERS.find(function(s) { return s.key === key; });
+    return t ? t.desc : '';
 }
 
+// ==================== DESCRIPTIONS ====================
+function renderDescriptions() {
+    if (!editorDescriptions.length) return '<div class="empty-state" style="padding:12px;">No descriptions yet. Add at least one.</div>';
+    return editorDescriptions.map(function(d, i) {
+        return '<div class="desc-item">' +
+            '<textarea class="form-textarea" onchange="editorDescriptions[' + i + '].description_text=this.value" placeholder="Describe the event as it would appear in the CIVIC feed...">' +
+                escapeHtml(d.description_text || '') +
+            '</textarea>' +
+            '<button class="btn-icon" onclick="removeDescription(' + i + ')">✕</button>' +
+        '</div>';
+    }).join('');
+}
 function addDescription() {
     editorDescriptions.push({ id: null, description_text: '', isNew: true });
     document.getElementById('descriptions-list').innerHTML = renderDescriptions();
 }
-
-function removeDescription(index) {
-    const d = editorDescriptions[index];
+function removeDescription(i) {
+    var d = editorDescriptions[i];
     if (d.id && !d.isNew) deletedDescIds.push(d.id);
-    editorDescriptions.splice(index, 1);
+    editorDescriptions.splice(i, 1);
     document.getElementById('descriptions-list').innerHTML = renderDescriptions();
 }
 
 // ==================== TRIGGERS ====================
-
 function renderTriggers() {
-    if (editorTriggers.length === 0) {
-        return '<div class="empty-state" style="padding:12px;">No triggers. Event will never fire without at least one trigger.</div>';
-    }
-    return editorTriggers.map((t, i) => `
-        <div class="trigger-item">
-            <select class="form-select" onchange="editorTriggers[${i}].stat_key=this.value">
-                <option value="">-- Select Stat --</option>
-                ${NATION_STATS.map(s => `<option value="${s.key}" ${t.stat_key === s.key ? 'selected' : ''}>${s.label}</option>`).join('')}
-            </select>
-            <input type="number" class="form-input" value="${t.min_value ?? ''}" placeholder="Min" onchange="editorTriggers[${i}].min_value=this.value===''?null:Number(this.value)">
-            <input type="number" class="form-input" value="${t.max_value ?? ''}" placeholder="Max" onchange="editorTriggers[${i}].max_value=this.value===''?null:Number(this.value)">
-            <button class="btn-icon" onclick="removeTrigger(${i})" title="Remove">✕</button>
-        </div>
-    `).join('');
+    if (!editorTriggers.length) return '<div class="empty-state" style="padding:12px;">No triggers. Random events need at least one.</div>';
+    return editorTriggers.map(function(t, i) {
+        return '<div class="trigger-item">' +
+            '<select class="form-select" onchange="editorTriggers[' + i + '].stat_key=this.value">' +
+                '<option value="">-- Select Stat --</option>' +
+                NATION_STATS.map(function(s) { return '<option value="' + s.key + '"' + (t.stat_key === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
+            '</select>' +
+            '<input type="number" class="form-input" value="' + (t.min_value != null ? t.min_value : '') + '" placeholder="Min" onchange="editorTriggers[' + i + '].min_value=this.value===\'\'?null:Number(this.value)">' +
+            '<input type="number" class="form-input" value="' + (t.max_value != null ? t.max_value : '') + '" placeholder="Max" onchange="editorTriggers[' + i + '].max_value=this.value===\'\'?null:Number(this.value)">' +
+            '<button class="btn-icon" onclick="removeTrigger(' + i + ')">✕</button>' +
+        '</div>';
+    }).join('');
 }
-
 function addTrigger() {
     editorTriggers.push({ id: null, stat_key: '', min_value: null, max_value: null, isNew: true });
     document.getElementById('triggers-list').innerHTML = renderTriggers();
 }
-
-function removeTrigger(index) {
-    const t = editorTriggers[index];
+function removeTrigger(i) {
+    var t = editorTriggers[i];
     if (t.id && !t.isNew) deletedTriggerIds.push(t.id);
-    editorTriggers.splice(index, 1);
+    editorTriggers.splice(i, 1);
     document.getElementById('triggers-list').innerHTML = renderTriggers();
 }
 
 // ==================== EFFECTS ====================
-
 function renderEffects() {
-    if (editorEffects.length === 0) {
-        return '<div class="empty-state" style="padding:12px;">No effects. The event will be purely informational.</div>';
-    }
-
-    return editorEffects.map((e, i) => {
-        const isNation = e.target === 'nation' || !e.target;
-        const statOptions = isNation ? NATION_STATS : FACTION_STATS;
-        // If switching target, check if current stat_key is still valid
-        const allStats = [...NATION_STATS, ...FACTION_STATS];
-
-        return `<div class="effect-item">
-            <select class="form-select" id="effect-stat-${i}" onchange="editorEffects[${i}].stat_key=this.value">
-                <option value="">-- Select Stat --</option>
-                ${statOptions.map(s => `<option value="${s.key}" ${e.stat_key === s.key ? 'selected' : ''}>${s.label}</option>`).join('')}
-            </select>
-            <input type="number" class="form-input" value="${e.change_value ?? ''}" placeholder="+/- value" step="0.1" onchange="editorEffects[${i}].change_value=Number(this.value)">
-            <select class="form-select" onchange="updateEffectTarget(${i}, this.value)">
-                <option value="nation" ${e.target === 'nation' ? 'selected' : ''}>Nation</option>
-                <option value="ruling_party" ${e.target === 'ruling_party' ? 'selected' : ''}>Ruling Party</option>
-                <option value="random_faction" ${e.target === 'random_faction' ? 'selected' : ''}>Random Faction</option>
-            </select>
-            <button class="btn-icon" onclick="removeEffect(${i})" title="Remove">✕</button>
-        </div>`;
+    if (!editorEffects.length) return '<div class="empty-state" style="padding:12px;">No effects. Event will be purely informational.</div>';
+    return editorEffects.map(function(e, i) {
+        var isN = e.target === 'nation' || !e.target;
+        var opts = isN ? NATION_STATS : FACTION_STATS;
+        return '<div class="effect-item">' +
+            '<select class="form-select" onchange="editorEffects[' + i + '].stat_key=this.value">' +
+                '<option value="">-- Select Stat --</option>' +
+                opts.map(function(s) { return '<option value="' + s.key + '"' + (e.stat_key === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
+            '</select>' +
+            '<input type="number" class="form-input" value="' + (e.change_value != null ? e.change_value : '') + '" placeholder="+/- value" step="0.1" onchange="editorEffects[' + i + '].change_value=Number(this.value)">' +
+            '<select class="form-select" onchange="updateEffectTarget(' + i + ',this.value)">' +
+                '<option value="nation"' + (e.target === 'nation' ? ' selected' : '') + '>Nation</option>' +
+                '<option value="ruling_party"' + (e.target === 'ruling_party' ? ' selected' : '') + '>Ruling Party</option>' +
+                '<option value="random_faction"' + (e.target === 'random_faction' ? ' selected' : '') + '>Random Faction</option>' +
+            '</select>' +
+            '<button class="btn-icon" onclick="removeEffect(' + i + ')">✕</button>' +
+        '</div>';
     }).join('');
 }
-
-function updateEffectTarget(index, newTarget) {
-    editorEffects[index].target = newTarget;
-    editorEffects[index].stat_key = ''; // Reset stat since options change
+function updateEffectTarget(i, v) {
+    editorEffects[i].target = v;
+    editorEffects[i].stat_key = '';
     document.getElementById('effects-list').innerHTML = renderEffects();
 }
-
 function addEffect() {
     editorEffects.push({ id: null, stat_key: '', change_value: 0, target: 'nation', isNew: true });
     document.getElementById('effects-list').innerHTML = renderEffects();
 }
-
-function removeEffect(index) {
-    const e = editorEffects[index];
+function removeEffect(i) {
+    var e = editorEffects[i];
     if (e.id && !e.isNew) deletedEffectIds.push(e.id);
-    editorEffects.splice(index, 1);
+    editorEffects.splice(i, 1);
     document.getElementById('effects-list').innerHTML = renderEffects();
 }
 
 // ==================== SAVE ====================
-
 async function saveEvent() {
-    // Sync form values
-    const name = document.getElementById('ev-name').value.trim();
-    const category = document.getElementById('ev-category').value;
-    const probability = parseInt(document.getElementById('ev-probability').value) || 50;
-    const cooldown = parseInt(document.getElementById('ev-cooldown').value) || 6;
-    const isActive = document.getElementById('ev-active').checked;
+    syncForm();
+    var name = currentEvent.name.trim();
+    var category = currentEvent.category;
+    var isSys = currentEvent.event_type === 'system';
+    var probability = isSys ? 100 : (currentEvent.probability || 50);
+    var cooldown = isSys ? 0 : (currentEvent.cooldown_ticks || 6);
+    var isActive = currentEvent.is_active;
+    var systemTrigger = isSys ? (currentEvent.system_trigger || '') : null;
 
     if (!name) { alert('Event name is required.'); return; }
-
-    // Sync textarea values (in case onchange didn't fire)
-    document.querySelectorAll('#descriptions-list textarea').forEach((el, i) => {
-        if (editorDescriptions[i]) editorDescriptions[i].description_text = el.value;
-    });
-
-    // Validate
-    const validDescs = editorDescriptions.filter(d => d.description_text.trim());
-    if (validDescs.length === 0) { alert('Add at least one description.'); return; }
-
-    const validTriggers = editorTriggers.filter(t => t.stat_key);
-    if (validTriggers.length === 0) { alert('Add at least one trigger condition.'); return; }
+    var validDescs = editorDescriptions.filter(function(d) { return d.description_text.trim(); });
+    if (!validDescs.length) { alert('Add at least one description.'); return; }
+    if (!isSys) {
+        var validTrigs = editorTriggers.filter(function(t) { return t.stat_key; });
+        if (!validTrigs.length) { alert('Random events need at least one trigger.'); return; }
+    }
+    if (isSys && !systemTrigger) { alert('System events need a trigger selected.'); return; }
 
     try {
-        let eventId;
+        var eventId;
+        var payload = {
+            name: name, category: category, probability: probability,
+            cooldown_ticks: cooldown, is_active: isActive,
+            event_type: currentEvent.event_type, system_trigger: systemTrigger
+        };
 
         if (isNewEvent) {
-            const { data, error } = await _supabase.from('event_templates').insert({
-                name, category, probability, cooldown_ticks: cooldown, is_active: isActive
-            }).select().single();
-            if (error) throw error;
-            eventId = data.id;
+            var r = await _supabase.from('event_templates').insert(payload).select().single();
+            if (r.error) throw r.error;
+            eventId = r.data.id;
         } else {
             eventId = currentEvent.id;
-            const { error } = await _supabase.from('event_templates').update({
-                name, category, probability, cooldown_ticks: cooldown, is_active: isActive
-            }).eq('id', eventId);
-            if (error) throw error;
+            var r2 = await _supabase.from('event_templates').update(payload).eq('id', eventId);
+            if (r2.error) throw r2.error;
         }
 
-        // Delete removed items
-        if (deletedDescIds.length > 0) await _supabase.from('event_descriptions').delete().in('id', deletedDescIds);
-        if (deletedTriggerIds.length > 0) await _supabase.from('event_triggers').delete().in('id', deletedTriggerIds);
-        if (deletedEffectIds.length > 0) await _supabase.from('event_effects').delete().in('id', deletedEffectIds);
+        // Delete removed sub-items
+        if (deletedDescIds.length) await _supabase.from('event_descriptions').delete().in('id', deletedDescIds);
+        if (deletedTriggerIds.length) await _supabase.from('event_triggers').delete().in('id', deletedTriggerIds);
+        if (deletedEffectIds.length) await _supabase.from('event_effects').delete().in('id', deletedEffectIds);
 
         // Upsert descriptions
-        for (const d of validDescs) {
-            if (d.isNew || !d.id) {
-                await _supabase.from('event_descriptions').insert({
-                    event_id: eventId, description_text: d.description_text.trim()
-                });
-            } else {
-                await _supabase.from('event_descriptions').update({
-                    description_text: d.description_text.trim()
-                }).eq('id', d.id);
-            }
+        for (var d of validDescs) {
+            if (d.isNew || !d.id)
+                await _supabase.from('event_descriptions').insert({ event_id: eventId, description_text: d.description_text.trim() });
+            else
+                await _supabase.from('event_descriptions').update({ description_text: d.description_text.trim() }).eq('id', d.id);
         }
 
-        // Upsert triggers
-        for (const t of validTriggers) {
-            const payload = {
-                event_id: eventId,
-                stat_key: t.stat_key,
-                min_value: t.min_value,
-                max_value: t.max_value
-            };
-            if (t.isNew || !t.id) {
-                await _supabase.from('event_triggers').insert(payload);
-            } else {
-                await _supabase.from('event_triggers').update(payload).eq('id', t.id);
+        // Upsert triggers (random only)
+        if (!isSys) {
+            var vt = editorTriggers.filter(function(t) { return t.stat_key; });
+            for (var t of vt) {
+                var tp = { event_id: eventId, stat_key: t.stat_key, min_value: t.min_value, max_value: t.max_value };
+                if (t.isNew || !t.id) await _supabase.from('event_triggers').insert(tp);
+                else await _supabase.from('event_triggers').update(tp).eq('id', t.id);
             }
         }
 
         // Upsert effects
-        const validEffects = editorEffects.filter(e => e.stat_key);
-        for (const e of validEffects) {
-            const payload = {
-                event_id: eventId,
-                stat_key: e.stat_key,
-                change_value: e.change_value || 0,
-                target: e.target || 'nation'
-            };
-            if (e.isNew || !e.id) {
-                await _supabase.from('event_effects').insert(payload);
-            } else {
-                await _supabase.from('event_effects').update(payload).eq('id', e.id);
-            }
+        var ve = editorEffects.filter(function(e) { return e.stat_key; });
+        for (var e of ve) {
+            var ep = { event_id: eventId, stat_key: e.stat_key, change_value: e.change_value || 0, target: e.target || 'nation' };
+            if (e.isNew || !e.id) await _supabase.from('event_effects').insert(ep);
+            else await _supabase.from('event_effects').update(ep).eq('id', e.id);
         }
 
         alert(isNewEvent ? 'Event created!' : 'Event saved!');
         await loadAllEvents();
         renderListView();
-    } catch (error) {
-        console.error('Save error:', error);
-        alert('Error saving event: ' + error.message);
+    } catch (err) {
+        console.error('Save error:', err);
+        alert('Error: ' + err.message);
     }
 }
 
 // ==================== DELETE ====================
-
 async function deleteEvent(id) {
-    if (!confirm('Delete this event? This cannot be undone.\n\nAll descriptions, triggers, effects, and log entries will be removed.')) return;
+    if (!confirm('Delete this event and all its data? This cannot be undone.')) return;
     try {
-        // Cascade handles descriptions, triggers, effects
-        // Log entries keep event_name but lose FK reference (ON DELETE SET NULL)
-        const { error } = await _supabase.from('event_templates').delete().eq('id', id);
-        if (error) throw error;
+        var r = await _supabase.from('event_templates').delete().eq('id', id);
+        if (r.error) throw r.error;
         alert('Event deleted.');
         await loadAllEvents();
         renderListView();
-    } catch (error) {
-        console.error('Delete error:', error);
-        alert('Error deleting: ' + error.message);
+    } catch (err) {
+        console.error('Delete error:', err);
+        alert('Error: ' + err.message);
     }
 }
 
 // ==================== EVENT LOG ====================
-
 async function viewRecentLog() {
-    const container = document.getElementById('content-area');
-    container.innerHTML = `
-        <button class="btn-back" onclick="renderListView()">← Back to Events</button>
-        <div class="admin-header" style="border-bottom-color:#2196F3;">
-            <div>
-                <div class="admin-title" style="color:#2196F3;">📋 Recent Event Log</div>
-                <div class="admin-subtitle">Last 50 events fired across all nations</div>
-            </div>
-        </div>
-        <div id="log-entries"><div class="loading-container"><div class="loading-spinner"></div><div>Loading...</div></div></div>
-    `;
+    document.getElementById('content-area').innerHTML =
+        '<button class="btn-back" onclick="renderListView()">← Back to Events</button>' +
+        '<div class="admin-header" style="border-bottom-color:#2196F3;"><div>' +
+            '<div class="admin-title" style="color:#2196F3;">📋 Recent Event Log</div>' +
+            '<div class="admin-subtitle">Last 50 events across all nations</div>' +
+        '</div></div>' +
+        '<div id="log-entries"><div style="text-align:center;padding:40px;color:#888;">Loading...</div></div>';
 
-    const { data: logs, error } = await _supabase
-        .from('event_log')
-        .select('*, nations(name)')
-        .order('fired_at_tick', { ascending: false })
-        .limit(50);
-
-    if (error) {
-        document.getElementById('log-entries').innerHTML = '<div class="empty-state">Error loading log: ' + error.message + '</div>';
+    var r = await _supabase.from('event_log').select('*, nations(name)').order('fired_at_tick', { ascending: false }).limit(50);
+    if (r.error) {
+        document.getElementById('log-entries').innerHTML = '<div class="empty-state">Error: ' + r.error.message + '</div>';
         return;
     }
-
-    if (!logs || logs.length === 0) {
-        document.getElementById('log-entries').innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div>No events have fired yet.</div>';
+    if (!r.data || !r.data.length) {
+        document.getElementById('log-entries').innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div>No events fired yet.</div>';
         return;
     }
-
-    document.getElementById('log-entries').innerHTML = logs.map(log => {
-        const effects = log.effects_applied || [];
-        const effectsStr = effects.map(e => {
-            const sign = e.change > 0 ? '+' : '';
-            return `${e.stat}: ${sign}${e.change} (${e.target})`;
+    document.getElementById('log-entries').innerHTML = r.data.map(function(log) {
+        var fx = (log.effects_applied || []).map(function(e) {
+            return e.stat + ': ' + (e.change > 0 ? '+' : '') + e.change + ' (' + e.target + ')';
         }).join(' · ');
-
-        return `<div class="log-entry">
-            <div class="log-entry-header">
-                <div class="log-entry-name">${log.event_name} <span class="tag tag-category" style="margin-left:8px;">${log.category || ''}</span></div>
-                <div class="log-entry-tick">${log.nations?.name || 'Unknown'} · Tick ${log.fired_at_tick}</div>
-            </div>
-            <div class="log-entry-desc">${log.description_used || ''}</div>
-            ${effectsStr ? `<div class="log-entry-effects">Effects: ${effectsStr}</div>` : ''}
-        </div>`;
+        return '<div class="log-entry">' +
+            '<div class="log-entry-header">' +
+                '<div class="log-entry-name">' + escapeHtml(log.event_name) + ' <span class="tag tag-category" style="margin-left:8px;">' + (log.category || '') + '</span></div>' +
+                '<div class="log-entry-tick">' + (log.nations ? log.nations.name : '?') + ' · Tick ' + log.fired_at_tick + '</div>' +
+            '</div>' +
+            '<div class="log-entry-desc">' + escapeHtml(log.description_used || '') + '</div>' +
+            (fx ? '<div class="log-entry-effects">Effects: ' + fx + '</div>' : '') +
+        '</div>';
     }).join('');
 }
 
-// ==================== CANCEL ====================
-
-function cancelEditor() {
-    renderListView();
-}
-
 // ==================== UTILITIES ====================
-
-function escapeHtml(text) {
-    const d = document.createElement('div');
-    d.textContent = text || '';
-    return d.innerHTML;
-}
-
-function escapeAttr(text) {
-    return (text || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
+function cancelEditor() { renderListView(); }
+function escapeHtml(t) { var d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
+function escapeAttr(t) { return (t || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 </script>
 </body>
 </html>
