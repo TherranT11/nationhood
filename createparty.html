@@ -142,8 +142,8 @@
         .ideology-equality .ideology-name { color: #E91E63; }
         .ideology-freedom .ideology-name { color: #2196F3; }
         .ideology-security .ideology-name { color: #FF9800; }
-        .ideology-cooperation .ideology-name { color: #4CAF50; }
-        .ideology-competition .ideology-name { color: #F44336; }
+        .ideology-individualism .ideology-name { color: #eab308; }
+        .ideology-collectivism .ideology-name { color: #ec4899; }
         .ideology-tradition .ideology-name { color: #795548; }
         .ideology-progress .ideology-name { color: #00BCD4; }
         .ideology-nationalism .ideology-name { color: #FF5722; }
@@ -191,8 +191,8 @@
         .ideology-tag.equality { background: #E91E63; color: white; }
         .ideology-tag.freedom { background: #2196F3; color: white; }
         .ideology-tag.security { background: #FF9800; color: white; }
-        .ideology-tag.cooperation { background: #4CAF50; color: white; }
-        .ideology-tag.competition { background: #F44336; color: white; }
+        .ideology-tag.individualism { background: #eab308; color: white; }
+        .ideology-tag.collectivism { background: #ec4899; color: white; }
         .ideology-tag.tradition { background: #795548; color: white; }
         .ideology-tag.progress { background: #00BCD4; color: white; }
         .ideology-tag.nationalism { background: #FF5722; color: white; }
@@ -414,17 +414,17 @@
             </div>
         </div>
         
-        <!-- COOPERATION vs COMPETITION -->
+        <!-- INDIVIDUALISM vs COLLECTIVISM -->
         <div class="ideology-axis">
-            <div class="axis-label">Cooperation ↔ Competition</div>
+            <div class="axis-label">Individualism ↔ Collectivism</div>
             <div class="ideology-pair">
-                <div class="ideology-card ideology-cooperation" data-ideology="COOPERATION" data-opposite="COMPETITION">
-                    <div class="ideology-name">Cooperation</div>
-                    <div class="ideology-desc">The process of individuals or groups working together toward a common goal or mutual benefit to achieve more than they could alone.</div>
+                <div class="ideology-card ideology-individualism" data-ideology="INDIVIDUALISM" data-opposite="COLLECTIVISM">
+                    <div class="ideology-name">Individualism</div>
+                    <div class="ideology-desc">The belief that personal self-reliance and independent action are the foundations of a thriving society. Favors private enterprise, personal responsibility, and minimal collective obligation.</div>
                 </div>
-                <div class="ideology-card ideology-competition" data-ideology="COMPETITION" data-opposite="COOPERATION">
-                    <div class="ideology-name">Competition</div>
-                    <div class="ideology-desc">The activity or condition of striving to gain or win something by establishing superiority over others, often used as a driver for innovation and efficiency.</div>
+                <div class="ideology-card ideology-collectivism" data-ideology="COLLECTIVISM" data-opposite="INDIVIDUALISM">
+                    <div class="ideology-name">Collectivism</div>
+                    <div class="ideology-desc">The belief that communal structures and shared institutions produce better outcomes for all. Favors public services, cooperative ownership, and collective decision-making over individual action.</div>
                 </div>
             </div>
         </div>
@@ -762,18 +762,18 @@
         confirmBtn.disabled = !isValid;
     }
     
-   async function createParty() {
-    const confirmBtn = document.getElementById('confirm-btn');
-    confirmBtn.disabled = true;
-    confirmBtn.textContent = 'CREATING...';
-    
-    // Clear state cache since we're about to change faction data
-    sessionStorage.removeItem('nationhood_state');
-    
-    try {
-        const nation = nationData;
+    async function createParty() {
+        const confirmBtn = document.getElementById('confirm-btn');
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'CREATING...';
         
-        if (isAutocracy) {
+        // Clear state cache since we're about to change faction data
+        sessionStorage.removeItem('nationhood_state');
+        
+        try {
+            const nation = nationData;
+            
+            if (isAutocracy) {
                 // --- AUTOCRACY JOIN ---
                 const partyName = document.getElementById('party-name').value;
                 const partyAbbr = document.getElementById('party-abbr').value;
@@ -781,28 +781,28 @@
                 if (!partyName) { showError('Please select a faction name.'); confirmBtn.disabled = false; confirmBtn.textContent = 'JOIN THE REGIME'; return; }
                 
                 // Update faction record
-               const { error: updateError } = await _supabase
-    .from('factions')
-    .upsert({
-        id: currentUser.id,
-        faction_type: 'party',
-        faction_name: partyName,
-        nation_id: nation.id,
-        nation: selectedNation,
-        abbreviation: partyAbbr,
-        ideology_value_1: null,
-        ideology_value_2: null
-    });
+                const { error: updateError } = await _supabase
+                    .from('factions')
+                    .upsert({
+                        id: currentUser.id,
+                        faction_type: 'party',
+                        faction_name: partyName,
+                        nation_id: nation.id,
+                        nation: selectedNation,
+                        abbreviation: partyAbbr,
+                        ideology_value_1: null,
+                        ideology_value_2: null
+                    });
                 
                 if (updateError) {
-    if (updateError.code === '23505') { // Unique violation
-        showError('That faction name was just taken by another player. Please refresh and choose another.');
-        confirmBtn.disabled = false;
-        confirmBtn.textContent = 'JOIN THE REGIME';
-        return;
-    }
-    throw updateError;
-}
+                    if (updateError.code === '23505') {
+                        showError('That faction name was just taken by another player. Please refresh and choose another.');
+                        confirmBtn.disabled = false;
+                        confirmBtn.textContent = 'JOIN THE REGIME';
+                        return;
+                    }
+                    throw updateError;
+                }
                 
                 // Call autocracy join to handle seat distribution
                 const { data: joinResult, error: joinError } = await _supabase
@@ -822,24 +822,32 @@
                 window.location.href = 'world.html';
                 
             } else {
-                // --- DEMOCRACY JOIN (original flow) ---
+                // --- DEMOCRACY JOIN ---
                 const partyName = document.getElementById('party-name').value.trim();
                 const partyAbbr = document.getElementById('party-abbr').value.trim();
                 
-            const { error: updateError } = await _supabase
-    .from('factions')
-    .upsert({
-        id: currentUser.id,
-        faction_type: 'party',
-        faction_name: partyName,
-        nation_id: nation.id,
-        nation: selectedNation,
-        ideology_value_1: selectedIdeologies[0],
-        ideology_value_2: selectedIdeologies[1],
-        abbreviation: partyAbbr
-    });
+                const { error: updateError } = await _supabase
+                    .from('factions')
+                    .upsert({
+                        id: currentUser.id,
+                        faction_type: 'party',
+                        faction_name: partyName,
+                        nation_id: nation.id,
+                        nation: selectedNation,
+                        ideology_value_1: selectedIdeologies[0],
+                        ideology_value_2: selectedIdeologies[1],
+                        abbreviation: partyAbbr
+                    });
                 
                 if (updateError) throw updateError;
+
+                // Initialize ideology spectrum for this faction
+                const { error: ideoError } = await _supabase.rpc('initialize_faction_ideology', {
+                    p_faction_id: currentUser.id,
+                    p_ideology_1: selectedIdeologies[0],
+                    p_ideology_2: selectedIdeologies[1]
+                });
+                if (ideoError) console.warn('Ideology init failed (non-blocking):', ideoError);
 
                 // Check if NPCs should be removed (2+ player parties)
                 const { data: npcResult, error: npcError } = await _supabase
