@@ -429,9 +429,18 @@ function renderBill() {
                 el.innerHTML = `${isHeadFaction ? '<button class="sponsor-btn enact-decree" onclick="enactDecree()">⚡ Enact Decree</button>' : ''}${isSponsor ? '<button class="sponsor-btn retract" onclick="retractBill()">Retract Decree</button>' : ''}`;
             }
         } else if (isSponsor) {
-            el.style.display = 'flex';
-            el.innerHTML = `<button class="sponsor-btn send-floor" onclick="sendToFloor()">Send to Floor</button><button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>`;
-        }
+    el.style.display = 'flex';
+
+    const sponsorSeats = allPartySeats[bill.proposed_by] || 0;
+    const hasMajority = sponsorSeats >= GAME_CONFIG.MAJORITY_SEATS;
+    const hasCosponsor = (bill.bill_support || []).some(s => s.faction_id !== bill.proposed_by && s.stance === 'accept');
+    const canSendToFloor = hasMajority || hasCosponsor;
+
+    const disabledAttr = canSendToFloor ? '' : 'disabled';
+    const reason = canSendToFloor ? '' : '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or 51% of seats to send this to the floor.</div>';
+
+    el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">Send to Floor</button><button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>` + reason;
+}
     }
 }
 
