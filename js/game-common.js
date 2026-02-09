@@ -9,6 +9,7 @@
  *   - Bill support calculation
  *   - Vote tally syncing
  *   - Enactment approval impact
+ *   - Dynamic Ideology System (axes, labels, shifts, drift, penalties)
  *   - Random event processing
  *   - Game constants & utility formatters
  *
@@ -63,12 +64,558 @@ const RAW_SCALING_DIVISORS = {
 // Ideology spectrum opposites — only true opposites trigger the "opposed" penalty.
 // Policies with unrelated ideologies are neutral, not opposed.
 const IDEOLOGY_OPPOSITES = {
-    'LIBERTY': 'EQUALITY', 'EQUALITY': 'LIBERTY',
-    'FREEDOM': 'SECURITY', 'SECURITY': 'FREEDOM',
-    'TRADITION': 'PROGRESS', 'PROGRESS': 'TRADITION',
-    'GLOBALISM': 'NATIONALISM', 'NATIONALISM': 'GLOBALISM',
-    'COMPETITION': 'COOPERATION', 'COOPERATION': 'COMPETITION'
+    'LIBERTY': 'EQUALITY',           'EQUALITY': 'LIBERTY',
+    'FREEDOM': 'SECURITY',           'SECURITY': 'FREEDOM',
+    'TRADITION': 'PROGRESS',         'PROGRESS': 'TRADITION',
+    'GLOBALISM': 'NATIONALISM',      'NATIONALISM': 'GLOBALISM',
+    'INDIVIDUALISM': 'COLLECTIVISM', 'COLLECTIVISM': 'INDIVIDUALISM'
 };
+
+
+// ==================== DYNAMIC IDEOLOGY SYSTEM ====================
+
+/**
+ * The five ideological axes. Each is a spectrum from -100 to +100.
+ * The "left" label sits at -100, the "right" label sits at +100.
+ *
+ * Convention: the DB column name is "leftlabel_rightlabel" (lowercase).
+ */
+const IDEOLOGY_AXES = [
+    {
+        key: 'liberty_equality',
+        left: 'LIBERTY',       right: 'EQUALITY',
+        leftLabel: 'Liberty',  rightLabel: 'Equality',
+        leftColor: '#3b82f6',  rightColor: '#ef4444',
+        description: 'Individual rights vs. collective fairness'
+    },
+    {
+        key: 'tradition_progress',
+        left: 'TRADITION',      right: 'PROGRESS',
+        leftLabel: 'Tradition', rightLabel: 'Progress',
+        leftColor: '#a855f7',   rightColor: '#22c55e',
+        description: 'Cultural conservatism vs. social reform'
+    },
+    {
+        key: 'security_freedom',
+        left: 'SECURITY',      right: 'FREEDOM',
+        leftLabel: 'Security', rightLabel: 'Freedom',
+        leftColor: '#f59e0b',  rightColor: '#06b6d4',
+        description: 'State protection vs. personal autonomy'
+    },
+    {
+        key: 'globalism_nationalism',
+        left: 'GLOBALISM',       right: 'NATIONALISM',
+        leftLabel: 'Globalism',  rightLabel: 'Nationalism',
+        leftColor: '#14b8a6',    rightColor: '#f97316',
+        description: 'International integration vs. national sovereignty'
+    },
+    {
+        key: 'individualism_collectivism',
+        left: 'INDIVIDUALISM',       right: 'COLLECTIVISM',
+        leftLabel: 'Individualism',  rightLabel: 'Collectivism',
+        leftColor: '#eab308',        rightColor: '#ec4899',
+        description: 'Personal self-reliance vs. communal structures'
+    }
+];
+
+/**
+ * Maps an ideology name (e.g. "LIBERTY") to its axis key and shift direction.
+ *
+ * direction: -1 means the ideology sits on the LEFT (negative) end of the axis
+ *            +1 means the ideology sits on the RIGHT (positive) end of the axis
+ *
+ * Example:
+ *   IDEOLOGY_TO_AXIS['LIBERTY']  → { axisKey: 'liberty_equality', direction: -1 }
+ *   IDEOLOGY_TO_AXIS['EQUALITY'] → { axisKey: 'liberty_equality', direction: +1 }
+ */
+const IDEOLOGY_TO_AXIS = {};
+for (const axis of IDEOLOGY_AXES) {
+    IDEOLOGY_TO_AXIS[axis.left]  = { axisKey: axis.key, direction: -1 };
+    IDEOLOGY_TO_AXIS[axis.right] = { axisKey: axis.key, direction: +1 };
+}
+
+
+// ==================== IDEOLOGY LABELS ====================
+
+/**
+ * Label thresholds from the design guide.
+ * Applied to the ABSOLUTE value of a score on any axis.
+ */
+const IDEOLOGY_LABEL_THRESHOLDS = [
+    { min: 0,  max: 10,  label: 'Centrist' },
+    { min: 11, max: 30,  label: 'Leaning' },
+    { min: 31, max: 60,  label: 'Strong' },
+    { min: 61, max: 100, label: 'Radical' }
+];
+
+/**
+ * Get the human-readable label for a single axis score.
+ *
+ * @param {number} score    - Axis score (-100 to +100)
+ * @param {object} axisDef  - Entry from IDEOLOGY_AXES
+ * @returns {string} e.g. "Strong Liberty", "Leaning Progress", "Centrist"
+ */
+function getIdeologyLabel(score, axisDef) {
+    const abs = Math.abs(score);
+    const threshold = IDEOLOGY_LABEL_THRESHOLDS.find(t => abs >= t.min && abs <= t.max);
+    const intensityLabel = threshold ? threshold.label : 'Centrist';
+
+    if (intensityLabel === 'Centrist') return 'Centrist';
+
+    const sideName = score < 0 ? axisDef.leftLabel : axisDef.rightLabel;
+    return `${intensityLabel} ${sideName}`;
+}
+
+/**
+ * Get the full ideology profile for a faction (all 5 axes).
+ *
+ * @param {object} ideologyRow - Row from faction_ideology table
+ * @returns {Array} Array of { axisKey, axisDef, score, label }
+ */
+function getFullIdeologyProfile(ideologyRow) {
+    return IDEOLOGY_AXES.map(axis => {
+        const score = ideologyRow[axis.key] || 0;
+        return {
+            axisKey: axis.key,
+            axisDef: axis,
+            score: score,
+            label: getIdeologyLabel(score, axis)
+        };
+    });
+}
+
+/**
+ * Get a compact label summary string.
+ * e.g. "Strong Liberty • Leaning Progress • Centrist (Security/Freedom) • ..."
+ *
+ * @param {object} ideologyRow - Row from faction_ideology table
+ * @returns {string}
+ */
+function getIdeologySummary(ideologyRow) {
+    const profile = getFullIdeologyProfile(ideologyRow);
+    return profile.map(p => {
+        if (p.label === 'Centrist') {
+            return `Centrist (${p.axisDef.leftLabel}/${p.axisDef.rightLabel})`;
+        }
+        return p.label;
+    }).join(' • ');
+}
+
+
+// ==================== IDEOLOGY POINT CALCULATION ====================
+
+/**
+ * Point values for different political actions.
+ * These multiply per ideology tag per article.
+ *
+ * Design guide §4.1:
+ *   - Vote YES on a bill:    +1 per ideology tag per article
+ *   - Vote NO on a bill:     +1 per ideology tag per article (in OPPOSITE direction)
+ *   - Sponsor a bill:        +2 per ideology tag per article
+ *   - Bill PASSES (if yes):  +1 bonus per ideology tag per article
+ */
+const IDEOLOGY_POINT_VALUES = {
+    VOTE_YES:     1,
+    VOTE_NO:      1,
+    SPONSOR:      2,
+    BILL_PASSED:  1
+};
+
+/**
+ * Calculate ideology axis shifts for a single faction based on their
+ * political actions this tick.
+ *
+ * @param {object} params
+ * @param {Array}  params.votedYesBills   - Bills this faction voted YES on (with bill_articles.policies)
+ * @param {Array}  params.votedNoBills    - Bills this faction voted NO on (with bill_articles.policies)
+ * @param {Array}  params.sponsoredBills  - Bills this faction sponsored this tick (with bill_articles.policies)
+ * @param {Array}  params.passedBills     - Bills that passed this tick where faction voted YES
+ *
+ * @returns {object} Map of axisKey → total shift amount (can be + or -)
+ *   e.g. { liberty_equality: -3, security_freedom: +2 }
+ */
+function calculateIdeologyShifts({ votedYesBills = [], votedNoBills = [], sponsoredBills = [], passedBills = [] }) {
+    const shifts = {};
+
+    function addShift(axisKey, amount) {
+        shifts[axisKey] = (shifts[axisKey] || 0) + amount;
+    }
+
+    function getArticleIdeologies(bill) {
+        const tags = [];
+        for (const art of (bill.bill_articles || [])) {
+            const p = art.policies || art;
+            if (!p) continue;
+            const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
+                ? p.ideologies.map(i => i.toUpperCase())
+                : (p.ideology ? [p.ideology.toUpperCase()] : []);
+            tags.push(...ideos);
+        }
+        return tags;
+    }
+
+    // 1. VOTE YES — shift TOWARD each policy ideology
+    for (const bill of votedYesBills) {
+        const tags = getArticleIdeologies(bill);
+        for (const tag of tags) {
+            const mapping = IDEOLOGY_TO_AXIS[tag];
+            if (mapping) {
+                addShift(mapping.axisKey, mapping.direction * IDEOLOGY_POINT_VALUES.VOTE_YES);
+            }
+        }
+    }
+
+    // 2. VOTE NO — shift AWAY from each policy ideology (opposite direction)
+    for (const bill of votedNoBills) {
+        const tags = getArticleIdeologies(bill);
+        for (const tag of tags) {
+            const mapping = IDEOLOGY_TO_AXIS[tag];
+            if (mapping) {
+                addShift(mapping.axisKey, -mapping.direction * IDEOLOGY_POINT_VALUES.VOTE_NO);
+            }
+        }
+    }
+
+    // 3. SPONSOR — stronger shift toward the ideology
+    for (const bill of sponsoredBills) {
+        const tags = getArticleIdeologies(bill);
+        for (const tag of tags) {
+            const mapping = IDEOLOGY_TO_AXIS[tag];
+            if (mapping) {
+                addShift(mapping.axisKey, mapping.direction * IDEOLOGY_POINT_VALUES.SPONSOR);
+            }
+        }
+    }
+
+    // 4. BILL PASSED (bonus for YES voters) — additional shift toward
+    for (const bill of passedBills) {
+        const tags = getArticleIdeologies(bill);
+        for (const tag of tags) {
+            const mapping = IDEOLOGY_TO_AXIS[tag];
+            if (mapping) {
+                addShift(mapping.axisKey, mapping.direction * IDEOLOGY_POINT_VALUES.BILL_PASSED);
+            }
+        }
+    }
+
+    return shifts;
+}
+
+/**
+ * Apply ideology shifts to a faction's current scores, clamping to -100..+100.
+ *
+ * @param {object} currentScores - Current axis scores { liberty_equality: -30, ... }
+ * @param {object} shifts        - Shifts to apply { liberty_equality: -2, ... }
+ * @returns {object} New scores after applying shifts and clamping
+ */
+function applyIdeologyShifts(currentScores, shifts) {
+    const newScores = { ...currentScores };
+    for (const axis of IDEOLOGY_AXES) {
+        const shift = shifts[axis.key] || 0;
+        if (shift === 0) continue;
+        const current = newScores[axis.key] || 0;
+        newScores[axis.key] = Math.max(-100, Math.min(100, current + shift));
+    }
+    return newScores;
+}
+
+
+// ==================== DRIFT DETECTION ====================
+
+/**
+ * Drift thresholds from design guide §7.1.
+ * Compared against the absolute change on an axis in a single tick.
+ */
+const DRIFT_THRESHOLDS = {
+    MINOR:  3,
+    MAJOR:  6,
+    EXTREME: 10
+};
+
+/**
+ * Detect drift events by comparing current and previous tick scores.
+ *
+ * @param {object} currentScores  - This tick's scores
+ * @param {object} previousScores - Last tick's scores
+ * @param {object} ideologyRow    - Full faction_ideology row (for declared values)
+ * @param {string} factionName    - For event messages
+ *
+ * @returns {Array} Array of drift event objects:
+ *   { type: 'drift'|'hypocrisy', severity: 'minor'|'major'|'extreme',
+ *     axis: axisDef, delta, message }
+ */
+function detectIdeologyDrift(currentScores, previousScores, ideologyRow, factionName) {
+    const events = [];
+
+    for (const axis of IDEOLOGY_AXES) {
+        const current = currentScores[axis.key] || 0;
+        const previous = previousScores[axis.key] || 0;
+        const delta = current - previous;
+        const absDelta = Math.abs(delta);
+
+        if (absDelta < DRIFT_THRESHOLDS.MINOR) continue;
+
+        let severity, verb;
+        if (absDelta >= DRIFT_THRESHOLDS.EXTREME) {
+            severity = 'extreme';
+            verb = 'dramatically reversed course on';
+        } else if (absDelta >= DRIFT_THRESHOLDS.MAJOR) {
+            severity = 'major';
+            verb = 'is lurching toward';
+        } else {
+            severity = 'minor';
+            verb = 'is shifting toward';
+        }
+
+        const direction = delta < 0 ? axis.leftLabel : axis.rightLabel;
+        const message = `${factionName} ${verb} ${direction}`;
+
+        events.push({
+            type: 'drift',
+            severity,
+            axisKey: axis.key,
+            axisDef: axis,
+            delta,
+            score: current,
+            message
+        });
+    }
+
+    // Hypocrisy detection: check declared axes for side-switching
+    const declaredAxes = [];
+    if (ideologyRow.declared_axis_1) {
+        declaredAxes.push({
+            axisKey: ideologyRow.declared_axis_1,
+            declaredDirection: ideologyRow.declared_direction_1
+        });
+    }
+    if (ideologyRow.declared_axis_2) {
+        declaredAxes.push({
+            axisKey: ideologyRow.declared_axis_2,
+            declaredDirection: ideologyRow.declared_direction_2
+        });
+    }
+
+    for (const decl of declaredAxes) {
+        const current = currentScores[decl.axisKey] || 0;
+        const previous = previousScores[decl.axisKey] || 0;
+        const declaredSign = decl.declaredDirection > 0 ? 1 : -1;
+
+        const currentSign = current === 0 ? 0 : (current > 0 ? 1 : -1);
+        const previousSign = previous === 0 ? 0 : (previous > 0 ? 1 : -1);
+
+        // Only fire if they JUST crossed (weren't already on the opposite side)
+        if (currentSign !== 0 && currentSign !== declaredSign && previousSign !== currentSign) {
+            const axisDef = IDEOLOGY_AXES.find(a => a.key === decl.axisKey);
+            if (!axisDef) continue;
+
+            const declaredSide = declaredSign < 0 ? axisDef.leftLabel : axisDef.rightLabel;
+            const currentSide = currentSign < 0 ? axisDef.leftLabel : axisDef.rightLabel;
+
+            events.push({
+                type: 'hypocrisy',
+                severity: 'extreme',
+                axisKey: decl.axisKey,
+                axisDef,
+                delta: current - previous,
+                score: current,
+                declaredSide,
+                currentSide,
+                message: `HYPOCRISY ALERT: ${factionName} declared ${declaredSide} but has drifted to ${currentSide}!`
+            });
+        }
+    }
+
+    return events;
+}
+
+
+// ==================== DYNAMIC OPPOSITION PENALTY (SPECTRUM-BASED) ====================
+
+/**
+ * Calculate the dynamic opposition penalty for a faction voting on a policy,
+ * based on their CURRENT spectrum position (not static declarations).
+ *
+ * Design guide §6.1:
+ *   The penalty is proportional to how far the faction is on the OPPOSITE
+ *   side of the axis from what the policy represents.
+ *
+ *   - If the policy pushes toward + and the faction is at -80 → severe penalty
+ *   - If the policy pushes toward + and the faction is at +40 → NO penalty (aligned)
+ *   - If the policy pushes toward + and the faction is at -5  → negligible penalty
+ *
+ * @param {object} factionIdeology   - Row from faction_ideology table
+ * @param {string} policyIdeologyTag - e.g. 'LIBERTY', 'EQUALITY', 'FREEDOM'
+ * @param {number} basePenalty       - Base penalty value (default 2)
+ * @returns {number} Penalty amount (0 or negative). 0 = aligned, negative = opposed.
+ */
+function calculateDynamicOppositionPenalty(factionIdeology, policyIdeologyTag, basePenalty = 2) {
+    const tag = policyIdeologyTag.toUpperCase();
+    const mapping = IDEOLOGY_TO_AXIS[tag];
+    if (!mapping) return 0;
+
+    const factionScore = factionIdeology[mapping.axisKey] || 0;
+    const policyDirection = mapping.direction; // +1 or -1
+
+    // How opposed is the faction?
+    // If policy pushes +1 (right), opposition = how negative the faction is
+    // If policy pushes -1 (left), opposition = how positive the faction is
+    const oppositionScore = -policyDirection * factionScore;
+
+    // Only penalize if faction is on the opposite side (oppositionScore > 0)
+    if (oppositionScore <= 0) return 0;
+
+    // Scale: 0 at center, full penalty at ±100
+    const penaltyScale = oppositionScore / 100;
+    return -Math.round(basePenalty * penaltyScale * 10) / 10;
+}
+
+/**
+ * Calculate total dynamic opposition penalty for all ideology tags in a bill.
+ *
+ * @param {object} factionIdeology - Row from faction_ideology table
+ * @param {Array}  articles        - Bill articles with policies
+ * @param {number} basePenalty     - Base penalty per tag (default 2)
+ * @returns {number} Total penalty (0 or negative)
+ */
+function calculateBillDynamicPenalty(factionIdeology, articles, basePenalty = 2) {
+    let totalPenalty = 0;
+
+    for (const art of articles) {
+        const p = art.policies || art;
+        if (!p) continue;
+
+        const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
+            ? p.ideologies.map(i => i.toUpperCase())
+            : (p.ideology ? [p.ideology.toUpperCase()] : []);
+
+        for (const tag of ideos) {
+            totalPenalty += calculateDynamicOppositionPenalty(factionIdeology, tag, basePenalty);
+        }
+    }
+
+    return totalPenalty;
+}
+
+
+// ==================== HYPOCRISY APPROVAL PENALTY ====================
+
+/**
+ * Calculate approval penalty for hypocrisy (declared vs actual drift).
+ * Called when a hypocrisy event is detected.
+ *
+ * The penalty scales with how far the faction has drifted past zero
+ * on their declared axis.
+ *
+ * @param {number} currentScore      - Current score on the axis
+ * @param {number} declaredDirection  - Original declared direction (-30 or +30)
+ * @returns {number} Negative approval penalty
+ */
+function calculateHypocrisyPenalty(currentScore, declaredDirection) {
+    const declaredSign = declaredDirection > 0 ? 1 : -1;
+    const currentSign = currentScore > 0 ? 1 : -1;
+
+    if (currentSign === declaredSign || currentScore === 0) return 0;
+
+    const distPastZero = Math.abs(currentScore);
+    if (distPastZero > 30) return -3;
+    if (distPastZero > 10) return -2;
+    return -1;
+}
+
+
+// ==================== IDEOLOGY DATABASE HELPERS ====================
+
+/**
+ * Load ideology data for a single faction.
+ *
+ * @param {object} supabase  - Supabase client
+ * @param {string} factionId - Faction UUID
+ * @returns {Promise<object|null>} faction_ideology row or null
+ */
+async function loadFactionIdeology(supabase, factionId) {
+    const { data, error } = await supabase
+        .from('faction_ideology')
+        .select('*')
+        .eq('faction_id', factionId)
+        .maybeSingle();
+
+    if (error) {
+        console.error('Error loading faction ideology:', error);
+        return null;
+    }
+    return data;
+}
+
+/**
+ * Load ideology data for ALL factions in a nation.
+ *
+ * @param {object} supabase - Supabase client
+ * @param {string} nationId - Nation UUID
+ * @returns {Promise<Array>} Array of faction_ideology rows joined with faction info
+ */
+async function loadNationIdeologies(supabase, nationId) {
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+
+    if (!factions || factions.length === 0) return [];
+
+    const factionIds = factions.map(f => f.id);
+    const { data, error } = await supabase
+        .from('faction_ideology')
+        .select('*, factions(id, faction_name, faction_type, is_npc, nation_id)')
+        .in('faction_id', factionIds);
+
+    if (error) {
+        console.error('Error loading nation ideologies:', error);
+        return [];
+    }
+    return data || [];
+}
+
+/**
+ * Load the most recent ideology history snapshot for a faction.
+ * Used for drift detection (compare current vs previous).
+ *
+ * @param {object} supabase  - Supabase client
+ * @param {string} factionId - Faction UUID
+ * @param {number} tick      - Get the snapshot BEFORE this tick
+ * @returns {Promise<object|null>}
+ */
+async function loadPreviousIdeologySnapshot(supabase, factionId, tick) {
+    const { data, error } = await supabase
+        .from('ideology_history')
+        .select('*')
+        .eq('faction_id', factionId)
+        .lt('tick', tick)
+        .order('tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (error) {
+        console.error('Error loading ideology snapshot:', error);
+        return null;
+    }
+    return data;
+}
+
+/**
+ * Extract current axis scores from an ideology row into a plain object.
+ * Useful for passing to shift/drift functions.
+ *
+ * @param {object} ideologyRow - Row from faction_ideology or ideology_history
+ * @returns {object} { liberty_equality: N, tradition_progress: N, ... }
+ */
+function extractAxisScores(ideologyRow) {
+    const scores = {};
+    for (const axis of IDEOLOGY_AXES) {
+        scores[axis.key] = ideologyRow[axis.key] || 0;
+    }
+    return scores;
+}
 
 
 // ==================== SEAT LOADING ====================
@@ -215,11 +762,6 @@ async function fetchActiveCoalition(supabase, nationId) {
 /**
  * Get policies for a given sector. All policies are now available regardless
  * of faction ideology — but opposed policies carry approval penalties.
- * Each policy gets an .isOpposed flag so the UI can warn the player.
- */
-/**
- * Get policies for a given sector. All policies are now available regardless
- * of faction ideology — but opposed policies carry approval penalties.
  * Each policy gets flags so the UI can warn the player:
  *   .isOpposed         — true if policy contains a true ideological opposite
  *   .prerequisiteMissing — true if requires_policy_id isn't in activePolicyIds
@@ -231,7 +773,6 @@ function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy, exclud
     const factionIdeos = [ideo1, ideo2].filter(Boolean);
 
     // Build set of ideologies that are hostile to this faction
-    // e.g. if faction is [COOPERATION, EQUALITY], opposites are [COMPETITION, LIBERTY]
     const factionOpposites = new Set(
         factionIdeos.map(fi => IDEOLOGY_OPPOSITES[fi]).filter(Boolean)
     );
@@ -244,18 +785,16 @@ function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy, exclud
                 : (p.ideology ? [p.ideology.toUpperCase()] : []);
 
             // A policy is opposed ONLY if it contains a true ideological opposite.
-            // Unrelated ideologies (e.g. Freedom vs Cooperation) are neutral, not opposed.
             const isOpposed = factionIdeos.length > 0 &&
                 policyIdeos.length > 0 &&
                 policyIdeos.some(pi => factionOpposites.has(pi));
 
-            // Prerequisite check: if this policy requires another to be active
+            // Prerequisite check
             let prerequisiteMissing = false;
             let prerequisiteName = null;
             if (p.requires_policy_id && activePolicyIds) {
                 if (!activePolicyIds.has(p.requires_policy_id)) {
                     prerequisiteMissing = true;
-                    // Look up the prerequisite name for display
                     const prereq = allPolicies.find(pp => pp.id === p.requires_policy_id);
                     prerequisiteName = prereq?.policy_name || 'Unknown Policy';
                 }
@@ -336,12 +875,10 @@ async function syncVoteTallies(supabase, billId) {
  * @param {Array}   billSupport  - Array of { faction_id, stance } from floor vote
  * @param {string}  sponsorId    - Faction UUID that proposed the bill
  * @returns {Object} Map of factionId → approval delta (can be positive or negative)
- *
- * Example return: { 'uuid-abc': +4.2, 'uuid-def': -2.1, 'uuid-ghi': +1.8 }
  */
 function calculateEnactmentApproval(nation, articles, billSupport, sponsorId) {
-    const BASE_IMPACT = 3;          // Max approval points per stat effect
-    const NO_VOTE_PENALTY = 0.5;    // Inverse multiplier for NO voters
+    const BASE_IMPACT = 3;
+    const NO_VOTE_PENALTY = 0.5;
 
     // 1. Aggregate all stat effects across all articles in the bill
     const allEffects = [];
@@ -349,16 +886,14 @@ function calculateEnactmentApproval(nation, articles, billSupport, sponsorId) {
         const p = art.policies || art;
         if (!p) continue;
 
-        // Support new stat_effects array
         if (p.stat_effects && Array.isArray(p.stat_effects)) {
             for (const eff of p.stat_effects) {
                 allEffects.push({
                     stat_key: eff.stat_key,
-                    direction: eff.direction  // 'up' or 'down'
+                    direction: eff.direction
                 });
             }
         }
-        // Legacy single stat fallback
         else if (p.target_stat) {
             allEffects.push({
                 stat_key: p.target_stat,
@@ -380,49 +915,35 @@ function calculateEnactmentApproval(nation, articles, billSupport, sponsorId) {
         const isInverted = INVERTED_STATS.includes(statKey);
         const val = Number(currentValue);
 
-        // Urgency: how much do people care about a change in this stat?
-        // Range 0.0 to 1.0 based on how "bad" the stat currently is
         let urgency;
         if (isInverted) {
-            // Inverted: high value = bad situation, people want it lowered
-            urgency = val / 100;  // corruption at 80 → urgency 0.8
+            urgency = val / 100;
         } else {
-            // Normal: low value = bad situation, people want it raised
-            urgency = (100 - val) / 100;  // healthcare at 20 → urgency 0.8
+            urgency = (100 - val) / 100;
         }
 
-        // Clamp urgency to 0.1–1.0 (always some impact, never zero)
         urgency = Math.max(0.1, Math.min(1.0, urgency));
 
-        // Does this effect help or hurt?
         let isHelpful;
         if (isInverted) {
-            // Lowering an inverted stat is good, raising it is bad
             isHelpful = eff.direction === 'down';
         } else {
-            // Raising a normal stat is good, lowering it is bad
             isHelpful = eff.direction === 'up';
         }
 
-        // Sentiment: positive if helpful, negative if harmful
-        // Scaled by urgency — desperate situations amplify the reaction
         const sentiment = isHelpful
-            ? BASE_IMPACT * urgency           // helpful: +0.3 to +3.0
-            : -BASE_IMPACT * (1 - urgency + 0.2);  // harmful: always stings, worse when stat was good
+            ? BASE_IMPACT * urgency
+            : -BASE_IMPACT * (1 - urgency + 0.2);
 
         totalSentiment += sentiment;
     }
 
-    // Average across effects so bills with many articles don't explode
     const avgSentiment = totalSentiment / allEffects.length;
-
-    // Cap at ±5 approval per bill
     const cappedSentiment = Math.max(-5, Math.min(5, avgSentiment));
 
     // 3. Assign to each party based on their vote
     const approvalDeltas = {};
 
-    // Sponsor always counts as YES
     const votes = {};
     votes[sponsorId] = 'yes';
     for (const s of (billSupport || [])) {
@@ -433,15 +954,10 @@ function calculateEnactmentApproval(nation, articles, billSupport, sponsorId) {
 
     for (const [factionId, stance] of Object.entries(votes)) {
         if (stance === 'yes') {
-            // Voted YES: get full sentiment (positive if bill was popular, negative if not)
             approvalDeltas[factionId] = Math.round(cappedSentiment * 10) / 10;
         } else if (stance === 'no') {
-            // Voted NO: get inverse at reduced strength
-            // If bill was popular (sentiment > 0), NO voters lose approval
-            // If bill was unpopular (sentiment < 0), NO voters gain approval (they opposed it!)
             approvalDeltas[factionId] = Math.round(-cappedSentiment * NO_VOTE_PENALTY * 10) / 10;
         }
-        // Abstain: no effect
     }
 
     return approvalDeltas;
@@ -460,7 +976,6 @@ async function applyEnactmentApproval(supabase, approvalDeltas) {
     for (const [factionId, delta] of Object.entries(approvalDeltas)) {
         if (delta === 0) continue;
 
-        // Read current approval
         const { data: faction } = await supabase
             .from('factions')
             .select('approval_rating')
@@ -480,13 +995,13 @@ async function applyEnactmentApproval(supabase, approvalDeltas) {
 }
 
 
-// ==================== IDEOLOGY PENALTY ====================
+// ==================== STATIC IDEOLOGY PENALTY (LEGACY) ====================
 
 /**
  * Count how many articles in a bill are ideologically opposed to the sponsor.
  *
- * A policy article is "opposed" if NONE of its ideologies match either of
- * the sponsor's ideology values. Text-only articles (no policy) are never opposed.
+ * A policy article is "opposed" if it contains a true ideological opposite
+ * of the sponsor's declared ideology values. Text-only articles are never opposed.
  *
  * @param {Array}  articles - Bill articles with policies
  * @param {Object} sponsor  - Faction with ideology_value_1/2
@@ -497,9 +1012,8 @@ function countOpposedArticles(articles, sponsor) {
     const ideo2 = (sponsor?.ideology_value_2 || '').toUpperCase();
     const factionIdeos = [ideo1, ideo2].filter(Boolean);
 
-    if (factionIdeos.length === 0) return 0; // No ideology = no opposition
+    if (factionIdeos.length === 0) return 0;
 
-    // Build set of true opposites for this faction
     const factionOpposites = new Set(
         factionIdeos.map(fi => IDEOLOGY_OPPOSITES[fi]).filter(Boolean)
     );
@@ -507,15 +1021,14 @@ function countOpposedArticles(articles, sponsor) {
     let opposed = 0;
     for (const art of articles) {
         const p = art.policies || art;
-        if (!p || !p.policy_name) continue; // Skip text-only articles
+        if (!p || !p.policy_name) continue;
 
         const policyIdeos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
             ? p.ideologies.map(i => i.toUpperCase())
             : (p.ideology ? [p.ideology.toUpperCase()] : []);
 
-        if (policyIdeos.length === 0) continue; // No ideology on policy = neutral
+        if (policyIdeos.length === 0) continue;
 
-        // Only count as opposed if policy contains a true ideological opposite
         const hasOpposite = policyIdeos.some(pi => factionOpposites.has(pi));
         if (hasOpposite) opposed++;
     }
@@ -547,17 +1060,12 @@ function calculateIdeologyPenalty(stage, opposedCount, polarization) {
 
     if (stage === 'floor') {
         if (pol >= 50) {
-            // Doubled: -1 per opposed article
             penalty = -1 * opposedCount;
         } else {
-            // Normal: -1 per 2 opposed articles (rounded down)
             penalty = -1 * Math.floor(opposedCount / 2);
         }
     } else if (stage === 'passed') {
-        // Base: -1 per opposed article
         penalty = -1 * opposedCount;
-
-        // Hyperpolarized: additional -2 per opposed article
         if (pol >= 75) {
             penalty += -2 * opposedCount;
         }
@@ -606,7 +1114,6 @@ async function applyIdeologyPenalty(supabase, sponsorId, penalty) {
  * @returns {Promise<Array>} Array of { billId, result: 'passed'|'failed', ... }
  */
 async function resolveExpiredVotes(supabase, nationId) {
-    // Get current tick
     const { data: shard } = await supabase
         .from('shard')
         .select('current_tick')
@@ -615,7 +1122,6 @@ async function resolveExpiredVotes(supabase, nationId) {
     if (!shard) return [];
     const currentTick = shard.current_tick;
 
-    // Find floor bills past their voting deadline
     const { data: expiredBills, error } = await supabase
         .from('bills')
         .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
@@ -628,7 +1134,6 @@ async function resolveExpiredVotes(supabase, nationId) {
     const results = [];
 
     for (const bill of expiredBills) {
-        // Tally votes
         let votesFor = 0, votesAgainst = 0;
         (bill.bill_support || []).forEach(s => {
             if (s.stance === 'yes') votesFor += s.seat_count;
@@ -670,7 +1175,6 @@ async function enactBill(supabase, bill, currentTick) {
         passed_tick: currentTick
     }).eq('id', bill.id);
 
-    // Load nation for stat calculations
     const { data: nation } = await supabase
         .from('nations')
         .select('*')
@@ -678,7 +1182,6 @@ async function enactBill(supabase, bill, currentTick) {
         .single();
     if (!nation) return;
 
-    // Load all current active laws for this nation
     const { data: currentActiveLaws } = await supabase
         .from('active_laws')
         .select('*, policies(*)')
@@ -688,9 +1191,7 @@ async function enactBill(supabase, bill, currentTick) {
     if (bill.bill_type === 'repeal' && bill.repeal_active_law_id) {
         const targetLaw = (currentActiveLaws || []).find(l => l.id === bill.repeal_active_law_id);
         if (targetLaw && targetLaw.policies) {
-            // Reverse the repealed policy's stat effects
             await reversePolicy(supabase, nation, targetLaw.policies, targetLaw.passed_tick, currentTick);
-            // Remove from active_laws
             await supabase.from('active_laws').delete().eq('id', bill.repeal_active_law_id);
         }
     }
@@ -702,26 +1203,22 @@ async function enactBill(supabase, bill, currentTick) {
             const policy = art.policies;
             if (!policy) continue;
 
-            // Check for opposed active policies and auto-rescind them
             if (policy.opposed_policy_ids && Array.isArray(policy.opposed_policy_ids)) {
                 for (const opposedId of policy.opposed_policy_ids) {
                     const opposedLaw = (currentActiveLaws || []).find(l => l.policy_id === opposedId);
                     if (opposedLaw && opposedLaw.policies) {
-                        // Reverse the opposed policy's accumulated stat effects
                         await reversePolicy(supabase, nation, opposedLaw.policies, opposedLaw.passed_tick, currentTick);
-                        // Remove from active_laws
                         await supabase.from('active_laws').delete().eq('id', opposedLaw.id);
                     }
                 }
             }
 
-            // Add new policy to active_laws
             await supabase.from('active_laws').insert({
                 nation_id: bill.nation_id,
                 policy_id: policy.id,
                 passed_tick: currentTick,
                 proposed_by: bill.proposed_by,
-                effects_applied_through_tick: currentTick  // Effects start next tick
+                effects_applied_through_tick: currentTick
             });
         }
     }
@@ -744,18 +1241,11 @@ async function enactBill(supabase, bill, currentTick) {
         bill.proposed_by
     );
     await applyEnactmentApproval(supabase, approvalDeltas);
-
-    // Reload nation to get updated stats (after reversals), then apply new policy effects
-    // Note: stat effects tick-by-tick application will be handled by the tick processor
-    // At enactment, we just record the law — effects accumulate over time
 }
 
 /**
  * Schedule a gradual reversal of a policy's accumulated stat effects.
  * Called when a policy is rescinded (opposed auto-removal or repeal bill).
- *
- * Instead of instantly reverting stats, creates a new "reversal" active_law
- * that gradually undoes the effects at the same rate they originally applied.
  *
  * @param {object} supabase    - Supabase client
  * @param {object} nation      - Full nation row
@@ -767,7 +1257,6 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
     const ticksActive = currentTick - (passedTick || 0);
     if (ticksActive <= 0) return;
 
-    // Gather effects (support new array and legacy single)
     const sourceEffects = [];
     if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
         sourceEffects.push(...policy.stat_effects);
@@ -783,14 +1272,12 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
 
     if (sourceEffects.length === 0) return;
 
-    // Build reversed effects — flip direction, duration = how many ticks actually applied
     const reversalEffects = [];
 
     for (const eff of sourceEffects) {
         const delay = eff.delay_ticks || 0;
         const duration = eff.duration_ticks || 12;
 
-        // How many ticks of effect were actually applied?
         let effectiveTicks = 0;
         if (ticksActive > delay) {
             effectiveTicks = Math.min(ticksActive - delay, duration);
@@ -800,22 +1287,21 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
 
         reversalEffects.push({
             stat_key: eff.stat_key,
-            direction: eff.direction === 'up' ? 'down' : 'up',  // Flip direction
+            direction: eff.direction === 'up' ? 'down' : 'up',
             rate: eff.rate || 1,
-            delay_ticks: 0,          // Reversals start immediately
-            duration_ticks: effectiveTicks  // Only undo what was actually applied
+            delay_ticks: 0,
+            duration_ticks: effectiveTicks
         });
     }
 
     if (reversalEffects.length === 0) return;
 
-    // Insert a reversal active_law — the tick processor will apply it gradually
     await supabase.from('active_laws').insert({
         nation_id: nation.id,
         policy_id: policy.id,
         passed_tick: currentTick,
         proposed_by: null,
-        effects_applied_through_tick: currentTick,  // Start processing next tick
+        effects_applied_through_tick: currentTick,
         is_reversal: true,
         reversal_effects: reversalEffects
     });
@@ -840,7 +1326,7 @@ async function failBill(supabase, bill) {
  * Advance the game by one tick and process all effects.
  *
  * Call this from admin panel or automated scheduler.
- * 
+ *
  * Flow:
  *   1.  Increment shard.current_tick
  *   2.  For each nation: process stat effects from active laws
@@ -922,14 +1408,12 @@ async function advanceTick(supabase) {
  *
  * When a ruling faction purges a minister, they get a temporary approval boost.
  * This function applies -1 approval per tick until the decay is exhausted.
- * Decay info is stored in campaign_actions result.decay_ticks_remaining.
  *
  * @param {object} supabase    - Supabase client
  * @param {string} nationId    - Nation UUID
  * @param {number} currentTick - Current tick
  */
 async function processPurgeDecay(supabase, nationId, currentTick) {
-    // Find purge actions with remaining decay
     const { data: purgeActions } = await supabase
         .from('campaign_actions')
         .select('id, party_id, result')
@@ -944,7 +1428,6 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
 
         const decayRate = result.decay_rate || 1;
 
-        // Apply -1 approval to the faction that did the purge
         const { data: faction } = await supabase
             .from('factions')
             .select('approval_rating')
@@ -958,7 +1441,6 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
                 .eq('id', action.party_id);
         }
 
-        // Decrement remaining ticks
         const newRemaining = result.decay_ticks_remaining - 1;
         await supabase.from('campaign_actions')
             .update({ result: { ...result, decay_ticks_remaining: newRemaining } })
@@ -986,7 +1468,6 @@ async function processLoyaltyTick(supabase, nation) {
     const rulingId = nation.ruling_faction_id;
     if (!rulingId) return;
 
-    // Get all non-NPC parties in this nation
     const { data: factions } = await supabase
         .from('factions')
         .select('id, loyalty, seats')
@@ -995,7 +1476,6 @@ async function processLoyaltyTick(supabase, nation) {
 
     if (!factions || factions.length === 0) return;
 
-    // Count ministries per faction
     const { data: ministries } = await supabase
         .from('ministries')
         .select('party_id')
@@ -1012,7 +1492,6 @@ async function processLoyaltyTick(supabase, nation) {
     for (const faction of factions) {
         let loyalty = faction.loyalty ?? 50;
 
-        // Ruling faction always 100
         if (faction.id === rulingId) {
             if (loyalty !== 100) {
                 await supabase.from('factions')
@@ -1024,21 +1503,18 @@ async function processLoyaltyTick(supabase, nation) {
 
         const ministryCount = ministryCounts[faction.id] || 0;
 
-        // Ministry effect
         if (ministryCount > 0) {
             loyalty += ministryCount * 0.5;
         } else {
             loyalty -= 2;
         }
 
-        // Natural drift toward 50
         if (loyalty > 50) {
             loyalty -= 1;
         } else if (loyalty < 50) {
             loyalty += 1;
         }
 
-        // Clamp 0–100
         loyalty = Math.max(0, Math.min(100, Math.round(loyalty * 10) / 10));
 
         await supabase.from('factions')
@@ -1052,12 +1528,6 @@ async function processLoyaltyTick(supabase, nation) {
 
 /**
  * Auto-resolve shakeups that have been in 'voting' status for 1+ ticks.
- * 
- * If not all factions have voted after 1 tick, the shakeup resolves anyway.
- * Non-voters are treated as abstaining — their seats don't count for either side
- * and they receive no penalties or rewards.
- *
- * Calls the resolve_shakeup RPC which handles all the game logic.
  *
  * @param {object} supabase    - Supabase client
  * @param {string} nationId    - Nation UUID
@@ -1088,23 +1558,14 @@ async function autoResolveStaleShakeups(supabase, nationId, currentTick) {
 
 // ==================== INACTIVE PARTY PROCESSING ====================
 
-const INACTIVE_WARNING_TICKS = 12;   // No AP spent in 12 ticks → approval set to 1%
-const INACTIVE_DELETION_TICKS = 24;  // No AP spent in 24 ticks → party deleted
+const INACTIVE_WARNING_TICKS = 12;
+const INACTIVE_DELETION_TICKS = 24;
 
 /**
  * Process inactive parties for a nation.
  *
  * - 12 ticks with no AP spent → approval set to 1% (one-time warning)
- * - 24 ticks with no AP spent → party deleted with full cascade:
- *   - Seats redistributed proportionally to remaining parties
- *   - Ministers vacated
- *   - Active bills withdrawn (status → 'abandoned')
- *   - Bill support votes removed (tallies recalculated)
- *   - Ministry requests deleted
- *   - Coalition membership removed (may collapse coalition)
- *   - If ruling faction in autocracy → next largest party takes over
- *
- * Any AP spend resets the clock via last_ap_spent_tick on factions.
+ * - 24 ticks with no AP spent → party deleted with full cascade
  *
  * @param {object} supabase    - Supabase client
  * @param {object} nation      - Full nation row
@@ -1124,14 +1585,12 @@ async function processInactiveParties(supabase, nation, currentTick) {
     const partiesToDelete = [];
 
     for (const party of parties) {
-        // Skip NPC parties — they're managed by the system
         if (party.is_npc) continue;
 
         const lastActive = party.last_ap_spent_tick || 0;
         const ticksInactive = currentTick - lastActive;
 
         if (ticksInactive >= INACTIVE_DELETION_TICKS) {
-            // === 24-TICK DELETION ===
             partiesToDelete.push(party);
             results.push({
                 action: 'deleted',
@@ -1140,7 +1599,6 @@ async function processInactiveParties(supabase, nation, currentTick) {
                 ticksInactive
             });
         } else if (ticksInactive >= INACTIVE_WARNING_TICKS) {
-            // === 12-TICK WARNING: Set approval to 1% (only if not already at 1) ===
             if (party.approval_rating > 1) {
                 await supabase.from('factions')
                     .update({ approval_rating: 1 })
@@ -1156,7 +1614,6 @@ async function processInactiveParties(supabase, nation, currentTick) {
         }
     }
 
-    // Process deletions
     for (const party of partiesToDelete) {
         await deleteInactiveParty(supabase, nation, party, parties, currentTick);
     }
@@ -1167,10 +1624,10 @@ async function processInactiveParties(supabase, nation, currentTick) {
 /**
  * Delete an inactive party and handle all cascading effects.
  *
- * @param {object} supabase   - Supabase client
- * @param {object} nation     - Full nation row
- * @param {object} party      - The party being deleted
- * @param {Array}  allParties - All parties in the nation (for redistribution)
+ * @param {object} supabase    - Supabase client
+ * @param {object} nation      - Full nation row
+ * @param {object} party       - The party being deleted
+ * @param {Array}  allParties  - All parties in the nation (for redistribution)
  * @param {number} currentTick - Current tick
  */
 async function deleteInactiveParty(supabase, nation, party, allParties, currentTick) {
@@ -1178,7 +1635,6 @@ async function deleteInactiveParty(supabase, nation, party, allParties, currentT
     const seatsToRedistribute = party.seats || 0;
     const isAutocracy = nation.government_type === 'Autocracy';
 
-    // Get surviving parties (exclude the one being deleted and NPCs without seats)
     const survivors = allParties.filter(p => p.id !== partyId && !p.is_npc);
 
     // 1. REDISTRIBUTE SEATS proportionally to remaining parties
@@ -1191,12 +1647,10 @@ async function deleteInactiveParty(supabase, nation, party, allParties, currentT
             let share;
 
             if (i === survivors.length - 1) {
-                // Last party gets remainder to avoid rounding loss
                 share = seatsToRedistribute - seatsGiven;
             } else if (totalSurvivorSeats > 0) {
                 share = Math.floor(seatsToRedistribute * ((s.seats || 0) / totalSurvivorSeats));
             } else {
-                // Equal split if no one has seats
                 share = Math.floor(seatsToRedistribute / survivors.length);
             }
 
@@ -1220,7 +1674,7 @@ async function deleteInactiveParty(supabase, nation, party, allParties, currentT
         .eq('nation_id', nation.id)
         .eq('party_id', partyId);
 
-    // 3. WITHDRAW ACTIVE BILLS (draft, committee, floor → abandoned)
+    // 3. WITHDRAW ACTIVE BILLS
     await supabase.from('bills')
         .update({ status: 'abandoned' })
         .eq('proposed_by', partyId)
@@ -1238,7 +1692,6 @@ async function deleteInactiveParty(supabase, nation, party, allParties, currentT
         .delete()
         .eq('faction_id', partyId);
 
-    // Recalculate vote tallies for affected bills
     for (const billId of affectedBillIds) {
         await syncVoteTallies(supabase, billId);
     }
@@ -1259,14 +1712,12 @@ async function deleteInactiveParty(supabase, nation, party, allParties, currentT
         if (coal.party_ids && coal.party_ids.includes(partyId)) {
             const newPartyIds = coal.party_ids.filter(id => id !== partyId);
 
-            // Remove from ministry assignments
             const newAssignments = { ...(coal.ministry_assignments || {}) };
             for (const [key, val] of Object.entries(newAssignments)) {
                 if (val === partyId) delete newAssignments[key];
             }
 
             if (newPartyIds.length === 0) {
-                // Coalition collapses entirely
                 await supabase.from('government_formations')
                     .update({ status: 'collapsed' })
                     .eq('id', coal.id);
@@ -1283,7 +1734,6 @@ async function deleteInactiveParty(supabase, nation, party, allParties, currentT
 
     // 7. HANDLE RULING FACTION in autocracy
     if (isAutocracy && nation.ruling_faction_id === partyId) {
-        // Transfer to next largest party
         const nextRuler = survivors
             .sort((a, b) => (b.seats || 0) - (a.seats || 0))[0];
 
@@ -1303,7 +1753,15 @@ async function deleteInactiveParty(supabase, nation, party, allParties, currentT
         .delete()
         .eq('party_id', partyId);
 
-    // 9. DELETE THE PARTY
+    // 9. CLEAN UP IDEOLOGY DATA
+    await supabase.from('faction_ideology')
+        .delete()
+        .eq('faction_id', partyId);
+    await supabase.from('ideology_history')
+        .delete()
+        .eq('faction_id', partyId);
+
+    // 10. DELETE THE PARTY
     await supabase.from('factions')
         .delete()
         .eq('id', partyId);
@@ -1330,18 +1788,15 @@ async function processStatEffects(supabase, nation, currentTick) {
 
     const appliedEffects = [];
     const nationUpdates = {};
-    const lawsToDelete = []; // Completed reversals to clean up
+    const lawsToDelete = [];
 
     for (const law of activeLaws) {
         const policy = law.policies;
         const lastApplied = law.effects_applied_through_tick || 0;
-        if (lastApplied >= currentTick) continue; // Already processed
+        if (lastApplied >= currentTick) continue;
 
         const passedTick = law.passed_tick || 0;
 
-        // Determine which effects to use:
-        // - Reversal laws use reversal_effects (flipped direction, calculated duration)
-        // - Normal laws use policy.stat_effects or legacy fields
         let effects = [];
         const isReversal = law.is_reversal || false;
 
@@ -1369,7 +1824,6 @@ async function processStatEffects(supabase, nation, currentTick) {
         let anyEffectApplied = false;
         let allEffectsComplete = true;
 
-        // Process each tick that was missed (handles skipped ticks)
         for (let tick = lastApplied + 1; tick <= currentTick; tick++) {
             const ticksSincePassed = tick - passedTick;
 
@@ -1379,12 +1833,10 @@ async function processStatEffects(supabase, nation, currentTick) {
                 const rate = eff.rate || 1;
                 const statKey = eff.stat_key;
 
-                // Check if all ticks for this effect are done
                 if (ticksSincePassed <= delay + duration) {
                     allEffectsComplete = false;
                 }
 
-                // Is this tick within the active window?
                 if (ticksSincePassed > delay && ticksSincePassed <= delay + duration) {
                     const currentVal = nationUpdates[statKey] !== undefined
                         ? nationUpdates[statKey]
@@ -1413,23 +1865,19 @@ async function processStatEffects(supabase, nation, currentTick) {
             }
         }
 
-        // Mark this law as processed through current tick
         await supabase.from('active_laws').update({
             effects_applied_through_tick: currentTick
         }).eq('id', law.id);
 
-        // If this is a reversal and all effects are complete, delete it
         if (isReversal && allEffectsComplete) {
             lawsToDelete.push(law.id);
         }
     }
 
-    // Apply all nation stat updates in one call
     if (Object.keys(nationUpdates).length > 0) {
         await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
     }
 
-    // Clean up completed reversal records
     for (const id of lawsToDelete) {
         await supabase.from('active_laws').delete().eq('id', id);
     }
@@ -1465,7 +1913,6 @@ async function processOngoingCosts(supabase, nation, currentTick) {
 
         let tickCost = baseCost;
 
-        // Apply scaling if configured
         if (policy.ongoing_scaling_stat && nation[policy.ongoing_scaling_stat] !== undefined) {
             const scalingVal = Number(nation[policy.ongoing_scaling_stat]) || 1;
             const divisor = RAW_SCALING_DIVISORS[policy.ongoing_scaling_stat] || 50;
@@ -1474,7 +1921,6 @@ async function processOngoingCosts(supabase, nation, currentTick) {
 
         totalCost += tickCost;
 
-        // Track accumulated cost
         const newAccum = (law.ongoing_accumulated || 0) + tickCost;
         await supabase.from('active_laws').update({
             ongoing_accumulated: newAccum
@@ -1483,7 +1929,6 @@ async function processOngoingCosts(supabase, nation, currentTick) {
         details.push({ policy: policy.policy_name, cost: tickCost });
     }
 
-    // Deduct from nation's budget
     if (totalCost !== 0) {
         const currentBudget = nation.budget || 0;
         const newBudget = currentBudget - totalCost;
@@ -1501,10 +1946,8 @@ async function processOngoingCosts(supabase, nation, currentTick) {
  * @param {number} currentTick - Current tick
  */
 async function snapshotNationHistory(supabase, nation, currentTick) {
-    // Copy all numeric nation fields to history
     const snapshot = { nation_id: nation.id, tick: currentTick };
 
-    // Copy all stat fields (exclude non-stat columns)
     const exclude = ['id', 'name', 'capital', 'government_type', 'created_at', 'updated_at', 'shard_id'];
     for (const [key, val] of Object.entries(nation)) {
         if (!exclude.includes(key) && typeof val === 'number') {
@@ -1515,7 +1958,6 @@ async function snapshotNationHistory(supabase, nation, currentTick) {
     await supabase.from('nations_history').upsert(snapshot, {
         onConflict: 'nation_id,tick'
     }).catch(err => {
-        // History table might not have all columns — log but don't fail
         console.warn('History snapshot warning:', err.message);
     });
 }
@@ -1526,22 +1968,12 @@ async function snapshotNationHistory(supabase, nation, currentTick) {
 /**
  * Process random events for a nation during a tick.
  *
- * For each active event template:
- *   1. Check cooldown — has it fired too recently for this nation?
- *   2. Check ALL triggers — every condition must be met
- *   3. Roll probability — random chance even if eligible
- *   4. If it fires:
- *      - Pick a random description
- *      - Apply effects (nation stats, ruling party, or random faction)
- *      - Log to event_log
- *
  * @param {object} supabase    - Supabase client
  * @param {object} nation      - Full nation row (with current stat values)
  * @param {number} currentTick - Current tick number
  * @returns {Promise<Array>}   List of events that fired
  */
 async function processEvents(supabase, nation, currentTick) {
-    // 1. Load all active event templates with their sub-data
     const { data: events } = await supabase
         .from('event_templates')
         .select('*, event_descriptions(*), event_triggers(*), event_effects(*)')
@@ -1549,7 +1981,6 @@ async function processEvents(supabase, nation, currentTick) {
 
     if (!events || events.length === 0) return [];
 
-    // 2. Load recent event log for this nation (for cooldown checks)
     const { data: recentLog } = await supabase
         .from('event_log')
         .select('event_id, fired_at_tick')
@@ -1557,7 +1988,6 @@ async function processEvents(supabase, nation, currentTick) {
         .order('fired_at_tick', { ascending: false })
         .limit(200);
 
-    // Build a map: event_id → last fired tick
     const lastFiredMap = {};
     for (const entry of (recentLog || [])) {
         if (!lastFiredMap[entry.event_id]) {
@@ -1568,16 +1998,16 @@ async function processEvents(supabase, nation, currentTick) {
     const firedEvents = [];
 
     for (const event of events) {
-        // 3. Cooldown check
+        // Cooldown check
         const lastFired = lastFiredMap[event.id];
         if (lastFired !== undefined) {
             const ticksSince = currentTick - lastFired;
             if (ticksSince < event.cooldown_ticks) continue;
         }
 
-        // 4. Trigger check — ALL must be met
+        // Trigger check — ALL must be met
         const triggers = event.event_triggers || [];
-        if (triggers.length === 0) continue; // No triggers = never fires
+        if (triggers.length === 0) continue;
 
         let allTriggersPass = true;
         for (const trigger of triggers) {
@@ -1598,31 +2028,29 @@ async function processEvents(supabase, nation, currentTick) {
         }
         if (!allTriggersPass) continue;
 
-        // 5. Probability roll
+        // Probability roll
         const roll = Math.random() * 100;
         if (roll >= event.probability) continue;
 
         // === EVENT FIRES ===
 
-        // 6. Pick random description
+        // Pick random description
         const descriptions = event.event_descriptions || [];
         const description = descriptions.length > 0
             ? descriptions[Math.floor(Math.random() * descriptions.length)].description_text
             : event.name;
 
-        // 7. Apply effects
+        // Apply effects
         const effects = event.event_effects || [];
         const appliedEffects = [];
         const nationUpdates = {};
 
         for (const effect of effects) {
             if (effect.target === 'nation') {
-                // Apply to nation stat
                 const currentVal = nation[effect.stat_key] !== undefined
                     ? Number(nation[effect.stat_key]) : 50;
                 const newVal = Math.max(0, Math.min(100, currentVal + effect.change_value));
                 nationUpdates[effect.stat_key] = newVal;
-                // Also update the in-memory nation object for subsequent events this tick
                 nation[effect.stat_key] = newVal;
 
                 appliedEffects.push({
@@ -1634,7 +2062,6 @@ async function processEvents(supabase, nation, currentTick) {
                 });
 
             } else if (effect.target === 'ruling_party') {
-                // Apply to ruling faction's stat
                 const rulingId = nation.ruling_faction_id;
                 if (!rulingId) continue;
 
@@ -1662,7 +2089,6 @@ async function processEvents(supabase, nation, currentTick) {
                 }
 
             } else if (effect.target === 'random_faction') {
-                // Pick a random non-NPC faction in this nation
                 const { data: factions } = await supabase
                     .from('factions')
                     .select('id, ' + effect.stat_key)
@@ -1690,12 +2116,11 @@ async function processEvents(supabase, nation, currentTick) {
             }
         }
 
-        // Apply nation-level stat updates
         if (Object.keys(nationUpdates).length > 0) {
             await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
         }
 
-        // 8. Log the event
+        // Log the event
         const targetFactionId = appliedEffects.find(e => e.faction_id)?.faction_id || null;
         await supabase.from('event_log').insert({
             event_id: event.id,
@@ -1728,15 +2153,8 @@ async function processEvents(supabase, nation, currentTick) {
  * Mark a faction as active by updating last_ap_spent_tick.
  * Call this whenever a faction spends AP on any action.
  *
- * Used by:
- *   - performAction() in parties.html (rally, attack ad, fundraiser, lobby)
- *   - doGiveSpeech(), doSpreadRumors(), doSeizePower() in parties.html
- *   - purgeMinister(), requestMinistry() in government.html
- *   - draftBill, castVote, etc. in bill.html / laws.html
- *   - Any Supabase RPC that deducts AP should also update this server-side
- *
- * @param {object} supabase    - Supabase client
- * @param {string} factionId   - Faction UUID
+ * @param {object} supabase      - Supabase client
+ * @param {string} factionId     - Faction UUID
  * @param {number} [currentTick] - Current game tick (auto-fetched if omitted)
  */
 async function markFactionActive(supabase, factionId, currentTick) {
