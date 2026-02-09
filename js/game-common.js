@@ -48,6 +48,18 @@ const INVERTED_STATS = [
     'inflation', 'illegal_immigration', 'fuel_prices'
 ];
 
+// Stats stored as raw numbers (not 0-100 indices).
+// Divisor converts to a sensible multiplier for cost scaling.
+//   population: stored in raw (e.g. 10,000,000) → divide by 1M → cost "per million people"
+//   gdp:        stored in raw (e.g. 500B)        → divide by 1B → cost "per billion GDP"
+//   debt:       stored in raw (e.g. 200B)         → divide by 1B → cost "per billion debt"
+// All other stats are 0-100 and use divisor 50 (stat=50 → 1x multiplier).
+const RAW_SCALING_DIVISORS = {
+    population: 1_000_000,
+    gdp: 1_000_000_000,
+    debt: 1_000_000_000
+};
+
 
 // ==================== SEAT LOADING ====================
 
@@ -1413,7 +1425,8 @@ async function processOngoingCosts(supabase, nation, currentTick) {
         // Apply scaling if configured
         if (policy.ongoing_scaling_stat && nation[policy.ongoing_scaling_stat] !== undefined) {
             const scalingVal = Number(nation[policy.ongoing_scaling_stat]) || 1;
-            tickCost = baseCost * (scalingVal / 50); // Normalize: stat=50 → 1x, stat=100 → 2x
+            const divisor = RAW_SCALING_DIVISORS[policy.ongoing_scaling_stat] || 50;
+            tickCost = baseCost * (scalingVal / divisor);
         }
 
         totalCost += tickCost;
