@@ -144,7 +144,7 @@ function updateTopBarInfo(faction, shard, nation) {
         // Rename tabs for autocracies
         if (nation.government_type === 'Autocracy') {
             const partiesTab = document.querySelector('.nav-tab[data-tab="parties"]');
-            if (partiesTab) partiesTab.textContent = 'Factions';
+            if (partiesTab) partiesTab.textContent = 'Inner Circle';
             const electionsTab = document.querySelector('.nav-tab[data-tab="elections"]');
             if (electionsTab) electionsTab.textContent = 'Regime';
         }
