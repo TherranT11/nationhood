@@ -36,6 +36,8 @@
         .law-card-meta { display:flex; gap:12px; flex-wrap:wrap; font-size:0.78rem; color:#888; }
         .law-card-meta .tag { display:inline-block; padding:2px 8px; border-radius:3px; font-size:0.7rem; font-weight:700; }
         .tag-ideo { background:#1a1a2a; color:#bb86fc; border:1px solid #9b59b6; }
+        .tag-ideo.aligned { background:#1a2a1a; color:#4CAF50; border-color:#4CAF50; }
+        .tag-ideo.opposed { background:#2a1a1a; color:#ff4444; border-color:#ff4444; }
         .tag-stat-up { background:#1a2a1a; color:#4CAF50; border:1px solid #4CAF50; }
         .tag-stat-down { background:#2a1a1a; color:#ff4444; border:1px solid #ff4444; }
         .law-count-label { color:#888; font-size:0.85rem; margin-left:auto; }
@@ -60,6 +62,9 @@
         .article-info { flex:1; }
         .article-title { color:#e0e0e0; font-weight:bold; }
         .article-ideology { font-size:0.7rem; background:#4CAF50; color:white; padding:2px 6px; border-radius:3px; margin-left:8px; }
+        .article-ideology.aligned { background:#4CAF50; }
+        .article-ideology.opposed { background:#ff4444; }
+        .article-ideology.neutral { background:#666; }
         .article-author { font-size:0.75rem; color:#888; }
         .article-desc { font-size:0.8rem; color:#888; margin-top:4px; font-style:italic; }
         .party-stances { margin-top:16px; }
@@ -291,9 +296,10 @@ let draftArticles = [], selectedPolicy = null;
 let committeeSelectedPolicy = null, currentCommitteeBillId = null;
 let termBill = 'Bill', termBills = 'Bills', termDraft = 'Draft Bill', termPropose = 'Propose Bill';
 let showingAllLaws = false;
+let factionIdeology = null; // Dynamic ideology scores for current player
 
 function _getCompatiblePolicies(sector) {
-    return getCompatiblePolicies(sector, allPolicies, currentFaction, isAutocracy, draftArticles.map(a => a.policy.id));
+    return getCompatiblePolicies(sector, allPolicies, currentFaction, isAutocracy, draftArticles.map(a => a.policy?.id).filter(Boolean));
 }
 
 initPage('laws', async (state) => {
@@ -345,8 +351,55 @@ async function loadLawsData() {
         activeLaws = lawsRes.data || [];
         committeeBills = committeeRes.data || [];
         floorBills = floorRes.data || [];
+
+        // Load dynamic ideology scores for current player
+        if (currentFaction) {
+            factionIdeology = await loadFactionIdeology(_supabase, currentFaction.id);
+        }
     } catch (error) { console.error('Error loading laws data:', error); }
 }
+
+
+// ==================== IDEOLOGY AWARENESS (PHASE 4) ====================
+
+/**
+ * Determine CSS class for an ideology chip based on alignment with player's
+ * dynamic ideology scores. Green = aligned, Red = opposed, Gray = neutral.
+ */
+function getIdeologyChipClass(ideologyTag) {
+    if (!factionIdeology) return '';
+    const tag = (ideologyTag || '').toUpperCase();
+    const mapping = IDEOLOGY_TO_AXIS[tag];
+    if (!mapping) return '';
+
+    const score = factionIdeology[mapping.axisKey] || 0;
+    const alignment = score * mapping.direction;
+    if (alignment > 10) return 'aligned';
+    if (alignment < -10) return 'opposed';
+    return 'neutral';
+}
+
+/**
+ * Render ideology chip HTML for a policy, using dynamic alignment colors.
+ */
+function renderIdeologyChips(policy) {
+    if (!policy) return '';
+    const ideos = (policy.ideologies && Array.isArray(policy.ideologies) && policy.ideologies.length > 0)
+        ? policy.ideologies : (policy.ideology ? [policy.ideology] : []);
+    return ideos.map(i => {
+        const colorClass = getIdeologyChipClass(i);
+        return `<span class="article-ideology ${colorClass}">${i}</span>`;
+    }).join(' ');
+}
+
+/**
+ * Render ideology chip for the All Laws panel tag style.
+ */
+function renderIdeoTag(ideologyTag) {
+    const colorClass = getIdeologyChipClass(ideologyTag);
+    return `<span class="tag tag-ideo ${colorClass}">${ideologyTag}</span>`;
+}
+
 
 function renderLawsPage() {
     const canDraft = (currentFaction?.action_points || 0) >= GAME_CONFIG.DRAFT_BILL_AP_COST && currentSeats > 0;
@@ -445,7 +498,7 @@ function filterAllLaws() {
     container.innerHTML = filtered.map(p => {
         const isActive = activePolicyIds.has(p.id);
         const ideos = p.ideologies || (p.ideology ? [p.ideology] : []);
-        const ideoHTML = ideos.map(i => `<span class="tag tag-ideo">${i}</span>`).join(' ');
+        const ideoHTML = ideos.map(i => renderIdeoTag(i)).join(' ');
 
         let effectsHTML = '';
         if (p.stat_effects && Array.isArray(p.stat_effects) && p.stat_effects.length > 0) {
@@ -504,8 +557,8 @@ function renderFloorBill(bill, isVetoed) {
             <div class="bill-articles">
                 ${bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">🗑️ Proposes to rescind an active law</span></div></div>' :
                 (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number).map(art => {
-                    const ideos = art.policies?.ideologies || (art.policies?.ideology ? [art.policies.ideology] : []);
-                    return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${ideos.map(i => `<span class="article-ideology">${i}</span>`).join(' ')}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
+                    const chipHTML = renderIdeologyChips(art.policies);
+                    return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
                 }).join('')}
             </div>
             ${isVetoed ? `<div class="vetoed-stamp">⛔ VETOED BY HEAD FACTION</div>` : `
@@ -556,8 +609,8 @@ function renderCommitteeBill(bill) {
             <div class="bill-articles">
                 ${bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">🗑️ Proposes to rescind an active law</span></div></div>' :
                 (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number).map(art => {
-                    const ideos = art.policies?.ideologies || (art.policies?.ideology ? [art.policies.ideology] : []);
-                    return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${ideos.map(i => `<span class="article-ideology">${i}</span>`).join(' ')}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
+                    const chipHTML = renderIdeologyChips(art.policies);
+                    return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
                 }).join('')}
             </div>
             ${decreeActionsHTML}
@@ -572,15 +625,19 @@ async function enactDecree(billId) {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         await _supabase.from('bills').update({ status: 'floor', voting_ends_tick: (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS }).eq('id', billId);
 
-        // Apply floor ideology penalty
+        // Apply dynamic ideology penalty to sponsor
         const bill = committeeBills.find(b => b.id === billId);
         if (bill) {
-            const sponsor = allParties.find(p => p.id === bill.proposed_by);
-            if (sponsor) {
-                const opposed = countOpposedArticles(bill.bill_articles || [], sponsor);
-                if (opposed > 0) {
-                    const penalty = calculateIdeologyPenalty('floor', opposed, currentNation?.polarization || 0);
-                    await applyIdeologyPenalty(_supabase, bill.proposed_by, penalty);
+            const sponsorIdeology = await loadFactionIdeology(_supabase, bill.proposed_by);
+            if (sponsorIdeology) {
+                const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, bill.bill_articles || []);
+                if (dynamicPenalty < 0) {
+                    const { data: faction } = await _supabase.from('factions').select('approval_rating').eq('id', bill.proposed_by).single();
+                    if (faction) {
+                        const newApproval = Math.max(0, Math.min(100, (faction.approval_rating ?? 50) + dynamicPenalty));
+                        await _supabase.from('factions').update({ approval_rating: newApproval }).eq('id', bill.proposed_by);
+                        console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
+                    }
                 }
             }
         }
@@ -757,7 +814,10 @@ function renderPolicyOptions(policies, containerId, buttonId) {
     if (policies.length === 0) { container.innerHTML = '<div class="no-law">No policies available in this sector.</div>'; return; }
     container.innerHTML = policies.map(policy => {
         const ideos = policy.ideologies || (policy.ideology ? [policy.ideology] : []);
-        const ideoHTML = ideos.map(i => `<span class="article-ideology">${i}</span>`).join(' ');
+        const ideoHTML = ideos.map(i => {
+            const colorClass = getIdeologyChipClass(i);
+            return `<span class="article-ideology ${colorClass}">${i}</span>`;
+        }).join(' ');
         const opposedClass = policy.isOpposed ? ' opposed' : '';
         const opposedBadge = policy.isOpposed ? '<span class="opposed-badge">⚠ Opposed</span>' : '';
         const opposedWarn = policy.isOpposed ? '<div class="opposed-warning">Ideologically opposed — approval penalty if proposed</div>' : '';
@@ -795,16 +855,27 @@ function renderDraftArticles() {
     const container = document.getElementById('draft-articles');
     if (draftArticles.length === 0) { container.innerHTML = ''; return; }
 
-    const opposedCount = draftArticles.filter(a => a.isOpposed).length;
-    const pol = currentNation?.polarization || 0;
-
+    // Calculate dynamic ideology penalty for the draft
     let penaltySummary = '';
-    if (opposedCount > 0) {
-        const floorPen = calculateIdeologyPenalty('floor', opposedCount, pol);
-        const passPen = calculateIdeologyPenalty('passed', opposedCount, pol);
-        penaltySummary = `<div class="opposed-warning" style="margin:12px 0 4px;padding:10px;background:#2a1a1a;border-radius:6px;border:1px solid #ff4444;">
-            ⚠ <strong>${opposedCount} opposed article${opposedCount > 1 ? 's' : ''}</strong> — Floor penalty: <strong>${floorPen}</strong> approval | Pass penalty: <strong>${passPen}</strong> approval${pol >= 50 ? ' <span style="color:#ff9800;">(Polarization ' + pol + '%)</span>' : ''}
-        </div>`;
+    if (factionIdeology) {
+        const draftPolicyArticles = draftArticles.filter(a => a.policy).map(a => ({ policies: a.policy }));
+        const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, draftPolicyArticles);
+        if (dynamicPenalty < 0) {
+            penaltySummary = `<div class="opposed-warning" style="margin:12px 0 4px;padding:10px;background:#2a1a1a;border-radius:6px;border:1px solid #ff4444;">
+                ⚠ <strong>Ideology conflict detected</strong> — Estimated approval penalty: <strong>${dynamicPenalty.toFixed(1)}</strong> (based on your current ideological position)
+            </div>`;
+        }
+    } else {
+        // Fallback to static penalty if no ideology data
+        const opposedCount = draftArticles.filter(a => a.isOpposed).length;
+        const pol = currentNation?.polarization || 0;
+        if (opposedCount > 0) {
+            const floorPen = calculateIdeologyPenalty('floor', opposedCount, pol);
+            const passPen = calculateIdeologyPenalty('passed', opposedCount, pol);
+            penaltySummary = `<div class="opposed-warning" style="margin:12px 0 4px;padding:10px;background:#2a1a1a;border-radius:6px;border:1px solid #ff4444;">
+                ⚠ <strong>${opposedCount} opposed article${opposedCount > 1 ? 's' : ''}</strong> — Floor penalty: <strong>${floorPen}</strong> approval | Pass penalty: <strong>${passPen}</strong> approval${pol >= 50 ? ' <span style="color:#ff9800;">(Polarization ' + pol + '%)</span>' : ''}
+            </div>`;
+        }
     }
 
     container.innerHTML = draftArticles.map((art, index) => {
@@ -819,7 +890,10 @@ function renderDraftArticles() {
             </div>`;
         }
         const ideos = art.policy.ideologies || (art.policy.ideology ? [art.policy.ideology] : []);
-        const ideoHTML = ideos.map(i => `<span class="article-ideology">${i}</span>`).join(' ');
+        const ideoHTML = ideos.map(i => {
+            const colorClass = getIdeologyChipClass(i);
+            return `<span class="article-ideology ${colorClass}">${i}</span>`;
+        }).join(' ');
         const opposedBadge = art.isOpposed ? ' <span class="opposed-badge">⚠ Opposed</span>' : '';
         const borderColor = art.isOpposed ? 'border-left:3px solid #ff4444;' : '';
         return `<div class="draft-article-card" style="${borderColor}"><div class="draft-article-info"><div class="draft-article-num">Article ${art.articleNumber}</div><div class="draft-article-name">${art.policy.policy_name} ${ideoHTML}${opposedBadge}</div><div class="draft-article-meta">${art.policy.description || ''}</div></div><button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button></div>`;
@@ -926,13 +1000,17 @@ async function sendToFloor(billId) {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         await _supabase.from('bills').update({ status: 'floor', voting_ends_tick: (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS }).eq('id', billId);
 
-        // Apply floor ideology penalty
+        // Apply dynamic ideology penalty to sponsor
         const bill = committeeBills.find(b => b.id === billId);
-        if (bill && currentFaction) {
-            const opposed = countOpposedArticles(bill.bill_articles || [], currentFaction);
-            if (opposed > 0) {
-                const penalty = calculateIdeologyPenalty('floor', opposed, currentNation?.polarization || 0);
-                await applyIdeologyPenalty(_supabase, bill.proposed_by, penalty);
+        if (bill && factionIdeology) {
+            const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, bill.bill_articles || []);
+            if (dynamicPenalty < 0) {
+                const { data: faction } = await _supabase.from('factions').select('approval_rating').eq('id', bill.proposed_by).single();
+                if (faction) {
+                    const newApproval = Math.max(0, Math.min(100, (faction.approval_rating ?? 50) + dynamicPenalty));
+                    await _supabase.from('factions').update({ approval_rating: newApproval }).eq('id', bill.proposed_by);
+                    console.log(`Dynamic ideology penalty (floor): ${dynamicPenalty} for sponsor`);
+                }
             }
         }
 
