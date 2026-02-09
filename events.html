@@ -1,1 +1,1018 @@
-asdasd
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Events | Nationhood Alpha</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --civic-bg: #0e1117;
+            --civic-surface: #161b22;
+            --civic-surface-hover: #1c2129;
+            --civic-border: #2a3140;
+            --civic-border-light: #343d4d;
+            --civic-text: #e2e6eb;
+            --civic-text-secondary: #8b929e;
+            --civic-text-faint: #5a6272;
+            --civic-accent: #58a6ff;
+            --civic-accent-dim: #1a3a5c;
+            --civic-green: #3fb950;
+            --civic-red: #f85149;
+            --civic-orange: #d29922;
+            --civic-purple: #bc8cff;
+            --civic-like: #f85149;
+            --civic-repost: #3fb950;
+            --civic-reply: #58a6ff;
+            --civic-brand: #58a6ff;
+        }
+
+        .civic-wrapper {
+            background: var(--civic-bg);
+            min-height: calc(100vh - 70px);
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        /* ==================== HEADER ==================== */
+        .civic-header {
+            background: var(--civic-surface);
+            border-bottom: 1px solid var(--civic-border);
+            position: sticky;
+            top: 70px;
+            z-index: 50;
+        }
+        .civic-header-inner {
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 16px 20px 0;
+        }
+        .civic-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .civic-logo {
+            width: 28px;
+            height: 28px;
+            background: var(--civic-brand);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #fff;
+        }
+        .civic-brand-name {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--civic-text);
+            letter-spacing: 1px;
+        }
+        .civic-brand-sub {
+            font-size: 0.72rem;
+            color: var(--civic-text-faint);
+            margin-left: auto;
+        }
+
+        /* Scope tabs */
+        .civic-scope {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--civic-border);
+        }
+        .scope-tab {
+            flex: 1;
+            text-align: center;
+            padding: 12px 0;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--civic-text-secondary);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            background: none;
+            border-top: none;
+            border-left: none;
+            border-right: none;
+            font-family: 'DM Sans', sans-serif;
+        }
+        .scope-tab:hover { color: var(--civic-text); }
+        .scope-tab.active {
+            color: var(--civic-accent);
+            border-bottom-color: var(--civic-accent);
+        }
+
+        /* Category pills */
+        .civic-filters {
+            display: flex;
+            gap: 6px;
+            padding: 10px 0 12px;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .civic-filters::-webkit-scrollbar { display: none; }
+        .filter-pill {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--civic-text-secondary);
+            background: var(--civic-bg);
+            border: 1px solid var(--civic-border);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.15s;
+            font-family: 'DM Sans', sans-serif;
+        }
+        .filter-pill:hover {
+            border-color: var(--civic-text-secondary);
+            color: var(--civic-text);
+        }
+        .filter-pill.active {
+            background: var(--civic-accent-dim);
+            border-color: var(--civic-accent);
+            color: var(--civic-accent);
+        }
+
+        /* ==================== FEED ==================== */
+        .civic-feed {
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 0 0 80px;
+        }
+
+        /* ==================== POST CARD ==================== */
+        .post {
+            border-bottom: 1px solid var(--civic-border);
+            padding: 16px 20px;
+            transition: background 0.15s;
+            cursor: pointer;
+        }
+        .post:hover { background: var(--civic-surface-hover); }
+
+        .post-top {
+            display: flex;
+            gap: 12px;
+        }
+
+        /* Avatar */
+        .post-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.82rem;
+            color: #fff;
+            flex-shrink: 0;
+        }
+
+        .post-body { flex: 1; min-width: 0; }
+
+        /* User line */
+        .post-user {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            margin-bottom: 4px;
+            flex-wrap: wrap;
+        }
+        .post-name {
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: var(--civic-text);
+        }
+        .post-handle {
+            font-size: 0.82rem;
+            color: var(--civic-text-faint);
+        }
+        .post-time {
+            font-size: 0.78rem;
+            color: var(--civic-text-faint);
+        }
+        .post-time::before {
+            content: '\00b7';
+            margin-right: 6px;
+        }
+
+        /* Category badge */
+        .post-category {
+            display: inline-block;
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            padding: 2px 8px;
+            border-radius: 3px;
+            margin-bottom: 8px;
+        }
+        .cat-general { background: #2a3140; color: #8b929e; }
+        .cat-electoral { background: #1a2a4a; color: #58a6ff; }
+        .cat-parties { background: #2a1a3a; color: #bc8cff; }
+        .cat-legal { background: #3a2a1a; color: #d29922; }
+        .cat-economic { background: #1a2a1a; color: #3fb950; }
+        .cat-military { background: #2a2018; color: #c9873a; }
+        .cat-diplomatic { background: #1a2a3a; color: #58a6ff; }
+        .cat-natural-disaster { background: #3a1a1a; color: #f85149; }
+
+        /* Content */
+        .post-headline {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--civic-text);
+            margin-bottom: 6px;
+            line-height: 1.35;
+        }
+        .post-content {
+            font-size: 0.9rem;
+            color: var(--civic-text-secondary);
+            line-height: 1.55;
+        }
+
+        /* Effects badge */
+        .post-effects-preview {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        .effect-chip {
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 3px 10px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .effect-chip.up { background: #122a18; color: var(--civic-green); }
+        .effect-chip.down { background: #2a1215; color: var(--civic-red); }
+
+        /* Engagement bar */
+        .post-engagement {
+            display: flex;
+            gap: 0;
+            margin-top: 12px;
+            padding-top: 4px;
+        }
+        .engage-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 1;
+            font-size: 0.78rem;
+            color: var(--civic-text-faint);
+            cursor: pointer;
+            padding: 6px 0;
+            border: none;
+            background: none;
+            transition: color 0.15s;
+            font-family: 'DM Sans', sans-serif;
+        }
+        .engage-btn:hover { color: var(--civic-text-secondary); }
+        .engage-btn.reply-btn:hover { color: var(--civic-reply); }
+        .engage-btn.repost-btn:hover { color: var(--civic-repost); }
+        .engage-btn.like-btn:hover { color: var(--civic-like); }
+        .engage-icon { font-size: 1rem; }
+
+        /* ==================== EXPANDED POST ==================== */
+        .post-expanded {
+            display: none;
+            border-top: 1px solid var(--civic-border);
+            margin-top: 12px;
+            padding-top: 12px;
+        }
+        .post.open .post-expanded { display: block; }
+        .post.open { background: var(--civic-surface); cursor: default; }
+
+        /* Effects detail */
+        .effects-detail {
+            background: var(--civic-bg);
+            border: 1px solid var(--civic-border);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 14px;
+        }
+        .effects-detail-title {
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: var(--civic-text-faint);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        .effect-detail-line {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 0;
+            font-size: 0.85rem;
+        }
+        .effect-detail-line .up { color: var(--civic-green); }
+        .effect-detail-line .down { color: var(--civic-red); }
+        .effect-target-label {
+            font-size: 0.72rem;
+            color: var(--civic-text-faint);
+            font-style: italic;
+        }
+
+        /* Comments section */
+        .comments-section { margin-top: 4px; }
+        .comments-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--civic-text-faint);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+
+        .comment {
+            display: flex;
+            gap: 10px;
+            padding: 10px 0;
+            border-top: 1px solid var(--civic-border);
+        }
+        .comment-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.65rem;
+            color: #fff;
+            flex-shrink: 0;
+        }
+        .comment-body { flex: 1; min-width: 0; }
+        .comment-user {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            margin-bottom: 2px;
+        }
+        .comment-name { font-weight: 600; font-size: 0.82rem; color: var(--civic-text); }
+        .comment-handle { font-size: 0.75rem; color: var(--civic-text-faint); }
+        .comment-text { font-size: 0.85rem; color: var(--civic-text-secondary); line-height: 1.5; }
+
+        /* Comment input */
+        .comment-input-area {
+            display: flex;
+            gap: 10px;
+            padding: 12px 0 4px;
+            border-top: 1px solid var(--civic-border);
+            margin-top: 4px;
+        }
+        .comment-input-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: var(--civic-accent-dim);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.65rem;
+            color: var(--civic-accent);
+            flex-shrink: 0;
+        }
+        .comment-input-wrap { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+        .comment-input {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--civic-bg);
+            border: 1px solid var(--civic-border);
+            border-radius: 20px;
+            color: var(--civic-text);
+            font-size: 0.85rem;
+            font-family: 'DM Sans', sans-serif;
+            resize: none;
+            outline: none;
+            box-sizing: border-box;
+        }
+        .comment-input:focus { border-color: var(--civic-accent); }
+        .comment-input::placeholder { color: var(--civic-text-faint); }
+        .comment-submit {
+            align-self: flex-end;
+            padding: 6px 18px;
+            background: var(--civic-accent);
+            border: none;
+            border-radius: 20px;
+            color: #fff;
+            font-weight: 600;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: opacity 0.15s;
+            font-family: 'DM Sans', sans-serif;
+        }
+        .comment-submit:hover { opacity: 0.85; }
+        .comment-submit:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        /* ==================== EMPTY STATE ==================== */
+        .feed-empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--civic-text-faint);
+        }
+        .feed-empty-icon { font-size: 2.5rem; margin-bottom: 10px; }
+        .feed-empty-text { font-size: 1rem; margin-bottom: 4px; color: var(--civic-text-secondary); }
+        .feed-empty-sub { font-size: 0.85rem; }
+
+        /* ==================== LOAD MORE ==================== */
+        .load-more-wrap {
+            text-align: center;
+            padding: 24px;
+        }
+        .load-more-btn {
+            padding: 10px 32px;
+            background: var(--civic-surface);
+            border: 1px solid var(--civic-border);
+            border-radius: 20px;
+            color: var(--civic-accent);
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.15s;
+            font-family: 'DM Sans', sans-serif;
+        }
+        .load-more-btn:hover { background: var(--civic-surface-hover); border-color: var(--civic-accent); }
+
+        /* ==================== RESPONSIVE ==================== */
+        @media (max-width: 720px) {
+            .civic-header-inner, .civic-feed { padding-left: 12px; padding-right: 12px; }
+            .post { padding: 14px 12px; }
+        }
+        .scope-nation-select {
+    background: var(--civic-surface);
+    border: 1px solid var(--civic-border);
+    color: var(--civic-text-secondary);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    outline: none;
+}
+.scope-nation-select:focus { border-color: var(--civic-accent); }
+    </style>
+</head>
+<body>
+<div id="top-bar"></div>
+<div class="civic-wrapper" id="civic-wrapper" style="display:none;">
+    <div class="civic-header">
+        <div class="civic-header-inner">
+            <div class="civic-brand">
+                <div class="civic-logo">C</div>
+                <div class="civic-brand-name">CIVIC</div>
+                <div class="civic-brand-sub" id="civic-date"></div>
+            </div>
+            <div class="civic-scope">
+    <button class="scope-tab active" data-scope="world" onclick="setScope('world')">World</button>
+    <div style="display:flex;align-items:center;flex:1;justify-content:center;">
+        <select id="nation-filter" class="scope-nation-select" onchange="setNationFilter(this.value)">
+            <option value="">All Nations</option>
+        </select>
+    </div>
+</div>
+            <div class="civic-filters" id="civic-filters"></div>
+        </div>
+    </div>
+    <div class="civic-feed" id="civic-feed"></div>
+</div>
+<div id="content-area">
+    <div class="loading-container"><div class="loading-spinner"></div><div>Loading feed...</div></div>
+</div>
+
+<script src="js/supabase-client.js"></script>
+<script src="js/common.js"></script>
+<script src="js/game-common.js"></script>
+<script>
+// ==================== STATE ====================
+let allLogs = [];
+let filteredLogs = [];
+let displayedCount = 0;
+const BATCH_SIZE = 20;
+let currentScope = 'world';
+let currentNationFilter = '';
+let allNations = [];
+let currentCategory = '';
+let currentNation = null;
+let currentFaction = null;
+let playerHandle = null;
+let playerDisplayName = null;
+let commentsCache = {};
+
+const CATEGORIES = ['General','Electoral','Parties','Legal','Economic','Military','Diplomatic','Natural Disaster'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+// ==================== NAME GENERATOR ====================
+
+const FIRST_NAMES = [
+    'Ada','Boris','Clara','Dmitri','Elena','Felix','Greta','Hugo','Iris','Janos',
+    'Katya','Leon','Marta','Nils','Olga','Pavel','Rosa','Stefan','Thea','Viktor',
+    'Alina','Brandt','Celine','Dario','Elke','Franz','Helena','Ivan','Julia','Klaus',
+    'Lena','Mikhail','Nadya','Otto','Petra','Rolf','Sonia','Tomas','Ursula','Werner',
+    'Anya','Bjorn','Cosima','Dieter','Eva','Georg','Hanna','Ilya','Jasmin','Karl'
+];
+
+const HANDLE_ADJS = [
+    'concerned','angry','proud','worried','patriotic','loyal','skeptical','hopeful',
+    'tired','radical','pragmatic','everyday','grassroots','vigilant','ordinary',
+    'awakened','real','honest','fed_up','common','quiet','outspoken','working'
+];
+
+const HANDLE_NOUNS = [
+    'citizen','voter','taxpayer','patriot','worker','parent','resident','observer',
+    'neighbor','realist','activist','local','commuter','pensioner','teacher',
+    'farmer','merchant','veteran','student','homeowner','shopkeeper','clerk'
+];
+
+function seededRandom(seed) {
+    let h = 0;
+    for (let i = 0; i < seed.length; i++) {
+        h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
+    }
+    return function() {
+        h = (h * 1103515245 + 12345) & 0x7fffffff;
+        return h / 0x7fffffff;
+    };
+}
+
+function generateUser(seed) {
+    const rng = seededRandom(seed);
+    const firstName = FIRST_NAMES[Math.floor(rng() * FIRST_NAMES.length)];
+    const adj = HANDLE_ADJS[Math.floor(rng() * HANDLE_ADJS.length)];
+    const noun = HANDLE_NOUNS[Math.floor(rng() * HANDLE_NOUNS.length)];
+    const num = Math.floor(rng() * 999);
+    return {
+        name: firstName,
+        handle: '@' + adj + '_' + noun + (num > 100 ? '_' + num : '')
+    };
+}
+
+function generateEngagement(seed) {
+    const rng = seededRandom(seed + '_engage');
+    return {
+        likes: Math.floor(rng() * 800 + 20),
+        reposts: Math.floor(rng() * 200 + 5),
+        replies: Math.floor(rng() * 60 + 3)
+    };
+}
+
+const AVATAR_COLORS = [
+    '#4a7c59','#7c4a6b','#4a6b7c','#7c6b4a','#5c4a7c','#7c4a4a',
+    '#4a7c7c','#6b7c4a','#7c5c4a','#4a5c7c','#7c4a5c','#5c7c4a',
+    '#8b5c3a','#3a6b8b','#8b3a5c','#3a8b6b','#6b3a8b','#8b6b3a'
+];
+
+function getAvatarColor(seed) {
+    const rng = seededRandom(seed + '_color');
+    return AVATAR_COLORS[Math.floor(rng() * AVATAR_COLORS.length)];
+}
+
+function getInitials(name) {
+    return (name || '?').charAt(0).toUpperCase();
+}
+
+// ==================== NPC COMMENT GENERATOR ====================
+
+const NPC_POSITIVE = [
+    "Finally some good news for a change.",
+    "About time the government did something right.",
+    "This is a step in the right direction.",
+    "My neighbors have been talking about this all week.",
+    "I'll believe it when I see the actual results.",
+    "Cautiously optimistic here.",
+    "Progress! Now let's keep the momentum going.",
+    "This is what we voted for.",
+    "Better late than never I suppose.",
+    "Real change doesn't happen overnight, but this helps.",
+    "Shared this with everyone I know.",
+    "Maybe there's hope after all."
+];
+
+const NPC_NEGATIVE = [
+    "This is exactly what I was worried about.",
+    "Who approved this? Unbelievable.",
+    "Things keep getting worse. When will they listen?",
+    "My family is directly affected by this. Not happy.",
+    "The people in charge clearly have no idea what they're doing.",
+    "I've been saying this would happen for months.",
+    "Terrible news. Something has to change.",
+    "Can't say I'm surprised anymore.",
+    "This country is heading in the wrong direction.",
+    "Every week it's something new. Exhausting.",
+    "We deserve better than this.",
+    "How much longer do we have to put up with this?"
+];
+
+const NPC_NEUTRAL = [
+    "Interesting. Let's see how this plays out.",
+    "Not sure what to make of this yet.",
+    "Anyone else following this story?",
+    "I'd like to hear more details before forming an opinion.",
+    "Worth keeping an eye on.",
+    "The real question is what happens next.",
+    "Sharing this with my colleagues at work.",
+    "Complicated situation. No easy answers.",
+    "Both sides have a point honestly.",
+    "History will judge this one."
+];
+
+function generateNPCComments(ev) {
+    const rng = seededRandom(ev.id + '_npc');
+    const effects = ev.effects_applied || [];
+
+    // Determine sentiment from effects
+    const INVERTED = ['unemployment','poverty_rate','crime_rate','corruption',
+        'pollution','terrorism','civil_unrest','death_rate','inflation','debt',
+        'income_inequality','incarceration_rate','drug_use','carbon_emissions',
+        'political_violence','emigration','sanctions','fuel_prices','illegal_immigration'];
+
+    let netEffect = 0;
+    for (const e of effects) {
+        if (INVERTED.includes(e.stat)) netEffect -= e.change;
+        else netEffect += e.change;
+    }
+
+    const pool = netEffect > 1 ? NPC_POSITIVE :
+                 netEffect < -1 ? NPC_NEGATIVE :
+                 NPC_NEUTRAL;
+
+    const count = Math.floor(rng() * 3) + 1;
+    const comments = [];
+    const usedIndices = new Set();
+
+    for (let i = 0; i < count && i < pool.length; i++) {
+        let idx;
+        do { idx = Math.floor(rng() * pool.length); } while (usedIndices.has(idx));
+        usedIndices.add(idx);
+
+        const user = generateUser(ev.id + '_npc_' + i);
+        comments.push({
+            id: 'npc_' + i,
+            display_name: user.name,
+            display_handle: user.handle,
+            comment_text: pool[idx],
+            is_npc: true,
+            created_at: ev.created_at
+        });
+    }
+    return comments;
+}
+
+// ==================== PLAYER HANDLE ====================
+
+function generatePlayerHandle(factionId) {
+    return generateUser('player_' + factionId);
+}
+
+// ==================== INIT ====================
+
+initPage('events', async (state) => {
+    currentNation = state.nation;
+    currentFaction = state.faction;
+
+    if (!currentNation) {
+        document.getElementById('content-area').innerHTML = '<div class="feed-empty"><div class="feed-empty-icon">📡</div><div class="feed-empty-text">No nation selected.</div></div>';
+        return;
+    }
+
+    if (currentFaction) {
+        const ph = generatePlayerHandle(currentFaction.id);
+        playerDisplayName = ph.name;
+        playerHandle = ph.handle;
+    }
+
+    document.getElementById('civic-date').textContent = state.shard?.current_date || '';
+renderFilters();
+
+const { data: nations } = await _supabase
+    .from('nations')
+    .select('id, name')
+    .order('name');
+allNations = nations || [];
+const nationSelect = document.getElementById('nation-filter');
+if (nationSelect) {
+    allNations.forEach(function(n) {
+        const opt = document.createElement('option');
+        opt.value = n.id;
+        opt.textContent = n.name;
+        if (currentNation && n.id === currentNation.id) opt.selected = true;
+        nationSelect.appendChild(opt);
+    });
+}
+if (currentNation) {
+    currentNationFilter = currentNation.id;
+    document.getElementById('nation-filter').value = currentNation.id;
+}
+
+await loadEvents();
+
+document.getElementById('content-area').style.display = 'none';
+document.getElementById('civic-wrapper').style.display = 'block';
+
+applyFilters();
+
+});
+
+// ==================== DATA ====================
+
+async function loadEvents() {
+    let query = _supabase
+        .from('event_log')
+        .select('*')
+        .order('fired_at_tick', { ascending: false })
+        .limit(500);
+
+    if (currentNationFilter) {
+        query = query.eq('nation_id', currentNationFilter);
+    }
+
+    const { data, error } = await query;
+    if (error) { console.error(error); allLogs = []; }
+    else allLogs = data || [];
+}
+
+// ==================== FILTERS ====================
+
+function renderFilters() {
+    const container = document.getElementById('civic-filters');
+    container.innerHTML = '<button class="filter-pill active" data-cat="" onclick="setCategory(\'\')">All</button>' +
+        CATEGORIES.map(function(c) {
+            return '<button class="filter-pill" data-cat="' + c + '" onclick="setCategory(\'' + c + '\')">' + c + '</button>';
+        }).join('');
+}
+
+function setScope(scope) {
+    currentScope = scope;
+    currentNationFilter = '';
+    document.getElementById('nation-filter').value = '';
+    loadEvents().then(function() { applyFilters(); });
+}
+
+function setNationFilter(nationId) {
+    currentNationFilter = nationId;
+    loadEvents().then(function() { applyFilters(); });
+}
+
+function setCategory(cat) {
+    currentCategory = cat;
+    document.querySelectorAll('.filter-pill').forEach(function(p) {
+        p.classList.toggle('active', p.dataset.cat === cat);
+    });
+    applyFilters();
+}
+
+function applyFilters() {
+    filteredLogs = allLogs;
+    if (currentCategory) {
+        filteredLogs = filteredLogs.filter(function(ev) { return ev.category === currentCategory; });
+    }
+    displayedCount = 0;
+    document.getElementById('civic-feed').innerHTML = '';
+    showMore();
+}
+
+// ==================== RENDER FEED ====================
+
+function showMore() {
+    const feed = document.getElementById('civic-feed');
+
+    // Remove existing load-more button
+    const existing = feed.querySelector('.load-more-wrap');
+    if (existing) existing.remove();
+
+    const batch = filteredLogs.slice(displayedCount, displayedCount + BATCH_SIZE);
+    displayedCount += batch.length;
+
+    if (batch.length === 0 && displayedCount === 0) {
+        feed.innerHTML = '<div class="feed-empty">' +
+            '<div class="feed-empty-icon">📡</div>' +
+            '<div class="feed-empty-text">No events to report.</div>' +
+            '<div class="feed-empty-sub">Check back after the next tick.</div>' +
+        '</div>';
+        return;
+    }
+
+    for (const ev of batch) {
+        feed.insertAdjacentHTML('beforeend', renderPost(ev));
+    }
+
+    if (displayedCount < filteredLogs.length) {
+        feed.insertAdjacentHTML('beforeend',
+            '<div class="load-more-wrap">' +
+                '<button class="load-more-btn" onclick="showMore()">Show more</button>' +
+            '</div>'
+        );
+    }
+}
+
+function renderPost(ev) {
+    const poster = (ev.poster_name && ev.poster_handle)
+        ? { name: ev.poster_name, handle: ev.poster_handle }
+        : generateUser(ev.id);
+    const engagement = generateEngagement(ev.id);
+    const avatarColor = getAvatarColor(ev.id);
+    const initials = getInitials(poster.name);
+    const catClass = getCategoryClass(ev.category);
+    const timeStr = tickToDate(ev.fired_at_tick);
+    const effects = ev.effects_applied || [];
+
+    // Effect chips preview
+    var chipsHTML = '';
+    var previewEffects = effects.slice(0, 3);
+    for (var i = 0; i < previewEffects.length; i++) {
+        var e = previewEffects[i];
+        var sign = e.change > 0 ? '+' : '';
+        var cls = e.change > 0 ? 'up' : 'down';
+        var arrow = e.change > 0 ? '▲' : '▼';
+        chipsHTML += '<span class="effect-chip ' + cls + '">' + arrow + ' ' + formatStatName(e.stat) + ' ' + sign + e.change + '</span>';
+    }
+    var extraEffects = effects.length > 3
+        ? '<span class="effect-chip" style="background:var(--civic-border);color:var(--civic-text-faint);">+' + (effects.length - 3) + ' more</span>'
+        : '';
+
+    // Effects detail (expanded)
+    var effectsDetailHTML = '';
+    if (effects.length > 0) {
+        var effectLines = '';
+        for (var j = 0; j < effects.length; j++) {
+            var eff = effects[j];
+            var eSign = eff.change > 0 ? '+' : '';
+            var eCls = eff.change > 0 ? 'up' : 'down';
+            var eArrow = eff.change > 0 ? '▲' : '▼';
+            var targetLabel = '';
+            if (eff.target === 'ruling_party') targetLabel = ' <span class="effect-target-label">(Ruling Party)</span>';
+            else if (eff.target === 'random_faction') targetLabel = ' <span class="effect-target-label">(Random Faction)</span>';
+            effectLines += '<div class="effect-detail-line"><span class="' + eCls + '">' + eArrow + ' ' + formatStatName(eff.stat) + ' ' + eSign + eff.change + '</span>' + targetLabel + '</div>';
+        }
+        effectsDetailHTML = '<div class="effects-detail"><div class="effects-detail-title">Impact Report</div>' + effectLines + '</div>';
+    }
+
+    return '<div class="post" id="post-' + ev.id + '" onclick="togglePost(\'' + ev.id + '\')">' +
+        '<div class="post-top">' +
+            '<div class="post-avatar" style="background:' + avatarColor + ';">' + initials + '</div>' +
+            '<div class="post-body">' +
+                '<div class="post-user">' +
+                    '<span class="post-name">' + escapeHtml(poster.name) + '</span>' +
+                    '<span class="post-handle">' + escapeHtml(poster.handle) + '</span>' +
+                    '<span class="post-time">' + timeStr + '</span>' +
+                '</div>' +
+                '<div class="post-category ' + catClass + '">' + (ev.category || 'General') + '</div>' +
+                '<div class="post-headline">' + escapeHtml(ev.event_name) + '</div>' +
+                '<div class="post-content">' + escapeHtml(ev.description_used || '') + '</div>' +
+                (chipsHTML || extraEffects ? '<div class="post-effects-preview">' + chipsHTML + extraEffects + '</div>' : '') +
+                '<div class="post-engagement">' +
+                    '<button class="engage-btn reply-btn" onclick="event.stopPropagation(); togglePost(\'' + ev.id + '\')"><span class="engage-icon">💬</span> ' + engagement.replies + '</button>' +
+                    '<button class="engage-btn repost-btn"><span class="engage-icon">🔁</span> ' + engagement.reposts + '</button>' +
+                    '<button class="engage-btn like-btn"><span class="engage-icon">♡</span> ' + engagement.likes + '</button>' +
+                '</div>' +
+                '<div class="post-expanded" onclick="event.stopPropagation()">' +
+                    effectsDetailHTML +
+                    '<div class="comments-section" id="comments-' + ev.id + '">' +
+                        '<div class="comments-title">Replies</div>' +
+                        '<div id="comments-list-' + ev.id + '"><div style="color:var(--civic-text-faint);font-size:0.82rem;padding:8px 0;">Loading replies...</div></div>' +
+                        '<div class="comment-input-area">' +
+                            '<div class="comment-input-avatar">' + (playerDisplayName ? getInitials(playerDisplayName) : '?') + '</div>' +
+                            '<div class="comment-input-wrap">' +
+                                '<input type="text" class="comment-input" id="comment-input-' + ev.id + '" placeholder="Add your take..." maxlength="280" onclick="event.stopPropagation()" onkeypress="if(event.key===\'Enter\')submitComment(\'' + ev.id + '\')">' +
+                                '<button class="comment-submit" onclick="event.stopPropagation(); submitComment(\'' + ev.id + '\')">Reply</button>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+        '</div>' +
+    '</div>';
+}
+
+// ==================== POST EXPAND / COLLAPSE ====================
+
+async function togglePost(eventLogId) {
+    const postEl = document.getElementById('post-' + eventLogId);
+    if (!postEl) return;
+
+    const wasOpen = postEl.classList.contains('open');
+
+    // Close all others
+    document.querySelectorAll('.post.open').forEach(function(p) { p.classList.remove('open'); });
+
+    if (!wasOpen) {
+        postEl.classList.add('open');
+        await loadComments(eventLogId);
+    }
+}
+
+// ==================== COMMENTS ====================
+
+async function loadComments(eventLogId) {
+    const listEl = document.getElementById('comments-list-' + eventLogId);
+    if (!listEl) return;
+
+    // NPC comments
+    const ev = allLogs.find(function(e) { return e.id === eventLogId; });
+    const npcComments = ev ? generateNPCComments(ev) : [];
+
+    // Real comments from DB
+    var realComments = [];
+    if (commentsCache[eventLogId]) {
+        realComments = commentsCache[eventLogId];
+    } else {
+        const { data, error } = await _supabase
+            .from('event_comments')
+            .select('*')
+            .eq('event_log_id', eventLogId)
+            .order('created_at', { ascending: true });
+
+        if (!error && data) {
+            realComments = data;
+            commentsCache[eventLogId] = data;
+        }
+    }
+
+    var allComments = npcComments.concat(realComments.map(function(c) { return Object.assign({}, c, { is_npc: false }); }));
+
+    if (allComments.length === 0) {
+        listEl.innerHTML = '<div style="color:var(--civic-text-faint);font-size:0.82rem;padding:8px 0;font-style:italic;">No replies yet. Be the first.</div>';
+        return;
+    }
+
+    listEl.innerHTML = allComments.map(function(c) {
+        var color = getAvatarColor(c.display_handle || c.id);
+        var init = getInitials(c.display_name || '?');
+        return '<div class="comment">' +
+            '<div class="comment-avatar" style="background:' + color + ';">' + init + '</div>' +
+            '<div class="comment-body">' +
+                '<div class="comment-user">' +
+                    '<span class="comment-name">' + escapeHtml(c.display_name) + '</span>' +
+                    '<span class="comment-handle">' + escapeHtml(c.display_handle) + '</span>' +
+                '</div>' +
+                '<div class="comment-text">' + escapeHtml(c.comment_text) + '</div>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+}
+
+async function submitComment(eventLogId) {
+    event.stopPropagation();
+    var input = document.getElementById('comment-input-' + eventLogId);
+    if (!input) return;
+    var text = input.value.trim();
+    if (!text || !currentFaction) return;
+
+    try {
+        const { error } = await _supabase.from('event_comments').insert({
+            event_log_id: eventLogId,
+            faction_id: currentFaction.id,
+            nation_id: currentNation.id,
+            display_name: playerDisplayName,
+            display_handle: playerHandle,
+            comment_text: text
+        });
+        if (error) throw error;
+
+        input.value = '';
+        delete commentsCache[eventLogId];
+        await loadComments(eventLogId);
+    } catch (e) {
+        console.error(e);
+        alert('Error posting reply: ' + e.message);
+    }
+}
+
+// ==================== UTILITIES ====================
+
+function tickToDate(tick) {
+    if (tick == null) return '';
+    var y = 2000 + Math.floor(tick / 12);
+    return MONTHS[tick % 12] + ' ' + y;
+}
+
+function getCategoryClass(cat) {
+    if (!cat) return 'cat-general';
+    return 'cat-' + cat.toLowerCase().replace(/\s+/g, '-');
+}
+
+function formatStatName(stat) {
+    if (!stat) return '';
+    return stat.charAt(0).toUpperCase() + stat.slice(1).replace(/_/g, ' ');
+}
+
+function escapeHtml(text) {
+    var d = document.createElement('div');
+    d.textContent = text || '';
+    return d.innerHTML;
+}
+</script>
+</body>
+</html>
