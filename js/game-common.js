@@ -2756,6 +2756,14 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
         .update({ selected: true })
         .eq('id', candidateId);
 
+    // 2b. Remove the unchosen candidates
+    await supabase
+        .from('pm_candidates')
+        .delete()
+        .eq('nation_id', nationId)
+        .eq('faction_id', factionId)
+        .eq('selected', false);
+
     // 3. Deactivate any existing HOG for this nation
     await supabase
         .from('head_of_government')
