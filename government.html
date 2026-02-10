@@ -774,7 +774,9 @@ function renderCabinet(ministries, coalition) {
     const cards = ministries.filter(m => m.ministry_key !== 'prime_minister').map(m => {
         const partyName = m.factions?.faction_name || 'Unknown';
         const name = m.minister_first_name && m.minister_last_name ? `${m.minister_first_name} ${m.minister_last_name}` : 'Vacant';
-        return `<div class="ministry-card"><div class="ministry-title">${m.ministry_name}</div><div class="minister-name">${name}</div><div class="minister-details">${m.minister_age ? `Age ${m.minister_age} • ` : ''}<span class="minister-party">${partyName}</span></div></div>`;
+        const isMyMinistry = currentFaction && m.party_id === currentFaction.id;
+        const resignBtn = isMyMinistry ? `<div class="ministry-actions"><button class="ministry-btn purge" onclick="resignMinistry('${m.ministry_key}')">📋 Resign Ministry</button></div>` : '';
+        return `<div class="ministry-card"><div class="ministry-title">${m.ministry_name}</div><div class="minister-name">${name}</div><div class="minister-details">${m.minister_age ? `Age ${m.minister_age} • ` : ''}<span class="minister-party">${partyName}</span></div>${resignBtn}</div>`;
     }).join('');
     return `<div class="ministry-grid">${cards}</div>`;
 }
@@ -1148,6 +1150,29 @@ async function resignPMAction() {
         await renderGovernmentPage();
     } catch (e) {
         console.error('Resign error:', e);
+        alert('Error: ' + e.message);
+    }
+}
+
+    async function resignMinistry(ministryKey) {
+    const ministry = ministryData.find(m => m.ministry_key === ministryKey);
+    if (!ministry) return;
+
+    const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
+    if (!confirm('📋 Resign ' + ministerName + ' from ' + (ministry.ministry_name || ministryKey) + '?\n\nThis vacates the position. Your coalition leader may reassign it.')) return;
+
+    try {
+        await _supabase.from('ministries').update({
+            minister_first_name: null,
+            minister_last_name: null,
+            minister_age: null,
+            party_id: null
+        }).eq('id', ministry.id);
+
+        alert('📋 ' + ministerName + ' has resigned from ' + (ministry.ministry_name || ministryKey) + '.');
+        await renderGovernmentPage();
+    } catch (e) {
+        console.error('Resign ministry error:', e);
         alert('Error: ' + e.message);
     }
 }
