@@ -527,6 +527,20 @@
         'Industrial Cooperation Group',
         'Scientific Advancement Front'
     ];
+
+    // Ideology → axis mapping for client-side fallback
+    const IDEOLOGY_AXIS_MAP = {
+        'LIBERTY':        { axis: 'liberty_equality',           dir: -1 },
+        'EQUALITY':       { axis: 'liberty_equality',           dir:  1 },
+        'TRADITION':      { axis: 'tradition_progress',         dir: -1 },
+        'PROGRESS':       { axis: 'tradition_progress',         dir:  1 },
+        'SECURITY':       { axis: 'security_freedom',           dir: -1 },
+        'FREEDOM':        { axis: 'security_freedom',           dir:  1 },
+        'GLOBALISM':      { axis: 'globalism_nationalism',      dir: -1 },
+        'NATIONALISM':    { axis: 'globalism_nationalism',      dir:  1 },
+        'INDIVIDUALISM':  { axis: 'individualism_collectivism', dir: -1 },
+        'COLLECTIVISM':   { axis: 'individualism_collectivism', dir:  1 }
+    };
     
     const urlParams = new URLSearchParams(window.location.search);
     const nationParam = urlParams.get('nation');
@@ -761,6 +775,46 @@
         
         confirmBtn.disabled = !isValid;
     }
+
+    /**
+     * Client-side fallback: directly insert faction_ideology row
+     * if the RPC call fails. Uses the same ±30 logic.
+     */
+    async function initializeIdeologyFallback(factionId, ideo1, ideo2) {
+        const m1 = IDEOLOGY_AXIS_MAP[ideo1];
+        const m2 = IDEOLOGY_AXIS_MAP[ideo2];
+        if (!m1 || !m2) {
+            console.error('Unknown ideology tags:', ideo1, ideo2);
+            return;
+        }
+
+        const row = {
+            faction_id: factionId,
+            liberty_equality: 0,
+            tradition_progress: 0,
+            security_freedom: 0,
+            globalism_nationalism: 0,
+            individualism_collectivism: 0,
+            declared_axis_1: m1.axis,
+            declared_direction_1: m1.dir,
+            declared_axis_2: m2.axis,
+            declared_direction_2: m2.dir
+        };
+
+        // Set ±30 on the two declared axes
+        row[m1.axis] = 30 * m1.dir;
+        row[m2.axis] = 30 * m2.dir;
+
+        const { error } = await _supabase
+            .from('faction_ideology')
+            .upsert(row, { onConflict: 'faction_id' });
+
+        if (error) {
+            console.error('Ideology fallback insert also failed:', error);
+        } else {
+            console.log('Ideology initialized via client-side fallback');
+        }
+    }
     
     async function createParty() {
         const confirmBtn = document.getElementById('confirm-btn');
@@ -841,13 +895,16 @@
                 
                 if (updateError) throw updateError;
 
-                // Initialize ideology spectrum for this faction
+                // Initialize ideology spectrum — try RPC first, fallback to direct insert
                 const { error: ideoError } = await _supabase.rpc('initialize_faction_ideology', {
                     p_faction_id: currentUser.id,
                     p_ideology_1: selectedIdeologies[0],
                     p_ideology_2: selectedIdeologies[1]
                 });
-                if (ideoError) console.warn('Ideology init failed (non-blocking):', ideoError);
+                if (ideoError) {
+                    console.warn('Ideology RPC failed, using client-side fallback:', ideoError);
+                    await initializeIdeologyFallback(currentUser.id, selectedIdeologies[0], selectedIdeologies[1]);
+                }
 
                 // Check if NPCs should be removed (2+ player parties)
                 const { data: npcResult, error: npcError } = await _supabase
