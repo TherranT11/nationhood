@@ -694,8 +694,9 @@ function createNewMinistryEvent() {
         gov_types: ['Democracy', 'Autocracy'], is_active: true,
         weight_stat: '', weight_operator: '>', weight_value: null,
         variants: {
-            Democracy: { body: '', options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', effects: [], minister_approval_change: 0, news_event_key: '' }] },
-            Autocracy: { body: '', options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', effects: [], minister_approval_change: 0, news_event_key: '' }] }
+            titles: [''],
+            Democracy: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', effects: [], minister_approval_change: 0, news_event_key: '' }] },
+            Autocracy: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', effects: [], minister_approval_change: 0, news_event_key: '' }] }
         }
     };
     mEditorVariants = JSON.parse(JSON.stringify(currentMinistryTemplate.variants));
@@ -707,7 +708,19 @@ function editMinistryEvent(id) {
     if (!ev) return;
     isNewMinistry = false;
     currentMinistryTemplate = JSON.parse(JSON.stringify(ev));
-    mEditorVariants = JSON.parse(JSON.stringify(ev.variants || { Democracy: { body: '', options: [] }, Autocracy: { body: '', options: [] } }));
+    var v = ev.variants || {};
+    // Migrate old format: single body → bodies array, single title → titles array
+    mEditorVariants = {
+        titles: v.titles || (ev.title ? [ev.title] : ['']),
+        Democracy: v.Democracy ? {
+            bodies: v.Democracy.bodies || (v.Democracy.body ? [v.Democracy.body] : ['']),
+            options: v.Democracy.options || []
+        } : { bodies: [''], options: [] },
+        Autocracy: v.Autocracy ? {
+            bodies: v.Autocracy.bodies || (v.Autocracy.body ? [v.Autocracy.body] : ['']),
+            options: v.Autocracy.options || []
+        } : { bodies: [''], options: [] }
+    };
     renderMinistryEditor();
 }
 
@@ -729,15 +742,19 @@ function renderMinistryEditor() {
                 // Row 1: Event key + Title
                 '<div class="form-row">' +
                     '<div class="form-group"><label class="form-label">Event Key (unique)</label><input type="text" class="form-input" id="me-key" value="' + escapeAttr(tmpl.event_key) + '" placeholder="e.g., prison_riot"></div>' +
-                    '<div class="form-group"><label class="form-label">Title (inbox subject line)</label><input type="text" class="form-input" id="me-title" value="' + escapeAttr(tmpl.title) + '" placeholder="e.g., Prison Riot in Southern Province"></div>' +
+                    '<div class="form-group"><label class="form-label">Sender</label><input type="text" class="form-input" id="me-sender" value="' + escapeAttr(tmpl.sender) + '" placeholder="e.g., Federal Prison Authority"></div>' +
                 '</div>' +
 
-                // Row 2: Ministry + Sender + Priority + Deadline
-                '<div class="form-row-4">' +
+                // Title variants
+                '<div class="editor-section"><div class="editor-section-header"><div class="editor-section-title">📨 Subject Lines (Inbox Titles)</div><button class="btn btn-ghost btn-small" onclick="addMTitle()">+ Add Variant</button></div>' +
+                '<div class="form-hint" style="margin-bottom:12px;">Multiple subject lines — one randomly chosen each time the event fires. First entry is the primary title.</div>' +
+                '<div id="me-titles-list">' + renderMTitles() + '</div></div>' +
+
+                // Row 2: Ministry + Priority + Deadline
+                '<div class="form-row-3">' +
                     '<div class="form-group"><label class="form-label">Ministry</label><select class="form-select" id="me-ministry">' +
                         MINISTRIES.map(function(m) { return '<option value="' + m.key + '"' + (tmpl.ministry_key === m.key ? ' selected' : '') + '>' + m.label + '</option>'; }).join('') +
                     '</select></div>' +
-                    '<div class="form-group"><label class="form-label">Sender</label><input type="text" class="form-input" id="me-sender" value="' + escapeAttr(tmpl.sender) + '" placeholder="e.g., Federal Prison Authority"></div>' +
                     '<div class="form-group"><label class="form-label">Priority</label><select class="form-select" id="me-priority">' +
                         PRIORITIES.map(function(p) { return '<option value="' + p.key + '"' + (tmpl.priority === p.key ? ' selected' : '') + '>' + p.label + '</option>'; }).join('') +
                     '</select></div>' +
@@ -816,8 +833,9 @@ function renderVariantSection(govType) {
 
     return '<div class="variant-section ' + cssClass + '">' +
         '<div class="variant-header ' + cssClass + '">' + icon + ' ' + govType + ' Variant</div>' +
-        '<div class="form-group"><label class="form-label">Email Body Text</label>' +
-            '<textarea class="form-textarea" id="me-body-' + govType + '" style="min-height:100px;" placeholder="Write the full email body the player will read...">' + escapeHtml((variant.body || '')) + '</textarea></div>' +
+        '<div class="editor-section" style="border:none;padding:0;margin-bottom:12px;background:none;"><div class="editor-section-header"><div class="editor-section-title" style="font-size:0.78rem;">📄 Email Body Variants</div><button class="btn btn-ghost btn-small" onclick="addMBody(\'' + govType + '\')">+ Add Variant</button></div>' +
+        '<div class="form-hint" style="margin-bottom:8px;">Multiple body texts — one randomly chosen. Keeps repeat events feeling fresh.</div>' +
+        '<div id="me-bodies-' + govType + '">' + renderMBodies(govType) + '</div></div>' +
         '<label class="form-label">Response Options</label>' +
         '<div id="me-options-' + govType + '">' + optionsHTML + '</div>' +
         '<button class="btn btn-ghost btn-small" onclick="addMOption(\'' + govType + '\')" style="margin-top:8px;">+ Add Option</button>' +
@@ -853,10 +871,66 @@ function removeMEffect(govType, oi, ei) {
 }
 
 function syncMinistryBody() {
-    var demBody = document.getElementById('me-body-Democracy');
-    if (demBody) mEditorVariants.Democracy.body = demBody.value;
-    var autBody = document.getElementById('me-body-Autocracy');
-    if (autBody) mEditorVariants.Autocracy.body = autBody.value;
+    // Sync title variants
+    document.querySelectorAll('#me-titles-list input').forEach(function(el, i) {
+        if (mEditorVariants.titles[i] !== undefined) mEditorVariants.titles[i] = el.value;
+    });
+    // Sync body variants per gov type
+    document.querySelectorAll('#me-bodies-Democracy textarea').forEach(function(el, i) {
+        if (mEditorVariants.Democracy && mEditorVariants.Democracy.bodies[i] !== undefined) mEditorVariants.Democracy.bodies[i] = el.value;
+    });
+    document.querySelectorAll('#me-bodies-Autocracy textarea').forEach(function(el, i) {
+        if (mEditorVariants.Autocracy && mEditorVariants.Autocracy.bodies[i] !== undefined) mEditorVariants.Autocracy.bodies[i] = el.value;
+    });
+}
+
+// Title variant helpers
+function renderMTitles() {
+    var titles = mEditorVariants.titles || [''];
+    if (!titles.length) return '<div class="empty-state" style="padding:12px;">No titles. Add at least one.</div>';
+    return titles.map(function(t, i) {
+        return '<div class="desc-item">' +
+            '<input type="text" class="form-input" style="flex:1;" value="' + escapeAttr(t) + '" placeholder="' + (i === 0 ? 'Primary subject line...' : 'Alternate subject line...') + '" onchange="mEditorVariants.titles[' + i + ']=this.value">' +
+            (titles.length > 1 ? '<button class="btn-icon" onclick="removeMTitle(' + i + ')">✕</button>' : '') +
+        '</div>';
+    }).join('');
+}
+
+function addMTitle() {
+    syncMinistryBody();
+    mEditorVariants.titles.push('');
+    document.getElementById('me-titles-list').innerHTML = renderMTitles();
+}
+
+function removeMTitle(i) {
+    syncMinistryBody();
+    mEditorVariants.titles.splice(i, 1);
+    document.getElementById('me-titles-list').innerHTML = renderMTitles();
+}
+
+// Body variant helpers
+function renderMBodies(govType) {
+    var bodies = (mEditorVariants[govType] || {}).bodies || [''];
+    if (!bodies.length) return '<div class="empty-state" style="padding:12px;">No body texts. Add at least one.</div>';
+    return bodies.map(function(b, i) {
+        return '<div class="desc-item">' +
+            '<textarea class="form-textarea" style="flex:1;min-height:80px;" placeholder="' + (i === 0 ? 'Primary email body text...' : 'Alternate email body text...') + '">' + escapeHtml(b) + '</textarea>' +
+            (bodies.length > 1 ? '<button class="btn-icon" onclick="removeMBody(\'' + govType + '\',' + i + ')">✕</button>' : '') +
+        '</div>';
+    }).join('');
+}
+
+function addMBody(govType) {
+    syncMinistryBody();
+    if (!mEditorVariants[govType]) mEditorVariants[govType] = { bodies: [], options: [] };
+    mEditorVariants[govType].bodies.push('');
+    document.getElementById('me-bodies-' + govType).innerHTML = renderMBodies(govType);
+}
+
+function removeMBody(govType, i) {
+    syncMinistryBody();
+    mEditorVariants[govType].bodies.splice(i, 1);
+    document.getElementById('me-bodies-' + govType).innerHTML = renderMBodies(govType);
 }
 
 async function saveMinistryEvent() {
@@ -865,7 +939,9 @@ async function saveMinistryEvent() {
 
     // Read form fields
     var eventKey = (document.getElementById('me-key').value || '').trim();
-    var titleVal = (document.getElementById('me-title').value || '').trim();
+    syncMinistryBody();
+    var validTitles = (mEditorVariants.titles || []).filter(function(t) { return t.trim(); });
+    var titleVal = validTitles.length > 0 ? validTitles[0] : '';
     var ministry = document.getElementById('me-ministry').value;
     var sender = (document.getElementById('me-sender').value || '').trim();
     var priority = document.getElementById('me-priority').value;
@@ -880,7 +956,7 @@ async function saveMinistryEvent() {
     weightVal = weightVal !== '' ? Number(weightVal) : null;
 
     if (!eventKey) { alert('Event key is required.'); return; }
-    if (!titleVal) { alert('Title is required.'); return; }
+    if (!titleVal) { alert('At least one subject line is required.'); return; }
     if (!sender) { alert('Sender is required.'); return; }
     if (!govDem && !govAut) { alert('Select at least one government type.'); return; }
 
@@ -888,8 +964,8 @@ async function saveMinistryEvent() {
     if (govDem) govTypes.push('Democracy');
     if (govAut) govTypes.push('Autocracy');
 
-    // Clean variants — only include enabled gov types
-    var cleanVariants = {};
+    // Clean variants — only include enabled gov types, store title variants
+    var cleanVariants = { titles: validTitles };
     if (govDem && mEditorVariants.Democracy) cleanVariants.Democracy = mEditorVariants.Democracy;
     if (govAut && mEditorVariants.Autocracy) cleanVariants.Autocracy = mEditorVariants.Autocracy;
 
