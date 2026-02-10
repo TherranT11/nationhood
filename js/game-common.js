@@ -813,8 +813,8 @@ function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy, exclud
 function calculateBillSupport(billSupport, sponsorPartyId, allPartySeats) {
     const sponsorSeats = allPartySeats[sponsorPartyId] || 0;
     const acceptedSeats = (billSupport || [])
-        .filter(s => s.stance === 'accept')
-        .reduce((sum, s) => sum + s.seat_count, 0);
+        .filter(s => s.stance === 'accept' && s.faction_id !== sponsorPartyId)
+        .reduce((sum, s) => sum + (allPartySeats[s.faction_id] || s.seat_count || 0), 0);
     const totalSupport = sponsorSeats + acceptedSeats;
     const percent = Math.round((totalSupport / GAME_CONFIG.TOTAL_SEATS) * 100);
     return { sponsorSeats, acceptedSeats, totalSupport, percent };
