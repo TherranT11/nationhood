@@ -54,6 +54,10 @@
         .tag-inactive { background: #2a1a1a; color: #ff4444; }
         .tag-random { background: #1a2a2a; color: #58a6ff; border: 1px solid #58a6ff; }
         .tag-system { background: #2a1a2a; color: #ff9800; border: 1px solid #ff9800; }
+        .tag-ministry { background: #1a2a1a; color: #4CAF50; border: 1px solid #4CAF50; }
+        .tag-urgent { background: #2a1a1a; color: #ff4444; border: 1px solid #ff4444; }
+        .tag-routine { background: #2a2a1a; color: #ff9800; border: 1px solid #ff9800; }
+        .tag-opportunity { background: #1a2a1a; color: #4CAF50; border: 1px solid #4CAF50; }
 
         .editor { background: #141414; border: 2px solid #333; border-radius: 12px; overflow: hidden; }
         .editor-header { background: #1a1a1a; padding: 20px 24px; border-bottom: 2px solid #ffcc00; display: flex; justify-content: space-between; align-items: center; }
@@ -63,6 +67,7 @@
 
         .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
         .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+        .form-row-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
         .form-group { margin-bottom: 16px; }
         .form-label { display: block; font-size: 0.78rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; font-weight: bold; }
         .form-input, .form-select, .form-textarea { width: 100%; padding: 10px 14px; background: #252525; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 0.9rem; font-family: inherit; box-sizing: border-box; }
@@ -91,28 +96,23 @@
         .toggle input:checked + .toggle-slider:before { transform: translateX(20px); background: #fff; }
         .toggle-label { font-size: 0.8rem; color: #888; }
 
-        /* Type selector tabs */
         .type-tabs { display: flex; gap: 0; margin-bottom: 16px; border-radius: 6px; overflow: hidden; border: 1px solid #444; }
         .type-tab { flex: 1; text-align: center; padding: 10px 16px; font-size: 0.85rem; font-weight: 600; cursor: pointer; background: #1a1a1a; color: #888; border: none; transition: all 0.2s; }
-        .type-tab:first-child { border-right: 1px solid #444; }
+        .type-tab:not(:last-child) { border-right: 1px solid #444; }
         .type-tab.active { background: #ffcc00; color: #121212; }
         .type-tab:hover:not(.active) { background: #252525; color: #ccc; }
 
-        /* System trigger info */
         .system-trigger-info { background: #1a1a2a; border: 1px solid #3a3a5a; border-radius: 8px; padding: 14px 18px; margin-bottom: 16px; font-size: 0.82rem; color: #aaa; line-height: 1.5; }
         .system-trigger-info strong { color: #ff9800; }
 
-        /* Placeholder tags */
         .placeholder-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
         .placeholder-tag { display: inline-block; background: #2a2a1a; border: 1px solid #ff9800; color: #ff9800; padding: 3px 10px; border-radius: 4px; font-size: 0.75rem; font-family: 'Courier New', monospace; font-weight: bold; cursor: pointer; transition: all 0.2s; }
         .placeholder-tag:hover { background: #ff9800; color: #121212; }
 
-        /* Preview box */
         .preview-box { background: #1a2a1a; border: 1px solid #2a4a2a; border-radius: 8px; padding: 14px 18px; margin-top: 12px; }
         .preview-label { font-size: 0.7rem; color: #4CAF50; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; font-weight: bold; }
         .preview-text { font-size: 0.88rem; color: #ccc; line-height: 1.5; font-style: italic; }
 
-        /* Event Log */
         .log-entry { background: #1a1a1a; border-radius: 6px; padding: 12px 16px; margin-bottom: 8px; border-left: 3px solid #2196F3; }
         .log-entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
         .log-entry-name { font-weight: bold; color: #ffcc00; font-size: 0.9rem; }
@@ -120,10 +120,40 @@
         .log-entry-desc { font-size: 0.85rem; color: #aaa; font-style: italic; margin-bottom: 6px; }
         .log-entry-effects { font-size: 0.78rem; color: #888; }
 
+        /* Top-level mode tabs */
+        .mode-tabs { display: flex; gap: 0; margin-bottom: 24px; border-radius: 8px; overflow: hidden; border: 2px solid #ffcc00; }
+        .mode-tab { flex: 1; text-align: center; padding: 14px 20px; font-size: 0.95rem; font-weight: 700; cursor: pointer; background: #1a1a1a; color: #888; border: none; transition: all 0.2s; text-transform: uppercase; letter-spacing: 1px; }
+        .mode-tab:not(:last-child) { border-right: 2px solid #ffcc00; }
+        .mode-tab.active { background: #ffcc00; color: #121212; }
+        .mode-tab:hover:not(.active) { background: #252525; color: #ccc; }
+
+        /* Ministry option card */
+        .ministry-option-card { background: #252525; border: 2px solid #333; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+        .ministry-option-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .ministry-option-label { font-size: 0.95rem; font-weight: bold; color: #e0e0e0; }
+        .ministry-option-letter { background: #ffcc00; color: #121212; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 0.85rem; }
+        .ministry-effect-row { display: grid; grid-template-columns: 1fr 90px 120px 36px; gap: 8px; align-items: center; padding: 6px 0; }
+        .ministry-effect-row .form-input, .ministry-effect-row .form-select { padding: 8px 10px; font-size: 0.82rem; }
+
+        /* Gov type variant section */
+        .variant-section { background: #1a1a1a; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; border: 2px solid #333; }
+        .variant-section.democracy { border-color: #2196F3; }
+        .variant-section.autocracy { border-color: #ff4444; }
+        .variant-header { font-size: 0.9rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .variant-header.democracy { color: #2196F3; }
+        .variant-header.autocracy { color: #ff4444; }
+
+        /* Checkbox row */
+        .checkbox-row { display: flex; gap: 20px; align-items: center; }
+        .checkbox-item { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+        .checkbox-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: #ffcc00; cursor: pointer; }
+        .checkbox-item label { font-size: 0.85rem; color: #ccc; cursor: pointer; }
+
         @media (max-width: 768px) {
-            .form-row, .form-row-3 { grid-template-columns: 1fr; }
+            .form-row, .form-row-3, .form-row-4 { grid-template-columns: 1fr; }
             .trigger-item, .effect-item { grid-template-columns: 1fr; }
             .event-card { flex-direction: column; align-items: flex-start; gap: 12px; }
+            .ministry-effect-row { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -136,12 +166,16 @@
 <script>
 // ==================== STATE ====================
 var allEvents = [];
+var allMinistryTemplates = [];
 var currentEvent = null;
+var currentMinistryTemplate = null;
 var isNewEvent = false;
+var isNewMinistry = false;
 var editorDescriptions = [];
 var editorTriggers = [];
 var editorEffects = [];
 var deletedDescIds = [], deletedTriggerIds = [], deletedEffectIds = [];
+var currentMode = 'events'; // 'events' or 'ministry'
 
 // ==================== CONSTANTS ====================
 var NATION_STATS = [
@@ -164,7 +198,13 @@ var NATION_STATS = [
     { key: 'political_violence', label: 'Political Violence' },{ key: 'civil_unrest', label: 'Civil Unrest' },
     { key: 'polarization', label: 'Polarization' },{ key: 'sanctions', label: 'Sanctions' },
     { key: 'trade', label: 'Trade' },{ key: 'tourism', label: 'Tourism' },
-    { key: 'diplomatic_standing', label: 'Diplomatic Standing' }
+    { key: 'diplomatic_standing', label: 'Diplomatic Standing' },
+    { key: 'freedom_index', label: 'Freedom Index' },
+    { key: 'judicial_independence', label: 'Judicial Independence' },
+    { key: 'legitimacy', label: 'Legitimacy' },
+    { key: 'stability', label: 'Stability' },
+    { key: 'international_reputation', label: 'International Reputation' },
+    { key: 'digital_infrastructure', label: 'Digital Infrastructure' }
 ];
 
 var FACTION_STATS = [
@@ -175,6 +215,25 @@ var FACTION_STATS = [
 var EVENT_CATEGORIES = [
     'General', 'Electoral', 'Parties', 'Legal',
     'Economic', 'Military', 'Diplomatic', 'Natural Disaster'
+];
+
+var MINISTRIES = [
+    { key: 'prime_minister', label: '🏛️ Prime Minister', icon: '🏛️' },
+    { key: 'interior', label: '🏠 Interior', icon: '🏠' },
+    { key: 'foreign', label: '🌐 Foreign Affairs', icon: '🌐' },
+    { key: 'defense', label: '🛡️ Defense', icon: '🛡️' },
+    { key: 'finance', label: '💰 Finance', icon: '💰' },
+    { key: 'education', label: '📚 Education', icon: '📚' },
+    { key: 'healthcare', label: '🏥 Healthcare', icon: '🏥' },
+    { key: 'labor', label: '👷 Labor', icon: '👷' },
+    { key: 'justice', label: '⚖️ Justice', icon: '⚖️' },
+    { key: 'transportation', label: '🚄 Transportation', icon: '🚄' }
+];
+
+var PRIORITIES = [
+    { key: 'urgent', label: '🔴 Urgent', color: '#ff4444' },
+    { key: 'routine', label: '🟡 Routine', color: '#ff9800' },
+    { key: 'opportunity', label: '🟢 Opportunity', color: '#4CAF50' }
 ];
 
 var SYSTEM_TRIGGERS = [
@@ -206,12 +265,41 @@ var SYSTEM_TRIGGERS = [
      placeholders: ['{nation}', '{bill_name}', '{sponsor}', '{votes_for}', '{votes_against}'],
      example: 'The {bill_name} has been rejected by the legislature of {nation}. The vote was {votes_for} for and {votes_against} against.',
      exampleData: { '{nation}': 'Melizea', '{bill_name}': 'Tax Reform Act', '{sponsor}': 'Socialist Party', '{votes_for}': '45', '{votes_against}': '75' } },
+
+    // Ministry Actions — Justice (Democracy)
+    { key: 'ministry_justice_judicial_reform', label: '⚖️ Judicial Reform Enacted', desc: 'Fires when a party uses the Judicial Reform ministry action (democracy).',
+      placeholders: ['{nation}', '{minister}', '{party}', '{cost}'],
+      example: '{minister} has launched sweeping judicial reforms in {nation}, strengthening court independence. The initiative cost {cost}.',
+      exampleData: { '{nation}': 'Melizea', '{minister}': 'Elena Guerrero', '{party}': 'Workers Party', '{cost}': '$64M' } },
+    { key: 'ministry_justice_crackdown', label: '⚖️ Crackdown on Crime', desc: 'Fires when a party uses the Crackdown on Crime ministry action (democracy).',
+      placeholders: ['{nation}', '{minister}', '{party}', '{cost}', '{crime_change}'],
+      example: 'The Ministry of Justice in {nation} has ordered a crackdown on crime under {minister}. Crime reduced by {crime_change} points.',
+      exampleData: { '{nation}': 'Melizea', '{minister}': 'Elena Guerrero', '{party}': 'Workers Party', '{cost}': '$120M', '{crime_change}': '3' } },
+    { key: 'ministry_justice_amnesty', label: '⚖️ Amnesty Program Announced', desc: 'Fires when a party uses the Amnesty Program ministry action (democracy).',
+      placeholders: ['{nation}', '{minister}', '{party}'],
+      example: '{minister} has announced an amnesty program in {nation}, releasing non-violent offenders and restoring civil rights.',
+      exampleData: { '{nation}': 'Melizea', '{minister}': 'Elena Guerrero', '{party}': 'Workers Party' } },
+
+    // Ministry Actions — Justice (Autocracy)
+    { key: 'ministry_justice_loyalty_tribunal', label: '⚖️ Loyalty Tribunal Convened', desc: 'Fires when the regime uses the Loyalty Tribunal ministry action (autocracy).',
+      placeholders: ['{nation}', '{minister}', '{party}', '{target_faction}', '{cost}'],
+      example: 'The regime in {nation} has convened a loyalty tribunal under {minister}. Judges aligned with {target_faction} have been purged.',
+      exampleData: { '{nation}': 'Sangreza', '{minister}': 'Col. Ramos', '{party}': 'Sovereignty Bloc', '{target_faction}': 'Vanguard Front', '{cost}': '$84M' } },
+    { key: 'ministry_justice_martial_law', label: '⚖️ Martial Law Sweep', desc: 'Fires when the regime uses the Martial Law Sweep ministry action (autocracy).',
+      placeholders: ['{nation}', '{minister}', '{party}', '{cost}', '{crime_change}'],
+      example: 'Martial law has been declared in parts of {nation}. Security forces under {minister} have been unleashed to restore order.',
+      exampleData: { '{nation}': 'Sangreza', '{minister}': 'Col. Ramos', '{party}': 'Sovereignty Bloc', '{cost}': '$90M', '{crime_change}': '5' } },
+    { key: 'ministry_justice_show_trial', label: '⚖️ Show Trial Staged', desc: 'Fires when the regime uses the Show Trial ministry action (autocracy).',
+      placeholders: ['{nation}', '{minister}', '{party}', '{target_faction}'],
+      example: 'A show trial has been staged in {nation} targeting members of {target_faction}. International observers have condemned the proceedings.',
+      exampleData: { '{nation}': 'Sangreza', '{minister}': 'Col. Ramos', '{party}': 'Sovereignty Bloc', '{target_faction}': 'Vanguard Front' } },
 ];
 
 // ==================== INIT ====================
 (async function() {
     await loadAllEvents();
-    renderListView();
+    await loadAllMinistryTemplates();
+    renderModeTabs();
 })();
 
 async function loadAllEvents() {
@@ -222,10 +310,44 @@ async function loadAllEvents() {
     allEvents = (r.error ? [] : r.data) || [];
 }
 
-// ==================== LIST VIEW ====================
+async function loadAllMinistryTemplates() {
+    var r = await _supabase
+        .from('ministry_event_templates')
+        .select('*')
+        .order('ministry_key', { ascending: true });
+    if (r.error) {
+        console.warn('ministry_event_templates table may not exist yet:', r.error.message);
+        allMinistryTemplates = [];
+    } else {
+        allMinistryTemplates = r.data || [];
+    }
+}
+
+// ==================== MODE TABS (TOP-LEVEL) ====================
+function renderModeTabs() {
+    var c = document.getElementById('content-area');
+    c.innerHTML =
+        '<div class="mode-tabs">' +
+            '<button class="mode-tab ' + (currentMode === 'events' ? 'active' : '') + '" onclick="switchMode(\'events\')">⚡ Random & System Events</button>' +
+            '<button class="mode-tab ' + (currentMode === 'ministry' ? 'active' : '') + '" onclick="switchMode(\'ministry\')">🏛️ Ministry Inbox Events</button>' +
+        '</div>' +
+        '<div id="mode-content"></div>';
+    if (currentMode === 'events') renderListView();
+    else renderMinistryListView();
+}
+
+function switchMode(mode) {
+    currentMode = mode;
+    renderModeTabs();
+}
+
+// ======================================================================
+//  SECTION 1: RANDOM & SYSTEM EVENTS (original functionality)
+// ======================================================================
+
 function renderListView() {
     currentEvent = null;
-    document.getElementById('content-area').innerHTML =
+    document.getElementById('mode-content').innerHTML =
         '<div class="admin-header"><div>' +
             '<div class="admin-title">⚡ Event Manager</div>' +
             '<div class="admin-subtitle">Random (stat-triggered) and System (game action–triggered) events</div>' +
@@ -261,39 +383,19 @@ function renderEventList(events) {
             if (s === 'random_faction') return '<span class="tag tag-scope-faction">Faction</span>';
             return '<span class="tag tag-scope-nation">Nation</span>';
         }).join(' ');
-
-        var typeTag = et === 'system'
-            ? '<span class="tag tag-system">System</span>'
-            : '<span class="tag tag-random">Random</span>';
-
+        var typeTag = et === 'system' ? '<span class="tag tag-system">System</span>' : '<span class="tag tag-random">Random</span>';
         var triggerInfo = '';
         if (et === 'system' && ev.system_trigger) {
             var st = SYSTEM_TRIGGERS.find(function(t) { return t.key === ev.system_trigger; });
             triggerInfo = '<span style="color:#ff9800;">→ ' + (st ? st.label : ev.system_trigger) + '</span>';
         } else {
-            triggerInfo = '<span class="tag tag-prob">' + ev.probability + '%</span>' +
-                '<span class="tag tag-cooldown">' + ev.cooldown_ticks + 't cd</span>';
+            triggerInfo = '<span class="tag tag-prob">' + ev.probability + '%</span><span class="tag tag-cooldown">' + ev.cooldown_ticks + 't cd</span>';
         }
-
-        var counts = (ev.event_descriptions || []).length + ' desc' +
-            (et === 'random' ? ' · ' + (ev.event_triggers || []).length + ' trig · ' + (ev.event_effects || []).length + ' fx' : '');
-
+        var counts = (ev.event_descriptions || []).length + ' desc' + (et === 'random' ? ' · ' + (ev.event_triggers || []).length + ' trig · ' + (ev.event_effects || []).length + ' fx' : '');
         return '<div class="event-card ' + (ev.is_active ? 'active' : 'inactive') + '" onclick="editEvent(\'' + ev.id + '\')">' +
-            '<div class="event-card-left">' +
-                '<div class="event-card-name">' + escapeHtml(ev.name) + '</div>' +
-                '<div class="event-card-meta">' +
-                    typeTag +
-                    '<span class="tag tag-category">' + (ev.category || 'General') + '</span>' +
-                    triggerInfo + scopeTags +
-                    '<span style="color:#666;">' + counts + '</span>' +
-                '</div>' +
-            '</div>' +
-            '<div class="event-card-right">' +
-                '<span class="tag ' + (ev.is_active ? 'tag-active' : 'tag-inactive') + '">' +
-                    (ev.is_active ? 'ACTIVE' : 'INACTIVE') +
-                '</span>' +
-            '</div>' +
-        '</div>';
+            '<div class="event-card-left"><div class="event-card-name">' + escapeHtml(ev.name) + '</div>' +
+            '<div class="event-card-meta">' + typeTag + '<span class="tag tag-category">' + (ev.category || 'General') + '</span>' + triggerInfo + scopeTags + '<span style="color:#666;">' + counts + '</span></div></div>' +
+            '<div class="event-card-right"><span class="tag ' + (ev.is_active ? 'tag-active' : 'tag-inactive') + '">' + (ev.is_active ? 'ACTIVE' : 'INACTIVE') + '</span></div></div>';
     }).join('');
 }
 
@@ -314,7 +416,6 @@ function applyFilters() {
     renderEventList(filtered);
 }
 
-// ==================== CREATE / EDIT ====================
 function createNewEvent() {
     isNewEvent = true;
     currentEvent = { name: '', category: 'General', probability: 50, cooldown_ticks: 6, is_active: true, event_type: 'random', system_trigger: '' };
@@ -337,140 +438,47 @@ function editEvent(id) {
 }
 
 function renderEditor() {
-    var c = document.getElementById('content-area');
+    var c = document.getElementById('mode-content');
     var title = isNewEvent ? 'Create New Event' : 'Edit Event';
     var isSys = currentEvent.event_type === 'system';
 
     c.innerHTML =
         '<button class="btn-back" onclick="cancelEditor()">← Back to Events</button>' +
         '<div class="editor">' +
-            '<div class="editor-header">' +
-                '<div class="editor-title">' + title + '</div>' +
+            '<div class="editor-header"><div class="editor-title">' + title + '</div>' +
                 (!isNewEvent ? '<button class="btn btn-danger btn-small" onclick="deleteEvent(\'' + currentEvent.id + '\')">🗑 Delete</button>' : '') +
             '</div>' +
             '<div class="editor-body">' +
-
-                // Type tabs
                 '<div class="type-tabs">' +
                     '<button class="type-tab ' + (!isSys ? 'active' : '') + '" onclick="switchEventType(\'random\')">🎲 Random Event</button>' +
                     '<button class="type-tab ' + (isSys ? 'active' : '') + '" onclick="switchEventType(\'system\')">⚙️ System Event</button>' +
                 '</div>' +
-
-                // Name + Category (shared)
-                '<div class="form-row">' +
-                    '<div class="form-group">' +
-                        '<label class="form-label">Event Name</label>' +
-                        '<input type="text" class="form-input" id="ev-name" value="' + escapeAttr(currentEvent.name || '') + '" placeholder="e.g., Economic Recession">' +
-                    '</div>' +
-                    '<div class="form-group">' +
-                        '<label class="form-label">Category</label>' +
-                        '<select class="form-select" id="ev-category">' +
-                            EVENT_CATEGORIES.map(function(cat) {
-                                return '<option value="' + cat + '"' + (currentEvent.category === cat ? ' selected' : '') + '>' + cat + '</option>';
-                            }).join('') +
-                        '</select>' +
-                    '</div>' +
-                '</div>' +
-
-                // === Random-only fields ===
+                '<div class="form-row"><div class="form-group"><label class="form-label">Event Name</label><input type="text" class="form-input" id="ev-name" value="' + escapeAttr(currentEvent.name || '') + '" placeholder="e.g., Economic Recession"></div>' +
+                '<div class="form-group"><label class="form-label">Category</label><select class="form-select" id="ev-category">' +
+                    EVENT_CATEGORIES.map(function(cat) { return '<option value="' + cat + '"' + (currentEvent.category === cat ? ' selected' : '') + '>' + cat + '</option>'; }).join('') +
+                '</select></div></div>' +
                 '<div id="random-fields" style="' + (isSys ? 'display:none;' : '') + '">' +
-                    '<div class="form-row-3">' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">Probability (%)</label>' +
-                            '<input type="number" class="form-input" id="ev-probability" value="' + (currentEvent.probability || 50) + '" min="1" max="100">' +
-                            '<div class="form-hint">Chance per tick when triggers met</div>' +
-                        '</div>' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">Cooldown (ticks)</label>' +
-                            '<input type="number" class="form-input" id="ev-cooldown" value="' + (currentEvent.cooldown_ticks || 6) + '" min="0">' +
-                            '<div class="form-hint">Min ticks between firings</div>' +
-                        '</div>' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">Status</label>' +
-                            '<div class="toggle-wrapper" style="margin-top:8px;">' +
-                                '<label class="toggle"><input type="checkbox" id="ev-active" ' + (currentEvent.is_active ? 'checked' : '') + '><span class="toggle-slider"></span></label>' +
-                                '<span class="toggle-label" id="ev-active-label">' + (currentEvent.is_active ? 'Active' : 'Inactive') + '</span>' +
-                            '</div>' +
-                        '</div>' +
-                    '</div>' +
+                    '<div class="form-row-3"><div class="form-group"><label class="form-label">Probability (%)</label><input type="number" class="form-input" id="ev-probability" value="' + (currentEvent.probability || 50) + '" min="1" max="100"><div class="form-hint">Chance per tick when triggers met</div></div>' +
+                    '<div class="form-group"><label class="form-label">Cooldown (ticks)</label><input type="number" class="form-input" id="ev-cooldown" value="' + (currentEvent.cooldown_ticks || 6) + '" min="0"><div class="form-hint">Min ticks between firings</div></div>' +
+                    '<div class="form-group"><label class="form-label">Status</label><div class="toggle-wrapper" style="margin-top:8px;"><label class="toggle"><input type="checkbox" id="ev-active" ' + (currentEvent.is_active ? 'checked' : '') + '><span class="toggle-slider"></span></label><span class="toggle-label" id="ev-active-label">' + (currentEvent.is_active ? 'Active' : 'Inactive') + '</span></div></div></div>' +
                 '</div>' +
-
-                // === System-only fields ===
                 '<div id="system-fields" style="' + (!isSys ? 'display:none;' : '') + '">' +
-                    '<div class="system-trigger-info">' +
-                        '<strong>System events</strong> fire automatically when a game action occurs. ' +
-                        'No stat triggers or probability roll — the game code fires them directly. ' +
-                        'Add multiple descriptions (one randomly picked). Use the placeholder tags below in your descriptions.' +
-                    '</div>' +
-                    '<div class="form-row">' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">System Trigger</label>' +
-                            '<select class="form-select" id="ev-system-trigger">' +
-                                '<option value="">-- Select Trigger --</option>' +
-                                SYSTEM_TRIGGERS.map(function(t) {
-                                    return '<option value="' + t.key + '"' + (currentEvent.system_trigger === t.key ? ' selected' : '') + '>' + t.label + '</option>';
-                                }).join('') +
-                            '</select>' +
-                            '<div class="form-hint" id="system-trigger-desc">' + getSTDesc(currentEvent.system_trigger) + '</div>' +
-                            '<div id="system-placeholders">' + renderPlaceholders(currentEvent.system_trigger) + '</div>' +
-                        '</div>' +
-                        '<div class="form-group">' +
-                            '<label class="form-label">Status</label>' +
-                            '<div class="toggle-wrapper" style="margin-top:8px;">' +
-                                '<label class="toggle"><input type="checkbox" id="ev-active-sys" ' + (currentEvent.is_active ? 'checked' : '') + '><span class="toggle-slider"></span></label>' +
-                                '<span class="toggle-label" id="ev-active-sys-label">' + (currentEvent.is_active ? 'Active' : 'Inactive') + '</span>' +
-                            '</div>' +
-                        '</div>' +
-                    '</div>' +
+                    '<div class="system-trigger-info"><strong>System events</strong> fire automatically when a game action occurs. No stat triggers or probability roll — the game code fires them directly. Add multiple descriptions (one randomly picked). Use the placeholder tags below in your descriptions.</div>' +
+                    '<div class="form-row"><div class="form-group"><label class="form-label">System Trigger</label><select class="form-select" id="ev-system-trigger"><option value="">-- Select Trigger --</option>' +
+                        SYSTEM_TRIGGERS.map(function(t) { return '<option value="' + t.key + '"' + (currentEvent.system_trigger === t.key ? ' selected' : '') + '>' + t.label + '</option>'; }).join('') +
+                    '</select><div class="form-hint" id="system-trigger-desc">' + getSTDesc(currentEvent.system_trigger) + '</div><div id="system-placeholders">' + renderPlaceholders(currentEvent.system_trigger) + '</div></div>' +
+                    '<div class="form-group"><label class="form-label">Status</label><div class="toggle-wrapper" style="margin-top:8px;"><label class="toggle"><input type="checkbox" id="ev-active-sys" ' + (currentEvent.is_active ? 'checked' : '') + '><span class="toggle-slider"></span></label><span class="toggle-label" id="ev-active-sys-label">' + (currentEvent.is_active ? 'Active' : 'Inactive') + '</span></div></div></div>' +
                     '<div id="system-preview">' + renderPreview(currentEvent.system_trigger) + '</div>' +
                 '</div>' +
-
-                // Descriptions (both types)
-                '<div class="editor-section">' +
-                    '<div class="editor-section-header">' +
-                        '<div class="editor-section-title">📝 Descriptions</div>' +
-                        '<button class="btn btn-ghost btn-small" onclick="addDescription()">+ Add</button>' +
-                    '</div>' +
-                    '<div class="form-hint" style="margin-bottom:12px;">' +
-                        (isSys
-                            ? 'Multiple descriptions — one randomly chosen each time. Use the placeholder tags from above (e.g. <code style="color:#ff9800;">{nation}</code>, <code style="color:#ff9800;">{winner}</code>) and they\'ll be replaced with real data.'
-                            : 'Multiple descriptions — one randomly chosen each time. Use <code style="color:#ff9800;">{nation}</code> for the nation name.') +
-                    '</div>' +
-                    '<div id="descriptions-list">' + renderDescriptions() + '</div>' +
-                '</div>' +
-
-                // Triggers (random only)
-                '<div id="triggers-section" style="' + (isSys ? 'display:none;' : '') + '">' +
-                    '<div class="editor-section">' +
-                        '<div class="editor-section-header">' +
-                            '<div class="editor-section-title">🎯 Triggers</div>' +
-                            '<button class="btn btn-ghost btn-small" onclick="addTrigger()">+ Add</button>' +
-                        '</div>' +
-                        '<div class="form-hint" style="margin-bottom:12px;">ALL conditions must be met. Leave min/max empty for open-ended ranges.</div>' +
-                        '<div id="triggers-list">' + renderTriggers() + '</div>' +
-                    '</div>' +
-                '</div>' +
-
-                // Effects (random only)
-                '<div id="effects-section" style="' + (isSys ? 'display:none;' : '') + '">' +
-                '<div class="editor-section">' +
-                    '<div class="editor-section-header">' +
-                        '<div class="editor-section-title">💥 Effects</div>' +
-                        '<button class="btn btn-ghost btn-small" onclick="addEffect()">+ Add</button>' +
-                    '</div>' +
-                    '<div class="form-hint" style="margin-bottom:12px;">Stat changes when event fires. Negative = decrease.</div>' +
-                    '<div id="effects-list">' + renderEffects() + '</div>' +
-                '</div>' +
-                '</div>' +
-
+                '<div class="editor-section"><div class="editor-section-header"><div class="editor-section-title">📝 Descriptions</div><button class="btn btn-ghost btn-small" onclick="addDescription()">+ Add</button></div>' +
+                '<div class="form-hint" style="margin-bottom:12px;">' + (isSys ? 'Multiple descriptions — one randomly chosen each time. Use placeholder tags.' : 'Multiple descriptions — one randomly chosen each time. Use <code style="color:#ff9800;">{nation}</code> for the nation name.') + '</div>' +
+                '<div id="descriptions-list">' + renderDescriptions() + '</div></div>' +
+                '<div id="triggers-section" style="' + (isSys ? 'display:none;' : '') + '"><div class="editor-section"><div class="editor-section-header"><div class="editor-section-title">🎯 Triggers</div><button class="btn btn-ghost btn-small" onclick="addTrigger()">+ Add</button></div><div class="form-hint" style="margin-bottom:12px;">ALL conditions must be met.</div><div id="triggers-list">' + renderTriggers() + '</div></div></div>' +
+                '<div id="effects-section" style="' + (isSys ? 'display:none;' : '') + '"><div class="editor-section"><div class="editor-section-header"><div class="editor-section-title">💥 Effects</div><button class="btn btn-ghost btn-small" onclick="addEffect()">+ Add</button></div><div class="form-hint" style="margin-bottom:12px;">Stat changes when event fires.</div><div id="effects-list">' + renderEffects() + '</div></div></div>' +
             '</div>' +
-            '<div class="editor-footer">' +
-                '<button class="btn btn-ghost" onclick="cancelEditor()">Cancel</button>' +
-                '<button class="btn btn-primary" onclick="saveEvent()">💾 Save Event</button>' +
-            '</div>' +
+            '<div class="editor-footer"><button class="btn btn-ghost" onclick="cancelEditor()">Cancel</button><button class="btn btn-primary" onclick="saveEvent()">💾 Save Event</button></div>' +
         '</div>';
 
-    // Wire up listeners
     var ea = document.getElementById('ev-active');
     if (ea) ea.onchange = function() { document.getElementById('ev-active-label').textContent = this.checked ? 'Active' : 'Inactive'; };
     var eas = document.getElementById('ev-active-sys');
@@ -483,11 +491,7 @@ function renderEditor() {
     };
 }
 
-function switchEventType(type) {
-    syncForm();
-    currentEvent.event_type = type;
-    renderEditor();
-}
+function switchEventType(type) { syncForm(); currentEvent.event_type = type; renderEditor(); }
 
 function syncForm() {
     var n = document.getElementById('ev-name'); if (n) currentEvent.name = n.value;
@@ -498,30 +502,17 @@ function syncForm() {
     var activeEl = isSys ? document.getElementById('ev-active-sys') : document.getElementById('ev-active');
     if (activeEl) currentEvent.is_active = activeEl.checked;
     var st = document.getElementById('ev-system-trigger'); if (st) currentEvent.system_trigger = st.value;
-    // Sync textarea content
-    document.querySelectorAll('#descriptions-list textarea').forEach(function(el, i) {
-        if (editorDescriptions[i]) editorDescriptions[i].description_text = el.value;
-    });
+    document.querySelectorAll('#descriptions-list textarea').forEach(function(el, i) { if (editorDescriptions[i]) editorDescriptions[i].description_text = el.value; });
 }
 
-function getSTDesc(key) {
-    if (!key) return 'Select a trigger to see its description.';
-    var t = SYSTEM_TRIGGERS.find(function(s) { return s.key === key; });
-    return t ? t.desc : '';
-}
+function getSTDesc(key) { if (!key) return 'Select a trigger to see its description.'; var t = SYSTEM_TRIGGERS.find(function(s) { return s.key === key; }); return t ? t.desc : ''; }
 
 function renderPlaceholders(key) {
     if (!key) return '';
     var t = SYSTEM_TRIGGERS.find(function(s) { return s.key === key; });
     if (!t || !t.placeholders) return '';
-    return '<div style="margin-top:10px;">' +
-        '<div class="form-hint" style="margin-bottom:6px;">Available placeholders — click to copy:</div>' +
-        '<div class="placeholder-tags">' +
-            t.placeholders.map(function(p) {
-                return '<span class="placeholder-tag" onclick="copyPlaceholder(\'' + p + '\')" title="Click to copy">' + p + '</span>';
-            }).join('') +
-        '</div>' +
-    '</div>';
+    return '<div style="margin-top:10px;"><div class="form-hint" style="margin-bottom:6px;">Available placeholders — click to copy:</div><div class="placeholder-tags">' +
+        t.placeholders.map(function(p) { return '<span class="placeholder-tag" onclick="copyPlaceholder(\'' + p + '\')" title="Click to copy">' + p + '</span>'; }).join('') + '</div></div>';
 }
 
 function renderPreview(key) {
@@ -529,238 +520,419 @@ function renderPreview(key) {
     var t = SYSTEM_TRIGGERS.find(function(s) { return s.key === key; });
     if (!t || !t.example) return '';
     var filled = t.example;
-    if (t.exampleData) {
-        Object.keys(t.exampleData).forEach(function(tag) {
-            filled = filled.split(tag).join('<strong style="color:#ffcc00;">' + t.exampleData[tag] + '</strong>');
-        });
-    }
-    return '<div class="preview-box">' +
-        '<div class="preview-label">✨ Example Output</div>' +
-        '<div class="preview-text">' + filled + '</div>' +
-    '</div>';
+    if (t.exampleData) Object.keys(t.exampleData).forEach(function(tag) { filled = filled.split(tag).join('<strong style="color:#ffcc00;">' + t.exampleData[tag] + '</strong>'); });
+    return '<div class="preview-box"><div class="preview-label">✨ Example Output</div><div class="preview-text">' + filled + '</div></div>';
 }
 
-function copyPlaceholder(text) {
-    navigator.clipboard.writeText(text).then(function() {
-        // Brief visual feedback — flash the tag
-    }).catch(function() {});
-}
+function copyPlaceholder(text) { navigator.clipboard.writeText(text).catch(function() {}); }
 
-// ==================== DESCRIPTIONS ====================
 function renderDescriptions() {
     if (!editorDescriptions.length) return '<div class="empty-state" style="padding:12px;">No descriptions yet. Add at least one.</div>';
     return editorDescriptions.map(function(d, i) {
-        return '<div class="desc-item">' +
-            '<textarea class="form-textarea" onchange="editorDescriptions[' + i + '].description_text=this.value" placeholder="Describe the event as it would appear in the CIVIC feed...">' +
-                escapeHtml(d.description_text || '') +
-            '</textarea>' +
-            '<button class="btn-icon" onclick="removeDescription(' + i + ')">✕</button>' +
-        '</div>';
+        return '<div class="desc-item"><textarea class="form-textarea" onchange="editorDescriptions[' + i + '].description_text=this.value" placeholder="Describe the event...">' + escapeHtml(d.description_text || '') + '</textarea><button class="btn-icon" onclick="removeDescription(' + i + ')">✕</button></div>';
     }).join('');
 }
-function addDescription() {
-    editorDescriptions.push({ id: null, description_text: '', isNew: true });
-    document.getElementById('descriptions-list').innerHTML = renderDescriptions();
-}
-function removeDescription(i) {
-    var d = editorDescriptions[i];
-    if (d.id && !d.isNew) deletedDescIds.push(d.id);
-    editorDescriptions.splice(i, 1);
-    document.getElementById('descriptions-list').innerHTML = renderDescriptions();
-}
+function addDescription() { editorDescriptions.push({ id: null, description_text: '', isNew: true }); document.getElementById('descriptions-list').innerHTML = renderDescriptions(); }
+function removeDescription(i) { var d = editorDescriptions[i]; if (d.id && !d.isNew) deletedDescIds.push(d.id); editorDescriptions.splice(i, 1); document.getElementById('descriptions-list').innerHTML = renderDescriptions(); }
 
-// ==================== TRIGGERS ====================
 function renderTriggers() {
     if (!editorTriggers.length) return '<div class="empty-state" style="padding:12px;">No triggers. Random events need at least one.</div>';
     return editorTriggers.map(function(t, i) {
-        return '<div class="trigger-item">' +
-            '<select class="form-select" onchange="editorTriggers[' + i + '].stat_key=this.value">' +
-                '<option value="">-- Select Stat --</option>' +
-                NATION_STATS.map(function(s) { return '<option value="' + s.key + '"' + (t.stat_key === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
-            '</select>' +
-            '<input type="number" class="form-input" value="' + (t.min_value != null ? t.min_value : '') + '" placeholder="Min" onchange="editorTriggers[' + i + '].min_value=this.value===\'\'?null:Number(this.value)">' +
+        return '<div class="trigger-item"><select class="form-select" onchange="editorTriggers[' + i + '].stat_key=this.value"><option value="">-- Select Stat --</option>' +
+            NATION_STATS.map(function(s) { return '<option value="' + s.key + '"' + (t.stat_key === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
+            '</select><input type="number" class="form-input" value="' + (t.min_value != null ? t.min_value : '') + '" placeholder="Min" onchange="editorTriggers[' + i + '].min_value=this.value===\'\'?null:Number(this.value)">' +
             '<input type="number" class="form-input" value="' + (t.max_value != null ? t.max_value : '') + '" placeholder="Max" onchange="editorTriggers[' + i + '].max_value=this.value===\'\'?null:Number(this.value)">' +
-            '<button class="btn-icon" onclick="removeTrigger(' + i + ')">✕</button>' +
-        '</div>';
+            '<button class="btn-icon" onclick="removeTrigger(' + i + ')">✕</button></div>';
     }).join('');
 }
-function addTrigger() {
-    editorTriggers.push({ id: null, stat_key: '', min_value: null, max_value: null, isNew: true });
-    document.getElementById('triggers-list').innerHTML = renderTriggers();
-}
-function removeTrigger(i) {
-    var t = editorTriggers[i];
-    if (t.id && !t.isNew) deletedTriggerIds.push(t.id);
-    editorTriggers.splice(i, 1);
-    document.getElementById('triggers-list').innerHTML = renderTriggers();
-}
+function addTrigger() { editorTriggers.push({ id: null, stat_key: '', min_value: null, max_value: null, isNew: true }); document.getElementById('triggers-list').innerHTML = renderTriggers(); }
+function removeTrigger(i) { var t = editorTriggers[i]; if (t.id && !t.isNew) deletedTriggerIds.push(t.id); editorTriggers.splice(i, 1); document.getElementById('triggers-list').innerHTML = renderTriggers(); }
 
-// ==================== EFFECTS ====================
 function renderEffects() {
     if (!editorEffects.length) return '<div class="empty-state" style="padding:12px;">No effects. Event will be purely informational.</div>';
     return editorEffects.map(function(e, i) {
         var isN = e.target === 'nation' || !e.target;
         var opts = isN ? NATION_STATS : FACTION_STATS;
-        return '<div class="effect-item">' +
-            '<select class="form-select" onchange="editorEffects[' + i + '].stat_key=this.value">' +
-                '<option value="">-- Select Stat --</option>' +
-                opts.map(function(s) { return '<option value="' + s.key + '"' + (e.stat_key === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
-            '</select>' +
-            '<input type="number" class="form-input" value="' + (e.change_value != null ? e.change_value : '') + '" placeholder="+/- value" step="0.1" onchange="editorEffects[' + i + '].change_value=Number(this.value)">' +
-            '<select class="form-select" onchange="updateEffectTarget(' + i + ',this.value)">' +
-                '<option value="nation"' + (e.target === 'nation' ? ' selected' : '') + '>Nation</option>' +
-                '<option value="ruling_party"' + (e.target === 'ruling_party' ? ' selected' : '') + '>Ruling Party</option>' +
-                '<option value="random_faction"' + (e.target === 'random_faction' ? ' selected' : '') + '>Random Faction</option>' +
-            '</select>' +
-            '<button class="btn-icon" onclick="removeEffect(' + i + ')">✕</button>' +
-        '</div>';
+        return '<div class="effect-item"><select class="form-select" onchange="editorEffects[' + i + '].stat_key=this.value"><option value="">-- Select Stat --</option>' +
+            opts.map(function(s) { return '<option value="' + s.key + '"' + (e.stat_key === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
+            '</select><input type="number" class="form-input" value="' + (e.change_value != null ? e.change_value : '') + '" placeholder="+/- value" step="0.1" onchange="editorEffects[' + i + '].change_value=Number(this.value)">' +
+            '<select class="form-select" onchange="updateEffectTarget(' + i + ',this.value)"><option value="nation"' + (e.target === 'nation' ? ' selected' : '') + '>Nation</option><option value="ruling_party"' + (e.target === 'ruling_party' ? ' selected' : '') + '>Ruling Party</option><option value="random_faction"' + (e.target === 'random_faction' ? ' selected' : '') + '>Random Faction</option></select>' +
+            '<button class="btn-icon" onclick="removeEffect(' + i + ')">✕</button></div>';
     }).join('');
 }
-function updateEffectTarget(i, v) {
-    editorEffects[i].target = v;
-    editorEffects[i].stat_key = '';
-    document.getElementById('effects-list').innerHTML = renderEffects();
-}
-function addEffect() {
-    editorEffects.push({ id: null, stat_key: '', change_value: 0, target: 'nation', isNew: true });
-    document.getElementById('effects-list').innerHTML = renderEffects();
-}
-function removeEffect(i) {
-    var e = editorEffects[i];
-    if (e.id && !e.isNew) deletedEffectIds.push(e.id);
-    editorEffects.splice(i, 1);
-    document.getElementById('effects-list').innerHTML = renderEffects();
-}
+function updateEffectTarget(i, v) { editorEffects[i].target = v; editorEffects[i].stat_key = ''; document.getElementById('effects-list').innerHTML = renderEffects(); }
+function addEffect() { editorEffects.push({ id: null, stat_key: '', change_value: 0, target: 'nation', isNew: true }); document.getElementById('effects-list').innerHTML = renderEffects(); }
+function removeEffect(i) { var e = editorEffects[i]; if (e.id && !e.isNew) deletedEffectIds.push(e.id); editorEffects.splice(i, 1); document.getElementById('effects-list').innerHTML = renderEffects(); }
 
-// ==================== SAVE ====================
 async function saveEvent() {
     syncForm();
     var name = currentEvent.name.trim();
-    var category = currentEvent.category;
     var isSys = currentEvent.event_type === 'system';
-    var probability = isSys ? 100 : (currentEvent.probability || 50);
-    var cooldown = isSys ? 0 : (currentEvent.cooldown_ticks || 6);
-    var isActive = currentEvent.is_active;
-    var systemTrigger = isSys ? (currentEvent.system_trigger || '') : null;
-
     if (!name) { alert('Event name is required.'); return; }
     var validDescs = editorDescriptions.filter(function(d) { return d.description_text.trim(); });
     if (!validDescs.length) { alert('Add at least one description.'); return; }
-    if (!isSys) {
-        var validTrigs = editorTriggers.filter(function(t) { return t.stat_key; });
-        if (!validTrigs.length) { alert('Random events need at least one trigger.'); return; }
-    }
-    if (isSys && !systemTrigger) { alert('System events need a trigger selected.'); return; }
-
+    if (!isSys && !editorTriggers.filter(function(t) { return t.stat_key; }).length) { alert('Random events need at least one trigger.'); return; }
+    if (isSys && !currentEvent.system_trigger) { alert('System events need a trigger selected.'); return; }
     try {
         var eventId;
-        var payload = {
-            name: name, category: category, probability: probability,
-            cooldown_ticks: cooldown, is_active: isActive,
-            event_type: currentEvent.event_type, system_trigger: systemTrigger
-        };
-
-        if (isNewEvent) {
-            var r = await _supabase.from('event_templates').insert(payload).select().single();
-            if (r.error) throw r.error;
-            eventId = r.data.id;
-        } else {
-            eventId = currentEvent.id;
-            var r2 = await _supabase.from('event_templates').update(payload).eq('id', eventId);
-            if (r2.error) throw r2.error;
-        }
-
-        // Delete removed sub-items
+        var payload = { name: name, category: currentEvent.category, probability: isSys ? 100 : (currentEvent.probability || 50), cooldown_ticks: isSys ? 0 : (currentEvent.cooldown_ticks || 6), is_active: currentEvent.is_active, event_type: currentEvent.event_type, system_trigger: isSys ? currentEvent.system_trigger : null };
+        if (isNewEvent) { var r = await _supabase.from('event_templates').insert(payload).select().single(); if (r.error) throw r.error; eventId = r.data.id; }
+        else { eventId = currentEvent.id; var r2 = await _supabase.from('event_templates').update(payload).eq('id', eventId); if (r2.error) throw r2.error; }
         if (deletedDescIds.length) await _supabase.from('event_descriptions').delete().in('id', deletedDescIds);
         if (deletedTriggerIds.length) await _supabase.from('event_triggers').delete().in('id', deletedTriggerIds);
         if (deletedEffectIds.length) await _supabase.from('event_effects').delete().in('id', deletedEffectIds);
-
-        // Upsert descriptions
-        for (var d of validDescs) {
-            if (d.isNew || !d.id)
-                await _supabase.from('event_descriptions').insert({ event_id: eventId, description_text: d.description_text.trim() });
-            else
-                await _supabase.from('event_descriptions').update({ description_text: d.description_text.trim() }).eq('id', d.id);
-        }
-
-        // Upsert triggers (random only)
-        if (!isSys) {
-            var vt = editorTriggers.filter(function(t) { return t.stat_key; });
-            for (var t of vt) {
-                var tp = { event_id: eventId, stat_key: t.stat_key, min_value: t.min_value, max_value: t.max_value };
-                if (t.isNew || !t.id) await _supabase.from('event_triggers').insert(tp);
-                else await _supabase.from('event_triggers').update(tp).eq('id', t.id);
-            }
-        }
-
-        // Upsert effects
-        var ve = editorEffects.filter(function(e) { return e.stat_key; });
-        for (var e of ve) {
-            var ep = { event_id: eventId, stat_key: e.stat_key, change_value: e.change_value || 0, target: e.target || 'nation' };
-            if (e.isNew || !e.id) await _supabase.from('event_effects').insert(ep);
-            else await _supabase.from('event_effects').update(ep).eq('id', e.id);
-        }
-
+        for (var d of validDescs) { if (d.isNew || !d.id) await _supabase.from('event_descriptions').insert({ event_id: eventId, description_text: d.description_text.trim() }); else await _supabase.from('event_descriptions').update({ description_text: d.description_text.trim() }).eq('id', d.id); }
+        if (!isSys) { for (var t of editorTriggers.filter(function(t) { return t.stat_key; })) { var tp = { event_id: eventId, stat_key: t.stat_key, min_value: t.min_value, max_value: t.max_value }; if (t.isNew || !t.id) await _supabase.from('event_triggers').insert(tp); else await _supabase.from('event_triggers').update(tp).eq('id', t.id); } }
+        for (var e of editorEffects.filter(function(e) { return e.stat_key; })) { var ep = { event_id: eventId, stat_key: e.stat_key, change_value: e.change_value || 0, target: e.target || 'nation' }; if (e.isNew || !e.id) await _supabase.from('event_effects').insert(ep); else await _supabase.from('event_effects').update(ep).eq('id', e.id); }
         alert(isNewEvent ? 'Event created!' : 'Event saved!');
-        await loadAllEvents();
-        renderListView();
+        await loadAllEvents(); renderModeTabs();
+    } catch (err) { console.error('Save error:', err); alert('Error: ' + err.message); }
+}
+
+async function deleteEvent(id) {
+    if (!confirm('Delete this event and all its data? This cannot be undone.')) return;
+    try { var r = await _supabase.from('event_templates').delete().eq('id', id); if (r.error) throw r.error; alert('Event deleted.'); await loadAllEvents(); renderModeTabs(); }
+    catch (err) { console.error('Delete error:', err); alert('Error: ' + err.message); }
+}
+
+async function viewRecentLog() {
+    document.getElementById('mode-content').innerHTML =
+        '<button class="btn-back" onclick="renderModeTabs()">← Back to Events</button>' +
+        '<div class="admin-header" style="border-bottom-color:#2196F3;"><div><div class="admin-title" style="color:#2196F3;">📋 Recent Event Log</div><div class="admin-subtitle">Last 50 events across all nations</div></div></div>' +
+        '<div id="log-entries"><div style="text-align:center;padding:40px;color:#888;">Loading...</div></div>';
+    var r = await _supabase.from('event_log').select('*, nations(name)').order('fired_at_tick', { ascending: false }).limit(50);
+    if (r.error) { document.getElementById('log-entries').innerHTML = '<div class="empty-state">Error: ' + r.error.message + '</div>'; return; }
+    if (!r.data || !r.data.length) { document.getElementById('log-entries').innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div>No events fired yet.</div>'; return; }
+    document.getElementById('log-entries').innerHTML = r.data.map(function(log) {
+        var fx = (log.effects_applied || []).map(function(e) { return e.stat + ': ' + (e.change > 0 ? '+' : '') + e.change + ' (' + e.target + ')'; }).join(' · ');
+        return '<div class="log-entry"><div class="log-entry-header"><div class="log-entry-name">' + escapeHtml(log.event_name) + ' <span class="tag tag-category" style="margin-left:8px;">' + (log.category || '') + '</span></div><div class="log-entry-tick">' + (log.nations ? log.nations.name : '?') + ' · Tick ' + log.fired_at_tick + '</div></div><div class="log-entry-desc">' + escapeHtml(log.description_used || '') + '</div>' + (fx ? '<div class="log-entry-effects">Effects: ' + fx + '</div>' : '') + '</div>';
+    }).join('');
+}
+
+function cancelEditor() { renderModeTabs(); }
+
+
+// ======================================================================
+//  SECTION 2: MINISTRY INBOX EVENTS
+// ======================================================================
+
+// State for ministry editor
+var mEditorVariants = { Democracy: { body: '', options: [] }, Autocracy: { body: '', options: [] } };
+
+function renderMinistryListView() {
+    document.getElementById('mode-content').innerHTML =
+        '<div class="admin-header"><div>' +
+            '<div class="admin-title">🏛️ Ministry Inbox Events</div>' +
+            '<div class="admin-subtitle">Events that appear in ministry inboxes during tick processing</div>' +
+        '</div><div class="admin-actions">' +
+            '<button class="btn btn-primary" onclick="createNewMinistryEvent()">+ New Ministry Event</button>' +
+        '</div></div>' +
+        '<div class="filters">' +
+            '<input type="text" id="m-filter-search" placeholder="Search events..." oninput="applyMinistryFilters()">' +
+            '<select id="m-filter-ministry" onchange="applyMinistryFilters()"><option value="">All Ministries</option>' +
+                MINISTRIES.map(function(m) { return '<option value="' + m.key + '">' + m.label + '</option>'; }).join('') +
+            '</select>' +
+            '<select id="m-filter-priority" onchange="applyMinistryFilters()"><option value="">All Priorities</option>' +
+                PRIORITIES.map(function(p) { return '<option value="' + p.key + '">' + p.label + '</option>'; }).join('') +
+            '</select>' +
+            '<span class="event-count" id="m-event-count">' + allMinistryTemplates.length + ' events</span>' +
+        '</div>' +
+        '<div id="m-event-list"></div>';
+    renderMinistryEventList(allMinistryTemplates);
+}
+
+function renderMinistryEventList(events) {
+    var c = document.getElementById('m-event-list');
+    if (!events.length) {
+        c.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div>No ministry events yet. Create one to get started.</div>';
+        return;
+    }
+    c.innerHTML = events.map(function(ev) {
+        var ministry = MINISTRIES.find(function(m) { return m.key === ev.ministry_key; });
+        var priority = PRIORITIES.find(function(p) { return p.key === ev.priority; });
+        var govTypes = (ev.gov_types || []).join(', ');
+        var optCount = 0;
+        if (ev.variants) {
+            if (ev.variants.Democracy) optCount += (ev.variants.Democracy.options || []).length;
+            if (ev.variants.Autocracy) optCount += (ev.variants.Autocracy.options || []).length;
+        }
+        var weightInfo = ev.weight_stat ? '<span style="color:#888;">' + ev.weight_stat + ' ' + (ev.weight_operator || '>') + ' ' + ev.weight_value + '</span>' : '';
+
+        return '<div class="event-card ' + (ev.is_active ? 'active' : 'inactive') + '" onclick="editMinistryEvent(\'' + ev.id + '\')">' +
+            '<div class="event-card-left"><div class="event-card-name">' + escapeHtml(ev.title) + '</div>' +
+            '<div class="event-card-meta">' +
+                '<span class="tag tag-ministry">' + (ministry ? ministry.icon + ' ' + ministry.key : ev.ministry_key) + '</span>' +
+                '<span class="tag tag-' + ev.priority + '">' + (priority ? priority.label : ev.priority) + '</span>' +
+                '<span class="tag tag-cooldown">' + ev.deadline_ticks + 't deadline</span>' +
+                '<span class="tag tag-cooldown">' + ev.cooldown_ticks + 't cd</span>' +
+                '<span style="color:#666;">' + govTypes + ' · ' + optCount + ' options</span>' +
+                weightInfo +
+            '</div></div>' +
+            '<div class="event-card-right"><span class="tag ' + (ev.is_active ? 'tag-active' : 'tag-inactive') + '">' + (ev.is_active ? 'ACTIVE' : 'INACTIVE') + '</span></div></div>';
+    }).join('');
+}
+
+function applyMinistryFilters() {
+    var search = (document.getElementById('m-filter-search').value || '').toLowerCase();
+    var ministry = document.getElementById('m-filter-ministry').value;
+    var priority = document.getElementById('m-filter-priority').value;
+    var filtered = allMinistryTemplates.filter(function(ev) {
+        if (search && ev.title.toLowerCase().indexOf(search) === -1 && ev.event_key.toLowerCase().indexOf(search) === -1) return false;
+        if (ministry && ev.ministry_key !== ministry) return false;
+        if (priority && ev.priority !== priority) return false;
+        return true;
+    });
+    document.getElementById('m-event-count').textContent = filtered.length + ' events';
+    renderMinistryEventList(filtered);
+}
+
+function createNewMinistryEvent() {
+    isNewMinistry = true;
+    currentMinistryTemplate = {
+        event_key: '', ministry_key: 'justice', title: '', sender: '',
+        priority: 'routine', deadline_ticks: 3, cooldown_ticks: 6,
+        gov_types: ['Democracy', 'Autocracy'], is_active: true,
+        weight_stat: '', weight_operator: '>', weight_value: null,
+        variants: {
+            Democracy: { body: '', options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', effects: [], minister_approval_change: 0, news_event_key: '' }] },
+            Autocracy: { body: '', options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', effects: [], minister_approval_change: 0, news_event_key: '' }] }
+        }
+    };
+    mEditorVariants = JSON.parse(JSON.stringify(currentMinistryTemplate.variants));
+    renderMinistryEditor();
+}
+
+function editMinistryEvent(id) {
+    var ev = allMinistryTemplates.find(function(e) { return e.id === id; });
+    if (!ev) return;
+    isNewMinistry = false;
+    currentMinistryTemplate = JSON.parse(JSON.stringify(ev));
+    mEditorVariants = JSON.parse(JSON.stringify(ev.variants || { Democracy: { body: '', options: [] }, Autocracy: { body: '', options: [] } }));
+    renderMinistryEditor();
+}
+
+function renderMinistryEditor() {
+    var c = document.getElementById('mode-content');
+    var tmpl = currentMinistryTemplate;
+    var title = isNewMinistry ? 'Create Ministry Event' : 'Edit Ministry Event';
+    var govDem = (tmpl.gov_types || []).includes('Democracy');
+    var govAut = (tmpl.gov_types || []).includes('Autocracy');
+
+    c.innerHTML =
+        '<button class="btn-back" onclick="cancelMinistryEditor()">← Back to Ministry Events</button>' +
+        '<div class="editor">' +
+            '<div class="editor-header"><div class="editor-title">' + title + '</div>' +
+                (!isNewMinistry ? '<button class="btn btn-danger btn-small" onclick="deleteMinistryEvent(\'' + tmpl.id + '\')">🗑 Delete</button>' : '') +
+            '</div>' +
+            '<div class="editor-body">' +
+
+                // Row 1: Event key + Title
+                '<div class="form-row">' +
+                    '<div class="form-group"><label class="form-label">Event Key (unique)</label><input type="text" class="form-input" id="me-key" value="' + escapeAttr(tmpl.event_key) + '" placeholder="e.g., prison_riot"></div>' +
+                    '<div class="form-group"><label class="form-label">Title (inbox subject line)</label><input type="text" class="form-input" id="me-title" value="' + escapeAttr(tmpl.title) + '" placeholder="e.g., Prison Riot in Southern Province"></div>' +
+                '</div>' +
+
+                // Row 2: Ministry + Sender + Priority + Deadline
+                '<div class="form-row-4">' +
+                    '<div class="form-group"><label class="form-label">Ministry</label><select class="form-select" id="me-ministry">' +
+                        MINISTRIES.map(function(m) { return '<option value="' + m.key + '"' + (tmpl.ministry_key === m.key ? ' selected' : '') + '>' + m.label + '</option>'; }).join('') +
+                    '</select></div>' +
+                    '<div class="form-group"><label class="form-label">Sender</label><input type="text" class="form-input" id="me-sender" value="' + escapeAttr(tmpl.sender) + '" placeholder="e.g., Federal Prison Authority"></div>' +
+                    '<div class="form-group"><label class="form-label">Priority</label><select class="form-select" id="me-priority">' +
+                        PRIORITIES.map(function(p) { return '<option value="' + p.key + '"' + (tmpl.priority === p.key ? ' selected' : '') + '>' + p.label + '</option>'; }).join('') +
+                    '</select></div>' +
+                    '<div class="form-group"><label class="form-label">Deadline (ticks)</label><input type="number" class="form-input" id="me-deadline" value="' + (tmpl.deadline_ticks || 3) + '" min="1" max="10"></div>' +
+                '</div>' +
+
+                // Row 3: Cooldown + Status + Gov types
+                '<div class="form-row-3">' +
+                    '<div class="form-group"><label class="form-label">Cooldown (ticks)</label><input type="number" class="form-input" id="me-cooldown" value="' + (tmpl.cooldown_ticks || 6) + '" min="0"></div>' +
+                    '<div class="form-group"><label class="form-label">Status</label><div class="toggle-wrapper" style="margin-top:8px;"><label class="toggle"><input type="checkbox" id="me-active" ' + (tmpl.is_active ? 'checked' : '') + '><span class="toggle-slider"></span></label><span class="toggle-label">' + (tmpl.is_active ? 'Active' : 'Inactive') + '</span></div></div>' +
+                    '<div class="form-group"><label class="form-label">Government Types</label><div class="checkbox-row" style="margin-top:8px;">' +
+                        '<div class="checkbox-item"><input type="checkbox" id="me-gov-dem" ' + (govDem ? 'checked' : '') + '><label for="me-gov-dem">🗳️ Democracy</label></div>' +
+                        '<div class="checkbox-item"><input type="checkbox" id="me-gov-aut" ' + (govAut ? 'checked' : '') + '><label for="me-gov-aut">👑 Autocracy</label></div>' +
+                    '</div></div>' +
+                '</div>' +
+
+                // Weight condition
+                '<div class="editor-section"><div class="editor-section-title" style="margin-bottom:12px;">🎯 Weight Condition (optional)</div>' +
+                    '<div class="form-hint" style="margin-bottom:12px;">Event is more likely to fire when this stat condition is met. Leave blank for equal chance.</div>' +
+                    '<div class="form-row-3">' +
+                        '<div class="form-group"><label class="form-label">Stat</label><select class="form-select" id="me-weight-stat"><option value="">-- None --</option>' +
+                            NATION_STATS.map(function(s) { return '<option value="' + s.key + '"' + (tmpl.weight_stat === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
+                        '</select></div>' +
+                        '<div class="form-group"><label class="form-label">Operator</label><select class="form-select" id="me-weight-op">' +
+                            ['>', '<', '>=', '<='].map(function(op) { return '<option value="' + op + '"' + (tmpl.weight_operator === op ? ' selected' : '') + '>' + op + '</option>'; }).join('') +
+                        '</select></div>' +
+                        '<div class="form-group"><label class="form-label">Value</label><input type="number" class="form-input" id="me-weight-val" value="' + (tmpl.weight_value != null ? tmpl.weight_value : '') + '" placeholder="e.g., 60"></div>' +
+                    '</div>' +
+                '</div>' +
+
+                // Variants
+                (govDem ? renderVariantSection('Democracy') : '') +
+                (govAut ? renderVariantSection('Autocracy') : '') +
+
+            '</div>' +
+            '<div class="editor-footer"><button class="btn btn-ghost" onclick="cancelMinistryEditor()">Cancel</button><button class="btn btn-primary" onclick="saveMinistryEvent()">💾 Save Ministry Event</button></div>' +
+        '</div>';
+}
+
+function renderVariantSection(govType) {
+    var variant = mEditorVariants[govType] || { body: '', options: [] };
+    var cssClass = govType.toLowerCase();
+    var icon = govType === 'Democracy' ? '🗳️' : '👑';
+    var optionsHTML = (variant.options || []).map(function(opt, oi) {
+        var letter = String.fromCharCode(65 + oi);
+        var effectsHTML = (opt.effects || []).map(function(eff, ei) {
+            return '<div class="ministry-effect-row">' +
+                '<select class="form-select" onchange="updateMEffect(\'' + govType + '\',' + oi + ',' + ei + ',\'stat_key\',this.value)"><option value="">-- Stat --</option>' +
+                    NATION_STATS.concat(FACTION_STATS).concat([{key:'minister_approval',label:'Minister Approval'}]).map(function(s) { return '<option value="' + s.key + '"' + (eff.stat_key === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
+                '</select>' +
+                '<input type="number" class="form-input" value="' + (eff.change != null ? eff.change : '') + '" placeholder="+/-" step="1" onchange="updateMEffect(\'' + govType + '\',' + oi + ',' + ei + ',\'change\',Number(this.value))">' +
+                '<select class="form-select" onchange="updateMEffect(\'' + govType + '\',' + oi + ',' + ei + ',\'target\',this.value)"><option value="nation"' + ((eff.target || 'nation') === 'nation' ? ' selected' : '') + '>Nation</option><option value="faction"' + (eff.target === 'faction' ? ' selected' : '') + '>Controlling Faction</option><option value="minister"' + (eff.target === 'minister' ? ' selected' : '') + '>Minister</option></select>' +
+                '<button class="btn-icon" onclick="removeMEffect(\'' + govType + '\',' + oi + ',' + ei + ')">✕</button>' +
+            '</div>';
+        }).join('');
+
+        return '<div class="ministry-option-card">' +
+            '<div class="ministry-option-header">' +
+                '<div class="ministry-option-label"><span class="ministry-option-letter">' + letter + '</span> ' +
+                    '<input type="text" class="form-input" style="display:inline;width:300px;margin-left:8px;" value="' + escapeAttr(opt.label) + '" placeholder="Option label..." onchange="updateMOpt(\'' + govType + '\',' + oi + ',\'label\',this.value)">' +
+                '</div>' +
+                '<button class="btn-icon" onclick="removeMOption(\'' + govType + '\',' + oi + ')">✕</button>' +
+            '</div>' +
+            '<div class="form-row-3" style="margin-bottom:8px;">' +
+                '<div class="form-group" style="margin-bottom:0;"><label class="form-label">AP Cost</label><input type="number" class="form-input" value="' + (opt.ap || 0) + '" min="0" onchange="updateMOpt(\'' + govType + '\',' + oi + ',\'ap\',Number(this.value))"></div>' +
+                '<div class="form-group" style="margin-bottom:0;"><label class="form-label">Money ($M base)</label><input type="number" class="form-input" value="' + (opt.money || 0) + '" min="0" onchange="updateMOpt(\'' + govType + '\',' + oi + ',\'money\',Number(this.value))"></div>' +
+                '<div class="form-group" style="margin-bottom:0;"><label class="form-label">Money Scaling Stat</label><select class="form-select" onchange="updateMOpt(\'' + govType + '\',' + oi + ',\'money_scaling_stat\',this.value)"><option value="">None (flat cost)</option>' +
+                    NATION_STATS.map(function(s) { return '<option value="' + s.key + '"' + (opt.money_scaling_stat === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
+                '</select></div>' +
+            '</div>' +
+            '<label class="form-label">Effects</label>' +
+            effectsHTML +
+            '<button class="btn btn-ghost btn-small" onclick="addMEffect(\'' + govType + '\',' + oi + ')" style="margin-top:4px;">+ Add Effect</button>' +
+        '</div>';
+    }).join('');
+
+    return '<div class="variant-section ' + cssClass + '">' +
+        '<div class="variant-header ' + cssClass + '">' + icon + ' ' + govType + ' Variant</div>' +
+        '<div class="form-group"><label class="form-label">Email Body Text</label>' +
+            '<textarea class="form-textarea" id="me-body-' + govType + '" style="min-height:100px;" placeholder="Write the full email body the player will read...">' + escapeHtml((variant.body || '')) + '</textarea></div>' +
+        '<label class="form-label">Response Options</label>' +
+        '<div id="me-options-' + govType + '">' + optionsHTML + '</div>' +
+        '<button class="btn btn-ghost btn-small" onclick="addMOption(\'' + govType + '\')" style="margin-top:8px;">+ Add Option</button>' +
+    '</div>';
+}
+
+// Ministry variant helpers
+function updateMOpt(govType, oi, field, value) { mEditorVariants[govType].options[oi][field] = value; }
+function updateMEffect(govType, oi, ei, field, value) { mEditorVariants[govType].options[oi].effects[ei][field] = value; }
+
+function addMOption(govType) {
+    mEditorVariants[govType].options.push({ label: '', ap: 2, money: 0, money_scaling_stat: '', effects: [], minister_approval_change: 0, news_event_key: '' });
+    syncMinistryBody();
+    renderMinistryEditor();
+}
+
+function removeMOption(govType, oi) {
+    mEditorVariants[govType].options.splice(oi, 1);
+    syncMinistryBody();
+    renderMinistryEditor();
+}
+
+function addMEffect(govType, oi) {
+    mEditorVariants[govType].options[oi].effects.push({ stat_key: '', change: 0, target: 'nation' });
+    syncMinistryBody();
+    renderMinistryEditor();
+}
+
+function removeMEffect(govType, oi, ei) {
+    mEditorVariants[govType].options[oi].effects.splice(ei, 1);
+    syncMinistryBody();
+    renderMinistryEditor();
+}
+
+function syncMinistryBody() {
+    var demBody = document.getElementById('me-body-Democracy');
+    if (demBody) mEditorVariants.Democracy.body = demBody.value;
+    var autBody = document.getElementById('me-body-Autocracy');
+    if (autBody) mEditorVariants.Autocracy.body = autBody.value;
+}
+
+async function saveMinistryEvent() {
+    syncMinistryBody();
+    var tmpl = currentMinistryTemplate;
+
+    // Read form fields
+    var eventKey = (document.getElementById('me-key').value || '').trim();
+    var titleVal = (document.getElementById('me-title').value || '').trim();
+    var ministry = document.getElementById('me-ministry').value;
+    var sender = (document.getElementById('me-sender').value || '').trim();
+    var priority = document.getElementById('me-priority').value;
+    var deadline = parseInt(document.getElementById('me-deadline').value) || 3;
+    var cooldown = parseInt(document.getElementById('me-cooldown').value) || 6;
+    var isActive = document.getElementById('me-active').checked;
+    var govDem = document.getElementById('me-gov-dem').checked;
+    var govAut = document.getElementById('me-gov-aut').checked;
+    var weightStat = document.getElementById('me-weight-stat').value || null;
+    var weightOp = document.getElementById('me-weight-op').value || '>';
+    var weightVal = document.getElementById('me-weight-val').value;
+    weightVal = weightVal !== '' ? Number(weightVal) : null;
+
+    if (!eventKey) { alert('Event key is required.'); return; }
+    if (!titleVal) { alert('Title is required.'); return; }
+    if (!sender) { alert('Sender is required.'); return; }
+    if (!govDem && !govAut) { alert('Select at least one government type.'); return; }
+
+    var govTypes = [];
+    if (govDem) govTypes.push('Democracy');
+    if (govAut) govTypes.push('Autocracy');
+
+    // Clean variants — only include enabled gov types
+    var cleanVariants = {};
+    if (govDem && mEditorVariants.Democracy) cleanVariants.Democracy = mEditorVariants.Democracy;
+    if (govAut && mEditorVariants.Autocracy) cleanVariants.Autocracy = mEditorVariants.Autocracy;
+
+    var payload = {
+        event_key: eventKey, ministry_key: ministry, title: titleVal, sender: sender,
+        priority: priority, deadline_ticks: deadline, cooldown_ticks: cooldown,
+        gov_types: govTypes, is_active: isActive,
+        weight_stat: weightStat, weight_operator: weightOp, weight_value: weightVal,
+        variants: cleanVariants
+    };
+
+    try {
+        if (isNewMinistry) {
+            var r = await _supabase.from('ministry_event_templates').insert(payload).select().single();
+            if (r.error) throw r.error;
+        } else {
+            var r2 = await _supabase.from('ministry_event_templates').update(payload).eq('id', tmpl.id);
+            if (r2.error) throw r2.error;
+        }
+        alert(isNewMinistry ? 'Ministry event created!' : 'Ministry event saved!');
+        await loadAllMinistryTemplates();
+        renderModeTabs();
     } catch (err) {
         console.error('Save error:', err);
         alert('Error: ' + err.message);
     }
 }
 
-// ==================== DELETE ====================
-async function deleteEvent(id) {
-    if (!confirm('Delete this event and all its data? This cannot be undone.')) return;
+async function deleteMinistryEvent(id) {
+    if (!confirm('Delete this ministry event? This cannot be undone.')) return;
     try {
-        var r = await _supabase.from('event_templates').delete().eq('id', id);
+        var r = await _supabase.from('ministry_event_templates').delete().eq('id', id);
         if (r.error) throw r.error;
-        alert('Event deleted.');
-        await loadAllEvents();
-        renderListView();
-    } catch (err) {
-        console.error('Delete error:', err);
-        alert('Error: ' + err.message);
-    }
+        alert('Ministry event deleted.');
+        await loadAllMinistryTemplates();
+        renderModeTabs();
+    } catch (err) { console.error('Delete error:', err); alert('Error: ' + err.message); }
 }
 
-// ==================== EVENT LOG ====================
-async function viewRecentLog() {
-    document.getElementById('content-area').innerHTML =
-        '<button class="btn-back" onclick="renderListView()">← Back to Events</button>' +
-        '<div class="admin-header" style="border-bottom-color:#2196F3;"><div>' +
-            '<div class="admin-title" style="color:#2196F3;">📋 Recent Event Log</div>' +
-            '<div class="admin-subtitle">Last 50 events across all nations</div>' +
-        '</div></div>' +
-        '<div id="log-entries"><div style="text-align:center;padding:40px;color:#888;">Loading...</div></div>';
+function cancelMinistryEditor() { renderModeTabs(); }
 
-    var r = await _supabase.from('event_log').select('*, nations(name)').order('fired_at_tick', { ascending: false }).limit(50);
-    if (r.error) {
-        document.getElementById('log-entries').innerHTML = '<div class="empty-state">Error: ' + r.error.message + '</div>';
-        return;
-    }
-    if (!r.data || !r.data.length) {
-        document.getElementById('log-entries').innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div>No events fired yet.</div>';
-        return;
-    }
-    document.getElementById('log-entries').innerHTML = r.data.map(function(log) {
-        var fx = (log.effects_applied || []).map(function(e) {
-            return e.stat + ': ' + (e.change > 0 ? '+' : '') + e.change + ' (' + e.target + ')';
-        }).join(' · ');
-        return '<div class="log-entry">' +
-            '<div class="log-entry-header">' +
-                '<div class="log-entry-name">' + escapeHtml(log.event_name) + ' <span class="tag tag-category" style="margin-left:8px;">' + (log.category || '') + '</span></div>' +
-                '<div class="log-entry-tick">' + (log.nations ? log.nations.name : '?') + ' · Tick ' + log.fired_at_tick + '</div>' +
-            '</div>' +
-            '<div class="log-entry-desc">' + escapeHtml(log.description_used || '') + '</div>' +
-            (fx ? '<div class="log-entry-effects">Effects: ' + fx + '</div>' : '') +
-        '</div>';
-    }).join('');
-}
 
 // ==================== UTILITIES ====================
-function cancelEditor() { renderListView(); }
 function escapeHtml(t) { var d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
 function escapeAttr(t) { return (t || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 </script>
