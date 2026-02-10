@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ministry Actions | Nationhood Alpha</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="css/dashboard.css">
+    <style>
+        /* ===== MINISTRY HEADER ===== */
+        .ministry-header {
+            background: linear-gradient(180deg, #1a1a1a 0%, #121212 100%);
+            border-bottom: 1px solid #2a2a2a;
+            padding: 20px 28px;
+        }
+        .ministry-header-inner { max-width: 1400px; margin: 0 auto; }
+        .ministry-top-row {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 16px; flex-wrap: wrap; gap: 16px;
+        }
+        .ministry-identity { display: flex; align-items: center; gap: 16px; }
+        .ministry-icon {
+            width: 52px; height: 52px;
+            background: linear-gradient(135deg, #1a2a1a 0%, #0e1a0e 100%);
+            border: 2px solid var(--accent); border-radius: 10px;
+            display: flex; align-items: center; justify-content: center; font-size: 1.6rem;
+        }
+        .ministry-label {
+            font-size: 0.65rem; color: #666; text-transform: uppercase;
+            letter-spacing: 2px; font-weight: 600;
+        }
+        .ministry-name {
+            font-size: 1.3rem; font-weight: 700; color: var(--accent); margin-top: 2px;
+        }
+        .ministry-budget-box {
+            background: var(--bg-panel); border: 1px solid var(--border-main);
+            border-radius: 8px; padding: 12px 20px; text-align: right;
+        }
+        .budget-label { font-size: 0.65rem; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+        .budget-value { font-size: 1.1rem; font-weight: 700; color: var(--green); margin-top: 2px; }
+
+        .minister-row {
+            display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
+        }
+        .minister-avatar {
+            width: 42px; height: 42px; background: #252525; border-radius: 50%;
+            border: 2px solid #444; display: flex; align-items: center;
+            justify-content: center; font-size: 1.1rem;
+        }
+        .minister-name-text { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); }
+        .minister-meta { font-size: 0.75rem; color: #888; display: flex; gap: 12px; margin-top: 2px; }
+        .minister-approval-val { font-weight: 600; }
+        .minister-approval-val.high { color: var(--green); }
+        .minister-approval-val.mid { color: var(--orange); }
+        .minister-approval-val.low { color: var(--red); }
+        .minister-party { color: var(--accent); }
+
+        /* ===== ACTIONS BAR ===== */
+        .actions-bar { display: flex; gap: 10px; flex-wrap: wrap; }
+        .ministry-action-btn {
+            display: flex; align-items: center; gap: 8px;
+            padding: 10px 16px; background: #1a1a1a; border: 1px solid #333;
+            border-radius: 6px; color: #e0e0e0; cursor: pointer;
+            transition: all 0.2s; font-family: inherit; font-size: 0.82rem; font-weight: 600;
+        }
+        .ministry-action-btn:hover { border-color: var(--accent); background: #1e1e1a; }
+        .ministry-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .ministry-action-btn:disabled:hover { border-color: #333; background: #1a1a1a; }
+        .action-cost {
+            font-family: monospace; font-size: 0.7rem; color: #888;
+            background: #252525; padding: 2px 8px; border-radius: 3px; margin-left: 4px;
+        }
+        .action-cost .ap { color: var(--accent); }
+        .action-cost .money { color: var(--green); }
+        .action-cooldown { font-size: 0.65rem; color: var(--red); margin-left: 4px; }
+
+        /* ===== MINISTRY TABS ===== */
+        .ministry-tabs {
+            display: flex; gap: 2px; padding: 0 28px; background: #121212;
+            border-bottom: 1px solid #222; overflow-x: auto; max-width: 100%;
+        }
+        .ministry-tab {
+            padding: 10px 16px; font-size: 0.75rem; color: #666; cursor: pointer;
+            border-bottom: 2px solid transparent; white-space: nowrap;
+            transition: all 0.2s; font-weight: 600; letter-spacing: 0.5px;
+            position: relative; font-family: inherit; background: none;
+            border-top: none; border-left: none; border-right: none;
+        }
+        .ministry-tab:hover { color: #aaa; }
+        .ministry-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .ministry-tab.disabled { color: #333; cursor: not-allowed; }
+        .tab-badge {
+            position: absolute; top: 4px; right: 2px;
+            min-width: 16px; height: 16px; background: var(--red); border-radius: 50%;
+            font-size: 0.6rem; color: white; display: flex; align-items: center;
+            justify-content: center; font-weight: 700; padding: 0 3px;
+        }
+
+        /* ===== INBOX LAYOUT ===== */
+        .inbox-layout {
+            display: grid; grid-template-columns: 360px 1fr;
+            max-width: 1400px; margin: 0 auto; min-height: calc(100vh - 250px);
+        }
+
+        /* ===== LEFT: INBOX LIST ===== */
+        .inbox-panel {
+            border-right: 1px solid #222; background: #111;
+            display: flex; flex-direction: column;
+        }
+        .inbox-header {
+            padding: 14px 18px; border-bottom: 1px solid #222;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .inbox-title {
+            font-size: 0.75rem; text-transform: uppercase;
+            letter-spacing: 1.5px; color: #888; font-weight: 600;
+        }
+        .inbox-count { font-family: monospace; font-size: 0.72rem; color: #666; }
+        .inbox-filter-bar {
+            padding: 10px 18px; border-bottom: 1px solid #1a1a1a;
+            display: flex; gap: 6px;
+        }
+        .inbox-filter {
+            padding: 5px 12px; font-size: 0.7rem; border-radius: 20px;
+            border: 1px solid #333; background: transparent; color: #888;
+            cursor: pointer; font-family: inherit; font-weight: 600; transition: all 0.2s;
+        }
+        .inbox-filter.active { background: var(--accent); color: #000; border-color: var(--accent); }
+        .inbox-filter:hover:not(.active) { border-color: #666; color: #ccc; }
+        .inbox-list { flex: 1; overflow-y: auto; }
+
+        .inbox-item {
+            padding: 14px 18px; border-bottom: 1px solid #1a1a1a;
+            cursor: pointer; transition: background 0.15s; position: relative;
+        }
+        .inbox-item:hover { background: #1a1a1a; }
+        .inbox-item.selected { background: #1a1e1a; border-left: 3px solid var(--accent); }
+        .inbox-item.unread { background: #141414; }
+        .inbox-item.unread .inbox-item-subject { color: #fff; font-weight: 700; }
+        .inbox-item.resolved { opacity: 0.5; }
+        .inbox-item.expired { opacity: 0.35; }
+        .inbox-item.unread::before {
+            content: ''; position: absolute; left: 8px; top: 50%;
+            transform: translateY(-50%); width: 6px; height: 6px;
+            background: var(--accent); border-radius: 50%;
+        }
+        .inbox-item-top {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;
+        }
+        .inbox-item-sender { font-size: 0.78rem; font-weight: 600; color: #aaa; }
+        .inbox-item-tick { font-family: monospace; font-size: 0.65rem; color: #555; }
+        .inbox-item-subject { font-size: 0.85rem; color: #ccc; font-weight: 500; margin-bottom: 4px; line-height: 1.3; }
+        .inbox-item-bottom { display: flex; align-items: center; gap: 8px; }
+        .inbox-item-priority {
+            font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 1px; padding: 2px 8px; border-radius: 3px;
+        }
+        .priority-urgent { background: #2a1a1a; color: #ff4444; border: 1px solid #ff4444; }
+        .priority-routine { background: #2a2a1a; color: #ff9800; border: 1px solid #ff9800; }
+        .priority-opportunity { background: #1a2a1a; color: #4CAF50; border: 1px solid #4CAF50; }
+        .inbox-item-status { font-size: 0.65rem; color: #555; font-weight: 500; }
+        .inbox-item-status.status-resolved { color: var(--green); }
+        .inbox-item-status.status-expired { color: var(--red); }
+        .inbox-item-deadline { font-family: monospace; font-size: 0.62rem; color: #ff9800; margin-left: auto; }
+        .inbox-item-deadline.critical { color: #ff4444; animation: pulse-text 1.5s infinite; }
+        @keyframes pulse-text { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+
+        /* ===== RIGHT: EMAIL DETAIL ===== */
+        .email-panel { background: #0e0e0e; display: flex; flex-direction: column; }
+        .email-empty {
+            flex: 1; display: flex; align-items: center; justify-content: center;
+            flex-direction: column; gap: 12px; color: #333;
+        }
+        .email-empty-icon { font-size: 3rem; }
+        .email-empty-text { font-size: 0.9rem; color: #444; }
+
+        .email-header { padding: 24px 28px 20px; border-bottom: 1px solid #222; }
+        .email-priority-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .email-subject { font-size: 1.2rem; font-weight: 700; color: #fff; line-height: 1.3; margin-bottom: 10px; }
+        .email-meta { display: flex; gap: 20px; font-size: 0.78rem; color: #666; }
+        .email-meta strong { color: #aaa; }
+        .email-deadline-bar {
+            margin-top: 12px; padding: 8px 14px;
+            background: #1a1410; border: 1px solid #ff9800; border-radius: 5px;
+            font-size: 0.78rem; color: #ff9800; display: flex; align-items: center; gap: 8px;
+        }
+        .email-deadline-bar.critical { background: #1a1010; border-color: #ff4444; color: #ff4444; }
+        .deadline-timer { font-family: monospace; font-weight: 700; }
+
+        .email-body { flex: 1; padding: 24px 28px; overflow-y: auto; }
+        .email-body-text { font-size: 0.92rem; line-height: 1.7; color: #bbb; max-width: 680px; white-space: pre-line; }
+
+        /* ===== RESOLVED BANNER ===== */
+        .resolved-banner {
+            padding: 16px 28px; border-top: 1px solid #222; background: #111;
+        }
+        .resolved-banner.success { border-left: 4px solid var(--green); }
+        .resolved-banner.expired { border-left: 4px solid var(--red); }
+        .resolved-title { font-size: 0.85rem; font-weight: 700; margin-bottom: 6px; }
+        .resolved-title.success { color: var(--green); }
+        .resolved-title.expired { color: var(--red); }
+        .resolved-effects { font-size: 0.78rem; color: #888; }
+
+        /* ===== RESPONSE OPTIONS ===== */
+        .response-section {
+            padding: 20px 28px 28px; border-top: 1px solid #222; background: #111;
+        }
+        .response-label {
+            font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.5px;
+            color: #666; font-weight: 600; margin-bottom: 14px;
+        }
+        .response-options { display: flex; flex-direction: column; gap: 10px; }
+        .response-option {
+            display: flex; align-items: stretch; background: #1a1a1a;
+            border: 1px solid #2a2a2a; border-radius: 8px; cursor: pointer;
+            transition: all 0.2s; overflow: hidden;
+        }
+        .response-option:hover { border-color: var(--accent); background: #1e1e1a; transform: translateX(4px); }
+        .response-option.disabled { opacity: 0.4; cursor: not-allowed; }
+        .response-option.disabled:hover { border-color: #2a2a2a; background: #1a1a1a; transform: none; }
+        .response-option-letter {
+            width: 44px; display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 0.85rem; color: #000; flex-shrink: 0;
+        }
+        .response-option-letter.opt-a { background: #4CAF50; }
+        .response-option-letter.opt-b { background: #2196F3; }
+        .response-option-letter.opt-c { background: #ff9800; }
+        .response-option-content { flex: 1; padding: 12px 16px; }
+        .response-option-title { font-size: 0.88rem; font-weight: 600; color: #e0e0e0; margin-bottom: 4px; }
+        .response-option-outcomes { margin-top: 8px; }
+        .outcome-row {
+            display: flex; align-items: center; gap: 8px; padding: 4px 0;
+            font-size: 0.78rem; color: #888;
+        }
+        .outcome-chance-badge {
+            font-family: monospace; font-size: 0.7rem; font-weight: 700;
+            padding: 2px 6px; border-radius: 3px; min-width: 36px; text-align: center;
+        }
+        .outcome-chance-badge.high { background: #1a2a1a; color: #4CAF50; }
+        .outcome-chance-badge.mid { background: #2a2a1a; color: #ff9800; }
+        .outcome-chance-badge.low { background: #2a1a1a; color: #ff4444; }
+        .outcome-label { flex: 1; color: #aaa; }
+        .outcome-effects-inline {
+            display: flex; flex-wrap: wrap; gap: 4px;
+        }
+        .fx-tag {
+            font-family: monospace; font-size: 0.65rem; padding: 1px 6px;
+            border-radius: 3px; font-weight: 600;
+        }
+        .fx-tag.pos { background: #1a2a1a; color: #4CAF50; }
+        .fx-tag.neg { background: #2a1a1a; color: #ff4444; }
+        .fx-tag.neutral { background: #1a1a2a; color: #64B5F6; }
+
+        .response-option-costs {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 4px; padding: 12px 16px; border-left: 1px solid #252525;
+            min-width: 80px; flex-shrink: 0;
+        }
+        .cost-tag {
+            font-family: monospace; font-size: 0.72rem; font-weight: 600;
+            padding: 3px 8px; border-radius: 3px;
+        }
+        .cost-tag.ap { background: #2a2a00; color: var(--accent); }
+        .cost-tag.money { background: #002a00; color: var(--green); }
+
+        /* ===== ACTION MODAL ===== */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal-content {
+            background: var(--bg-panel); border: 2px solid var(--accent); border-radius: 12px;
+            padding: 24px; max-width: 550px; width: 90%; max-height: 85vh; overflow-y: auto;
+        }
+        .modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border-main);
+        }
+        .modal-title { font-size: 1.1rem; color: var(--accent); font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+        .modal-close { background: none; border: none; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer; }
+        .modal-close:hover { color: var(--text-primary); }
+        .modal-body { color: var(--text-secondary); font-size: 0.88rem; line-height: 1.6; }
+        .modal-cost-row {
+            display: flex; gap: 12px; margin: 16px 0; padding: 12px;
+            background: var(--bg-card); border-radius: 6px;
+        }
+        .modal-footer {
+            display: flex; justify-content: flex-end; gap: 12px;
+            margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-main);
+        }
+        .modal-btn {
+            padding: 10px 20px; border: none; border-radius: 6px;
+            font-weight: bold; cursor: pointer; font-size: 0.85rem;
+        }
+        .modal-btn.cancel { background: var(--bg-card); color: var(--text-secondary); }
+        .modal-btn.cancel:hover { background: var(--bg-hover); }
+        .modal-btn.confirm {
+            background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+            color: #121212;
+        }
+        .modal-btn.confirm:disabled { background: var(--border-main); color: var(--text-muted); cursor: not-allowed; }
+
+        /* Target select in modal */
+        .target-select { width: 100%; padding: 10px; background: var(--bg-card); border: 1px solid var(--border-main); border-radius: 6px; color: var(--text-primary); font-size: 0.9rem; margin-top: 8px; }
+        .target-select:focus { outline: none; border-color: var(--accent); }
+
+        @media (max-width: 900px) {
+            .inbox-layout { grid-template-columns: 1fr; }
+            .inbox-panel { max-height: 300px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="top-bar"></div>
+
+<!-- Ministry Header (filled by JS) -->
+<div class="ministry-header" id="ministry-header">
+    <div class="ministry-header-inner">
+        <div style="text-align:center;padding:40px;color:#666;">Loading ministry data...</div>
+    </div>
+</div>
+
+<!-- Ministry Tabs -->
+<div class="ministry-tabs" id="ministry-tabs"></div>
+
+<!-- Main Content: Inbox + Email -->
+<div class="inbox-layout">
+    <div class="inbox-panel" id="inbox-panel">
+        <div class="inbox-header">
+            <div class="inbox-title">Inbox</div>
+            <div class="inbox-count" id="inbox-count">0 events</div>
+        </div>
+        <div class="inbox-filter-bar">
+            <button class="inbox-filter active" onclick="setFilter('all')">All</button>
+            <button class="inbox-filter" onclick="setFilter('active')">Active</button>
+            <button class="inbox-filter" onclick="setFilter('resolved')">Resolved</button>
+        </div>
+        <div class="inbox-list" id="inbox-list">
+            <div class="email-empty" style="padding:40px;"><div class="email-empty-icon">📭</div><div class="email-empty-text">No events</div></div>
+        </div>
+    </div>
+    <div class="email-panel" id="email-panel">
+        <div class="email-empty"><div class="email-empty-icon">📨</div><div class="email-empty-text">Select an event from the inbox</div></div>
+    </div>
+</div>
+
+<!-- Action Confirmation Modal -->
+<div class="modal-overlay" id="action-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title" id="action-modal-title">Ministry Action</div>
+            <button class="modal-close" onclick="closeActionModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="action-modal-body"></div>
+        <div class="modal-footer">
+            <button class="modal-btn cancel" onclick="closeActionModal()">Cancel</button>
+            <button class="modal-btn confirm" id="action-modal-confirm" onclick="confirmAction()">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<script src="js/supabase-client.js"></script>
+<script src="js/common.js"></script>
+<script src="js/game-common.js"></script>
+<script>
+// ==================== CONSTANTS ====================
+const MINISTRY_INFO = {
+    prime_minister: { icon: '🏛️', name: 'Prime Minister\'s Office' },
+    interior: { icon: '🏠', name: 'Ministry of the Interior' },
+    foreign: { icon: '🌐', name: 'Ministry of Foreign Affairs' },
+    defense: { icon: '🛡️', name: 'Ministry of Defense' },
+    finance: { icon: '💰', name: 'Ministry of Finance' },
+    education: { icon: '📚', name: 'Ministry of Education' },
+    healthcare: { icon: '🏥', name: 'Ministry of Healthcare' },
+    labor: { icon: '👷', name: 'Ministry of Labor' },
+    justice: { icon: '⚖️', name: 'Ministry of Justice' },
+    transportation: { icon: '🚄', name: 'Ministry of Transportation' }
+};
+
+// Hardcoded ministry actions — will expand to all ministries later
+const MINISTRY_ACTIONS = {
+    justice: {
+        Democracy: [
+            { key: 'judicial_reform', label: 'Judicial Reform', icon: '📜', ap: 4, moneyFormula: 'judicial_independence * 2', description: 'Strengthen court independence and transparency.', systemTrigger: 'ministry_justice_judicial_reform' },
+            { key: 'crackdown_crime', label: 'Crackdown on Crime', icon: '🚔', ap: 3, moneyFormula: 'crime_rate + civil_unrest', description: 'Increase enforcement and police funding.', systemTrigger: 'ministry_justice_crackdown' },
+            { key: 'amnesty_program', label: 'Amnesty Program', icon: '🕊️', ap: 3, money: 0, cooldownTicks: 6, description: 'Release non-violent offenders, restore civil rights.', systemTrigger: 'ministry_justice_amnesty' }
+        ],
+        Autocracy: [
+            { key: 'loyalty_tribunal', label: 'Loyalty Tribunal', icon: '⚔️', ap: 4, moneyFormula: 'judicial_independence * 2', description: 'Replace disloyal judges with regime-aligned magistrates.', needsTarget: true, systemTrigger: 'ministry_justice_loyalty_tribunal' },
+            { key: 'martial_law', label: 'Martial Law Sweep', icon: '🔒', ap: 3, moneyFormula: 'civil_unrest + crime_rate', description: 'Unleash security forces to crush dissent and crime.', systemTrigger: 'ministry_justice_martial_law' },
+            { key: 'show_trial', label: 'Show Trial', icon: '🎭', ap: 3, money: 0, needsTarget: true, description: 'Stage a public trial targeting a rival faction.', systemTrigger: 'ministry_justice_show_trial' }
+        ]
+    }
+};
+
+// ==================== STATE ====================
+let currentNation = null;
+let currentFaction = null;
+let isAutocracy = false;
+let allParties = [];
+let myMinistries = []; // ministry records this faction controls
+let activeMinistryKey = null;
+let inboxEvents = [];
+let selectedEventId = null;
+let inboxFilter = 'all';
+let currentTick = 0;
+let actionCooldowns = {};
+let pendingActionKey = null;
+let pendingTargetFactionId = null;
+
+// ==================== INIT ====================
+initPage('ministry-actions', async (state) => {
+    const { nation, faction } = state;
+    currentNation = nation;
+    currentFaction = faction;
+
+    if (!nation || !faction) {
+        document.getElementById('ministry-header').innerHTML = '<div class="ministry-header-inner"><div style="text-align:center;padding:40px;color:#888;">No nation or faction found.</div></div>';
+        return;
+    }
+
+    isAutocracy = (nation.government_type === 'Autocracy');
+
+    // Load shard tick
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    currentTick = shard?.current_tick || 0;
+
+    // Load all parties
+    const { data: parties } = await _supabase.from('factions')
+        .select('id, faction_name, seats, approval_rating, loyalty, action_points')
+        .eq('nation_id', nation.id).eq('faction_type', 'party');
+    allParties = parties || [];
+
+    // Refresh current faction with latest data
+    const fresh = allParties.find(p => p.id === faction.id);
+    if (fresh) {
+        currentFaction.action_points = fresh.action_points;
+        currentFaction.faction_name = fresh.faction_name;
+        currentFaction.approval_rating = fresh.approval_rating;
+    }
+
+    // Load ministries this faction controls
+    const { data: ministries } = await _supabase.from('ministries')
+        .select('*').eq('nation_id', nation.id).eq('is_active', true).eq('party_id', faction.id);
+    myMinistries = ministries || [];
+
+    // Load action cooldowns
+    const { data: cooldowns } = await _supabase.from('ministry_action_log')
+        .select('ministry_key, action_key, cooldown_until_tick')
+        .eq('nation_id', nation.id).eq('faction_id', faction.id)
+        .gt('cooldown_until_tick', currentTick);
+    (cooldowns || []).forEach(c => {
+        actionCooldowns[c.ministry_key + ':' + c.action_key] = c.cooldown_until_tick;
+    });
+
+    // Render ministry tabs
+    renderMinistryTabs();
+
+    // Auto-select first ministry
+    if (myMinistries.length > 0) {
+        selectMinistry(myMinistries[0].ministry_key);
+    } else {
+        document.getElementById('ministry-header').innerHTML = '<div class="ministry-header-inner"><div style="text-align:center;padding:60px;color:#888;"><div style="font-size:2.5rem;margin-bottom:12px;">🏛️</div><div style="font-size:1.1rem;color:#aaa;margin-bottom:8px;">No Ministries Under Your Control</div><div style="font-size:0.85rem;">Your party does not currently hold any cabinet positions. Request or negotiate for ministry assignments on the Government page.</div></div></div>';
+    }
+});
+
+// ==================== MINISTRY TABS ====================
+async function renderMinistryTabs() {
+    const allMinistryKeys = Object.keys(MINISTRY_INFO);
+
+    // Count active events per ministry for badges
+    const { data: eventCounts } = await _supabase.from('ministry_events')
+        .select('ministry_key').eq('nation_id', currentNation.id)
+        .eq('controlling_faction_id', currentFaction.id).eq('status', 'active');
+
+    const countMap = {};
+    (eventCounts || []).forEach(e => { countMap[e.ministry_key] = (countMap[e.ministry_key] || 0) + 1; });
+
+    const myKeys = myMinistries.map(m => m.ministry_key);
+
+    document.getElementById('ministry-tabs').innerHTML = allMinistryKeys.map(key => {
+        const info = MINISTRY_INFO[key];
+        const isMine = myKeys.includes(key);
+        const isActive = key === activeMinistryKey;
+        const badge = countMap[key] ? '<span class="tab-badge">' + countMap[key] + '</span>' : '';
+        return '<button class="ministry-tab' + (isActive ? ' active' : '') + (!isMine ? ' disabled' : '') + '" ' +
+            (isMine ? 'onclick="selectMinistry(\'' + key + '\')"' : 'title="Not under your control"') + '>' +
+            info.icon + ' ' + key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + badge + '</button>';
+    }).join('');
+}
+
+// ==================== SELECT MINISTRY ====================
+async function selectMinistry(key) {
+    activeMinistryKey = key;
+    renderMinistryTabs();
+    await renderMinistryHeader(key);
+    await loadInboxEvents(key);
+    selectedEventId = null;
+    renderEmailEmpty();
+}
+
+async function renderMinistryHeader(key) {
+    const ministry = myMinistries.find(m => m.ministry_key === key);
+    const info = MINISTRY_INFO[key] || { icon: '🏛️', name: key };
+    const govType = isAutocracy ? 'Autocracy' : 'Democracy';
+    const actions = (MINISTRY_ACTIONS[key] || {})[govType] || [];
+
+    const ministerName = ministry ? (ministry.minister_first_name + ' ' + ministry.minister_last_name) : 'Vacant';
+    const ministerAge = ministry?.minister_age || '—';
+    const approval = ministry?.minister_approval ?? 50;
+    let approvalClass = 'high';
+    if (approval < 35) approvalClass = 'low';
+    else if (approval < 50) approvalClass = 'mid';
+
+    const partyName = currentFaction?.faction_name || '—';
+
+    // Build action buttons
+    const actionBtns = actions.map(a => {
+        const cdKey = key + ':' + a.key;
+        const onCooldown = actionCooldowns[cdKey] && actionCooldowns[cdKey] > currentTick;
+        const cdRemaining = onCooldown ? (actionCooldowns[cdKey] - currentTick) : 0;
+        const apOk = (currentFaction?.action_points || 0) >= a.ap;
+        const disabled = onCooldown || !apOk;
+
+        let costHtml = '<span class="ap">' + a.ap + ' AP</span>';
+        if (a.moneyFormula) costHtml += ' <span class="money">+ $</span>';
+        else if (a.money) costHtml += ' <span class="money">$' + a.money + 'M</span>';
+
+        return '<button class="ministry-action-btn" ' + (disabled ? 'disabled' : 'onclick="openActionModal(\'' + a.key + '\')"') + '>' +
+            '<span>' + a.icon + '</span>' + a.label +
+            '<span class="action-cost">' + costHtml + '</span>' +
+            (onCooldown ? '<span class="action-cooldown">' + cdRemaining + 't cd</span>' : '') +
+        '</button>';
+    }).join('');
+
+    document.getElementById('ministry-header').innerHTML =
+        '<div class="ministry-header-inner">' +
+            '<div class="ministry-top-row">' +
+                '<div class="ministry-identity">' +
+                    '<div class="ministry-icon">' + info.icon + '</div>' +
+                    '<div><div class="ministry-label">Ministry</div><div class="ministry-name">' + info.name + '</div></div>' +
+                '</div>' +
+                '<div style="display:flex;gap:12px;align-items:stretch;">' +
+                    '<div class="ministry-budget-box">' +
+                        '<div class="budget-label">Action Points</div><div class="budget-value" style="color:var(--accent);">' + (currentFaction?.action_points || 0) + ' AP</div>' +
+                    '</div>' +
+                    '<div class="ministry-budget-box">' +
+                        '<div class="budget-label">Current Tick</div><div class="budget-value" style="color:var(--text-primary);">' + currentTick + '</div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="minister-row">' +
+                '<div class="minister-avatar">👤</div>' +
+                '<div>' +
+                    '<div class="minister-name-text">Minister ' + escapeHtml(ministerName) + '</div>' +
+                    '<div class="minister-meta">' +
+                        '<span>Age ' + ministerAge + '</span>' +
+                        '<span class="minister-party">' + escapeHtml(partyName) + '</span>' +
+                        '<span>Approval: <span class="minister-approval-val ' + approvalClass + '">' + approval + '%</span></span>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="actions-bar">' + actionBtns + '</div>' +
+        '</div>';
+}
+
+// ==================== INBOX EVENTS ====================
+async function loadInboxEvents(ministryKey) {
+    const { data } = await _supabase.from('ministry_events')
+        .select('*').eq('nation_id', currentNation.id).eq('ministry_key', ministryKey)
+        .eq('controlling_faction_id', currentFaction.id)
+        .order('created_at_tick', { ascending: false });
+
+    inboxEvents = data || [];
+    renderInboxList();
+}
+
+function renderInboxList() {
+    let filtered = inboxEvents;
+    if (inboxFilter === 'active') filtered = inboxEvents.filter(e => e.status === 'active');
+    else if (inboxFilter === 'resolved') filtered = inboxEvents.filter(e => e.status !== 'active');
+
+    document.getElementById('inbox-count').textContent = filtered.length + ' event' + (filtered.length !== 1 ? 's' : '');
+
+    if (!filtered.length) {
+        document.getElementById('inbox-list').innerHTML = '<div style="text-align:center;padding:40px;color:#555;"><div style="font-size:2rem;margin-bottom:8px;">📭</div>No events</div>';
+        return;
+    }
+
+    document.getElementById('inbox-list').innerHTML = filtered.map(ev => {
+        const isSelected = ev.id === selectedEventId;
+        const ticksLeft = ev.expires_at_tick ? ev.expires_at_tick - currentTick : null;
+        const isCritical = ticksLeft !== null && ticksLeft <= 1;
+        let statusClass = '';
+        if (ev.status === 'resolved') statusClass = 'resolved';
+        else if (ev.status === 'expired') statusClass = 'expired';
+
+        return '<div class="inbox-item' + (isSelected ? ' selected' : '') +
+            (ev.status === 'active' ? ' unread' : '') +
+            (statusClass ? ' ' + statusClass : '') +
+            '" onclick="selectEvent(\'' + ev.id + '\')">' +
+            '<div class="inbox-item-top">' +
+                '<div class="inbox-item-sender">' + escapeHtml(ev.sender) + '</div>' +
+                '<div class="inbox-item-tick">Tick ' + ev.created_at_tick + '</div>' +
+            '</div>' +
+            '<div class="inbox-item-subject">' + escapeHtml(ev.title) + '</div>' +
+            '<div class="inbox-item-bottom">' +
+                '<span class="inbox-item-priority priority-' + ev.priority + '">' + ev.priority.toUpperCase() + '</span>' +
+                (ev.status !== 'active'
+                    ? '<span class="inbox-item-status status-' + ev.status + '">' + ev.status.toUpperCase() + '</span>'
+                    : '') +
+                (ev.status === 'active' && ticksLeft !== null
+                    ? '<span class="inbox-item-deadline' + (isCritical ? ' critical' : '') + '">⏱ ' + ticksLeft + ' tick' + (ticksLeft !== 1 ? 's' : '') + '</span>'
+                    : '') +
+            '</div>' +
+        '</div>';
+    }).join('');
+}
+
+function setFilter(f) {
+    inboxFilter = f;
+    document.querySelectorAll('.inbox-filter').forEach(el => {
+        el.classList.toggle('active', el.textContent.toLowerCase() === f);
+    });
+    renderInboxList();
+}
+
+// ==================== EMAIL DETAIL ====================
+function selectEvent(eventId) {
+    selectedEventId = eventId;
+    renderInboxList();
+    renderEmailDetail();
+}
+
+function renderEmailEmpty() {
+    document.getElementById('email-panel').innerHTML = '<div class="email-empty"><div class="email-empty-icon">📨</div><div class="email-empty-text">Select an event from the inbox</div></div>';
+}
+
+function renderEmailDetail() {
+    const ev = inboxEvents.find(e => e.id === selectedEventId);
+    if (!ev) { renderEmailEmpty(); return; }
+
+    const ticksLeft = ev.expires_at_tick ? ev.expires_at_tick - currentTick : null;
+    const isCritical = ticksLeft !== null && ticksLeft <= 1;
+    const options = ev.options || [];
+
+    let bottomSection = '';
+
+    if (ev.status === 'active') {
+        // Show response options
+        const ap = currentFaction?.action_points || 0;
+        const optionsHtml = options.map((opt, i) => {
+            const letter = String.fromCharCode(65 + i);
+            const letterClasses = ['opt-a', 'opt-b', 'opt-c'];
+            const canAfford = ap >= (opt.ap || 0);
+
+            // Build outcomes display
+            const outcomesHtml = (opt.outcomes || []).map(oc => {
+                const chance = oc.chance || 0;
+                let chanceClass = 'high';
+                if (chance < 30) chanceClass = 'low';
+                else if (chance < 60) chanceClass = 'mid';
+
+                const effectTags = (oc.effects || []).map(eff => {
+                    const change = eff.change || 0;
+                    const cls = change > 0 ? 'pos' : (change < 0 ? 'neg' : 'neutral');
+                    const statLabel = eff.stat_key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    return '<span class="fx-tag ' + cls + '">' + statLabel + ' ' + (change > 0 ? '+' : '') + change + '</span>';
+                }).join('');
+
+                return '<div class="outcome-row">' +
+                    '<span class="outcome-chance-badge ' + chanceClass + '">' + chance + '%</span>' +
+                    '<span class="outcome-label">' + escapeHtml(oc.label || 'Result') + '</span>' +
+                    '<div class="outcome-effects-inline">' + effectTags + '</div>' +
+                '</div>';
+            }).join('');
+
+            // Cost display
+            let costHtml = '<span class="cost-tag ap">' + (opt.ap || 0) + ' AP</span>';
+            if (opt.money && opt.money > 0) costHtml += '<span class="cost-tag money">$' + opt.money + 'M</span>';
+
+            return '<div class="response-option' + (!canAfford ? ' disabled' : '') + '" ' +
+                (canAfford ? 'onclick="respondToEvent(\'' + ev.id + '\',' + i + ')"' : '') + '>' +
+                '<div class="response-option-letter ' + (letterClasses[i] || 'opt-a') + '">' + letter + '</div>' +
+                '<div class="response-option-content">' +
+                    '<div class="response-option-title">' + escapeHtml(opt.label || 'Option ' + letter) + '</div>' +
+                    '<div class="response-option-outcomes">' + outcomesHtml + '</div>' +
+                '</div>' +
+                '<div class="response-option-costs">' + costHtml + '</div>' +
+            '</div>';
+        }).join('');
+
+        bottomSection =
+            '<div class="response-section">' +
+                '<div class="response-label">Choose Your Response</div>' +
+                '<div class="response-options">' + optionsHtml + '</div>' +
+            '</div>';
+    } else if (ev.status === 'resolved') {
+        const chosen = options[ev.chosen_option];
+        const resolved = ev.resolved_effects || {};
+        const outcomeLabel = resolved.outcome_label || chosen?.label || 'Action taken';
+        const effects = resolved.effects || (Array.isArray(ev.resolved_effects) ? ev.resolved_effects : []);
+        const effectsStr = effects.map(e =>
+            e.stat_key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ': ' + (e.change > 0 ? '+' : '') + e.change
+        ).join(' · ');
+
+        bottomSection =
+            '<div class="resolved-banner success">' +
+                '<div class="resolved-title success">✓ ' + escapeHtml(chosen?.label || 'Responded') + '</div>' +
+                '<div style="font-size:0.8rem;color:#aaa;margin-bottom:4px;">Outcome: <strong style="color:var(--accent);">' + escapeHtml(outcomeLabel) + '</strong></div>' +
+                (effectsStr ? '<div class="resolved-effects">Effects: ' + effectsStr + '</div>' : '') +
+            '</div>';
+    } else if (ev.status === 'expired') {
+        const resolved = ev.resolved_effects || {};
+        const effects = resolved.effects || (Array.isArray(ev.resolved_effects) ? ev.resolved_effects : []);
+        const effectsStr = effects.map(e =>
+            e.stat_key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ': ' + (e.change > 0 ? '+' : '') + e.change
+        ).join(' · ');
+
+        bottomSection =
+            '<div class="resolved-banner expired">' +
+                '<div class="resolved-title expired">✕ Expired — Auto-resolved with worst outcome</div>' +
+                (effectsStr ? '<div class="resolved-effects">Effects: ' + effectsStr + '</div>' : '') +
+            '</div>';
+    }
+
+    document.getElementById('email-panel').innerHTML =
+        '<div style="flex:1;display:flex;flex-direction:column;">' +
+            '<div class="email-header">' +
+                '<div class="email-priority-row">' +
+                    '<span class="inbox-item-priority priority-' + ev.priority + '">' + ev.priority.toUpperCase() + '</span>' +
+                    (ev.status !== 'active' ? '<span class="inbox-item-status status-' + ev.status + '">' + ev.status.toUpperCase() + '</span>' : '') +
+                '</div>' +
+                '<div class="email-subject">' + escapeHtml(ev.title) + '</div>' +
+                '<div class="email-meta">' +
+                    '<span><strong>From:</strong> ' + escapeHtml(ev.sender) + '</span>' +
+                    '<span><strong>Received:</strong> Tick ' + ev.created_at_tick + '</span>' +
+                '</div>' +
+                (ev.status === 'active' && ticksLeft !== null ? '<div class="email-deadline-bar' + (isCritical ? ' critical' : '') + '">⏱ <span class="deadline-timer">' + ticksLeft + ' tick' + (ticksLeft !== 1 ? 's' : '') + '</span> remaining to respond</div>' : '') +
+            '</div>' +
+            '<div class="email-body"><div class="email-body-text">' + escapeHtml(ev.body) + '</div></div>' +
+            bottomSection +
+        '</div>';
+}
+
+// ==================== RESPOND TO EVENT ====================
+async function respondToEvent(eventId, optionIndex) {
+    const ev = inboxEvents.find(e => e.id === eventId);
+    if (!ev || ev.status !== 'active') return;
+
+    const option = ev.options[optionIndex];
+    if (!option) return;
+
+    const ap = currentFaction?.action_points || 0;
+    if (ap < (option.ap || 0)) { alert('Not enough AP.'); return; }
+
+    const letter = String.fromCharCode(65 + optionIndex);
+    if (!confirm('Choose Option ' + letter + ': ' + (option.label || '') + '?\n\nCost: ' + (option.ap || 0) + ' AP' + (option.money ? ' + $' + option.money + 'M' : ''))) return;
+
+    try {
+        // Roll outcome
+        const outcomes = option.outcomes || [{ chance: 100, label: 'Result', effects: [] }];
+        const roll = Math.random() * 100;
+        let cumulative = 0;
+        let chosenOutcome = outcomes[0];
+        for (const oc of outcomes) {
+            cumulative += (oc.chance || 0);
+            if (roll < cumulative) { chosenOutcome = oc; break; }
+        }
+
+        // Apply effects
+        const appliedEffects = [];
+        for (const eff of (chosenOutcome.effects || [])) {
+            const change = eff.change || 0;
+            if (eff.target === 'nation' || !eff.target) {
+                // Update nation stat
+                const { data: nation } = await _supabase.from('nations').select(eff.stat_key).eq('id', currentNation.id).single();
+                if (nation) {
+                    const current = nation[eff.stat_key] || 0;
+                    await _supabase.from('nations').update({ [eff.stat_key]: Math.max(0, Math.min(100, current + change)) }).eq('id', currentNation.id);
+                }
+            } else if (eff.target === 'minister') {
+                const ministry = myMinistries.find(m => m.ministry_key === activeMinistryKey);
+                if (ministry) {
+                    const current = ministry.minister_approval || 50;
+                    await _supabase.from('ministries').update({ minister_approval: Math.max(0, Math.min(100, current + change)) }).eq('id', ministry.id);
+                }
+            } else if (eff.target === 'faction') {
+                const current = currentFaction.approval_rating || 50;
+                await _supabase.from('factions').update({ approval_rating: Math.max(0, Math.min(100, current + change)) }).eq('id', currentFaction.id);
+            }
+            appliedEffects.push({ stat_key: eff.stat_key, change: change, target: eff.target || 'nation' });
+        }
+
+        // Deduct AP
+        await _supabase.from('factions').update({
+            action_points: Math.max(0, ap - (option.ap || 0))
+        }).eq('id', currentFaction.id);
+        currentFaction.action_points = Math.max(0, ap - (option.ap || 0));
+
+        // Update event record
+        await _supabase.from('ministry_events').update({
+            chosen_option: optionIndex,
+            resolved_effects: { outcome_label: chosenOutcome.label || 'Result', effects: appliedEffects },
+            status: 'resolved',
+            resolved_at_tick: currentTick
+        }).eq('id', eventId);
+
+        // Mark faction active
+        await markFactionActive(_supabase, currentFaction.id);
+
+        // Show result
+        const effectsStr = appliedEffects.map(e =>
+            e.stat_key.replace(/_/g, ' ') + ': ' + (e.change > 0 ? '+' : '') + e.change
+        ).join('\n');
+
+        alert('📋 ' + chosenOutcome.label + '\n\n' + effectsStr);
+
+        // Reload
+        await loadInboxEvents(activeMinistryKey);
+        selectEvent(eventId);
+        await renderMinistryHeader(activeMinistryKey);
+        renderMinistryTabs();
+
+    } catch (err) {
+        console.error('Response error:', err);
+        alert('Error: ' + err.message);
+    }
+}
+
+// ==================== MINISTRY ACTIONS (PROACTIVE) ====================
+function openActionModal(actionKey) {
+    const govType = isAutocracy ? 'Autocracy' : 'Democracy';
+    const actions = (MINISTRY_ACTIONS[activeMinistryKey] || {})[govType] || [];
+    const action = actions.find(a => a.key === actionKey);
+    if (!action) return;
+
+    pendingActionKey = actionKey;
+    pendingTargetFactionId = null;
+
+    document.getElementById('action-modal-title').textContent = action.icon + ' ' + action.label;
+
+    let bodyHtml = '<p>' + action.description + '</p>';
+    bodyHtml += '<div class="modal-cost-row">' +
+        '<span class="cost-tag ap">' + action.ap + ' AP</span>' +
+        (action.moneyFormula ? '<span class="cost-tag money">$1M × ' + action.moneyFormula.replace(/_/g, ' ') + '</span>' : '') +
+        (action.money ? '<span class="cost-tag money">$' + action.money + 'M</span>' : '') +
+    '</div>';
+
+    if (action.needsTarget) {
+        const others = allParties.filter(p => p.id !== currentFaction.id);
+        bodyHtml += '<label style="font-size:0.8rem;color:#888;font-weight:bold;text-transform:uppercase;">Target Faction:</label>';
+        bodyHtml += '<select class="target-select" id="action-target-select" onchange="pendingTargetFactionId=this.value">';
+        bodyHtml += '<option value="">-- Select Target --</option>';
+        others.forEach(p => {
+            bodyHtml += '<option value="' + p.id + '">' + escapeHtml(p.faction_name) + '</option>';
+        });
+        bodyHtml += '</select>';
+    }
+
+    document.getElementById('action-modal-body').innerHTML = bodyHtml;
+    document.getElementById('action-modal').classList.add('active');
+}
+
+function closeActionModal() {
+    document.getElementById('action-modal').classList.remove('active');
+    pendingActionKey = null;
+    pendingTargetFactionId = null;
+}
+
+async function confirmAction() {
+    const govType = isAutocracy ? 'Autocracy' : 'Democracy';
+    const actions = (MINISTRY_ACTIONS[activeMinistryKey] || {})[govType] || [];
+    const action = actions.find(a => a.key === pendingActionKey);
+    if (!action) return;
+
+    if (action.needsTarget && !pendingTargetFactionId) {
+        alert('Select a target faction.'); return;
+    }
+
+    const ap = currentFaction?.action_points || 0;
+    if (ap < action.ap) { alert('Not enough AP.'); return; }
+
+    try {
+        // Deduct AP
+        await _supabase.from('factions').update({
+            action_points: Math.max(0, ap - action.ap)
+        }).eq('id', currentFaction.id);
+        currentFaction.action_points = Math.max(0, ap - action.ap);
+
+        // Log the action
+        const cooldownUntil = action.cooldownTicks ? currentTick + action.cooldownTicks : null;
+        await _supabase.from('ministry_action_log').insert({
+            nation_id: currentNation.id,
+            ministry_key: activeMinistryKey,
+            action_key: action.key,
+            faction_id: currentFaction.id,
+            ap_cost: action.ap,
+            money_cost: 0, // TODO: calculate from formula
+            target_faction_id: pendingTargetFactionId || null,
+            applied_at_tick: currentTick,
+            timing: 'immediate',
+            processed: true,
+            cooldown_until_tick: cooldownUntil
+        });
+
+        if (cooldownUntil) {
+            actionCooldowns[activeMinistryKey + ':' + action.key] = cooldownUntil;
+        }
+
+        closeActionModal();
+
+        // Mark faction active
+        await markFactionActive(_supabase, currentFaction.id);
+
+        alert('✦ ' + action.label + ' executed!');
+
+        // Refresh header (AP changed, cooldowns changed)
+        await renderMinistryHeader(activeMinistryKey);
+
+    } catch (err) {
+        console.error('Action error:', err);
+        alert('Error: ' + err.message);
+    }
+}
+
+// ==================== UTILITIES ====================
+function escapeHtml(t) { var d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
+</script>
+</body>
+</html>
