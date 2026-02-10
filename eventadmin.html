@@ -149,6 +149,20 @@
         .checkbox-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: #ffcc00; cursor: pointer; }
         .checkbox-item label { font-size: 0.85rem; color: #ccc; cursor: pointer; }
 
+        /* Outcome card within option */
+        .outcome-card { background: #1e1e1e; border: 1px solid #444; border-radius: 6px; padding: 12px; margin-bottom: 8px; margin-left: 16px; border-left: 3px solid #888; }
+        .outcome-card:first-child { border-left-color: #4CAF50; }
+        .outcome-card:nth-child(2) { border-left-color: #ff9800; }
+        .outcome-card:nth-child(3) { border-left-color: #ff4444; }
+        .outcome-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .outcome-chance { display: flex; align-items: center; gap: 4px; }
+        .outcome-chance input { width: 60px; text-align: center; }
+        .outcome-chance-pct { color: #ffcc00; font-weight: bold; font-size: 0.85rem; }
+        .outcome-label-input { flex: 1; }
+        .chance-sum { font-size: 0.78rem; font-weight: bold; padding: 4px 10px; border-radius: 4px; margin-left: 8px; }
+        .chance-sum.valid { background: #1a2a1a; color: #4CAF50; }
+        .chance-sum.invalid { background: #2a1a1a; color: #ff4444; }
+
         @media (max-width: 768px) {
             .form-row, .form-row-3, .form-row-4 { grid-template-columns: 1fr; }
             .trigger-item, .effect-item { grid-template-columns: 1fr; }
@@ -695,8 +709,8 @@ function createNewMinistryEvent() {
         weight_stat: '', weight_operator: '>', weight_value: null,
         variants: {
             titles: [''],
-            Democracy: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', effects: [], minister_approval_change: 0, news_event_key: '' }] },
-            Autocracy: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', effects: [], minister_approval_change: 0, news_event_key: '' }] }
+            Democracy: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] }] },
+            Autocracy: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] }] }
         }
     };
     mEditorVariants = JSON.parse(JSON.stringify(currentMinistryTemplate.variants));
@@ -800,14 +814,44 @@ function renderVariantSection(govType) {
     var icon = govType === 'Democracy' ? '🗳️' : '👑';
     var optionsHTML = (variant.options || []).map(function(opt, oi) {
         var letter = String.fromCharCode(65 + oi);
-        var effectsHTML = (opt.effects || []).map(function(eff, ei) {
-            return '<div class="ministry-effect-row">' +
-                '<select class="form-select" onchange="updateMEffect(\'' + govType + '\',' + oi + ',' + ei + ',\'stat_key\',this.value)"><option value="">-- Stat --</option>' +
-                    NATION_STATS.concat(FACTION_STATS).concat([{key:'minister_approval',label:'Minister Approval'}]).map(function(s) { return '<option value="' + s.key + '"' + (eff.stat_key === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
-                '</select>' +
-                '<input type="number" class="form-input" value="' + (eff.change != null ? eff.change : '') + '" placeholder="+/-" step="1" onchange="updateMEffect(\'' + govType + '\',' + oi + ',' + ei + ',\'change\',Number(this.value))">' +
-                '<select class="form-select" onchange="updateMEffect(\'' + govType + '\',' + oi + ',' + ei + ',\'target\',this.value)"><option value="nation"' + ((eff.target || 'nation') === 'nation' ? ' selected' : '') + '>Nation</option><option value="faction"' + (eff.target === 'faction' ? ' selected' : '') + '>Controlling Faction</option><option value="minister"' + (eff.target === 'minister' ? ' selected' : '') + '>Minister</option></select>' +
-                '<button class="btn-icon" onclick="removeMEffect(\'' + govType + '\',' + oi + ',' + ei + ')">✕</button>' +
+
+        // Migrate old format: flat effects → single outcome at 100%
+        if (!opt.outcomes && opt.effects) {
+            opt.outcomes = [{ chance: 100, label: 'Result', effects: opt.effects }];
+            delete opt.effects;
+            mEditorVariants[govType].options[oi] = opt;
+        }
+        if (!opt.outcomes) opt.outcomes = [{ chance: 100, label: 'Result', effects: [] }];
+
+        // Calculate chance sum for validation
+        var chanceSum = opt.outcomes.reduce(function(s, o) { return s + (o.chance || 0); }, 0);
+        var chanceSumClass = chanceSum === 100 ? 'valid' : 'invalid';
+        var chanceSumLabel = chanceSum === 100 ? '✓ 100%' : '⚠ ' + chanceSum + '%';
+
+        // Render each outcome
+        var outcomesHTML = opt.outcomes.map(function(outcome, ri) {
+            var effectsHTML = (outcome.effects || []).map(function(eff, ei) {
+                return '<div class="ministry-effect-row">' +
+                    '<select class="form-select" onchange="updateOutcomeEffect(\'' + govType + '\',' + oi + ',' + ri + ',' + ei + ',\'stat_key\',this.value)"><option value="">-- Stat --</option>' +
+                        NATION_STATS.concat(FACTION_STATS).concat([{key:'minister_approval',label:'Minister Approval'}]).map(function(s) { return '<option value="' + s.key + '"' + (eff.stat_key === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
+                    '</select>' +
+                    '<input type="number" class="form-input" value="' + (eff.change != null ? eff.change : '') + '" placeholder="+/-" step="1" onchange="updateOutcomeEffect(\'' + govType + '\',' + oi + ',' + ri + ',' + ei + ',\'change\',Number(this.value))">' +
+                    '<select class="form-select" onchange="updateOutcomeEffect(\'' + govType + '\',' + oi + ',' + ri + ',' + ei + ',\'target\',this.value)"><option value="nation"' + ((eff.target || 'nation') === 'nation' ? ' selected' : '') + '>Nation</option><option value="faction"' + (eff.target === 'faction' ? ' selected' : '') + '>Controlling Faction</option><option value="minister"' + (eff.target === 'minister' ? ' selected' : '') + '>Minister</option></select>' +
+                    '<button class="btn-icon" onclick="removeOutcomeEffect(\'' + govType + '\',' + oi + ',' + ri + ',' + ei + ')">✕</button>' +
+                '</div>';
+            }).join('');
+
+            return '<div class="outcome-card">' +
+                '<div class="outcome-header">' +
+                    '<div class="outcome-chance">' +
+                        '<input type="number" class="form-input" value="' + (outcome.chance || 0) + '" min="0" max="100" onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'chance\',Number(this.value))">' +
+                        '<span class="outcome-chance-pct">%</span>' +
+                    '</div>' +
+                    '<input type="text" class="form-input outcome-label-input" value="' + escapeAttr(outcome.label || '') + '" placeholder="Outcome label (e.g., Order Restored)" onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'label\',this.value)">' +
+                    (opt.outcomes.length > 1 ? '<button class="btn-icon" onclick="removeOutcome(\'' + govType + '\',' + oi + ',' + ri + ')">✕</button>' : '') +
+                '</div>' +
+                effectsHTML +
+                '<button class="btn btn-ghost btn-small" onclick="addOutcomeEffect(\'' + govType + '\',' + oi + ',' + ri + ')" style="margin-top:4px;">+ Add Effect</button>' +
             '</div>';
         }).join('');
 
@@ -825,9 +869,12 @@ function renderVariantSection(govType) {
                     NATION_STATS.map(function(s) { return '<option value="' + s.key + '"' + (opt.money_scaling_stat === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
                 '</select></div>' +
             '</div>' +
-            '<label class="form-label">Effects</label>' +
-            effectsHTML +
-            '<button class="btn btn-ghost btn-small" onclick="addMEffect(\'' + govType + '\',' + oi + ')" style="margin-top:4px;">+ Add Effect</button>' +
+            '<div style="display:flex;align-items:center;margin-bottom:8px;">' +
+                '<label class="form-label" style="margin-bottom:0;">Possible Outcomes</label>' +
+                '<span class="chance-sum ' + chanceSumClass + '">' + chanceSumLabel + '</span>' +
+                '<button class="btn btn-ghost btn-small" onclick="addOutcome(\'' + govType + '\',' + oi + ')" style="margin-left:auto;">+ Add Outcome</button>' +
+            '</div>' +
+            outcomesHTML +
         '</div>';
     }).join('');
 
@@ -844,28 +891,57 @@ function renderVariantSection(govType) {
 
 // Ministry variant helpers
 function updateMOpt(govType, oi, field, value) { mEditorVariants[govType].options[oi][field] = value; }
-function updateMEffect(govType, oi, ei, field, value) { mEditorVariants[govType].options[oi].effects[ei][field] = value; }
+
+// Outcome helpers
+function updateOutcome(govType, oi, ri, field, value) {
+    mEditorVariants[govType].options[oi].outcomes[ri][field] = value;
+    // Update the chance sum display live
+    if (field === 'chance') {
+        var sum = mEditorVariants[govType].options[oi].outcomes.reduce(function(s, o) { return s + (o.chance || 0); }, 0);
+        // Re-render just to update the sum badge — a bit heavy but reliable
+        syncMinistryBody();
+        renderMinistryEditor();
+    }
+}
+
+function updateOutcomeEffect(govType, oi, ri, ei, field, value) {
+    mEditorVariants[govType].options[oi].outcomes[ri].effects[ei][field] = value;
+}
+
+function addOutcome(govType, oi) {
+    var outcomes = mEditorVariants[govType].options[oi].outcomes;
+    var remaining = 100 - outcomes.reduce(function(s, o) { return s + (o.chance || 0); }, 0);
+    outcomes.push({ chance: Math.max(0, remaining), label: '', effects: [] });
+    syncMinistryBody();
+    renderMinistryEditor();
+}
+
+function removeOutcome(govType, oi, ri) {
+    mEditorVariants[govType].options[oi].outcomes.splice(ri, 1);
+    syncMinistryBody();
+    renderMinistryEditor();
+}
+
+function addOutcomeEffect(govType, oi, ri) {
+    mEditorVariants[govType].options[oi].outcomes[ri].effects.push({ stat_key: '', change: 0, target: 'nation' });
+    syncMinistryBody();
+    renderMinistryEditor();
+}
+
+function removeOutcomeEffect(govType, oi, ri, ei) {
+    mEditorVariants[govType].options[oi].outcomes[ri].effects.splice(ei, 1);
+    syncMinistryBody();
+    renderMinistryEditor();
+}
 
 function addMOption(govType) {
-    mEditorVariants[govType].options.push({ label: '', ap: 2, money: 0, money_scaling_stat: '', effects: [], minister_approval_change: 0, news_event_key: '' });
+    mEditorVariants[govType].options.push({ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] });
     syncMinistryBody();
     renderMinistryEditor();
 }
 
 function removeMOption(govType, oi) {
     mEditorVariants[govType].options.splice(oi, 1);
-    syncMinistryBody();
-    renderMinistryEditor();
-}
-
-function addMEffect(govType, oi) {
-    mEditorVariants[govType].options[oi].effects.push({ stat_key: '', change: 0, target: 'nation' });
-    syncMinistryBody();
-    renderMinistryEditor();
-}
-
-function removeMEffect(govType, oi, ei) {
-    mEditorVariants[govType].options[oi].effects.splice(ei, 1);
     syncMinistryBody();
     renderMinistryEditor();
 }
@@ -959,6 +1035,26 @@ async function saveMinistryEvent() {
     if (!titleVal) { alert('At least one subject line is required.'); return; }
     if (!sender) { alert('Sender is required.'); return; }
     if (!govDem && !govAut) { alert('Select at least one government type.'); return; }
+
+    // Validate outcome chances sum to 100 for each option
+    var govChecks = [];
+    if (govDem) govChecks.push('Democracy');
+    if (govAut) govChecks.push('Autocracy');
+    for (var gi = 0; gi < govChecks.length; gi++) {
+        var gType = govChecks[gi];
+        var opts = (mEditorVariants[gType] || {}).options || [];
+        for (var oii = 0; oii < opts.length; oii++) {
+            var outcomes = opts[oii].outcomes || [];
+            if (outcomes.length > 0) {
+                var sum = outcomes.reduce(function(s, o) { return s + (o.chance || 0); }, 0);
+                if (sum !== 100) {
+                    var letter = String.fromCharCode(65 + oii);
+                    alert(gType + ' Option ' + letter + ': Outcome chances sum to ' + sum + '%, must equal 100%.');
+                    return;
+                }
+            }
+        }
+    }
 
     var govTypes = [];
     if (govDem) govTypes.push('Democracy');
