@@ -73,7 +73,7 @@
         .action-cost .money { color: var(--green); }
         .action-cooldown { font-size: 0.65rem; color: var(--red); margin-left: 4px; }
 
-        /* ===== MINISTRY TABS ===== */
+        /* ===== MINISTRY TABS (desktop) ===== */
         .ministry-tabs {
             display: flex; gap: 2px; padding: 0 28px; background: #121212;
             border-bottom: 1px solid #222; overflow-x: auto; max-width: 100%;
@@ -93,6 +93,62 @@
             min-width: 16px; height: 16px; background: var(--red); border-radius: 50%;
             font-size: 0.6rem; color: white; display: flex; align-items: center;
             justify-content: center; font-weight: 700; padding: 0 3px;
+        }
+
+        /* ===== MINISTRY DROPDOWN (mobile) ===== */
+        .ministry-dropdown-wrap {
+            display: none;
+            padding: 10px 16px;
+            background: #121212;
+            border-bottom: 1px solid #222;
+        }
+        .ministry-dropdown {
+            width: 100%;
+            padding: 12px 16px;
+            font-size: 0.88rem;
+            font-weight: 600;
+            font-family: inherit;
+            color: var(--accent, #c8aa6e);
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23888' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 14px center;
+            background-size: 12px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .ministry-dropdown:focus {
+            outline: none;
+            border-color: var(--accent, #c8aa6e);
+        }
+        .ministry-dropdown option {
+            background: #1a1a1a;
+            color: #ccc;
+            padding: 8px;
+        }
+        .ministry-dropdown option:disabled {
+            color: #444;
+        }
+
+        /* ===== RESPONSIVE: swap tabs for dropdown ===== */
+        @media (max-width: 768px) {
+            .ministry-tabs { display: none; }
+            .ministry-dropdown-wrap { display: block; }
+            .ministry-header { padding: 14px 16px; }
+            .ministry-top-row { flex-direction: column; align-items: stretch; }
+            .ministry-identity { gap: 12px; }
+            .ministry-icon { width: 42px; height: 42px; font-size: 1.3rem; }
+            .ministry-name { font-size: 1.1rem; }
+            .ministry-budget-box { text-align: center; padding: 10px 14px; }
+            .actions-bar { justify-content: stretch; }
+            .ministry-action-btn {
+                flex: 1 1 auto; justify-content: center;
+                font-size: 0.75rem; padding: 10px 10px;
+            }
         }
 
         /* ===== INBOX LAYOUT ===== */
@@ -307,6 +363,9 @@
         @media (max-width: 900px) {
             .inbox-layout { grid-template-columns: 1fr; }
             .inbox-panel { max-height: 300px; }
+            .email-header { padding: 16px; }
+            .email-body { padding: 16px; }
+            .response-section { padding: 16px; }
         }
     </style>
 </head>
@@ -321,8 +380,15 @@
     </div>
 </div>
 
-<!-- Ministry Tabs -->
+<!-- Ministry Tabs (desktop) -->
 <div class="ministry-tabs" id="ministry-tabs"></div>
+
+<!-- Ministry Dropdown (mobile) -->
+<div class="ministry-dropdown-wrap" id="ministry-dropdown-wrap">
+    <select class="ministry-dropdown" id="ministry-dropdown" onchange="onMobileMinistrySelect(this.value)">
+        <option value="">— Select Ministry —</option>
+    </select>
+</div>
 
 <!-- Main Content: Inbox + Email -->
 <div class="inbox-layout">
@@ -379,7 +445,6 @@ const MINISTRY_INFO = {
     security: { icon: '🔐', name: 'Ministry of Security' }
 };
 
-// Hardcoded ministry actions — will expand to all ministries later
 const MINISTRY_ACTIONS = {
     justice: {
         Democracy: [
@@ -400,7 +465,7 @@ let currentNation = null;
 let currentFaction = null;
 let isAutocracy = false;
 let allParties = [];
-let myMinistries = []; // ministry records this faction controls
+let myMinistries = [];
 let activeMinistryKey = null;
 let inboxEvents = [];
 let selectedEventId = null;
@@ -423,17 +488,14 @@ initPage('ministry-actions', async (state) => {
 
     isAutocracy = (nation.government_type === 'Autocracy');
 
-    // Load shard tick
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     currentTick = shard?.current_tick || 0;
 
-    // Load all parties
     const { data: parties } = await _supabase.from('factions')
         .select('id, faction_name, seats, approval_rating, loyalty, action_points')
         .eq('nation_id', nation.id).eq('faction_type', 'party');
     allParties = parties || [];
 
-    // Refresh current faction with latest data
     const fresh = allParties.find(p => p.id === faction.id);
     if (fresh) {
         currentFaction.action_points = fresh.action_points;
@@ -441,12 +503,10 @@ initPage('ministry-actions', async (state) => {
         currentFaction.approval_rating = fresh.approval_rating;
     }
 
-    // Load ministries this faction controls
     const { data: ministries } = await _supabase.from('ministries')
         .select('*').eq('nation_id', nation.id).eq('is_active', true).eq('party_id', faction.id);
     myMinistries = ministries || [];
 
-    // Load action cooldowns
     try {
         const { data: cooldowns } = await _supabase.from('ministry_action_log')
             .select('ministry_key, action_key, cooldown_until_tick')
@@ -457,10 +517,8 @@ initPage('ministry-actions', async (state) => {
         });
     } catch (e) { console.warn('Could not load cooldowns:', e); }
 
-    // Render ministry tabs
     renderMinistryTabs();
 
-    // Auto-select first ministry
     if (myMinistries.length > 0) {
         selectMinistry(myMinistries[0].ministry_key);
     } else {
@@ -468,11 +526,10 @@ initPage('ministry-actions', async (state) => {
     }
 });
 
-// ==================== MINISTRY TABS ====================
+// ==================== MINISTRY TABS + DROPDOWN ====================
 async function renderMinistryTabs() {
     const allMinistryKeys = Object.keys(MINISTRY_INFO);
 
-    // Count active events per ministry for badges (safe if table is empty)
     let countMap = {};
     try {
         const { data: eventCounts } = await _supabase.from('ministry_events')
@@ -483,6 +540,7 @@ async function renderMinistryTabs() {
 
     const myKeys = myMinistries.map(m => m.ministry_key);
 
+    // Desktop tab bar
     document.getElementById('ministry-tabs').innerHTML = allMinistryKeys.map(key => {
         const info = MINISTRY_INFO[key];
         const isMine = myKeys.includes(key);
@@ -492,6 +550,28 @@ async function renderMinistryTabs() {
             (isMine ? 'onclick="selectMinistry(\'' + key + '\')"' : 'title="Not under your control"') + '>' +
             info.icon + ' ' + key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + badge + '</button>';
     }).join('');
+
+    // Mobile dropdown
+    const dropdown = document.getElementById('ministry-dropdown');
+    dropdown.innerHTML = allMinistryKeys.map(key => {
+        const info = MINISTRY_INFO[key];
+        const isMine = myKeys.includes(key);
+        const isActive = key === activeMinistryKey;
+        const badge = countMap[key] ? ' (' + countMap[key] + ')' : '';
+        return '<option value="' + key + '"' +
+            (isActive ? ' selected' : '') +
+            (!isMine ? ' disabled' : '') + '>' +
+            info.icon + '  ' + info.name + badge +
+        '</option>';
+    }).join('');
+}
+
+// Mobile dropdown change handler
+function onMobileMinistrySelect(key) {
+    if (!key) return;
+    const myKeys = myMinistries.map(m => m.ministry_key);
+    if (!myKeys.includes(key)) return;
+    selectMinistry(key);
 }
 
 // ==================== SELECT MINISTRY ====================
@@ -519,7 +599,6 @@ async function renderMinistryHeader(key) {
 
     const partyName = currentFaction?.faction_name || '—';
 
-    // Build action buttons
     const actionBtns = actions.map(a => {
         const cdKey = key + ':' + a.key;
         const onCooldown = actionCooldowns[cdKey] && actionCooldowns[cdKey] > currentTick;
@@ -656,14 +735,12 @@ function renderEmailDetail() {
     let bottomSection = '';
 
     if (ev.status === 'active') {
-        // Show response options
         const ap = currentFaction?.action_points || 0;
         const optionsHtml = options.map((opt, i) => {
             const letter = String.fromCharCode(65 + i);
             const letterClasses = ['opt-a', 'opt-b', 'opt-c'];
             const canAfford = ap >= (opt.ap || 0);
 
-            // Build outcomes display
             const outcomesHtml = (opt.outcomes || []).map(oc => {
                 const chance = oc.chance || 0;
                 let chanceClass = 'high';
@@ -684,7 +761,6 @@ function renderEmailDetail() {
                 '</div>';
             }).join('');
 
-            // Cost display
             let costHtml = '<span class="cost-tag ap">' + (opt.ap || 0) + ' AP</span>';
             if (opt.money && opt.money > 0) costHtml += '<span class="cost-tag money">$' + opt.money + 'M</span>';
 
@@ -767,7 +843,6 @@ async function respondToEvent(eventId, optionIndex) {
     if (!confirm('Choose Option ' + letter + ': ' + (option.label || '') + '?\n\nCost: ' + (option.ap || 0) + ' AP' + (option.money ? ' + $' + option.money + 'M' : ''))) return;
 
     try {
-        // Roll outcome
         const outcomes = option.outcomes || [{ chance: 100, label: 'Result', effects: [] }];
         const roll = Math.random() * 100;
         let cumulative = 0;
@@ -777,12 +852,10 @@ async function respondToEvent(eventId, optionIndex) {
             if (roll < cumulative) { chosenOutcome = oc; break; }
         }
 
-        // Apply effects
         const appliedEffects = [];
         for (const eff of (chosenOutcome.effects || [])) {
             const change = eff.change || 0;
             if (eff.target === 'nation' || !eff.target) {
-                // Update nation stat
                 const { data: nation } = await _supabase.from('nations').select(eff.stat_key).eq('id', currentNation.id).single();
                 if (nation) {
                     const current = nation[eff.stat_key] || 0;
@@ -801,13 +874,11 @@ async function respondToEvent(eventId, optionIndex) {
             appliedEffects.push({ stat_key: eff.stat_key, change: change, target: eff.target || 'nation' });
         }
 
-        // Deduct AP
         await _supabase.from('factions').update({
             action_points: Math.max(0, ap - (option.ap || 0))
         }).eq('id', currentFaction.id);
         currentFaction.action_points = Math.max(0, ap - (option.ap || 0));
 
-        // Update event record
         await _supabase.from('ministry_events').update({
             chosen_option: optionIndex,
             resolved_effects: { outcome_label: chosenOutcome.label || 'Result', effects: appliedEffects },
@@ -815,17 +886,14 @@ async function respondToEvent(eventId, optionIndex) {
             resolved_at_tick: currentTick
         }).eq('id', eventId);
 
-        // Mark faction active
         await markFactionActive(_supabase, currentFaction.id);
 
-        // Show result
         const effectsStr = appliedEffects.map(e =>
             e.stat_key.replace(/_/g, ' ') + ': ' + (e.change > 0 ? '+' : '') + e.change
         ).join('\n');
 
         alert('📋 ' + chosenOutcome.label + '\n\n' + effectsStr);
 
-        // Reload
         await loadInboxEvents(activeMinistryKey);
         selectEvent(eventId);
         await renderMinistryHeader(activeMinistryKey);
@@ -891,13 +959,11 @@ async function confirmAction() {
     if (ap < action.ap) { alert('Not enough AP.'); return; }
 
     try {
-        // Deduct AP
         await _supabase.from('factions').update({
             action_points: Math.max(0, ap - action.ap)
         }).eq('id', currentFaction.id);
         currentFaction.action_points = Math.max(0, ap - action.ap);
 
-        // Log the action
         const cooldownUntil = action.cooldownTicks ? currentTick + action.cooldownTicks : null;
         await _supabase.from('ministry_action_log').insert({
             nation_id: currentNation.id,
@@ -905,7 +971,7 @@ async function confirmAction() {
             action_key: action.key,
             faction_id: currentFaction.id,
             ap_cost: action.ap,
-            money_cost: 0, // TODO: calculate from formula
+            money_cost: 0,
             target_faction_id: pendingTargetFactionId || null,
             applied_at_tick: currentTick,
             timing: 'immediate',
@@ -918,13 +984,8 @@ async function confirmAction() {
         }
 
         closeActionModal();
-
-        // Mark faction active
         await markFactionActive(_supabase, currentFaction.id);
-
         alert('✦ ' + action.label + ' executed!');
-
-        // Refresh header (AP changed, cooldowns changed)
         await renderMinistryHeader(activeMinistryKey);
 
     } catch (err) {
