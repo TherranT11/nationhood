@@ -375,7 +375,8 @@ const MINISTRY_INFO = {
     healthcare: { icon: '🏥', name: 'Ministry of Healthcare' },
     labor: { icon: '👷', name: 'Ministry of Labor' },
     justice: { icon: '⚖️', name: 'Ministry of Justice' },
-    transportation: { icon: '🚄', name: 'Ministry of Transportation' }
+    transportation: { icon: '🚄', name: 'Ministry of Transportation' },
+    security: { icon: '🔐', name: 'Ministry of Security' }
 };
 
 // Hardcoded ministry actions — will expand to all ministries later
@@ -446,13 +447,15 @@ initPage('ministry-actions', async (state) => {
     myMinistries = ministries || [];
 
     // Load action cooldowns
-    const { data: cooldowns } = await _supabase.from('ministry_action_log')
-        .select('ministry_key, action_key, cooldown_until_tick')
-        .eq('nation_id', nation.id).eq('faction_id', faction.id)
-        .gt('cooldown_until_tick', currentTick);
-    (cooldowns || []).forEach(c => {
-        actionCooldowns[c.ministry_key + ':' + c.action_key] = c.cooldown_until_tick;
-    });
+    try {
+        const { data: cooldowns } = await _supabase.from('ministry_action_log')
+            .select('ministry_key, action_key, cooldown_until_tick')
+            .eq('nation_id', nation.id).eq('faction_id', faction.id)
+            .gt('cooldown_until_tick', currentTick);
+        (cooldowns || []).forEach(c => {
+            actionCooldowns[c.ministry_key + ':' + c.action_key] = c.cooldown_until_tick;
+        });
+    } catch (e) { console.warn('Could not load cooldowns:', e); }
 
     // Render ministry tabs
     renderMinistryTabs();
@@ -469,13 +472,14 @@ initPage('ministry-actions', async (state) => {
 async function renderMinistryTabs() {
     const allMinistryKeys = Object.keys(MINISTRY_INFO);
 
-    // Count active events per ministry for badges
-    const { data: eventCounts } = await _supabase.from('ministry_events')
-        .select('ministry_key').eq('nation_id', currentNation.id)
-        .eq('controlling_faction_id', currentFaction.id).eq('status', 'active');
-
-    const countMap = {};
-    (eventCounts || []).forEach(e => { countMap[e.ministry_key] = (countMap[e.ministry_key] || 0) + 1; });
+    // Count active events per ministry for badges (safe if table is empty)
+    let countMap = {};
+    try {
+        const { data: eventCounts } = await _supabase.from('ministry_events')
+            .select('ministry_key').eq('nation_id', currentNation.id)
+            .eq('controlling_faction_id', currentFaction.id).eq('status', 'active');
+        (eventCounts || []).forEach(e => { countMap[e.ministry_key] = (countMap[e.ministry_key] || 0) + 1; });
+    } catch (e) { console.warn('Could not load event counts:', e); }
 
     const myKeys = myMinistries.map(m => m.ministry_key);
 
@@ -567,12 +571,16 @@ async function renderMinistryHeader(key) {
 
 // ==================== INBOX EVENTS ====================
 async function loadInboxEvents(ministryKey) {
-    const { data } = await _supabase.from('ministry_events')
-        .select('*').eq('nation_id', currentNation.id).eq('ministry_key', ministryKey)
-        .eq('controlling_faction_id', currentFaction.id)
-        .order('created_at_tick', { ascending: false });
-
-    inboxEvents = data || [];
+    try {
+        const { data } = await _supabase.from('ministry_events')
+            .select('*').eq('nation_id', currentNation.id).eq('ministry_key', ministryKey)
+            .eq('controlling_faction_id', currentFaction.id)
+            .order('created_at_tick', { ascending: false });
+        inboxEvents = data || [];
+    } catch (e) {
+        console.warn('Could not load inbox events:', e);
+        inboxEvents = [];
+    }
     renderInboxList();
 }
 
