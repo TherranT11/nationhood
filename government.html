@@ -463,7 +463,31 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                     <div class="coalition-parties"><div class="coalition-party-tag">${majorityParty.party_name}<span class="seats">${majorityParty.seats} Seats</span></div></div>
                 </div>`;
         }
-        return '<div class="no-government"><div class="no-government-title">⚠️ No Government Formed</div><div class="no-government-desc">No party achieved a majority. A coalition must be formed on the Elections page.</div></div>';
+        // In renderAdministrationBox, replace the existing no-government block:
+
+return `
+<div style="background:linear-gradient(135deg,#2a1a00,#1a0a00);border:2px solid var(--red);
+    border-radius:12px;padding:32px;text-align:center;margin-bottom:24px;">
+    <div style="font-size:2.5rem;margin-bottom:12px;">⚠️</div>
+    <div style="font-size:1.4rem;color:var(--red);font-weight:bold;text-transform:uppercase;
+        letter-spacing:3px;margin-bottom:8px;">No Government Formed</div>
+    <div style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:16px;">
+        A coalition must be formed on the Elections page.</div>
+    <div style="display:flex;justify-content:center;gap:24px;margin-bottom:16px;">
+        <div style="background:#1a0a0a;border:1px solid var(--red);border-radius:8px;padding:12px 20px;">
+            <div style="font-size:1.1rem;font-weight:bold;color:var(--red);">-2%</div>
+            <div style="font-size:0.7rem;color:#888;">Party Approval / tick</div>
+        </div>
+        <div style="background:#1a0a0a;border:1px solid var(--red);border-radius:8px;padding:12px 20px;">
+            <div style="font-size:1.1rem;font-weight:bold;color:var(--red);">-1</div>
+            <div style="font-size:0.7rem;color:#888;">Stability / tick</div>
+        </div>
+    </div>
+    <div style="display:inline-block;padding:10px 28px;background:var(--red);color:white;
+        border-radius:6px;font-weight:bold;font-size:0.85rem;text-transform:uppercase;
+        letter-spacing:1px;cursor:pointer;" 
+        onclick="window.location.href='elections.html'">Form Government →</div>
+</div>`;
     }
 
     // Democracy: coalition
