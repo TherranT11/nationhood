@@ -98,6 +98,7 @@ function renderNavTabs(activeTab) {
         { id: 'world', label: 'World', href: 'world.html' },
         { id: 'nation', label: 'Nation', href: 'nation.html' },
         { id: 'government', label: 'Government', href: 'government.html' },
+        { id: 'ministry-actions', label: 'Ministry', href: 'ministry-actions.html' },
         { id: 'parties', label: 'Parties', href: 'parties.html' },
         { id: 'elections', label: 'Elections', href: 'elections.html' },
         { id: 'laws', label: 'Bills', href: 'laws.html' },
