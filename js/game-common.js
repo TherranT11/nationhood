@@ -632,68 +632,35 @@ async function syncVoteTallies(supabase, billId) {
 
 // ==================== ENACTMENT APPROVAL IMPACT ====================
 
-function calculateEnactmentApproval(nation, articles, billSupport, sponsorId) {
-    const BASE_IMPACT = 3;
-    const NO_VOTE_PENALTY = 0.5;
+function calculateEnactmentApproval(articles, billSupport, sponsorId, factionIdeologies) {
+    const APPROVAL_CAP_POSITIVE = 2;
+    const APPROVAL_CAP_NEGATIVE = -5;
+    const OPPOSITION_KICKER = -1;
 
-    const allEffects = [];
+    // Collect all ideology tags from bill articles
+    const allTags = [];
     for (const art of articles) {
         const p = art.policies || art;
         if (!p) continue;
-
-        if (p.stat_effects && Array.isArray(p.stat_effects)) {
-            for (const eff of p.stat_effects) {
-                allEffects.push({ stat_key: eff.stat_key, direction: eff.direction });
-            }
-        }
-        else if (p.target_stat) {
-            allEffects.push({
-                stat_key: p.target_stat,
-                direction: (p.stat_direction || '').toLowerCase() === 'up' ? 'up' : 'down'
-            });
-        }
+        const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
+            ? p.ideologies.map(i => i.toUpperCase())
+            : (p.ideology ? [p.ideology.toUpperCase()] : []);
+        allTags.push(...ideos);
     }
 
-    if (allEffects.length === 0) return {};
+    if (allTags.length === 0) return {};
 
-    let totalSentiment = 0;
-
-    for (const eff of allEffects) {
-        const statKey = eff.stat_key;
-        const currentValue = nation[statKey];
-        if (currentValue === null || currentValue === undefined) continue;
-
-        const isInverted = INVERTED_STATS.includes(statKey);
-        const val = Number(currentValue);
-
-        let urgency;
-        if (isInverted) {
-            urgency = val / 100;
-        } else {
-            urgency = (100 - val) / 100;
-        }
-
-        urgency = Math.max(0.1, Math.min(1.0, urgency));
-
-        let isHelpful;
-        if (isInverted) {
-            isHelpful = eff.direction === 'down';
-        } else {
-            isHelpful = eff.direction === 'up';
-        }
-
-        const sentiment = isHelpful
-            ? BASE_IMPACT * urgency
-            : -BASE_IMPACT * (1 - urgency + 0.2);
-
-        totalSentiment += sentiment;
+    // Calculate net direction per axis from all article tags
+    const axisNetScores = {};
+    for (const tag of allTags) {
+        const mapping = IDEOLOGY_TO_AXIS[tag];
+        if (!mapping) continue;
+        axisNetScores[mapping.axisKey] = (axisNetScores[mapping.axisKey] || 0) + mapping.direction;
     }
 
-    const avgSentiment = totalSentiment / allEffects.length;
-    const cappedSentiment = Math.max(-5, Math.min(5, avgSentiment));
+    if (Object.keys(axisNetScores).length === 0) return {};
 
-    const approvalDeltas = {};
-
+    // Build voter map: factionId -> stance
     const votes = {};
     votes[sponsorId] = 'yes';
     for (const s of (billSupport || [])) {
@@ -702,12 +669,40 @@ function calculateEnactmentApproval(nation, articles, billSupport, sponsorId) {
         }
     }
 
+    const approvalDeltas = {};
+
     for (const [factionId, stance] of Object.entries(votes)) {
-        if (stance === 'yes') {
-            approvalDeltas[factionId] = Math.round(cappedSentiment * 10) / 10;
-        } else if (stance === 'no') {
-            approvalDeltas[factionId] = Math.round(-cappedSentiment * NO_VOTE_PENALTY * 10) / 10;
+        if (stance !== 'yes' && stance !== 'no') continue;
+
+        const factionAxes = factionIdeologies[factionId];
+        if (!factionAxes) continue;
+
+        // Sum net alignment: positive = bill aligns with faction, negative = opposes
+        let netAlignment = 0;
+        for (const [axisKey, netDirection] of Object.entries(axisNetScores)) {
+            const factionScore = factionAxes[axisKey] || 0;
+            // factionScore > 0 means faction leans "right" on this axis
+            // netDirection > 0 means bill pushes "right" on this axis
+            // Same sign = aligned
+            if (factionScore !== 0 && netDirection !== 0) {
+                netAlignment += Math.sign(factionScore) === Math.sign(netDirection)
+                    ? Math.abs(netDirection)
+                    : -Math.abs(netDirection);
+            }
         }
+
+        // YES vote: aligned bill = positive, opposed bill = negative
+        // NO vote: inverted — opposed bill = positive, aligned bill = negative
+        let delta = stance === 'yes' ? netAlignment : -netAlignment;
+
+        // Apply opposition kicker: extra -1 when the result is negative
+        if (delta < 0) {
+            delta += OPPOSITION_KICKER;
+        }
+
+        // Cap the final value
+        delta = Math.max(APPROVAL_CAP_NEGATIVE, Math.min(APPROVAL_CAP_POSITIVE, delta));
+        approvalDeltas[factionId] = Math.round(delta * 10) / 10;
     }
 
     return approvalDeltas;
@@ -1138,11 +1133,24 @@ async function enactBill(supabase, bill, currentTick) {
         }
     }
 
+    // Load ideology axes for all voting factions (sponsor + voters)
+    const voterFactionIds = [bill.proposed_by, ...(bill.bill_support || []).map(s => s.faction_id)];
+    const uniqueFactionIds = [...new Set(voterFactionIds.filter(Boolean))];
+    const { data: ideoRows } = await supabase
+        .from('faction_ideology')
+        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+        .in('faction_id', uniqueFactionIds);
+
+    const factionIdeologies = {};
+    for (const row of (ideoRows || [])) {
+        factionIdeologies[row.faction_id] = row;
+    }
+
     const approvalDeltas = calculateEnactmentApproval(
-        nation,
         bill.bill_articles || [],
         bill.bill_support || [],
-        bill.proposed_by
+        bill.proposed_by,
+        factionIdeologies
     );
     await applyEnactmentApproval(supabase, approvalDeltas);
 }
