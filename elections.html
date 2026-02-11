@@ -786,21 +786,51 @@ function renderFormationDetail(formation) {
 
     const isProposer = formation.proposed_by === currentFaction.id;
 
+    // Build edit-coalition party grid (only for proposer)
+    const editPartiesHTML = isProposer ? allParties.map(p => {
+        const isYou = p.id === currentFaction.id;
+        const inCoalition = partyIds.includes(p.id);
+        const seats = getPartySeats(p.id);
+        return `
+            <div class="party-checkbox-item ${inCoalition ? 'checked' : ''} ${isYou ? 'disabled' : ''}"
+                 data-party-id="${p.id}" data-seats="${seats}"
+                 onclick="${isYou ? '' : `toggleEditParty(this, '${p.id}')`}">
+                <div class="party-check-box">${inCoalition ? '✓' : ''}</div>
+                <span class="party-check-label">${p.faction_name}</span>
+                <span class="party-check-seats">${seats} seats</span>
+            </div>`;
+    }).join('') : '';
+
     container.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <div class="back-link" onclick="loadFormationsList()" style="margin-bottom: 0;">← Back to Proposals</div>
-            ${isProposer ? `<button onclick="retractProposal('${formation.id}')" style="padding: 8px 16px; background: #2a1a1a; border: 1px solid #ff4444; color: #ff4444; border-radius: 4px; font-size: 0.8rem; font-weight: bold; cursor: pointer; transition: 0.2s;" onmouseover="this.style.background='#3a1a1a'" onmouseout="this.style.background='#2a1a1a'">Retract Proposal</button>` : ''}
+            <div style="display: flex; gap: 8px;">
+                ${isProposer ? `<button onclick="toggleEditCoalition()" id="edit-coalition-btn" style="padding: 8px 16px; background: #1a1a2a; border: 1px solid #ffcc00; color: #ffcc00; border-radius: 4px; font-size: 0.8rem; font-weight: bold; cursor: pointer; transition: 0.2s;" onmouseover="this.style.background='#2a2a3a'" onmouseout="this.style.background='#1a1a2a'">Edit Coalition</button>` : ''}
+                ${isProposer ? `<button onclick="retractProposal('${formation.id}')" style="padding: 8px 16px; background: #2a1a1a; border: 1px solid #ff4444; color: #ff4444; border-radius: 4px; font-size: 0.8rem; font-weight: bold; cursor: pointer; transition: 0.2s;" onmouseover="this.style.background='#3a1a1a'" onmouseout="this.style.background='#2a1a1a'">Retract Proposal</button>` : ''}
+            </div>
         </div>
 
         <div class="formation-header-box">
             <div class="formation-title">${proposer?.faction_name || 'Unknown'} Coalition</div>
             <div class="formation-proposer">Proposed by ${proposer?.faction_name || 'Unknown'} · ${formation.game_year || 'Unknown'}</div>
-            <div class="formation-parties-row">${partyChipsHTML}</div>
+            <div class="formation-parties-row" id="formation-parties-row">${partyChipsHTML}</div>
             <div class="formation-stats">
                 <span class="formation-stat">Seats: <span class="stat-highlight ${meetsThreshold ? '' : 'below-threshold'}">${coalitionSeats} (${coalitionPct}%)</span></span>
                 <span class="formation-stat">Threshold: <span class="stat-highlight">${meetsThreshold ? '✓ Meets 51%' : '✗ Below 51%'}</span></span>
             </div>
             ${ideologies.length > 0 ? `<div class="formation-ideologies">${renderIdeologyChips(ideologies)}</div>` : ''}
+            ${isProposer ? `
+            <div id="edit-coalition-panel" style="display: none; margin-top: 16px; padding-top: 16px; border-top: 1px solid #333;">
+                <div style="font-size: 0.82rem; color: #888; margin-bottom: 10px;">Add or remove parties from this coalition:</div>
+                <div class="party-checkbox-grid" id="edit-party-grid">${editPartiesHTML}</div>
+                <div class="proposal-seat-preview" id="edit-seat-preview">
+                    Coalition seats: <span class="preview-seats" id="edit-preview-seats">${coalitionSeats}</span> / ${totalLegislatureSeats}
+                    (<span id="edit-preview-pct">${coalitionPct}</span>%)
+                    <span id="edit-preview-threshold" style="margin-left: 8px; font-size: 0.8rem; color: ${meetsThreshold ? '#4CAF50' : '#888'};">${meetsThreshold ? '✓ Meets 51% threshold' : '— needs 51%'}</span>
+                </div>
+                <button class="action-btn" style="max-width: 300px; margin: 8px auto 0; display: block;" onclick="saveCoalitionEdit('${formation.id}')">Save Changes</button>
+            </div>
+            ` : ''}
         </div>
 
         <div class="support-bar" id="support-bar">
@@ -1059,6 +1089,113 @@ async function sendChatMessage() {
     } catch (err) { alert('❌ Error sending message: ' + err.message); input.value = message; }
     input.disabled = false;
     input.focus();
+}
+
+// ===== Edit Coalition Composition =====
+
+let editSelectedParties = [];
+
+function toggleEditCoalition() {
+    const panel = document.getElementById('edit-coalition-panel');
+    if (!panel) return;
+    const showing = panel.style.display !== 'none';
+    panel.style.display = showing ? 'none' : 'block';
+    if (!showing) {
+        // Initialize edit selection from current coalition
+        editSelectedParties = [...activeFormationPartyIds];
+        // Sync checkboxes
+        document.querySelectorAll('#edit-party-grid .party-checkbox-item').forEach(el => {
+            const pid = el.getAttribute('data-party-id');
+            const inCoalition = editSelectedParties.includes(pid);
+            el.classList.toggle('checked', inCoalition);
+            el.querySelector('.party-check-box').textContent = inCoalition ? '✓' : '';
+        });
+        updateEditSeatPreview();
+    }
+    document.getElementById('edit-coalition-btn').textContent = showing ? 'Edit Coalition' : 'Cancel Edit';
+}
+
+function toggleEditParty(el, partyId) {
+    const idx = editSelectedParties.indexOf(partyId);
+    if (idx > -1) {
+        editSelectedParties.splice(idx, 1);
+        el.classList.remove('checked');
+        el.querySelector('.party-check-box').textContent = '';
+    } else {
+        editSelectedParties.push(partyId);
+        el.classList.add('checked');
+        el.querySelector('.party-check-box').textContent = '✓';
+    }
+    updateEditSeatPreview();
+}
+
+function updateEditSeatPreview() {
+    const previewSeats = document.getElementById('edit-preview-seats');
+    const previewPct = document.getElementById('edit-preview-pct');
+    const previewThreshold = document.getElementById('edit-preview-threshold');
+    if (!previewSeats) return;
+
+    const seats = getCoalitionSeats(editSelectedParties);
+    const pct = totalLegislatureSeats ? Math.round((seats / totalLegislatureSeats) * 100) : 0;
+    const meets = pct >= 51;
+
+    previewSeats.textContent = seats;
+    previewSeats.className = 'preview-seats ' + (meets ? 'meets' : 'below');
+    previewPct.textContent = pct;
+    previewThreshold.textContent = meets ? '✓ Meets 51% threshold' : '— needs 51%';
+    previewThreshold.style.color = meets ? '#4CAF50' : '#888';
+}
+
+async function saveCoalitionEdit(formationId) {
+    // Must include proposer
+    if (!editSelectedParties.includes(currentFaction.id)) {
+        alert('Your party must remain in the coalition.');
+        return;
+    }
+    if (editSelectedParties.length < 2) {
+        alert('Select at least one other party for your coalition.');
+        return;
+    }
+
+    // Identify removed parties to clean up their support and ministry assignments
+    const removedParties = activeFormationPartyIds.filter(pid => !editSelectedParties.includes(pid));
+
+    try {
+        // Remove support records for removed parties
+        for (const pid of removedParties) {
+            await _supabase.from('government_formation_support')
+                .delete().eq('formation_id', formationId).eq('faction_id', pid);
+        }
+
+        // Clean ministry assignments: unset any ministry assigned to a removed party
+        const { data: formation } = await _supabase
+            .from('government_formations').select('ministry_assignments, minister_names').eq('id', formationId).single();
+        const assignments = formation?.ministry_assignments || {};
+        const ministerNames = formation?.minister_names || {};
+        let changed = false;
+        for (const [key, val] of Object.entries(assignments)) {
+            if (removedParties.includes(val)) {
+                assignments[key] = null;
+                delete ministerNames[key];
+                changed = true;
+            }
+        }
+
+        // Update party_ids (and cleaned assignments if needed)
+        const updatePayload = { party_ids: editSelectedParties };
+        if (changed) {
+            updatePayload.ministry_assignments = assignments;
+            updatePayload.minister_names = ministerNames;
+        }
+
+        const { error } = await _supabase.from('government_formations')
+            .update(updatePayload).eq('id', formationId);
+        if (error) throw error;
+
+        // Refresh the detail view
+        activeFormationPartyIds = [...editSelectedParties];
+        await openFormation(formationId);
+    } catch (err) { alert('❌ Error updating coalition: ' + err.message); }
 }
 
 async function retractProposal(formationId) {
