@@ -447,14 +447,22 @@
             if (num === null || num === undefined) return 'N/A';
             return num.toLocaleString();
         };
-        
+        const formatCurrency = (val) => {
+            if (val == null) return 'N/A';
+            val = Number(val);
+            if (val >= 1e12) return '$' + (val / 1e12).toFixed(1) + ' Trillion';
+            if (val >= 1e9) return '$' + (val / 1e9).toFixed(1) + ' Billion';
+            if (val >= 1e6) return '$' + (val / 1e6).toFixed(1) + ' Million';
+            return '$' + val.toLocaleString();
+        };
+
         // Display nation stats
         document.getElementById('government-type').textContent = nation.government_type || 'Not Set';
         document.getElementById('capital').textContent = nation.capital || 'Unknown';
         document.getElementById('population').textContent = formatNumber(nation.population);
         document.getElementById('stability').textContent = nation.stability || 'N/A';
         document.getElementById('civil-unrest').textContent = nation.civil_unrest || 'N/A';
-        document.getElementById('gdp').textContent = nation.GDP ? `$${formatNumber(nation.GDP)}` : 'N/A';
+        document.getElementById('gdp').textContent = nation.GDP ? formatCurrency(nation.GDP) : 'N/A';
         
         // Display interest groups
         const groupsContainer = document.getElementById('interest-groups');
