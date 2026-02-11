@@ -3034,6 +3034,10 @@ function runElectionSimulation(blocs, parties, totalSeats = 120) {
 
         let step, eligible, abstentions;
 
+        // Snapshot tally before distribution to compute per-bloc party votes
+        const snapshot = {};
+        for (const p of parties) snapshot[p.id] = tally[p.id];
+
         if (tags.length === 0) {
             // Unaligned bloc — distribute purely by approval across all parties
             eligible = parties;
@@ -3046,6 +3050,13 @@ function runElectionSimulation(blocs, parties, totalSeats = 120) {
             abstentions = distributeVotes(eligible, tags, count, parties, step, tally);
         }
 
+        // Compute per-party votes from this bloc
+        const blocVotes = {};
+        for (const p of parties) {
+            const gained = tally[p.id] - snapshot[p.id];
+            if (gained > 0) blocVotes[p.id] = gained;
+        }
+
         totalAbstentions += abstentions;
         details.push({
             bloc_name: bloc.bloc_name,
@@ -3053,7 +3064,8 @@ function runElectionSimulation(blocs, parties, totalSeats = 120) {
             tags,
             step,
             eligible_count: eligible.length,
-            abstentions
+            abstentions,
+            blocVotes
         });
     }
 
@@ -3088,6 +3100,24 @@ async function runElectionPreview(supabase, nationId) {
         .eq('nation_id', nationId)
         .eq('is_active', true);
     if (!blocs || blocs.length === 0) throw new Error('No voter blocs found for this nation');
+
+    // 2b. Scale bloc voter_counts so total matches eligible_voters (blocs are generated from population)
+    const eligibleVoters = nation.eligible_voters || 0;
+    const totalBlocVoters = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
+    if (totalBlocVoters > 0 && eligibleVoters > 0) {
+        const scale = eligibleVoters / totalBlocVoters;
+        let scaledSum = 0;
+        for (const b of blocs) {
+            b.voter_count = Math.round((b.voter_count || 0) * scale);
+            scaledSum += b.voter_count;
+        }
+        // Fix rounding drift on the largest bloc
+        const diff = eligibleVoters - scaledSum;
+        if (diff !== 0) {
+            const largest = blocs.reduce((a, b) => (b.voter_count > a.voter_count ? b : a), blocs[0]);
+            largest.voter_count += diff;
+        }
+    }
 
     // 3. Load parties + their ideology axes
     const { data: factions } = await supabase
@@ -3132,6 +3162,10 @@ async function runElectionPreview(supabase, nationId) {
         seats: result.seats[p.id] || 0
     })).sort((a, b) => b.seats - a.seats);
 
+    // Build party name lookup for UI
+    const partyNames = {};
+    for (const p of parties) partyNames[p.id] = p.faction_name;
+
     return {
         nation: nation.name,
         total_seats: totalSeats,
@@ -3142,6 +3176,7 @@ async function runElectionPreview(supabase, nationId) {
             ? Math.round((result.totalVotesCast / nation.eligible_voters) * 10000) / 100
             : 0,
         results: partyResults,
-        bloc_details: result.details
+        bloc_details: result.details,
+        partyNames
     };
 }
