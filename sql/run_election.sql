@@ -266,12 +266,18 @@ DECLARE
     v_i            INT;
     v_tally        JSONB := p_tally;
     v_abstain      BIGINT := 0;
+    v_voters       INT;
+    v_abstain_rate NUMERIC;
 BEGIN
     -- Handle Unaligned bloc (no tags)
     IF v_tag_count IS NULL OR v_tag_count = 0 THEN
-        -- Distribute by approval only
-        v_tally := _election_distribute_votes_approval_only(p_parties, p_bloc_count, v_tally);
-        RETURN QUERY SELECT 0, 0::BIGINT, v_tally;
+        -- Step 0: 35% base abstention for unaligned blocs
+        v_abstain := FLOOR(p_bloc_count * 0.35);
+        v_voters := p_bloc_count - v_abstain;
+        IF v_voters > 0 THEN
+            v_tally := _election_distribute_votes_approval_only(p_parties, v_voters, v_tally);
+        END IF;
+        RETURN QUERY SELECT 0, v_abstain, v_tally;
         RETURN;
     END IF;
 
@@ -296,8 +302,13 @@ BEGIN
     END LOOP;
 
     IF array_length(v_eligible_ids, 1) > 0 THEN
-        v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, p_bloc_count, v_tally);
-        RETURN QUERY SELECT 1, 0::BIGINT, v_tally;
+        -- Step 1: 20% base abstention — most motivated voters
+        v_abstain := FLOOR(p_bloc_count * 0.20);
+        v_voters := p_bloc_count - v_abstain;
+        IF v_voters > 0 THEN
+            v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, v_voters, v_tally);
+        END IF;
+        RETURN QUERY SELECT 1, v_abstain, v_tally;
         RETURN;
     END IF;
 
@@ -315,8 +326,13 @@ BEGIN
     END LOOP;
 
     IF array_length(v_eligible_ids, 1) > 0 THEN
-        v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, p_bloc_count, v_tally);
-        RETURN QUERY SELECT 2, 0::BIGINT, v_tally;
+        -- Step 2: 28% base abstention — moderate motivation
+        v_abstain := FLOOR(p_bloc_count * 0.28);
+        v_voters := p_bloc_count - v_abstain;
+        IF v_voters > 0 THEN
+            v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, v_voters, v_tally);
+        END IF;
+        RETURN QUERY SELECT 2, v_abstain, v_tally;
         RETURN;
     END IF;
 
@@ -341,13 +357,19 @@ BEGIN
     END LOOP;
 
     IF array_length(v_eligible_ids, 1) > 0 THEN
-        v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, p_bloc_count, v_tally);
-        RETURN QUERY SELECT 3, 0::BIGINT, v_tally;
+        -- Step 3: 33% base abstention — lukewarm support
+        v_abstain := FLOOR(p_bloc_count * 0.33);
+        v_voters := p_bloc_count - v_abstain;
+        IF v_voters > 0 THEN
+            v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, v_voters, v_tally);
+        END IF;
+        RETURN QUERY SELECT 3, v_abstain, v_tally;
         RETURN;
     END IF;
 
     -- ==== STEP 4: Forced choice / abstention ====
-    v_abstain := FLOOR(p_bloc_count * 0.667);
+    -- Step 4: 75% abstain — deeply disaffected
+    v_abstain := FLOOR(p_bloc_count * 0.75);
     DECLARE
         v_forced INT := p_bloc_count - v_abstain;
         v_best_id TEXT;
