@@ -269,6 +269,206 @@
             .formation-header { padding: 18px 16px 14px; }
             .formation-body { padding: 16px; }
         }
+
+        /* ===== PAST ADMINISTRATIONS ===== */
+        .past-admins-toggle {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-main);
+            border-radius: 8px;
+            padding: 14px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 24px;
+            user-select: none;
+        }
+        .past-admins-toggle:hover { border-color: var(--accent); background: var(--bg-card); }
+        .past-admins-toggle-text { font-size: 0.9rem; color: var(--text-secondary); font-weight: bold; letter-spacing: 0.5px; }
+        .past-admins-toggle .chevron { color: var(--text-muted); font-size: 1.2rem; transition: transform 0.3s; }
+        .past-admins-toggle.open .chevron { transform: rotate(180deg); }
+
+        .past-admins-list {
+            display: none;
+            margin-top: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .past-admins-list.hidden { display: none; }
+
+        .past-admin-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-main);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            overflow: hidden;
+        }
+        .past-admin-card:hover { border-color: var(--accent); }
+        .past-admin-card.end-election_loss { border-left: 3px solid var(--red); }
+        .past-admin-card.end-new_coalition { border-left: 3px solid var(--green); }
+        .past-admin-card.end-coalition_collapse { border-left: 3px solid var(--orange); }
+        .past-admin-card.end-coup { border-left: 3px solid #8b0000; }
+        .past-admin-card.end-dissolved { border-left: 3px solid var(--text-muted); }
+        .past-admin-card.current-admin { border-left: 3px solid var(--accent); }
+
+        .past-admin-summary {
+            padding: 14px 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .past-admin-summary-left { flex: 1; }
+        .past-admin-name {
+            font-size: 0.95rem;
+            font-weight: bold;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        .past-admin-date { font-size: 0.75rem; color: var(--accent); margin-left: 8px; letter-spacing: 0; text-transform: none; }
+        .past-admin-meta { font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5; }
+        .past-admin-meta .pm-name { color: var(--text-primary); font-weight: bold; }
+        .past-admin-approval { text-align: right; min-width: 90px; }
+        .past-admin-approval-label { font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .past-admin-approval-value { font-size: 0.9rem; font-weight: bold; }
+        .past-admin-chevron { color: var(--text-muted); font-size: 1rem; margin-left: 12px; transition: transform 0.3s; }
+        .past-admin-card.open .past-admin-chevron { transform: rotate(180deg); }
+
+        .past-admin-detail { display: none; padding: 0 18px 18px; border-top: 1px solid var(--border-main); }
+        .past-admin-card.open .past-admin-detail { display: block; }
+
+        .past-admin-detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+            margin: 14px 0;
+        }
+        .pad-info-box {
+            background: var(--bg-card);
+            border-radius: 6px;
+            padding: 10px 12px;
+            text-align: center;
+        }
+        .pad-info-label { font-size: 0.6rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .pad-info-value { font-size: 0.85rem; color: var(--text-primary); font-weight: bold; }
+        .pad-info-sub { font-size: 0.7rem; color: var(--text-secondary); margin-top: 2px; }
+
+        .pad-section-title {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 16px 0 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--border-main);
+        }
+
+        .pad-achievement, .pad-challenge {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            margin-bottom: 3px;
+        }
+        .pad-achievement { background: rgba(76, 175, 80, 0.08); }
+        .pad-challenge { background: rgba(244, 67, 54, 0.08); }
+        .pad-stat-name { color: var(--text-primary); }
+        .pad-stat-change { font-weight: bold; font-family: monospace; font-size: 0.75rem; }
+        .pad-stat-change.positive { color: var(--green); }
+        .pad-stat-change.negative { color: var(--red); }
+
+        .pad-legislation-item, .pad-crisis-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 8px;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            border-left: 2px solid var(--border-main);
+            margin-bottom: 3px;
+        }
+        .pad-legislation-item .bill-name { color: var(--text-primary); }
+        .pad-legislation-item .bill-date, .pad-crisis-item .crisis-date { color: var(--text-muted); font-size: 0.7rem; }
+
+        .pad-end-reason {
+            display: inline-block;
+            font-size: 0.65rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 2px 8px;
+            border-radius: 3px;
+            margin-left: 6px;
+        }
+        .pad-end-reason.election_loss { background: rgba(244,67,54,0.15); color: var(--red); }
+        .pad-end-reason.new_coalition { background: rgba(76,175,80,0.15); color: var(--green); }
+        .pad-end-reason.coalition_collapse { background: rgba(255,152,0,0.15); color: var(--orange); }
+        .pad-end-reason.coup { background: rgba(139,0,0,0.2); color: #ff4444; }
+        .pad-end-reason.dissolved { background: rgba(150,150,150,0.15); color: var(--text-muted); }
+        .pad-end-reason.current { background: rgba(200,170,110,0.15); color: var(--accent); }
+
+        .pad-stat-table-toggle {
+            background: var(--bg-card);
+            border: 1px solid var(--border-main);
+            border-radius: 6px;
+            padding: 8px 12px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            margin-top: 12px;
+            transition: all 0.2s;
+        }
+        .pad-stat-table-toggle:hover { border-color: var(--accent); }
+        .pad-stat-table { display: none; margin-top: 8px; }
+        .pad-stat-table.open { display: block; }
+        .pad-stat-table table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.75rem;
+        }
+        .pad-stat-table th {
+            text-align: left;
+            padding: 6px 8px;
+            color: var(--text-muted);
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border-main);
+        }
+        .pad-stat-table td {
+            padding: 4px 8px;
+            color: var(--text-secondary);
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+        .pad-stat-table td:last-child { text-align: right; font-family: monospace; font-weight: bold; }
+
+        .pad-no-data { font-size: 0.8rem; color: var(--text-muted); font-style: italic; padding: 8px 0; }
+        .pad-current-badge {
+            background: var(--accent);
+            color: var(--bg-body);
+            font-size: 0.6rem;
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-left: 8px;
+        }
+
+        @media (max-width: 768px) {
+            .past-admin-detail-grid { grid-template-columns: 1fr; }
+            .past-admin-summary { flex-direction: column; align-items: flex-start; gap: 8px; }
+            .past-admin-approval { text-align: left; }
+        }
     </style>
 </head>
 <body>
@@ -498,10 +698,15 @@ async function renderGovernmentPage() {
                     <svg id="parliament-svg" width="520" height="280" viewBox="0 0 520 280"></svg>
                 </div>
                 <div class="parliament-legend" id="parliament-legend"></div>
+
+                <div id="past-administrations-container"></div>
             </div>
         `;
 
         if (partyData.length > 0) drawParliament(partyData);
+
+        // Load and render past administrations
+        loadPastAdministrations();
 
     } catch (error) {
         console.error('Error loading government data:', error);
@@ -1433,6 +1638,356 @@ async function resignPMAction() {
         console.error('Resign ministry error:', e);
         alert('Error: ' + e.message);
     }
+}
+
+
+// ==================== PAST ADMINISTRATIONS ====================
+
+const END_REASON_LABELS = {
+    election_loss: 'Election Loss',
+    new_coalition: 'New Coalition',
+    coalition_collapse: 'Collapsed',
+    coup: 'Coup',
+    dissolved: 'Dissolved'
+};
+
+/**
+ * Compute stat achievements and challenges from start/end snapshots.
+ */
+function computeAdminChanges(statsStart, statsEnd) {
+    if (!statsStart || !statsEnd) return { achievements: [], challenges: [], allChanges: [] };
+
+    const changes = [];
+    for (const key of Object.keys(statsEnd)) {
+        const start = statsStart[key] ?? 0;
+        const end = statsEnd[key] ?? 0;
+        const raw = end - start;
+        if (Math.abs(raw) < 0.01) continue;
+
+        let improvement;
+        if (STATS_HIGHER_IS_BETTER.includes(key)) {
+            improvement = raw;
+        } else if (STATS_LOWER_IS_BETTER.includes(key)) {
+            improvement = -raw;
+        } else {
+            continue; // neutral stats excluded from ranking
+        }
+
+        changes.push({ key, start, end, raw, improvement });
+    }
+
+    const sortedByBest = [...changes].sort((a, b) => b.improvement - a.improvement);
+    const achievements = sortedByBest.filter(c => c.improvement > 0).slice(0, 3);
+    const sortedByWorst = [...changes].sort((a, b) => a.improvement - b.improvement);
+    const challenges = sortedByWorst.filter(c => c.improvement < 0).slice(0, 3);
+
+    return { achievements, challenges, allChanges: sortedByBest };
+}
+
+/**
+ * Format a stat key into a human-readable name.
+ */
+function formatAdminStatName(key) {
+    const overrides = {
+        'gdp': 'GDP', 'gdp_growth': 'GDP Growth', 'oil_and_gas': 'Oil & Gas',
+        'beds_per_100k': 'Hospital Beds', 'lifespan': 'Life Expectancy',
+        'literacy': 'Literacy Rate', 'credit': 'Credit Rating',
+        'labor_force_participation': 'Labor Participation',
+        'renewable_energy_percentage': 'Renewable Energy',
+        'debt_growth': 'Debt Growth'
+    };
+    if (overrides[key]) return overrides[key];
+    return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+/**
+ * Format a raw stat value for display (no sign prefix).
+ */
+function formatStatValue(val, key) {
+    if (['gdp', 'debt'].includes(key)) return (val / 1e9).toFixed(1) + 'B';
+    if (key === 'population') return (val / 1e6).toFixed(2) + 'M';
+    if (Math.abs(val) < 1 && val !== 0) return val.toFixed(2);
+    return String(Math.round(val * 10) / 10);
+}
+
+/**
+ * Format a stat change (delta) with +/- sign.
+ */
+function formatChange(raw, key) {
+    const sign = raw > 0 ? '+' : '';
+    if (['gdp', 'debt'].includes(key)) return sign + (raw / 1e9).toFixed(1) + 'B';
+    if (key === 'population') return sign + (raw / 1e6).toFixed(2) + 'M';
+    if (Math.abs(raw) < 1 && raw !== 0) return sign + raw.toFixed(2);
+    return sign + Math.round(raw * 10) / 10;
+}
+
+/**
+ * Determine if a change is good (improvement) based on stat direction.
+ */
+function isImprovement(key, raw) {
+    if (STATS_HIGHER_IS_BETTER.includes(key)) return raw > 0;
+    if (STATS_LOWER_IS_BETTER.includes(key)) return raw < 0;
+    return null; // neutral
+}
+
+/**
+ * Calculate duration in months from tick range.
+ */
+function ticksToMonths(startTick, endTick) {
+    if (endTick == null) return null;
+    return endTick - startTick; // 1 tick = 1 month
+}
+
+/**
+ * Load and render past administrations.
+ */
+async function loadPastAdministrations() {
+    const container = document.getElementById('past-administrations-container');
+    if (!container) return;
+
+    try {
+        // Fetch all administrations (both past and current)
+        const { data: admins, error } = await _supabase
+            .from('administrations')
+            .select('*')
+            .eq('nation_id', currentNation.id)
+            .order('started_at_tick', { ascending: false });
+
+        if (error) throw error;
+        if (!admins || admins.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        const pastAdmins = admins.filter(a => a.ended_at_tick != null);
+        const currentAdmin = admins.find(a => a.ended_at_tick == null);
+        const totalCount = pastAdmins.length + (currentAdmin ? 1 : 0);
+
+        container.innerHTML = `
+            <div class="past-admins-toggle" onclick="togglePastAdmins()">
+                <span class="past-admins-toggle-text">Past Administrations (${pastAdmins.length})</span>
+                <span class="chevron">&#9660;</span>
+            </div>
+            <div class="past-admins-list hidden" id="past-admins-list">
+                ${currentAdmin ? renderAdminCard(currentAdmin, true) : ''}
+                ${pastAdmins.map(a => renderAdminCard(a, false)).join('')}
+            </div>
+        `;
+    } catch (err) {
+        console.error('Error loading past administrations:', err);
+    }
+}
+
+function togglePastAdmins() {
+    const toggle = document.querySelector('.past-admins-toggle');
+    const list = document.getElementById('past-admins-list');
+    if (!toggle || !list) return;
+    toggle.classList.toggle('open');
+    list.classList.toggle('hidden');
+}
+
+function toggleAdminCard(id) {
+    const card = document.getElementById('admin-card-' + id);
+    if (card) card.classList.toggle('open');
+}
+
+function toggleStatTable(id) {
+    const table = document.getElementById('stat-table-' + id);
+    if (table) {
+        table.classList.toggle('open');
+        event.stopPropagation();
+    }
+}
+
+function renderAdminCard(admin, isCurrent) {
+    const endClass = isCurrent ? 'current-admin' : ('end-' + (admin.end_reason || 'dissolved'));
+
+    // Summary info
+    const dateRange = isCurrent
+        ? `${admin.started_at_date || '?'} — Present`
+        : `${admin.started_at_date || '?'} — ${admin.ended_at_date || '?'}`;
+
+    const coalitionParties = admin.coalition_parties || [];
+    const partyList = coalitionParties.map(p => p.party_name).join(' + ');
+    const seatCount = admin.total_seats || 0;
+
+    // Approval trajectory
+    const approvalStart = admin.approval_at_start;
+    const approvalEnd = isCurrent ? null : admin.approval_at_end;
+    let approvalHTML = '';
+    if (approvalStart != null) {
+        if (approvalEnd != null) {
+            const color = approvalEnd >= approvalStart ? 'var(--green)' : 'var(--red)';
+            approvalHTML = `<span style="color:${color}">${approvalStart}% &rarr; ${approvalEnd}%</span>`;
+        } else {
+            approvalHTML = `<span>${approvalStart}%</span>`;
+        }
+    }
+
+    // Duration
+    const durationMonths = isCurrent ? null : ticksToMonths(admin.started_at_tick, admin.ended_at_tick);
+    const durationText = durationMonths != null ? `${durationMonths} month${durationMonths !== 1 ? 's' : ''} in power` : '';
+
+    // End reason badge
+    let reasonBadge = '';
+    if (isCurrent) {
+        reasonBadge = '<span class="pad-current-badge">CURRENT</span>';
+    } else if (admin.end_reason) {
+        reasonBadge = `<span class="pad-end-reason ${admin.end_reason}">${END_REASON_LABELS[admin.end_reason] || admin.end_reason}</span>`;
+    }
+
+    // Compute achievements/challenges
+    const { achievements, challenges, allChanges } = computeAdminChanges(admin.stats_at_start, admin.stats_at_end);
+
+    // Legislation
+    const billsPassed = admin.bills_passed || [];
+    const lawsRepealed = admin.laws_repealed || [];
+    const crisesStarted = admin.crises_started || [];
+    const crisesSolved = admin.crises_solved || [];
+
+    // Detail sections
+    let detailHTML = '';
+
+    // Info grid
+    detailHTML += `<div class="past-admin-detail-grid">
+        <div class="pad-info-box">
+            <div class="pad-info-label">Head of State</div>
+            <div class="pad-info-value">${admin.head_of_state || 'Unknown'}</div>
+        </div>
+        <div class="pad-info-box">
+            <div class="pad-info-label">Prime Minister</div>
+            <div class="pad-info-value">${admin.prime_minister || 'Not yet selected'}</div>
+            <div class="pad-info-sub">${admin.pm_party_name || ''}</div>
+        </div>
+        <div class="pad-info-box">
+            <div class="pad-info-label">Coalition</div>
+            <div class="pad-info-value">${seatCount} / ${GAME_CONFIG.TOTAL_SEATS} seats</div>
+            <div class="pad-info-sub">${durationText}${admin.end_reason ? ' &middot; Ended: ' + (END_REASON_LABELS[admin.end_reason] || admin.end_reason) : ''}</div>
+        </div>
+    </div>`;
+
+    // Coalition parties
+    if (coalitionParties.length > 0) {
+        detailHTML += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+            ${coalitionParties.map(p => `<span class="coalition-party-tag">${p.party_name}<span class="seats">${p.seats}</span></span>`).join('<span class="coalition-divider">+</span>')}
+        </div>`;
+    }
+
+    // Achievements
+    if (!isCurrent && achievements.length > 0) {
+        detailHTML += `<div class="pad-section-title">Top Achievements</div>`;
+        detailHTML += achievements.map(a => {
+            const isLowerBetter = STATS_LOWER_IS_BETTER.includes(a.key);
+            const arrow = isLowerBetter ? ' &darr; improved' : '';
+            return `<div class="pad-achievement">
+                <span class="pad-stat-name">${formatAdminStatName(a.key)}</span>
+                <span class="pad-stat-change positive">${formatStatValue(a.start, a.key)} &rarr; ${formatStatValue(a.end, a.key)} (${formatChange(a.raw, a.key)})${arrow}</span>
+            </div>`;
+        }).join('');
+    }
+
+    // Challenges
+    if (!isCurrent && challenges.length > 0) {
+        detailHTML += `<div class="pad-section-title">Biggest Challenges</div>`;
+        detailHTML += challenges.map(c => {
+            const isHigherBetter = STATS_HIGHER_IS_BETTER.includes(c.key);
+            const arrow = isHigherBetter ? '' : ' &uarr; worsened';
+            return `<div class="pad-challenge">
+                <span class="pad-stat-name">${formatAdminStatName(c.key)}</span>
+                <span class="pad-stat-change negative">${formatStatValue(c.start, c.key)} &rarr; ${formatStatValue(c.end, c.key)} (${formatChange(c.raw, c.key)})${arrow}</span>
+            </div>`;
+        }).join('');
+    }
+
+    if (!isCurrent && achievements.length === 0 && challenges.length === 0 && admin.stats_at_end) {
+        detailHTML += `<div class="pad-no-data">No significant stat changes during this administration.</div>`;
+    }
+
+    if (isCurrent && !admin.stats_at_end) {
+        detailHTML += `<div class="pad-no-data">Stats will be compared when this administration ends.</div>`;
+    }
+
+    // Crises
+    if (crisesStarted.length > 0 || crisesSolved.length > 0) {
+        detailHTML += `<div class="pad-section-title">Crises</div>`;
+        if (crisesStarted.length > 0) {
+            detailHTML += `<div style="font-size:0.72rem;color:var(--red);font-weight:bold;margin-bottom:4px;">Started (${crisesStarted.length})</div>`;
+            detailHTML += crisesStarted.map(c => `<div class="pad-crisis-item"><span>${c.title}</span><span class="crisis-date">${c.started_date || ''}</span></div>`).join('');
+        }
+        if (crisesSolved.length > 0) {
+            detailHTML += `<div style="font-size:0.72rem;color:var(--green);font-weight:bold;margin:6px 0 4px;">Solved (${crisesSolved.length})</div>`;
+            detailHTML += crisesSolved.map(c => `<div class="pad-crisis-item"><span>${c.title}</span><span class="crisis-date">${c.solved_date || ''}</span></div>`).join('');
+        }
+    }
+
+    // Legislation
+    if (billsPassed.length > 0 || lawsRepealed.length > 0) {
+        detailHTML += `<div class="pad-section-title">Flagship Legislation</div>`;
+        if (billsPassed.length > 0) {
+            detailHTML += `<div style="font-size:0.72rem;color:var(--text-secondary);font-weight:bold;margin-bottom:4px;">Bills Passed (${billsPassed.length})</div>`;
+            detailHTML += billsPassed.map(b => `<div class="pad-legislation-item"><span class="bill-name">${b.bill_name || 'Unnamed'}</span><span class="bill-date">Tick ${b.passed_tick || '?'}</span></div>`).join('');
+        }
+        if (lawsRepealed.length > 0) {
+            detailHTML += `<div style="font-size:0.72rem;color:var(--red);font-weight:bold;margin:6px 0 4px;">Laws Repealed (${lawsRepealed.length})</div>`;
+            detailHTML += lawsRepealed.map(b => `<div class="pad-legislation-item"><span class="bill-name">${b.bill_name || 'Unnamed'}</span><span class="bill-date">${b.repealed_date || ''}</span></div>`).join('');
+        }
+    }
+
+    if (!isCurrent && billsPassed.length === 0 && lawsRepealed.length === 0) {
+        detailHTML += `<div class="pad-section-title">Legislation</div><div class="pad-no-data">No bills passed during this administration.</div>`;
+    }
+
+    // All stat changes table (expandable)
+    if (!isCurrent && allChanges.length > 0) {
+        detailHTML += `
+            <div class="pad-stat-table-toggle" onclick="toggleStatTable('${admin.id}')">
+                <span>All Stat Changes (${allChanges.length})</span>
+                <span class="chevron">&#9660;</span>
+            </div>
+            <div class="pad-stat-table" id="stat-table-${admin.id}">
+                <table>
+                    <thead><tr><th>Stat</th><th>Start</th><th>End</th><th>Change</th></tr></thead>
+                    <tbody>
+                        ${allChanges.map(c => {
+                            const good = isImprovement(c.key, c.raw);
+                            const indicator = good === true ? ' style="color:var(--green)"' : (good === false ? ' style="color:var(--red)"' : '');
+                            return `<tr>
+                                <td>${formatAdminStatName(c.key)}</td>
+                                <td>${formatStatValue(c.start, c.key)}</td>
+                                <td>${formatStatValue(c.end, c.key)}</td>
+                                <td${indicator}>${formatChange(c.raw, c.key)}</td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>`;
+    }
+
+    return `
+        <div class="past-admin-card ${endClass}" id="admin-card-${admin.id}">
+            <div class="past-admin-summary" onclick="toggleAdminCard('${admin.id}')">
+                <div class="past-admin-summary-left">
+                    <div class="past-admin-name">
+                        ${admin.admin_name || 'Unknown Administration'}
+                        ${reasonBadge}
+                        <span class="past-admin-date">${dateRange}</span>
+                    </div>
+                    <div class="past-admin-meta">
+                        PM: <span class="pm-name">${admin.prime_minister || 'TBD'}</span> &middot; ${admin.pm_party_name || ''}
+                        ${partyList ? ` &middot; ${partyList}` : ''}
+                        ${seatCount ? ` &middot; ${seatCount}/${GAME_CONFIG.TOTAL_SEATS} seats` : ''}
+                    </div>
+                </div>
+                <div class="past-admin-approval">
+                    <div class="past-admin-approval-label">Approval</div>
+                    <div class="past-admin-approval-value">${approvalHTML || '—'}</div>
+                </div>
+                <span class="past-admin-chevron">&#9660;</span>
+            </div>
+            <div class="past-admin-detail">
+                ${detailHTML}
+            </div>
+        </div>`;
 }
 
 </script>

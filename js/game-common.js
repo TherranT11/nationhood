@@ -1365,6 +1365,245 @@ async function failBill(supabase, bill) {
 }
 
 
+// ==================== ADMINISTRATION LIFECYCLE ====================
+
+/**
+ * All 70 stat keys to snapshot from the nations table.
+ */
+const ADMINISTRATION_STAT_KEYS = [
+    'gdp', 'gdp_growth', 'debt', 'debt_growth', 'budget', 'inflation', 'interest_rates',
+    'trade_balance', 'currency_strength', 'foreign_investment', 'credit',
+    'income_tax', 'corporate_tax', 'sales_tax', 'tariffs',
+    'unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength',
+    'poverty_rate', 'income_inequality',
+    'population_growth', 'birth_rate', 'death_rate', 'median_age', 'eligible_voters', 'ethnic_diversity',
+    'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use',
+    'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
+    'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage',
+    'arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices',
+    'pollution', 'carbon_emissions',
+    'standard_of_living', 'happiness', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate',
+    'stability', 'legitimacy', 'efficiency', 'corruption', 'press_freedom', 'judicial_independence',
+    'freedom_index', 'polarization',
+    'civil_unrest', 'terrorism', 'political_violence',
+    'immigration', 'illegal_immigration', 'emigration',
+    'international_reputation', 'trade_agreements', 'sanctions'
+];
+
+/**
+ * Stats where HIGHER values are better (increase = achievement).
+ */
+const STATS_HIGHER_IS_BETTER = [
+    'gdp', 'gdp_growth', 'budget', 'currency_strength', 'foreign_investment', 'credit',
+    'labor_force_participation', 'minimum_wage', 'union_strength',
+    'population_growth', 'eligible_voters', 'ethnic_diversity',
+    'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan',
+    'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
+    'digital_infrastructure', 'rail_network', 'energy_generation', 'renewable_energy_percentage',
+    'arable_land', 'rare_minerals',
+    'standard_of_living', 'happiness', 'social_mobility', 'benefits',
+    'stability', 'legitimacy', 'efficiency', 'press_freedom', 'judicial_independence', 'freedom_index',
+    'immigration', 'international_reputation', 'trade_agreements'
+];
+
+/**
+ * Stats where LOWER values are better (decrease = achievement).
+ */
+const STATS_LOWER_IS_BETTER = [
+    'debt', 'debt_growth', 'inflation', 'interest_rates',
+    'unemployment', 'poverty_rate', 'income_inequality', 'death_rate',
+    'drug_use', 'fuel_prices', 'pollution', 'carbon_emissions',
+    'crime_rate', 'incarceration_rate', 'corruption', 'polarization',
+    'civil_unrest', 'terrorism', 'political_violence',
+    'illegal_immigration', 'emigration', 'sanctions'
+];
+
+/**
+ * Snapshot all nation stats into a flat JSONB object.
+ */
+function snapshotNationStats(nation) {
+    const snapshot = {};
+    for (const key of ADMINISTRATION_STAT_KEYS) {
+        if (nation[key] !== undefined && nation[key] !== null) {
+            snapshot[key] = nation[key];
+        }
+    }
+    return snapshot;
+}
+
+/**
+ * Close the current administration for a nation.
+ * Snapshots end stats, queries bills/crises during the admin's tenure, sets end fields.
+ *
+ * @param {object} supabase - Supabase client
+ * @param {string} nationId - Nation UUID
+ * @param {object} nation - Full nation row (for stat snapshot)
+ * @param {string} endReason - Why the admin ended: 'election_loss', 'new_coalition', 'coalition_collapse', 'coup'
+ * @param {number} currentTick - Current shard tick
+ * @param {string} currentDate - Current game date string (e.g., "March, 2001")
+ * @param {number|null} governmentApproval - Current government approval percentage
+ */
+async function closeAdministration(supabase, nationId, nation, endReason, currentTick, currentDate, governmentApproval) {
+    try {
+        // Find current (open) administration
+        const { data: currentAdmin } = await supabase
+            .from('administrations')
+            .select('*')
+            .eq('nation_id', nationId)
+            .is('ended_at_tick', null)
+            .maybeSingle();
+
+        if (!currentAdmin) {
+            console.warn('closeAdministration: No open administration found for nation', nationId);
+            return;
+        }
+
+        const statsAtEnd = snapshotNationStats(nation);
+
+        // Query bills passed during this administration
+        const { data: passedBills } = await supabase
+            .from('bills')
+            .select('id, bill_name, passed_tick')
+            .eq('nation_id', nationId)
+            .eq('status', 'passed')
+            .gte('passed_tick', currentAdmin.started_at_tick)
+            .lte('passed_tick', currentTick);
+
+        const billsPassed = (passedBills || []).map(b => ({
+            bill_id: b.id,
+            bill_name: b.bill_name,
+            passed_tick: b.passed_tick
+        }));
+
+        // Query crises (events with category 'crisis' or matching crisis event names)
+        const { data: eventsDuring } = await supabase
+            .from('event_log')
+            .select('event_id, event_name, category, fired_at_tick')
+            .eq('nation_id', nationId)
+            .gte('fired_at_tick', currentAdmin.started_at_tick)
+            .lte('fired_at_tick', currentTick);
+
+        const crisisEvents = (eventsDuring || []).filter(e =>
+            e.category === 'crisis' || e.category === 'disaster' || e.category === 'conflict'
+        );
+
+        const crisesStarted = crisisEvents.map(e => ({
+            event_id: e.event_id,
+            title: e.event_name,
+            started_tick: e.fired_at_tick
+        }));
+
+        // Count elections survived (elections that occurred during this admin where the coalition continued)
+        const { data: electionsDuring } = await supabase
+            .from('elections')
+            .select('id, election_tick')
+            .eq('nation_id', nationId)
+            .eq('status', 'completed')
+            .gte('election_tick', currentAdmin.started_at_tick)
+            .lt('election_tick', currentTick);
+
+        // Update the administration record
+        await supabase
+            .from('administrations')
+            .update({
+                stats_at_end: statsAtEnd,
+                approval_at_end: governmentApproval,
+                ended_at_tick: currentTick,
+                ended_at_date: currentDate,
+                end_reason: endReason,
+                bills_passed: billsPassed,
+                laws_repealed: [],
+                crises_started: crisesStarted,
+                crises_solved: [],
+                elections_survived: (electionsDuring || []).length,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', currentAdmin.id);
+
+        console.log(`Administration closed: "${currentAdmin.admin_name}" — reason: ${endReason}`);
+    } catch (err) {
+        console.error('closeAdministration error:', err);
+    }
+}
+
+/**
+ * Create a new administration record when a coalition forms.
+ *
+ * @param {object} supabase - Supabase client
+ * @param {string} nationId - Nation UUID
+ * @param {object} nation - Full nation row (for stat snapshot + HOS)
+ * @param {object} coalition - Active coalition object (party_ids, lead_party_id)
+ * @param {Array} allParties - Array of faction objects with id, faction_name, seats
+ * @param {number} currentTick - Current shard tick
+ * @param {string} currentDate - Current game date string
+ * @param {number|null} governmentApproval - Current government approval percentage
+ */
+async function createAdministration(supabase, nationId, nation, coalition, allParties, currentTick, currentDate, governmentApproval) {
+    try {
+        const statsAtStart = snapshotNationStats(nation);
+
+        // Build coalition party info
+        const coalitionPartyIds = coalition?.party_ids || [];
+        const coalitionParties = coalitionPartyIds.map(pid => {
+            const party = allParties.find(p => p.id === pid);
+            return {
+                party_id: pid,
+                party_name: party?.faction_name || 'Unknown',
+                seats: party?.seats || 0
+            };
+        });
+        const totalSeats = coalitionParties.reduce((sum, p) => sum + p.seats, 0);
+
+        // Get PM party info
+        const leadPartyId = coalition?.lead_party_id;
+        const leadParty = allParties.find(p => p.id === leadPartyId);
+        const pmPartyName = leadParty?.faction_name || 'Unknown';
+
+        // Get active PM name
+        const { data: activeHOG } = await supabase
+            .from('head_of_government')
+            .select('first_name, last_name')
+            .eq('nation_id', nationId)
+            .eq('active', true)
+            .maybeSingle();
+
+        const pmName = activeHOG ? `${activeHOG.first_name} ${activeHOG.last_name}` : null;
+
+        // Head of state name
+        const hosName = (nation.head_of_state_first_name && nation.head_of_state_last_name)
+            ? `${nation.head_of_state_first_name} ${nation.head_of_state_last_name}`
+            : null;
+
+        // Generate admin name from HOS last name or PM party
+        const adminName = nation.head_of_state_last_name
+            ? `${nation.head_of_state_last_name} Administration`
+            : `${pmPartyName} Administration`;
+
+        await supabase
+            .from('administrations')
+            .insert({
+                nation_id: nationId,
+                admin_name: adminName,
+                head_of_state: hosName,
+                prime_minister: pmName,
+                pm_party_name: pmPartyName,
+                pm_party_id: leadPartyId,
+                coalition_parties: coalitionParties,
+                total_seats: totalSeats,
+                government_type: nation.government_type || 'Democracy',
+                started_at_tick: currentTick,
+                started_at_date: currentDate,
+                stats_at_start: statsAtStart,
+                approval_at_start: governmentApproval
+            });
+
+        console.log(`Administration created: "${adminName}" at tick ${currentTick}`);
+    } catch (err) {
+        console.error('createAdministration error:', err);
+    }
+}
+
+
 // ==================== COALITION DISSOLUTION ====================
 
 /**
@@ -1445,6 +1684,15 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
         // Get coalition party IDs before dissolving
         const coalition = await fetchActiveCoalition(supabase, nationId);
         const coalitionPartyIds = coalition?.party_ids || [];
+
+        // Close the current administration before dissolving
+        try {
+            const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
+            const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+            if (fullNation) {
+                await closeAdministration(supabase, nationId, fullNation, 'coalition_collapse', currentTick, shard?.current_date || '', null);
+            }
+        } catch (adminErr) { console.warn('Could not close administration on no-confidence:', adminErr); }
 
         // Dissolve coalition
         await dissolveCoalition(supabase, nationId);
