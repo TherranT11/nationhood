@@ -1304,35 +1304,56 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
     const newTotalSeats = bill.proposed_seats;
     if (!newTotalSeats || newTotalSeats < 50 || newTotalSeats > 500) return;
 
+    // Get current total seats to compute delta
+    const { data: nationData } = await supabase
+        .from('nations')
+        .select('total_seats')
+        .eq('id', bill.nation_id)
+        .single();
+    const currentTotalSeats = nationData?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+    const delta = newTotalSeats - currentTotalSeats;
+
     // 1. Update nation's total_seats
     await supabase.from('nations').update({
         total_seats: newTotalSeats
     }).eq('id', bill.nation_id);
 
-    // 2. Redistribute seats proportionally from last election
-    const { data: election } = await supabase
-        .from('elections')
-        .select('id, results')
-        .eq('nation_id', bill.nation_id)
-        .eq('status', 'completed')
-        .order('election_tick', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    if (delta > 0) {
+        // SEATS INCREASE — schedule a partial election for the new seats only
+        // Existing party seats stay unchanged; delta seats will be elected next tick
+        await supabase.from('elections').insert({
+            nation_id: bill.nation_id,
+            election_tick: currentTick + 1,
+            status: 'scheduled',
+            partial_seats: delta
+        });
+        console.log(`Foundational bill passed: ${currentTotalSeats} → ${newTotalSeats} (+${delta}). Partial election scheduled for tick ${currentTick + 1}.`);
+    } else if (delta < 0) {
+        // SEATS DECREASE — proportionally reduce all party seats immediately
+        const { data: election } = await supabase
+            .from('elections')
+            .select('id, results')
+            .eq('nation_id', bill.nation_id)
+            .eq('status', 'completed')
+            .order('election_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
-    if (election?.results?.votes) {
-        const voteTotals = {};
-        for (const v of election.results.votes) {
-            voteTotals[v.party_id] = v.votes || 0;
-        }
-        const newSeats = allocateSeatsByVotes(voteTotals, newTotalSeats);
+        if (election?.results?.votes) {
+            const voteTotals = {};
+            for (const v of election.results.votes) {
+                voteTotals[v.party_id] = v.votes || 0;
+            }
+            const newSeats = allocateSeatsByVotes(voteTotals, newTotalSeats);
 
-        // Update each faction's seats
-        for (const [partyId, seats] of Object.entries(newSeats)) {
-            await supabase.from('factions').update({ seats }).eq('id', partyId);
+            for (const [partyId, seats] of Object.entries(newSeats)) {
+                await supabase.from('factions').update({ seats }).eq('id', partyId);
+            }
         }
+        console.log(`Foundational bill passed: ${currentTotalSeats} → ${newTotalSeats} (${delta}). Seats reduced proportionally.`);
     }
 
-    // 3. Update GAME_CONFIG for current session
+    // Update GAME_CONFIG for current session
     GAME_CONFIG.TOTAL_SEATS = newTotalSeats;
     GAME_CONFIG.MAJORITY_SEATS = Math.ceil(newTotalSeats * GAME_CONFIG.MAJORITY_THRESHOLD);
 }
@@ -1677,6 +1698,101 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
 
 // ==================== TICK PROCESSOR ====================
 
+// ==================== PARTIAL ELECTION (FOUNDATIONAL BILL) ====================
+
+async function processPartialElection(supabase, nation, election, currentTick) {
+    const deltaSeats = election.partial_seats;
+    console.log(`Processing partial election for ${nation.name}: +${deltaSeats} new seats`);
+
+    // 1. Load voter blocs
+    const { data: blocs } = await supabase
+        .from('voter_blocs').select('*')
+        .eq('nation_id', nation.id).eq('is_active', true);
+
+    if (!blocs || blocs.length === 0) {
+        console.warn('No voter blocs found for partial election');
+        await supabase.from('elections').update({ status: 'completed', results: { partial: true, error: 'no_blocs' } }).eq('id', election.id);
+        return;
+    }
+
+    // 2. Scale bloc voter_counts to eligible_voters (same pattern as runElectionPreview)
+    const eligibleVoters = nation.eligible_voters || 0;
+    const totalBlocVoters = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
+    if (totalBlocVoters > 0 && eligibleVoters > 0) {
+        const scale = eligibleVoters / totalBlocVoters;
+        let scaledSum = 0;
+        for (const b of blocs) {
+            b.voter_count = Math.round((b.voter_count || 0) * scale);
+            scaledSum += b.voter_count;
+        }
+        const diff = eligibleVoters - scaledSum;
+        if (diff !== 0) {
+            const largest = blocs.reduce((a, b) => (b.voter_count > a.voter_count ? b : a), blocs[0]);
+            largest.voter_count += diff;
+        }
+    }
+
+    // 3. Load parties with ideology axes (same pattern as runElectionPreview)
+    const { data: factions } = await supabase
+        .from('factions').select('id, faction_name, approval_rating, seats')
+        .eq('nation_id', nation.id).eq('faction_type', 'party');
+
+    if (!factions || factions.length === 0) {
+        console.warn('No parties found for partial election');
+        await supabase.from('elections').update({ status: 'completed', results: { partial: true, error: 'no_parties' } }).eq('id', election.id);
+        return;
+    }
+
+    const factionIds = factions.map(f => f.id);
+    const { data: ideologies } = await supabase
+        .from('faction_ideology').select('*').in('faction_id', factionIds);
+    const ideoMap = {};
+    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
+
+    const parties = factions.map(f => ({
+        id: f.id, faction_name: f.faction_name,
+        approval_rating: f.approval_rating ?? 0,
+        axes: ideoMap[f.id] || {
+            liberty_equality: 0, tradition_progress: 0, security_freedom: 0,
+            globalism_nationalism: 0, individualism_collectivism: 0
+        }
+    }));
+
+    // 4. Run election simulation for ONLY the delta seats
+    const result = runElectionSimulation(blocs, parties, deltaSeats);
+
+    // 5. ADD delta seats to each party's existing seats
+    for (const faction of factions) {
+        const deltaForParty = result.seats[faction.id] || 0;
+        const newTotal = (faction.seats || 0) + deltaForParty;
+        await supabase.from('factions').update({ seats: newTotal }).eq('id', faction.id);
+    }
+
+    // 6. Build results and mark election as completed
+    const seatResults = factions.map(f => ({
+        party_id: f.id,
+        party_name: f.faction_name,
+        existing_seats: f.seats || 0,
+        new_seats: result.seats[f.id] || 0,
+        total_seats: (f.seats || 0) + (result.seats[f.id] || 0),
+        votes: result.votes[f.id] || 0
+    }));
+
+    await supabase.from('elections').update({
+        status: 'completed',
+        results: {
+            partial: true,
+            delta_seats: deltaSeats,
+            votes: seatResults,
+            seats: seatResults,
+            total_votes_cast: result.totalVotesCast,
+            total_abstentions: result.totalAbstentions
+        }
+    }).eq('id', election.id);
+
+    console.log(`Partial election completed: ${deltaSeats} new seats allocated across ${factions.length} parties`);
+}
+
 async function processElections(supabase, nation, currentTick) {
     if (nation.government_type === 'Autocracy') return [];
 
@@ -1691,6 +1807,13 @@ async function processElections(supabase, nation, currentTick) {
 
     for (const election of (dueElections || [])) {
         console.log(`Processing election for ${nation.name} (tick ${currentTick})`);
+
+        // Partial election — only allocate delta seats (from foundational bill)
+        if (election.partial_seats && election.partial_seats > 0) {
+            await processPartialElection(supabase, nation, election, currentTick);
+            results.push({ electionId: election.id, nation: nation.name, partial: true, deltaSeats: election.partial_seats });
+            continue;
+        }
 
         const { data, error } = await supabase.rpc('process_election', {
             election_nation_id: nation.id,
