@@ -607,8 +607,8 @@ async function renderPartiesPage(nation, faction) {
         if (!isAutocracy) {
             const { data: electionData } = await _supabase
                 .from('elections').select('*')
-                .eq('nation_id', nation.id).eq('status', 'completed')
-                .order('election_tick', { ascending: false }).limit(1).maybeSingle();
+.eq('nation_id', nation.id).eq('status', 'completed')
+.order('election_tick', { ascending: false }).order('created_at', { ascending: false }).limit(1).maybeSingle();
             election = electionData;
         }
 
