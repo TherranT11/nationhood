@@ -259,6 +259,7 @@
             <button class="tab" onclick="showTab('players')">Players</button>
             <button class="tab" onclick="showTab('voters')">Voters</button>
             <button class="tab" onclick="showTab('danger')">Danger Zone</button>
+            <button class="tab" onclick="showTab('inspector')">Inspector</button>
         </div>
 
         <!-- ==================== SHARD TAB ==================== -->
@@ -308,15 +309,6 @@
                 <h3 style="color: #4CAF50; margin-bottom: 15px;">📊 Election Results</h3>
                 <div id="election-results-content"></div>
             </div>
-        </div>
-
-        <!-- ==================== NPCS TAB ==================== -->
-        <div class="tab-content" id="tab-npcs">
-            <h2>🤖 NPC Parties</h2>
-            <p style="color: #888; font-size: 0.9rem; margin-bottom: 15px;">Generate NPCs for nations with 0-1 real players only.</p>
-            <button class="btn btn-primary btn-full" onclick="generateAllNPCs()">Generate NPCs (All Nations)</button>
-            <button class="btn btn-warning btn-full" style="margin-top: 10px;" onclick="runNPCActions()">Run NPC Actions (Manual)</button>
-            <div id="npc-status" class="status info hidden"></div>
         </div>
 
         <!-- ==================== PLAYERS TAB ==================== -->
@@ -448,6 +440,65 @@
             <button class="btn btn-danger btn-full" id="reset-btn" onclick="resetShard()">🔥 RESET ALPHA SHARD 🔥</button>
             <div id="reset-status" class="status info hidden"></div>
         </div>
+
+        <!-- ==================== INSPECTOR TAB ==================== -->
+        <div class="tab-content" id="tab-inspector">
+            <h2>🔍 Nation Inspector</h2>
+            <p style="color:#888; font-size:0.9rem; margin-bottom:20px;">
+                Browse any game page for any nation. Sets localStorage so the page loads the correct nation context.
+            </p>
+
+            <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:20px;">
+                <div class="input-group" style="flex:1; min-width:200px; margin-bottom:0;">
+                    <label>Nation</label>
+                    <select id="inspector-nation-select">
+                        <option value="">-- Choose a nation --</option>
+                    </select>
+                </div>
+                <div class="input-group" style="flex:1; min-width:200px; margin-bottom:0;">
+                    <label>Page</label>
+                    <select id="inspector-page-select">
+                        <option value="parties.html">🎭 Parties</option>
+                        <option value="elections.html">🗳️ Elections</option>
+                        <option value="government.html">🏛️ Government</option>
+                        <option value="nation.html">📊 Nation Stats</option>
+                        <option value="economy.html">💰 Economy</option>
+                        <option value="laws.html">📜 Laws</option>
+                        <option value="bill.html">📝 Bills</option>
+                        <option value="factions.html">⚔️ Factions</option>
+                        <option value="conflict.html">💥 Conflict</option>
+                        <option value="diplomacy.html">🤝 Diplomacy</option>
+                        <option value="events.html">📰 Events</option>
+                        <option value="ministry-actions.html">🏢 Ministry Actions</option>
+                        <option value="select-pm.html">👤 Select PM</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" onclick="loadInspector()" style="margin-bottom:0; height:44px;">
+                    🔍 LOAD
+                </button>
+                <button class="btn btn-secondary" onclick="openInspectorNewTab()" style="margin-bottom:0; height:44px;" title="Open in new browser tab">
+                    ↗ NEW TAB
+                </button>
+            </div>
+
+            <div id="inspector-current" class="shard-info hidden" style="margin-bottom:15px;">
+                <div class="info-row">
+                    <span class="info-label">Viewing:</span>
+                    <span class="info-value" id="inspector-current-label">—</span>
+                </div>
+            </div>
+
+            <div id="inspector-frame-container" class="hidden" style="position:relative;">
+                <div style="display:flex; gap:8px; margin-bottom:10px;">
+                    <button class="btn btn-secondary" style="padding:6px 14px; font-size:0.8rem;" onclick="reloadInspector()">🔄 Reload</button>
+                    <button class="btn btn-secondary" style="padding:6px 14px; font-size:0.8rem;" onclick="resizeInspector('600px')">S</button>
+                    <button class="btn btn-secondary" style="padding:6px 14px; font-size:0.8rem;" onclick="resizeInspector('900px')">M</button>
+                    <button class="btn btn-secondary" style="padding:6px 14px; font-size:0.8rem;" onclick="resizeInspector('1200px')">L</button>
+                </div>
+                <iframe id="inspector-frame" style="width:100%; height:900px; border:2px solid #333; border-radius:6px; background:#0a0a0a;"></iframe>
+            </div>
+        </div>
+
     </div>
 </div>
 
@@ -494,6 +545,7 @@
         await loadNations();
         await loadElectionNations();
         await loadVoterNations();
+        await loadInspectorNations();
     }
 
     // ==================== SHARD TAB ====================
@@ -1090,6 +1142,76 @@
             console.error(error);
             container.innerHTML = '<div class="no-players" style="color:#ff4444;">Error loading blocs</div>';
         }
+    }
+
+
+    // ==================== INSPECTOR TAB ====================
+
+    let inspectorNationId = null;
+    let inspectorPage = null;
+
+    async function loadInspectorNations() {
+        try {
+            const { data } = await _supabase.from('nations').select('id, name').order('name');
+            const select = document.getElementById('inspector-nation-select');
+            select.innerHTML = '<option value="">-- Choose a nation --</option>';
+            (data || []).forEach(n => {
+                select.innerHTML += `<option value="${n.id}">${n.name}</option>`;
+            });
+        } catch (error) { console.error('Inspector nations error:', error); }
+    }
+
+    function loadInspector() {
+        const nationId = document.getElementById('inspector-nation-select').value;
+        const page = document.getElementById('inspector-page-select').value;
+
+        if (!nationId) { alert('Select a nation first.'); return; }
+
+        inspectorNationId = nationId;
+        inspectorPage = page;
+
+        // Get nation name from dropdown
+        const nationSelect = document.getElementById('inspector-nation-select');
+        const nationName = nationSelect.options[nationSelect.selectedIndex].text;
+
+        // Set localStorage so the embedded page reads the correct nation
+        localStorage.setItem('nation_id', nationId);
+        localStorage.setItem('nation_name', nationName);
+
+        const frame = document.getElementById('inspector-frame');
+        frame.src = page + '?nation_id=' + nationId;
+
+        document.getElementById('inspector-current-label').textContent =
+            nationName + '  →  ' + page;
+        document.getElementById('inspector-current').classList.remove('hidden');
+        document.getElementById('inspector-frame-container').classList.remove('hidden');
+    }
+
+    function openInspectorNewTab() {
+        const nationId = document.getElementById('inspector-nation-select').value;
+        const page = document.getElementById('inspector-page-select').value;
+        if (!nationId) { alert('Select a nation first.'); return; }
+
+        // Set localStorage so the page reads it on open
+        const nationSelect = document.getElementById('inspector-nation-select');
+        const nationName = nationSelect.options[nationSelect.selectedIndex].text;
+        localStorage.setItem('nation_id', nationId);
+        localStorage.setItem('nation_name', nationName);
+
+        window.open(page, '_blank');
+    }
+
+    function reloadInspector() {
+        const frame = document.getElementById('inspector-frame');
+        if (frame.src && inspectorNationId) {
+            // Re-set localStorage in case another tab changed it
+            localStorage.setItem('nation_id', inspectorNationId);
+            frame.contentWindow.location.reload();
+        }
+    }
+
+    function resizeInspector(height) {
+        document.getElementById('inspector-frame').style.height = height;
     }
 </script>
 </body>
