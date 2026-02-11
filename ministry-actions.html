@@ -75,7 +75,7 @@
 
         /* ===== MINISTRY TABS (desktop) ===== */
         .ministry-tabs {
-            display: flex; gap: 2px; padding: 0 28px; background: #121212;
+    display: none; gap: 2px; padding: 0 28px; background: #121212;
             border-bottom: 1px solid #222; overflow-x: auto; max-width: 100%;
         }
         .ministry-tab {
@@ -97,7 +97,7 @@
 
         /* ===== MINISTRY DROPDOWN (mobile) ===== */
         .ministry-dropdown-wrap {
-            display: none;
+    display: block;
             padding: 10px 16px;
             background: #121212;
             border-bottom: 1px solid #222;
@@ -552,27 +552,24 @@ async function renderMinistryTabs() {
     }).join('');
 
     // Mobile dropdown
-    const dropdown = document.getElementById('ministry-dropdown');
-    dropdown.innerHTML = allMinistryKeys.map(key => {
-        const info = MINISTRY_INFO[key];
-        const isMine = myKeys.includes(key);
-        const isActive = key === activeMinistryKey;
-        const badge = countMap[key] ? ' (' + countMap[key] + ')' : '';
-        return '<option value="' + key + '"' +
-            (isActive ? ' selected' : '') +
-            (!isMine ? ' disabled' : '') + '>' +
-            info.icon + '  ' + info.name + badge +
-        '</option>';
-    }).join('');
-}
+    // Dropdown — show player's ministries first, then others as disabled
+const dropdown = document.getElementById('ministry-dropdown');
+const myOptions = allMinistryKeys.filter(k => myKeys.includes(k)).map(key => {
+    const info = MINISTRY_INFO[key];
+    const isActive = key === activeMinistryKey;
+    const badge = countMap[key] ? ' (' + countMap[key] + ')' : '';
+    return '<option value="' + key + '"' + (isActive ? ' selected' : '') + '>' +
+        info.icon + '  ' + info.name + badge + '</option>';
+}).join('');
 
-// Mobile dropdown change handler
-function onMobileMinistrySelect(key) {
-    if (!key) return;
-    const myKeys = myMinistries.map(m => m.ministry_key);
-    if (!myKeys.includes(key)) return;
-    selectMinistry(key);
-}
+const otherOptions = allMinistryKeys.filter(k => !myKeys.includes(k)).map(key => {
+    const info = MINISTRY_INFO[key];
+    return '<option value="' + key + '" disabled>' + info.icon + '  ' + info.name + ' (not yours)</option>';
+}).join('');
+
+dropdown.innerHTML = myOptions +
+    (otherOptions ? '<option disabled>───────────────</option>' + otherOptions : '');
+    }
 
 // ==================== SELECT MINISTRY ====================
 async function selectMinistry(key) {
