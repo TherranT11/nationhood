@@ -77,9 +77,24 @@ BEGIN
         v_tally := v_tally || jsonb_build_object(v_party.value->>'id', 0);
     END LOOP;
 
-    -- ---- Load voter blocs ----
+    -- ---- Compute voter bloc scale factor ----
+    -- Blocs are generated from population, but elections use eligible_voters
+    DECLARE
+        v_total_bloc_voters BIGINT;
+        v_eligible          BIGINT := COALESCE(v_nation.eligible_voters, 0);
+        v_bloc_scale        NUMERIC := 1;
+    BEGIN
+        IF v_eligible > 0 THEN
+            SELECT COALESCE(SUM(voter_count), 0) INTO v_total_bloc_voters
+            FROM voter_blocs WHERE nation_id = p_nation_id AND is_active = TRUE;
+            IF v_total_bloc_voters > 0 THEN
+                v_bloc_scale := v_eligible::NUMERIC / v_total_bloc_voters;
+            END IF;
+        END IF;
+
+    -- ---- Load voter blocs (scaled in-memory) ----
     FOR v_bloc IN
-        SELECT id, bloc_name, voter_count,
+        SELECT id, bloc_name, ROUND(voter_count * v_bloc_scale)::INT AS voter_count,
                ideology_1, ideology_2, ideology_3, ideology_4, ideology_5,
                is_active
         FROM voter_blocs
@@ -107,20 +122,14 @@ BEGIN
             v_tags := v_tags || UPPER(v_bloc.ideology_5);
         END IF;
 
-        -- Run cascade + distribute
-        SELECT step, abstentions
-        INTO v_step, v_abstentions
-        FROM _election_process_bloc(v_parties, v_tags, v_bloc.voter_count, v_tally)
-        AS (step INT, abstentions BIGINT, updated_tally JSONB);
-
-        -- We need to update v_tally from the function output
-        -- (handled via the helper function that mutates the tally JSONB)
-        SELECT updated_tally
-        INTO v_tally
-        FROM _election_process_bloc(v_parties, v_tags, v_bloc.voter_count, v_tally);
+        -- Run cascade + distribute (single call)
+        SELECT r.step, r.abstentions, r.updated_tally
+        INTO v_step, v_abstentions, v_tally
+        FROM _election_process_bloc(v_parties, v_tags, v_bloc.voter_count, v_tally) r;
 
         v_total_abstentions := v_total_abstentions + COALESCE(v_abstentions, 0);
     END LOOP;
+    END; -- close DECLARE block for v_bloc_scale
 
     -- ---- Calculate total votes ----
     v_total_votes := 0;

@@ -735,38 +735,56 @@
                 </div>
             `).join('');
 
-            // Bloc breakdown (collapsible)
+            // Bloc breakdown (collapsible) with per-party vote detail
             const blocDetails = result.bloc_details || [];
+            const pNames = result.partyNames || {};
             const stepLabels = { 0: 'Unaligned', 1: 'Full Match', 2: 'Partial Match', 3: 'No Opposition', 4: 'Forced/Abstain' };
             const stepCounts = {};
             for (const d of blocDetails) {
                 stepCounts[d.step] = (stepCounts[d.step] || 0) + 1;
             }
+
+            function renderBlocVotes(blocVotes, voterCount) {
+                if (!blocVotes || Object.keys(blocVotes).length === 0) return '';
+                const entries = Object.entries(blocVotes)
+                    .map(([pid, votes]) => ({ name: pNames[pid] || pid.slice(0,8), votes }))
+                    .sort((a, b) => b.votes - a.votes);
+                const maxVotes = entries[0].votes;
+                return entries.map(e => {
+                    const pct = voterCount > 0 ? ((e.votes / voterCount) * 100).toFixed(1) : '0.0';
+                    const barW = maxVotes > 0 ? (e.votes / maxVotes) * 100 : 0;
+                    const isBold = e.votes === maxVotes ? 'font-weight:bold; color:#ffcc00;' : 'color:#aaa;';
+                    return `<div style="display:flex; align-items:center; gap:6px; margin:2px 0; font-size:0.7rem;">
+                        <span style="width:120px; ${isBold} white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${e.name}</span>
+                        <div style="flex:1; height:8px; background:#222; border-radius:3px; overflow:hidden;">
+                            <div style="width:${barW}%; height:100%; background:${e.votes === maxVotes ? '#ffcc00' : '#555'}; border-radius:3px;"></div>
+                        </div>
+                        <span style="width:80px; text-align:right; ${isBold}">${e.votes.toLocaleString()} (${pct}%)</span>
+                    </div>`;
+                }).join('');
+            }
+
             previewBlocs.innerHTML = `
                 <details>
                     <summary style="cursor:pointer; color:#ff9800; font-size:0.85rem;">
                         Cascade breakdown: ${blocDetails.length} blocs processed
                         (${Object.entries(stepCounts).map(([s,c]) => `Step ${s}: ${c}`).join(', ')})
                     </summary>
-                    <div style="max-height:300px; overflow-y:auto; margin-top:8px;">
-                        <table style="width:100%; font-size:0.75rem; border-collapse:collapse;">
-                            <tr style="color:#888; border-bottom:1px solid #333;">
-                                <th style="text-align:left; padding:4px;">Bloc</th>
-                                <th style="text-align:right; padding:4px;">Voters</th>
-                                <th style="text-align:center; padding:4px;">Step</th>
-                                <th style="text-align:right; padding:4px;">Eligible</th>
-                                <th style="text-align:right; padding:4px;">Abstain</th>
-                            </tr>
-                            ${blocDetails.sort((a,b) => b.voter_count - a.voter_count).map(d => `
-                                <tr style="border-bottom:1px solid #222; color:${d.step === 4 ? '#ff6666' : '#ccc'};">
-                                    <td style="padding:4px;">${d.bloc_name}</td>
-                                    <td style="text-align:right; padding:4px;">${d.voter_count.toLocaleString()}</td>
-                                    <td style="text-align:center; padding:4px;">${stepLabels[d.step] || d.step}</td>
-                                    <td style="text-align:right; padding:4px;">${d.eligible_count}</td>
-                                    <td style="text-align:right; padding:4px;">${d.abstentions.toLocaleString()}</td>
-                                </tr>
-                            `).join('')}
-                        </table>
+                    <div style="max-height:500px; overflow-y:auto; margin-top:8px;">
+                        ${blocDetails.sort((a,b) => b.voter_count - a.voter_count).map(d => `
+                            <details style="border-bottom:1px solid #222; padding:4px 0;">
+                                <summary style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; color:${d.step === 4 ? '#ff6666' : '#ccc'};">
+                                    <span style="flex:1;">${d.bloc_name}</span>
+                                    <span style="width:80px; text-align:right;">${d.voter_count.toLocaleString()}</span>
+                                    <span style="width:90px; text-align:center; color:#888;">${stepLabels[d.step] || d.step}</span>
+                                    <span style="width:50px; text-align:right;">${d.eligible_count} elig</span>
+                                    <span style="width:70px; text-align:right; color:${d.abstentions > 0 ? '#ff6666' : '#666'};">${d.abstentions > 0 ? d.abstentions.toLocaleString() + ' abs' : '-'}</span>
+                                </summary>
+                                <div style="padding:4px 8px 8px 16px; background:#1a1a1a; border-radius:4px; margin-top:4px;">
+                                    ${renderBlocVotes(d.blocVotes, d.voter_count - d.abstentions)}
+                                </div>
+                            </details>
+                        `).join('')}
                     </div>
                 </details>
             `;
