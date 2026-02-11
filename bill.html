@@ -327,6 +327,7 @@ initPage('laws', async (state) => {
     const { nation, faction } = state;
     currentNation = nation;
     currentFaction = faction;
+    initGameConfigForNation(nation);
     isAutocracy = (nation?.government_type === 'Autocracy');
     if (!billId) {
         document.getElementById('loading-state').innerHTML = '<div style="text-align:center;color:#ff4444;"><h2>No Bill Selected</h2><p>Please select a bill from the <a href="laws.html" style="color:#ffcc00;">Laws</a> page.</p></div>';
@@ -410,6 +411,8 @@ function renderBill() {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal">⚡ No Confidence</span>';
     } else if (bill.bill_type === 'repeal') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal">⚠ Repeal</span>';
+    } else if (bill.bill_type === 'foundational') {
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#9C27B0;">🏛 Foundational</span>';
     }
     document.getElementById('bill-sponsor').textContent = 'Filed by ' + (bill.factions?.faction_name || 'Unknown');
 
@@ -438,10 +441,13 @@ function renderBill() {
     const sponsorSeats = allPartySeats[bill.proposed_by] || 0;
     const hasMajority = sponsorSeats >= GAME_CONFIG.MAJORITY_SEATS;
     const hasCosponsor = (bill.bill_support || []).some(s => s.faction_id !== bill.proposed_by && s.stance === 'accept');
-    const canSendToFloor = hasMajority || hasCosponsor;
+    const isFoundational = bill.bill_type === 'foundational';
+    const canSendToFloor = isFoundational ? hasCosponsor : (hasMajority || hasCosponsor);
 
     const disabledAttr = canSendToFloor ? '' : 'disabled';
-    const reason = canSendToFloor ? '' : '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or 51% of seats to send this to the floor.</div>';
+    const reason = canSendToFloor ? '' : isFoundational
+        ? '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ Foundational laws require at least one co-sponsor to advance.</div>'
+        : '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or 51% of seats to send this to the floor.</div>';
 
     el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">Send to Floor</button><button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>` + reason;
 }
@@ -466,6 +472,32 @@ function renderArticles() {
                     'Requires <strong style="color:#4CAF50;">simple majority</strong> (YES votes > NO votes) to pass.<br>' +
                     'If passed: coalition dissolved, PM removed, all ministries vacated.<br>' +
                     'If failed: filer loses 5 approval, PM gains 3 approval, ' + GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS + '-tick cooldown.' +
+                '</div>' +
+            '</div>';
+        document.getElementById('total-upfront').textContent = '$0M';
+        document.getElementById('total-ongoing').textContent = '$0M/mo';
+        return;
+    }
+
+    // Foundational bills show a special notice instead of articles
+    if (bill.bill_type === 'foundational') {
+        const currentSeatsDisplay = GAME_CONFIG.TOTAL_SEATS;
+        const proposedSeats = bill.proposed_seats || currentSeatsDisplay;
+        const change = proposedSeats - currentSeatsDisplay;
+        const changeText = change > 0 ? `+${change}` : `${change}`;
+        document.getElementById('bill-articles').innerHTML =
+            '<div class="article preamble" style="border-left-color:#9C27B0;">' +
+                '<div class="article-number" style="color:#9C27B0;">FOUNDATIONAL LAW</div>' +
+                '<div class="article-title">Electoral Makeup</div>' +
+                '<div class="article-description">' + (bill.preamble || 'This bill proposes to change the number of legislative seats.') + '</div>' +
+            '</div>' +
+            '<div class="repeal-notice" style="border-color:#9C27B0;">' +
+                '<div class="repeal-notice-icon">🏛</div>' +
+                '<div class="repeal-notice-text">Proposed Seat Change: ' + currentSeatsDisplay + ' &rarr; ' + proposedSeats + ' (' + changeText + ')</div>' +
+                '<div class="repeal-notice-sub" style="color:#aaa;line-height:1.6;">' +
+                    'Requires <strong style="color:#9C27B0;">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
+                    'If passed: legislature resized, seats redistributed proportionally.<br>' +
+                    'No ideology penalties apply to this bill.' +
                 '</div>' +
             '</div>';
         document.getElementById('total-upfront').textContent = '$0M';
@@ -590,8 +622,9 @@ function renderIdeologyWarning() {
     if (!container) return;
     container.innerHTML = '';
 
-    // No ideology warning for no-confidence motions
+    // No ideology warning for no-confidence motions or foundational bills
     if (currentBill.bill_type === 'no_confidence') return;
+    if (currentBill.bill_type === 'foundational') return;
 
     if (!factionIdeology || !currentBill) return;
     if (currentBill.bill_type === 'repeal') return;
@@ -754,7 +787,7 @@ function renderSidebar() {
                         ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
                     </div>`).join('')}
                 </div>` : (!isSponsor ? `<div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Amendment Requests</div></div><div class="no-amendments">No pending amendments</div>` : '')}
-            ${!isSponsor ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Amendment</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button></div>` : ''}
+            ${!isSponsor && bill.bill_type !== 'foundational' ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Amendment</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button></div>` : ''}
         </div>`;
 
     } else if (isFloor) {
@@ -785,10 +818,20 @@ function renderSidebar() {
             </div>`;
         }).join('');
 
+        const isFoundationalBill = bill.bill_type === 'foundational';
+        const isNoConfidenceBill = bill.bill_type === 'no_confidence';
+        const requiredSeats = isNoConfidenceBill
+            ? Math.floor(GAME_CONFIG.TOTAL_SEATS / 2) + 1
+            : isFoundationalBill
+                ? Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD)
+                : GAME_CONFIG.MAJORITY_SEATS;
+        const thresholdLabel = isNoConfidenceBill ? 'Simple Majority' : isFoundationalBill ? '2/3 Supermajority' : '51% Majority';
+
         html = `<div class="vote-tally"><div class="vote-tally-header"><div class="vote-tally-title">Current Tally</div></div><div class="vote-tally-content">
             <div class="vote-tally-row"><span class="vote-tally-label">For</span><span class="vote-tally-value for">${f} seats</span></div>
             <div class="vote-tally-row"><span class="vote-tally-label">Against</span><span class="vote-tally-value against">${a} seats</span></div>
             <div class="vote-tally-row"><span class="vote-tally-label">Abstain</span><span class="vote-tally-value abstain">${ab} seats</span></div>
+            <div class="vote-tally-row" style="border-top:1px solid #444;padding-top:8px;"><span class="vote-tally-label">${thresholdLabel}</span><span class="vote-tally-value" style="color:${f >= requiredSeats ? '#4CAF50' : '#9C27B0'};">${requiredSeats} needed</span></div>
         </div>
         <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Party Votes</div></div>
         <div class="party-votes-list">${partyVotesHTML}</div>

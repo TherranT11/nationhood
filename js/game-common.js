@@ -28,8 +28,22 @@ const GAME_CONFIG = {
     VETO_APPROVAL_COST: 3,
     NO_CONFIDENCE_AP_COST: 5,
     NO_CONFIDENCE_VOTING_TICKS: 2,
-    NO_CONFIDENCE_COOLDOWN_TICKS: 6
+    NO_CONFIDENCE_COOLDOWN_TICKS: 6,
+    FOUNDATIONAL_AP_COST: 3,
+    FOUNDATIONAL_VOTING_TICKS: 3,
+    SUPERMAJORITY_THRESHOLD: 2/3
 };
+
+/**
+ * Update GAME_CONFIG with nation-specific seat values.
+ * Call after loading the nation on each page.
+ */
+function initGameConfigForNation(nation) {
+    if (nation && nation.total_seats) {
+        GAME_CONFIG.TOTAL_SEATS = nation.total_seats;
+        GAME_CONFIG.MAJORITY_SEATS = Math.ceil(nation.total_seats * GAME_CONFIG.MAJORITY_THRESHOLD);
+    }
+}
 
 const FORMATION_DEADLINE_TICKS = 6; // ticks before snap election when no government
 
@@ -1053,11 +1067,15 @@ async function resolveExpiredVotes(supabase, nationId) {
         const totalVoted = votesFor + votesAgainst;
 
         // No-confidence uses simple majority (votesFor > votesAgainst)
+        // Foundational bills require 2/3 supermajority
         // Normal bills require 51% of total seats
         const isNoConfidence = bill.bill_type === 'no_confidence';
+        const isFoundational = bill.bill_type === 'foundational';
         const passed = isNoConfidence
             ? (totalVoted > 0 && votesFor > votesAgainst)
-            : (totalVoted > 0 && votesFor >= Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.MAJORITY_THRESHOLD));
+            : isFoundational
+                ? (totalVoted > 0 && votesFor >= Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD))
+                : (totalVoted > 0 && votesFor >= Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.MAJORITY_THRESHOLD));
 
         if (isNoConfidence) {
             // Handle no-confidence resolution (pass or fail)
@@ -1068,6 +1086,39 @@ async function resolveExpiredVotes(supabase, nationId) {
             }
             await resolveNoConfidence(supabase, bill, passed, votesFor, votesAgainst, currentTick);
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'no_confidence' });
+        } else if (isFoundational) {
+            // Handle foundational bill resolution (electoral makeup, etc.)
+            if (passed) {
+                await enactFoundationalBill(supabase, bill, currentTick);
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'bill_passed',
+                    p_nation_id: bill.nation_id,
+                    p_tick: currentTick,
+                    p_placeholders: {
+                        nation: nation?.name || 'Unknown',
+                        bill_name: bill.bill_name,
+                        sponsor: bill.factions?.faction_name || 'Unknown',
+                        votes_for: String(votesFor),
+                        votes_against: String(votesAgainst),
+                        article_count: '0'
+                    }
+                });
+            } else {
+                await failBill(supabase, bill);
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'bill_failed',
+                    p_nation_id: bill.nation_id,
+                    p_tick: currentTick,
+                    p_placeholders: {
+                        nation: nation?.name || 'Unknown',
+                        bill_name: bill.bill_name,
+                        sponsor: bill.factions?.faction_name || 'Unknown',
+                        votes_for: String(votesFor),
+                        votes_against: String(votesAgainst)
+                    }
+                });
+            }
+            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'foundational' });
         } else if (passed) {
             await enactBill(supabase, bill, currentTick);
             await supabase.rpc('fire_system_event', {
@@ -1239,6 +1290,51 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
         is_reversal: true,
         reversal_effects: reversalEffects
     });
+}
+
+// ==================== FOUNDATIONAL BILL ENACTMENT ====================
+
+async function enactFoundationalBill(supabase, bill, currentTick) {
+    // Mark bill as passed
+    await supabase.from('bills').update({
+        status: 'passed',
+        passed_tick: currentTick
+    }).eq('id', bill.id);
+
+    const newTotalSeats = bill.proposed_seats;
+    if (!newTotalSeats || newTotalSeats < 50 || newTotalSeats > 500) return;
+
+    // 1. Update nation's total_seats
+    await supabase.from('nations').update({
+        total_seats: newTotalSeats
+    }).eq('id', bill.nation_id);
+
+    // 2. Redistribute seats proportionally from last election
+    const { data: election } = await supabase
+        .from('elections')
+        .select('id, results')
+        .eq('nation_id', bill.nation_id)
+        .eq('status', 'completed')
+        .order('election_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (election?.results?.votes) {
+        const voteTotals = {};
+        for (const v of election.results.votes) {
+            voteTotals[v.party_id] = v.votes || 0;
+        }
+        const newSeats = allocateSeatsByVotes(voteTotals, newTotalSeats);
+
+        // Update each faction's seats
+        for (const [partyId, seats] of Object.entries(newSeats)) {
+            await supabase.from('factions').update({ seats }).eq('id', partyId);
+        }
+    }
+
+    // 3. Update GAME_CONFIG for current session
+    GAME_CONFIG.TOTAL_SEATS = newTotalSeats;
+    GAME_CONFIG.MAJORITY_SEATS = Math.ceil(newTotalSeats * GAME_CONFIG.MAJORITY_THRESHOLD);
 }
 
 async function failBill(supabase, bill) {
@@ -3177,7 +3273,7 @@ function distributeVotes(eligible, tags, blocCount, allParties, step, tally) {
  * @param {number} totalSeats  - Seats to allocate (default 120)
  * @returns {object} { partyId: seats, ... }
  */
-function allocateSeatsByVotes(voteTotals, totalSeats = 120) {
+function allocateSeatsByVotes(voteTotals, totalSeats = GAME_CONFIG.TOTAL_SEATS) {
     const totalVotes = Object.values(voteTotals).reduce((s, v) => s + v, 0);
     if (totalVotes === 0) {
         const seats = {};
@@ -3216,7 +3312,7 @@ function allocateSeatsByVotes(voteTotals, totalSeats = 120) {
  * @param {number}   [totalSeats=120]
  * @returns {{ votes: object, seats: object, totalAbstentions: number, totalVotesCast: number, details: object[] }}
  */
-function runElectionSimulation(blocs, parties, totalSeats = 120) {
+function runElectionSimulation(blocs, parties, totalSeats = GAME_CONFIG.TOTAL_SEATS) {
     const tally = {};
     for (const p of parties) tally[p.id] = 0;
 

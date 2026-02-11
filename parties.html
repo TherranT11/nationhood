@@ -285,6 +285,7 @@ initPage('parties', async (state) => {
     const { nation, faction } = state;
     currentFaction = faction;
     currentNation = nation;
+    initGameConfigForNation(nation);
 
     if (!nation) {
         document.getElementById('content-area').innerHTML = `
