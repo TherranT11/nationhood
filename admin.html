@@ -285,7 +285,7 @@
                 </div>
                 <div id="interval-status" class="status success hidden"></div>
             </div>
-            <button class="btn btn-primary" onclick="advanceTick()">⏭️ Advance Tick Manually</button>
+            <button class="btn btn-primary" onclick="advanceTickAdmin()">⏭️ Advance Tick Manually</button>
             <div id="tick-status" class="status info hidden"></div>
         </div>
 
@@ -605,23 +605,22 @@
             setTimeout(() => status.classList.add('hidden'), 3000);
         } catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; status.classList.remove('hidden'); }
     }
-    async function advanceTick() {
+    async function advanceTickAdmin() {
         const status = document.getElementById('tick-status');
-        status.className = 'status info'; status.textContent = 'Advancing tick...'; status.classList.remove('hidden');
+        status.className = 'status info'; status.textContent = 'Advancing tick (processing effects, costs, ministry actions, elections...)'; status.classList.remove('hidden');
         try {
-            const { data, error } = await _supabase.rpc('process_tick');
-            if (error) throw error;
-            status.className = 'status success'; status.textContent = `✅ Tick advanced! New tick: ${data?.new_tick || '?'}`;
+            const summary = await advanceTick(_supabase);
+            let msg = `✅ Tick ${summary.tick} complete! (${summary.nations} nations)`;
+            const parts = [];
+            if (summary.effects?.length) parts.push(`${summary.effects.reduce((s,e) => s + e.effects.length, 0)} law effects`);
+            if (summary.ministryActions?.length) parts.push(`${summary.ministryActions.reduce((s,e) => s + e.effects.length, 0)} ministry effects`);
+            if (summary.costs?.length) parts.push(`${summary.costs.length} cost deductions`);
+            if (parts.length) msg += ' — ' + parts.join(', ');
+            status.className = 'status success'; status.textContent = msg;
             await loadShardInfo(); await loadStats();
         } catch (error) {
-            try {
-                const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-                const nextTick = new Date(); nextTick.setHours(nextTick.getHours() + currentTickInterval);
-                await _supabase.from('shard').update({ current_tick: (shard.current_tick || 0) + 1, next_tick_at: nextTick.toISOString() }).eq('name', 'Alpha Shard');
-                await _supabase.from('factions').update({ action_points: 10 }).lt('action_points', 10);
-                status.className = 'status success'; status.textContent = '✅ Tick advanced (fallback method)!';
-                await loadShardInfo(); await loadStats();
-            } catch (fbErr) { status.className = 'status error'; status.textContent = '❌ Error: ' + fbErr.message; }
+            console.error('advanceTick error:', error);
+            status.className = 'status error'; status.textContent = '❌ Error: ' + error.message;
         }
     }
 
