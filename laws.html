@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Bills | Nationhood Alpha</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="css/dashboard.css">
     <style>
@@ -337,17 +339,26 @@ initPage('laws', async (state) => {
 
 async function loadLawsData() {
     try {
-        const { data: parties } = await _supabase.from('factions').select('id, faction_name, is_npc, seats').eq('nation_id', currentNation.id).eq('faction_type', 'party');
+        const nid = currentNation.id;
+
+        // Policies are static game data — cache aggressively
+        const cachedPolicies = qCache('policies_active');
+
+        const { data: parties } = await _supabase.from('factions').select('id, faction_name, is_npc, seats').eq('nation_id', nid).eq('faction_type', 'party');
         allParties = parties || [];
-        const seatData = await loadSeats(_supabase, currentNation.id, isAutocracy, allParties, currentFaction?.id);
+        const seatData = await loadSeats(_supabase, nid, isAutocracy, allParties, currentFaction?.id);
         allPartySeats = seatData.allPartySeats; currentSeats = seatData.currentSeats;
-        const [policiesRes, lawsRes, committeeRes, floorRes] = await Promise.all([
-            _supabase.from('policies').select('*').eq('is_active', true),
-            _supabase.from('active_laws').select('*, policies(*)').eq('nation_id', currentNation.id),
-            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), factions(faction_name)), bill_support(*)').eq('nation_id', currentNation.id).eq('status', 'committee'),
-            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', currentNation.id).in('status', ['floor', 'vetoed'])
-        ]);
+
+        const queries = [
+            cachedPolicies ? Promise.resolve({ data: cachedPolicies }) : _supabase.from('policies').select('*').eq('is_active', true),
+            _supabase.from('active_laws').select('*, policies(*)').eq('nation_id', nid),
+            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), factions(faction_name)), bill_support(*)').eq('nation_id', nid).eq('status', 'committee'),
+            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).in('status', ['floor', 'vetoed'])
+        ];
+        const [policiesRes, lawsRes, committeeRes, floorRes] = await Promise.all(queries);
+
         allPolicies = policiesRes.data || [];
+        if (!cachedPolicies && allPolicies.length) qCacheSet('policies_active', allPolicies, 10 * 60 * 1000);
         activeLaws = lawsRes.data || [];
         committeeBills = committeeRes.data || [];
         floorBills = floorRes.data || [];

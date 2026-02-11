@@ -7,6 +7,48 @@
  * - Population growth calculations
  */
 
+// ===== QUERY CACHE =====
+// Generic sessionStorage cache for Supabase query results.
+// Eliminates redundant fetches when navigating between pages.
+
+const _CACHE_PREFIX = 'nh_q_';
+
+function qCache(key) {
+    try {
+        const raw = sessionStorage.getItem(_CACHE_PREFIX + key);
+        if (!raw) return null;
+        const entry = JSON.parse(raw);
+        if (Date.now() > entry.ex) { sessionStorage.removeItem(_CACHE_PREFIX + key); return null; }
+        return entry.d;
+    } catch { return null; }
+}
+
+function qCacheSet(key, data, ttlMs) {
+    try {
+        sessionStorage.setItem(_CACHE_PREFIX + key, JSON.stringify({ d: data, ex: Date.now() + ttlMs }));
+    } catch { /* storage full — silently skip */ }
+}
+
+function qCacheBust(keyPrefix) {
+    try {
+        const keys = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+            const k = sessionStorage.key(i);
+            if (k && k.startsWith(_CACHE_PREFIX + keyPrefix)) keys.push(k);
+        }
+        keys.forEach(k => sessionStorage.removeItem(k));
+    } catch {}
+}
+
+/** Fetch with cache: returns cached data or runs queryFn and caches the result. */
+async function cachedQuery(cacheKey, ttlMs, queryFn) {
+    const hit = qCache(cacheKey);
+    if (hit) return hit;
+    const result = await queryFn();
+    if (result) qCacheSet(cacheKey, result, ttlMs);
+    return result;
+}
+
 // ===== STATE MANAGEMENT =====
 
 const STATE_KEY = 'nationhood_state';
@@ -320,9 +362,10 @@ function pollForNewTick() {
                     const dateEl = document.getElementById('game-date');
                     if (dateEl) dateEl.textContent = shard.current_date || '—';
 
-                    // Bust the stale sessionStorage cache so any navigation
+                    // Bust all stale caches so any navigation
                     // or refresh loads fresh data
                     sessionStorage.removeItem(STATE_KEY);
+                    qCacheBust('');  // clear all query caches on tick change
 
                     // Restart the countdown with the new target
                     startTickCountdown();
