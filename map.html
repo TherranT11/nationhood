@@ -474,10 +474,10 @@ if (!faction) {
                     .from('factions')
                     .select('id')
                     .eq('nation_id', nation.id)
-                    .eq('faction_type', 'party');
-                
+                    .eq('faction_type', 'party')
+                    .eq('is_npc', false);
+
                 const activePlayerParties = playerParties ? playerParties.length : 0;
-                const totalParties = activePlayerParties + (nation.npc_parties || 0);
                 const maxParties = nation.max_parties || 8;
                 
                 // Format numbers
@@ -524,10 +524,7 @@ if (!faction) {
                         
                         <div style="background: #1a1a1a; padding: 10px; border-radius: 4px; border-left: 3px solid #9c27b0;">
                             <div style="font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 5px;">Political Parties</div>
-                            <div style="font-size: 1.1rem; color: #fff; font-weight: bold;">${totalParties} / ${maxParties}</div>
-                            <div style="font-size: 0.7rem; color: #888; margin-top: 3px;">
-                                ${activePlayerParties} Player${activePlayerParties !== 1 ? 's' : ''} • ${nation.npc_parties || 0} NPC${(nation.npc_parties || 0) !== 1 ? 's' : ''}
-                            </div>
+                            <div style="font-size: 1.1rem; color: #fff; font-weight: bold;">${activePlayerParties} / ${maxParties}</div>
                         </div>
                     </div>
                     

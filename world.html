@@ -135,12 +135,13 @@ async function renderNationIntel(nation) {
         .eq('faction_type', 'party')
         .eq('is_npc', false);
 
-    // Fetch party details
+    // Fetch party details (player parties only)
     const { data: parties } = await _supabase
         .from('factions')
         .select('id, faction_name, abbreviation, seats, approval_rating, is_npc')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party')
+        .eq('is_npc', false)
         .order('seats', { ascending: false });
     
     const maxParties = nation.max_parties || (nation.government_type === 'Autocracy' ? 4 : 8);
