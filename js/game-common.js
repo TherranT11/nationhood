@@ -2143,6 +2143,10 @@ async function processMinistryActions(supabase, nation, currentTick) {
 
     const appliedEffects = [];
     const nationUpdates = {};
+    // Track minister approval changes keyed by ministry_key + faction_id
+    const ministerUpdates = {};
+    // Track faction approval changes keyed by faction_id
+    const factionUpdates = {};
 
     for (const action of actions) {
         const effects = action.stat_effects;
@@ -2167,30 +2171,61 @@ async function processMinistryActions(supabase, nation, currentTick) {
                 const duration = eff.duration_ticks || 4;
                 const rate = eff.rate || 1;
                 const statKey = eff.stat_key;
+                const target = eff.target || 'nation';
 
                 if (ticksSinceAction <= delay + duration) {
                     allEffectsComplete = false;
                 }
 
                 if (ticksSinceAction > delay && ticksSinceAction <= delay + duration) {
-                    const currentVal = nationUpdates[statKey] !== undefined
-                        ? nationUpdates[statKey]
-                        : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
+                    let currentVal, newVal;
 
-                    let newVal;
-                    if (eff.direction === 'up') {
-                        newVal = currentVal + rate;
+                    if (target === 'minister') {
+                        const mKey = action.ministry_key + ':' + action.faction_id;
+                        if (ministerUpdates[mKey] === undefined) {
+                            // Fetch current minister_approval from the ministries table
+                            const { data: ministry } = await supabase
+                                .from('ministries')
+                                .select('minister_approval')
+                                .eq('nation_id', nation.id)
+                                .eq('ministry_key', action.ministry_key)
+                                .eq('faction_id', action.faction_id)
+                                .single();
+                            ministerUpdates[mKey] = (ministry?.minister_approval ?? 50);
+                        }
+                        currentVal = ministerUpdates[mKey];
+                        newVal = eff.direction === 'up' ? currentVal + rate : currentVal - rate;
+                        newVal = Math.max(0, Math.min(100, newVal));
+                        ministerUpdates[mKey] = newVal;
+                    } else if (target === 'faction') {
+                        const fKey = action.faction_id;
+                        if (factionUpdates[fKey] === undefined) {
+                            const { data: faction } = await supabase
+                                .from('factions')
+                                .select('approval_rating')
+                                .eq('id', action.faction_id)
+                                .single();
+                            factionUpdates[fKey] = (faction?.approval_rating ?? 50);
+                        }
+                        currentVal = factionUpdates[fKey];
+                        newVal = eff.direction === 'up' ? currentVal + rate : currentVal - rate;
+                        newVal = Math.max(0, Math.min(100, newVal));
+                        factionUpdates[fKey] = newVal;
                     } else {
-                        newVal = currentVal - rate;
+                        // Default: nation stat
+                        currentVal = nationUpdates[statKey] !== undefined
+                            ? nationUpdates[statKey]
+                            : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
+                        newVal = eff.direction === 'up' ? currentVal + rate : currentVal - rate;
+                        newVal = Math.max(0, Math.min(100, newVal));
+                        nationUpdates[statKey] = newVal;
                     }
-
-                    newVal = Math.max(0, Math.min(100, newVal));
-                    nationUpdates[statKey] = newVal;
 
                     appliedEffects.push({
                         action: action.action_key,
                         ministry: action.ministry_key,
                         stat: statKey,
+                        target: target,
                         direction: eff.direction,
                         rate: rate,
                         tick: tick,
@@ -2210,6 +2245,23 @@ async function processMinistryActions(supabase, nation, currentTick) {
     // Bulk update nation stats
     if (Object.keys(nationUpdates).length > 0) {
         await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+    }
+
+    // Bulk update minister approval
+    for (const mKey of Object.keys(ministerUpdates)) {
+        const [ministryKey, factionId] = mKey.split(':');
+        await supabase.from('ministries')
+            .update({ minister_approval: ministerUpdates[mKey] })
+            .eq('nation_id', nation.id)
+            .eq('ministry_key', ministryKey)
+            .eq('faction_id', factionId);
+    }
+
+    // Bulk update faction approval
+    for (const fKey of Object.keys(factionUpdates)) {
+        await supabase.from('factions')
+            .update({ approval_rating: factionUpdates[fKey] })
+            .eq('id', fKey);
     }
 
     return appliedEffects;
