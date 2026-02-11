@@ -12,7 +12,17 @@
 const STATE_KEY = 'nationhood_state';
 const STATE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// Admin inspector override: if ?nation_id= is in the URL, use that nation
+function getAdminNationOverride() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('nation_id') || null;
+    } catch (e) { return null; }
+}
+
 function getCachedState() {
+    // Skip cache entirely when admin override is active — always fetch fresh
+    if (getAdminNationOverride()) return null;
     try {
         const cached = sessionStorage.getItem(STATE_KEY);
         if (!cached) return null;
@@ -24,6 +34,8 @@ function getCachedState() {
 }
 
 function setCachedState(user, faction, nation, shard) {
+    // Don't cache admin-overridden states (would pollute normal sessions)
+    if (getAdminNationOverride()) return;
     const state = { user, faction, nation, shard, timestamp: Date.now() };
     sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
 }
@@ -37,12 +49,24 @@ async function loadGameState(requireFaction = true) {
     const { data: faction, error: factionError } = await _supabase
         .from('factions').select('*').eq('id', user.id).single();
     if (factionError || !faction) { if (requireFaction) { window.location.href = 'world.html'; return null; } }
+
+    // === ADMIN NATION OVERRIDE ===
+    // If ?nation_id= is in the URL (from admin inspector), load that nation
+    // instead of the user's own nation. This lets admins view any nation's pages.
+    const overrideNationId = getAdminNationOverride();
     let nation = null;
-    if (faction && faction.nation_id) {
+
+    if (overrideNationId) {
+        console.log('Admin override: loading nation', overrideNationId);
+        const { data: nationData } = await _supabase
+            .from('nations').select('*').eq('id', overrideNationId).single();
+        nation = nationData;
+    } else if (faction && faction.nation_id) {
         const { data: nationData } = await _supabase
             .from('nations').select('*').eq('id', faction.nation_id).single();
         nation = nationData;
     }
+
     const { data: shard } = await _supabase
         .from('shard').select('*').eq('name', 'Alpha Shard').single();
     setCachedState(user, faction, nation, shard);
@@ -108,14 +132,23 @@ function renderNavTabs(activeTab) {
         { id: 'factions', label: 'Factions', href: 'factions.html' },
         { id: 'conflict', label: 'Conflict', href: 'conflict.html' }
     ];
+
+    // Preserve admin nation override in nav links so clicking tabs
+    // within the inspector stays on the overridden nation
+    const overrideNationId = getAdminNationOverride();
     
-    return tabs.map(tab => `
-        <a href="${tab.href}" 
-           class="nav-tab ${tab.id === activeTab ? 'active' : ''}"
-           data-tab="${tab.id}">
-            ${tab.label}
-        </a>
-    `).join('');
+    return tabs.map(tab => {
+        const href = overrideNationId
+            ? `${tab.href}?nation_id=${overrideNationId}`
+            : tab.href;
+        return `
+            <a href="${href}" 
+               class="nav-tab ${tab.id === activeTab ? 'active' : ''}"
+               data-tab="${tab.id}">
+                ${tab.label}
+            </a>
+        `;
+    }).join('');
 }
 
 
