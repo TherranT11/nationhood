@@ -255,7 +255,6 @@
         <div class="tabs">
             <button class="tab active" onclick="showTab('shard')">Shard</button>
             <button class="tab" onclick="showTab('elections')">Elections</button>
-            <button class="tab" onclick="showTab('npcs')">NPCs</button>
             <button class="tab" onclick="showTab('players')">Players</button>
             <button class="tab" onclick="showTab('voters')">Voters</button>
             <button class="tab" onclick="showTab('danger')">Danger Zone</button>
@@ -310,6 +309,7 @@
                 <div id="election-results-content"></div>
             </div>
         </div>
+
 
         <!-- ==================== PLAYERS TAB ==================== -->
         <div class="tab-content" id="tab-players">
@@ -445,16 +445,24 @@
         <div class="tab-content" id="tab-inspector">
             <h2>🔍 Nation Inspector</h2>
             <p style="color:#888; font-size:0.9rem; margin-bottom:20px;">
-                Browse any game page for any nation. Sets localStorage so the page loads the correct nation context.
+                Browse any game page for any nation. Optionally view as a specific faction to see their ministries, AP, etc.
             </p>
 
-            <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:20px;">
+            <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px;">
                 <div class="input-group" style="flex:1; min-width:200px; margin-bottom:0;">
                     <label>Nation</label>
-                    <select id="inspector-nation-select">
+                    <select id="inspector-nation-select" onchange="loadInspectorFactions()">
                         <option value="">-- Choose a nation --</option>
                     </select>
                 </div>
+                <div class="input-group" style="flex:1; min-width:200px; margin-bottom:0;">
+                    <label>View As (Faction)</label>
+                    <select id="inspector-faction-select">
+                        <option value="">— Default (your account) —</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:20px;">
                 <div class="input-group" style="flex:1; min-width:200px; margin-bottom:0;">
                     <label>Page</label>
                     <select id="inspector-page-select">
@@ -676,23 +684,6 @@
         btn.disabled = false; btn.textContent = '🗳️ RUN ELECTION NOW';
     }
 
-    // ==================== NPCS TAB ====================
-    async function generateAllNPCs() {
-        if (!confirm('Generate NPCs for all nations?')) return;
-        const status = document.getElementById('npc-status');
-        status.className = 'status info'; status.textContent = 'Generating...'; status.classList.remove('hidden');
-        try {
-            const { data: allNations } = await _supabase.from('nations').select('id');
-            for (const nation of allNations) { await _supabase.rpc('generate_npc_parties_for_nation', { p_nation_id: nation.id }); }
-            status.className = 'status success'; status.textContent = '✅ NPCs generated!'; await loadStats();
-        } catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
-    }
-    async function runNPCActions() {
-        const status = document.getElementById('npc-status');
-        status.className = 'status info'; status.textContent = 'Running NPC actions...'; status.classList.remove('hidden');
-        try { await _supabase.rpc('run_all_npc_party_actions'); status.className = 'status success'; status.textContent = '✅ NPC actions complete!'; }
-        catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
-    }
 
     // ==================== PLAYERS TAB ====================
     let allPlayersCache = [];
@@ -1148,6 +1139,7 @@
     // ==================== INSPECTOR TAB ====================
 
     let inspectorNationId = null;
+    let inspectorFactionId = null;
     let inspectorPage = null;
 
     async function loadInspectorNations() {
@@ -1161,28 +1153,59 @@
         } catch (error) { console.error('Inspector nations error:', error); }
     }
 
+    async function loadInspectorFactions() {
+        const nationId = document.getElementById('inspector-nation-select').value;
+        const select = document.getElementById('inspector-faction-select');
+        select.innerHTML = '<option value="">— Default (your account) —</option>';
+        if (!nationId) return;
+        try {
+            const { data } = await _supabase.from('factions')
+                .select('id, faction_name, abbreviation, seats, faction_type')
+                .eq('nation_id', nationId)
+                .eq('faction_type', 'party')
+                .order('seats', { ascending: false });
+            (data || []).forEach(f => {
+                const label = f.faction_name + ' [' + (f.abbreviation || '?') + '] — ' + (f.seats || 0) + ' seats';
+                select.innerHTML += `<option value="${f.id}">${label}</option>`;
+            });
+        } catch (error) { console.error('Inspector factions error:', error); }
+    }
+
+    function buildInspectorUrl(page) {
+        const nationId = document.getElementById('inspector-nation-select').value;
+        const factionId = document.getElementById('inspector-faction-select').value;
+        const params = [];
+        if (nationId) params.push('nation_id=' + nationId);
+        if (factionId) params.push('faction_id=' + factionId);
+        return page + (params.length ? '?' + params.join('&') : '');
+    }
+
     function loadInspector() {
         const nationId = document.getElementById('inspector-nation-select').value;
         const page = document.getElementById('inspector-page-select').value;
+        const factionId = document.getElementById('inspector-faction-select').value;
 
         if (!nationId) { alert('Select a nation first.'); return; }
 
         inspectorNationId = nationId;
+        inspectorFactionId = factionId;
         inspectorPage = page;
 
-        // Get nation name from dropdown
+        // Get names from dropdowns
         const nationSelect = document.getElementById('inspector-nation-select');
         const nationName = nationSelect.options[nationSelect.selectedIndex].text;
+        const factionSelect = document.getElementById('inspector-faction-select');
+        const factionLabel = factionId ? ' as ' + factionSelect.options[factionSelect.selectedIndex].text : '';
 
         // Set localStorage so the embedded page reads the correct nation
         localStorage.setItem('nation_id', nationId);
         localStorage.setItem('nation_name', nationName);
 
         const frame = document.getElementById('inspector-frame');
-        frame.src = page + '?nation_id=' + nationId;
+        frame.src = buildInspectorUrl(page);
 
         document.getElementById('inspector-current-label').textContent =
-            nationName + '  →  ' + page;
+            nationName + factionLabel + '  →  ' + page;
         document.getElementById('inspector-current').classList.remove('hidden');
         document.getElementById('inspector-frame-container').classList.remove('hidden');
     }
@@ -1198,7 +1221,7 @@
         localStorage.setItem('nation_id', nationId);
         localStorage.setItem('nation_name', nationName);
 
-        window.open(page, '_blank');
+        window.open(buildInspectorUrl(page), '_blank');
     }
 
     function reloadInspector() {
