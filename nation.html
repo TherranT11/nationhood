@@ -5,6 +5,8 @@
     <title>Nation | Nationhood Alpha</title>
     
     <!-- Supabase SDK -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <!-- Shared Styles -->
@@ -290,17 +292,22 @@ initPage('nation', async (state) => {
 });
 
 async function loadAllNations() {
+    const cached = qCache('all_nations');
+    if (cached) { allNations = cached; totalNations = cached.length; return; }
     const { data: nations, error } = await _supabase.from('nations').select('*');
-    if (!error && nations) { allNations = nations; totalNations = nations.length; }
+    if (!error && nations) { allNations = nations; totalNations = nations.length; qCacheSet('all_nations', nations, 2 * 60 * 1000); }
 }
 
 async function loadPreviousTickData(nationId) {
+    const cacheKey = 'prev_tick_' + nationId;
+    const cached = qCache(cacheKey);
+    if (cached) { previousTickData = cached; return; }
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     if (!shard) return;
     const previousTick = shard.current_tick - 1;
     if (previousTick < 0) return;
     const { data: history, error } = await _supabase.from('nations_history').select('*').eq('nation_id', nationId).eq('tick', previousTick).single();
-    if (!error && history) { previousTickData = history; }
+    if (!error && history) { previousTickData = history; qCacheSet(cacheKey, history, 5 * 60 * 1000); }
 }
 
 function calculateRanking(statKey, value, inverted = false) {

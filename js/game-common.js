@@ -380,6 +380,11 @@ function calculateHypocrisyPenalty(currentScore, declaredDirection) {
 // ==================== IDEOLOGY DATABASE HELPERS ====================
 
 async function loadFactionIdeology(supabase, factionId) {
+    const cacheKey = 'faction_ideo_' + factionId;
+    if (typeof qCache === 'function') {
+        const cached = qCache(cacheKey);
+        if (cached) return cached;
+    }
     const { data, error } = await supabase
         .from('faction_ideology')
         .select('*')
@@ -390,10 +395,16 @@ async function loadFactionIdeology(supabase, factionId) {
         console.error('Error loading faction ideology:', error);
         return null;
     }
+    if (data && typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 2 * 60 * 1000);
     return data;
 }
 
 async function loadNationIdeologies(supabase, nationId) {
+    const cacheKey = 'nation_ideos_' + nationId;
+    if (typeof qCache === 'function') {
+        const cached = qCache(cacheKey);
+        if (cached) return cached;
+    }
     const { data: factions } = await supabase
         .from('factions')
         .select('id')
@@ -412,7 +423,9 @@ async function loadNationIdeologies(supabase, nationId) {
         console.error('Error loading nation ideologies:', error);
         return [];
     }
-    return data || [];
+    const result = data || [];
+    if (result.length && typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 2 * 60 * 1000);
+    return result;
 }
 
 async function loadPreviousIdeologySnapshot(supabase, factionId, tick) {
@@ -451,14 +464,24 @@ async function loadSeats(supabase, nationId, isAutocracy, allParties, currentFac
             allPartySeats[p.id] = p.seats || 0;
         });
     } else {
-        const { data: election } = await supabase
-            .from('elections')
-            .select('results')
-            .eq('nation_id', nationId)
-            .eq('status', 'completed')
-            .order('election_tick', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+        const cacheKey = 'seats_' + nationId;
+        let election = null;
+        if (typeof qCache === 'function') {
+            const cached = qCache(cacheKey);
+            if (cached) { election = cached; }
+        }
+        if (!election) {
+            const res = await supabase
+                .from('elections')
+                .select('results')
+                .eq('nation_id', nationId)
+                .eq('status', 'completed')
+                .order('election_tick', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            election = res.data;
+            if (election && typeof qCacheSet === 'function') qCacheSet(cacheKey, election, 2 * 60 * 1000);
+        }
 
         if (election?.results?.votes) {
             election.results.votes.forEach(s => {
@@ -522,6 +545,12 @@ async function detectHeadFaction(supabase, nationId, allParties, allPartySeats, 
 // ==================== COALITION FETCHING ====================
 
 async function fetchActiveCoalition(supabase, nationId) {
+    const cacheKey = 'coalition_' + nationId;
+    if (typeof qCache === 'function') {
+        const cached = qCache(cacheKey);
+        if (cached) return cached;
+    }
+
     const { data: newGov } = await supabase
         .from('government_formations')
         .select('*')
@@ -533,7 +562,7 @@ async function fetchActiveCoalition(supabase, nationId) {
 
     if (newGov) {
         const pmPartyId = newGov.ministry_assignments?.prime_minister || newGov.proposed_by;
-        return {
+        const result = {
             id: newGov.id,
             nation_id: newGov.nation_id,
             election_id: newGov.election_id,
@@ -543,6 +572,8 @@ async function fetchActiveCoalition(supabase, nationId) {
             formed_at: newGov.formed_at,
             _source: 'government_formations'
         };
+        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 2 * 60 * 1000);
+        return result;
     }
 
     const { data } = await supabase
@@ -553,6 +584,7 @@ async function fetchActiveCoalition(supabase, nationId) {
         .limit(1)
         .maybeSingle();
 
+    if (data && typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 2 * 60 * 1000);
     return data;
 }
 
