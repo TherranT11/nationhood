@@ -1379,6 +1379,21 @@ async function processElections(supabase, nation, currentTick) {
             continue;
         }
 
+        // Sync seats back to factions table
+        const { data: completedElection } = await supabase
+            .from('elections').select('results')
+            .eq('id', election.id).single();
+
+        if (completedElection?.results?.seats) {
+            for (const r of completedElection.results.seats) {
+                await supabase
+                    .from('factions')
+                    .update({ seats: r.seats })
+                    .eq('id', r.party_id);
+            }
+            console.log(`Seats synced to factions for ${nation.name}`);
+        }
+
         results.push({
             electionId: election.id,
             nation: nation.name,
