@@ -373,6 +373,9 @@
 
 <div id="top-bar"></div>
 
+<!-- PM Selection Banner (shown when pending) -->
+<div id="pm-selection-banner" style="display:none;"></div>
+
 <!-- Ministry Header (filled by JS) -->
 <div class="ministry-header" id="ministry-header">
     <div class="ministry-header-inner">
@@ -606,6 +609,28 @@ initPage('ministry-actions', async (state) => {
             actionCooldowns[c.ministry_key + ':' + c.action_key] = c.cooldown_until_tick;
         });
     } catch (e) { console.warn('Could not load cooldowns:', e); }
+
+    // Check for pending PM selection and show banner
+    try {
+        const { count } = await _supabase
+            .from('pm_candidates')
+            .select('*', { count: 'exact', head: true })
+            .eq('nation_id', nation.id)
+            .eq('faction_id', faction.id)
+            .eq('selected', false);
+        if ((count || 0) > 0) {
+            document.getElementById('pm-selection-banner').style.display = 'block';
+            document.getElementById('pm-selection-banner').innerHTML = `
+                <div style="max-width:1400px;margin:0 auto;padding:16px 20px;">
+                    <div style="background:linear-gradient(135deg,#2a2200,#1a1a00);border:2px solid var(--accent);border-radius:12px;padding:20px;text-align:center;cursor:pointer;" onclick="window.location.href='select-pm.html'">
+                        <div style="font-size:1.8rem;margin-bottom:8px;">👑</div>
+                        <div style="font-size:1.1rem;color:var(--accent);font-weight:bold;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Select Your Prime Minister</div>
+                        <div style="font-size:0.85rem;color:var(--text-secondary);">Your coalition has formed. Choose who will lead the nation.</div>
+                        <div style="margin-top:12px;display:inline-block;padding:8px 24px;background:var(--accent);color:#121212;border-radius:6px;font-weight:bold;font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;">Choose Now →</div>
+                    </div>
+                </div>`;
+        }
+    } catch (e) { console.warn('Could not check PM candidates:', e); }
 
     // Backfill welcome events for any ministries that don't have one yet
     for (const m of myMinistries) {

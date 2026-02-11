@@ -316,8 +316,28 @@ async function renderDemocracyPage() {
 
     const showFormation = currentElectionId && !govFormed;
 
+    // Check if current player has pending PM selection
+    let hasPendingPM = false;
+    if (currentFaction) {
+        const { count } = await _supabase
+            .from('pm_candidates')
+            .select('*', { count: 'exact', head: true })
+            .eq('nation_id', currentNation.id)
+            .eq('faction_id', currentFaction.id)
+            .eq('selected', false);
+        hasPendingPM = (count || 0) > 0;
+    }
+
     const html = `
         <div class="panel-padding">
+            ${hasPendingPM ? `
+    <div style="background:linear-gradient(135deg,#2a2200,#1a1a00);border:2px solid var(--accent);border-radius:12px;padding:20px;margin-bottom:24px;text-align:center;cursor:pointer;" onclick="window.location.href='select-pm.html'">
+        <div style="font-size:1.8rem;margin-bottom:8px;">👑</div>
+        <div style="font-size:1.1rem;color:var(--accent);font-weight:bold;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Select Your Prime Minister</div>
+        <div style="font-size:0.85rem;color:var(--text-secondary);">Your coalition has formed. Choose who will lead the nation.</div>
+        <div style="margin-top:12px;display:inline-block;padding:8px 24px;background:var(--accent);color:#121212;border-radius:6px;font-weight:bold;font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;">Choose Now →</div>
+    </div>
+` : ''}
             <!-- Election Results -->
             <div id="election-results-section" style="display: ${election ? 'block' : 'none'};">
                 <div class="section-header">Election Results — <span id="election-year"></span></div>
@@ -1054,6 +1074,22 @@ async function formGovernment() {
                     pmPartyId,
                     shard?.current_tick || 0
                 );
+
+                // Create ministry inbox event so PM party is notified
+                try {
+                    await _supabase.from('ministry_events').insert({
+                        nation_id: currentNation.id,
+                        ministry_key: 'prime_minister',
+                        controlling_faction_id: pmPartyId,
+                        title: '👑 Select Your Prime Minister',
+                        sender: 'Coalition Government',
+                        body: 'Your party has been awarded the Prime Minister post. You must now choose who will lead the nation. Visit the PM selection page to review candidates and make your appointment.',
+                        status: 'active',
+                        created_at_tick: shard?.current_tick || 0
+                    });
+                } catch (inboxErr) {
+                    console.warn('Could not create PM selection inbox event:', inboxErr);
+                }
             }
 
             alert('🏛️ ' + data.message);
