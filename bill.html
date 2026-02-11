@@ -404,10 +404,12 @@ function renderBill() {
     statusEl.textContent = bill.status.toUpperCase();
     statusEl.className = `bill-status ${bill.status}`;
     document.getElementById('bill-title').textContent = bill.bill_name || 'Unnamed Bill';
-    if (bill.bill_type === 'repeal') {
+    if (bill.bill_type === 'no_confidence') {
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal">⚡ No Confidence</span>';
+    } else if (bill.bill_type === 'repeal') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal">⚠ Repeal</span>';
     }
-    document.getElementById('bill-sponsor').textContent = 'Proposed by ' + (bill.factions?.faction_name || 'Unknown');
+    document.getElementById('bill-sponsor').textContent = 'Filed by ' + (bill.factions?.faction_name || 'Unknown');
 
     if (isFloor && bill.voting_ends_tick) {
         document.getElementById('bill-voting-ends').style.display = 'block';
@@ -446,6 +448,28 @@ function renderBill() {
 
 function renderArticles() {
     const bill = currentBill;
+
+    // No-confidence motions show a special notice instead of articles
+    if (bill.bill_type === 'no_confidence') {
+        document.getElementById('bill-articles').innerHTML =
+            '<div class="article preamble" style="border-left-color:#ff4444;">' +
+                '<div class="article-number" style="color:#ff4444;">MOTION</div>' +
+                '<div class="article-title">Vote of No Confidence</div>' +
+                '<div class="article-description">' + (bill.preamble || 'This motion calls for a vote of no confidence in the current government.') + '</div>' +
+            '</div>' +
+            '<div class="repeal-notice" style="border-color:#ff4444;">' +
+                '<div class="repeal-notice-icon">⚡</div>' +
+                '<div class="repeal-notice-text">This is a motion of no confidence</div>' +
+                '<div class="repeal-notice-sub" style="color:#aaa;line-height:1.6;">' +
+                    'Requires <strong style="color:#4CAF50;">simple majority</strong> (YES votes > NO votes) to pass.<br>' +
+                    'If passed: coalition dissolved, PM removed, all ministries vacated.<br>' +
+                    'If failed: filer loses 5 approval, PM gains 3 approval, ' + GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS + '-tick cooldown.' +
+                '</div>' +
+            '</div>';
+        document.getElementById('total-upfront').textContent = '$0M';
+        document.getElementById('total-ongoing').textContent = '$0M/mo';
+        return;
+    }
 
     // Repeal bills show a repeal notice instead of articles
     if (bill.bill_type === 'repeal') {
@@ -563,6 +587,9 @@ function renderIdeologyWarning() {
     const container = document.getElementById('ideology-warning-container');
     if (!container) return;
     container.innerHTML = '';
+
+    // No ideology warning for no-confidence motions
+    if (currentBill.bill_type === 'no_confidence') return;
 
     if (!factionIdeology || !currentBill) return;
     if (currentBill.bill_type === 'repeal') return;
@@ -750,7 +777,7 @@ function renderSidebar() {
                 <div>
                     <span class="party-vote-name">${party.faction_name}</span>
                     <span class="party-vote-seats">(${seats})</span>
-                    ${isSp ? ' <span style="color:#ffcc00;font-size:0.7rem;">★ SPONSOR</span>' : ''}
+                    ${isSp ? ` <span style="color:#ffcc00;font-size:0.7rem;">★ ${currentBill.bill_type === 'no_confidence' ? 'FILER' : 'SPONSOR'}</span>` : ''}
                 </div>
                 ${vote ? `<span class="support-status ${stanceClass}">${stanceLabel}</span>` : `<span class="party-vote-no-vote">${stanceLabel}</span>`}
             </div>`;

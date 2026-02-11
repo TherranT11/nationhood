@@ -646,6 +646,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                 <div class="coalition-parties">
                     ${coalitionParties.map((p, i) => `${i > 0 ? '<span class="coalition-divider">|</span>' : ''}<div class="coalition-party-tag">${p.party_name}<span class="seats">${p.seats} Seats</span></div>`).join('')}
                 </div>
+                ${renderNoConfidenceButton(coalition)}
             </div>`;
     }
 
@@ -1121,6 +1122,201 @@ async function denyRequest(requestId) {
         await _supabase.from('ministry_requests').delete().eq('id', requestId);
         await renderGovernmentPage();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
+}
+
+// ==================== VOTE OF NO CONFIDENCE ====================
+
+function renderNoConfidenceButton(coalition) {
+    if (!currentFaction || isAutocracy) return '';
+
+    // Only opposition parties can file (not in coalition)
+    const isInCoalition = coalition.party_ids.includes(currentFaction.id);
+    if (isInCoalition) return '';
+
+    return `
+        <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
+            <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="fileNoConfidence()" id="no-confidence-btn">
+                ⚡ Vote of No Confidence <span class="ap-cost">${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP</span>
+            </button>
+            <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">Opposition only — topple the government</div>
+        </div>`;
+}
+
+async function fileNoConfidence() {
+    if (!currentFaction || !currentNation || !coalitionData) return;
+
+    const ap = currentFaction.action_points || 0;
+    if (ap < GAME_CONFIG.NO_CONFIDENCE_AP_COST) {
+        alert(`Not enough AP. You need ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP (you have ${ap}).`);
+        return;
+    }
+
+    // Check: must not be in coalition
+    if (coalitionData.party_ids.includes(currentFaction.id)) {
+        alert('Only opposition parties can file a vote of no confidence.');
+        return;
+    }
+
+    // Check: no existing pending/floor no-confidence bill for this nation
+    const { data: existingMotion } = await _supabase
+        .from('bills')
+        .select('id')
+        .eq('nation_id', currentNation.id)
+        .eq('bill_type', 'no_confidence')
+        .in('status', ['committee', 'floor'])
+        .limit(1)
+        .maybeSingle();
+
+    if (existingMotion) {
+        alert('A motion of no confidence is already pending.');
+        return;
+    }
+
+    // Check: 6-tick cooldown since last failed no-confidence
+    const { data: lastFailed } = await _supabase
+        .from('campaign_actions')
+        .select('tick_performed')
+        .eq('nation_id', currentNation.id)
+        .eq('action_type', 'no_confidence_failed')
+        .order('tick_performed', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (lastFailed) {
+        const ticksSince = currentTick - lastFailed.tick_performed;
+        if (ticksSince < GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS) {
+            const remaining = GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS - ticksSince;
+            alert(`Cooldown: ${remaining} tick${remaining !== 1 ? 's' : ''} remaining before another no-confidence vote can be filed.`);
+            return;
+        }
+    }
+
+    // Get PM's last name for the motion title
+    const { data: hog } = await _supabase
+        .from('head_of_government')
+        .select('last_name')
+        .eq('nation_id', currentNation.id)
+        .eq('active', true)
+        .maybeSingle();
+
+    const pmLastName = hog?.last_name || 'the Government';
+    const motionName = `Motion of No Confidence in the ${pmLastName} Government`;
+
+    if (!confirm(
+        `⚡ FILE VOTE OF NO CONFIDENCE?\n\n` +
+        `"${motionName}"\n\n` +
+        `Cost: ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP\n` +
+        `Voting period: ${GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS} ticks\n` +
+        `Needs simple majority (YES > NO) to pass.\n\n` +
+        `IF IT PASSES:\n` +
+        `• Coalition dissolved, PM removed, all ministries vacated\n` +
+        `• Your party: +3 Approval\n` +
+        `• Coalition parties: -5 Approval each\n\n` +
+        `IF IT FAILS:\n` +
+        `• Your party: -5 Approval\n` +
+        `• PM's party: +3 Approval\n` +
+        `• ${GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS}-tick cooldown\n\n` +
+        `Proceed?`
+    )) return;
+
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shard?.current_tick || 0;
+
+        // Create the no-confidence bill — goes directly to floor vote (no committee)
+        const { data: bill, error: billError } = await _supabase.from('bills').insert({
+            nation_id: currentNation.id,
+            proposed_by: currentFaction.id,
+            proposed_tick: tick,
+            bill_name: motionName,
+            bill_type: 'no_confidence',
+            status: 'floor',
+            voting_ends_tick: tick + GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS,
+            preamble: `This motion, filed by the ${currentFaction.faction_name}, calls for a vote of no confidence in the current government. If passed by simple majority, the coalition will be immediately dissolved.`
+        }).select().single();
+
+        if (billError) throw billError;
+
+        // Deduct AP
+        await _supabase.from('factions').update({
+            action_points: Math.max(0, ap - GAME_CONFIG.NO_CONFIDENCE_AP_COST)
+        }).eq('id', currentFaction.id);
+        currentFaction.action_points = Math.max(0, ap - GAME_CONFIG.NO_CONFIDENCE_AP_COST);
+
+        // Auto-cast the filer's own vote as YES
+        const seatData = await loadSeats(_supabase, currentNation.id, false, allParties, currentFaction.id);
+        const mySeats = seatData.allPartySeats[currentFaction.id] || 0;
+        await _supabase.from('bill_support').upsert({
+            bill_id: bill.id,
+            faction_id: currentFaction.id,
+            stance: 'yes',
+            seat_count: mySeats
+        }, { onConflict: 'bill_id,faction_id' });
+
+        // Trigger NPC floor votes for the no-confidence motion
+        await triggerNPCNoConfidenceVotes(bill.id, currentNation.id, coalitionData.party_ids);
+
+        await markFactionActive(_supabase, currentFaction.id);
+
+        alert(`⚡ "${motionName}" has been filed!\n\nVoting is now open for ${GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS} ticks. All parties will vote.`);
+        window.location.href = `bill.html?id=${bill.id}`;
+    } catch (e) {
+        console.error('No confidence error:', e);
+        alert('Error: ' + e.message);
+    }
+}
+
+/**
+ * NPC parties vote on a no-confidence motion based on:
+ * - Coalition members vote NO (defending the government)
+ * - Opposition NPCs lean YES, weighted by loyalty + approval
+ */
+async function triggerNPCNoConfidenceVotes(billId, nationId, coalitionPartyIds) {
+    const { data: npcParties } = await _supabase
+        .from('factions')
+        .select('id, faction_name, is_npc, seats, loyalty, approval_rating')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party')
+        .eq('is_npc', true);
+
+    if (!npcParties || npcParties.length === 0) return;
+
+    const seatData = await loadSeats(_supabase, nationId, false, npcParties, null);
+
+    for (const npc of npcParties) {
+        const seats = seatData.allPartySeats[npc.id] || npc.seats || 0;
+        if (seats === 0) continue;
+
+        const isCoalitionMember = coalitionPartyIds.includes(npc.id);
+        let stance;
+
+        if (isCoalitionMember) {
+            // Coalition NPCs almost always vote NO (defend government)
+            // Very low loyalty might flip them
+            const loyalty = npc.loyalty ?? 50;
+            stance = loyalty < 20 ? 'yes' : 'no';
+        } else {
+            // Opposition NPCs lean YES (topple government)
+            // Higher approval of government = more likely to abstain/vote no
+            const approval = npc.approval_rating ?? 50;
+            const loyalty = npc.loyalty ?? 50;
+            const yesChance = 0.7 - (loyalty / 200) - (approval / 400);
+            const roll = Math.random();
+            if (roll < yesChance) stance = 'yes';
+            else if (roll < yesChance + 0.15) stance = 'abstain';
+            else stance = 'no';
+        }
+
+        await _supabase.from('bill_support').upsert({
+            bill_id: billId,
+            faction_id: npc.id,
+            stance: stance,
+            seat_count: seats
+        }, { onConflict: 'bill_id,faction_id' });
+    }
+
+    // Sync vote tallies
+    await syncVoteTallies(_supabase, billId);
 }
 
 // ==================== PARLIAMENT VISUALIZATION ====================

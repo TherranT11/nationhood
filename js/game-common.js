@@ -25,7 +25,10 @@ const GAME_CONFIG = {
     MAJORITY_SEATS: 61,
     VOTING_WINDOW_TICKS: 3,
     DRAFT_BILL_AP_COST: 2,
-    VETO_APPROVAL_COST: 3
+    VETO_APPROVAL_COST: 3,
+    NO_CONFIDENCE_AP_COST: 5,
+    NO_CONFIDENCE_VOTING_TICKS: 2,
+    NO_CONFIDENCE_COOLDOWN_TICKS: 6
 };
 
 const FORMATION_DEADLINE_TICKS = 6; // ticks before snap election when no government
@@ -1021,9 +1024,24 @@ async function resolveExpiredVotes(supabase, nationId) {
         });
 
         const totalVoted = votesFor + votesAgainst;
-        const passed = totalVoted > 0 && votesFor >= Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.MAJORITY_THRESHOLD);
 
-        if (passed) {
+        // No-confidence uses simple majority (votesFor > votesAgainst)
+        // Normal bills require 51% of total seats
+        const isNoConfidence = bill.bill_type === 'no_confidence';
+        const passed = isNoConfidence
+            ? (totalVoted > 0 && votesFor > votesAgainst)
+            : (totalVoted > 0 && votesFor >= Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.MAJORITY_THRESHOLD));
+
+        if (isNoConfidence) {
+            // Handle no-confidence resolution (pass or fail)
+            if (passed) {
+                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+            } else {
+                await failBill(supabase, bill);
+            }
+            await resolveNoConfidence(supabase, bill, passed, votesFor, votesAgainst, currentTick);
+            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'no_confidence' });
+        } else if (passed) {
             await enactBill(supabase, bill, currentTick);
             await supabase.rpc('fire_system_event', {
                 p_trigger_key: 'bill_passed',
@@ -1187,6 +1205,175 @@ async function failBill(supabase, bill) {
     await supabase.from('bills').update({
         status: 'failed'
     }).eq('id', bill.id);
+}
+
+
+// ==================== COALITION DISSOLUTION ====================
+
+/**
+ * Dissolve the current coalition government.
+ * - Sets government_formations status to 'dissolved'
+ * - Deactivates PM in head_of_government
+ * - Vacates all ministries
+ * Nation enters formation period (processGovernmentVacancy handles penalties).
+ */
+async function dissolveCoalition(supabase, nationId) {
+    // Dissolve government_formations
+    await supabase
+        .from('government_formations')
+        .update({ status: 'dissolved' })
+        .eq('nation_id', nationId)
+        .eq('status', 'formed');
+
+    // Deactivate PM
+    await supabase
+        .from('head_of_government')
+        .update({ active: false })
+        .eq('nation_id', nationId)
+        .eq('active', true);
+
+    // Vacate all ministries
+    await supabase
+        .from('ministries')
+        .update({
+            minister_first_name: null,
+            minister_last_name: null,
+            minister_age: null,
+            party_id: null
+        })
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+}
+
+
+// ==================== NO-CONFIDENCE RESOLUTION ====================
+
+/**
+ * Resolve a passed or failed vote of no confidence.
+ *
+ * PASSED:
+ *   - Coalition immediately dissolved (all ministries vacated, PM removed)
+ *   - Calling party gets +3 approval
+ *   - All coalition parties get -5 approval
+ *   - Event logged
+ *
+ * FAILED:
+ *   - Calling party gets -5 approval
+ *   - PM's party gets +3 approval
+ *   - 6-tick cooldown recorded
+ *   - Event logged
+ */
+async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgainst, currentTick) {
+    const callingPartyId = bill.proposed_by;
+    const nationId = bill.nation_id;
+
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('name')
+        .eq('id', nationId)
+        .single();
+
+    // Get PM's last name for event text
+    const { data: hog } = await supabase
+        .from('head_of_government')
+        .select('last_name, faction_id')
+        .eq('nation_id', nationId)
+        .eq('active', true)
+        .maybeSingle();
+
+    const pmLastName = hog?.last_name || 'Unknown';
+    const pmFactionId = hog?.faction_id || null;
+
+    if (passed) {
+        // Get coalition party IDs before dissolving
+        const coalition = await fetchActiveCoalition(supabase, nationId);
+        const coalitionPartyIds = coalition?.party_ids || [];
+
+        // Dissolve coalition
+        await dissolveCoalition(supabase, nationId);
+
+        // Calling party gets +3 approval
+        const { data: callerFaction } = await supabase
+            .from('factions')
+            .select('approval_rating')
+            .eq('id', callingPartyId)
+            .single();
+        if (callerFaction) {
+            await supabase.from('factions')
+                .update({ approval_rating: Math.min(100, (callerFaction.approval_rating ?? 50) + 3) })
+                .eq('id', callingPartyId);
+        }
+
+        // All coalition parties get -5 approval
+        for (const partyId of coalitionPartyIds) {
+            const { data: faction } = await supabase
+                .from('factions')
+                .select('approval_rating')
+                .eq('id', partyId)
+                .single();
+            if (faction) {
+                await supabase.from('factions')
+                    .update({ approval_rating: Math.max(0, (faction.approval_rating ?? 50) - 5) })
+                    .eq('id', partyId);
+            }
+        }
+
+        // Log event
+        await supabase.from('event_log').insert({
+            nation_id: nationId,
+            event_name: 'No Confidence — Government Falls',
+            fired_at_tick: currentTick,
+            category: 'government',
+            description_chosen: `The ${pmLastName} Government has fallen. A motion of no confidence passed ${votesFor} to ${votesAgainst}.`,
+            effects_applied: { coalition_dissolved: true, caller_approval: +3, coalition_approval: -5 }
+        });
+
+    } else {
+        // FAILED: calling party gets -5 approval
+        const { data: callerFaction } = await supabase
+            .from('factions')
+            .select('approval_rating')
+            .eq('id', callingPartyId)
+            .single();
+        if (callerFaction) {
+            await supabase.from('factions')
+                .update({ approval_rating: Math.max(0, (callerFaction.approval_rating ?? 50) - 5) })
+                .eq('id', callingPartyId);
+        }
+
+        // PM's party gets +3 approval
+        if (pmFactionId) {
+            const { data: pmFaction } = await supabase
+                .from('factions')
+                .select('approval_rating')
+                .eq('id', pmFactionId)
+                .single();
+            if (pmFaction) {
+                await supabase.from('factions')
+                    .update({ approval_rating: Math.min(100, (pmFaction.approval_rating ?? 50) + 3) })
+                    .eq('id', pmFactionId);
+            }
+        }
+
+        // Record cooldown: store the tick when the no-confidence failed
+        await supabase.from('campaign_actions').insert({
+            party_id: callingPartyId,
+            nation_id: nationId,
+            action_type: 'no_confidence_failed',
+            tick_performed: currentTick,
+            result: { votes_for: votesFor, votes_against: votesAgainst, pm_last_name: pmLastName }
+        });
+
+        // Log event
+        await supabase.from('event_log').insert({
+            nation_id: nationId,
+            event_name: 'No Confidence — Motion Fails',
+            fired_at_tick: currentTick,
+            category: 'government',
+            description_chosen: `Motion of no confidence against the ${pmLastName} Government failed ${votesFor} to ${votesAgainst}.`,
+            effects_applied: { caller_approval: -5, pm_approval: +3 }
+        });
+    }
 }
 
 
