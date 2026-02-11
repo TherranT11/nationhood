@@ -117,6 +117,9 @@
         .proposal-your-status { display: inline-block; font-size: 0.72rem; padding: 3px 8px; border-radius: 3px; font-weight: bold; margin-left: 8px; }
         .proposal-your-status.supporting { background: #1a3a1a; color: #4CAF50; }
         .proposal-your-status.invited { background: #2a2a1a; color: #ff9800; }
+        .proposal-card.not-invited { cursor: default; opacity: 0.7; border-color: #222; }
+        .proposal-card.not-invited:hover { border-color: #222; }
+        .proposal-your-status.locked-out { background: #1a1a1a; color: #666; font-size: 0.72rem; }
 
         /* Create proposal */
         .create-proposal-section { background: #1a1a1a; border-radius: 8px; padding: 20px; border: 2px dashed #333; margin-bottom: 24px; }
@@ -545,9 +548,13 @@ async function loadFormationsList() {
                     let yourStatus = '';
                     if (f.iAmSupporting) yourStatus = `<span class="proposal-your-status supporting">✓ SUPPORTING</span>`;
                     else if (f.iAmInvited) yourStatus = `<span class="proposal-your-status invited">INVITED</span>`;
+                    else yourStatus = `<span class="proposal-your-status locked-out">NOT INVITED</span>`;
+
+                    const cardClass = f.iAmSupporting ? 'your-support' : (!f.iAmInvited ? 'not-invited' : '');
+                    const cardClick = f.iAmInvited || f.iAmSupporting ? `onclick="openFormation('${f.id}')"` : '';
 
                     return `
-                        <div class="proposal-card ${f.iAmSupporting ? 'your-support' : ''}" onclick="openFormation('${f.id}')">
+                        <div class="proposal-card ${cardClass}" ${cardClick}>
                             <div class="proposal-card-title">${proposerParty?.faction_name || 'Unknown'} Coalition ${yourStatus}</div>
                             <div class="proposal-card-meta">Proposed by ${proposerParty?.faction_name || 'Unknown'}</div>
                             <div class="proposal-card-stats">
@@ -656,6 +663,14 @@ async function openFormation(formationId) {
     if (error || !formation) { alert('Could not load this proposal.'); return; }
 
     activeFormationPartyIds = formation.party_ids || [];
+
+    // Block non-invited parties from opening the detail view
+    if (!activeFormationPartyIds.includes(currentFaction.id)) {
+        alert('You are not invited to this coalition.');
+        activeFormationId = null;
+        activeFormationPartyIds = [];
+        return;
+    }
 
     const { data: supports } = await _supabase
         .from('government_formation_support').select('faction_id, supports').eq('formation_id', formationId);
@@ -769,8 +784,13 @@ function renderFormationDetail(formation) {
         ? chatMessages.map(msg => renderChatMessage(msg)).join('')
         : '<div class="chat-empty">No messages yet. Start negotiating!</div>';
 
+    const isProposer = formation.proposed_by === currentFaction.id;
+
     container.innerHTML = `
-        <div class="back-link" onclick="loadFormationsList()">← Back to Proposals</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div class="back-link" onclick="loadFormationsList()" style="margin-bottom: 0;">← Back to Proposals</div>
+            ${isProposer ? `<button onclick="retractProposal('${formation.id}')" style="padding: 8px 16px; background: #2a1a1a; border: 1px solid #ff4444; color: #ff4444; border-radius: 4px; font-size: 0.8rem; font-weight: bold; cursor: pointer; transition: 0.2s;" onmouseover="this.style.background='#3a1a1a'" onmouseout="this.style.background='#2a1a1a'">Retract Proposal</button>` : ''}
+        </div>
 
         <div class="formation-header-box">
             <div class="formation-title">${proposer?.faction_name || 'Unknown'} Coalition</div>
@@ -1039,6 +1059,24 @@ async function sendChatMessage() {
     } catch (err) { alert('❌ Error sending message: ' + err.message); input.value = message; }
     input.disabled = false;
     input.focus();
+}
+
+async function retractProposal(formationId) {
+    if (!confirm('Are you sure you want to retract this coalition proposal? This will remove it for all parties.')) return;
+    try {
+        // Delete support records
+        await _supabase.from('government_formation_support').delete().eq('formation_id', formationId);
+        // Delete chat messages
+        await _supabase.from('government_formation_chat').delete().eq('formation_id', formationId);
+        // Delete the formation itself
+        const { error } = await _supabase.from('government_formations').delete().eq('id', formationId).eq('proposed_by', currentFaction.id);
+        if (error) throw error;
+
+        if (realtimeChannel) { _supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
+        activeFormationId = null;
+        activeFormationPartyIds = [];
+        await loadFormationsList();
+    } catch (err) { alert('❌ Error retracting proposal: ' + err.message); }
 }
 
 async function formGovernment() {
