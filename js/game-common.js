@@ -2904,16 +2904,25 @@ function findEligibleParties(tags, parties) {
 function distributeVotes(eligible, tags, blocCount, allParties, step, tally) {
     if (blocCount <= 0) return 0;
 
-    // ---- Step 4: 66.7% abstain, remainder goes to highest-approval party ----
+    // ---- Base abstention: realistic turnout varies by cascade step ----
+    // Step 0 (Unaligned): ~35% abstain — least motivated voters
+    // Step 1 (Full Match): ~20% abstain — most motivated, strong alignment
+    // Step 2 (Partial Match): ~28% abstain — moderate motivation
+    // Step 3 (No Opposition): ~33% abstain — lukewarm support
+    // Step 4 (Forced/Abstain): ~75% abstain — deeply disaffected
+    const abstainRates = { 0: 0.35, 1: 0.20, 2: 0.28, 3: 0.33, 4: 0.75 };
+    const abstainRate = abstainRates[step] ?? 0.30;
+    const abstentions = Math.floor(blocCount * abstainRate);
+    const voters = blocCount - abstentions;
+
+    if (voters <= 0) return blocCount;
+
+    // ---- Step 4: remainder goes to highest-approval party ----
     if (step === 4) {
-        const abstain = Math.floor(blocCount * 0.667);
-        const forced = blocCount - abstain;
-        if (forced > 0) {
-            const best = allParties.reduce((a, b) =>
-                (b.approval_rating ?? 0) > (a.approval_rating ?? 0) ? b : a, allParties[0]);
-            tally[best.id] = (tally[best.id] || 0) + forced;
-        }
-        return abstain;
+        const best = allParties.reduce((a, b) =>
+            (b.approval_rating ?? 0) > (a.approval_rating ?? 0) ? b : a, allParties[0]);
+        tally[best.id] = (tally[best.id] || 0) + voters;
+        return abstentions;
     }
 
     const upperTags = tags.map(t => t.toUpperCase());
@@ -2937,36 +2946,36 @@ function distributeVotes(eligible, tags, blocCount, allParties, step, tally) {
 
     // ---- Edge case: all weights are 0 (everyone has 0% approval) ----
     if (totalWeight === 0) {
-        const evenShare = Math.floor(blocCount / eligible.length);
+        const evenShare = Math.floor(voters / eligible.length);
         for (const party of eligible) {
             tally[party.id] = (tally[party.id] || 0) + evenShare;
         }
         // Give remainder to first party by id (deterministic)
-        const remainder = blocCount - evenShare * eligible.length;
+        const remainder = voters - evenShare * eligible.length;
         if (remainder > 0) {
             tally[eligible[0].id] = (tally[eligible[0].id] || 0) + remainder;
         }
-        return 0;
+        return abstentions;
     }
 
     // ---- Distribute proportionally with largest-remainder rounding ----
     let allocated = 0;
     const partyVotes = [];
     for (const { id, weight } of weights) {
-        const exact = (blocCount * weight) / totalWeight;
+        const exact = (voters * weight) / totalWeight;
         const floored = Math.floor(exact);
         tally[id] = (tally[id] || 0) + floored;
         allocated += floored;
         partyVotes.push({ id, fractional: exact - floored });
     }
 
-    const remainder = blocCount - allocated;
+    const remainder = voters - allocated;
     partyVotes.sort((a, b) => b.fractional - a.fractional);
     for (let i = 0; i < remainder; i++) {
         tally[partyVotes[i].id] = (tally[partyVotes[i].id] || 0) + 1;
     }
 
-    return 0;
+    return abstentions;
 }
 
 /**
