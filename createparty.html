@@ -388,11 +388,11 @@
         <div class="ideology-axis">
             <div class="axis-label">Liberty ↔ Equality</div>
             <div class="ideology-pair">
-                <div class="ideology-card ideology-liberty" data-ideology="LIBERTY" data-opposite="EQUALITY">
+                <div class="ideology-card ideology-liberty" data-ideology="Liberty" data-opposite="Equality">
                     <div class="ideology-name">Liberty</div>
                     <div class="ideology-desc">The state of being free within society from oppressive restrictions imposed by authority on one's way of life, behavior, or political views.</div>
                 </div>
-                <div class="ideology-card ideology-equality" data-ideology="EQUALITY" data-opposite="LIBERTY">
+                <div class="ideology-card ideology-equality" data-ideology="Equality" data-opposite="Liberty">
                     <div class="ideology-name">Equality</div>
                     <div class="ideology-desc">The belief that all individuals should be treated the same and have the same access to opportunities, rights, and legal protections regardless of their background.</div>
                 </div>
@@ -403,11 +403,11 @@
         <div class="ideology-axis">
             <div class="axis-label">Freedom ↔ Security</div>
             <div class="ideology-pair">
-                <div class="ideology-card ideology-freedom" data-ideology="FREEDOM" data-opposite="SECURITY">
+                <div class="ideology-card ideology-freedom" data-ideology="Freedom" data-opposite="Security">
                     <div class="ideology-name">Freedom</div>
                     <div class="ideology-desc">The power or right to act, speak, or think as one wants without hindrance or restraint, often focused on individual autonomy.</div>
                 </div>
-                <div class="ideology-card ideology-security" data-ideology="SECURITY" data-opposite="FREEDOM">
+                <div class="ideology-card ideology-security" data-ideology="Security" data-opposite="Freedom">
                     <div class="ideology-name">Security</div>
                     <div class="ideology-desc">The state of being free from danger or threat, usually involving the protection of individuals and the collective through laws, enforcement, and infrastructure.</div>
                 </div>
@@ -418,11 +418,11 @@
         <div class="ideology-axis">
             <div class="axis-label">Individualism ↔ Collectivism</div>
             <div class="ideology-pair">
-                <div class="ideology-card ideology-individualism" data-ideology="INDIVIDUALISM" data-opposite="COLLECTIVISM">
+                <div class="ideology-card ideology-individualism" data-ideology="Individualism" data-opposite="Collectivism">
                     <div class="ideology-name">Individualism</div>
                     <div class="ideology-desc">The belief that personal self-reliance and independent action are the foundations of a thriving society. Favors private enterprise, personal responsibility, and minimal collective obligation.</div>
                 </div>
-                <div class="ideology-card ideology-collectivism" data-ideology="COLLECTIVISM" data-opposite="INDIVIDUALISM">
+                <div class="ideology-card ideology-collectivism" data-ideology="Collectivism" data-opposite="Individualism">
                     <div class="ideology-name">Collectivism</div>
                     <div class="ideology-desc">The belief that communal structures and shared institutions produce better outcomes for all. Favors public services, cooperative ownership, and collective decision-making over individual action.</div>
                 </div>
@@ -433,11 +433,11 @@
         <div class="ideology-axis">
             <div class="axis-label">Tradition ↔ Progress</div>
             <div class="ideology-pair">
-                <div class="ideology-card ideology-tradition" data-ideology="TRADITION" data-opposite="PROGRESS">
+                <div class="ideology-card ideology-tradition" data-ideology="Tradition" data-opposite="Progress">
                     <div class="ideology-name">Tradition</div>
                     <div class="ideology-desc">The transmission of customs, beliefs, and social patterns from generation to generation to maintain cultural continuity and stability.</div>
                 </div>
-                <div class="ideology-card ideology-progress" data-ideology="PROGRESS" data-opposite="TRADITION">
+                <div class="ideology-card ideology-progress" data-ideology="Progress" data-opposite="Tradition">
                     <div class="ideology-name">Progress</div>
                     <div class="ideology-desc">The movement toward a refined, improved, or otherwise desired state, typically involving social reform, scientific advancement, and the challenging of old norms.</div>
                 </div>
@@ -448,11 +448,11 @@
         <div class="ideology-axis">
             <div class="axis-label">Nationalism ↔ Globalism</div>
             <div class="ideology-pair">
-                <div class="ideology-card ideology-nationalism" data-ideology="NATIONALISM" data-opposite="GLOBALISM">
+                <div class="ideology-card ideology-nationalism" data-ideology="Nationalism" data-opposite="Globalism">
                     <div class="ideology-name">Nationalism</div>
                     <div class="ideology-desc">An ideology that emphasizes loyalty and devotion to a specific nation, prioritizing its interests and culture above those of other nations or groups.</div>
                 </div>
-                <div class="ideology-card ideology-globalism" data-ideology="GLOBALISM" data-opposite="NATIONALISM">
+                <div class="ideology-card ideology-globalism" data-ideology="Globalism" data-opposite="Nationalism">
                     <div class="ideology-name">Globalism</div>
                     <div class="ideology-desc">The operation or planning of economic and foreign policy on a global basis, believing that nations should act together to solve worldwide challenges.</div>
                 </div>
@@ -529,18 +529,18 @@
     ];
 
     // Ideology → axis mapping for client-side fallback
-    const IDEOLOGY_AXIS_MAP = {
-        'LIBERTY':        { axis: 'liberty_equality',           dir: -1 },
-        'EQUALITY':       { axis: 'liberty_equality',           dir:  1 },
-        'TRADITION':      { axis: 'tradition_progress',         dir: -1 },
-        'PROGRESS':       { axis: 'tradition_progress',         dir:  1 },
-        'SECURITY':       { axis: 'security_freedom',           dir: -1 },
-        'FREEDOM':        { axis: 'security_freedom',           dir:  1 },
-        'GLOBALISM':      { axis: 'globalism_nationalism',      dir: -1 },
-        'NATIONALISM':    { axis: 'globalism_nationalism',      dir:  1 },
-        'INDIVIDUALISM':  { axis: 'individualism_collectivism', dir: -1 },
-        'COLLECTIVISM':   { axis: 'individualism_collectivism', dir:  1 }
-    };
+   const IDEOLOGY_AXIS_MAP = {
+    'Liberty':        { axis: 'liberty_equality',           dir: -1 },
+    'Equality':       { axis: 'liberty_equality',           dir:  1 },
+    'Tradition':      { axis: 'tradition_progress',         dir: -1 },
+    'Progress':       { axis: 'tradition_progress',         dir:  1 },
+    'Security':       { axis: 'security_freedom',           dir: -1 },
+    'Freedom':        { axis: 'security_freedom',           dir:  1 },
+    'Globalism':      { axis: 'globalism_nationalism',      dir: -1 },
+    'Nationalism':    { axis: 'globalism_nationalism',      dir:  1 },
+    'Individualism':  { axis: 'individualism_collectivism', dir: -1 },
+    'Collectivism':   { axis: 'individualism_collectivism', dir:  1 }
+};
     
     const urlParams = new URLSearchParams(window.location.search);
     const nationParam = urlParams.get('nation');
