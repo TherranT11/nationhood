@@ -69,6 +69,14 @@ async function loadGameState(requireFaction = true) {
 
     const { data: shard } = await _supabase
         .from('shard').select('*').eq('name', 'Alpha Shard').single();
+
+    // When admin override is active, patch faction.nation_id so pages
+    // that query using faction.nation_id get the overridden nation
+    if (overrideNationId && faction) {
+        faction.nation_id = overrideNationId;
+        if (nation) faction.nation = nation.name;
+    }
+
     setCachedState(user, faction, nation, shard);
     return { user, faction, nation, shard };
 }
