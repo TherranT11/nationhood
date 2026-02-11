@@ -1201,8 +1201,10 @@ async function fileNoConfidence() {
         .eq('active', true)
         .maybeSingle();
 
-    const pmLastName = hog?.last_name || 'the Government';
-    const motionName = `Motion of No Confidence in the ${pmLastName} Government`;
+    const pmLastName = hog?.last_name || null;
+    const motionName = pmLastName
+        ? `Motion of No Confidence in the ${pmLastName} Government`
+        : `Motion of No Confidence in the Government`;
 
     if (!confirm(
         `⚡ FILE VOTE OF NO CONFIDENCE?\n\n` +
