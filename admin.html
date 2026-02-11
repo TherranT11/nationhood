@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Nationhood | Admin Panel</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/game-common.js"></script>
     
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -302,11 +303,20 @@
                 <div class="info-row"><span class="info-label">Parties:</span><span class="info-value" id="election-info-parties">-</span></div>
                 <div class="info-row"><span class="info-label">Last Election:</span><span class="info-value" id="election-info-last">-</span></div>
             </div>
-            <button class="btn btn-success btn-full" id="run-election-btn" disabled onclick="runElection()">🗳️ RUN ELECTION NOW</button>
+            <div style="display:flex; gap:10px; margin-bottom:10px;">
+                <button class="btn btn-success" style="flex:1;" id="run-election-btn" disabled onclick="runElection()">🗳️ RUN ELECTION NOW</button>
+                <button class="btn btn-secondary" style="flex:1;" id="preview-election-btn" disabled onclick="previewElection()">🔍 PREVIEW ELECTION</button>
+            </div>
             <div id="election-status" class="status info hidden"></div>
             <div id="election-results" class="election-results hidden">
                 <h3 style="color: #4CAF50; margin-bottom: 15px;">📊 Election Results</h3>
                 <div id="election-results-content"></div>
+            </div>
+            <div id="election-preview" class="election-results hidden" style="border-color:#ff9800;">
+                <h3 style="color: #ff9800; margin-bottom: 15px;">🔍 Election Preview (Client-Side Simulation)</h3>
+                <div id="election-preview-summary" style="color:#ccc; font-size:0.85rem; margin-bottom:12px;"></div>
+                <div id="election-preview-content"></div>
+                <div id="election-preview-blocs" style="margin-top:15px;"></div>
             </div>
         </div>
 
@@ -643,7 +653,8 @@
         const nationId = document.getElementById('election-nation-select').value;
         const infoDiv = document.getElementById('election-nation-info');
         const btn = document.getElementById('run-election-btn');
-        if (!nationId) { infoDiv.classList.add('hidden'); btn.disabled = true; selectedElectionNation = null; return; }
+        const previewBtn = document.getElementById('preview-election-btn');
+        if (!nationId) { infoDiv.classList.add('hidden'); btn.disabled = true; previewBtn.disabled = true; selectedElectionNation = null; return; }
         selectedElectionNation = nations.find(n => n.id === nationId);
         const { count: partyCount } = await _supabase.from('factions').select('*', { count: 'exact', head: true }).eq('nation_id', nationId).eq('faction_type', 'party');
         const { data: lastElection } = await _supabase.from('elections').select('election_tick').eq('nation_id', nationId).eq('status', 'completed').order('election_tick', { ascending: false }).limit(1).maybeSingle();
@@ -651,7 +662,7 @@
         document.getElementById('election-info-voters').textContent = (selectedElectionNation.eligible_voters || 0).toLocaleString();
         document.getElementById('election-info-parties').textContent = partyCount || 0;
         document.getElementById('election-info-last').textContent = lastElection ? `Tick ${lastElection.election_tick}` : 'Never';
-        infoDiv.classList.remove('hidden'); btn.disabled = false;
+        infoDiv.classList.remove('hidden'); btn.disabled = false; previewBtn.disabled = false;
     }
     async function runElection() {
         if (!selectedElectionNation) return;
@@ -682,6 +693,109 @@
             status.className = 'status success'; status.textContent = `✅ Election completed for ${selectedElectionNation.name}!`;
         } catch (error) { console.error(error); status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
         btn.disabled = false; btn.textContent = '🗳️ RUN ELECTION NOW';
+    }
+
+    async function previewElection() {
+        if (!selectedElectionNation) return;
+        const status = document.getElementById('election-status');
+        const previewDiv = document.getElementById('election-preview');
+        const previewContent = document.getElementById('election-preview-content');
+        const previewSummary = document.getElementById('election-preview-summary');
+        const previewBlocs = document.getElementById('election-preview-blocs');
+        const btn = document.getElementById('preview-election-btn');
+
+        btn.disabled = true; btn.textContent = '⏳ Simulating...';
+        status.className = 'status info'; status.textContent = 'Running client-side election preview...'; status.classList.remove('hidden');
+        previewDiv.classList.add('hidden');
+
+        try {
+            const result = await runElectionPreview(_supabase, selectedElectionNation.id);
+            const totalSeats = result.total_seats;
+
+            previewSummary.innerHTML = `
+                <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:8px;">
+                    <span>Eligible voters: <strong>${result.eligible_voters.toLocaleString()}</strong></span>
+                    <span>Votes cast: <strong>${result.total_votes_cast.toLocaleString()}</strong></span>
+                    <span>Abstentions: <strong>${result.total_abstentions.toLocaleString()}</strong></span>
+                    <span>Turnout: <strong>${result.turnout_pct}%</strong></span>
+                </div>
+            `;
+
+            previewContent.innerHTML = result.results.map(r => `
+                <div class="result-party">
+                    <div>
+                        <div class="result-party-name">${r.party_name} <span style="color:#888; font-size:0.75rem;">(${r.approval}% approval)</span></div>
+                        <div class="result-bar" style="width:200px;">
+                            <div class="result-bar-fill" style="width:${(r.seats/totalSeats)*100}%"></div>
+                        </div>
+                    </div>
+                    <div class="result-party-seats">
+                        ${r.seats} seats <span style="color:#888; font-size:0.75rem;">(${r.vote_percentage}% · ${r.votes.toLocaleString()} votes)</span>
+                    </div>
+                </div>
+            `).join('');
+
+            // Bloc breakdown (collapsible)
+            const blocDetails = result.bloc_details || [];
+            const stepLabels = { 0: 'Unaligned', 1: 'Full Match', 2: 'Partial Match', 3: 'No Opposition', 4: 'Forced/Abstain' };
+            const stepCounts = {};
+            for (const d of blocDetails) {
+                stepCounts[d.step] = (stepCounts[d.step] || 0) + 1;
+            }
+            previewBlocs.innerHTML = `
+                <details>
+                    <summary style="cursor:pointer; color:#ff9800; font-size:0.85rem;">
+                        Cascade breakdown: ${blocDetails.length} blocs processed
+                        (${Object.entries(stepCounts).map(([s,c]) => `Step ${s}: ${c}`).join(', ')})
+                    </summary>
+                    <div style="max-height:300px; overflow-y:auto; margin-top:8px;">
+                        <table style="width:100%; font-size:0.75rem; border-collapse:collapse;">
+                            <tr style="color:#888; border-bottom:1px solid #333;">
+                                <th style="text-align:left; padding:4px;">Bloc</th>
+                                <th style="text-align:right; padding:4px;">Voters</th>
+                                <th style="text-align:center; padding:4px;">Step</th>
+                                <th style="text-align:right; padding:4px;">Eligible</th>
+                                <th style="text-align:right; padding:4px;">Abstain</th>
+                            </tr>
+                            ${blocDetails.sort((a,b) => b.voter_count - a.voter_count).map(d => `
+                                <tr style="border-bottom:1px solid #222; color:${d.step === 4 ? '#ff6666' : '#ccc'};">
+                                    <td style="padding:4px;">${d.bloc_name}</td>
+                                    <td style="text-align:right; padding:4px;">${d.voter_count.toLocaleString()}</td>
+                                    <td style="text-align:center; padding:4px;">${stepLabels[d.step] || d.step}</td>
+                                    <td style="text-align:right; padding:4px;">${d.eligible_count}</td>
+                                    <td style="text-align:right; padding:4px;">${d.abstentions.toLocaleString()}</td>
+                                </tr>
+                            `).join('')}
+                        </table>
+                    </div>
+                </details>
+            `;
+
+            previewDiv.classList.remove('hidden');
+            status.className = 'status success'; status.textContent = `✅ Preview complete for ${selectedElectionNation.name} (no data written)`;
+        } catch (error) {
+            console.error(error);
+            status.className = 'status error'; status.textContent = '❌ Preview error: ' + error.message;
+        }
+        btn.disabled = false; btn.textContent = '🔍 PREVIEW ELECTION';
+    }
+
+    // ==================== NPCS TAB ====================
+    async function generateAllNPCs() {
+        if (!confirm('Generate NPCs for all nations?')) return;
+        const status = document.getElementById('npc-status');
+        status.className = 'status info'; status.textContent = 'Generating...'; status.classList.remove('hidden');
+        try {
+            const { data: allNations } = await _supabase.from('nations').select('id');
+            for (const nation of allNations) { await _supabase.rpc('generate_npc_parties_for_nation', { p_nation_id: nation.id }); }
+            status.className = 'status success'; status.textContent = '✅ NPCs generated!'; await loadStats();
+        } catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
+    }
+    async function runNPCActions() {
+        const status = document.getElementById('npc-status');
+        status.className = 'status info'; status.textContent = 'Running NPC actions...'; status.classList.remove('hidden');
+        try { await _supabase.rpc('run_all_npc_party_actions'); status.className = 'status success'; status.textContent = '✅ NPC actions complete!'; }
+        catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
     }
 
 

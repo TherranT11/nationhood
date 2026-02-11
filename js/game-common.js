@@ -2827,3 +2827,321 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
     console.log('No eligible partner — coalition collapsed');
     return { result: 'coalition_collapsed', reason: 'no_eligible_partner' };
 }
+
+
+// ==================== ELECTION SIMULATION ====================
+
+/**
+ * Get a party's alignment score toward a specific ideology tag.
+ *
+ * @param {object} partyAxes  - Row from faction_ideology (keys: liberty_equality, tradition_progress, etc.)
+ * @param {string} tag        - Ideology tag (e.g. "PROGRESS", "Liberty") — case-insensitive
+ * @returns {number} Alignment value: positive = supports, negative = opposes
+ */
+function getPartyAlignment(partyAxes, tag) {
+    const info = IDEOLOGY_TO_AXIS[tag.toUpperCase()];
+    if (!info) return 0;
+    const axisValue = partyAxes[info.axisKey] ?? 0;
+    return axisValue * info.direction;
+}
+
+/**
+ * Run the 4-step voting cascade for a single voter bloc.
+ * Returns { eligible: [...partyObjects], step: 1|2|3|4 }.
+ *
+ * @param {string[]} tags              - Bloc ideology tags (e.g. ["Progress","Freedom"]), upper or mixed case
+ * @param {object[]} parties           - Array of { id, approval_rating, axes: { liberty_equality, ... } }
+ * @returns {{ eligible: object[], step: number }}
+ */
+function findEligibleParties(tags, parties) {
+    const upperTags = tags.map(t => t.toUpperCase());
+
+    // Pre-compute alignments for each party toward each tag
+    const partyAlignments = new Map();
+    for (const party of parties) {
+        partyAlignments.set(party.id, upperTags.map(t => getPartyAlignment(party.axes, t)));
+    }
+
+    // ---- Step 1: Full Ideology Match ----
+    const step1 = parties.filter(p => {
+        const aligns = partyAlignments.get(p.id);
+        const positiveCount = aligns.filter(a => a > 0).length;
+        if (upperTags.length <= 2) return positiveCount >= upperTags.length; // all must match
+        return positiveCount >= 2; // 3-tag blocs: 2-of-3
+    });
+    if (step1.length > 0) return { eligible: step1, step: 1 };
+
+    // ---- Step 2: Partial Ideology Match ----
+    const step2 = parties.filter(p => {
+        const aligns = partyAlignments.get(p.id);
+        return aligns.some(a => a > 0);
+    });
+    if (step2.length > 0) return { eligible: step2, step: 2 };
+
+    // ---- Step 3: No Active Opposition (no alignment ≤ -20) ----
+    const step3 = parties.filter(p => {
+        const aligns = partyAlignments.get(p.id);
+        return aligns.every(a => a > -20);
+    });
+    if (step3.length > 0) return { eligible: step3, step: 3 };
+
+    // ---- Step 4: All Oppose — forced choice / abstention ----
+    return { eligible: parties, step: 4 };
+}
+
+/**
+ * Distribute a voter bloc's votes among eligible parties using
+ * approval × alignment weighting with largest-remainder rounding.
+ *
+ * @param {object[]} eligible          - Parties that passed the cascade
+ * @param {string[]} tags              - Bloc ideology tags (upper-case)
+ * @param {number}   blocCount         - Voters in this bloc to distribute
+ * @param {object[]} allParties        - All parties (needed for step-4 highest approval)
+ * @param {number}   step              - Which cascade step produced these eligible parties
+ * @param {object}   tally             - Mutable { [partyId]: voteCount } accumulator
+ * @returns {number} Number of abstentions produced (only >0 for step 4)
+ */
+function distributeVotes(eligible, tags, blocCount, allParties, step, tally) {
+    if (blocCount <= 0) return 0;
+
+    // ---- Step 4: 66.7% abstain, remainder goes to highest-approval party ----
+    if (step === 4) {
+        const abstain = Math.floor(blocCount * 0.667);
+        const forced = blocCount - abstain;
+        if (forced > 0) {
+            const best = allParties.reduce((a, b) =>
+                (b.approval_rating ?? 0) > (a.approval_rating ?? 0) ? b : a, allParties[0]);
+            tally[best.id] = (tally[best.id] || 0) + forced;
+        }
+        return abstain;
+    }
+
+    const upperTags = tags.map(t => t.toUpperCase());
+
+    // ---- Calculate weights ----
+    const weights = [];
+    let totalWeight = 0;
+    for (const party of eligible) {
+        let alignmentScore;
+        if (upperTags.length === 0) {
+            // Unaligned bloc — pure approval
+            alignmentScore = 1;
+        } else {
+            const aligns = upperTags.map(t => Math.max(getPartyAlignment(party.axes, t), 1));
+            alignmentScore = aligns.reduce((s, v) => s + v, 0) / aligns.length;
+        }
+        const w = (party.approval_rating ?? 0) * alignmentScore;
+        weights.push({ id: party.id, weight: w });
+        totalWeight += w;
+    }
+
+    // ---- Edge case: all weights are 0 (everyone has 0% approval) ----
+    if (totalWeight === 0) {
+        const evenShare = Math.floor(blocCount / eligible.length);
+        for (const party of eligible) {
+            tally[party.id] = (tally[party.id] || 0) + evenShare;
+        }
+        // Give remainder to first party by id (deterministic)
+        const remainder = blocCount - evenShare * eligible.length;
+        if (remainder > 0) {
+            tally[eligible[0].id] = (tally[eligible[0].id] || 0) + remainder;
+        }
+        return 0;
+    }
+
+    // ---- Distribute proportionally with largest-remainder rounding ----
+    let allocated = 0;
+    const partyVotes = [];
+    for (const { id, weight } of weights) {
+        const exact = (blocCount * weight) / totalWeight;
+        const floored = Math.floor(exact);
+        tally[id] = (tally[id] || 0) + floored;
+        allocated += floored;
+        partyVotes.push({ id, fractional: exact - floored });
+    }
+
+    const remainder = blocCount - allocated;
+    partyVotes.sort((a, b) => b.fractional - a.fractional);
+    for (let i = 0; i < remainder; i++) {
+        tally[partyVotes[i].id] = (tally[partyVotes[i].id] || 0) + 1;
+    }
+
+    return 0;
+}
+
+/**
+ * Allocate parliamentary seats from vote totals using
+ * Largest Remainder / Hare Quota method.
+ *
+ * @param {object} voteTotals  - { partyId: totalVotes, ... }
+ * @param {number} totalSeats  - Seats to allocate (default 120)
+ * @returns {object} { partyId: seats, ... }
+ */
+function allocateSeatsByVotes(voteTotals, totalSeats = 120) {
+    const totalVotes = Object.values(voteTotals).reduce((s, v) => s + v, 0);
+    if (totalVotes === 0) {
+        const seats = {};
+        for (const id of Object.keys(voteTotals)) seats[id] = 0;
+        return seats;
+    }
+
+    const quota = totalVotes / totalSeats;
+    const seats = {};
+    const fractionals = [];
+    let allocatedSeats = 0;
+
+    for (const [id, votes] of Object.entries(voteTotals)) {
+        if (votes === 0) { seats[id] = 0; continue; }
+        const raw = votes / quota;
+        const guaranteed = Math.floor(raw);
+        seats[id] = guaranteed;
+        allocatedSeats += guaranteed;
+        fractionals.push({ id, fractional: raw - guaranteed });
+    }
+
+    const remaining = totalSeats - allocatedSeats;
+    fractionals.sort((a, b) => b.fractional - a.fractional);
+    for (let i = 0; i < remaining; i++) {
+        seats[fractionals[i].id] = (seats[fractionals[i].id] || 0) + 1;
+    }
+
+    return seats;
+}
+
+/**
+ * Run a full election simulation for a nation.
+ *
+ * @param {object[]} blocs    - Rows from voter_blocs: { id, bloc_name, voter_count, ideology_1..5, is_active }
+ * @param {object[]} parties  - Array of { id, faction_name, approval_rating, axes: { liberty_equality, ... } }
+ * @param {number}   [totalSeats=120]
+ * @returns {{ votes: object, seats: object, totalAbstentions: number, totalVotesCast: number, details: object[] }}
+ */
+function runElectionSimulation(blocs, parties, totalSeats = 120) {
+    const tally = {};
+    for (const p of parties) tally[p.id] = 0;
+
+    let totalAbstentions = 0;
+    const details = []; // per-bloc breakdown for debugging
+
+    for (const bloc of blocs) {
+        if (!bloc.is_active) continue;
+        const count = bloc.voter_count || 0;
+        if (count === 0) continue;
+
+        // Collect ideology tags from the bloc
+        const tags = [bloc.ideology_1, bloc.ideology_2, bloc.ideology_3, bloc.ideology_4, bloc.ideology_5]
+            .filter(t => t && t !== 'Unaligned');
+
+        let step, eligible, abstentions;
+
+        if (tags.length === 0) {
+            // Unaligned bloc — distribute purely by approval across all parties
+            eligible = parties;
+            step = 0;
+            abstentions = distributeVotes(eligible, [], count, parties, 0, tally);
+        } else {
+            const result = findEligibleParties(tags, parties);
+            eligible = result.eligible;
+            step = result.step;
+            abstentions = distributeVotes(eligible, tags, count, parties, step, tally);
+        }
+
+        totalAbstentions += abstentions;
+        details.push({
+            bloc_name: bloc.bloc_name,
+            voter_count: count,
+            tags,
+            step,
+            eligible_count: eligible.length,
+            abstentions
+        });
+    }
+
+    const totalVotesCast = Object.values(tally).reduce((s, v) => s + v, 0);
+    const seats = allocateSeatsByVotes(tally, totalSeats);
+
+    return { votes: tally, seats, totalAbstentions, totalVotesCast, details };
+}
+
+/**
+ * High-level helper: load all data from Supabase and run the election preview.
+ *
+ * @param {object} supabase   - Supabase client
+ * @param {string} nationId   - Nation UUID
+ * @returns {Promise<object>} Full election result with party names, votes, seats, turnout
+ */
+async function runElectionPreview(supabase, nationId) {
+    // 1. Load nation
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('id, name, total_seats, eligible_voters')
+        .eq('id', nationId)
+        .single();
+    if (!nation) throw new Error('Nation not found');
+
+    const totalSeats = nation.total_seats || 120;
+
+    // 2. Load voter blocs
+    const { data: blocs } = await supabase
+        .from('voter_blocs')
+        .select('*')
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+    if (!blocs || blocs.length === 0) throw new Error('No voter blocs found for this nation');
+
+    // 3. Load parties + their ideology axes
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, faction_name, approval_rating, seats')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+    if (!factions || factions.length === 0) throw new Error('No parties found for this nation');
+
+    const factionIds = factions.map(f => f.id);
+    const { data: ideologies } = await supabase
+        .from('faction_ideology')
+        .select('*')
+        .in('faction_id', factionIds);
+
+    const ideoMap = {};
+    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
+
+    // Build party objects with axes
+    const parties = factions.map(f => ({
+        id: f.id,
+        faction_name: f.faction_name,
+        approval_rating: f.approval_rating ?? 0,
+        axes: ideoMap[f.id] || {
+            liberty_equality: 0, tradition_progress: 0, security_freedom: 0,
+            globalism_nationalism: 0, individualism_collectivism: 0
+        }
+    }));
+
+    // 4. Run simulation
+    const result = runElectionSimulation(blocs, parties, totalSeats);
+
+    // 5. Build friendly results
+    const partyResults = parties.map(p => ({
+        party_id: p.id,
+        party_name: p.faction_name,
+        approval: p.approval_rating,
+        votes: result.votes[p.id] || 0,
+        vote_percentage: result.totalVotesCast > 0
+            ? Math.round(((result.votes[p.id] || 0) / result.totalVotesCast) * 10000) / 100
+            : 0,
+        seats: result.seats[p.id] || 0
+    })).sort((a, b) => b.seats - a.seats);
+
+    return {
+        nation: nation.name,
+        total_seats: totalSeats,
+        eligible_voters: nation.eligible_voters || 0,
+        total_votes_cast: result.totalVotesCast,
+        total_abstentions: result.totalAbstentions,
+        turnout_pct: nation.eligible_voters
+            ? Math.round((result.totalVotesCast / nation.eligible_voters) * 10000) / 100
+            : 0,
+        results: partyResults,
+        bloc_details: result.details
+    };
+}
