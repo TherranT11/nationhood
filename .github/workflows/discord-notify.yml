@@ -11,9 +11,10 @@ jobs:
       - name: Send to Discord
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          COMMITS_JSON: ${{ toJSON(github.event.commits) }}
         run: |
           # Build a clean list of commit messages (one per line, bulleted)
-          COMMITS=$(echo '${{ toJSON(github.event.commits) }}' | jq -r '.[].message' | while IFS= read -r msg; do
+          COMMITS=$(echo "$COMMITS_JSON" | jq -r '.[].message' | while IFS= read -r msg; do
             # Take only the first line of each commit message
             first_line=$(echo "$msg" | head -1)
             echo "- ${first_line}"
