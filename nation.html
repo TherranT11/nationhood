@@ -521,7 +521,7 @@ function renderStatBox(name, statKey, value, description, format, inverted) {
     }
 
     var formattedValue = (value !== null && value !== undefined) ? value : 'N/A';
-    if (format === 'currency' && typeof value === 'number') formattedValue = '$' + value + 'B';
+    if (format === 'currency' && typeof value === 'number') formattedValue = formatCurrencyShort(value);
     else if (format === 'years' && typeof value === 'number') formattedValue = value + ' yrs';
 
     var trendArrow = getTrendArrow(statKey, value, inverted);
@@ -554,9 +554,18 @@ function formatPopulation(pop) {
     return Number(pop).toLocaleString();
 }
 
+function formatCurrencyShort(val) {
+    if (val == null) return 'N/A';
+    val = Number(val);
+    if (val >= 1e12) return '$' + (val / 1e12).toFixed(1) + ' Trillion';
+    if (val >= 1e9) return '$' + (val / 1e9).toFixed(1) + ' Billion';
+    if (val >= 1e6) return '$' + (val / 1e6).toFixed(1) + ' Million';
+    return '$' + val.toLocaleString();
+}
+
 function formatGDP(gdp) {
     if (!gdp) return 'N/A';
-    return '$' + gdp + 'B';
+    return formatCurrencyShort(gdp);
 }
 </script>
 

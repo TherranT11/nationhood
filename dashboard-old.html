@@ -1132,14 +1132,15 @@ function setupWorldMap() {
                 const { data: nation } = await _supabase.from('nations').select('*').eq('name', name).single();
                 if (!nation) { sidebar.innerHTML = '<p style="color:#f44;">Nation not found.</p>'; return; }
                 const fmt = n => (n == null) ? 'N/A' : Number(n).toLocaleString();
+                const fmtCur = v => { if (v == null) return 'N/A'; v = Number(v); if (v >= 1e12) return '$'+(v/1e12).toFixed(1)+' Trillion'; if (v >= 1e9) return '$'+(v/1e9).toFixed(1)+' Billion'; if (v >= 1e6) return '$'+(v/1e6).toFixed(1)+' Million'; return '$'+v.toLocaleString(); };
                 sidebar.innerHTML =
                     '<h3 style="color:#ffcc00;font-size:1.1rem;margin-bottom:6px;">' + nation.name + '</h3>' +
                     '<p style="color:#888;font-size:0.78rem;margin-bottom:14px;">Capital: ' + (nation.capital||'—') + '</p>' +
                     '<div style="display:flex;flex-direction:column;gap:8px;">' +
                         sRow('Population', fmt(nation.population), '#ffcc00') +
                         sRow('Government', nation.government_type||'—', '#fff') +
-                        sRow('GDP',        '$'+fmt(nation.GDP), '#4CAF50') +
-                        sRow('Debt',       '$'+fmt(nation.debt), '#ff9800') +
+                        sRow('GDP',        fmtCur(nation.GDP), '#4CAF50') +
+                        sRow('Debt',       fmtCur(nation.debt), '#ff9800') +
                     '</div>';
             } catch(e) { sidebar.innerHTML = '<p style="color:#f44;">Error loading data.</p>'; }
         });
@@ -1158,10 +1159,11 @@ function populateNationTab() {
     document.getElementById('nation-hero-name').textContent   = n.name.toUpperCase();
     document.getElementById('nation-hero-capital').textContent = 'Capital: ' + (n.capital || '—');
     const fmt = v => (v == null) ? 'N/A' : Number(v).toLocaleString();
+    const fmtCur = v => { if (v == null) return 'N/A'; v = Number(v); if (v >= 1e12) return '$'+(v/1e12).toFixed(1)+' Trillion'; if (v >= 1e9) return '$'+(v/1e9).toFixed(1)+' Billion'; if (v >= 1e6) return '$'+(v/1e6).toFixed(1)+' Million'; return '$'+v.toLocaleString(); };
     const stats = [
         { label:'Population',   value: fmt(n.population) },
-        { label:'GDP',          value: '$'+fmt(n.GDP) },
-        { label:'Nat\'l Debt',  value: '$'+fmt(n.debt) },
+        { label:'GDP',          value: fmtCur(n.GDP) },
+        { label:'Nat\'l Debt',  value: fmtCur(n.debt) },
         { label:'Stability',    value: n.stability != null ? String(n.stability) : 'N/A' },
         { label:'Civil Unrest', value: n.civil_unrest != null ? String(n.civil_unrest) : 'N/A' },
         { label:'Gov. Type',    value: n.government_type || '—' },

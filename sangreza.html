@@ -504,6 +504,7 @@
     
     function displayNationData(nation, interestGroups, factions, alreadyInNation = false) {
         const fmt = (n) => (n === null || n === undefined) ? 'N/A' : n.toLocaleString();
+        const fmtCur = (val) => { if (val == null) return 'N/A'; val = Number(val); if (val >= 1e12) return '$'+(val/1e12).toFixed(1)+' Trillion'; if (val >= 1e9) return '$'+(val/1e9).toFixed(1)+' Billion'; if (val >= 1e6) return '$'+(val/1e6).toFixed(1)+' Million'; return '$'+val.toLocaleString(); };
         
         // Strongman
         document.getElementById('strongman-name').textContent = 
@@ -526,7 +527,7 @@
         freedomEl.textContent = freedom;
         freedomEl.className = 'stat-value danger';
         
-        document.getElementById('gdp').textContent = nation.GDP ? `$${fmt(nation.GDP)}` : 'N/A';
+        document.getElementById('gdp').textContent = nation.GDP ? fmtCur(nation.GDP) : 'N/A';
         document.getElementById('press-freedom').textContent = nation.press_freedom || 0;
         document.getElementById('judicial-independence').textContent = nation.judicial_independence || 0;
         
