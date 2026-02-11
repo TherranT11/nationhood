@@ -12,7 +12,7 @@
 const STATE_KEY = 'nationhood_state';
 const STATE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// Admin inspector override: if ?nation_id= is in the URL, use that nation
+// Admin inspector overrides: ?nation_id= and ?faction_id= in URL
 function getAdminNationOverride() {
     try {
         const params = new URLSearchParams(window.location.search);
@@ -20,9 +20,16 @@ function getAdminNationOverride() {
     } catch (e) { return null; }
 }
 
+function getAdminFactionOverride() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('faction_id') || null;
+    } catch (e) { return null; }
+}
+
 function getCachedState() {
     // Skip cache entirely when admin override is active — always fetch fresh
-    if (getAdminNationOverride()) return null;
+    if (getAdminNationOverride() || getAdminFactionOverride()) return null;
     try {
         const cached = sessionStorage.getItem(STATE_KEY);
         if (!cached) return null;
@@ -35,7 +42,7 @@ function getCachedState() {
 
 function setCachedState(user, faction, nation, shard) {
     // Don't cache admin-overridden states (would pollute normal sessions)
-    if (getAdminNationOverride()) return;
+    if (getAdminNationOverride() || getAdminFactionOverride()) return;
     const state = { user, faction, nation, shard, timestamp: Date.now() };
     sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
 }
@@ -46,9 +53,30 @@ async function loadGameState(requireFaction = true) {
     console.log('Fetching fresh state from Supabase');
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return null; }
-    const { data: faction, error: factionError } = await _supabase
-        .from('factions').select('*').eq('id', user.id).single();
-    if (factionError || !faction) { if (requireFaction) { window.location.href = 'world.html'; return null; } }
+
+    // === ADMIN FACTION OVERRIDE ===
+    // If ?faction_id= is in the URL, load that faction instead of the user's own.
+    const overrideFactionId = getAdminFactionOverride();
+    let faction = null;
+
+    if (overrideFactionId) {
+        console.log('Admin override: loading faction', overrideFactionId);
+        const { data: factionData, error: factionError } = await _supabase
+            .from('factions').select('*').eq('id', overrideFactionId).single();
+        if (factionError || !factionData) {
+            console.warn('Could not load override faction, falling back to user faction');
+            const { data: userFaction } = await _supabase
+                .from('factions').select('*').eq('id', user.id).single();
+            faction = userFaction;
+        } else {
+            faction = factionData;
+        }
+    } else {
+        const { data: userFaction, error: factionError } = await _supabase
+            .from('factions').select('*').eq('id', user.id).single();
+        if (factionError || !userFaction) { if (requireFaction) { window.location.href = 'world.html'; return null; } }
+        faction = userFaction;
+    }
 
     // === ADMIN NATION OVERRIDE ===
     // If ?nation_id= is in the URL (from admin inspector), load that nation
@@ -75,6 +103,22 @@ async function loadGameState(requireFaction = true) {
     if (overrideNationId && faction) {
         faction.nation_id = overrideNationId;
         if (nation) faction.nation = nation.name;
+    }
+
+    // Inject admin viewing banner when any override is active
+    if (overrideNationId || overrideFactionId) {
+        setTimeout(() => {
+            if (!document.getElementById('admin-override-banner')) {
+                const banner = document.createElement('div');
+                banner.id = 'admin-override-banner';
+                banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#8B0000,#cc3300);color:#fff;text-align:center;padding:6px 12px;font-size:0.8rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.9;pointer-events:none;';
+                const parts = [];
+                if (nation) parts.push('Nation: ' + nation.name);
+                if (overrideFactionId && faction) parts.push('Faction: ' + faction.faction_name);
+                banner.textContent = '⚠ ADMIN VIEWING — ' + parts.join(' · ') + ' — DO NOT TAKE ACTIONS';
+                document.body.prepend(banner);
+            }
+        }, 100);
     }
 
     setCachedState(user, faction, nation, shard);
@@ -141,14 +185,17 @@ function renderNavTabs(activeTab) {
         { id: 'conflict', label: 'Conflict', href: 'conflict.html' }
     ];
 
-    // Preserve admin nation override in nav links so clicking tabs
-    // within the inspector stays on the overridden nation
+    // Preserve admin overrides in nav links so clicking tabs
+    // within the inspector stays on the overridden nation/faction
     const overrideNationId = getAdminNationOverride();
+    const overrideFactionId = getAdminFactionOverride();
     
     return tabs.map(tab => {
-        const href = overrideNationId
-            ? `${tab.href}?nation_id=${overrideNationId}`
-            : tab.href;
+        let href = tab.href;
+        const params = [];
+        if (overrideNationId) params.push('nation_id=' + overrideNationId);
+        if (overrideFactionId) params.push('faction_id=' + overrideFactionId);
+        if (params.length) href += '?' + params.join('&');
         return `
             <a href="${href}" 
                class="nav-tab ${tab.id === activeTab ? 'active' : ''}"
