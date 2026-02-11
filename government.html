@@ -364,6 +364,7 @@ initPage('government', async (state) => {
     const { nation, faction } = state;
     currentNation = nation;
     currentFaction = faction;
+    initGameConfigForNation(nation);
 
     if (!nation) {
         document.getElementById('content-area').innerHTML = '<div class="placeholder-panel"><div class="ph-icon">🏛️</div><h3>No Nation Selected</h3><p>Your party is not assigned to a nation yet.</p></div>';

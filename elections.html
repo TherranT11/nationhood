@@ -245,6 +245,7 @@ initPage('elections', async (state) => {
     const { nation, faction } = state;
     currentFaction = faction;
     currentNation = nation;
+    initGameConfigForNation(nation);
 
     if (!nation) {
         document.getElementById('content-area').innerHTML = `
@@ -1315,7 +1316,7 @@ async function renderAutocracyPage() {
 
     const standingsHTML = (allFactions || []).map((f, i) => {
         const isYou = f.id === currentFaction.id;
-        const barWidth = Math.max(2, (f.seats / 120) * 100);
+        const barWidth = Math.max(2, (f.seats / GAME_CONFIG.TOTAL_SEATS) * 100);
         return `
             <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: ${isYou ? '#2a2a1a' : '#1a1a1a'}; border-radius: 4px; margin-bottom: 8px; ${isYou ? 'border-left: 3px solid #ffcc00;' : ''}">
                 <div style="width: 24px; text-align: center; font-size: 1.2rem;">${f.id === currentNation.ruling_faction_id ? '👑' : ''}</div>

@@ -1676,7 +1676,7 @@ async function performAction(actionType) {
 let selectedCoalitionParties = [];
 let coalitionParties = [];
 let currentElectionId = null;
-let totalSeatsInNation = 120;
+let totalSeatsInNation = currentNation?.total_seats || 120;
 let majorityThreshold = 61;
 
 async function checkCoalitionStatus() {
@@ -2076,8 +2076,8 @@ async function populatePartiesTab() {
 const activeCoalition = null;
         
         const coalitionPartyIds = activeCoalition?.party_ids || [];
-        const totalSeats = 120;
-        const majorityThreshold = 61;
+        const totalSeats = currentNation?.total_seats || 120;
+        const majorityThreshold = Math.ceil(totalSeats * 0.51);
         
         // Build party cards
         const partiesHTML = parties.map(party => {

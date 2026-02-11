@@ -308,6 +308,7 @@ initPage('laws', async (state) => {
     const { nation, faction } = state;
     currentNation = nation;
     currentFaction = faction;
+    initGameConfigForNation(nation);
     if (!nation) {
         document.getElementById('content-area').innerHTML = '<div class="placeholder-panel"><div class="ph-icon">📜</div><h3>No Nation Selected</h3><p>Your party is not assigned to a nation yet.</p></div>';
         return;
@@ -422,6 +423,9 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
                 <div class="section-header" style="margin-bottom:0;border-bottom:none;">${pageTitle}</div>
                 <div class="laws-header-buttons">
                     <button class="all-laws-btn" onclick="toggleAllLaws()">📋 All Laws</button>
+                    ${!isAutocracy ? `<button class="draft-btn" style="background:#9C27B0;border-color:#7B1FA2;" onclick="proposeElectoralMakeup()" ${canDraft ? '' : 'disabled'} ${noSeatsTitle}>
+                        🏛 Electoral Makeup <span class="ap-cost">${GAME_CONFIG.FOUNDATIONAL_AP_COST} AP</span>
+                    </button>` : ''}
                     <button class="draft-btn ${isAutocracy ? 'autocracy-btn' : ''}" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'} ${noSeatsTitle}>
                         ${termPropose} <span class="ap-cost">${GAME_CONFIG.DRAFT_BILL_AP_COST} AP</span>
                     </button>
@@ -560,18 +564,19 @@ function renderFloorBill(bill, isVetoed) {
         <div class="floor-bill ${isVetoed ? 'vetoed' : ''} clickable-bill" onclick="window.location.href='bill.html?id=${bill.id}'">
             <div class="committee-bill-header">
                 <div>
-                    <div class="floor-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'no_confidence' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚡ No Confidence</span>' : (bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : '')}</div>
+                    <div class="floor-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'no_confidence' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚡ No Confidence</span>' : (bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : (bill.bill_type === 'foundational' ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>' : ''))}</div>
                     <div class="committee-bill-sponsor">${bill.bill_type === 'no_confidence' ? 'Filed' : 'Proposed'} by ${bill.factions?.faction_name || 'Unknown'}</div>
                 </div>
                 ${isVetoed ? `<div class="floor-status vetoed-status">VETOED</div>` : `<div class="floor-status">VOTING — Ends Tick ${bill.voting_ends_tick}</div>`}
             </div>
             <div class="bill-articles">
                 ${bill.bill_type === 'no_confidence' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">⚡ Motion to dissolve the current government</span><div class="article-desc">Requires simple majority (YES > NO) to pass.</div></div></div>' :
+                (bill.bill_type === 'foundational' ? `<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#9C27B0;">🏛 Electoral Makeup — Proposed: ${bill.proposed_seats || '?'} seats</span><div class="article-desc">Requires 2/3 supermajority (${Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD)} seats) to pass.</div></div></div>` :
                 (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">🗑️ Proposes to rescind an active law</span></div></div>' :
                 (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number).map(art => {
                     const chipHTML = renderIdeologyChips(art.policies);
                     return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
-                }).join(''))}
+                }).join('')))}
             </div>
             ${isVetoed ? `<div class="vetoed-stamp">⛔ VETOED BY HEAD FACTION</div>` : `
                 <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span></div>
@@ -611,7 +616,7 @@ function renderCommitteeBill(bill) {
         <div class="committee-bill clickable-bill" onclick="window.location.href='bill.html?id=${bill.id}'">
             <div class="committee-bill-header">
                 <div>
-                    <div class="committee-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : ''}</div>
+                    <div class="committee-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : (bill.bill_type === 'foundational' ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>' : '')}</div>
                     <div class="committee-bill-sponsor">Proposed by ${bill.factions?.faction_name || 'Unknown'}</div>
                 </div>
                 ${isAutocracy ? `<div class="committee-support"><div style="font-size:0.85rem;color:#ff4444;font-weight:bold;">DECREE</div><div class="support-label">${isHeadFaction ? 'You can enact this' : 'Awaiting head faction'}</div></div>` :
@@ -619,11 +624,12 @@ function renderCommitteeBill(bill) {
             </div>
             ${!isAutocracy ? `<div class="support-bar-track"><div class="threshold-marker"></div><div class="support-bar-fill ${support.percent >= 51 ? 'enough' : ''}" style="width:${support.percent}%"></div></div>` : ''}
             <div class="bill-articles">
-                ${bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">🗑️ Proposes to rescind an active law</span></div></div>' :
+                ${bill.bill_type === 'foundational' ? `<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#9C27B0;">🏛 Electoral Makeup — Proposed: ${bill.proposed_seats || '?'} seats</span><div class="article-desc">Requires 2/3 supermajority to pass. Co-sponsor required.</div></div></div>` :
+                (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">🗑️ Proposes to rescind an active law</span></div></div>' :
                 (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number).map(art => {
                     const chipHTML = renderIdeologyChips(art.policies);
                     return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
-                }).join('')}
+                }).join(''))}
             </div>
             ${decreeActionsHTML}
             ${!isAutocracy ? `<div class="click-hint" style="color:#ff9800;">Click to view full ${termBill.toLowerCase()} & negotiate →</div>` : ''}
@@ -944,6 +950,115 @@ async function submitToCommittee() {
         closeModal(); await loadLawsData(); renderLawsPage();
         alert(`"${billName}" submitted to committee!`);
     } catch (error) { console.error('Error submitting:', error); alert('Error submitting. Please try again.'); }
+}
+
+// ==================== ELECTORAL MAKEUP (FOUNDATIONAL BILL) ====================
+
+async function proposeElectoralMakeup() {
+    if (!currentFaction || !currentNation) return;
+
+    const ap = currentFaction.action_points || 0;
+    if (ap < GAME_CONFIG.FOUNDATIONAL_AP_COST) {
+        alert(`Not enough AP. You need ${GAME_CONFIG.FOUNDATIONAL_AP_COST} AP (you have ${ap}).`);
+        return;
+    }
+
+    if (currentSeats === 0) {
+        alert('Your faction holds no seats and cannot propose bills.');
+        return;
+    }
+
+    // Check: no existing pending/committee/floor foundational bill for this nation
+    const { data: existingBill } = await _supabase
+        .from('bills')
+        .select('id')
+        .eq('nation_id', currentNation.id)
+        .eq('bill_type', 'foundational')
+        .in('status', ['committee', 'floor'])
+        .limit(1)
+        .maybeSingle();
+
+    if (existingBill) {
+        alert('An Electoral Makeup bill is already pending.');
+        return;
+    }
+
+    const currentSeatsTotal = GAME_CONFIG.TOTAL_SEATS;
+    const input = prompt(
+        `PROPOSE ELECTORAL MAKEUP\n\n` +
+        `Current legislature size: ${currentSeatsTotal} seats\n\n` +
+        `Enter new number of seats (50-500):\n\n` +
+        `Goes to committee — needs at least 1 co-sponsor\n` +
+        `Floor vote requires 2/3 supermajority (${Math.ceil(currentSeatsTotal * GAME_CONFIG.SUPERMAJORITY_THRESHOLD)} seats)\n` +
+        `Non-ideological — no approval penalties\n` +
+        `If passed, seats redistributed proportionally\n` +
+        `Cost: ${GAME_CONFIG.FOUNDATIONAL_AP_COST} AP`,
+        String(currentSeatsTotal)
+    );
+
+    if (input === null) return;
+    const newSeats = parseInt(input, 10);
+    if (isNaN(newSeats) || newSeats < 50 || newSeats > 500) {
+        alert('Please enter a number between 50 and 500.');
+        return;
+    }
+    if (newSeats === currentSeatsTotal) {
+        alert('The proposed seat count is the same as the current count.');
+        return;
+    }
+
+    const change = newSeats - currentSeatsTotal;
+    const changeText = change > 0 ? `+${change}` : `${change}`;
+    const billName = `Electoral Makeup Act (${newSeats} Seats)`;
+
+    if (!confirm(
+        `PROPOSE ELECTORAL MAKEUP?\n\n` +
+        `"${billName}"\n\n` +
+        `Change: ${currentSeatsTotal} -> ${newSeats} (${changeText} seats)\n` +
+        `Cost: ${GAME_CONFIG.FOUNDATIONAL_AP_COST} AP\n\n` +
+        `COMMITTEE STAGE:\n` +
+        `Must get at least 1 co-sponsor to advance\n\n` +
+        `FLOOR VOTE:\n` +
+        `Requires 2/3 supermajority (${Math.ceil(currentSeatsTotal * GAME_CONFIG.SUPERMAJORITY_THRESHOLD)} seats)\n` +
+        `If passed: legislature resized, seats redistributed\n` +
+        `No ideology penalties\n\n` +
+        `Proceed?`
+    )) return;
+
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shard?.current_tick || 0;
+
+        // Create the foundational bill — goes to committee
+        const { data: bill, error: billError } = await _supabase.from('bills').insert({
+            nation_id: currentNation.id,
+            proposed_by: currentFaction.id,
+            proposed_tick: tick,
+            bill_name: billName,
+            bill_type: 'foundational',
+            proposed_seats: newSeats,
+            status: 'committee',
+            preamble: `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the number of legislative seats in ${currentNation.name} from ${currentSeatsTotal} to ${newSeats}. Requires a two-thirds supermajority to pass.`
+        }).select().single();
+
+        if (billError) throw billError;
+
+        // Deduct AP
+        await _supabase.from('factions').update({
+            action_points: Math.max(0, ap - GAME_CONFIG.FOUNDATIONAL_AP_COST)
+        }).eq('id', currentFaction.id);
+        currentFaction.action_points = Math.max(0, ap - GAME_CONFIG.FOUNDATIONAL_AP_COST);
+
+        // Trigger NPC committee votes
+        if (!isAutocracy) await _supabase.rpc('process_npc_committee_votes', { p_nation_id: currentNation.id });
+
+        await loadLawsData(); renderLawsPage();
+        alert(`"${billName}" submitted to committee!\n\nYou need at least one co-sponsor to send it to the floor.`);
+        window.location.href = `bill.html?id=${bill.id}`;
+    } catch (e) {
+        console.error('Electoral makeup error:', e);
+        alert('Error: ' + e.message);
+    }
 }
 
 // ==================== COMMITTEE ACTIONS ====================
