@@ -541,14 +541,80 @@ async function ensureWelcomeEvent(nationId, ministryKey, factionId, tick) {
 const MINISTRY_ACTIONS = {
     justice: {
         Democracy: [
-            { key: 'judicial_reform', label: 'Judicial Reform', icon: '📜', ap: 4, moneyFormula: 'judicial_independence * 2', description: 'Strengthen court independence and transparency.', systemTrigger: 'ministry_justice_judicial_reform' },
-            { key: 'crackdown_crime', label: 'Crackdown on Crime', icon: '🚔', ap: 3, moneyFormula: 'crime_rate + civil_unrest', description: 'Increase enforcement and police funding.', systemTrigger: 'ministry_justice_crackdown' },
-            { key: 'amnesty_program', label: 'Amnesty Program', icon: '🕊️', ap: 3, money: 0, cooldownTicks: 6, description: 'Release non-violent offenders, restore civil rights.', systemTrigger: 'ministry_justice_amnesty' }
+            {
+                key: 'judicial_reform', label: 'Judicial Reform', icon: '📜', ap: 4,
+                moneyFormula: 'judicial_independence * 2',
+                description: 'Strengthen court independence and transparency.',
+                systemTrigger: 'ministry_justice_judicial_reform',
+                stat_effects: [
+                    { stat_key: 'judicial_independence', direction: 'up', rate: 3, delay_ticks: 1, duration_ticks: 4 },
+                    { stat_key: 'corruption', direction: 'down', rate: 1, delay_ticks: 2, duration_ticks: 4 },
+                    { stat_key: 'legitimacy', direction: 'up', rate: 1, delay_ticks: 1, duration_ticks: 3 }
+                ]
+            },
+            {
+                key: 'crackdown_crime', label: 'Crackdown on Crime', icon: '🚔', ap: 3,
+                moneyFormula: 'crime_rate + civil_unrest',
+                description: 'Increase enforcement and police funding.',
+                systemTrigger: 'ministry_justice_crackdown',
+                stat_effects: [
+                    { stat_key: 'crime_rate', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 4 },
+                    { stat_key: 'civil_unrest', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 3 },
+                    { stat_key: 'incarceration_rate', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 4 },
+                    { stat_key: 'freedom_index', direction: 'down', rate: 1, delay_ticks: 0, duration_ticks: 3 }
+                ]
+            },
+            {
+                key: 'amnesty_program', label: 'Amnesty Program', icon: '🕊️', ap: 3, money: 0,
+                cooldownTicks: 6,
+                description: 'Release non-violent offenders, restore civil rights.',
+                systemTrigger: 'ministry_justice_amnesty',
+                stat_effects: [
+                    { stat_key: 'incarceration_rate', direction: 'down', rate: 4, delay_ticks: 0, duration_ticks: 3 },
+                    { stat_key: 'freedom_index', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 3 },
+                    { stat_key: 'crime_rate', direction: 'up', rate: 1, delay_ticks: 1, duration_ticks: 3 },
+                    { stat_key: 'happiness', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 2 }
+                ]
+            }
         ],
         Autocracy: [
-            { key: 'loyalty_tribunal', label: 'Loyalty Tribunal', icon: '⚔️', ap: 4, moneyFormula: 'judicial_independence * 2', description: 'Replace disloyal judges with regime-aligned magistrates.', needsTarget: true, systemTrigger: 'ministry_justice_loyalty_tribunal' },
-            { key: 'martial_law', label: 'Martial Law Sweep', icon: '🔒', ap: 3, moneyFormula: 'civil_unrest + crime_rate', description: 'Unleash security forces to crush dissent and crime.', systemTrigger: 'ministry_justice_martial_law' },
-            { key: 'show_trial', label: 'Show Trial', icon: '🎭', ap: 3, money: 0, needsTarget: true, description: 'Stage a public trial targeting a rival faction.', systemTrigger: 'ministry_justice_show_trial' }
+            {
+                key: 'loyalty_tribunal', label: 'Loyalty Tribunal', icon: '⚔️', ap: 4,
+                moneyFormula: 'judicial_independence * 2',
+                description: 'Replace disloyal judges with regime-aligned magistrates.',
+                needsTarget: true, systemTrigger: 'ministry_justice_loyalty_tribunal',
+                stat_effects: [
+                    { stat_key: 'judicial_independence', direction: 'down', rate: 4, delay_ticks: 0, duration_ticks: 3 },
+                    { stat_key: 'stability', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 3 },
+                    { stat_key: 'corruption', direction: 'up', rate: 2, delay_ticks: 1, duration_ticks: 3 },
+                    { stat_key: 'legitimacy', direction: 'down', rate: 1, delay_ticks: 1, duration_ticks: 4 }
+                ]
+            },
+            {
+                key: 'martial_law', label: 'Martial Law Sweep', icon: '🔒', ap: 3,
+                moneyFormula: 'civil_unrest + crime_rate',
+                description: 'Unleash security forces to crush dissent and crime.',
+                systemTrigger: 'ministry_justice_martial_law',
+                stat_effects: [
+                    { stat_key: 'civil_unrest', direction: 'down', rate: 5, delay_ticks: 0, duration_ticks: 3 },
+                    { stat_key: 'crime_rate', direction: 'down', rate: 4, delay_ticks: 0, duration_ticks: 3 },
+                    { stat_key: 'freedom_index', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 4 },
+                    { stat_key: 'political_violence', direction: 'up', rate: 2, delay_ticks: 1, duration_ticks: 3 },
+                    { stat_key: 'happiness', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 3 }
+                ]
+            },
+            {
+                key: 'show_trial', label: 'Show Trial', icon: '🎭', ap: 3, money: 0,
+                needsTarget: true,
+                description: 'Stage a public trial targeting a rival faction.',
+                systemTrigger: 'ministry_justice_show_trial',
+                stat_effects: [
+                    { stat_key: 'press_freedom', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 3 },
+                    { stat_key: 'judicial_independence', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 3 },
+                    { stat_key: 'polarization', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 2 },
+                    { stat_key: 'stability', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 3 }
+                ]
+            }
         ]
     }
 };
@@ -1045,6 +1111,20 @@ function openActionModal(actionKey) {
         (action.money ? '<span class="cost-tag money">$' + action.money + 'M</span>' : '') +
     '</div>';
 
+    if (action.stat_effects && action.stat_effects.length > 0) {
+        bodyHtml += '<div style="margin-top:10px;padding:8px 10px;background:#1a1a1a;border-radius:6px;border:1px solid #333;">';
+        bodyHtml += '<div style="font-size:0.7rem;color:#888;text-transform:uppercase;font-weight:bold;margin-bottom:6px;">Effects Over Time</div>';
+        action.stat_effects.forEach(e => {
+            const arrow = e.direction === 'up' ? '▲' : '▼';
+            const color = e.direction === 'up' ? '#4caf50' : '#f44336';
+            const statLabel = e.stat_key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            const delay = e.delay_ticks ? ' (after ' + e.delay_ticks + 't delay)' : '';
+            bodyHtml += '<div style="font-size:0.8rem;color:' + color + ';margin:3px 0;">' +
+                arrow + ' ' + statLabel + ' ' + (e.direction === 'up' ? '+' : '-') + e.rate + '/tick for ' + e.duration_ticks + 't' + delay + '</div>';
+        });
+        bodyHtml += '</div>';
+    }
+
     if (action.needsTarget) {
         const others = allParties.filter(p => p.id !== currentFaction.id);
         bodyHtml += '<label style="font-size:0.8rem;color:#888;font-weight:bold;text-transform:uppercase;">Target Faction:</label>';
@@ -1086,6 +1166,7 @@ async function confirmAction() {
         currentFaction.action_points = Math.max(0, ap - action.ap);
 
         const cooldownUntil = action.cooldownTicks ? currentTick + action.cooldownTicks : null;
+        const hasEffects = action.stat_effects && action.stat_effects.length > 0;
         await _supabase.from('ministry_action_log').insert({
             nation_id: currentNation.id,
             ministry_key: activeMinistryKey,
@@ -1096,8 +1177,10 @@ async function confirmAction() {
             target_faction_id: pendingTargetFactionId || null,
             applied_at_tick: currentTick,
             timing: 'immediate',
-            processed: true,
-            cooldown_until_tick: cooldownUntil
+            processed: !hasEffects,
+            cooldown_until_tick: cooldownUntil,
+            stat_effects: hasEffects ? action.stat_effects : null,
+            effects_applied_through_tick: hasEffects ? currentTick : null
         });
 
         if (cooldownUntil) {

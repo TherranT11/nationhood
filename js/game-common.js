@@ -1617,13 +1617,18 @@ async function advanceTick(supabase) {
     // 1. Increment tick
     const { data: shard } = await supabase
         .from('shard')
-        .select('current_tick')
+        .select('current_tick, tick_interval_hours')
         .eq('name', 'Alpha Shard')
         .single();
     if (!shard) throw new Error('Shard not found');
 
     const newTick = (shard.current_tick || 0) + 1;
-    await supabase.from('shard').update({ current_tick: newTick }).eq('name', 'Alpha Shard');
+    const nextTickAt = new Date();
+    nextTickAt.setHours(nextTickAt.getHours() + (shard.tick_interval_hours || 12));
+    await supabase.from('shard').update({ current_tick: newTick, next_tick_at: nextTickAt.toISOString() }).eq('name', 'Alpha Shard');
+
+    // Refill action points for all factions
+    await supabase.from('factions').update({ action_points: 10 }).lt('action_points', 10);
 
     // 2. Load all nations
     const { data: nations } = await supabase.from('nations').select('*');
@@ -1632,9 +1637,16 @@ async function advanceTick(supabase) {
     const summary = { tick: newTick, nations: nations.length, effects: [], costs: [], resolutions: [], events: [] };
 
     for (const nation of nations) {
-        // 3. Process stat effects
+        // 3. Process stat effects (from passed bills/active laws)
         const effectResults = await processStatEffects(supabase, nation, newTick);
         if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });
+
+        // 3b. Process ministry action effects
+        const ministryResults = await processMinistryActions(supabase, nation, newTick);
+        if (ministryResults.length > 0) {
+            summary.ministryActions = summary.ministryActions || [];
+            summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
+        }
 
         // 4. Process ongoing costs
         const costResult = await processOngoingCosts(supabase, nation, newTick);
@@ -2103,6 +2115,93 @@ async function processStatEffects(supabase, nation, currentTick) {
 
     for (const id of lawsToDelete) {
         await supabase.from('active_laws').delete().eq('id', id);
+    }
+
+    return appliedEffects;
+}
+
+/**
+ * Process ministry action stat effects during tick advancement.
+ * Mirrors processStatEffects but reads from ministry_action_log.
+ */
+async function processMinistryActions(supabase, nation, currentTick) {
+    const { data: actions } = await supabase
+        .from('ministry_action_log')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .eq('processed', false);
+
+    if (!actions || actions.length === 0) return [];
+
+    const appliedEffects = [];
+    const nationUpdates = {};
+
+    for (const action of actions) {
+        const effects = action.stat_effects;
+        if (!effects || !Array.isArray(effects) || effects.length === 0) {
+            // No effects — mark as processed
+            await supabase.from('ministry_action_log').update({ processed: true }).eq('id', action.id);
+            continue;
+        }
+
+        const lastApplied = action.effects_applied_through_tick || 0;
+        if (lastApplied >= currentTick) continue;
+
+        const appliedTick = action.applied_at_tick || 0;
+
+        let allEffectsComplete = true;
+
+        for (let tick = lastApplied + 1; tick <= currentTick; tick++) {
+            const ticksSinceAction = tick - appliedTick;
+
+            for (const eff of effects) {
+                const delay = eff.delay_ticks || 0;
+                const duration = eff.duration_ticks || 4;
+                const rate = eff.rate || 1;
+                const statKey = eff.stat_key;
+
+                if (ticksSinceAction <= delay + duration) {
+                    allEffectsComplete = false;
+                }
+
+                if (ticksSinceAction > delay && ticksSinceAction <= delay + duration) {
+                    const currentVal = nationUpdates[statKey] !== undefined
+                        ? nationUpdates[statKey]
+                        : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
+
+                    let newVal;
+                    if (eff.direction === 'up') {
+                        newVal = currentVal + rate;
+                    } else {
+                        newVal = currentVal - rate;
+                    }
+
+                    newVal = Math.max(0, Math.min(100, newVal));
+                    nationUpdates[statKey] = newVal;
+
+                    appliedEffects.push({
+                        action: action.action_key,
+                        ministry: action.ministry_key,
+                        stat: statKey,
+                        direction: eff.direction,
+                        rate: rate,
+                        tick: tick,
+                        newValue: newVal
+                    });
+                }
+            }
+        }
+
+        // Update tracking
+        await supabase.from('ministry_action_log').update({
+            effects_applied_through_tick: currentTick,
+            processed: allEffectsComplete
+        }).eq('id', action.id);
+    }
+
+    // Bulk update nation stats
+    if (Object.keys(nationUpdates).length > 0) {
+        await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
     }
 
     return appliedEffects;
