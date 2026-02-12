@@ -110,6 +110,7 @@
         .support-status.accept { background: #4CAF50; color: #fff; }
         .support-status.reject { background: #ff4444; color: #fff; }
         .support-status.pending { background: #666; color: #fff; }
+        .support-status.conditional { background: #2196F3; color: #fff; }
         .support-status.yes { background: #4CAF50; color: #fff; }
         .support-status.no { background: #ff4444; color: #fff; }
         .support-status.abstain { background: #888; color: #fff; }
@@ -261,10 +262,10 @@
 <div class="modal-overlay" id="amendment-modal">
     <div class="modal-content">
         <div class="modal-header">
-            <div class="modal-title">Propose Amendment</div>
+            <div class="modal-title">Propose Conditional Support</div>
             <button class="modal-close" onclick="closeAmendmentModal()">&times;</button>
         </div>
-        <p style="color: #aaa; margin-bottom: 16px; font-size: 0.9rem;">Select a policy to propose adding to this bill.</p>
+        <p style="color: #aaa; margin-bottom: 16px; font-size: 0.9rem;">Select a policy you want added to this bill. Your support will be conditional on the sponsor accepting your amendment.</p>
         <div class="form-group">
             <label class="form-label">Select Sector</label>
             <select class="form-select" id="amendment-sector" onchange="onAmendmentSectorChange()">
@@ -277,7 +278,7 @@
         </div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeAmendmentModal()">Cancel</button>
-            <button class="btn-submit" id="submit-amendment-btn" disabled onclick="submitAmendment()">Propose Amendment</button>
+            <button class="btn-submit" id="submit-amendment-btn" disabled onclick="submitAmendment()">Propose Conditional Support</button>
         </div>
     </div>
 </div>
@@ -289,7 +290,7 @@
             <div class="modal-title">Propose Text Amendment</div>
             <button class="modal-close" onclick="closeTextAmendmentModal()">&times;</button>
         </div>
-        <p style="color: #aaa; margin-bottom: 16px; font-size: 0.9rem;">Write a freeform text article to propose adding to this bill.</p>
+        <p style="color: #aaa; margin-bottom: 16px; font-size: 0.9rem;">Write a freeform text article to propose adding to this bill. Your support will be conditional on the sponsor accepting it.</p>
         <div class="form-group">
             <label class="form-label">Article Title</label>
             <input type="text" class="form-input" id="text-amendment-title" placeholder="e.g., Transitional Provisions">
@@ -734,18 +735,19 @@ function renderSidebar() {
                 </div>
             </div>
             ${amendmentRequests.length > 0 ? `
-                <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Amendment Requests</div></div>
+                <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div>
                 <div class="support-box-content">
                     ${amendmentRequests.map(req => `<div class="amendment-request">
                         <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
-                        ${req.policy_id ? `<div class="amendment-policy">+ Add: ${req.policies?.policy_name || "Unknown"}</div>` : `<div class="amendment-policy">+ Text: ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
+                        <div style="color:#2196F3;font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you agree to add the following:</div>
+                        ${req.policy_id ? `<div class="amendment-policy">📎 ${req.policies?.policy_name || "Unknown"}</div>` : `<div class="amendment-policy">📎 ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
                         ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
                     </div>`).join('')}
                 </div>` : `
-                <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Amendment Requests</div></div>
-                <div class="no-amendments">No pending amendments</div>
+                <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div>
+                <div class="no-amendments">No conditional support offers</div>
             `}
-            ${!isSponsor ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Amendment</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button></div>` : ''}
+            ${!isSponsor ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button></div>` : ''}
         </div>`;
 
     } else if (isCommittee) {
@@ -758,10 +760,12 @@ function renderSidebar() {
                     const isSp = party.id === bill.proposed_by;
                     const isMe = party.id === currentFaction?.id;
                     const stance = billSupport.find(s => s.faction_id === party.id);
+                    const hasPendingAmendment = amendmentRequests.some(r => r.faction_id === party.id);
                     let sc = 'pending', st = 'PENDING';
                     if (isSp) { sc = 'sponsor'; st = 'SPONSOR'; }
                     else if (stance?.stance === 'accept') { sc = 'accept'; st = 'ACCEPT'; }
                     else if (stance?.stance === 'reject') { sc = 'reject'; st = 'REJECT'; }
+                    else if (hasPendingAmendment) { sc = 'conditional'; st = 'CONDITIONAL'; }
 
                     // Non-sponsor current player gets Accept/Reject buttons
                     const actionBtns = (isMe && !isSp) ? `<div class="stance-buttons">
@@ -779,15 +783,16 @@ function renderSidebar() {
                 }).join('')}
             </div>
             ${amendmentRequests.length > 0 ? `
-                <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Amendment Requests</div></div>
+                <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div>
                 <div class="support-box-content">
                     ${amendmentRequests.map(req => `<div class="amendment-request">
                         <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
-                        ${req.policy_id ? `<div class="amendment-policy">+ Add: ${req.policies?.policy_name || "Unknown"}</div>` : `<div class="amendment-policy">+ Text: ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
+                        <div style="color:#2196F3;font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you agree to add the following:</div>
+                        ${req.policy_id ? `<div class="amendment-policy">📎 ${req.policies?.policy_name || "Unknown"}</div>` : `<div class="amendment-policy">📎 ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
                         ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
                     </div>`).join('')}
-                </div>` : (!isSponsor ? `<div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Amendment Requests</div></div><div class="no-amendments">No pending amendments</div>` : '')}
-            ${!isSponsor && bill.bill_type !== 'foundational' ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Amendment</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button></div>` : ''}
+                </div>` : (!isSponsor ? `<div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div><div class="no-amendments">No conditional support offers</div>` : '')}
+            ${!isSponsor && bill.bill_type !== 'foundational' ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button></div>` : ''}
         </div>`;
 
     } else if (isFloor) {
@@ -994,25 +999,31 @@ async function submitAmendment() {
     try {
         const { error } = await _supabase.from('bill_amendment_requests').insert({ bill_id: billId, faction_id: currentFaction.id, policy_id: selectedAmendmentPolicy.id, request_type: 'add', status: 'pending' });
         if (error) throw error;
+        // Auto-set stance to conditional — support is contingent on amendment acceptance
+        await _supabase.from('bill_support').upsert({ bill_id: billId, faction_id: currentFaction.id, stance: 'conditional', seat_count: currentSeats }, { onConflict: 'bill_id,faction_id' });
         closeAmendmentModal();
         await loadBillData();
-        alert('Amendment proposed!');
+        alert('Conditional support proposed! The bill sponsor can accept or reject your amendment.');
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
 async function respondToAmendment(reqId, response) {
     if (!currentFaction || currentBill.proposed_by !== currentFaction.id) return;
     try {
+        const req = amendmentRequests.find(r => r.id === reqId);
         await _supabase.from('bill_amendment_requests').update({ status: response }).eq('id', reqId);
         if (response === 'accepted') {
-            const req = amendmentRequests.find(r => r.id === reqId);
             const maxArt = Math.max(...(currentBill.bill_articles || []).map(a => a.article_number), 1);
             if (req.policy_id) {
                 await _supabase.from('bill_articles').insert({ bill_id: billId, policy_id: req.policy_id, article_number: maxArt + 1, added_by: req.faction_id });
             } else {
                 await _supabase.from('bill_articles').insert({ bill_id: billId, policy_id: null, article_number: maxArt + 1, added_by: req.faction_id, article_title: req.article_title, article_text: req.article_text });
             }
+            // Amendment accepted — upgrade conditional support to full accept
             await _supabase.from('bill_support').upsert({ bill_id: billId, faction_id: req.faction_id, stance: 'accept', seat_count: allPartySeats[req.faction_id] || 0 }, { onConflict: 'bill_id,faction_id' });
+        } else if (response === 'rejected' && req) {
+            // Amendment rejected — remove conditional support, reset to no stance
+            await _supabase.from('bill_support').delete().eq('bill_id', billId).eq('faction_id', req.faction_id).eq('stance', 'conditional');
         }
         await loadBillData();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
@@ -1038,9 +1049,11 @@ async function submitTextAmendment() {
             article_title: title || 'Untitled Provision', article_text: body
         });
         if (error) throw error;
+        // Auto-set stance to conditional — support is contingent on amendment acceptance
+        await _supabase.from('bill_support').upsert({ bill_id: billId, faction_id: currentFaction.id, stance: 'conditional', seat_count: currentSeats }, { onConflict: 'bill_id,faction_id' });
         closeTextAmendmentModal();
         await loadBillData();
-        alert('Text amendment proposed!');
+        alert('Conditional support proposed! The bill sponsor can accept or reject your amendment.');
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
