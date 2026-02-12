@@ -283,22 +283,17 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
 
     if (!faction || !nation) return roles;
 
-    // Autocracy: ruling faction holds all governmental roles
+    // Head of Government
     if (nation.government_type === 'Autocracy') {
-        const isRuler = nation.ruling_faction_id === faction.id;
-        roles.isHoG = isRuler;
-        roles.isFM = isRuler;
+        roles.isHoG = nation.ruling_faction_id === faction.id;
     } else {
-        // Democracy: check coalition ministry allocations
-        if (!coalition) return roles;
-        const alloc = coalition.ministry_allocations || {};
-
-        // Head of Government: faction holds prime_minister
+        const alloc = coalition?.ministry_allocations || {};
         roles.isHoG = alloc.prime_minister === faction.id;
-
-        // Foreign Minister: faction holds foreign ministry
-        roles.isFM = alloc.foreign === faction.id;
     }
+
+    // Foreign Minister: always check actual ministry allocation
+    const alloc = coalition?.ministry_allocations || {};
+    roles.isFM = alloc.foreign === faction.id;
 
     // Ambassadors: query ambassadors table for active ambassadors belonging to this faction
     try {
