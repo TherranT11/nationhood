@@ -1959,6 +1959,20 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
  * @param {Array}  coalitionPartyIds - All coalition party IDs
  */
 async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coalitionPartyIds) {
+    // 0. Server-side guard: only proceed if coalition is still 'formed'
+    const { data: activeGov } = await supabase
+        .from('government_formations')
+        .select('id, status')
+        .eq('nation_id', nationId)
+        .in('status', ['formed', 'caretaker'])
+        .order('formed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (!activeGov || activeGov.status === 'caretaker') {
+        throw new Error('The government is already in caretaker mode.');
+    }
+
     // 1. Get current tick
     const { data: shard } = await supabase
         .from('shard')
