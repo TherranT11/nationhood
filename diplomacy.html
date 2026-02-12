@@ -759,7 +759,7 @@ async function recallAmbassador(ambassadorId, nationName) {
 
         // Re-select the nation to refresh sidebar
         const targetPath = document.querySelector('.land.selected-nation');
-        if (targetPath) targetPath.click();
+        if (targetPath) targetPath.dispatchEvent(new Event('click', { bubbles: true }));
 
     } catch (e) {
         console.error('Error recalling ambassador:', e);
