@@ -291,9 +291,23 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
         roles.isHoG = alloc.prime_minister === faction.id;
     }
 
-    // Foreign Minister: always check actual ministry allocation
+    // Foreign Minister: check coalition allocation first, then fall back to ministries table
     const alloc = coalition?.ministry_allocations || {};
     roles.isFM = alloc.foreign === faction.id;
+
+    // In autocracies, ministers are stored in the ministries table, not coalition allocations
+    if (!roles.isFM) {
+        const { data: fmEntry } = await _supabase
+            .from('ministries')
+            .select('party_id')
+            .eq('nation_id', nation.id)
+            .eq('ministry_key', 'foreign')
+            .eq('is_active', true)
+            .maybeSingle();
+        if (fmEntry && fmEntry.party_id === faction.id) {
+            roles.isFM = true;
+        }
+    }
 
     // Ambassadors: query ambassadors table for active ambassadors belonging to this faction
     try {

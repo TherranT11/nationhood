@@ -1056,7 +1056,7 @@ function renderCabinet(ministries, coalition) {
         if (isAutocracy) {
             const cards = MINISTRY_KEYS_CABINET.map(key => {
                 const requests = ministryRequests.filter(r => r.ministry_key === key);
-                return `<div class="ministry-card vacant"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests)}</div>`;
+                return `<div class="ministry-card vacant"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests, null)}</div>`;
             }).join('');
             return `<div class="ministry-grid">${cards}</div>`;
         }
@@ -1074,9 +1074,9 @@ function renderCabinet(ministries, coalition) {
 
             if (isFilled) {
                 const partyName = m.factions?.faction_name || 'Unknown';
-                return `<div class="ministry-card"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${m.minister_first_name} ${m.minister_last_name}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party">${partyName}</span></div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests)}</div>`;
+                return `<div class="ministry-card"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${m.minister_first_name} ${m.minister_last_name}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party">${partyName}</span></div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests, m)}</div>`;
             } else {
-                return `<div class="ministry-card vacant"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests)}</div>`;
+                return `<div class="ministry-card vacant"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests, null)}</div>`;
             }
         }).join('');
         return `<div class="ministry-grid">${cards}</div>`;
@@ -1093,10 +1093,11 @@ function renderCabinet(ministries, coalition) {
     return `<div class="ministry-grid">${cards}</div>`;
 }
 
-function renderMinistryActions(key, isFilled, requests) {
+function renderMinistryActions(key, isFilled, requests, ministry) {
     if (!isAutocracy) return '';
     const ap = currentFaction?.action_points || 0;
     const myRequest = requests.find(r => r.faction_id === currentFaction?.id);
+    const isMyMinistry = isFilled && ministry && currentFaction && ministry.party_id === currentFaction.id;
     let html = '<div class="ministry-actions">';
 
     if (isRulingFaction) {
@@ -1113,6 +1114,9 @@ function renderMinistryActions(key, isFilled, requests) {
             });
             html += '</div>';
         }
+    } else if (isMyMinistry) {
+        html += `<button class="ministry-btn purge" onclick="resignMinistry('${key}')">📋 Resign Ministry</button>`;
+        html += '</div>';
     } else {
         const totalMyRequests = ministryRequests.filter(r => r.faction_id === currentFaction?.id).length;
         if (myRequest) {
