@@ -491,7 +491,7 @@
             ...parties.map(p => ({ ...p, isPlayer: false })),
             ...playerFactions.map(f => ({
                 name: f.faction_name,
-                seats: 0, // Player parties start with 0 seats
+                seats: f.seats || 0,
                 isPlayer: true,
                 is_npc: false
             }))
