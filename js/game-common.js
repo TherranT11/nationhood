@@ -727,6 +727,21 @@ async function fetchActiveCoalition(supabase, nationId) {
         if (cached) return cached;
     }
 
+    // Helper: if status looks active but frozen bills exist, it's actually caretaker
+    async function inferCaretakerStatus(result) {
+        if (result && (!result.status || result.status === 'formed')) {
+            const { count } = await supabase
+                .from('bills')
+                .select('id', { count: 'exact', head: true })
+                .eq('nation_id', nationId)
+                .eq('status', 'frozen');
+            if (count && count > 0) {
+                result.status = 'caretaker';
+            }
+        }
+        return result;
+    }
+
     const { data: newGov } = await supabase
         .from('government_formations')
         .select('*')
@@ -749,6 +764,7 @@ async function fetchActiveCoalition(supabase, nationId) {
             status: newGov.status,
             _source: 'government_formations'
         };
+        await inferCaretakerStatus(result);
         if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 2 * 60 * 1000);
         return result;
     }
@@ -762,17 +778,7 @@ async function fetchActiveCoalition(supabase, nationId) {
         .maybeSingle();
 
     if (data) {
-        // Legacy table may lack a status column — infer caretaker from frozen bills
-        if (!data.status || data.status === 'formed') {
-            const { count } = await supabase
-                .from('bills')
-                .select('id', { count: 'exact', head: true })
-                .eq('nation_id', nationId)
-                .eq('status', 'frozen');
-            if (count && count > 0) {
-                data.status = 'caretaker';
-            }
-        }
+        await inferCaretakerStatus(data);
         if (typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 2 * 60 * 1000);
     }
     return data;
