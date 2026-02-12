@@ -1130,6 +1130,25 @@ async function confirmAssign() {
         await _supabase.from('ministry_requests').delete()
             .eq('nation_id', currentNation.id).eq('ministry_key', assignMinistryKey);
 
+        // If assigning PM, also update head_of_government
+        if (assignMinistryKey === 'prime_minister') {
+            // Deactivate any current PM
+            await _supabase.from('head_of_government')
+                .update({ active: false })
+                .eq('nation_id', currentNation.id)
+                .eq('active', true);
+
+            // Insert new PM record
+            await _supabase.from('head_of_government').insert({
+                nation_id: currentNation.id,
+                faction_id: selectedCandidate.partyId,
+                first_name: selectedCandidate.firstName,
+                last_name: selectedCandidate.lastName,
+                age: selectedCandidate.age,
+                active: true
+            });
+        }
+
         // Create welcome event in ministry inbox
         const welcomeMessages = {
             prime_minister: { title: "Welcome to the Prime Minister's Office", sender: "Prime Minister", body: "Congratulations on your appointment to the highest executive office. As Prime Minister, you oversee all government operations, set the national agenda, and coordinate between ministries. Your decisions will shape the direction of the entire nation. Use your authority wisely — every action has consequences." },
@@ -1230,6 +1249,14 @@ async function purgeMinister(ministryKey) {
             minister_first_name: null, minister_last_name: null, minister_age: null, party_id: null
         }).eq('id', ministry.id);
         if (clearErr) throw clearErr;
+
+        // If purging the PM, also deactivate the head_of_government record
+        if (ministryKey === 'prime_minister') {
+            await _supabase.from('head_of_government')
+                .update({ active: false })
+                .eq('nation_id', currentNation.id)
+                .eq('active', true);
+        }
 
         const rulerApproval = currentFaction.approval_rating ?? 50;
         const newRulerApproval = Math.min(100, rulerApproval + approvalBoost);
