@@ -720,9 +720,10 @@ function renderMajorSector(sector) {
 }
 
 function renderMinorSector(majorKey, minorKey) {
-    const activeLaw = activeLaws.find(law => law.policies?.major_sector === majorKey && (law.policies?.minor_sector === minorKey || law.policies?.law_category === minorKey));
+    const matchingLaws = activeLaws.filter(law => !law.is_reversal && law.policies?.major_sector === majorKey && (law.policies?.minor_sector === minorKey || law.policies?.law_category === minorKey));
     const safeMinor = (minorKey || '').replace(/'/g, "\\'");
-    return `<div class="minor-sector" id="minor-${majorKey}-${minorKey}"><div class="minor-sector-header" onclick="toggleMinorSector('${majorKey}','${safeMinor}')"><div class="minor-sector-title">${formatMinorSector(minorKey)}</div><div class="minor-sector-arrow">▶</div></div><div class="minor-sector-content">${activeLaw ? renderActiveLaw(activeLaw) : '<div class="no-law">No active law in this area.</div>'}</div></div>`;
+    const lawsHTML = matchingLaws.length > 0 ? matchingLaws.map(law => renderActiveLaw(law)).join('') : '<div class="no-law">No active law in this area.</div>';
+    return `<div class="minor-sector" id="minor-${majorKey}-${minorKey}"><div class="minor-sector-header" onclick="toggleMinorSector('${majorKey}','${safeMinor}')"><div class="minor-sector-title">${formatMinorSector(minorKey)}</div><div class="minor-sector-arrow">▶</div></div><div class="minor-sector-content">${lawsHTML}</div></div>`;
 }
 
 function renderActiveLaw(law) {
