@@ -636,6 +636,10 @@ initPage('government', async (state) => {
 async function renderGovernmentPage() {
     document.getElementById('content-area').innerHTML = '<div class="panel-padding"><div class="loading-container" style="height:200px;"><div class="loading-spinner"></div><div>Loading government data...</div></div></div>';
 
+    // Always fetch fresh coalition data — status changes (caretaker, dissolved)
+    // must never be masked by stale cache entries
+    qCacheBust('coalition_');
+
     try {
         const [electionData, coalition, ministries, partiesRes] = await Promise.all([
             fetchLatestElection(),
@@ -1667,6 +1671,10 @@ async function callEarlyElections() {
 
     if (!confirm(confirmMsg)) return;
 
+    // Disable button immediately to prevent double-clicks
+    const btn = document.getElementById('early-elections-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Dissolving...'; }
+
     try {
         const result = await callEarlyElectionsAction(
             _supabase,
@@ -1685,6 +1693,9 @@ async function callEarlyElections() {
     } catch (e) {
         console.error('Early elections error:', e);
         alert('Error: ' + e.message);
+        // Re-enable button on failure
+        const retryBtn = document.getElementById('early-elections-btn');
+        if (retryBtn) { retryBtn.disabled = false; retryBtn.textContent = '⚡ Call Early Elections'; }
     }
 }
 
