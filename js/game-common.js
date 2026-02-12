@@ -3090,6 +3090,8 @@ async function processMinistryActions(supabase, nation, currentTick) {
     const nationUpdates = {};
     // Track minister approval changes keyed by ministry_key + faction_id
     const ministerUpdates = {};
+    // Track initial minister approval values for cascade delta calculation
+    const ministerBaseline = {};
     // Track faction approval changes keyed by faction_id
     const factionUpdates = {};
 
@@ -3137,6 +3139,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
                                 .eq('party_id', action.faction_id)
                                 .single();
                             ministerUpdates[mKey] = (ministry?.minister_approval ?? 50);
+                            ministerBaseline[mKey] = ministerUpdates[mKey];
                         }
                         currentVal = ministerUpdates[mKey];
                         newVal = eff.direction === 'up' ? currentVal + rate : currentVal - rate;
@@ -3200,6 +3203,26 @@ async function processMinistryActions(supabase, nation, currentTick) {
             .eq('nation_id', nation.id)
             .eq('ministry_key', ministryKey)
             .eq('party_id', factionId);
+    }
+
+    // Cascade minister approval LOSSES to party approval (PM losses at 2x)
+    for (const mKey of Object.keys(ministerUpdates)) {
+        const baseline = ministerBaseline[mKey];
+        const current = ministerUpdates[mKey];
+        if (baseline === undefined || current >= baseline) continue; // only losses cascade
+        const [ministryKey, factionId] = mKey.split(':');
+        const loss = baseline - current;
+        const multiplier = ministryKey === 'prime_minister' ? 2 : 1;
+        // Load faction approval into factionUpdates if not already tracked
+        if (factionUpdates[factionId] === undefined) {
+            const { data: faction } = await supabase
+                .from('factions')
+                .select('approval_rating')
+                .eq('id', factionId)
+                .single();
+            factionUpdates[factionId] = (faction?.approval_rating ?? 50);
+        }
+        factionUpdates[factionId] = Math.max(0, factionUpdates[factionId] - (loss * multiplier));
     }
 
     // Bulk update faction approval
