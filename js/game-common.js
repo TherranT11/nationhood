@@ -514,6 +514,32 @@ async function loadSeats(supabase, nationId, isAutocracy, allParties, currentFac
         });
     }
 
+    // Proportionally rescale if stored seats don't match the configured total
+    const seatSum = Object.values(allPartySeats).reduce((a, b) => a + b, 0);
+    if (seatSum > 0 && seatSum !== GAME_CONFIG.TOTAL_SEATS) {
+        const scale = GAME_CONFIG.TOTAL_SEATS / seatSum;
+        const partyIds = Object.keys(allPartySeats);
+        const exact = {};
+        let allocated = 0;
+        for (const pid of partyIds) {
+            exact[pid] = allPartySeats[pid] * scale;
+            allPartySeats[pid] = Math.floor(exact[pid]);
+            allocated += allPartySeats[pid];
+        }
+        // Distribute remaining seats by largest fractional remainder
+        let remainder = GAME_CONFIG.TOTAL_SEATS - allocated;
+        if (remainder > 0) {
+            const byRemainder = partyIds
+                .map(pid => ({ pid, rem: exact[pid] - Math.floor(exact[pid]) }))
+                .sort((a, b) => b.rem - a.rem);
+            for (const r of byRemainder) {
+                if (remainder <= 0) break;
+                allPartySeats[r.pid]++;
+                remainder--;
+            }
+        }
+    }
+
     const currentSeats = allPartySeats[currentFactionId] ||
         allParties.find(p => p.id === currentFactionId)?.seats || 0;
 
@@ -1318,18 +1344,8 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
         total_seats: newTotalSeats
     }).eq('id', bill.nation_id);
 
-    if (delta > 0) {
-        // SEATS INCREASE — schedule a partial election for the new seats only
-        // Existing party seats stay unchanged; delta seats will be elected next tick
-        await supabase.from('elections').insert({
-            nation_id: bill.nation_id,
-            election_tick: currentTick + 1,
-            status: 'scheduled',
-            partial_seats: delta
-        });
-        console.log(`Foundational bill passed: ${currentTotalSeats} → ${newTotalSeats} (+${delta}). Partial election scheduled for tick ${currentTick + 1}.`);
-    } else if (delta < 0) {
-        // SEATS DECREASE — proportionally reduce all party seats immediately
+    if (delta !== 0) {
+        // SEATS CHANGE — proportionally rescale all party seats to the new total
         const { data: election } = await supabase
             .from('elections')
             .select('id, results')
@@ -1350,7 +1366,7 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
                 await supabase.from('factions').update({ seats }).eq('id', partyId);
             }
         }
-        console.log(`Foundational bill passed: ${currentTotalSeats} → ${newTotalSeats} (${delta}). Seats reduced proportionally.`);
+        console.log(`Foundational bill passed: ${currentTotalSeats} → ${newTotalSeats} (${delta > 0 ? '+' : ''}${delta}). Seats rescaled proportionally.`);
     }
 
     // Update GAME_CONFIG for current session
