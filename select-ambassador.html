@@ -307,6 +307,13 @@ let candidates = [];
 let selectedCandidateIndex = null;
 let isAutocracy = false;
 
+function diploBackUrl() {
+    const params = [];
+    const on = getAdminNationOverride(); if (on) params.push('nation_id=' + on);
+    const of = getAdminFactionOverride(); if (of) params.push('faction_id=' + of);
+    return 'diplomacy.html' + (params.length ? '?' + params.join('&') : '');
+}
+
 initPage('diplomacy', async (state) => {
     currentNation = state.nation;
     currentFaction = state.faction;
@@ -322,14 +329,14 @@ initPage('diplomacy', async (state) => {
     const params = new URLSearchParams(window.location.search);
     const targetId = params.get('target');
     if (!targetId) {
-        renderEmpty('No target nation specified. <a href="diplomacy.html">Back to Diplomacy</a>');
+        renderEmpty(`No target nation specified. <a href="${diploBackUrl()}">Back to Diplomacy</a>`);
         return;
     }
 
     // Load target nation
     const { data: tNation } = await _supabase.from('nations').select('*').eq('id', targetId).single();
     if (!tNation) {
-        renderEmpty('Target nation not found. <a href="diplomacy.html">Back to Diplomacy</a>');
+        renderEmpty(`Target nation not found. <a href="${diploBackUrl()}">Back to Diplomacy</a>`);
         return;
     }
     targetNation = tNation;
@@ -345,7 +352,7 @@ initPage('diplomacy', async (state) => {
 
     if (existing) {
         const statusLabel = existing.status === 'active' ? 'an active' : 'a pending';
-        renderEmpty(`You already have ${statusLabel} ambassador to ${targetNation.name}. <a href="diplomacy.html">Back to Diplomacy</a>`);
+        renderEmpty(`You already have ${statusLabel} ambassador to ${targetNation.name}. <a href="${diploBackUrl()}">Back to Diplomacy</a>`);
         return;
     }
 
@@ -360,7 +367,7 @@ initPage('diplomacy', async (state) => {
     }
 
     if (!isFM) {
-        renderEmpty('Only the Foreign Minister can appoint ambassadors. <a href="diplomacy.html">Back to Diplomacy</a>');
+        renderEmpty(`Only the Foreign Minister can appoint ambassadors. <a href="${diploBackUrl()}">Back to Diplomacy</a>`);
         return;
     }
 
@@ -372,7 +379,7 @@ initPage('diplomacy', async (state) => {
     allParties = parties || [];
 
     if (allParties.length === 0) {
-        renderEmpty('No political parties found. <a href="diplomacy.html">Back to Diplomacy</a>');
+        renderEmpty(`No political parties found. <a href="${diploBackUrl()}">Back to Diplomacy</a>`);
         return;
     }
 
@@ -569,7 +576,7 @@ async function confirmNomination() {
             ? `🏛️ ${candidate.firstName} ${candidate.lastName} has been appointed Ambassador to ${targetNation.name}!`
             : `🏛️ ${candidate.firstName} ${candidate.lastName} has been nominated as Ambassador to ${targetNation.name}. A confirmation vote has been filed in Parliament.`;
         alert(msg);
-        window.location.href = 'diplomacy.html';
+        window.location.href = diploBackUrl();
 
     } catch (e) {
         console.error('Error nominating ambassador:', e);
