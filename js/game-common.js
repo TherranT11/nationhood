@@ -1774,7 +1774,14 @@ async function dissolveCoalition(supabase, nationId) {
         .from('government_formations')
         .update({ status: 'dissolved' })
         .eq('nation_id', nationId)
-        .eq('status', 'formed');
+        .in('status', ['formed', 'caretaker']);
+
+    // Also dissolve legacy active_coalitions
+    await supabase
+        .from('active_coalitions')
+        .update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
+        .eq('nation_id', nationId)
+        .is('dissolved_at', null);
 
     // Deactivate PM
     await supabase
@@ -1949,7 +1956,8 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
  * @param {Array}  coalitionPartyIds - All coalition party IDs
  */
 async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coalitionPartyIds) {
-    // 0. Server-side guard: only proceed if coalition is still 'formed'
+    // 0. Server-side guard: only proceed if coalition is still 'formed' (check both tables)
+    let govStatus = null;
     const { data: activeGov } = await supabase
         .from('government_formations')
         .select('id, status')
@@ -1958,8 +1966,22 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
         .order('formed_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+    if (activeGov) {
+        govStatus = activeGov.status;
+    } else {
+        // Fallback: check legacy active_coalitions
+        const { data: legacyGov } = await supabase
+            .from('active_coalitions')
+            .select('id, status')
+            .eq('nation_id', nationId)
+            .is('dissolved_at', null)
+            .order('formed_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        govStatus = legacyGov?.status || 'formed'; // legacy rows without status default to formed
+    }
 
-    if (!activeGov || activeGov.status === 'caretaker') {
+    if (govStatus === 'caretaker') {
         throw new Error('The government is already in caretaker mode.');
     }
 
@@ -1988,12 +2010,17 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
             .eq('id', partyId);
     }
 
-    // 3. Set government to caretaker
+    // 3. Set government to caretaker (both tables — legacy active_coalitions may be source)
     await supabase
         .from('government_formations')
         .update({ status: 'caretaker' })
         .eq('nation_id', nationId)
         .in('status', ['formed']);
+    await supabase
+        .from('active_coalitions')
+        .update({ status: 'caretaker' })
+        .eq('nation_id', nationId)
+        .is('dissolved_at', null);
 
     // 4. Cancel any existing scheduled elections
     await supabase
@@ -2351,16 +2378,34 @@ async function processElections(supabase, nation, currentTick) {
             console.log(`Seats synced to factions for ${nation.name}`);
         }
 
-        // Check if this election resolves a caretaker government
-        const { data: caretakerGov } = await supabase
+        // Check if this election resolves a caretaker government (check both tables)
+        let caretakerGov = null;
+        let caretakerSource = null;
+        const { data: caretakerFormation } = await supabase
             .from('government_formations')
             .select('id')
             .eq('nation_id', nation.id)
             .eq('status', 'caretaker')
             .maybeSingle();
+        if (caretakerFormation) {
+            caretakerGov = caretakerFormation;
+            caretakerSource = 'government_formations';
+        } else {
+            const { data: caretakerLegacy } = await supabase
+                .from('active_coalitions')
+                .select('id')
+                .eq('nation_id', nation.id)
+                .eq('status', 'caretaker')
+                .is('dissolved_at', null)
+                .maybeSingle();
+            if (caretakerLegacy) {
+                caretakerGov = caretakerLegacy;
+                caretakerSource = 'active_coalitions';
+            }
+        }
 
         if (caretakerGov) {
-            console.log(`Caretaker government dissolving after election for ${nation.name}`);
+            console.log(`Caretaker government dissolving after election for ${nation.name} (source: ${caretakerSource})`);
 
             // Fail all frozen bills
             await supabase.from('bills')
@@ -2378,10 +2423,17 @@ async function processElections(supabase, nation, currentTick) {
             } catch (adminErr) { console.warn('Could not close administration on early election:', adminErr); }
 
             // Dissolve caretaker government (PM removed, ministries vacated)
-            await supabase
-                .from('government_formations')
-                .update({ status: 'dissolved' })
-                .eq('id', caretakerGov.id);
+            if (caretakerSource === 'government_formations') {
+                await supabase
+                    .from('government_formations')
+                    .update({ status: 'dissolved' })
+                    .eq('id', caretakerGov.id);
+            } else {
+                await supabase
+                    .from('active_coalitions')
+                    .update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
+                    .eq('id', caretakerGov.id);
+            }
 
             // Deactivate PM
             await supabase
