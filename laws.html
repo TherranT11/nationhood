@@ -322,6 +322,8 @@ initPage('laws', async (state) => {
     if (isAutocracy) { termBill = 'Decree'; termBills = 'Decrees'; termDraft = 'Draft Decree'; termPropose = 'Propose Decree'; document.title = 'Decrees | Nationhood Alpha'; }
 
     // Check for caretaker government (legislature frozen)
+    // Bust coalition cache so caretaker status is never stale
+    qCacheBust('coalition_');
     if (!isAutocracy) {
         const coalition = await fetchActiveCoalition(_supabase, nation.id);
         isCaretaker = coalition?.status === 'caretaker';
