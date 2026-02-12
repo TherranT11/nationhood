@@ -574,7 +574,9 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador) {
             const pendName = (pendingAmbassador.ambassador_first_name || '') + ' ' + (pendingAmbassador.ambassador_last_name || '');
             fmButtons = `<button class="action-btn" disabled style="opacity:0.6;">Awaiting Confirmation: ${pendName.trim()}</button>`;
         } else {
-            fmButtons = `<button class="action-btn" onclick="window.location.href='select-ambassador.html?target=${targetNation.id}'">Appoint Ambassador</button>`;
+            const adminParams = [getAdminNationOverride() ? 'nation_id=' + getAdminNationOverride() : '', getAdminFactionOverride() ? 'faction_id=' + getAdminFactionOverride() : ''].filter(Boolean).join('&');
+            const ambUrl = 'select-ambassador.html?target=' + targetNation.id + (adminParams ? '&' + adminParams : '');
+            fmButtons = `<button class="action-btn" onclick="window.location.href='${ambUrl}'">Appoint Ambassador</button>`;
         }
         fmButtons += `<button class="action-btn" style="margin-top:8px;" disabled>Formal Protest (Coming Soon)</button>`;
 
