@@ -634,6 +634,7 @@ function cancelEditor() { renderModeTabs(); }
 
 // State for ministry editor
 var mEditorVariants = { Democracy: { body: '', options: [] }, Autocracy: { body: '', options: [] } };
+var mEditorWeightConditions = [];
 
 function renderMinistryListView() {
     document.getElementById('mode-content').innerHTML =
@@ -672,7 +673,13 @@ function renderMinistryEventList(events) {
             if (ev.variants.Democracy) optCount += (ev.variants.Democracy.options || []).length;
             if (ev.variants.Autocracy) optCount += (ev.variants.Autocracy.options || []).length;
         }
-        var weightInfo = ev.weight_stat ? '<span style="color:#888;">' + ev.weight_stat + ' ' + (ev.weight_operator || '>') + ' ' + ev.weight_value + '</span>' : '';
+        var weightConditions = (ev.variants && ev.variants.weight_conditions) || [];
+        if (!weightConditions.length && ev.weight_stat) {
+            weightConditions = [{ stat: ev.weight_stat, op: ev.weight_operator || '>', value: ev.weight_value }];
+        }
+        var weightInfo = weightConditions.length > 0
+            ? '<span style="color:#888;">⚖ ' + weightConditions.map(function(c) { return c.stat + ' ' + c.op + ' ' + c.value; }).join(' & ') + '</span>'
+            : '';
 
         return '<div class="event-card ' + (ev.is_active ? 'active' : 'inactive') + '" onclick="editMinistryEvent(\'' + ev.id + '\')">' +
             '<div class="event-card-left"><div class="event-card-name">' + escapeHtml(ev.title) + '</div>' +
@@ -716,6 +723,7 @@ function createNewMinistryEvent() {
         }
     };
     mEditorVariants = JSON.parse(JSON.stringify(currentMinistryTemplate.variants));
+    mEditorWeightConditions = [];
     renderMinistryEditor();
 }
 
@@ -737,6 +745,15 @@ function editMinistryEvent(id) {
             options: v.Autocracy.options || []
         } : { bodies: [''], options: [] }
     };
+    // Load weight conditions from variants (new format) or migrate from old flat columns
+    var wc = v.weight_conditions;
+    if (wc && wc.length > 0) {
+        mEditorWeightConditions = wc.map(function(c) { return { stat: c.stat, op: c.op, value: c.value }; });
+    } else if (ev.weight_stat) {
+        mEditorWeightConditions = [{ stat: ev.weight_stat, op: ev.weight_operator || '>', value: ev.weight_value }];
+    } else {
+        mEditorWeightConditions = [];
+    }
     renderMinistryEditor();
 }
 
@@ -787,18 +804,10 @@ function renderMinistryEditor() {
                     '</div></div>' +
                 '</div>' +
 
-                // Weight condition
-                '<div class="editor-section"><div class="editor-section-title" style="margin-bottom:12px;">🎯 Weight Condition (optional)</div>' +
-                    '<div class="form-hint" style="margin-bottom:12px;">Event is more likely to fire when this stat condition is met. Leave blank for equal chance.</div>' +
-                    '<div class="form-row-3">' +
-                        '<div class="form-group"><label class="form-label">Stat</label><select class="form-select" id="me-weight-stat"><option value="">-- None --</option>' +
-                            NATION_STATS.map(function(s) { return '<option value="' + s.key + '"' + (tmpl.weight_stat === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
-                        '</select></div>' +
-                        '<div class="form-group"><label class="form-label">Operator</label><select class="form-select" id="me-weight-op">' +
-                            ['>', '<', '>=', '<='].map(function(op) { return '<option value="' + op + '"' + (tmpl.weight_operator === op ? ' selected' : '') + '>' + op + '</option>'; }).join('') +
-                        '</select></div>' +
-                        '<div class="form-group"><label class="form-label">Value</label><input type="number" class="form-input" id="me-weight-val" value="' + (tmpl.weight_value != null ? tmpl.weight_value : '') + '" placeholder="e.g., 60"></div>' +
-                    '</div>' +
+                // Weight conditions (multiple)
+                '<div class="editor-section"><div class="editor-section-header"><div class="editor-section-title">🎯 Weight Conditions (optional)</div><button class="btn btn-ghost btn-small" onclick="addWeightCondition()">+ Add Condition</button></div>' +
+                    '<div class="form-hint" style="margin-bottom:12px;">Event is more likely to fire when ALL stat conditions are met. Leave empty for equal chance.</div>' +
+                    '<div id="weight-conditions-list">' + renderWeightConditions() + '</div>' +
                 '</div>' +
 
                 // Variants
@@ -948,6 +957,33 @@ function removeMOption(govType, oi) {
     renderMinistryEditor();
 }
 
+// Weight condition list helpers
+function renderWeightConditions() {
+    if (!mEditorWeightConditions.length) return '<div class="empty-state" style="padding:12px;">No weight conditions. Event will have equal chance to fire.</div>';
+    return mEditorWeightConditions.map(function(c, i) {
+        return '<div class="trigger-item">' +
+            '<select class="form-select" onchange="mEditorWeightConditions[' + i + '].stat=this.value"><option value="">-- Select Stat --</option>' +
+                NATION_STATS.map(function(s) { return '<option value="' + s.key + '"' + (c.stat === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
+            '</select>' +
+            '<select class="form-select" onchange="mEditorWeightConditions[' + i + '].op=this.value">' +
+                ['>', '<', '>=', '<='].map(function(op) { return '<option value="' + op + '"' + (c.op === op ? ' selected' : '') + '>' + op + '</option>'; }).join('') +
+            '</select>' +
+            '<input type="number" class="form-input" value="' + (c.value != null ? c.value : '') + '" placeholder="e.g., 60" onchange="mEditorWeightConditions[' + i + '].value=this.value===\'\'?null:Number(this.value)">' +
+            '<button class="btn-icon" onclick="removeWeightCondition(' + i + ')">✕</button>' +
+        '</div>';
+    }).join('');
+}
+
+function addWeightCondition() {
+    mEditorWeightConditions.push({ stat: '', op: '>', value: null });
+    document.getElementById('weight-conditions-list').innerHTML = renderWeightConditions();
+}
+
+function removeWeightCondition(i) {
+    mEditorWeightConditions.splice(i, 1);
+    document.getElementById('weight-conditions-list').innerHTML = renderWeightConditions();
+}
+
 function syncMinistryBody() {
     // Sync title variants
     document.querySelectorAll('#me-titles-list input').forEach(function(el, i) {
@@ -1028,10 +1064,12 @@ async function saveMinistryEvent() {
     var isActive = document.getElementById('me-active').checked;
     var govDem = document.getElementById('me-gov-dem').checked;
     var govAut = document.getElementById('me-gov-aut').checked;
-    var weightStat = document.getElementById('me-weight-stat').value || null;
-    var weightOp = document.getElementById('me-weight-op').value || '>';
-    var weightVal = document.getElementById('me-weight-val').value;
-    weightVal = weightVal !== '' ? Number(weightVal) : null;
+    // Collect weight conditions from editor state
+    var validConditions = mEditorWeightConditions.filter(function(c) { return c.stat; });
+    // Backward compat: write first condition to old flat columns
+    var weightStat = validConditions.length > 0 ? validConditions[0].stat : null;
+    var weightOp = validConditions.length > 0 ? validConditions[0].op : '>';
+    var weightVal = validConditions.length > 0 ? validConditions[0].value : null;
 
     if (!eventKey) { alert('Event key is required.'); return; }
     if (!titleVal) { alert('At least one subject line is required.'); return; }
@@ -1062,10 +1100,11 @@ async function saveMinistryEvent() {
     if (govDem) govTypes.push('Democracy');
     if (govAut) govTypes.push('Autocracy');
 
-    // Clean variants — only include enabled gov types, store title variants
+    // Clean variants — only include enabled gov types, store title variants + weight conditions
     var cleanVariants = { titles: validTitles };
     if (govDem && mEditorVariants.Democracy) cleanVariants.Democracy = mEditorVariants.Democracy;
     if (govAut && mEditorVariants.Autocracy) cleanVariants.Autocracy = mEditorVariants.Autocracy;
+    if (validConditions.length > 0) cleanVariants.weight_conditions = validConditions;
 
     var payload = {
         event_key: eventKey, ministry_key: ministry, title: titleVal, sender: sender,
