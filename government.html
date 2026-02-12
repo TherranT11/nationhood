@@ -764,6 +764,9 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
     const hosLast = currentNation.head_of_state_last_name || 'Unknown';
     const hosAge = currentNation.head_of_state_age || '—';
 
+    // Administration name uses Head of Government (PM), falling back to Head of State
+    const adminLast = activeHOG?.last_name || primeMinister?.minister_last_name || hosLast;
+
     if (isAutocracy) {
         const rulingParty = allParties.find(p => p.id === rulingFactionId);
         const rulingPartyName = rulingParty?.faction_name || '—';
@@ -778,7 +781,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
         return `
             <div class="administration-box">
                 <div class="administration-header">
-                    <div class="administration-title">${hosLast} Administration</div>
+                    <div class="administration-title">${adminLast} Administration</div>
                     <div class="administration-subtitle">National Government</div>
                 </div>
                 <div class="administration-content">
@@ -816,7 +819,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
         if (majorityParty) {
             return `
                 <div class="administration-box">
-                    <div class="administration-header"><div class="administration-title">${hosLast} Administration</div><div class="administration-subtitle">Single Party Government</div></div>
+                    <div class="administration-header"><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">Single Party Government</div></div>
                     <div class="administration-content">
                         <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${hosFirst} ${hosLast}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${majorityParty.party_name}</span></div></div>
                         <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${primeMinister ? `${primeMinister.minister_first_name} ${primeMinister.minister_last_name}` : '—'}</div><div class="admin-person-details">${primeMinister ? `Age ${primeMinister.minister_age} • ` : ''}<span class="admin-person-party">${majorityParty.party_name}</span></div></div>
@@ -845,7 +848,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
         const coalitionParties = coalition.party_ids.map(id => { const p = parties.find(x => x.party_id === id); return p || { party_name: 'Unknown', seats: 0 }; }).sort((a,b) => b.seats - a.seats);
         return `
             <div class="administration-box">
-                <div class="administration-header"><div class="administration-title">${hosLast} Administration</div><div class="administration-subtitle">${coalition.status === 'caretaker' ? 'Caretaker Government' : 'Coalition Government'}</div></div>
+                <div class="administration-header"><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">${coalition.status === 'caretaker' ? 'Caretaker Government' : 'Coalition Government'}</div></div>
                 <div class="administration-content">
                     <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${hosFirst} ${hosLast}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${leadPartyName}</span></div></div>
                     <div class="admin-section">
@@ -876,7 +879,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
             </div>`;
     }
 
-    return '<div class="administration-box"><div class="administration-header"><div class="administration-title">' + hosLast + ' Administration</div><div class="administration-subtitle">Caretaker Government</div></div><div class="coalition-parties"><div class="coalition-party-tag" style="background:var(--bg-hover);color:var(--text-secondary);">Awaiting Election Results</div></div></div>';
+    return '<div class="administration-box"><div class="administration-header"><div class="administration-title">' + adminLast + ' Administration</div><div class="administration-subtitle">Caretaker Government</div></div><div class="coalition-parties"><div class="coalition-party-tag" style="background:var(--bg-hover);color:var(--text-secondary);">Awaiting Election Results</div></div></div>';
 }
 
 // ==================== FORMATION IN PROGRESS ====================
