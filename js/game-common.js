@@ -1477,18 +1477,8 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
         total_seats: newTotalSeats
     }).eq('id', bill.nation_id);
 
-    if (delta > 0) {
-        // SEATS INCREASE — schedule a partial election for the new seats only
-        // Existing party seats stay unchanged; delta seats will be elected next tick
-        await supabase.from('elections').insert({
-            nation_id: bill.nation_id,
-            election_tick: currentTick + 1,
-            status: 'scheduled',
-            partial_seats: delta
-        });
-        console.log(`Foundational bill passed: ${currentTotalSeats} → ${newTotalSeats} (+${delta}). Partial election scheduled for tick ${currentTick + 1}.`);
-    } else if (delta < 0) {
-        // SEATS DECREASE — proportionally reduce all party seats immediately
+    if (delta !== 0) {
+        // SEATS CHANGE — proportionally rescale all party seats to the new total
         const { data: election } = await supabase
             .from('elections')
             .select('id, results')
@@ -1509,7 +1499,7 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
                 await supabase.from('factions').update({ seats }).eq('id', partyId);
             }
         }
-        console.log(`Foundational bill passed: ${currentTotalSeats} → ${newTotalSeats} (${delta}). Seats reduced proportionally.`);
+        console.log(`Foundational bill passed: ${currentTotalSeats} → ${newTotalSeats} (${delta > 0 ? '+' : ''}${delta}). Seats rescaled proportionally.`);
     }
 
     // Update GAME_CONFIG for current session
