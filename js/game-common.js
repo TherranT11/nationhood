@@ -761,7 +761,20 @@ async function fetchActiveCoalition(supabase, nationId) {
         .limit(1)
         .maybeSingle();
 
-    if (data && typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 2 * 60 * 1000);
+    if (data) {
+        // Legacy table may lack a status column — infer caretaker from frozen bills
+        if (!data.status || data.status === 'formed') {
+            const { count } = await supabase
+                .from('bills')
+                .select('id', { count: 'exact', head: true })
+                .eq('nation_id', nationId)
+                .eq('status', 'frozen');
+            if (count && count > 0) {
+                data.status = 'caretaker';
+            }
+        }
+        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 2 * 60 * 1000);
+    }
     return data;
 }
 
