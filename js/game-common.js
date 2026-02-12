@@ -47,6 +47,165 @@ function initGameConfigForNation(nation) {
 
 const FORMATION_DEADLINE_TICKS = 6; // ticks before snap election when no government
 
+// ==================== DIPLOMACY CONSTANTS ====================
+
+const DIPLOMACY_CONFIG = {
+    // Ambassador actions
+    FORMAL_PROTEST_AP: 2,
+    PROPOSE_INITIATIVE_AP: 3,
+    COVERT_OP_AP: 4,
+
+    // Foreign Minister actions
+    RECALL_AMBASSADOR_AP: 2,
+    IMPOSE_EMBARGO_AP: 5,
+    FOREIGN_AID_AP: 4,
+    ISSUE_ULTIMATUM_AP: 3,
+
+    // Head of Government actions
+    DECLARE_WAR_AP: 8,
+    SUE_FOR_PEACE_AP: 4,
+    SIGN_ALLIANCE_AP: 6,
+
+    // Timing
+    FM_REVIEW_EXPIRY_TICKS: 3,
+    ULTIMATUM_DEADLINE_TICKS: 3,
+    STATE_VISIT_ACCEPT_WINDOW: 2,
+    STATE_VISIT_COOLDOWN: 6,
+    TREATY_RATIFICATION_VOTING_TICKS: 3,
+    AMBASSADOR_CONFIRMATION_VOTING_TICKS: 2,
+
+    // War stat penalties (per tick)
+    WAR_STABILITY_DRAIN: 2,
+    WAR_CIVIL_UNREST_GAIN: 3,
+    WAR_TRADE_DRAIN: 2,
+    WAR_REPUTATION_DRAIN: 1,
+
+    // Reputation costs
+    WAR_WITH_JUSTIFICATION_REP_COST: 3,
+    WAR_WITHOUT_JUSTIFICATION_REP_COST: 10,
+    FORMAL_PROTEST_TARGET_REP_COST: 1,
+
+    // Covert operation success thresholds (0-1, higher = harder)
+    COVERT_INTEL_THRESHOLD: 0.45,
+    COVERT_PROPAGANDA_THRESHOLD: 0.55,
+    COVERT_BRIBE_THRESHOLD: 0.60
+};
+
+/**
+ * Diplomatic proposal types with tier classification.
+ * Tier 1 = Minor (ambassador approves directly)
+ * Tier 2 = FM approval needed (no bill)
+ * Tier 3 = Requires Parliament ratification bill
+ */
+const PROPOSAL_TYPES = {
+    // === Tier 1: Minor — Ambassador approves directly ===
+    cultural_exchange: {
+        tier: 1,
+        label: 'Cultural Exchange',
+        description: 'Establish cultural exchange programs between nations.',
+        stat_effects: [
+            { stat_key: 'international_reputation', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+        ]
+    },
+    visa_agreement: {
+        tier: 1,
+        label: 'Visa Agreement',
+        description: 'Simplify visa requirements for travel between nations.',
+        stat_effects: [
+            { stat_key: 'tourism', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
+            { stat_key: 'immigration', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+        ]
+    },
+    joint_statement: {
+        tier: 1,
+        label: 'Joint Statement',
+        description: 'Issue a joint diplomatic statement signaling cooperation.',
+        stat_effects: []  // Purely cosmetic — shows in event feeds
+    },
+    student_exchange: {
+        tier: 1,
+        label: 'Student Exchange',
+        description: 'Create student exchange programs to boost education.',
+        stat_effects: [
+            { stat_key: 'education_quality', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+        ]
+    },
+
+    // === Tier 3: Major — Escalates to FM, then Parliament ratification bill ===
+    trade_agreement: {
+        tier: 3,
+        label: 'Trade Agreement',
+        description: 'Establish a formal trade agreement affecting GDP and trade volume.',
+        stat_effects: [
+            { stat_key: 'gdp', direction: 'up', rate: 1, delay_ticks: 1, duration_ticks: 0 },
+            { stat_key: 'trade', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 }
+        ]
+    },
+    non_aggression_pact: {
+        tier: 3,
+        label: 'Non-Aggression Pact',
+        description: 'Binding commitment not to declare war for a set period.',
+        stat_effects: [
+            { stat_key: 'stability', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
+            { stat_key: 'international_reputation', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+        ]
+    },
+    military_alliance: {
+        tier: 3,
+        label: 'Military Alliance',
+        description: 'Mutual defense pact — if one is attacked, the other must respond.',
+        stat_effects: [
+            { stat_key: 'military_strength', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 },
+            { stat_key: 'international_reputation', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+        ]
+    },
+    embargo: {
+        tier: 3,
+        label: 'Embargo/Sanctions',
+        description: 'Economic warfare — tanks target trade stats, also hurts your own.',
+        stat_effects: [
+            { stat_key: 'trade', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 },
+            { stat_key: 'sanctions', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 }
+        ]
+    },
+    ceasefire: {
+        tier: 3,
+        label: 'Ceasefire',
+        description: 'Stop active conflict between warring nations.',
+        requires_war: true,
+        stat_effects: [
+            { stat_key: 'stability', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 1 },
+            { stat_key: 'civil_unrest', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
+        ]
+    },
+    open_borders: {
+        tier: 3,
+        label: 'Open Borders',
+        description: 'Major immigration and security implications — open borders between nations.',
+        stat_effects: [
+            { stat_key: 'immigration', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 },
+            { stat_key: 'trade', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 0 }
+        ]
+    },
+    close_embassy: {
+        tier: 3,
+        label: 'Close Embassy',
+        description: 'Shut down diplomatic presence in the target nation.',
+        stat_effects: [
+            { stat_key: 'international_reputation', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
+        ]
+    }
+};
+
+// War justification types — required for declaring war without massive reputation penalty
+const WAR_JUSTIFICATIONS = {
+    ultimatum_ignored:    { label: 'Ignored Ultimatum',     description: 'A formal ultimatum was ignored by the target nation.' },
+    caught_spy:           { label: 'Caught Spy',            description: 'A covert agent from the target nation was caught operating in your territory.' },
+    broken_treaty:        { label: 'Broken Treaty',         description: 'The target nation violated an existing treaty or agreement.' },
+    attacked:             { label: 'Attacked',              description: 'Your nation was attacked by the target nation.' },
+    alliance_obligation:  { label: 'Alliance Obligation',   description: 'An allied nation was attacked, triggering mutual defense obligations.' }
+};
+
 const MAJOR_SECTORS = [
     { key: 'ECONOMICS',     label: 'Economics',           icon: '💰' },
     { key: 'LABOR',         label: 'Labor',               icon: '👷' },
