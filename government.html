@@ -757,6 +757,13 @@ function getPartyNameById(partyId) {
     return p ? p.party_name : (allParties.find(f => f.id === partyId)?.faction_name || 'Unknown');
 }
 
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function tickToDate(tick) {
+    if (tick == null) return '?';
+    const y = 2000 + Math.floor(tick / 12);
+    return `${MONTHS[tick % 12]}, ${y}`;
+}
+
 // ==================== ADMINISTRATION BOX ====================
 
 function renderAdministrationBox(coalition, parties, primeMinister, governmentApproval, activeHOG) {
@@ -1934,10 +1941,10 @@ function toggleStatTable(id) {
 function renderAdminCard(admin, isCurrent) {
     const endClass = isCurrent ? 'current-admin' : ('end-' + (admin.end_reason || 'dissolved'));
 
-    // Summary info
+    // Summary info (use in-game tick dates, not real-world timestamps)
     const dateRange = isCurrent
-        ? `${admin.started_at_date || '?'} — Present`
-        : `${admin.started_at_date || '?'} — ${admin.ended_at_date || '?'}`;
+        ? `${tickToDate(admin.started_at_tick)} — Present`
+        : `${tickToDate(admin.started_at_tick)} — ${tickToDate(admin.ended_at_tick)}`;
 
     const coalitionParties = admin.coalition_parties || [];
     const partyList = coalitionParties.map(p => p.party_name).join(' + ');
@@ -2044,11 +2051,11 @@ function renderAdminCard(admin, isCurrent) {
         detailHTML += `<div class="pad-section-title">Crises</div>`;
         if (crisesStarted.length > 0) {
             detailHTML += `<div style="font-size:0.72rem;color:var(--red);font-weight:bold;margin-bottom:4px;">Started (${crisesStarted.length})</div>`;
-            detailHTML += crisesStarted.map(c => `<div class="pad-crisis-item"><span>${c.title}</span><span class="crisis-date">${c.started_date || ''}</span></div>`).join('');
+            detailHTML += crisesStarted.map(c => `<div class="pad-crisis-item"><span>${c.title}</span><span class="crisis-date">${c.started_tick != null ? tickToDate(c.started_tick) : (c.started_date || '')}</span></div>`).join('');
         }
         if (crisesSolved.length > 0) {
             detailHTML += `<div style="font-size:0.72rem;color:var(--green);font-weight:bold;margin:6px 0 4px;">Solved (${crisesSolved.length})</div>`;
-            detailHTML += crisesSolved.map(c => `<div class="pad-crisis-item"><span>${c.title}</span><span class="crisis-date">${c.solved_date || ''}</span></div>`).join('');
+            detailHTML += crisesSolved.map(c => `<div class="pad-crisis-item"><span>${c.title}</span><span class="crisis-date">${c.solved_tick != null ? tickToDate(c.solved_tick) : (c.solved_date || '')}</span></div>`).join('');
         }
     }
 
@@ -2057,11 +2064,11 @@ function renderAdminCard(admin, isCurrent) {
         detailHTML += `<div class="pad-section-title">Flagship Legislation</div>`;
         if (billsPassed.length > 0) {
             detailHTML += `<div style="font-size:0.72rem;color:var(--text-secondary);font-weight:bold;margin-bottom:4px;">Bills Passed (${billsPassed.length})</div>`;
-            detailHTML += billsPassed.map(b => `<div class="pad-legislation-item"><span class="bill-name">${b.bill_name || 'Unnamed'}</span><span class="bill-date">Tick ${b.passed_tick || '?'}</span></div>`).join('');
+            detailHTML += billsPassed.map(b => `<div class="pad-legislation-item"><span class="bill-name">${b.bill_name || 'Unnamed'}</span><span class="bill-date">${tickToDate(b.passed_tick)}</span></div>`).join('');
         }
         if (lawsRepealed.length > 0) {
             detailHTML += `<div style="font-size:0.72rem;color:var(--red);font-weight:bold;margin:6px 0 4px;">Laws Repealed (${lawsRepealed.length})</div>`;
-            detailHTML += lawsRepealed.map(b => `<div class="pad-legislation-item"><span class="bill-name">${b.bill_name || 'Unnamed'}</span><span class="bill-date">${b.repealed_date || ''}</span></div>`).join('');
+            detailHTML += lawsRepealed.map(b => `<div class="pad-legislation-item"><span class="bill-name">${b.bill_name || 'Unnamed'}</span><span class="bill-date">${b.repealed_tick != null ? tickToDate(b.repealed_tick) : (b.repealed_date || '')}</span></div>`).join('');
         }
     }
 
