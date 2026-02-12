@@ -573,8 +573,11 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador) {
 
     // FM actions
     if (roles.isFM) {
+        const isCaretaker = currentCoalition?.status === 'caretaker';
         let fmButtons = '';
-        if (ambassador && ambassador.status === 'active') {
+        if (isCaretaker) {
+            fmButtons = `<button class="action-btn" disabled style="opacity:0.6;">Appointments suspended — caretaker government</button>`;
+        } else if (ambassador && ambassador.status === 'active') {
             const ambName = (ambassador.ambassador_first_name || '') + ' ' + (ambassador.ambassador_last_name || '');
             fmButtons = `
                 <button class="action-btn" disabled style="opacity:0.6;">Ambassador Active: ${ambName.trim()}</button>
