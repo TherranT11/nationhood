@@ -626,6 +626,21 @@ async function renderGovernmentPage() {
         allParties = partiesRes.data || [];
         lastElectionTick = electionData?.election_tick || null;
 
+        // If caretaker, fetch the scheduled election tick for the banner
+        if (coalition && coalition.status === 'caretaker') {
+            const { data: scheduledElection } = await _supabase
+                .from('elections')
+                .select('election_tick')
+                .eq('nation_id', currentNation.id)
+                .eq('status', 'scheduled')
+                .order('election_tick', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+            if (scheduledElection) {
+                coalitionData._earlyElectionTick = scheduledElection.election_tick;
+            }
+        }
+
         // Refresh current faction AP
         const freshFaction = allParties.find(p => p.id === currentFaction?.id);
         if (freshFaction && currentFaction) {
@@ -830,7 +845,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
         const coalitionParties = coalition.party_ids.map(id => { const p = parties.find(x => x.party_id === id); return p || { party_name: 'Unknown', seats: 0 }; }).sort((a,b) => b.seats - a.seats);
         return `
             <div class="administration-box">
-                <div class="administration-header"><div class="administration-title">${hosLast} Administration</div><div class="administration-subtitle">Coalition Government</div></div>
+                <div class="administration-header"><div class="administration-title">${hosLast} Administration</div><div class="administration-subtitle">${coalition.status === 'caretaker' ? 'Caretaker Government' : 'Coalition Government'}</div></div>
                 <div class="administration-content">
                     <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${hosFirst} ${hosLast}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${leadPartyName}</span></div></div>
                     <div class="admin-section">
@@ -844,7 +859,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                                 <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
                                 <div style="font-size:0.75rem;color:#ff4444;">▼ ${activeHOG.leader_traits?.downside || ''}</div>
                             </div>
-                            ${activeHOG.faction_id === currentFaction?.id ? `
+                            ${activeHOG.faction_id === currentFaction?.id && coalition.status !== 'caretaker' ? `
                                 <button class="ministry-btn purge" style="margin-top:10px;" onclick="resignPMAction()">📋 Resign as PM</button>
                             ` : ''}
                         ` : ''}
@@ -854,7 +869,10 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                 <div class="coalition-parties">
                     ${coalitionParties.map((p, i) => `${i > 0 ? '<span class="coalition-divider">|</span>' : ''}<div class="coalition-party-tag">${p.party_name}<span class="seats">${p.seats} Seats</span></div>`).join('')}
                 </div>
-                ${renderNoConfidenceButton(coalition)}
+                ${coalition.status === 'caretaker' ? renderCaretakerBanner() : `
+                    ${renderNoConfidenceButton(coalition)}
+                    ${renderEarlyElectionsButton(coalition)}
+                `}
             </div>`;
     }
 
@@ -999,11 +1017,12 @@ function renderCabinet(ministries, coalition) {
         return `<div class="ministry-grid">${cards}</div>`;
     }
 
+    const isCaretaker = coalition && coalition.status === 'caretaker';
     const cards = ministries.filter(m => m.ministry_key !== 'prime_minister').map(m => {
         const partyName = m.factions?.faction_name || 'Unknown';
         const name = m.minister_first_name && m.minister_last_name ? `${m.minister_first_name} ${m.minister_last_name}` : 'Vacant';
         const isMyMinistry = currentFaction && m.party_id === currentFaction.id;
-        const resignBtn = isMyMinistry ? `<div class="ministry-actions"><button class="ministry-btn purge" onclick="resignMinistry('${m.ministry_key}')">📋 Resign Ministry</button></div>` : '';
+        const resignBtn = (isMyMinistry && !isCaretaker) ? `<div class="ministry-actions"><button class="ministry-btn purge" onclick="resignMinistry('${m.ministry_key}')">📋 Resign Ministry</button></div>` : '';
         return `<div class="ministry-card"><div class="ministry-title">${m.ministry_name}</div><div class="minister-name">${name}</div><div class="minister-details">${m.minister_age ? `Age ${m.minister_age} • ` : ''}<span class="minister-party">${partyName}</span></div>${resignBtn}</div>`;
     }).join('');
     return `<div class="ministry-grid">${cards}</div>`;
@@ -1472,6 +1491,89 @@ async function fileNoConfidence() {
         window.location.href = `bill.html?id=${bill.id}`;
     } catch (e) {
         console.error('No confidence error:', e);
+        alert('Error: ' + e.message);
+    }
+}
+
+// ==================== CALL EARLY ELECTIONS ====================
+
+function renderEarlyElectionsButton(coalition) {
+    if (!currentFaction || isAutocracy) return '';
+
+    // Only the PM's party can call early elections
+    const isPMParty = currentFaction.id === coalition.lead_party_id;
+    if (!isPMParty) return '';
+
+    return `
+        <div style="text-align:center;margin-top:12px;">
+            <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="callEarlyElections()" id="early-elections-btn">
+                ⚡ Call Early Elections
+            </button>
+            <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">PM only — dissolve the legislature</div>
+        </div>`;
+}
+
+function renderCaretakerBanner() {
+    // Calculate ticks until election
+    const scheduledElectionTick = coalitionData?._earlyElectionTick || null;
+    const ticksUntil = scheduledElectionTick ? Math.max(0, scheduledElectionTick - currentTick) : '?';
+
+    return `
+        <div style="text-align:center;margin-top:16px;padding:16px;border-top:1px solid var(--border-main);background:linear-gradient(135deg,#2a1a00,#1a1200);border-radius:0 0 12px 12px;">
+            <div style="font-size:1.2rem;margin-bottom:6px;">⚡</div>
+            <div style="font-size:0.9rem;color:#ff9800;font-weight:bold;text-transform:uppercase;letter-spacing:1.5px;">Caretaker Government</div>
+            <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:6px;">Legislature dissolved. Elections in <strong style="color:#ff9800;">${ticksUntil}</strong> tick${ticksUntil !== 1 ? 's' : ''}.</div>
+            <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:8px;line-height:1.5;">No new legislation · No appointments · No coalition changes</div>
+        </div>`;
+}
+
+async function callEarlyElections() {
+    if (!currentFaction || !currentNation || !coalitionData) return;
+
+    // Validate: must be PM party
+    if (currentFaction.id !== coalitionData.lead_party_id) {
+        alert('Only the Prime Minister\'s party can call early elections.');
+        return;
+    }
+
+    // Validate: government must be in 'formed' status (not already caretaker)
+    if (coalitionData.status === 'caretaker') {
+        alert('The government is already in caretaker mode.');
+        return;
+    }
+
+    const coalitionPartyNames = coalitionData.party_ids
+        .filter(id => id !== currentFaction.id)
+        .map(id => allParties.find(p => p.id === id)?.faction_name || 'Unknown');
+
+    const confirmMsg =
+        `⚡ CALL EARLY ELECTIONS?\n\n` +
+        `This will:\n` +
+        `• Cost your party ${GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST} Approval\n` +
+        (coalitionPartyNames.length > 0 ? `• Cost coalition partners (${coalitionPartyNames.join(', ')}) ${GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST} Approval each\n` : '') +
+        `• Freeze all pending legislation\n` +
+        `• Dissolve the legislature\n` +
+        `• Trigger elections in ${GAME_CONFIG.EARLY_ELECTION_TICKS} ticks\n\n` +
+        `The government will remain as caretaker until then.\n` +
+        `After the election: coalition dissolves, PM removed, ministries vacated.\n\n` +
+        `Proceed?`;
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        const result = await callEarlyElectionsAction(
+            _supabase,
+            currentNation.id,
+            currentFaction.id,
+            coalitionData.party_ids
+        );
+
+        await markFactionActive(_supabase, currentFaction.id);
+
+        alert(`⚡ The legislature has been dissolved.\n\nCaretaker government in place. Elections scheduled for tick ${result.electionTick}.`);
+        await renderGovernmentPage();
+    } catch (e) {
+        console.error('Early elections error:', e);
         alert('Error: ' + e.message);
     }
 }

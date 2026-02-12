@@ -19,11 +19,13 @@
         .bill-header { background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); padding: 24px; border-bottom: 3px solid #ffcc00; }
         .bill-header.committee { border-bottom-color: #ff9800; }
         .bill-header.floor { border-bottom-color: #4CAF50; }
+        .bill-header.frozen { border-bottom-color: #ff9800; }
         .bill-status { display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
         .bill-status.committee { background: #ff9800; color: #000; }
         .bill-status.floor { background: #4CAF50; color: #fff; }
         .bill-status.passed { background: #2196F3; color: #fff; }
         .bill-status.failed { background: #ff4444; color: #fff; }
+        .bill-status.frozen { background: #ff9800; color: #000; }
         .bill-status.repeal { background: #ff4444; color: #fff; }
         .bill-type-badge { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-left: 10px; }
         .bill-type-badge.repeal { background: #ff4444; color: #fff; }
@@ -402,6 +404,7 @@ function renderBill() {
     const isSponsor = bill.proposed_by === currentFaction?.id;
     const isCommittee = bill.status === 'committee';
     const isFloor = bill.status === 'floor';
+    const isFrozen = bill.status === 'frozen';
 
     document.getElementById('bill-header').className = `bill-header ${bill.status}`;
     const statusEl = document.getElementById('bill-status');
@@ -415,11 +418,31 @@ function renderBill() {
     } else if (bill.bill_type === 'foundational') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#9C27B0;">🏛 Foundational</span>';
     }
+    if (isFrozen) {
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#ff9800;color:#000;">FROZEN</span>';
+    }
     document.getElementById('bill-sponsor').textContent = 'Filed by ' + (bill.factions?.faction_name || 'Unknown');
 
     if (isFloor && bill.voting_ends_tick) {
         document.getElementById('bill-voting-ends').style.display = 'block';
         document.getElementById('voting-ends-date').textContent = tickToDate(bill.voting_ends_tick);
+    }
+
+    // Frozen bill banner — no actions available
+    if (isFrozen) {
+        const frozenBanner = document.createElement('div');
+        frozenBanner.style.cssText = 'background:linear-gradient(135deg,#2a1a00,#1a1200);border:2px solid #ff9800;border-radius:12px;padding:20px;margin:16px 0;text-align:center;';
+        frozenBanner.innerHTML = `
+            <div style="font-size:1rem;color:#ff9800;font-weight:bold;text-transform:uppercase;letter-spacing:1.5px;">⚡ Bill Frozen</div>
+            <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:8px;">The legislature has been dissolved. This bill is frozen pending elections.</div>
+            <div style="font-size:0.8rem;color:#ff9800;margin-top:6px;">It will be dismissed when the election resolves.</div>
+        `;
+        const header = document.getElementById('bill-header');
+        header.parentNode.insertBefore(frozenBanner, header.nextSibling);
+
+        renderArticles();
+        renderSidebar();
+        return; // No voting, no sponsor actions
     }
 
     renderArticles();
