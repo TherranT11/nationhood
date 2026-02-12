@@ -294,8 +294,9 @@
 <script>
 let currentNation = null, currentFaction = null, currentSeats = 0;
 let allPartySeats = {}, allParties = [], allPolicies = [];
-let activeLaws = [], committeeBills = [], floorBills = [];
+let activeLaws = [], committeeBills = [], floorBills = [], frozenBills = [];
 let isAutocracy = false, isHeadFaction = false, headFactionId = null;
+let isCaretaker = false;
 let draftArticles = [], selectedPolicy = null;
 let committeeSelectedPolicy = null, currentCommitteeBillId = null;
 let pendingPolicyIds = new Set();
@@ -319,6 +320,13 @@ initPage('laws', async (state) => {
     }
     isAutocracy = (nation.government_type === 'Autocracy');
     if (isAutocracy) { termBill = 'Decree'; termBills = 'Decrees'; termDraft = 'Draft Decree'; termPropose = 'Propose Decree'; document.title = 'Decrees | Nationhood Alpha'; }
+
+    // Check for caretaker government (legislature frozen)
+    if (!isAutocracy) {
+        const coalition = await fetchActiveCoalition(_supabase, nation.id);
+        isCaretaker = coalition?.status === 'caretaker';
+    }
+
     await loadLawsData();
 
     // Auto-resolve any floor bills whose voting window has expired
@@ -358,15 +366,17 @@ async function loadLawsData() {
             cachedPolicies ? Promise.resolve({ data: cachedPolicies }) : _supabase.from('policies').select('*').eq('is_active', true),
             _supabase.from('active_laws').select('*, policies(*)').eq('nation_id', nid),
             _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), factions(faction_name)), bill_support(*)').eq('nation_id', nid).eq('status', 'committee'),
-            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).in('status', ['floor', 'vetoed'])
+            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).in('status', ['floor', 'vetoed']),
+            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).eq('status', 'frozen')
         ];
-        const [policiesRes, lawsRes, committeeRes, floorRes] = await Promise.all(queries);
+        const [policiesRes, lawsRes, committeeRes, floorRes, frozenRes] = await Promise.all(queries);
 
         allPolicies = policiesRes.data || [];
         if (!cachedPolicies && allPolicies.length) qCacheSet('policies_active', allPolicies, 10 * 60 * 1000);
         activeLaws = lawsRes.data || [];
         committeeBills = committeeRes.data || [];
         floorBills = floorRes.data || [];
+        frozenBills = frozenRes.data || [];
 
         // Load dynamic ideology scores for current player
         if (currentFaction) {
@@ -423,11 +433,17 @@ function renderIdeoTag(ideologyTag) {
 
 
 function renderLawsPage() {
-    const canDraft = (currentFaction?.action_points || 0) >= GAME_CONFIG.DRAFT_BILL_AP_COST && currentSeats > 0;
-const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and cannot propose bills"' : '';
+    const canDraft = (currentFaction?.action_points || 0) >= GAME_CONFIG.DRAFT_BILL_AP_COST && currentSeats > 0 && !isCaretaker;
+const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and cannot propose bills"' : (isCaretaker ? 'title="Legislature is dissolved — no new bills during caretaker government"' : '');
     const pageTitle = isAutocracy ? `Decrees of ${currentNation.name}` : `Bills & Laws of ${currentNation.name}`;
     const html = `
         <div class="panel-padding">
+            ${isCaretaker ? `
+                <div style="background:linear-gradient(135deg,#2a1a00,#1a1200);border:2px solid #ff9800;border-radius:12px;padding:16px;margin-bottom:20px;text-align:center;">
+                    <div style="font-size:1rem;color:#ff9800;font-weight:bold;text-transform:uppercase;letter-spacing:1.5px;">⚡ Legislature Dissolved</div>
+                    <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:6px;">Caretaker government in place. No new legislation until elections resolve.</div>
+                </div>
+            ` : ''}
             <div class="laws-header">
                 <div class="section-header" style="margin-bottom:0;border-bottom:none;">${pageTitle}</div>
                 <div class="laws-header-buttons">
@@ -458,6 +474,7 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
 
             <!-- Bills View (shown by default) -->
             <div id="bills-view">
+                ${frozenBills.length > 0 ? renderFrozenBills() : ''}
                 ${floorBills.length > 0 ? renderFloorBills() : ''}
                 ${committeeBills.length > 0 ? renderCommitteeBills() : ''}
                 <div class="section-header">Active Laws</div>
@@ -555,6 +572,22 @@ function filterAllLaws() {
 }
 
 // ==================== FLOOR BILLS ====================
+
+function renderFrozenBills() {
+    return `<div class="section-header" style="color:#ff9800;">Frozen — Legislature Dissolved</div>` +
+        frozenBills.map(bill => `
+            <div class="floor-bill clickable-bill" style="opacity:0.6;border-color:#ff9800;" onclick="window.location.href='bill.html?id=${bill.id}'">
+                <div class="committee-bill-header">
+                    <div>
+                        <div class="floor-bill-name">${bill.bill_name || 'Unnamed ' + termBill} <span style="background:#ff9800;color:#000;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">FROZEN</span></div>
+                        <div class="committee-bill-sponsor">Proposed by ${bill.factions?.faction_name || 'Unknown'}</div>
+                    </div>
+                    <div class="floor-status" style="color:#ff9800;">FROZEN</div>
+                </div>
+                <div style="font-size:0.75rem;color:#ff9800;padding:8px 16px;">This ${termBill.toLowerCase()} has been frozen pending elections. It will be dismissed when the election resolves.</div>
+            </div>
+        `).join('');
+}
 
 function renderFloorBills() {
     const activeFloor = floorBills.filter(b => b.status === 'floor');
@@ -1019,6 +1052,7 @@ function removeArticle(index) {
 async function submitToCommittee() {
     if (draftArticles.length === 0) return;
     if (isSubmitting) return;
+    if (isCaretaker) { alert('Legislature is dissolved. No new bills during caretaker government.'); return; }
     if (currentSeats === 0) { alert('Your faction holds no seats and cannot propose bills.'); return; }
     isSubmitting = true;
     document.getElementById('submit-bill-btn').disabled = true;

@@ -31,7 +31,10 @@ const GAME_CONFIG = {
     NO_CONFIDENCE_COOLDOWN_TICKS: 6,
     FOUNDATIONAL_AP_COST: 3,
     FOUNDATIONAL_VOTING_TICKS: 3,
-    SUPERMAJORITY_THRESHOLD: 2/3
+    SUPERMAJORITY_THRESHOLD: 2/3,
+    EARLY_ELECTION_TICKS: 2,
+    EARLY_ELECTION_PM_APPROVAL_COST: 5,
+    EARLY_ELECTION_COALITION_APPROVAL_COST: 3
 };
 
 /**
@@ -728,7 +731,7 @@ async function fetchActiveCoalition(supabase, nationId) {
         .from('government_formations')
         .select('*')
         .eq('nation_id', nationId)
-        .eq('status', 'formed')
+        .in('status', ['formed', 'caretaker'])
         .order('formed_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -743,6 +746,7 @@ async function fetchActiveCoalition(supabase, nationId) {
             lead_party_id: pmPartyId,
             ministry_allocations: newGov.ministry_assignments || {},
             formed_at: newGov.formed_at,
+            status: newGov.status,
             _source: 'government_formations'
         };
         if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 2 * 60 * 1000);
@@ -1931,6 +1935,100 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
 }
 
 
+// ==================== EARLY ELECTIONS ====================
+
+/**
+ * Call for early elections (PM action).
+ * Transitions government to caretaker, freezes legislation, schedules election in 2 ticks.
+ *
+ * @param {object} supabase    - Supabase client
+ * @param {string} nationId    - Nation UUID
+ * @param {string} pmFactionId - PM's faction UUID
+ * @param {Array}  coalitionPartyIds - All coalition party IDs
+ */
+async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coalitionPartyIds) {
+    // 1. Get current tick
+    const { data: shard } = await supabase
+        .from('shard')
+        .select('current_tick')
+        .eq('name', 'Alpha Shard')
+        .single();
+    const currentTick = shard?.current_tick || 0;
+
+    // 2. Apply approval penalties — PM party: -5, other coalition parties: -3
+    for (const partyId of coalitionPartyIds) {
+        const { data: faction } = await supabase
+            .from('factions')
+            .select('approval_rating')
+            .eq('id', partyId)
+            .single();
+        if (!faction) continue;
+
+        const penalty = partyId === pmFactionId
+            ? GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST
+            : GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST;
+        await supabase.from('factions')
+            .update({ approval_rating: Math.max(0, (faction.approval_rating ?? 50) - penalty) })
+            .eq('id', partyId);
+    }
+
+    // 3. Set government to caretaker
+    await supabase
+        .from('government_formations')
+        .update({ status: 'caretaker' })
+        .eq('nation_id', nationId)
+        .in('status', ['formed']);
+
+    // 4. Cancel any existing scheduled elections
+    await supabase
+        .from('elections')
+        .delete()
+        .eq('nation_id', nationId)
+        .eq('status', 'scheduled');
+
+    // 5. Schedule early election
+    await supabase.from('elections').insert({
+        nation_id: nationId,
+        election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
+        status: 'scheduled'
+    });
+
+    // 6. Freeze all active bills (committee and floor)
+    await supabase
+        .from('bills')
+        .update({ status: 'frozen' })
+        .eq('nation_id', nationId)
+        .in('status', ['committee', 'floor']);
+
+    // 7. Get PM name for event text
+    const { data: hog } = await supabase
+        .from('head_of_government')
+        .select('first_name, last_name')
+        .eq('nation_id', nationId)
+        .eq('active', true)
+        .maybeSingle();
+    const pmName = hog ? `${hog.first_name} ${hog.last_name}` : 'The Prime Minister';
+
+    // 8. Fire system event
+    await supabase.from('event_log').insert({
+        nation_id: nationId,
+        event_name: 'Legislature Dissolved — Early Elections Called',
+        fired_at_tick: currentTick,
+        category: 'government',
+        description_chosen: `Prime Minister ${pmName} has dissolved the Legislature. Caretaker government in place until elections.`,
+        effects_applied: {
+            caretaker: true,
+            election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
+            pm_approval: -GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST,
+            coalition_approval: -GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST,
+            bills_frozen: true
+        }
+    });
+
+    return { success: true, electionTick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS };
+}
+
+
 // ==================== GOVERNMENT VACANCY PENALTIES ====================
 
 /**
@@ -2235,6 +2333,58 @@ async function processElections(supabase, nation, currentTick) {
                     .eq('id', r.party_id);
             }
             console.log(`Seats synced to factions for ${nation.name}`);
+        }
+
+        // Check if this election resolves a caretaker government
+        const { data: caretakerGov } = await supabase
+            .from('government_formations')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('status', 'caretaker')
+            .maybeSingle();
+
+        if (caretakerGov) {
+            console.log(`Caretaker government dissolving after election for ${nation.name}`);
+
+            // Fail all frozen bills
+            await supabase.from('bills')
+                .update({ status: 'failed' })
+                .eq('nation_id', nation.id)
+                .eq('status', 'frozen');
+
+            // Close the administration
+            try {
+                const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+                const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                if (fullNation) {
+                    await closeAdministration(supabase, nation.id, fullNation, 'dissolved', currentTick, shardData?.current_date || '', null);
+                }
+            } catch (adminErr) { console.warn('Could not close administration on early election:', adminErr); }
+
+            // Dissolve caretaker government (PM removed, ministries vacated)
+            await supabase
+                .from('government_formations')
+                .update({ status: 'dissolved' })
+                .eq('id', caretakerGov.id);
+
+            // Deactivate PM
+            await supabase
+                .from('head_of_government')
+                .update({ active: false })
+                .eq('nation_id', nation.id)
+                .eq('active', true);
+
+            // Vacate all ministries
+            await supabase
+                .from('ministries')
+                .update({
+                    minister_first_name: null,
+                    minister_last_name: null,
+                    minister_age: null,
+                    party_id: null
+                })
+                .eq('nation_id', nation.id)
+                .eq('is_active', true);
         }
 
         results.push({
