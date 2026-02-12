@@ -327,6 +327,15 @@ initPage('laws', async (state) => {
     if (!isAutocracy) {
         const coalition = await fetchActiveCoalition(_supabase, nation.id);
         isCaretaker = coalition?.status === 'caretaker';
+        // Fallback: frozen bills are ground truth for caretaker status
+        if (!isCaretaker) {
+            const { count: frozenCount } = await _supabase
+                .from('bills')
+                .select('*', { count: 'exact', head: true })
+                .eq('nation_id', nation.id)
+                .eq('status', 'frozen');
+            if (frozenCount && frozenCount > 0) isCaretaker = true;
+        }
     }
 
     await loadLawsData();
