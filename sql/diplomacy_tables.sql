@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS diplomatic_relations (
 
     -- Relationship state
     relation_type       TEXT NOT NULL DEFAULT 'neutral',        -- neutral, friendly, hostile, war, allied
+    relation_score      INT NOT NULL DEFAULT 30,                -- hidden score, drives display tier
 
     -- Active treaties (array of diplomatic_proposals IDs)
     active_treaties     JSONB DEFAULT '[]'::jsonb,

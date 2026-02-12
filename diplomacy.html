@@ -67,11 +67,15 @@
             display: inline-block; padding: 3px 10px; border-radius: 4px;
             font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;
         }
-        .rel-neutral  { background: #555; color: #ccc; }
-        .rel-friendly { background: #1b5e20; color: #81c784; }
+        .rel-allied    { background: #2e7d32; color: #a5d6a7; }
+        .rel-friendly  { background: #1b5e20; color: #81c784; }
+        .rel-warm      { background: #558b2f; color: #c5e1a5; }
+        .rel-neutral   { background: #555; color: #ccc; }
+        .rel-cool      { background: #f9a825; color: #fff8e1; }
+        .rel-tense     { background: #e65100; color: #ffcc80; }
         .rel-hostile   { background: #b71c1c; color: #ef9a9a; }
-        .rel-war      { background: #ff0000; color: #fff; }
-        .rel-allied   { background: #0d47a1; color: #90caf9; }
+        .rel-war       { background: #ff0000; color: #fff; }
+        .rel-ceasefire { background: #6a1b9a; color: #ce93d8; }
 
         /* ===== NATION FILL COLORS (reused from world) ===== */
         #Melizea.land { fill: #e6c84b; }
@@ -428,9 +432,12 @@ async function renderDiplomacySidebar(targetNation) {
     };
     const flagUrl = flagUrls[targetNation.name] || null;
 
-    // Relation type
-    const relType = relation?.relation_type || 'neutral';
-    const relClass = 'rel-' + relType;
+    // Relation tier (score-driven, number never shown)
+    const hasCeasefire = proposals.some(p => p.proposal_type === 'ceasefire');
+    const score = relation?.relation_score ?? 30;
+    const tier = getRelationTier(score, hasCeasefire);
+    const relType = tier.label;
+    const relClass = tier.cssClass;
 
     // Embassy status (depends on which side we are)
     let embassyStatus = 'N/A';
@@ -486,6 +493,20 @@ async function renderDiplomacySidebar(targetNation) {
         const chatHTML = await renderChatSection(targetNation, diplomaticRoles, ambassador, theirAmbassador);
         sidebar.innerHTML += chatHTML;
     }
+}
+
+// ==================== RELATION TIER (score-driven) ====================
+
+function getRelationTier(score, hasCeasefire) {
+    if (hasCeasefire)  return { label: 'Ceasefire', cssClass: 'rel-ceasefire' };
+    if (score <= -50)  return { label: 'War',       cssClass: 'rel-war' };
+    if (score <= -20)  return { label: 'Hostile',   cssClass: 'rel-hostile' };
+    if (score <= 0)    return { label: 'Tense',     cssClass: 'rel-tense' };
+    if (score <= 19)   return { label: 'Cool',      cssClass: 'rel-cool' };
+    if (score <= 39)   return { label: 'Neutral',   cssClass: 'rel-neutral' };
+    if (score <= 59)   return { label: 'Warm',      cssClass: 'rel-warm' };
+    if (score <= 79)   return { label: 'Friendly',  cssClass: 'rel-friendly' };
+    return                     { label: 'Allied',    cssClass: 'rel-allied' };
 }
 
 // ==================== RELATION SECTION ====================
