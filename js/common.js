@@ -55,19 +55,39 @@ const STATE_KEY = 'nationhood_state';
 const STATE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // Admin inspector overrides: ?nation_id= and ?faction_id= in URL
+// Falls back to sessionStorage so overrides survive in-page navigations
+// (e.g. Appoint Ambassador link) that may lose URL params.
 function getAdminNationOverride() {
     try {
         const params = new URLSearchParams(window.location.search);
-        return params.get('nation_id') || null;
+        const fromUrl = params.get('nation_id') || null;
+        if (fromUrl) { sessionStorage.setItem('_admin_nation', fromUrl); return fromUrl; }
+        return sessionStorage.getItem('_admin_nation') || null;
     } catch (e) { return null; }
 }
 
 function getAdminFactionOverride() {
     try {
         const params = new URLSearchParams(window.location.search);
-        return params.get('faction_id') || null;
+        const fromUrl = params.get('faction_id') || null;
+        if (fromUrl) { sessionStorage.setItem('_admin_faction', fromUrl); return fromUrl; }
+        return sessionStorage.getItem('_admin_faction') || null;
     } catch (e) { return null; }
 }
+
+// Clear stale admin overrides when a page loads with NO admin URL params
+// and is not inside an iframe (i.e. normal browsing, not admin inspector).
+(function clearStaleAdminOverrides() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const hasAdminParams = params.has('nation_id') || params.has('faction_id');
+        const inIframe = window.parent !== window;
+        if (!hasAdminParams && !inIframe) {
+            sessionStorage.removeItem('_admin_nation');
+            sessionStorage.removeItem('_admin_faction');
+        }
+    } catch (e) {}
+})();
 
 function getCachedState() {
     // Skip cache entirely when admin override is active — always fetch fresh
