@@ -67,6 +67,10 @@
         .minister-name { font-size: 1rem; color: var(--text-primary); font-weight: bold; margin-bottom: 4px; }
         .minister-details { font-size: 0.8rem; color: var(--text-secondary); }
         .minister-party { color: var(--green); }
+        .minister-approval { font-size: 0.75rem; margin-top: 4px; color: var(--text-secondary); }
+        .minister-approval .high { color: var(--green); font-weight: bold; }
+        .minister-approval .mid { color: var(--orange); font-weight: bold; }
+        .minister-approval .low { color: var(--red); font-weight: bold; }
         .no-government { background: var(--bg-panel); border-left: 4px solid var(--orange); border-radius: 8px; padding: 20px; text-align: center; }
         .no-government-title { color: var(--orange); font-size: 1.1rem; font-weight: bold; margin-bottom: 8px; }
         .no-government-desc { color: var(--text-secondary); font-size: 0.85rem; }
@@ -798,9 +802,8 @@ async function fetchMinistries() {
 async function calculateGovernmentApproval(partyIds) {
     const { data: parties } = await _supabase.from('factions').select('approval_rating').in('id', partyIds);
     if (!parties || parties.length === 0) return null;
-    const approvals = parties.map(p => p.approval_rating || 0).sort((a, b) => a - b);
-    const mid = Math.floor(approvals.length / 2);
-    return approvals.length % 2 === 0 ? Math.round((approvals[mid - 1] + approvals[mid]) / 2) : approvals[mid];
+    const total = parties.reduce((sum, p) => sum + (p.approval_rating || 0), 0);
+    return Math.round(total / parties.length);
 }
 
 function getPartyNameById(partyId) {
@@ -1074,7 +1077,9 @@ function renderCabinet(ministries, coalition) {
 
             if (isFilled) {
                 const partyName = m.factions?.faction_name || 'Unknown';
-                return `<div class="ministry-card"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${m.minister_first_name} ${m.minister_last_name}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party">${partyName}</span></div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests, m)}</div>`;
+                const appr = m.minister_approval ?? 50;
+                const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
+                return `<div class="ministry-card"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${m.minister_first_name} ${m.minister_last_name}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party">${partyName}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${appr}%</span></div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests, m)}</div>`;
             } else {
                 return `<div class="ministry-card vacant"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests, null)}</div>`;
             }
@@ -1088,7 +1093,9 @@ function renderCabinet(ministries, coalition) {
         const name = m.minister_first_name && m.minister_last_name ? `${m.minister_first_name} ${m.minister_last_name}` : 'Vacant';
         const isMyMinistry = currentFaction && m.party_id === currentFaction.id;
         const resignBtn = (isMyMinistry && !isCaretaker) ? `<div class="ministry-actions"><button class="ministry-btn purge" onclick="resignMinistry('${m.ministry_key}')">📋 Resign Ministry</button></div>` : '';
-        return `<div class="ministry-card"><div class="ministry-title">${m.ministry_name}</div><div class="minister-name">${name}</div><div class="minister-details">${m.minister_age ? `Age ${m.minister_age} • ` : ''}<span class="minister-party">${partyName}</span></div>${resignBtn}</div>`;
+        const appr = m.minister_approval ?? 50;
+        const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
+        return `<div class="ministry-card"><div class="ministry-title">${m.ministry_name}</div><div class="minister-name">${name}</div><div class="minister-details">${m.minister_age ? `Age ${m.minister_age} • ` : ''}<span class="minister-party">${partyName}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${appr}%</span></div>${resignBtn}</div>`;
     }).join('');
     return `<div class="ministry-grid">${cards}</div>`;
 }
