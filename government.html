@@ -270,6 +270,39 @@
             .formation-body { padding: 16px; }
         }
 
+        /* ===== CARETAKER GOVERNMENT BANNER ===== */
+        .caretaker-banner {
+            text-align: center;
+            margin-top: 16px;
+            padding: 18px 20px;
+            border-top: 2px solid #ff9800;
+            background: linear-gradient(135deg, #2a1a00, #1a1200);
+            border-radius: 0 0 12px 12px;
+            animation: caretaker-pulse 2.5s ease-in-out infinite;
+        }
+        @keyframes caretaker-pulse {
+            0%, 100% { border-top-color: #ff9800; box-shadow: inset 0 2px 12px rgba(255,152,0,0.05); }
+            50% { border-top-color: #ffb74d; box-shadow: inset 0 2px 20px rgba(255,152,0,0.12); }
+        }
+        .caretaker-icon { font-size: 1.4rem; margin-bottom: 6px; }
+        .caretaker-title {
+            font-size: 0.95rem; color: #ff9800; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 2px; margin-bottom: 4px;
+        }
+        .caretaker-subtitle {
+            font-size: 0.8rem; color: var(--text-secondary); margin-top: 6px; line-height: 1.5;
+        }
+        .caretaker-subtitle strong { color: #ff9800; }
+        .caretaker-restrictions {
+            display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        .caretaker-restriction-tag {
+            font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+            padding: 4px 10px; border-radius: 4px;
+            background: rgba(255,152,0,0.1); color: #ff9800; border: 1px solid rgba(255,152,0,0.25);
+        }
+
         /* ===== PAST ADMINISTRATIONS ===== */
         .past-admins-toggle {
             background: var(--bg-panel);
@@ -411,6 +444,7 @@
         .pad-end-reason.coalition_collapse { background: rgba(255,152,0,0.15); color: var(--orange); }
         .pad-end-reason.coup { background: rgba(139,0,0,0.2); color: #ff4444; }
         .pad-end-reason.dissolved { background: rgba(150,150,150,0.15); color: var(--text-muted); }
+        .pad-end-reason.pm_replaced { background: rgba(156,39,176,0.15); color: #ce93d8; }
         .pad-end-reason.current { background: rgba(200,170,110,0.15); color: var(--accent); }
 
         .pad-stat-table-toggle {
@@ -886,7 +920,11 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
             </div>`;
     }
 
-    return '<div class="administration-box"><div class="administration-header"><div class="administration-title">' + adminLast + ' Administration</div><div class="administration-subtitle">Caretaker Government</div></div><div class="coalition-parties"><div class="coalition-party-tag" style="background:var(--bg-hover);color:var(--text-secondary);">Awaiting Election Results</div></div></div>';
+    return `<div class="administration-box">
+        <div class="administration-header"><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">Caretaker Government</div></div>
+        <div class="coalition-parties"><div class="coalition-party-tag" style="background:var(--bg-hover);color:var(--text-secondary);">Awaiting Election Results</div></div>
+        ${renderCaretakerBanner()}
+    </div>`;
 }
 
 // ==================== FORMATION IN PROGRESS ====================
@@ -1579,13 +1617,20 @@ function renderCaretakerBanner() {
     // Calculate ticks until election
     const scheduledElectionTick = coalitionData?._earlyElectionTick || null;
     const ticksUntil = scheduledElectionTick ? Math.max(0, scheduledElectionTick - currentTick) : '?';
+    const electionDate = scheduledElectionTick ? tickToDate(scheduledElectionTick) : 'TBD';
 
     return `
-        <div style="text-align:center;margin-top:16px;padding:16px;border-top:1px solid var(--border-main);background:linear-gradient(135deg,#2a1a00,#1a1200);border-radius:0 0 12px 12px;">
-            <div style="font-size:1.2rem;margin-bottom:6px;">⚡</div>
-            <div style="font-size:0.9rem;color:#ff9800;font-weight:bold;text-transform:uppercase;letter-spacing:1.5px;">Caretaker Government</div>
-            <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:6px;">Legislature dissolved. Elections in <strong style="color:#ff9800;">${ticksUntil}</strong> tick${ticksUntil !== 1 ? 's' : ''}.</div>
-            <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:8px;line-height:1.5;">No new legislation · No appointments · No coalition changes</div>
+        <div class="caretaker-banner">
+            <div class="caretaker-icon">⚡</div>
+            <div class="caretaker-title">Caretaker Government</div>
+            <div class="caretaker-subtitle">
+                Legislature dissolved. Elections in <strong>${ticksUntil}</strong> tick${ticksUntil !== 1 ? 's' : ''} (${electionDate}).
+            </div>
+            <div class="caretaker-restrictions">
+                <span class="caretaker-restriction-tag">No Legislation</span>
+                <span class="caretaker-restriction-tag">No Appointments</span>
+                <span class="caretaker-restriction-tag">No Coalition Changes</span>
+            </div>
         </div>`;
 }
 
@@ -1631,6 +1676,9 @@ async function callEarlyElections() {
         );
 
         await markFactionActive(_supabase, currentFaction.id);
+
+        // Bust coalition cache so re-render picks up caretaker status
+        qCacheBust('coalition_');
 
         alert(`⚡ The legislature has been dissolved.\n\nCaretaker government in place. Elections scheduled for tick ${result.electionTick}.`);
         await renderGovernmentPage();
@@ -1767,6 +1815,9 @@ async function resignPMAction() {
             currentFaction.id,
             shard?.current_tick || 0
         );
+
+        // Bust coalition cache so re-render picks up changed state
+        qCacheBust('coalition_');
 
         if (result.result === 'pm_offered') {
             alert(`📋 You have resigned as Prime Minister.\n\n${result.newPmPartyName} has been offered the position.`);
