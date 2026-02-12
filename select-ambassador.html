@@ -366,6 +366,11 @@ initPage('diplomacy', async (state) => {
         return;
     }
 
+    if (coalition?.status === 'caretaker') {
+        renderEmpty(`Appointments are suspended during caretaker government. <a href="${diploBackUrl()}">Back to Diplomacy</a>`);
+        return;
+    }
+
     // Load all active parties
     const { data: parties } = await _supabase
         .from('factions')
