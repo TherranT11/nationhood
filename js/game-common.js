@@ -3091,7 +3091,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
                                 .select('minister_approval')
                                 .eq('nation_id', nation.id)
                                 .eq('ministry_key', action.ministry_key)
-                                .eq('faction_id', action.faction_id)
+                                .eq('party_id', action.faction_id)
                                 .single();
                             ministerUpdates[mKey] = (ministry?.minister_approval ?? 50);
                         }
@@ -3156,7 +3156,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
             .update({ minister_approval: ministerUpdates[mKey] })
             .eq('nation_id', nation.id)
             .eq('ministry_key', ministryKey)
-            .eq('faction_id', factionId);
+            .eq('party_id', factionId);
     }
 
     // Bulk update faction approval
