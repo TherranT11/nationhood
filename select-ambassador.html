@@ -356,10 +356,24 @@ initPage('diplomacy', async (state) => {
         return;
     }
 
-    // Check FM role — always check actual ministry allocation
+    // Check FM role — coalition allocations first, then ministries table (autocracies)
     const coalition = await fetchActiveCoalition(_supabase, currentNation.id);
     const alloc = coalition?.ministry_allocations || {};
-    const isFM = alloc.foreign === currentFaction.id;
+    let isFM = alloc.foreign === currentFaction.id;
+
+    // In autocracies, ministers are stored in the ministries table, not coalition allocations
+    if (!isFM) {
+        const { data: fmEntry } = await _supabase
+            .from('ministries')
+            .select('party_id')
+            .eq('nation_id', currentNation.id)
+            .eq('ministry_key', 'foreign')
+            .eq('is_active', true)
+            .maybeSingle();
+        if (fmEntry && fmEntry.party_id === currentFaction.id) {
+            isFM = true;
+        }
+    }
 
     if (!isFM) {
         renderEmpty(`Only the Foreign Minister can appoint ambassadors. <a href="${diploBackUrl()}">Back to Diplomacy</a>`);
