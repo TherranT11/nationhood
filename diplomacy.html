@@ -95,6 +95,91 @@
             letter-spacing: 1px; margin: 16px 0 8px 0; padding-bottom: 4px;
             border-bottom: 1px solid var(--border-light);
         }
+
+        /* ===== DIPLOMATIC CHAT ===== */
+        .diplo-chat-box {
+            max-height: 300px;
+            overflow-y: auto;
+            background: var(--bg-body);
+            border: 1px solid var(--border-main);
+            border-radius: 6px;
+            padding: 8px;
+            margin-bottom: 8px;
+        }
+        .diplo-msg {
+            margin-bottom: 8px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            max-width: 90%;
+        }
+        .diplo-msg.mine {
+            background: #1a2a3a;
+            border: 1px solid #2a4a6a;
+            margin-left: auto;
+        }
+        .diplo-msg.theirs {
+            background: var(--bg-card);
+            border: 1px solid var(--border-main);
+        }
+        .diplo-msg-sender {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+        }
+        .diplo-msg-sender .role-badge {
+            font-size: 0.6rem;
+            padding: 1px 5px;
+            border-radius: 3px;
+            margin-left: 4px;
+        }
+        .diplo-msg-text {
+            font-size: 0.82rem;
+            color: var(--text-primary);
+            line-height: 1.4;
+        }
+        .diplo-msg-tick {
+            font-size: 0.62rem;
+            color: var(--text-dim);
+            margin-top: 2px;
+            text-align: right;
+        }
+        .diplo-chat-input {
+            display: flex;
+            gap: 6px;
+        }
+        .diplo-chat-input input {
+            flex: 1;
+            padding: 8px 10px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-main);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 0.82rem;
+        }
+        .diplo-chat-input input:focus {
+            border-color: var(--accent);
+            outline: none;
+        }
+        .diplo-chat-input button {
+            padding: 8px 14px;
+            background: var(--accent);
+            border: none;
+            border-radius: 4px;
+            color: #121212;
+            font-weight: bold;
+            font-size: 0.78rem;
+            cursor: pointer;
+        }
+        .diplo-chat-input button:hover { opacity: 0.9; }
+        .diplo-chat-empty {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-dim);
+            font-size: 0.82rem;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -118,6 +203,12 @@
                     <option value="conflict">Conflicts</option>
                     <option value="embargo">Embargoes</option>
                 </select>
+                <div id="diplo-amb-dropdown" style="display:none;margin-left:8px;">
+                    <label>Ambassador:</label>
+                    <select class="diplo-filter" id="amb-select" onchange="jumpToAmbNation(this.value)">
+                        <option value="">Select...</option>
+                    </select>
+                </div>
                 <div id="diplo-role-display" style="margin-left:auto;"></div>
             </div>
 
@@ -251,6 +342,19 @@ function renderRoleBadges(roles) {
     }
 
     container.innerHTML = badges.join('');
+
+    // Populate ambassador dropdown
+    const dropdown = document.getElementById('diplo-amb-dropdown');
+    const select = document.getElementById('amb-select');
+    if (roles.ambassadorTo.length > 0) {
+        dropdown.style.display = '';
+        select.innerHTML = '<option value="">Select...</option>' +
+            roles.ambassadorTo.map(a =>
+                '<option value="' + a.target_nation_id + '">' + a.target_nation_name + '</option>'
+            ).join('');
+    } else {
+        dropdown.style.display = 'none';
+    }
 }
 
 // ==================== MAP SETUP ====================
@@ -297,16 +401,14 @@ async function renderDiplomacySidebar(targetNation) {
     // Is this the player's own nation?
     const isOwnNation = currentNation && currentNation.id === targetNation.id;
 
-    // Parallel fetch: relation, active proposals, ambassador
-    const [relationResult, proposalsResult, ambassadorResult] = await Promise.all([
+    // Parallel fetch: relation, active proposals, our ambassador, pending ambassador, their ambassador
+    const [relation, proposals, ambassador, pendingAmbassador, theirAmbassador] = await Promise.all([
         fetchDiplomaticRelation(currentNation?.id, targetNation.id),
         fetchActiveProposals(currentNation?.id, targetNation.id),
-        fetchAmbassador(currentNation?.id, targetNation.id)
+        fetchAmbassador(currentNation?.id, targetNation.id),
+        fetchPendingAmbassador(currentNation?.id, targetNation.id),
+        fetchAmbassador(targetNation.id, currentNation?.id)
     ]);
-
-    const relation = relationResult;
-    const proposals = proposalsResult;
-    const ambassador = ambassadorResult;
 
     // Flag URLs (same as world.html)
     const flagUrls = {
@@ -367,8 +469,14 @@ async function renderDiplomacySidebar(targetNation) {
 
         ${!isOwnNation && proposals.length > 0 ? renderActiveProposals(proposals) : ''}
 
-        ${!isOwnNation ? renderActionPanel(targetNation, diplomaticRoles, ambassador) : ''}
+        ${!isOwnNation ? renderActionPanel(targetNation, diplomaticRoles, ambassador, pendingAmbassador) : ''}
     `;
+
+    // Render chat section after the main sidebar HTML is set
+    if (!isOwnNation) {
+        const chatHTML = await renderChatSection(targetNation, diplomaticRoles, ambassador, theirAmbassador);
+        sidebar.innerHTML += chatHTML;
+    }
 }
 
 // ==================== RELATION SECTION ====================
@@ -434,7 +542,7 @@ function renderActiveProposals(proposals) {
 
 // ==================== ACTION PANEL (role-based) ====================
 
-function renderActionPanel(targetNation, roles, ambassador) {
+function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador) {
     if (!roles) return '';
 
     let actions = '';
@@ -456,15 +564,27 @@ function renderActionPanel(targetNation, roles, ambassador) {
 
     // FM actions
     if (roles.isFM) {
+        let fmButtons = '';
+        if (ambassador && ambassador.status === 'active') {
+            const ambName = (ambassador.ambassador_first_name || '') + ' ' + (ambassador.ambassador_last_name || '');
+            fmButtons = `
+                <button class="action-btn" disabled style="opacity:0.6;">Ambassador Active: ${ambName.trim()}</button>
+                <button class="action-btn" style="margin-top:8px;" onclick="recallAmbassador('${ambassador.id}', '${targetNation.name}')">Recall Ambassador</button>`;
+        } else if (pendingAmbassador) {
+            const pendName = (pendingAmbassador.ambassador_first_name || '') + ' ' + (pendingAmbassador.ambassador_last_name || '');
+            fmButtons = `<button class="action-btn" disabled style="opacity:0.6;">Awaiting Confirmation: ${pendName.trim()}</button>`;
+        } else {
+            fmButtons = `<button class="action-btn" onclick="window.location.href='select-ambassador.html?target=${targetNation.id}'">Appoint Ambassador</button>`;
+        }
+        fmButtons += `<button class="action-btn" style="margin-top:8px;" disabled>Formal Protest (Coming Soon)</button>`;
+
         actions += `
             <div class="action-card" style="margin-bottom:10px;">
                 <div class="action-header">
                     <span class="action-title">Foreign Minister Actions</span>
                 </div>
                 <p class="action-desc">As Foreign Minister, you oversee diplomatic proposals and ambassador assignments.</p>
-                <button class="action-btn" disabled>Appoint Ambassador (Coming Soon)</button>
-                <button class="action-btn" style="margin-top:8px;" disabled>Review Proposals (Coming Soon)</button>
-                <button class="action-btn" style="margin-top:8px;" disabled>Formal Protest (Coming Soon)</button>
+                ${fmButtons}
             </div>
         `;
     }
@@ -479,7 +599,6 @@ function renderActionPanel(targetNation, roles, ambassador) {
                 </div>
                 <p class="action-desc">As Ambassador to ${targetNation.name}, you can negotiate directly.</p>
                 <button class="action-btn" disabled>Propose Treaty (Coming Soon)</button>
-                <button class="action-btn" style="margin-top:8px;" disabled>Send Diplomatic Message (Coming Soon)</button>
                 <button class="action-btn" style="margin-top:8px;" disabled>Gather Intel (Coming Soon)</button>
             </div>
         `;
@@ -571,6 +690,247 @@ function getStatColor(value) {
     if (value >= 70) return '#4CAF50';
     if (value >= 40) return '#ffcc00';
     return '#f44';
+}
+
+// ==================== PENDING AMBASSADOR FETCH ====================
+
+async function fetchPendingAmbassador(myNationId, targetNationId) {
+    if (!myNationId || !targetNationId || myNationId === targetNationId) return null;
+
+    try {
+        const { data } = await _supabase
+            .from('ambassadors')
+            .select('*')
+            .eq('nation_id', myNationId)
+            .eq('target_nation_id', targetNationId)
+            .eq('is_active', true)
+            .eq('status', 'pending_confirmation')
+            .maybeSingle();
+        return data;
+    } catch (e) {
+        console.warn('Error fetching pending ambassador:', e);
+        return null;
+    }
+}
+
+// ==================== RECALL AMBASSADOR ====================
+
+async function recallAmbassador(ambassadorId, nationName) {
+    if (!confirm(
+        `Recall your Ambassador from ${nationName}?\n\n` +
+        `The ambassador's party will lose 1-3 Approval.`
+    )) return;
+
+    try {
+        const { data: shard } = await _supabase
+            .from('shard')
+            .select('current_tick')
+            .eq('name', 'Alpha Shard')
+            .single();
+        const tick = shard?.current_tick || 0;
+
+        // Get ambassador details for approval penalty
+        const { data: amb } = await _supabase
+            .from('ambassadors')
+            .select('faction_id, ambassador_first_name, ambassador_last_name, factions(approval_rating)')
+            .eq('id', ambassadorId)
+            .single();
+
+        if (!amb) { alert('Ambassador not found.'); return; }
+
+        // Deactivate ambassador
+        await _supabase
+            .from('ambassadors')
+            .update({ status: 'recalled', is_active: false, recalled_at_tick: tick })
+            .eq('id', ambassadorId);
+
+        // 1d3 approval loss
+        const loss = Math.floor(Math.random() * 3) + 1;
+        const currentApproval = amb.factions?.approval_rating ?? 50;
+        const newApproval = Math.max(0, currentApproval - loss);
+        await _supabase
+            .from('factions')
+            .update({ approval_rating: newApproval })
+            .eq('id', amb.faction_id);
+
+        const ambName = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim();
+        alert(`Ambassador ${ambName} recalled from ${nationName}.\n-${loss} Approval to their party.`);
+
+        // Refresh roles and re-render
+        diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
+        renderRoleBadges(diplomaticRoles);
+
+        // Re-select the nation to refresh sidebar
+        const targetPath = document.querySelector('.land.selected-nation');
+        if (targetPath) targetPath.click();
+
+    } catch (e) {
+        console.error('Error recalling ambassador:', e);
+        alert('Error: ' + e.message);
+    }
+}
+
+// ==================== DIPLOMATIC CHAT ====================
+
+async function renderChatSection(targetNation, roles, ourAmbassador, theirAmbassador) {
+    // Determine if there's a diplomatic channel
+    const hasOurAmb = ourAmbassador && ourAmbassador.status === 'active';
+    const hasTheirAmb = theirAmbassador && theirAmbassador.status === 'active';
+
+    if (!hasOurAmb && !hasTheirAmb) {
+        return `
+            <div class="diplo-section-title">Diplomatic Channel</div>
+            <div class="diplo-chat-empty">No diplomatic channel established.<br>An ambassador must be posted to enable communication.</div>
+        `;
+    }
+
+    // Can the current player send messages?
+    const isAmbToTarget = roles.ambassadorTo.some(a => a.target_nation_id === targetNation.id);
+    const canSend = isAmbToTarget && hasOurAmb;
+    const canView = roles.isFM || roles.isHoG || isAmbToTarget;
+
+    if (!canView) {
+        return `
+            <div class="diplo-section-title">Diplomatic Channel</div>
+            <div class="diplo-chat-empty">Diplomatic messages are visible to the Foreign Minister, Head of Government, and Ambassadors.</div>
+        `;
+    }
+
+    // Fetch messages
+    let messages = [];
+    try {
+        const { data } = await _supabase
+            .from('diplomatic_messages')
+            .select('*')
+            .or(
+                'and(from_nation_id.eq.' + currentNation.id + ',to_nation_id.eq.' + targetNation.id + '),' +
+                'and(from_nation_id.eq.' + targetNation.id + ',to_nation_id.eq.' + currentNation.id + ')'
+            )
+            .order('sent_at_tick', { ascending: true })
+            .order('created_at', { ascending: true })
+            .limit(100);
+        messages = data || [];
+    } catch (e) {
+        console.warn('Error fetching diplomatic messages:', e);
+    }
+
+    const msgsHTML = messages.length > 0
+        ? messages.map(m => {
+            const isMine = m.from_nation_id === currentNation.id;
+            return `
+                <div class="diplo-msg ${isMine ? 'mine' : 'theirs'}">
+                    <div class="diplo-msg-sender">
+                        ${m.sender_name || 'Unknown'}
+                        <span class="role-badge" style="background:${isMine ? '#1a5276' : '#2e7d32'};color:#fff;">${m.sender_role || 'diplomat'}</span>
+                    </div>
+                    <div class="diplo-msg-text">${escapeHtml(m.message_text)}</div>
+                    <div class="diplo-msg-tick">Tick ${m.sent_at_tick}</div>
+                </div>`;
+        }).join('')
+        : '<div class="diplo-chat-empty">No messages yet. Start the conversation.</div>';
+
+    const inputHTML = canSend ? `
+        <div class="diplo-chat-input">
+            <input type="text" id="diplo-msg-input" placeholder="Type a message..." maxlength="500"
+                onkeydown="if(event.key==='Enter')sendDiploMessage('${targetNation.id}','${targetNation.name}')" />
+            <button onclick="sendDiploMessage('${targetNation.id}','${targetNation.name}')">Send</button>
+        </div>
+    ` : '<div style="font-size:0.72rem;color:var(--text-dim);text-align:center;padding:6px;">View only — only ambassadors can send messages.</div>';
+
+    return `
+        <div class="diplo-section-title">Diplomatic Channel</div>
+        <div class="diplo-chat-box" id="diplo-chat-box">${msgsHTML}</div>
+        ${inputHTML}
+    `;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function sendDiploMessage(targetNationId, targetNationName) {
+    const input = document.getElementById('diplo-msg-input');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+
+    try {
+        // Get current tick
+        const { data: shard } = await _supabase
+            .from('shard')
+            .select('current_tick')
+            .eq('name', 'Alpha Shard')
+            .single();
+        const tick = shard?.current_tick || 0;
+
+        // Get our ambassador's last name for sender display
+        const { data: amb } = await _supabase
+            .from('ambassadors')
+            .select('ambassador_last_name')
+            .eq('nation_id', currentNation.id)
+            .eq('target_nation_id', targetNationId)
+            .eq('is_active', true)
+            .eq('status', 'active')
+            .single();
+
+        const senderName = 'Amb. ' + (amb?.ambassador_last_name || currentFaction.faction_name);
+
+        await _supabase.from('diplomatic_messages').insert({
+            from_nation_id: currentNation.id,
+            to_nation_id: targetNationId,
+            from_faction_id: currentFaction.id,
+            sender_role: 'ambassador',
+            sender_name: senderName,
+            message_text: text,
+            sent_at_tick: tick
+        });
+
+        // Append message locally
+        const chatBox = document.getElementById('diplo-chat-box');
+        if (chatBox) {
+            // Remove empty state if present
+            const empty = chatBox.querySelector('.diplo-chat-empty');
+            if (empty) empty.remove();
+
+            chatBox.innerHTML += `
+                <div class="diplo-msg mine">
+                    <div class="diplo-msg-sender">
+                        ${senderName}
+                        <span class="role-badge" style="background:#1a5276;color:#fff;">ambassador</span>
+                    </div>
+                    <div class="diplo-msg-text">${escapeHtml(text)}</div>
+                    <div class="diplo-msg-tick">Tick ${tick}</div>
+                </div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        input.value = '';
+    } catch (e) {
+        console.error('Error sending message:', e);
+        alert('Failed to send message: ' + e.message);
+    }
+}
+
+// ==================== AMBASSADOR DROPDOWN NAV ====================
+
+function jumpToAmbNation(targetNationId) {
+    if (!targetNationId) return;
+    // Find the matching land path on the map and click it
+    const paths = document.querySelectorAll('.land');
+    for (const path of paths) {
+        // We need to match by nation name — fetch from roles
+        const ambInfo = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === targetNationId);
+        if (ambInfo) {
+            const nationName = ambInfo.target_nation_name;
+            const matchPath = document.querySelector('.land[data-nation-name="' + nationName + '"]');
+            if (matchPath) {
+                matchPath.click();
+                return;
+            }
+        }
+    }
 }
 </script>
 
