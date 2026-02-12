@@ -1301,6 +1301,49 @@ async function resolveExpiredVotes(supabase, nationId) {
                 });
             }
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'foundational' });
+        } else if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
+            // Ambassador confirmation bill
+            if (passed) {
+                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+                // Activate the ambassador
+                await supabase.from('ambassadors').update({
+                    status: 'active',
+                    is_active: true
+                }).eq('id', bill.ambassador_id);
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'bill_passed',
+                    p_nation_id: bill.nation_id,
+                    p_tick: currentTick,
+                    p_placeholders: {
+                        nation: nation?.name || 'Unknown',
+                        bill_name: bill.bill_name,
+                        sponsor: bill.factions?.faction_name || 'Unknown',
+                        votes_for: String(votesFor),
+                        votes_against: String(votesAgainst),
+                        article_count: '0'
+                    }
+                });
+            } else {
+                await failBill(supabase, bill);
+                // Reject the ambassador
+                await supabase.from('ambassadors').update({
+                    status: 'rejected',
+                    is_active: false
+                }).eq('id', bill.ambassador_id);
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'bill_failed',
+                    p_nation_id: bill.nation_id,
+                    p_tick: currentTick,
+                    p_placeholders: {
+                        nation: nation?.name || 'Unknown',
+                        bill_name: bill.bill_name,
+                        sponsor: bill.factions?.faction_name || 'Unknown',
+                        votes_for: String(votesFor),
+                        votes_against: String(votesAgainst)
+                    }
+                });
+            }
+            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'confirmation' });
         } else if (passed) {
             await enactBill(supabase, bill, currentTick);
             await supabase.rpc('fire_system_event', {
