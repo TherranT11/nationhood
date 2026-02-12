@@ -1727,10 +1727,12 @@ async function createAdministration(supabase, nationId, nation, coalition, allPa
             ? `${nation.head_of_state_first_name} ${nation.head_of_state_last_name}`
             : null;
 
-        // Generate admin name from HOS last name or PM party
-        const adminName = nation.head_of_state_last_name
-            ? `${nation.head_of_state_last_name} Administration`
-            : `${pmPartyName} Administration`;
+        // Generate admin name from PM last name, falling back to HOS
+        const adminName = activeHOG?.last_name
+            ? `${activeHOG.last_name} Administration`
+            : (nation.head_of_state_last_name
+                ? `${nation.head_of_state_last_name} Administration`
+                : `${pmPartyName} Administration`);
 
         await supabase
             .from('administrations')
