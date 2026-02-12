@@ -514,32 +514,6 @@ async function loadSeats(supabase, nationId, isAutocracy, allParties, currentFac
         });
     }
 
-    // Proportionally rescale if stored seats don't match the configured total
-    const seatSum = Object.values(allPartySeats).reduce((a, b) => a + b, 0);
-    if (seatSum > 0 && seatSum !== GAME_CONFIG.TOTAL_SEATS) {
-        const scale = GAME_CONFIG.TOTAL_SEATS / seatSum;
-        const partyIds = Object.keys(allPartySeats);
-        const exact = {};
-        let allocated = 0;
-        for (const pid of partyIds) {
-            exact[pid] = allPartySeats[pid] * scale;
-            allPartySeats[pid] = Math.floor(exact[pid]);
-            allocated += allPartySeats[pid];
-        }
-        // Distribute remaining seats by largest fractional remainder
-        let remainder = GAME_CONFIG.TOTAL_SEATS - allocated;
-        if (remainder > 0) {
-            const byRemainder = partyIds
-                .map(pid => ({ pid, rem: exact[pid] - Math.floor(exact[pid]) }))
-                .sort((a, b) => b.rem - a.rem);
-            for (const r of byRemainder) {
-                if (remainder <= 0) break;
-                allPartySeats[r.pid]++;
-                remainder--;
-            }
-        }
-    }
-
     const currentSeats = allPartySeats[currentFactionId] ||
         allParties.find(p => p.id === currentFactionId)?.seats || 0;
 
