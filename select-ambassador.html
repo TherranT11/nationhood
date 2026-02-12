@@ -356,15 +356,10 @@ initPage('diplomacy', async (state) => {
         return;
     }
 
-    // Check FM role
-    let isFM = false;
-    if (isAutocracy) {
-        isFM = currentNation.ruling_faction_id === currentFaction.id;
-    } else {
-        const coalition = await fetchActiveCoalition(_supabase, currentNation.id);
-        const alloc = coalition?.ministry_allocations || {};
-        isFM = alloc.foreign === currentFaction.id;
-    }
+    // Check FM role — always check actual ministry allocation
+    const coalition = await fetchActiveCoalition(_supabase, currentNation.id);
+    const alloc = coalition?.ministry_allocations || {};
+    const isFM = alloc.foreign === currentFaction.id;
 
     if (!isFM) {
         renderEmpty(`Only the Foreign Minister can appoint ambassadors. <a href="${diploBackUrl()}">Back to Diplomacy</a>`);
