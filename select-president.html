@@ -387,7 +387,7 @@ initPage('government', async (state) => {
         return;
     }
 
-    // Load upcoming election info for display
+    // Load upcoming election info and current tick for display
     const { data: upcomingElection } = await _supabase
         .from('elections')
         .select('election_tick')
@@ -397,7 +397,13 @@ initPage('government', async (state) => {
         .order('election_tick', { ascending: true })
         .limit(1)
         .maybeSingle();
+    const { data: shard } = await _supabase
+        .from('shard')
+        .select('current_tick')
+        .eq('name', 'Alpha Shard')
+        .single();
     window._upcomingElectionTick = upcomingElection?.election_tick || null;
+    window._currentTick = shard?.current_tick || 0;
 
     renderCandidates();
 });
@@ -442,8 +448,11 @@ function renderCandidates() {
         `;
     }).join('');
 
-    const ticksUntil = window._upcomingElectionTick
-        ? `Election in ${window._upcomingElectionTick - (candidates[0]?.created_at_tick || 0)} months`
+    const ticksRemaining = window._upcomingElectionTick && window._currentTick
+        ? window._upcomingElectionTick - window._currentTick
+        : null;
+    const ticksUntil = ticksRemaining && ticksRemaining > 0
+        ? `Election in ${ticksRemaining} month${ticksRemaining !== 1 ? 's' : ''}`
         : '';
 
     page.innerHTML = `

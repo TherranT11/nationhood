@@ -3100,7 +3100,7 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
     }
 
     // Get faction info for administration record
-    const { data: faction } = await supabase.from('factions').select('faction_name, seats').eq('id', factionId).single();
+    const { data: faction } = await supabase.from('factions').select('faction_name, seats, approval_rating').eq('id', factionId).single();
     const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
     const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
 
@@ -3577,13 +3577,12 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
 
     console.log(`Generating presidential candidates for all parties in ${nation.name} (election at tick ${targetTick})`);
 
-    // Get all active parties in this nation
+    // Get all parties in this nation
     const { data: allParties } = await supabase
         .from('factions')
         .select('id, faction_name, is_npc')
         .eq('nation_id', nation.id)
-        .eq('faction_type', 'party')
-        .eq('is_active', true);
+        .eq('faction_type', 'party');
 
     if (!allParties || allParties.length === 0) return;
 
