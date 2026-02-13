@@ -108,7 +108,12 @@ function setupWorldMap() {
                     sidebar.innerHTML = '<p style="color:#f44;">Nation not found.</p>';
                     return;
                 }
-                
+
+                // Fix placeholder government_type values from DB
+                if (!nation.government_type || nation.government_type.toLowerCase().includes('your_gov_here')) {
+                    if (nation.name === 'San Estrella') nation.government_type = 'Presidential';
+                }
+
                 renderNationIntel(nation);
             } catch (e) {
                 console.error('Error loading nation:', e);
@@ -212,7 +217,7 @@ async function renderNationIntel(nation) {
         <!-- Key Stats -->
         <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">
             ${intelRow('Population', formatNumber(nation.population), '#ffcc00')}
-            ${intelRow('Government', nation.government_type === 'Presidential' ? 'Presidential Democracy' : (nation.government_type || '—'), '#fff')}
+            ${intelRow('Government', nation.government_type === 'Presidential' ? 'Presidential Republic' : (nation.government_type || '—'), '#fff')}
         </div>
         
         <!-- Description -->
