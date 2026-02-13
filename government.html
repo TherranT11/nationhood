@@ -1659,7 +1659,7 @@ async function denyRequest(requestId) {
 // ==================== VOTE OF NO CONFIDENCE ====================
 
 function renderNoConfidenceButton(coalition) {
-    if (!currentFaction || isAutocracy) return '';
+    if (!currentFaction || isAutocracy || isPresidential) return '';
 
     // Only opposition parties can file (not in coalition)
     const isInCoalition = coalition.party_ids.includes(currentFaction.id);
@@ -1803,7 +1803,7 @@ async function fileNoConfidence() {
 // ==================== CALL EARLY ELECTIONS ====================
 
 function renderEarlyElectionsButton(coalition) {
-    if (!currentFaction || isAutocracy) return '';
+    if (!currentFaction || isAutocracy || isPresidential) return '';
 
     // Only the PM's party can call early elections
     const isPMParty = currentFaction.id === coalition.lead_party_id;
