@@ -297,6 +297,7 @@ let allPartySeats = {}, allParties = [], allPolicies = [];
 let activeLaws = [], committeeBills = [], floorBills = [], frozenBills = [];
 let isAutocracy = false, isHeadFaction = false, headFactionId = null;
 let isCaretaker = false;
+let isNoGovernment = false;
 let draftArticles = [], selectedPolicy = null;
 let committeeSelectedPolicy = null, currentCommitteeBillId = null;
 let pendingPolicyIds = new Set();
@@ -327,6 +328,7 @@ initPage('laws', async (state) => {
     if (!isAutocracy) {
         const coalition = await fetchActiveCoalition(_supabase, nation.id);
         isCaretaker = coalition?.status === 'caretaker';
+        isNoGovernment = !coalition;
         // Fallback: frozen bills are ground truth for caretaker status
         if (!isCaretaker) {
             const { count: frozenCount } = await _supabase
@@ -444,8 +446,8 @@ function renderIdeoTag(ideologyTag) {
 
 
 function renderLawsPage() {
-    const canDraft = (currentFaction?.action_points || 0) >= GAME_CONFIG.DRAFT_BILL_AP_COST && currentSeats > 0 && !isCaretaker;
-const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and cannot propose bills"' : (isCaretaker ? 'title="Legislature is dissolved — no new bills during caretaker government"' : '');
+    const canDraft = (currentFaction?.action_points || 0) >= GAME_CONFIG.DRAFT_BILL_AP_COST && currentSeats > 0 && !isCaretaker && !isNoGovernment;
+const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and cannot propose bills"' : (isCaretaker ? 'title="Legislature is dissolved — no new bills during caretaker government"' : (isNoGovernment ? 'title="Legislature is suspended until a new government is formed"' : ''));
     const pageTitle = isAutocracy ? `Decrees of ${currentNation.name}` : `Bills & Laws of ${currentNation.name}`;
     const html = `
         <div class="panel-padding">
@@ -454,7 +456,12 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
                     <div style="font-size:1rem;color:#ff9800;font-weight:bold;text-transform:uppercase;letter-spacing:1.5px;">⚡ Legislature Dissolved</div>
                     <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:6px;">Caretaker government in place. No new legislation until elections resolve.</div>
                 </div>
-            ` : ''}
+            ` : (isNoGovernment ? `
+                <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border:2px solid #4fc3f7;border-radius:12px;padding:16px;margin-bottom:20px;text-align:center;">
+                    <div style="font-size:1rem;color:#4fc3f7;font-weight:bold;text-transform:uppercase;letter-spacing:1.5px;">🏛️ Legislature Suspended</div>
+                    <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:6px;">A new government must be formed before bills can be proposed.</div>
+                </div>
+            ` : '')}
             <div class="laws-header">
                 <div class="section-header" style="margin-bottom:0;border-bottom:none;">${pageTitle}</div>
                 <div class="laws-header-buttons">
@@ -1066,6 +1073,7 @@ async function submitToCommittee() {
     if (draftArticles.length === 0) return;
     if (isSubmitting) return;
     if (isCaretaker) { alert('Legislature is dissolved. No new bills during caretaker government.'); return; }
+    if (isNoGovernment) { alert('Legislature is suspended. A new government must be formed before bills can be proposed.'); return; }
     if (currentSeats === 0) { alert('Your faction holds no seats and cannot propose bills.'); return; }
     isSubmitting = true;
     document.getElementById('submit-bill-btn').disabled = true;

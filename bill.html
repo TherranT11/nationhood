@@ -316,6 +316,7 @@ let currentBill = null, currentFaction = null, currentNation = null, currentSeat
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
 let factionIdeology = null; // Dynamic ideology scores for current player
+let isNoGovernment = false;
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const urlParams = new URLSearchParams(window.location.search);
@@ -332,6 +333,10 @@ initPage('laws', async (state) => {
     currentFaction = faction;
     initGameConfigForNation(nation);
     isAutocracy = (nation?.government_type === 'Autocracy');
+    if (!isAutocracy && nation) {
+        const coalition = await fetchActiveCoalition(_supabase, nation.id);
+        isNoGovernment = !coalition;
+    }
     if (!billId) {
         document.getElementById('loading-state').innerHTML = '<div style="text-align:center;color:#ff4444;"><h2>No Bill Selected</h2><p>Please select a bill from the <a href="laws.html" style="color:#ffcc00;">Laws</a> page.</p></div>';
         return;
@@ -468,12 +473,14 @@ function renderBill() {
     const hasMajority = sponsorSeats >= GAME_CONFIG.MAJORITY_SEATS;
     const hasCosponsor = (bill.bill_support || []).some(s => s.faction_id !== bill.proposed_by && s.stance === 'accept');
     const isFoundational = bill.bill_type === 'foundational';
-    const canSendToFloor = isFoundational ? hasCosponsor : (hasMajority || hasCosponsor);
+    const canSendToFloor = !isNoGovernment && (isFoundational ? hasCosponsor : (hasMajority || hasCosponsor));
 
     const disabledAttr = canSendToFloor ? '' : 'disabled';
-    const reason = canSendToFloor ? '' : isFoundational
+    const reason = isNoGovernment
+        ? '<div style="color:#4fc3f7;font-size:0.78rem;margin-top:10px;text-align:center;">🏛️ Legislature is suspended until a new government is formed.</div>'
+        : (canSendToFloor ? '' : isFoundational
         ? '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ Foundational laws require at least one co-sponsor to advance.</div>'
-        : '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or 51% of seats to send this to the floor.</div>';
+        : '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or 51% of seats to send this to the floor.</div>');
 
     el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">Send to Floor</button><button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>` + reason;
 }
@@ -947,6 +954,7 @@ async function enactDecree() {
 
 async function sendToFloor() {
     if (!currentFaction || currentBill.proposed_by !== currentFaction.id) return;
+    if (isNoGovernment) { alert('Legislature is suspended. A new government must be formed before bills can advance.'); return; }
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const { error } = await _supabase.from('bills').update({ status: 'floor', voting_ends_tick: (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS }).eq('id', billId);

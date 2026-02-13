@@ -2575,6 +2575,17 @@ async function processElections(supabase, nation, currentTick) {
             console.log(`Seats synced to factions for ${nation.name}`);
         }
 
+        // Dissolve legislature — fail all pending bills (new parliament must re-propose)
+        const { data: dissolvedBills } = await supabase.from('bills')
+            .update({ status: 'failed' })
+            .eq('nation_id', nation.id)
+            .in('status', ['committee', 'floor'])
+            .select('id');
+
+        if (dissolvedBills?.length > 0) {
+            console.log(`Dissolved ${dissolvedBills.length} pending bill(s) after election for ${nation.name}`);
+        }
+
         // Check if this election resolves a caretaker government (check both tables)
         let caretakerGov = null;
         let caretakerSource = null;
