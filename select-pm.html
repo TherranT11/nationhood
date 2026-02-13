@@ -362,62 +362,62 @@ initPage('government', async (state) => {
     candidates = candidateRows || [];
 
     if (candidates.length === 0) {
-    // Check if this faction is the PM party in the current coalition
-    const { data: gov } = await _supabase
-        .from('government_formations')
-        .select('ministry_assignments')
-        .eq('nation_id', nation.id)
-        .eq('status', 'formed')
-        .order('formed_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        // Check if this faction is the PM party in the current coalition
+        const { data: gov } = await _supabase
+            .from('government_formations')
+            .select('ministry_assignments')
+            .eq('nation_id', nation.id)
+            .eq('status', 'formed')
+            .order('formed_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
-    const pmPartyId = gov?.ministry_assignments?.prime_minister;
+        const pmPartyId = gov?.ministry_assignments?.prime_minister;
 
-    if (pmPartyId === faction.id) {
-        // Auto-generate candidates if we're the PM party but have none
-        const { data: shard } = await _supabase
-            .from('shard')
-            .select('current_tick')
-            .eq('name', 'Alpha Shard')
-            .single();
+        if (pmPartyId === faction.id) {
+            // Auto-generate candidates if we're the PM party but have none
+            const { data: shard } = await _supabase
+                .from('shard')
+                .select('current_tick')
+                .eq('name', 'Alpha Shard')
+                .single();
 
-        try {
-            await generatePMCandidates(_supabase, nation.id, faction.id, shard?.current_tick || 0);
-            // Reload candidates
-            const { data: newCandidates } = await _supabase
-                .from('pm_candidates')
-                .select('*')
-                .eq('nation_id', nation.id)
-                .eq('faction_id', faction.id)
-                .eq('selected', false)
-                .order('created_at', { ascending: true });
-            candidates = newCandidates || [];
-            if (candidates.length > 0) {
-                renderCandidates();
-                return;
+            try {
+                await generatePMCandidates(_supabase, nation.id, faction.id, shard?.current_tick || 0);
+                // Reload candidates
+                const { data: newCandidates } = await _supabase
+                    .from('pm_candidates')
+                    .select('*')
+                    .eq('nation_id', nation.id)
+                    .eq('faction_id', faction.id)
+                    .eq('selected', false)
+                    .order('created_at', { ascending: true });
+                candidates = newCandidates || [];
+                if (candidates.length > 0) {
+                    renderCandidates();
+                    return;
+                }
+            } catch (e) {
+                console.error('Auto-generate PM candidates failed:', e);
             }
-        } catch (e) {
-            console.error('Auto-generate PM candidates failed:', e);
         }
-    }
 
-    // Check if already has active HOG
-    const { data: hog } = await _supabase
-        .from('head_of_government')
-        .select('*')
-        .eq('nation_id', nation.id)
-        .eq('faction_id', faction.id)
-        .eq('active', true)
-        .maybeSingle();
+        // Check if already has active HOG
+        const { data: hog } = await _supabase
+            .from('head_of_government')
+            .select('*')
+            .eq('nation_id', nation.id)
+            .eq('faction_id', faction.id)
+            .eq('active', true)
+            .maybeSingle();
 
-    if (hog) {
-        renderEmpty('You have already selected a Prime Minister. <a href="government.html">View Government →</a>');
-    } else {
-        renderEmpty('No candidates available. Candidates are generated when a coalition is formed and your party receives the Prime Minister post.');
+        if (hog) {
+            renderEmpty('You have already selected a Prime Minister. <a href="government.html">View Government →</a>');
+        } else {
+            renderEmpty('No candidates available. Candidates are generated when a coalition is formed and your party receives the Prime Minister post.');
+        }
+        return;
     }
-    return;
-}
 
     renderCandidates();
 });
