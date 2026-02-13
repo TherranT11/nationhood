@@ -2798,9 +2798,19 @@ async function processElections(supabase, nation, currentTick) {
 
         // === PRESIDENTIAL SYSTEM: handle presidential vs parliamentary elections ===
         if (isPresidential && electionType === 'presidential') {
+            // Fail any bills sitting on the outgoing president's desk
+            const { data: deskBills } = await supabase.from('bills')
+                .update({ status: 'failed' })
+                .eq('nation_id', nation.id)
+                .eq('status', 'president_desk')
+                .select('id');
+            if (deskBills?.length > 0) {
+                console.log(`Failed ${deskBills.length} bill(s) on president's desk after presidential election for ${nation.name}`);
+            }
+
             await processPresidentialElectionResult(supabase, nation, completedElection, currentTick);
         } else if (isPresidential && electionType === 'parliamentary') {
-            // Midterm parliamentary election — seats reshuffled, president stays
+            // Midterm parliamentary election — seats reshuffled, president stays, desk bills remain
             console.log(`Midterm parliamentary election for ${nation.name} — president stays in office`);
         } else {
             // === PARLIAMENTARY DEMOCRACY: existing coalition/caretaker logic ===
@@ -3442,6 +3452,102 @@ async function processPresidentDesk(supabase, nation, currentTick) {
     return results;
 }
 
+/**
+ * Safety net: if an active president's term has expired and no presidential election
+ * is scheduled, schedule one immediately. Also deactivates the president if term
+ * has expired and a new president was already elected (shouldn't happen, but guards).
+ */
+async function processPresidentialTermEnd(supabase, nation, currentTick) {
+    if (nation.government_type !== 'Presidential') return;
+
+    const { data: president } = await supabase
+        .from('presidents')
+        .select('id, faction_id, term_ends_tick')
+        .eq('nation_id', nation.id)
+        .eq('is_active', true)
+        .order('elected_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (!president) return;
+
+    // Term hasn't expired yet
+    if (president.term_ends_tick > currentTick) return;
+
+    // Term has expired — check if a presidential election is already scheduled
+    const { data: scheduledElection } = await supabase
+        .from('elections')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .eq('election_type', 'presidential')
+        .limit(1)
+        .maybeSingle();
+
+    if (!scheduledElection) {
+        // No election scheduled — schedule one for next tick
+        await supabase.from('elections').insert({
+            nation_id: nation.id,
+            election_tick: currentTick + 1,
+            election_type: 'presidential',
+            status: 'scheduled'
+        });
+        console.log(`Emergency presidential election scheduled for ${nation.name} at tick ${currentTick + 1} (term expired)`);
+    }
+}
+
+/**
+ * Auto-select president candidate if the winning party hasn't chosen within 3 ticks.
+ * Selects the first candidate automatically.
+ */
+async function processPresidentCandidateTimeout(supabase, nation, currentTick) {
+    if (nation.government_type !== 'Presidential') return;
+
+    // Find unselected president candidates older than 3 ticks
+    const timeoutTicks = 3;
+    const { data: staleCandidate } = await supabase
+        .from('pm_candidates')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .eq('selected', false)
+        .lte('created_at_tick', currentTick - timeoutTicks)
+        .order('created_at_tick', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+    if (!staleCandidate) return;
+
+    // Verify this is for a presidential election (check if nation is presidential and
+    // the faction is the ruling faction / winner)
+    const rulingFactionId = nation.ruling_faction_id;
+    if (staleCandidate.faction_id !== rulingFactionId) return;
+
+    // Check if there's already an active president — if so, candidates are stale leftovers
+    const { data: activePresident } = await supabase
+        .from('presidents')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+
+    if (activePresident) {
+        // Already have a president — clean up stale candidates
+        await supabase.from('pm_candidates').delete()
+            .eq('nation_id', nation.id).eq('faction_id', staleCandidate.faction_id).eq('selected', false);
+        return;
+    }
+
+    // Auto-select the first candidate
+    console.log(`Auto-selecting president candidate for ${nation.name} (${staleCandidate.first_name} ${staleCandidate.last_name}) — selection timed out after ${timeoutTicks} ticks`);
+
+    try {
+        await selectPresidentCandidate(supabase, staleCandidate.id, nation.id, staleCandidate.faction_id, currentTick);
+    } catch (e) {
+        console.error(`Error auto-selecting president for ${nation.name}:`, e);
+    }
+}
+
 // ==================== TICK HELPERS ====================
 
 function advanceMonth(currentDate) {
@@ -3587,6 +3693,10 @@ async function advanceTick(supabase) {
             summary.presidentDesk = summary.presidentDesk || [];
             summary.presidentDesk.push({ nation: nation.name, bills: deskResults });
         }
+
+        // 5c. Presidential term end safety net + candidate selection timeout
+        await processPresidentialTermEnd(supabase, nation, newTick);
+        await processPresidentCandidateTimeout(supabase, nation, newTick);
 
         // 6. Process ideology shifts from this tick's votes/bills
         const ideologyEvents = await processIdeologyTick(supabase, nation, newTick, resolutions);

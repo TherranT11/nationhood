@@ -340,7 +340,7 @@ async function renderDemocracyPage() {
     }
     if (currentFaction && isPresidential) {
         const { count } = await _supabase
-            .from('president_candidates')
+            .from('pm_candidates')
             .select('*', { count: 'exact', head: true })
             .eq('nation_id', currentNation.id)
             .eq('faction_id', currentFaction.id)
@@ -451,7 +451,24 @@ async function renderElectionResults(election) {
     }
 
     const results = election.results.votes || [];
-    document.getElementById('election-results-list').innerHTML = results.map(r => `
+
+    // Presidential winner banner: party with most votes wins the presidency
+    let presidentWinnerHTML = '';
+    if (isPresidential && results.length > 0) {
+        const winner = results.reduce((best, r) => (r.votes || 0) > (best.votes || 0) ? r : best, results[0]);
+        const mostSeats = results.reduce((best, r) => (r.seats || 0) > (best.seats || 0) ? r : best, results[0]);
+        const isDivided = winner.party_id !== mostSeats.party_id;
+
+        presidentWinnerHTML = `
+            <div style="background:linear-gradient(135deg,#1a2a1a,#0a1a0a);border:2px solid #4CAF50;border-radius:8px;padding:16px;margin-bottom:16px;">
+                <div style="font-size:0.75rem;color:#4CAF50;text-transform:uppercase;letter-spacing:1px;font-weight:bold;margin-bottom:6px;">Presidential Election Winner</div>
+                <div style="font-size:1.1rem;color:#fff;font-weight:bold;">${winner.party_name}</div>
+                <div style="font-size:0.82rem;color:#aaa;margin-top:4px;">${(winner.votes || 0).toLocaleString()} votes (${winner.vote_percentage || 0}%)</div>
+                ${isDivided ? `<div style="font-size:0.75rem;color:#ff9800;margin-top:8px;font-weight:bold;">Divided Government — ${mostSeats.party_name} holds the most seats</div>` : ''}
+            </div>`;
+    }
+
+    document.getElementById('election-results-list').innerHTML = presidentWinnerHTML + results.map(r => `
         <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid #222; align-items: center;">
             <span style="font-size: 0.9rem; color: #ffcc00; font-weight: bold;">${r.party_name}</span>
             <span style="font-size: 0.85rem; color: #aaa; text-align: right;">${(r.votes || 0).toLocaleString()} Votes</span>
