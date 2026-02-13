@@ -884,7 +884,7 @@
                 
                 const seatsAssigned = joinResult?.seats_assigned || 0;
                 alert(`🏛️ ${partyName} has joined the regime in ${selectedNation}!\n\nYou have been assigned ${seatsAssigned} seats.\n${factionNumber === 1 ? '\nAs the first faction, you serve under the Strongman.' : ''}`);
-                window.location.href = 'world.html';
+                window.location.href = 'nation.html';
                 
             } else {
                 // --- DEMOCRACY JOIN ---
@@ -928,7 +928,7 @@
                 }
                 
                 alert(`🎉 ${partyName} has been created! Welcome to the ${selectedNation} political scene.`);
-                window.location.href = 'world.html';
+                window.location.href = 'nation.html';
             }
             
         } catch (error) {

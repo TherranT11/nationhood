@@ -334,7 +334,19 @@ function getNationButton(nation, isFull = false) {
         return `<button onclick="joinNation('${nation.name}')" style="width:100%; padding:14px; background:#4CAF50; color:#fff; border:none; border-radius:4px; font-weight:bold; font-size:0.95rem; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:0.3s;">JOIN ${nation.name.toUpperCase()}</button>`;
     }
     
-    return `<button onclick="window.location.href='${nationSlug(nation.name)}.html'" style="width:100%; padding:14px; background:#ffcc00; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:0.95rem; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:0.3s;">VIEW ${nation.name.toUpperCase()}</button>`;
+    // If this is the user's own nation, go to the nation dashboard
+    if (userFaction.nation_id === nation.id) {
+        return `<button onclick="window.location.href='nation.html'" style="width:100%; padding:14px; background:#ffcc00; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:0.95rem; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:0.3s;">VIEW ${nation.name.toUpperCase()}</button>`;
+    }
+
+    // For other nations, link to their info page if it exists
+    const nationPages = { 'melizea': true, 'avelia': true, 'sangreza': true };
+    const slug = nationSlug(nation.name);
+    if (nationPages[slug]) {
+        return `<button onclick="window.location.href='${slug}.html'" style="width:100%; padding:14px; background:#ffcc00; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:0.95rem; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:0.3s;">VIEW ${nation.name.toUpperCase()}</button>`;
+    }
+
+    return '';
 }
 
 /**
