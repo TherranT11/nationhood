@@ -443,6 +443,17 @@ function renderBill() {
     if (isFrozen) {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#ff9800;color:#000;">FROZEN</span>';
     }
+
+    // Presidential action badges
+    if (bill.president_action === 'signed' || bill.president_action === 'auto_signed') {
+        const label = bill.president_action === 'auto_signed' ? 'Auto-Signed by President' : 'Signed by President';
+        document.getElementById('bill-title').innerHTML += ` <span class="bill-type-badge repeal" style="background:#2E7D32;">✍ ${label}</span>`;
+    } else if (bill.president_action === 'overridden') {
+        document.getElementById('bill-title').innerHTML += ' <span class="bill-type-badge repeal" style="background:#E65100;">⚖ Veto Overridden</span>';
+    } else if (bill.president_action === 'vetoed' && bill.status === 'vetoed') {
+        document.getElementById('bill-title').innerHTML += ' <span class="bill-type-badge repeal" style="background:#B71C1C;">🚫 Vetoed by President</span>';
+    }
+
     document.getElementById('bill-sponsor').textContent = 'Filed by ' + (bill.factions?.faction_name || 'Unknown');
 
     if (isFloor && bill.voting_ends_tick) {

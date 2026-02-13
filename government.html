@@ -590,6 +590,7 @@ let isAutocracy = false;
 let isPresidential = false;
 let isPresidentParty = false;
 let presidentFactionId = null;
+let presidentData = null;
 let isRulingFaction = false;
 let rulingFactionId = null;
 let ministryRequests = [];
@@ -748,11 +749,18 @@ async function renderGovernmentPage() {
         if (isPresidential) {
             const { data: activePresident } = await _supabase
                 .from('presidents')
-                .select('faction_id')
+                .select('id, faction_id, first_name, last_name, age, ideology, trait, elected_tick, term_ends_tick')
                 .eq('nation_id', currentNation.id).eq('is_active', true)
+                .order('elected_tick', { ascending: false })
                 .limit(1).maybeSingle();
+            presidentData = activePresident || null;
             presidentFactionId = activePresident?.faction_id || null;
             isPresidentParty = (presidentFactionId && currentFaction?.id === presidentFactionId);
+            // Fetch trait data for the president
+            if (presidentData?.trait) {
+                const { data: traitData } = await _supabase.from('leader_traits').select('trait_name, upside, downside').eq('trait_key', presidentData.trait).single();
+                if (traitData) presidentData._traitData = traitData;
+            }
         }
 
         // Government approval
@@ -764,10 +772,11 @@ async function renderGovernmentPage() {
             if (uniquePartyIds.length > 0) governmentApproval = await calculateGovernmentApproval(uniquePartyIds);
         }
 
-        // Check for pending PM candidates (player needs to select)
+        // Check for pending PM or President candidates (player needs to select)
         const primeMinister = ministries?.find(m => m.ministry_key === 'prime_minister');
         let hasPendingPMSelection = false;
-        if (currentFaction) {
+        let hasPendingPresidentSelection = false;
+        if (currentFaction && !isPresidential) {
             const { count } = await _supabase
                 .from('pm_candidates')
                 .select('*', { count: 'exact', head: true })
@@ -775,6 +784,15 @@ async function renderGovernmentPage() {
                 .eq('faction_id', currentFaction.id)
                 .eq('selected', false);
             hasPendingPMSelection = (count || 0) > 0;
+        }
+        if (currentFaction && isPresidential) {
+            const { count } = await _supabase
+                .from('pm_candidates')
+                .select('*', { count: 'exact', head: true })
+                .eq('nation_id', currentNation.id)
+                .eq('faction_id', currentFaction.id)
+                .eq('selected', false);
+            hasPendingPresidentSelection = (count || 0) > 0;
         }
 
         document.getElementById('content-area').innerHTML = `
@@ -784,6 +802,14 @@ async function renderGovernmentPage() {
         <div style="font-size:1.8rem;margin-bottom:8px;">👑</div>
         <div style="font-size:1.1rem;color:var(--accent);font-weight:bold;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Select Your Prime Minister</div>
         <div style="font-size:0.85rem;color:var(--text-secondary);">Your coalition has formed. Choose who will lead the nation.</div>
+        <div style="margin-top:12px;display:inline-block;padding:8px 24px;background:var(--accent);color:#121212;border-radius:6px;font-weight:bold;font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;">Choose Now →</div>
+    </div>
+` : ''}
+                ${hasPendingPresidentSelection ? `
+    <div style="background:linear-gradient(135deg,#2a2200,#1a1a00);border:2px solid var(--accent);border-radius:12px;padding:20px;margin-bottom:24px;text-align:center;cursor:pointer;" onclick="window.location.href='select-president.html'">
+        <div style="font-size:1.8rem;margin-bottom:8px;">🏛️</div>
+        <div style="font-size:1.1rem;color:var(--accent);font-weight:bold;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Select Your President</div>
+        <div style="font-size:0.85rem;color:var(--text-secondary);">Your party won the presidential election. Choose who will lead the nation.</div>
         <div style="margin-top:12px;display:inline-block;padding:8px 24px;background:var(--accent);color:#121212;border-radius:6px;font-weight:bold;font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;">Choose Now →</div>
     </div>
 ` : ''}
@@ -921,6 +947,88 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                         <div class="admin-approval-value ${approvalClass}">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div>
                         <div class="admin-approval-label">Ruling Faction</div>
                     </div>
+                </div>
+            </div>`;
+    }
+
+    // ==================== PRESIDENTIAL SYSTEM ====================
+    if (isPresidential) {
+        if (!presidentData) {
+            return `
+                <div class="administration-box">
+                    <div class="administration-header">
+                        <div class="administration-title">Presidential Government</div>
+                        <div class="administration-subtitle">No President — Awaiting Election</div>
+                    </div>
+                    <div class="administration-content" style="text-align:center;padding:24px;">
+                        <div style="font-size:0.9rem;color:var(--text-secondary);">A presidential election must be held before the government can be formed.</div>
+                    </div>
+                </div>`;
+        }
+
+        const presParty = allParties.find(p => p.id === presidentFactionId);
+        const presPartyName = presParty?.faction_name || '—';
+        const presPartySeats = presParty?.seats || 0;
+        const majoritySeats = GAME_CONFIG.MAJORITY_SEATS || 61;
+        const hasMajority = presPartySeats >= majoritySeats;
+        const govStatus = hasMajority ? 'Unified Government' : 'Divided Government';
+        const govStatusColor = hasMajority ? '#4CAF50' : '#ff9800';
+
+        const termRemaining = presidentData.term_ends_tick - currentTick;
+        const termTotal = GAME_CONFIG.PRESIDENTIAL_TERM_TICKS || 24;
+        const termPct = Math.max(0, Math.min(100, Math.round((termRemaining / termTotal) * 100)));
+
+        let approvalClass = '';
+        if (governmentApproval !== null) {
+            if (governmentApproval < 35) approvalClass = 'low';
+            else if (governmentApproval < 50) approvalClass = 'medium';
+        }
+
+        // Fetch president's trait info (already cached or inline)
+        let traitHTML = '';
+        if (presidentData._traitData) {
+            const t = presidentData._traitData;
+            traitHTML = `
+                <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
+                    ${presidentData.ideology ? `<div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:#9C27B0;color:white;margin-bottom:6px;">${presidentData.ideology}</div>` : ''}
+                    <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${t.trait_name || presidentData.trait}</div>
+                    <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${t.upside || ''}</div>
+                    <div style="font-size:0.75rem;color:#ff4444;">▼ ${t.downside || ''}</div>
+                </div>`;
+        }
+
+        return `
+            <div class="administration-box">
+                <div class="administration-header">
+                    <div class="administration-title">${presidentData.last_name} Administration</div>
+                    <div class="administration-subtitle">Presidential Government · <span style="color:${govStatusColor};font-weight:bold;">${govStatus}</span></div>
+                </div>
+                <div class="administration-content">
+                    <div class="admin-section">
+                        <div class="admin-section-title">Head of State</div>
+                        <div class="admin-person-name">${hosFirst} ${hosLast}</div>
+                        <div class="admin-person-details">Age ${hosAge}</div>
+                    </div>
+                    <div class="admin-section">
+                        <div class="admin-section-title">President</div>
+                        <div class="admin-person-name">${presidentData.first_name} ${presidentData.last_name}</div>
+                        <div class="admin-person-details">Age ${presidentData.age} · <span class="admin-person-party">${presPartyName}</span></div>
+                        <div style="margin-top:8px;">
+                            <div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:4px;">Term Remaining: ${termRemaining} tick${termRemaining !== 1 ? 's' : ''}</div>
+                            <div style="height:4px;background:#333;border-radius:2px;overflow:hidden;">
+                                <div style="height:100%;width:${termPct}%;background:${termPct > 25 ? 'var(--accent)' : '#ff4444'};border-radius:2px;transition:width 0.3s;"></div>
+                            </div>
+                        </div>
+                        ${traitHTML}
+                    </div>
+                    <div class="admin-section admin-approval">
+                        <div class="admin-section-title">Government Approval</div>
+                        <div class="admin-approval-value ${approvalClass}">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div>
+                        <div class="admin-approval-label">Presidential</div>
+                    </div>
+                </div>
+                <div class="coalition-parties">
+                    <div class="coalition-party-tag">${presPartyName}<span class="seats">${presPartySeats} Seats</span></div>
                 </div>
             </div>`;
     }
@@ -1659,7 +1767,7 @@ async function denyRequest(requestId) {
 // ==================== VOTE OF NO CONFIDENCE ====================
 
 function renderNoConfidenceButton(coalition) {
-    if (!currentFaction || isAutocracy) return '';
+    if (!currentFaction || isAutocracy || isPresidential) return '';
 
     // Only opposition parties can file (not in coalition)
     const isInCoalition = coalition.party_ids.includes(currentFaction.id);
@@ -1803,7 +1911,7 @@ async function fileNoConfidence() {
 // ==================== CALL EARLY ELECTIONS ====================
 
 function renderEarlyElectionsButton(coalition) {
-    if (!currentFaction || isAutocracy) return '';
+    if (!currentFaction || isAutocracy || isPresidential) return '';
 
     // Only the PM's party can call early elections
     const isPMParty = currentFaction.id === coalition.lead_party_id;

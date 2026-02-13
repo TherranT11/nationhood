@@ -215,6 +215,7 @@ let currentFaction = null;
 let currentNation = null;
 let currentElectionId = null;
 let isAutocracy = false;
+let isPresidential = false;
 let allParties = [];
 let electionResults = [];
 let activeFormationId = null;
@@ -259,6 +260,7 @@ initPage('elections', async (state) => {
     }
 
     isAutocracy = (nation.government_type === 'Autocracy');
+    isPresidential = (nation.government_type === 'Presidential');
     if (isAutocracy) {
         document.title = 'Internal Affairs | Nationhood Alpha';
         await renderAutocracyPage();
@@ -321,11 +323,13 @@ async function renderDemocracyPage() {
         govFormed = !!legacy;
     }
 
-    const showFormation = currentElectionId && !govFormed;
+    // Presidential systems never show coalition formation
+    const showFormation = isPresidential ? false : (currentElectionId && !govFormed);
 
-    // Check if current player has pending PM selection
+    // Check if current player has pending PM or President selection
     let hasPendingPM = false;
-    if (currentFaction) {
+    let hasPendingPresident = false;
+    if (currentFaction && !isPresidential) {
         const { count } = await _supabase
             .from('pm_candidates')
             .select('*', { count: 'exact', head: true })
@@ -333,6 +337,15 @@ async function renderDemocracyPage() {
             .eq('faction_id', currentFaction.id)
             .eq('selected', false);
         hasPendingPM = (count || 0) > 0;
+    }
+    if (currentFaction && isPresidential) {
+        const { count } = await _supabase
+            .from('pm_candidates')
+            .select('*', { count: 'exact', head: true })
+            .eq('nation_id', currentNation.id)
+            .eq('faction_id', currentFaction.id)
+            .eq('selected', false);
+        hasPendingPresident = (count || 0) > 0;
     }
 
     const html = `
@@ -345,6 +358,14 @@ async function renderDemocracyPage() {
         <div style="margin-top:12px;display:inline-block;padding:8px 24px;background:var(--accent);color:#121212;border-radius:6px;font-weight:bold;font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;">Choose Now →</div>
     </div>
 ` : ''}
+            ${hasPendingPresident ? `
+    <div style="background:linear-gradient(135deg,#2a2200,#1a1a00);border:2px solid var(--accent);border-radius:12px;padding:20px;margin-bottom:24px;text-align:center;cursor:pointer;" onclick="window.location.href='select-president.html'">
+        <div style="font-size:1.8rem;margin-bottom:8px;">🏛️</div>
+        <div style="font-size:1.1rem;color:var(--accent);font-weight:bold;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Select Your President</div>
+        <div style="font-size:0.85rem;color:var(--text-secondary);">Your party won the presidential election. Choose who will lead the nation.</div>
+        <div style="margin-top:12px;display:inline-block;padding:8px 24px;background:var(--accent);color:#121212;border-radius:6px;font-weight:bold;font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;">Choose Now →</div>
+    </div>
+` : ''}
             <!-- Election Results -->
             <div id="election-results-section" style="display: ${election ? 'block' : 'none'};">
                 <div class="section-header">Election Results — <span id="election-year"></span></div>
@@ -353,7 +374,7 @@ async function renderDemocracyPage() {
                 </div>
             </div>
 
-            <!-- Government Formation -->
+            <!-- Government Formation (hidden for Presidential systems) -->
             <div id="gov-formation-section" style="display: ${showFormation ? 'block' : 'none'};">
                 <div class="no-gov-warning">
                     <div class="no-gov-warning-icon">⚠️</div>
@@ -366,6 +387,26 @@ async function renderDemocracyPage() {
             </div>
 
             <div class="section-header" style="margin-top: 30px;">Upcoming Elections</div>
+            ${isPresidential ? `
+            <div id="election-info" class="info-block">
+                <div class="info-row">
+                    <span class="info-label">Next Parliamentary Election</span>
+                    <span class="info-value" id="next-parliamentary-tick">—</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Ticks Remaining</span>
+                    <span class="info-value gold" id="ticks-until-parliamentary">—</span>
+                </div>
+                <div class="info-row" style="border-top: 1px solid #333; margin-top: 8px; padding-top: 8px;">
+                    <span class="info-label">Next Presidential Election</span>
+                    <span class="info-value" id="next-presidential-tick">—</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Ticks Remaining</span>
+                    <span class="info-value gold" id="ticks-until-presidential">—</span>
+                </div>
+            </div>
+            ` : `
             <div id="election-info" class="info-block">
                 <div class="info-row">
                     <span class="info-label">Next Election</span>
@@ -376,6 +417,7 @@ async function renderDemocracyPage() {
                     <span class="info-value gold" id="ticks-until-election">—</span>
                 </div>
             </div>
+            `}
         </div>
     `;
 
@@ -409,7 +451,24 @@ async function renderElectionResults(election) {
     }
 
     const results = election.results.votes || [];
-    document.getElementById('election-results-list').innerHTML = results.map(r => `
+
+    // Presidential winner banner: party with most votes wins the presidency
+    let presidentWinnerHTML = '';
+    if (isPresidential && results.length > 0) {
+        const winner = results.reduce((best, r) => (r.votes || 0) > (best.votes || 0) ? r : best, results[0]);
+        const mostSeats = results.reduce((best, r) => (r.seats || 0) > (best.seats || 0) ? r : best, results[0]);
+        const isDivided = winner.party_id !== mostSeats.party_id;
+
+        presidentWinnerHTML = `
+            <div style="background:linear-gradient(135deg,#1a2a1a,#0a1a0a);border:2px solid #4CAF50;border-radius:8px;padding:16px;margin-bottom:16px;">
+                <div style="font-size:0.75rem;color:#4CAF50;text-transform:uppercase;letter-spacing:1px;font-weight:bold;margin-bottom:6px;">Presidential Election Winner</div>
+                <div style="font-size:1.1rem;color:#fff;font-weight:bold;">${winner.party_name}</div>
+                <div style="font-size:0.82rem;color:#aaa;margin-top:4px;">${(winner.votes || 0).toLocaleString()} votes (${winner.vote_percentage || 0}%)</div>
+                ${isDivided ? `<div style="font-size:0.75rem;color:#ff9800;margin-top:8px;font-weight:bold;">Divided Government — ${mostSeats.party_name} holds the most seats</div>` : ''}
+            </div>`;
+    }
+
+    document.getElementById('election-results-list').innerHTML = presidentWinnerHTML + results.map(r => `
         <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid #222; align-items: center;">
             <span style="font-size: 0.9rem; color: #ffcc00; font-weight: bold;">${r.party_name}</span>
             <span style="font-size: 0.85rem; color: #aaa; text-align: right;">${(r.votes || 0).toLocaleString()} Votes</span>
@@ -1479,6 +1538,57 @@ async function loadElectionInfo() {
     const { data: shard } = await _supabase.from('shard').select('current_tick, current_date').eq('name', 'Alpha Shard').single();
     if (!shard) return;
 
+    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const currentMonth = shard.current_date.split(', ')[0];
+    const currentYear = parseInt(shard.current_date.split(', ')[1]);
+    const currentMonthIndex = months.indexOf(currentMonth);
+
+    function tickToDateStr(ticksAhead) {
+        let mi = currentMonthIndex + ticksAhead;
+        let y = currentYear;
+        while (mi >= 12) { mi -= 12; y += 1; }
+        return months[mi] + ', ' + y;
+    }
+
+    if (isPresidential) {
+        // Presidential systems have dual elections — fetch both types
+        const { data: parlElection } = await _supabase
+            .from('elections').select('*').eq('nation_id', currentNation.id).eq('status', 'scheduled')
+            .eq('election_type', 'parliamentary')
+            .gt('election_tick', shard.current_tick)
+            .order('election_tick', { ascending: true }).limit(1).maybeSingle();
+
+        const { data: presElection } = await _supabase
+            .from('elections').select('*').eq('nation_id', currentNation.id).eq('status', 'scheduled')
+            .eq('election_type', 'presidential')
+            .gt('election_tick', shard.current_tick)
+            .order('election_tick', { ascending: true }).limit(1).maybeSingle();
+
+        const parlDateEl = document.getElementById('next-parliamentary-tick');
+        const parlTicksEl = document.getElementById('ticks-until-parliamentary');
+        const presDateEl = document.getElementById('next-presidential-tick');
+        const presTicksEl = document.getElementById('ticks-until-presidential');
+
+        if (parlElection) {
+            const ticksAhead = parlElection.election_tick - shard.current_tick;
+            if (parlDateEl) parlDateEl.textContent = tickToDateStr(ticksAhead);
+            if (parlTicksEl) parlTicksEl.textContent = ticksAhead + (ticksAhead === 1 ? ' tick' : ' ticks');
+        } else {
+            if (parlDateEl) parlDateEl.textContent = 'Not scheduled';
+            if (parlTicksEl) parlTicksEl.textContent = '—';
+        }
+
+        if (presElection) {
+            const ticksAhead = presElection.election_tick - shard.current_tick;
+            if (presDateEl) presDateEl.textContent = tickToDateStr(ticksAhead);
+            if (presTicksEl) presTicksEl.textContent = ticksAhead + (ticksAhead === 1 ? ' tick' : ' ticks');
+        } else {
+            if (presDateEl) presDateEl.textContent = 'Not scheduled';
+            if (presTicksEl) presTicksEl.textContent = '—';
+        }
+        return;
+    }
+
     const DEFAULT_ELECTION_INTERVAL = 48; // ticks between elections (baseline, can be changed by law)
 
     // Only fetch elections scheduled in the future (tick > current tick)
@@ -1524,18 +1634,8 @@ async function loadElectionInfo() {
     const ticksEl = document.getElementById('ticks-until-election');
 
     if (election) {
-        // Convert tick to Month, Year
-        const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-        const currentMonth = shard.current_date.split(', ')[0];
-        const currentYear = parseInt(shard.current_date.split(', ')[1]);
-        const currentMonthIndex = months.indexOf(currentMonth);
         const ticksAhead = election.election_tick - shard.current_tick;
-
-        let electionMonthIndex = currentMonthIndex + ticksAhead;
-        let electionYear = currentYear;
-        while (electionMonthIndex >= 12) { electionMonthIndex -= 12; electionYear += 1; }
-
-        if (nextEl) nextEl.textContent = months[electionMonthIndex] + ', ' + electionYear;
+        if (nextEl) nextEl.textContent = tickToDateStr(ticksAhead);
         if (ticksEl) ticksEl.textContent = ticksAhead + (ticksAhead === 1 ? ' tick' : ' ticks');
     } else {
         if (nextEl) nextEl.textContent = 'Not scheduled';
