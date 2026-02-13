@@ -66,3 +66,10 @@ ALTER TABLE ministries ADD COLUMN IF NOT EXISTS pending_last_name TEXT;
 ALTER TABLE ministries ADD COLUMN IF NOT EXISTS pending_age INT;
 ALTER TABLE ministries ADD COLUMN IF NOT EXISTS confirmation_status TEXT;          -- 'pending', 'confirmed', 'rejected'
 ALTER TABLE ministries ADD COLUMN IF NOT EXISTS rejected_party_ids JSONB DEFAULT '[]'::JSONB;
+
+-- ==================== PM_CANDIDATES TABLE — CANDIDATE TYPE ====================
+-- Distinguishes PM candidates from presidential nominees.
+-- Presidential candidates are generated 6 ticks before the election.
+
+ALTER TABLE pm_candidates ADD COLUMN IF NOT EXISTS candidate_type TEXT DEFAULT 'pm';
+-- Values: 'pm', 'presidential'
