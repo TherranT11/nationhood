@@ -102,6 +102,15 @@
         color: var(--orange);
         font-weight: bold;
     }
+    .crisis-box.active .crisis-rising {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        margin-bottom: 4px;
+    }
+    .crisis-box.active .crisis-rising span {
+        color: var(--red);
+        font-weight: bold;
+    }
 
     /* Stats Sections */
     .stats-section {
@@ -382,7 +391,7 @@ async function renderCrisisSection(nationId) {
     } else {
         var res = await _supabase
             .from('active_crises')
-            .select('crisis_id, crisis_templates(name, description, crisis_end_triggers(stat_key))')
+            .select('crisis_id, crisis_templates(name, description, crisis_end_triggers(stat_key), crisis_effects(stat_key, change_per_tick, target))')
             .eq('nation_id', nationId);
         if (!res.error && res.data) {
             crises = res.data;
@@ -403,9 +412,19 @@ async function renderCrisisSection(nationId) {
             for (var j = 0; j < endTriggers.length; j++) {
                 statNames.push(prettyStatName(endTriggers[j].stat_key));
             }
+            var effects = t.crisis_effects || [];
+            var risingStats = [];
+            for (var k = 0; k < effects.length; k++) {
+                if (effects[k].target === 'nation' && effects[k].stat_key && effects[k].change_per_tick > 0) {
+                    risingStats.push(prettyStatName(effects[k].stat_key));
+                }
+            }
             h += '<div class="crisis-box active">';
             h += '<div class="crisis-name">' + t.name + '</div>';
             h += '<div class="crisis-desc">' + t.description + '</div>';
+            if (risingStats.length > 0) {
+                h += '<div class="crisis-rising">Rising: <span>' + risingStats.join('</span>, <span>') + '</span></div>';
+            }
             if (statNames.length > 0) {
                 h += '<div class="crisis-recovery">Recovery: <span>' + statNames.join('</span>, <span>') + '</span></div>';
             }
