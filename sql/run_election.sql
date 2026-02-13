@@ -56,6 +56,7 @@ BEGIN
             f.id,
             f.faction_name,
             COALESCE(f.approval_rating, 0) AS approval_rating,
+            COALESCE(f.ideology_modifiers, '{}'::JSONB) AS ideology_modifiers,
             COALESCE(fi.liberty_equality, 0)           AS liberty_equality,
             COALESCE(fi.tradition_progress, 0)         AS tradition_progress,
             COALESCE(fi.security_freedom, 0)           AS security_freedom,
@@ -379,7 +380,7 @@ BEGIN
         IF v_forced > 0 THEN
             FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
             LOOP
-                v_cur_approval := COALESCE((v_party.value->>'approval_rating')::INT, 0);
+                v_cur_approval := _election_effective_approval(v_party.value, p_tags)::INT;
                 IF v_cur_approval > v_best_approval THEN
                     v_best_approval := v_cur_approval;
                     v_best_id := v_party.value->>'id';
@@ -396,6 +397,46 @@ BEGIN
 
     RETURN QUERY SELECT 4, v_abstain, v_tally;
     RETURN;
+END;
+$$;
+
+
+-- ============================================================
+-- _election_effective_approval(party JSONB, tags TEXT[])
+-- → NUMERIC
+--
+-- Returns effective approval = base_approval + avg(matched tag modifiers).
+-- For unaligned blocs (empty tags), returns base approval unchanged.
+-- Clamped to [0, 100].
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION _election_effective_approval(
+    p_party JSONB,
+    p_tags  TEXT[]
+)
+RETURNS NUMERIC
+LANGUAGE plpgsql IMMUTABLE
+AS $$
+DECLARE
+    v_base       NUMERIC := COALESCE((p_party->>'approval_rating')::NUMERIC, 0);
+    v_mods       JSONB   := COALESCE(p_party->'ideology_modifiers', '{}'::JSONB);
+    v_tag_count  INT     := COALESCE(array_length(p_tags, 1), 0);
+    v_sum        NUMERIC := 0;
+    v_i          INT;
+    v_tag        TEXT;
+    v_mod_val    NUMERIC;
+BEGIN
+    IF v_tag_count = 0 THEN
+        RETURN v_base;
+    END IF;
+
+    FOR v_i IN 1..v_tag_count LOOP
+        v_tag := UPPER(p_tags[v_i]);
+        v_mod_val := COALESCE((v_mods->>v_tag)::NUMERIC, 0);
+        v_sum := v_sum + v_mod_val;
+    END LOOP;
+
+    RETURN GREATEST(0, LEAST(100, v_base + (v_sum / v_tag_count)));
 END;
 $$;
 
@@ -455,7 +496,7 @@ BEGIN
             v_align_score := 1;
         END IF;
 
-        v_weight := COALESCE((v_party.value->>'approval_rating')::NUMERIC, 0) * v_align_score;
+        v_weight := _election_effective_approval(v_party.value, p_tags) * v_align_score;
         v_weights := v_weights || jsonb_build_object(v_pid, v_weight);
         v_total_weight := v_total_weight + v_weight;
     END LOOP;
