@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Select President | Nationhood Alpha</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="css/dashboard.css">
+    <style>
+        html { overflow-y: scroll !important; height: auto !important; }
+        body { overflow-y: auto !important; height: auto !important; min-height: 100vh; }
+
+        .pm-page {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 32px 24px 60px;
+        }
+
+        /* Header */
+        .pm-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .pm-header-icon {
+            font-size: 3rem;
+            margin-bottom: 8px;
+            display: block;
+            filter: drop-shadow(0 0 16px rgba(255, 204, 0, 0.4));
+        }
+        .pm-header h1 {
+            font-size: 1.5rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            margin-bottom: 6px;
+            font-weight: bold;
+        }
+        .pm-header p {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            max-width: 520px;
+            margin: 0 auto;
+            line-height: 1.5;
+        }
+
+        /* Party context badge */
+        .pm-party-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin: 16px auto 0;
+            padding: 8px 20px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-main);
+            border-radius: 6px;
+            width: fit-content;
+        }
+        .pm-party-dot {
+            width: 10px; height: 10px; border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 8px rgba(255, 204, 0, 0.5);
+        }
+        .pm-party-badge span {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+        }
+        .pm-party-badge strong { color: var(--accent); }
+
+        /* Candidate cards grid */
+        .pm-candidates {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+        @media (max-width: 900px) {
+            .pm-candidates { grid-template-columns: 1fr; }
+        }
+
+        .pm-card {
+            background: var(--bg-panel);
+            border: 2px solid var(--border-main);
+            border-radius: 12px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        .pm-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 32px rgba(255, 204, 0, 0.12);
+        }
+        .pm-card.selected {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px var(--accent), 0 8px 32px rgba(255, 204, 0, 0.2);
+        }
+        .pm-card.selected .pm-card-header {
+            background: linear-gradient(135deg, #2a2200 0%, #1a1a00 100%);
+        }
+
+        /* Card header */
+        .pm-card-header {
+            background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-panel) 100%);
+            padding: 20px 20px 16px;
+            border-bottom: 1px solid var(--border-main);
+            text-align: center;
+        }
+        .pm-card-avatar {
+            width: 56px; height: 56px;
+            border-radius: 50%;
+            background: var(--bg-body);
+            border: 3px solid var(--border-main);
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 12px;
+            font-size: 1.5rem;
+        }
+        .pm-card.selected .pm-card-avatar {
+            border-color: var(--accent);
+            box-shadow: 0 0 12px rgba(255, 204, 0, 0.3);
+        }
+        .pm-card-name {
+            font-size: 1.15rem;
+            font-weight: bold;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+        .pm-card-age {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+        }
+
+        /* Ideology section */
+        .pm-card-ideology {
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border-main);
+            text-align: center;
+        }
+        .pm-ideology-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 6px;
+        }
+        .pm-ideology-tag {
+            display: inline-block;
+            padding: 4px 14px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: white;
+            margin-bottom: 4px;
+        }
+        .pm-ideology-shift {
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        /* Trait section */
+        .pm-card-trait {
+            padding: 16px 20px;
+        }
+        .pm-trait-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        .pm-trait-name {
+            font-size: 1rem;
+            color: var(--accent);
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        .pm-trait-desc {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            font-style: italic;
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+        .pm-trait-effect {
+            font-size: 0.78rem;
+            line-height: 1.5;
+            padding: 4px 0;
+        }
+        .pm-trait-effect.upside { color: #4CAF50; }
+        .pm-trait-effect.downside { color: #ff4444; }
+
+        /* Select button per card */
+        .pm-card-footer {
+            padding: 12px 20px 16px;
+            text-align: center;
+        }
+        .pm-select-indicator {
+            display: inline-block;
+            padding: 6px 20px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border: 2px solid var(--border-main);
+            color: var(--text-muted);
+            transition: all 0.3s;
+        }
+        .pm-card.selected .pm-select-indicator {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #121212;
+        }
+        .pm-card:not(.selected) .pm-select-indicator {
+            border-color: var(--text-dim);
+            color: var(--text-dim);
+        }
+        .pm-card:not(.selected):hover .pm-select-indicator {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* Confirm section */
+        .pm-confirm-section {
+            text-align: center;
+            padding: 24px;
+            background: var(--bg-panel);
+            border-radius: 12px;
+            border: 1px solid var(--border-main);
+        }
+        .pm-confirm-btn {
+            padding: 14px 48px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+            border: none;
+            border-radius: 8px;
+            color: #121212;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+        }
+        .pm-confirm-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(255, 204, 0, 0.4);
+        }
+        .pm-confirm-btn:disabled {
+            background: var(--border-main);
+            color: var(--text-muted);
+            cursor: not-allowed;
+            transform: none;
+        }
+        .pm-confirm-warning {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-top: 12px;
+        }
+        .pm-confirm-summary {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            min-height: 20px;
+        }
+        .pm-confirm-summary strong {
+            color: var(--accent);
+        }
+
+        /* No candidates state */
+        .pm-empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+        .pm-empty h3 {
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+        .pm-empty a {
+            color: var(--accent);
+        }
+
+        /* Loading */
+        .pm-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 80px;
+            color: var(--text-secondary);
+        }
+
+        /* Ideology tag colors */
+        .ideo-liberty { background: #9C27B0; }
+        .ideo-equality { background: #E91E63; }
+        .ideo-freedom { background: #2196F3; }
+        .ideo-security { background: #FF9800; }
+        .ideo-individualism { background: #eab308; }
+        .ideo-collectivism { background: #ec4899; }
+        .ideo-tradition { background: #795548; }
+        .ideo-progress { background: #00BCD4; }
+        .ideo-nationalism { background: #FF5722; }
+        .ideo-globalism { background: #3F51B5; }
+    </style>
+</head>
+<body>
+
+<div id="top-bar"></div>
+
+<div id="content-area">
+    <div class="pm-page" id="pm-page">
+        <div class="pm-loading">
+            <div class="loading-spinner"></div>
+            <div>Loading candidates...</div>
+        </div>
+    </div>
+</div>
+
+<script src="js/supabase-client.js"></script>
+<script src="js/common.js"></script>
+<script src="js/game-common.js"></script>
+<script>
+
+let currentNation = null;
+let currentFaction = null;
+let candidates = [];
+let traits = {};
+let selectedCandidateId = null;
+
+initPage('government', async (state) => {
+    const { nation, faction } = state;
+    currentNation = nation;
+    currentFaction = faction;
+
+    if (!nation || !faction) {
+        renderEmpty('No nation or party found.');
+        return;
+    }
+
+    if (nation.government_type !== 'Presidential') {
+        renderEmpty('This page is only for Presidential Democracies. <a href="government.html">Back to Government</a>');
+        return;
+    }
+
+    // Load traits
+    const { data: traitRows } = await _supabase
+        .from('leader_traits')
+        .select('*');
+    (traitRows || []).forEach(t => { traits[t.trait_key] = t; });
+
+    // Check if this faction won the presidency (is the ruling faction)
+    if (nation.ruling_faction_id !== faction.id) {
+        renderEmpty('Your party did not win the presidential election. <a href="government.html">Back to Government</a>');
+        return;
+    }
+
+    // Load unselected candidates for this faction
+    const { data: candidateRows } = await _supabase
+        .from('pm_candidates')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .eq('faction_id', faction.id)
+        .eq('selected', false)
+        .order('created_at', { ascending: true });
+
+    candidates = candidateRows || [];
+
+    if (candidates.length === 0) {
+        // Check if already has active president
+        const { data: president } = await _supabase
+            .from('presidents')
+            .select('*')
+            .eq('nation_id', nation.id)
+            .eq('faction_id', faction.id)
+            .eq('is_active', true)
+            .maybeSingle();
+
+        if (president) {
+            renderEmpty('You have already selected a President. <a href="government.html">View Government</a>');
+        } else {
+            renderEmpty('No candidates available. Candidates are generated after a presidential election victory.');
+        }
+        return;
+    }
+
+    renderCandidates();
+});
+
+function getIdeologyClass(tag) {
+    return 'ideo-' + (tag || '').toLowerCase();
+}
+
+function renderCandidates() {
+    const page = document.getElementById('pm-page');
+
+    const cardsHTML = candidates.map(c => {
+        const trait = traits[c.trait_key] || {};
+        const ideoClass = getIdeologyClass(c.ideology);
+
+        return `
+            <div class="pm-card" id="card-${c.id}" onclick="selectCandidate('${c.id}')">
+                <div class="pm-card-header">
+                    <div class="pm-card-avatar">🏛</div>
+                    <div class="pm-card-name">${c.first_name} ${c.last_name}</div>
+                    <div class="pm-card-age">Age ${c.age}</div>
+                </div>
+
+                <div class="pm-card-ideology">
+                    <div class="pm-ideology-label">Ideology</div>
+                    <div class="pm-ideology-tag ${ideoClass}">${c.ideology}</div>
+                    <div class="pm-ideology-shift">+5 shift toward ${c.ideology.charAt(0) + c.ideology.slice(1).toLowerCase()}</div>
+                </div>
+
+                <div class="pm-card-trait">
+                    <div class="pm-trait-label">Leader Trait</div>
+                    <div class="pm-trait-name">${trait.trait_name || c.trait_key}</div>
+                    <div class="pm-trait-desc">${trait.description || ''}</div>
+                    <div class="pm-trait-effect upside">${trait.upside || 'Unknown'}</div>
+                    <div class="pm-trait-effect downside">${trait.downside || 'Unknown'}</div>
+                </div>
+
+                <div class="pm-card-footer">
+                    <div class="pm-select-indicator">Select</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    page.innerHTML = `
+        <div class="pm-header">
+            <span class="pm-header-icon">🏛</span>
+            <h1>Select Your President</h1>
+            <p>Your party won the presidential election by popular vote. Choose who will lead the nation for the next ${GAME_CONFIG.PRESIDENTIAL_TERM_TICKS} months.</p>
+            <div class="pm-party-badge">
+                <div class="pm-party-dot"></div>
+                <span>Appointing for <strong>${currentFaction.faction_name}</strong></span>
+            </div>
+        </div>
+
+        <div class="pm-candidates" id="pm-candidates">
+            ${cardsHTML}
+        </div>
+
+        <div class="pm-confirm-section" id="pm-confirm-section">
+            <div class="pm-confirm-summary" id="pm-confirm-summary">Select a candidate above</div>
+            <button class="pm-confirm-btn" id="pm-confirm-btn" disabled onclick="confirmSelection()">
+                Inaugurate President
+            </button>
+            <div class="pm-confirm-warning">This choice is permanent for the duration of the presidential term.</div>
+        </div>
+    `;
+}
+
+function selectCandidate(candidateId) {
+    selectedCandidateId = candidateId;
+
+    document.querySelectorAll('.pm-card').forEach(el => el.classList.remove('selected'));
+    document.getElementById('card-' + candidateId).classList.add('selected');
+
+    const candidate = candidates.find(c => c.id === candidateId);
+    const trait = traits[candidate.trait_key] || {};
+
+    document.getElementById('pm-confirm-summary').innerHTML =
+        `Inaugurate <strong>${candidate.first_name} ${candidate.last_name}</strong> — ` +
+        `<span style="color:var(--accent)">${trait.trait_name || candidate.trait_key}</span> · ` +
+        `${candidate.ideology} (+5 shift)`;
+
+    document.getElementById('pm-confirm-btn').disabled = false;
+}
+
+async function confirmSelection() {
+    if (!selectedCandidateId) return;
+
+    const candidate = candidates.find(c => c.id === selectedCandidateId);
+    const trait = traits[candidate.trait_key] || {};
+
+    if (!confirm(
+        `🏛 Inaugurate ${candidate.first_name} ${candidate.last_name} as President?\n\n` +
+        `Ideology: ${candidate.ideology} (+5 shift)\n` +
+        `Trait: ${trait.trait_name || candidate.trait_key}\n` +
+        `  ${trait.upside || ''}\n` +
+        `  ${trait.downside || ''}\n\n` +
+        `This choice is permanent for the duration of the presidential term.`
+    )) return;
+
+    const btn = document.getElementById('pm-confirm-btn');
+    btn.disabled = true;
+    btn.textContent = 'Inaugurating...';
+
+    try {
+        const { data: shard } = await _supabase
+            .from('shard')
+            .select('current_tick')
+            .eq('name', 'Alpha Shard')
+            .single();
+
+        await selectPresidentCandidate(
+            _supabase,
+            selectedCandidateId,
+            currentNation.id,
+            currentFaction.id,
+            shard?.current_tick || 0
+        );
+
+        // Fire system event
+        try {
+            await _supabase.rpc('fire_system_event', {
+                p_trigger_key: 'president_inaugurated',
+                p_nation_id: currentNation.id,
+                p_tick: shard?.current_tick || 0,
+                p_placeholders: {
+                    nation: currentNation.name,
+                    president_name: `${candidate.first_name} ${candidate.last_name}`,
+                    party: currentFaction.faction_name,
+                    trait: trait.trait_name || candidate.trait_key
+                }
+            });
+        } catch (e) {
+            console.warn('Event fire failed (non-blocking):', e);
+        }
+
+        alert(`🏛 ${candidate.first_name} ${candidate.last_name} has been inaugurated as President!`);
+        window.location.href = 'government.html';
+
+    } catch (e) {
+        console.error('Error inaugurating President:', e);
+        alert('Error: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = 'Inaugurate President';
+    }
+}
+
+function renderEmpty(message) {
+    document.getElementById('pm-page').innerHTML = `
+        <div class="pm-empty">
+            <span style="font-size:3rem;display:block;margin-bottom:16px;opacity:0.3;">🏛</span>
+            <h3>Presidential Selection</h3>
+            <p>${message}</p>
+        </div>
+    `;
+}
+
+</script>
+</body>
+</html>
