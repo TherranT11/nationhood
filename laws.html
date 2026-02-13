@@ -997,7 +997,7 @@ function renderFoundationalOptions() {
             <div class="policy-option-desc">Change the number of legislative seats. Requires 2/3 supermajority (${required} seats) to pass. Non-ideological — no approval penalties. If passed, seats are redistributed proportionally.</div>
             <div style="margin-top:12px;">
                 <label style="color:#ccc;font-size:0.8rem;display:block;margin-bottom:6px;">Current seats: <strong>${currentSeatsTotal}</strong> — Proposed new total:</label>
-                <input type="number" id="foundational-seats-input" min="50" max="500" step="10" value="${currentSeatsTotal}" style="background:#252525;border:1px solid #9C27B0;color:#fff;padding:8px 12px;border-radius:4px;font-size:1rem;width:120px;">
+                <input type="number" id="foundational-seats-input" min="50" max="500" step="10" value="${currentSeatsTotal}" onchange="this.value=Math.max(50,Math.min(500,parseInt(this.value)||50))" style="background:#252525;border:1px solid #9C27B0;color:#fff;padding:8px 12px;border-radius:4px;font-size:1rem;width:120px;">
             </div>
         </div>`;
     selectedPolicy = null;
