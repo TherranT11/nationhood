@@ -216,7 +216,7 @@ async function renderNationIntel(nation) {
         <!-- Key Stats -->
         <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">
             ${intelRow('Population', formatNumber(nation.population), '#ffcc00')}
-            ${intelRow('Government', nation.government_type || '—', '#fff')}
+            ${intelRow('Government', nation.government_type === 'Presidential' ? 'Presidential Democracy' : (nation.government_type || '—'), '#fff')}
         </div>
         
         <!-- Description -->

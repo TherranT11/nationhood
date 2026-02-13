@@ -34,7 +34,13 @@ const GAME_CONFIG = {
     SUPERMAJORITY_THRESHOLD: 2/3,
     EARLY_ELECTION_TICKS: 2,
     EARLY_ELECTION_PM_APPROVAL_COST: 5,
-    EARLY_ELECTION_COALITION_APPROVAL_COST: 3
+    EARLY_ELECTION_COALITION_APPROVAL_COST: 3,
+    // Presidential Democracy
+    PRESIDENTIAL_TERM_TICKS: 24,
+    PARLIAMENTARY_TERM_TICKS: 12,
+    VETO_OVERRIDE_THRESHOLD: 2/3,
+    PRESIDENT_DESK_TICKS: 2,
+    MINISTER_CONFIRMATION_VOTING_TICKS: 2
 };
 
 /**
@@ -49,6 +55,13 @@ function initGameConfigForNation(nation) {
 }
 
 const FORMATION_DEADLINE_TICKS = 6; // ticks before snap election when no government
+
+/**
+ * Government type helpers.
+ * Call with a nation object (must have government_type field).
+ */
+function isGovernmentAutocracy(nation) { return nation?.government_type === 'Autocracy'; }
+function isGovernmentPresidential(nation) { return nation?.government_type === 'Presidential'; }
 
 // ==================== DIPLOMACY CONSTANTS ====================
 
@@ -2269,8 +2282,9 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
  * @returns {Promise<object|null>} Summary of actions taken, or null if not applicable
  */
 async function processGovernmentVacancy(supabase, nation, currentTick) {
-    // Only applies to democracies
+    // Only applies to parliamentary democracies
     if (nation.government_type === 'Autocracy') return null;
+    if (nation.government_type === 'Presidential') return null; // No coalition formation needed
 
     // Check for active coalition
     const coalition = await fetchActiveCoalition(supabase, nation.id);
