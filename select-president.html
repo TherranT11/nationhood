@@ -355,40 +355,55 @@ initPage('government', async (state) => {
         .select('*');
     (traitRows || []).forEach(t => { traits[t.trait_key] = t; });
 
-    // Check if this faction won the presidency (is the ruling faction)
-    if (nation.ruling_faction_id !== faction.id) {
-        renderEmpty('Your party did not win the presidential election. <a href="government.html">Back to Government</a>');
-        return;
-    }
-
-    // Load unselected candidates for this faction
+    // Load unselected presidential candidates for this faction
     const { data: candidateRows } = await _supabase
         .from('pm_candidates')
         .select('*')
         .eq('nation_id', nation.id)
         .eq('faction_id', faction.id)
+        .eq('candidate_type', 'presidential')
         .eq('selected', false)
         .order('created_at', { ascending: true });
 
     candidates = candidateRows || [];
 
     if (candidates.length === 0) {
-        // Check if already has active president
-        const { data: president } = await _supabase
-            .from('presidents')
-            .select('*')
+        // Check if already nominated
+        const { data: nominated } = await _supabase
+            .from('pm_candidates')
+            .select('id')
             .eq('nation_id', nation.id)
             .eq('faction_id', faction.id)
-            .eq('is_active', true)
+            .eq('candidate_type', 'presidential')
+            .eq('selected', true)
+            .limit(1)
             .maybeSingle();
 
-        if (president) {
-            renderEmpty('You have already selected a President. <a href="government.html">View Government</a>');
+        if (nominated) {
+            renderEmpty('You have already nominated your presidential candidate. <a href="government.html">View Government</a>');
         } else {
-            renderEmpty('No candidates available. Candidates are generated after a presidential election victory.');
+            renderEmpty('No candidates available yet. Presidential nominees are generated 6 months before the election.');
         }
         return;
     }
+
+    // Load upcoming election info and current tick for display
+    const { data: upcomingElection } = await _supabase
+        .from('elections')
+        .select('election_tick')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .eq('election_type', 'presidential')
+        .order('election_tick', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+    const { data: shard } = await _supabase
+        .from('shard')
+        .select('current_tick')
+        .eq('name', 'Alpha Shard')
+        .single();
+    window._upcomingElectionTick = upcomingElection?.election_tick || null;
+    window._currentTick = shard?.current_tick || 0;
 
     renderCandidates();
 });
@@ -415,7 +430,7 @@ function renderCandidates() {
                 <div class="pm-card-ideology">
                     <div class="pm-ideology-label">Ideology</div>
                     <div class="pm-ideology-tag ${ideoClass}">${c.ideology}</div>
-                    <div class="pm-ideology-shift">+5 shift toward ${c.ideology.charAt(0) + c.ideology.slice(1).toLowerCase()}</div>
+                    <div class="pm-ideology-shift">+5 shift toward ${c.ideology.charAt(0) + c.ideology.slice(1).toLowerCase()} if elected</div>
                 </div>
 
                 <div class="pm-card-trait">
@@ -433,15 +448,23 @@ function renderCandidates() {
         `;
     }).join('');
 
+    const ticksRemaining = window._upcomingElectionTick && window._currentTick
+        ? window._upcomingElectionTick - window._currentTick
+        : null;
+    const ticksUntil = ticksRemaining && ticksRemaining > 0
+        ? `Election in ${ticksRemaining} month${ticksRemaining !== 1 ? 's' : ''}`
+        : '';
+
     page.innerHTML = `
         <div class="pm-header">
             <span class="pm-header-icon">🏛</span>
-            <h1>Select Your President</h1>
-            <p>Your party won the presidential election by popular vote. Choose who will lead the nation for the next ${GAME_CONFIG.PRESIDENTIAL_TERM_TICKS} months.</p>
+            <h1>Select Your Candidate</h1>
+            <p>Choose your party's presidential nominee for the upcoming election. Your candidate will compete against nominees from other parties in the popular vote.</p>
             <div class="pm-party-badge">
                 <div class="pm-party-dot"></div>
-                <span>Appointing for <strong>${currentFaction.faction_name}</strong></span>
+                <span>Nominating for <strong>${currentFaction.faction_name}</strong></span>
             </div>
+            ${ticksUntil ? `<div style="color:var(--text-secondary);font-size:0.8rem;margin-top:8px;">${ticksUntil}</div>` : ''}
         </div>
 
         <div class="pm-candidates" id="pm-candidates">
@@ -451,9 +474,9 @@ function renderCandidates() {
         <div class="pm-confirm-section" id="pm-confirm-section">
             <div class="pm-confirm-summary" id="pm-confirm-summary">Select a candidate above</div>
             <button class="pm-confirm-btn" id="pm-confirm-btn" disabled onclick="confirmSelection()">
-                Inaugurate President
+                Nominate Candidate
             </button>
-            <div class="pm-confirm-warning">This choice is permanent for the duration of the presidential term.</div>
+            <div class="pm-confirm-warning">This choice is permanent. Your nominee will run in the presidential election.</div>
         </div>
     `;
 }
@@ -468,9 +491,9 @@ function selectCandidate(candidateId) {
     const trait = traits[candidate.trait_key] || {};
 
     document.getElementById('pm-confirm-summary').innerHTML =
-        `Inaugurate <strong>${candidate.first_name} ${candidate.last_name}</strong> — ` +
+        `Nominate <strong>${candidate.first_name} ${candidate.last_name}</strong> — ` +
         `<span style="color:var(--accent)">${trait.trait_name || candidate.trait_key}</span> · ` +
-        `${candidate.ideology} (+5 shift)`;
+        `${candidate.ideology}`;
 
     document.getElementById('pm-confirm-btn').disabled = false;
 }
@@ -482,17 +505,17 @@ async function confirmSelection() {
     const trait = traits[candidate.trait_key] || {};
 
     if (!confirm(
-        `🏛 Inaugurate ${candidate.first_name} ${candidate.last_name} as President?\n\n` +
-        `Ideology: ${candidate.ideology} (+5 shift)\n` +
+        `Nominate ${candidate.first_name} ${candidate.last_name} as your presidential candidate?\n\n` +
+        `Ideology: ${candidate.ideology}\n` +
         `Trait: ${trait.trait_name || candidate.trait_key}\n` +
         `  ${trait.upside || ''}\n` +
         `  ${trait.downside || ''}\n\n` +
-        `This choice is permanent for the duration of the presidential term.`
+        `This choice is permanent. If your party wins the election, this candidate becomes President.`
     )) return;
 
     const btn = document.getElementById('pm-confirm-btn');
     btn.disabled = true;
-    btn.textContent = 'Inaugurating...';
+    btn.textContent = 'Nominating...';
 
     try {
         const { data: shard } = await _supabase
@@ -509,31 +532,14 @@ async function confirmSelection() {
             shard?.current_tick || 0
         );
 
-        // Fire system event
-        try {
-            await _supabase.rpc('fire_system_event', {
-                p_trigger_key: 'president_inaugurated',
-                p_nation_id: currentNation.id,
-                p_tick: shard?.current_tick || 0,
-                p_placeholders: {
-                    nation: currentNation.name,
-                    president_name: `${candidate.first_name} ${candidate.last_name}`,
-                    party: currentFaction.faction_name,
-                    trait: trait.trait_name || candidate.trait_key
-                }
-            });
-        } catch (e) {
-            console.warn('Event fire failed (non-blocking):', e);
-        }
-
-        alert(`🏛 ${candidate.first_name} ${candidate.last_name} has been inaugurated as President!`);
+        alert(`${candidate.first_name} ${candidate.last_name} has been nominated as your presidential candidate!`);
         window.location.href = 'government.html';
 
     } catch (e) {
-        console.error('Error inaugurating President:', e);
+        console.error('Error nominating candidate:', e);
         alert('Error: ' + e.message);
         btn.disabled = false;
-        btn.textContent = 'Inaugurate President';
+        btn.textContent = 'Nominate Candidate';
     }
 }
 

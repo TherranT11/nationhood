@@ -311,6 +311,11 @@ initPage('nation', async (state) => {
         return;
     }
     
+    // Fix placeholder government_type values from DB
+    if (!nation.government_type || nation.government_type.toLowerCase().includes('your_gov_here')) {
+        if (nation.name === 'San Estrella') nation.government_type = 'Presidential';
+    }
+
     await loadAllNations();
     await loadPreviousTickData(nation.id);
     await renderNationPage(nation);
@@ -439,7 +444,7 @@ async function renderNationPage(nation) {
     h += '<h1>' + nation.name + '</h1>';
     h += '<div class="overview-grid">';
     h += '<div class="overview-item"><div class="overview-label">Capital</div><div class="overview-value">' + (nation.capital || '—') + '</div></div>';
-    h += '<div class="overview-item"><div class="overview-label">Government</div><div class="overview-value">' + (nation.government_type || '—') + '</div></div>';
+    h += '<div class="overview-item"><div class="overview-label">Government</div><div class="overview-value">' + (nation.government_type === 'Presidential' ? 'Presidential Republic' : (nation.government_type || '—')) + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">Population</div><div class="overview-value">' + formatPopulation(nation.population) + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">National Approval</div><div class="overview-value gold">' + (nation.national_approval || 50) + '%</div></div>';
     h += '<div class="overview-item"><div class="overview-label">GDP</div><div class="overview-value gold">' + formatGDP(nation.GDP) + '</div></div>';
