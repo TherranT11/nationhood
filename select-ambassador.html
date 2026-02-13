@@ -380,6 +380,11 @@ initPage('diplomacy', async (state) => {
         return;
     }
 
+    if (!isAutocracy && !coalition) {
+        renderEmpty(`No government is currently seated. Ambassador appointments require an active government. <a href="${diploBackUrl()}">Back to Diplomacy</a>`);
+        return;
+    }
+
     if (coalition?.status === 'caretaker') {
         renderEmpty(`Appointments are suspended during caretaker government. <a href="${diploBackUrl()}">Back to Diplomacy</a>`);
         return;
