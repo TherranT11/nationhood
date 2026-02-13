@@ -190,24 +190,25 @@ async function renderNationIntel(nation) {
                 View Parties ▾
             </button>
             <div id="party-preview" style="display:none;margin-top:10px;">
-                ${(parties || []).length === 0 
-                    ? '<p style="color:#666;font-style:italic;font-size:0.8rem;text-align:center;">No parties yet</p>'
-                    : (parties || []).map(p => `
+                ${(() => {
+                    if (!(parties || []).length) return '<p style="color:#666;font-style:italic;font-size:0.8rem;text-align:center;">No parties yet</p>';
+                    const ic = {'Liberty':'#9C27B0','Equality':'#E91E63','Freedom':'#2196F3','Security':'#FF9800','Individualism':'#eab308','Collectivism':'#ec4899','Tradition':'#795548','Progress':'#00BCD4','Nationalism':'#FF5722','Globalism':'#3F51B5'};
+                    return parties.map(p => `
                         <div style="background:#252525;border-radius:6px;padding:10px 12px;margin-bottom:8px;border-left:3px solid ${p.is_npc ? '#666' : '#ffcc00'};">
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                                 <div style="font-weight:bold;color:#e0e0e0;font-size:0.85rem;">${p.faction_name}${p.is_npc ? ' <span style="background:#ff9800;color:#000;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:6px;">NPC</span>' : ''}</div>
                                 <div style="font-size:0.75rem;color:#ffcc00;font-weight:bold;">${p.seats || 0} seats</div>
                             </div>
                             ${(p.ideology_value_1 || p.ideology_value_2) ? `<div style="display:flex;gap:4px;margin-bottom:4px;">
-                                ${p.ideology_value_1 ? `<span style="font-size:0.6rem;padding:1px 5px;border-radius:3px;background:#333;color:#aaa;border:1px solid #444;">${p.ideology_value_1}</span>` : ''}
-                                ${p.ideology_value_2 ? `<span style="font-size:0.6rem;padding:1px 5px;border-radius:3px;background:#333;color:#aaa;border:1px solid #444;">${p.ideology_value_2}</span>` : ''}
+                                ${p.ideology_value_1 ? `<span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:${ic[p.ideology_value_1] || '#333'};color:white;font-weight:bold;">${p.ideology_value_1}</span>` : ''}
+                                ${p.ideology_value_2 ? `<span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:${ic[p.ideology_value_2] || '#333'};color:white;font-weight:bold;">${p.ideology_value_2}</span>` : ''}
                             </div>` : ''}
-                            <div style="display:flex;justify-content:space-between;align-items:center;">
-                                <div style="font-size:0.7rem;color:#888;">${p.abbreviation || ''}</div>
-                                <div style="font-size:0.7rem;color:${(p.approval_rating || 0) >= 50 ? '#4CAF50' : '#ff4444'};">${Math.round(p.approval_rating || 0)}% approval</div>
+                            <div style="text-align:right;">
+                                <span style="font-size:0.7rem;color:${(p.approval_rating || 0) >= 50 ? '#4CAF50' : '#ff4444'};">${Math.round(p.approval_rating || 0)}% approval</span>
                             </div>
                         </div>
-                    `).join('')}
+                    `).join('');
+                })()}
             </div>
         </div>
         
