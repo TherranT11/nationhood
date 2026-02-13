@@ -1702,11 +1702,20 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
             e.category === 'crisis' || e.category === 'disaster' || e.category === 'conflict'
         );
 
-        const crisesStarted = crisisEvents.map(e => ({
-            event_id: e.event_id,
-            title: e.event_name,
-            started_tick: e.fired_at_tick
-        }));
+        const crisesStarted = crisisEvents
+            .filter(e => !e.event_name || !e.event_name.startsWith('CRISIS_RESOLVED:'))
+            .map(e => ({
+                event_id: e.event_id,
+                title: e.event_name,
+                started_tick: e.fired_at_tick
+            }));
+
+        const crisesSolved = (eventsDuring || [])
+            .filter(e => e.event_name && e.event_name.startsWith('CRISIS_RESOLVED:'))
+            .map(e => ({
+                title: e.event_name.replace('CRISIS_RESOLVED: ', ''),
+                solved_tick: e.fired_at_tick
+            }));
 
         // Count elections survived (elections that occurred during this admin where the coalition continued)
         const { data: electionsDuring } = await supabase
@@ -1729,7 +1738,7 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
                 bills_passed: billsPassed,
                 laws_repealed: [],
                 crises_started: crisesStarted,
-                crises_solved: [],
+                crises_solved: crisesSolved,
                 elections_survived: (electionsDuring || []).length,
                 updated_at: new Date().toISOString()
             })
@@ -2638,6 +2647,13 @@ async function advanceTick(supabase) {
         // 11. Snapshot nation stats to history (for trend arrows)
         await snapshotNationHistory(supabase, nation, newTick);
 
+        // 11b. Process crises (persistent negative events that apply effects every tick)
+        const crisisResults = await processCrises(supabase, nation, newTick);
+        if (crisisResults.length > 0) {
+            summary.crises = summary.crises || [];
+            summary.crises.push({ nation: nation.name, crises: crisisResults });
+        }
+
         // 12. Process random events
         const eventResults = await processEvents(supabase, nation, newTick);
         if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
@@ -3444,6 +3460,281 @@ async function processEvents(supabase, nation, currentTick) {
     }
 
     return firedEvents;
+}
+
+
+// ==================== CRISIS TICK PROCESSOR ====================
+
+/**
+ * Process persistent crises for a nation.
+ * - Activates crises when ALL trigger conditions are met
+ * - Applies effects every tick while active
+ * - Deactivates crises when ALL recovery conditions are met
+ * - Effects cascade: nation stats, government/coalition approval, minister approval
+ */
+async function processCrises(supabase, nation, currentTick) {
+    // 1. Load all active crisis templates
+    const { data: crisisTemplates } = await supabase
+        .from('crisis_templates')
+        .select('*, crisis_triggers(*), crisis_effects(*), crisis_end_triggers(*)')
+        .eq('is_active', true);
+
+    if (!crisisTemplates || crisisTemplates.length === 0) return [];
+
+    // 2. Load currently active crises for this nation
+    const { data: activeCrisisRecords } = await supabase
+        .from('active_crises')
+        .select('*')
+        .eq('nation_id', nation.id);
+
+    const activeMap = {};
+    for (const ac of (activeCrisisRecords || [])) {
+        activeMap[ac.crisis_id] = ac;
+    }
+
+    const crisisEvents = [];
+    const nationUpdates = {};
+
+    // 3. Check inactive crises for activation
+    for (const template of crisisTemplates) {
+        if (activeMap[template.id]) continue; // already active
+
+        const triggers = template.crisis_triggers || [];
+        if (triggers.length === 0) continue;
+
+        let allTriggersMet = true;
+        for (const trigger of triggers) {
+            const statValue = nation[trigger.stat_key];
+            if (statValue === null || statValue === undefined) {
+                allTriggersMet = false;
+                break;
+            }
+            const val = Number(statValue);
+            if (trigger.operator === 'gte' && val < Number(trigger.threshold)) {
+                allTriggersMet = false;
+                break;
+            }
+            if (trigger.operator === 'lte' && val > Number(trigger.threshold)) {
+                allTriggersMet = false;
+                break;
+            }
+        }
+
+        if (!allTriggersMet) continue;
+
+        // Activate the crisis
+        const { data: newActive, error: insertErr } = await supabase
+            .from('active_crises')
+            .insert({
+                crisis_id: template.id,
+                nation_id: nation.id,
+                started_at_tick: currentTick,
+                effects_applied_log: []
+            })
+            .select()
+            .single();
+
+        if (insertErr) {
+            console.warn('Crisis activation insert failed:', insertErr.message);
+            continue;
+        }
+
+        activeMap[template.id] = newActive;
+
+        // Log to event_log
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'CRISIS_STARTED: ' + template.name,
+            description_used: template.description || template.name,
+            category: 'crisis',
+            effects_applied: [],
+            fired_at_tick: currentTick
+        });
+
+        crisisEvents.push({
+            type: 'crisis_started',
+            crisisName: template.name,
+            description: template.description,
+            tick: currentTick
+        });
+
+        console.log(`Crisis activated: "${template.name}" in ${nation.name} (tick ${currentTick})`);
+    }
+
+    // 4. Process active crises: check end triggers, apply effects
+    for (const template of crisisTemplates) {
+        const activeRecord = activeMap[template.id];
+        if (!activeRecord) continue;
+
+        // 4a. Check end / recovery triggers
+        const endTriggers = template.crisis_end_triggers || [];
+        let allEndConditionsMet = endTriggers.length > 0;
+
+        for (const endTrigger of endTriggers) {
+            const statValue = nation[endTrigger.stat_key];
+            if (statValue === null || statValue === undefined) {
+                allEndConditionsMet = false;
+                break;
+            }
+            const val = Number(statValue);
+            if (endTrigger.operator === 'gte' && val < Number(endTrigger.threshold)) {
+                allEndConditionsMet = false;
+                break;
+            }
+            if (endTrigger.operator === 'lte' && val > Number(endTrigger.threshold)) {
+                allEndConditionsMet = false;
+                break;
+            }
+        }
+
+        if (allEndConditionsMet) {
+            // Deactivate the crisis
+            await supabase.from('active_crises').delete().eq('id', activeRecord.id);
+            delete activeMap[template.id];
+
+            await supabase.from('event_log').insert({
+                nation_id: nation.id,
+                event_name: 'CRISIS_RESOLVED: ' + template.name,
+                description_used: 'The crisis "' + template.name + '" has been resolved.',
+                category: 'crisis',
+                effects_applied: [],
+                fired_at_tick: currentTick
+            });
+
+            crisisEvents.push({
+                type: 'crisis_resolved',
+                crisisName: template.name,
+                duration: currentTick - activeRecord.started_at_tick,
+                tick: currentTick
+            });
+
+            console.log(`Crisis resolved: "${template.name}" in ${nation.name} (tick ${currentTick}, duration: ${currentTick - activeRecord.started_at_tick} ticks)`);
+            continue; // skip effects on the tick the crisis resolves
+        }
+
+        // 4b. Still active — apply effects every tick
+        const effects = template.crisis_effects || [];
+        const appliedEffects = [];
+
+        for (const effect of effects) {
+            const changePT = Number(effect.change_per_tick);
+
+            if (effect.target === 'nation') {
+                const currentVal = nationUpdates[effect.stat_key] !== undefined
+                    ? nationUpdates[effect.stat_key]
+                    : (nation[effect.stat_key] !== undefined && nation[effect.stat_key] !== null
+                        ? Number(nation[effect.stat_key]) : 50);
+                const newVal = Math.max(0, Math.min(100, currentVal + changePT));
+                nationUpdates[effect.stat_key] = newVal;
+                nation[effect.stat_key] = newVal;
+
+                appliedEffects.push({
+                    stat: effect.stat_key, change: changePT,
+                    target: 'nation', old: currentVal, new: newVal
+                });
+
+            } else if (effect.target === 'government_approval' || effect.target === 'coalition_approval') {
+                const coalition = await fetchActiveCoalition(supabase, nation.id);
+                const partyIds = coalition?.party_ids || [];
+                for (const partyId of partyIds) {
+                    const { data: faction } = await supabase
+                        .from('factions')
+                        .select('approval_rating')
+                        .eq('id', partyId)
+                        .single();
+                    if (faction) {
+                        const currentVal = faction.approval_rating ?? 50;
+                        const newVal = Math.max(0, Math.min(100, currentVal + changePT));
+                        await supabase.from('factions')
+                            .update({ approval_rating: newVal })
+                            .eq('id', partyId);
+
+                        appliedEffects.push({
+                            stat: 'approval_rating', change: changePT,
+                            target: effect.target, faction_id: partyId,
+                            old: currentVal, new: newVal
+                        });
+                    }
+                }
+
+            } else if (effect.target === 'minister_approval') {
+                const { data: ministry } = await supabase
+                    .from('ministries')
+                    .select('minister_approval, party_id')
+                    .eq('nation_id', nation.id)
+                    .eq('ministry_key', effect.minister_key)
+                    .eq('is_active', true)
+                    .maybeSingle();
+
+                if (ministry) {
+                    const currentVal = ministry.minister_approval ?? 50;
+                    const newVal = Math.max(0, Math.min(100, currentVal + changePT));
+                    await supabase.from('ministries')
+                        .update({ minister_approval: newVal })
+                        .eq('nation_id', nation.id)
+                        .eq('ministry_key', effect.minister_key)
+                        .eq('is_active', true);
+
+                    appliedEffects.push({
+                        stat: 'minister_approval', change: changePT,
+                        target: 'minister_approval', minister_key: effect.minister_key,
+                        old: currentVal, new: newVal
+                    });
+
+                    // Cascade minister approval loss to party approval (2x for PM, 1x for others)
+                    if (changePT < 0 && ministry.party_id) {
+                        const loss = Math.abs(changePT);
+                        const multiplier = effect.minister_key === 'prime_minister' ? 2 : 1;
+                        const { data: faction } = await supabase
+                            .from('factions')
+                            .select('approval_rating')
+                            .eq('id', ministry.party_id)
+                            .single();
+                        if (faction) {
+                            const factionVal = faction.approval_rating ?? 50;
+                            const newFactionVal = Math.max(0, factionVal - (loss * multiplier));
+                            await supabase.from('factions')
+                                .update({ approval_rating: newFactionVal })
+                                .eq('id', ministry.party_id);
+
+                            appliedEffects.push({
+                                stat: 'approval_rating', change: -(loss * multiplier),
+                                target: 'minister_cascade', faction_id: ministry.party_id,
+                                minister_key: effect.minister_key,
+                                old: factionVal, new: newFactionVal
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update effects log on the active crisis record
+        const logEntry = { tick: currentTick, effects: appliedEffects };
+        const existingLog = activeRecord.effects_applied_log || [];
+        // Keep last 50 entries to prevent unbounded growth
+        if (existingLog.length >= 50) existingLog.shift();
+        existingLog.push(logEntry);
+        await supabase.from('active_crises')
+            .update({ effects_applied_log: existingLog })
+            .eq('id', activeRecord.id);
+
+        if (appliedEffects.length > 0) {
+            crisisEvents.push({
+                type: 'crisis_effects',
+                crisisName: template.name,
+                effects: appliedEffects,
+                tick: currentTick
+            });
+        }
+    }
+
+    // 5. Bulk update nation stats
+    if (Object.keys(nationUpdates).length > 0) {
+        await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+    }
+
+    return crisisEvents;
 }
 
 
