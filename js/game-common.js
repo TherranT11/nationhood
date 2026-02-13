@@ -2424,9 +2424,8 @@ async function processElections(supabase, nation, currentTick) {
             continue;
         }
 
-        const { data, error } = await supabase.rpc('process_election', {
-            election_nation_id: nation.id,
-            election_id: election.id
+        const { data, error } = await supabase.rpc('run_election', {
+            p_nation_id: nation.id
         });
 
         if (error) {
@@ -2434,10 +2433,20 @@ async function processElections(supabase, nation, currentTick) {
             continue;
         }
 
-        // Sync seats back to factions table
+        // Mark the scheduled election record as completed so it doesn't re-fire
+        await supabase.from('elections')
+            .update({ status: 'completed' })
+            .eq('id', election.id);
+
+        // Sync seats back to factions table (run_election creates a new record, so
+        // look up the latest completed election for this nation to get results)
         const { data: completedElection } = await supabase
             .from('elections').select('results')
-            .eq('id', election.id).single();
+            .eq('nation_id', nation.id)
+            .eq('status', 'completed')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
         if (completedElection?.results?.seats) {
             for (const r of completedElection.results.seats) {
@@ -2493,18 +2502,18 @@ async function processElections(supabase, nation, currentTick) {
                 }
             } catch (adminErr) { console.warn('Could not close administration on early election:', adminErr); }
 
-            // Dissolve caretaker government (PM removed, ministries vacated)
-            if (caretakerSource === 'government_formations') {
-                await supabase
-                    .from('government_formations')
-                    .update({ status: 'dissolved' })
-                    .eq('id', caretakerGov.id);
-            } else {
-                await supabase
-                    .from('active_coalitions')
-                    .update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
-                    .eq('id', caretakerGov.id);
-            }
+            // Dissolve caretaker government in BOTH tables (callEarlyElections sets both)
+            await supabase
+                .from('government_formations')
+                .update({ status: 'dissolved' })
+                .eq('nation_id', nation.id)
+                .eq('status', 'caretaker');
+
+            await supabase
+                .from('active_coalitions')
+                .update({ dissolved_at: new Date().toISOString() })
+                .eq('nation_id', nation.id)
+                .is('dissolved_at', null);
 
             // Deactivate PM
             await supabase
