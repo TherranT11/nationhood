@@ -27,7 +27,6 @@
     --nav-active-bg: #121212;
     --shadow-card: rgba(0,0,0,0.5);
     --shadow-accent: rgba(255,204,0,0.4);
-    --continent-bg: #ffffff;
     --ocean-bg: #87CEEB;
     --sidebar-bg: #1a1a1a;
     --sidebar-border: #333;
@@ -64,7 +63,6 @@ body.light-mode {
     --nav-active-bg: #f0f1f4;
     --shadow-card: rgba(0,0,0,0.08);
     --shadow-accent: rgba(200,160,0,0.25);
-    --continent-bg: #ffffff;
     --ocean-bg: #b3d4f0;
     --sidebar-bg: #ffffff;
     --sidebar-border: #d0d0d0;
@@ -418,7 +416,6 @@ body.light-mode .coalition-party-card.locked { background: #fff3e0; }
 #Montequilla.selected-nation { fill: #66cc44 !important; filter: drop-shadow(0 0 15px rgba(102,204,68,0.8)) !important; }
 #SanEstrella.selected-nation { fill: #ff8833 !important; filter: drop-shadow(0 0 15px rgba(255,136,51,0.8)) !important; }
 #Veldaria.selected-nation { fill: #44bbd4 !important; filter: drop-shadow(0 0 15px rgba(68,187,212,0.8)) !important; }
-.continent-bg { fill: var(--continent-bg); stroke: var(--bg-hover); stroke-width: 1.5; pointer-events: none; }
 .capital-dot { fill: var(--bg-panel); pointer-events: none; }
 .capital-name { fill: var(--bg-panel); font-size: 4px; font-family: sans-serif; font-weight: bold; pointer-events: none; }
 #world-sidebar {
