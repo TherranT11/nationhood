@@ -294,8 +294,9 @@
 <script>
 let currentNation = null, currentFaction = null, currentSeats = 0;
 let allPartySeats = {}, allParties = [], allPolicies = [];
-let activeLaws = [], committeeBills = [], floorBills = [], frozenBills = [];
+let activeLaws = [], committeeBills = [], floorBills = [], frozenBills = [], presidentDeskBills = [];
 let isAutocracy = false, isHeadFaction = false, headFactionId = null;
+let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
 let isCaretaker = false;
 let isNoGovernment = false;
 let draftArticles = [], selectedPolicy = null;
@@ -320,7 +321,16 @@ initPage('laws', async (state) => {
         return;
     }
     isAutocracy = (nation.government_type === 'Autocracy');
+    isPresidential = (nation.government_type === 'Presidential');
     if (isAutocracy) { termBill = 'Decree'; termBills = 'Decrees'; termDraft = 'Draft Decree'; termPropose = 'Propose Decree'; document.title = 'Decrees | Nationhood Alpha'; }
+
+    // Detect president's party
+    if (isPresidential) {
+        const { data: activePresident } = await _supabase.from('presidents')
+            .select('faction_id').eq('nation_id', nation.id).eq('is_active', true).limit(1).maybeSingle();
+        presidentFactionId = activePresident?.faction_id || null;
+        isPresidentParty = (presidentFactionId && currentFaction?.id === presidentFactionId);
+    }
 
     // Check for caretaker government (legislature frozen)
     // Bust coalition cache so caretaker status is never stale
@@ -380,9 +390,10 @@ async function loadLawsData() {
             _supabase.from('active_laws').select('*, policies(*)').eq('nation_id', nid),
             _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), factions(faction_name)), bill_support(*)').eq('nation_id', nid).eq('status', 'committee'),
             _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).in('status', ['floor', 'vetoed']),
-            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).eq('status', 'frozen')
+            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).eq('status', 'frozen'),
+            isPresidential ? _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).eq('status', 'president_desk') : Promise.resolve({ data: [] })
         ];
-        const [policiesRes, lawsRes, committeeRes, floorRes, frozenRes] = await Promise.all(queries);
+        const [policiesRes, lawsRes, committeeRes, floorRes, frozenRes, deskRes] = await Promise.all(queries);
 
         allPolicies = policiesRes.data || [];
         if (!cachedPolicies && allPolicies.length) qCacheSet('policies_active', allPolicies, 10 * 60 * 1000);
@@ -390,6 +401,7 @@ async function loadLawsData() {
         committeeBills = committeeRes.data || [];
         floorBills = floorRes.data || [];
         frozenBills = frozenRes.data || [];
+        presidentDeskBills = deskRes.data || [];
 
         // Load dynamic ideology scores for current player
         if (currentFaction) {
@@ -492,6 +504,7 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
 
             <!-- Bills View (shown by default) -->
             <div id="bills-view">
+                ${presidentDeskBills.length > 0 ? renderPresidentDeskBills() : ''}
                 ${frozenBills.length > 0 ? renderFrozenBills() : ''}
                 ${floorBills.length > 0 ? renderFloorBills() : ''}
                 ${committeeBills.length > 0 ? renderCommitteeBills() : ''}
@@ -607,6 +620,74 @@ function renderFrozenBills() {
         `).join('');
 }
 
+// ==================== PRESIDENT'S DESK ====================
+
+function renderPresidentDeskBills() {
+    let html = `<div class="section-header" style="color:#1565C0;">President's Desk</div>`;
+    html += presidentDeskBills.map(bill => {
+        const articles = (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number);
+        const articlesHtml = articles.length > 0
+            ? articles.map(art => {
+                if (!art.policies) return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.article_title || 'Untitled'} <span style="background:#2196F3;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;">TEXT</span></span></div></div>`;
+                const chipHTML = renderIdeologyChips(art.policies);
+                return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
+            }).join('')
+            : (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">🗑️ Proposes to rescind an active law</span></div></div>' : '');
+
+        const deadlineTick = bill.president_desk_deadline || '?';
+        const actionButtons = isPresidentParty
+            ? `<div class="veto-banner" style="border-color:#1565C0;background:linear-gradient(135deg,#0d1b2a,#1b2838);">
+                <div>
+                    <div class="veto-banner-text" style="color:#64B5F6;">The President must sign or veto this bill</div>
+                    <div style="font-size:0.75rem;color:#888;">Auto-signs at Tick ${deadlineTick} if no action taken</div>
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button class="stance-btn" style="background:#4CAF50;color:#fff;" onclick="event.stopPropagation(); signBill('${bill.id}')">Sign Into Law</button>
+                    <button class="stance-btn veto" onclick="event.stopPropagation(); vetoBill('${bill.id}')">Veto</button>
+                </div>
+            </div>`
+            : `<div style="padding:8px 16px;font-size:0.8rem;color:#64B5F6;">Awaiting presidential action — auto-signs at Tick ${deadlineTick}</div>`;
+
+        return `
+            <div class="floor-bill clickable-bill" style="border-color:#1565C0;" onclick="window.location.href='bill.html?id=${bill.id}'">
+                <div class="committee-bill-header">
+                    <div>
+                        <div class="floor-bill-name">${bill.bill_name || 'Unnamed Bill'}${bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : ''}</div>
+                        <div class="committee-bill-sponsor">Proposed by ${bill.factions?.faction_name || 'Unknown'}</div>
+                    </div>
+                    <div class="floor-status" style="background:#1565C0;color:#fff;">ON PRESIDENT'S DESK</div>
+                </div>
+                <div class="bill-articles">${articlesHtml}</div>
+                ${actionButtons}
+                <div class="click-hint">Click to view full bill →</div>
+            </div>`;
+    }).join('');
+    return html;
+}
+
+async function signBill(billId) {
+    if (!isPresidentParty) return;
+    if (!confirm('Sign this bill into law?')) return;
+    try {
+        await signPresidentialBill(_supabase, billId, currentFaction.id);
+        alert('Bill signed into law.');
+        await loadLawsData(); renderLawsPage();
+    } catch (error) { console.error('Sign error:', error); alert('Error: ' + error.message); }
+}
+
+async function vetoBill(billId) {
+    if (!isPresidentParty) return;
+    const overrideSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
+    if (!confirm(`VETO this bill?\n\nA veto override bill will be automatically created requiring ${overrideSeats}/${GAME_CONFIG.TOTAL_SEATS} seats (2/3 supermajority).\n\nProceed?`)) return;
+    try {
+        await vetoPresidentialBill(_supabase, billId, currentFaction.id);
+        alert('Bill vetoed. A veto override bill has been sent to the floor.');
+        await loadLawsData(); renderLawsPage();
+    } catch (error) { console.error('Veto error:', error); alert('Error: ' + error.message); }
+}
+
+// ==================== FLOOR BILLS ====================
+
 function renderFloorBills() {
     const activeFloor = floorBills.filter(b => b.status === 'floor');
     const vetoedFloor = floorBills.filter(b => b.status === 'vetoed');
@@ -621,7 +702,7 @@ function renderFloorBill(bill, isVetoed) {
         <div class="floor-bill ${isVetoed ? 'vetoed' : ''} clickable-bill" onclick="window.location.href='bill.html?id=${bill.id}'">
             <div class="committee-bill-header">
                 <div>
-                    <div class="floor-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'no_confidence' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚡ No Confidence</span>' : (bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : (bill.bill_type === 'foundational' ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>' : (bill.bill_type === 'confirmation' ? ' <span style="background:#1a5276;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Confirmation</span>' : '')))}</div>
+                    <div class="floor-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'no_confidence' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚡ No Confidence</span>' : (bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : (bill.bill_type === 'foundational' ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>' : (bill.bill_type === 'confirmation' ? ' <span style="background:#1a5276;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Confirmation</span>' : (bill.bill_type === 'minister_confirmation' ? ' <span style="background:#E65100;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Cabinet Confirmation</span>' : (bill.bill_type === 'veto_override' ? ' <span style="background:#B71C1C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Veto Override</span>' : '')))))}</div>
                     <div class="committee-bill-sponsor">${bill.bill_type === 'no_confidence' ? 'Filed' : 'Proposed'} by ${bill.factions?.faction_name || 'Unknown'}</div>
                 </div>
                 ${isVetoed ? `<div class="floor-status vetoed-status">VETOED</div>` : `<div class="floor-status">VOTING — Ends Tick ${bill.voting_ends_tick}</div>`}
@@ -630,6 +711,7 @@ function renderFloorBill(bill, isVetoed) {
                 ${bill.bill_type === 'no_confidence' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">⚡ Motion to dissolve the current government</span><div class="article-desc">Requires simple majority (YES > NO) to pass.</div></div></div>' :
                 (bill.bill_type === 'confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#2196F3;">🏛 Ambassador Confirmation Vote</span><div class="article-desc">Requires 51% majority to confirm.</div></div></div>' :
                 (bill.bill_type === 'minister_confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#E65100;">🏛 Cabinet Confirmation Vote</span><div class="article-desc">Requires 51% majority to confirm.</div></div></div>' :
+                (bill.bill_type === 'veto_override' ? `<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#B71C1C;">⚖ Veto Override Vote</span><div class="article-desc">Requires 2/3 supermajority (${Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD)} seats) to override presidential veto.</div></div></div>` :
                 (bill.bill_type === 'foundational' ? `<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#9C27B0;">🏛 Electoral Makeup — Proposed: ${bill.proposed_seats || '?'} seats</span><div class="article-desc">Requires 2/3 supermajority (${Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD)} seats) to pass.</div></div></div>` :
                 (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">🗑️ Proposes to rescind an active law</span></div></div>' :
                 (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number).map(art => {
@@ -638,9 +720,9 @@ function renderFloorBill(bill, isVetoed) {
                     }
                     const chipHTML = renderIdeologyChips(art.policies);
                     return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
-                }).join('')))))}
+                }).join('')))))))}
             </div>
-            ${isVetoed ? `<div class="vetoed-stamp">⛔ VETOED BY HEAD FACTION</div>` : `
+            ${isVetoed ? `<div class="vetoed-stamp">${isPresidential ? '⛔ VETOED BY PRESIDENT' : '⛔ VETOED BY HEAD FACTION'}</div>` : `
                 <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span></div>
                 ${isAutocracy && isHeadFaction ? `<div class="veto-banner"><div><div class="veto-banner-text">⚠ You may veto this ${termBill.toLowerCase()}</div><div style="font-size:0.75rem;color:#888;">Costs -${GAME_CONFIG.VETO_APPROVAL_COST} Approval</div></div><button class="stance-btn veto" onclick="event.stopPropagation(); vetoDecree('${bill.id}')">VETO</button></div>` : ''}
             `}

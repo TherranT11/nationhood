@@ -27,6 +27,8 @@
         .bill-status.failed { background: #ff4444; color: #fff; }
         .bill-status.frozen { background: #ff9800; color: #000; }
         .bill-status.repeal { background: #ff4444; color: #fff; }
+        .bill-status.president_desk { background: #1565C0; color: #fff; }
+        .bill-status.vetoed { background: #B71C1C; color: #fff; }
         .bill-type-badge { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-left: 10px; }
         .bill-type-badge.repeal { background: #ff4444; color: #fff; }
         .repeal-notice { background: #2a1a1a; border: 2px solid #ff4444; border-radius: 8px; padding: 20px; margin: 16px 0; text-align: center; }
@@ -315,6 +317,7 @@
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
+let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
 let factionIdeology = null; // Dynamic ideology scores for current player
 let isNoGovernment = false;
 
@@ -333,6 +336,13 @@ initPage('laws', async (state) => {
     currentFaction = faction;
     initGameConfigForNation(nation);
     isAutocracy = (nation?.government_type === 'Autocracy');
+    isPresidential = (nation?.government_type === 'Presidential');
+    if (isPresidential && nation) {
+        const { data: activePresident } = await _supabase.from('presidents')
+            .select('faction_id').eq('nation_id', nation.id).eq('is_active', true).limit(1).maybeSingle();
+        presidentFactionId = activePresident?.faction_id || null;
+        isPresidentParty = (presidentFactionId && faction?.id === presidentFactionId);
+    }
     if (!isAutocracy && nation) {
         const coalition = await fetchActiveCoalition(_supabase, nation.id);
         isNoGovernment = !coalition;
@@ -410,11 +420,12 @@ function renderBill() {
     const isCommittee = bill.status === 'committee';
     const isFloor = bill.status === 'floor';
     const isFrozen = bill.status === 'frozen';
+    const isPresidentDesk = bill.status === 'president_desk';
 
-    document.getElementById('bill-header').className = `bill-header ${bill.status}`;
+    document.getElementById('bill-header').className = `bill-header ${bill.status === 'president_desk' ? 'floor' : bill.status}`;
     const statusEl = document.getElementById('bill-status');
-    statusEl.textContent = bill.status.toUpperCase();
-    statusEl.className = `bill-status ${bill.status}`;
+    statusEl.textContent = isPresidentDesk ? "PRESIDENT'S DESK" : bill.status.toUpperCase();
+    statusEl.className = `bill-status ${isPresidentDesk ? 'president_desk' : bill.status}`;
     document.getElementById('bill-title').textContent = bill.bill_name || 'Unnamed Bill';
     if (bill.bill_type === 'no_confidence') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal">⚡ No Confidence</span>';
@@ -426,6 +437,8 @@ function renderBill() {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#1a5276;">🏛 Confirmation</span>';
     } else if (bill.bill_type === 'minister_confirmation') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#E65100;">🏛 Cabinet Confirmation</span>';
+    } else if (bill.bill_type === 'veto_override') {
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#B71C1C;">⚖ Veto Override</span>';
     }
     if (isFrozen) {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#ff9800;color:#000;">FROZEN</span>';
@@ -452,6 +465,30 @@ function renderBill() {
         renderArticles();
         renderSidebar();
         return; // No voting, no sponsor actions
+    }
+
+    // President's desk — show sign/veto actions
+    if (isPresidentDesk) {
+        const deskBanner = document.createElement('div');
+        deskBanner.style.cssText = 'background:linear-gradient(135deg,#0d1b2a,#1b2838);border:2px solid #1565C0;border-radius:12px;padding:20px;margin:16px 0;text-align:center;';
+        const deadlineTick = bill.president_desk_deadline || '?';
+        deskBanner.innerHTML = `
+            <div style="font-size:1rem;color:#64B5F6;font-weight:bold;text-transform:uppercase;letter-spacing:1.5px;">On The President's Desk</div>
+            <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:8px;">This bill has passed parliament and awaits the President's signature.</div>
+            <div style="font-size:0.8rem;color:#64B5F6;margin-top:6px;">Auto-signs at Tick ${deadlineTick} (${tickToDate(deadlineTick)}) if no action is taken.</div>
+            ${isPresidentParty ? `
+                <div style="display:flex;justify-content:center;gap:12px;margin-top:16px;">
+                    <button onclick="signBillAction()" style="padding:10px 28px;background:#4CAF50;color:#fff;border:none;border-radius:6px;font-weight:bold;font-size:0.9rem;cursor:pointer;">Sign Into Law</button>
+                    <button onclick="vetoBillAction()" style="padding:10px 28px;background:#B71C1C;color:#fff;border:none;border-radius:6px;font-weight:bold;font-size:0.9rem;cursor:pointer;">Veto</button>
+                </div>
+            ` : ''}
+        `;
+        const header = document.getElementById('bill-header');
+        header.parentNode.insertBefore(deskBanner, header.nextSibling);
+
+        renderArticles();
+        renderSidebar();
+        return; // No voting on desk bills
     }
 
     renderArticles();
@@ -552,6 +589,29 @@ function renderArticles() {
                 '<div class="repeal-notice-icon">🗑️</div>' +
                 '<div class="repeal-notice-text">This bill proposes to rescind an active law</div>' +
                 '<div class="repeal-notice-sub">If passed, the targeted law will be removed and its effects reversed.</div>' +
+            '</div>';
+        document.getElementById('total-upfront').textContent = '$0M';
+        document.getElementById('total-ongoing').textContent = '$0M/mo';
+        return;
+    }
+
+    // Veto override bills show a special notice
+    if (bill.bill_type === 'veto_override') {
+        const overrideSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
+        document.getElementById('bill-articles').innerHTML =
+            '<div class="article preamble" style="border-left-color:#B71C1C;">' +
+                '<div class="article-number" style="color:#B71C1C;">VETO OVERRIDE</div>' +
+                '<div class="article-title">Override Presidential Veto</div>' +
+                '<div class="article-description">' + (bill.preamble || 'The legislature seeks to override the presidential veto.') + '</div>' +
+            '</div>' +
+            '<div class="repeal-notice" style="border-color:#B71C1C;">' +
+                '<div class="repeal-notice-icon">⚖</div>' +
+                '<div class="repeal-notice-text">Presidential Veto Override</div>' +
+                '<div class="repeal-notice-sub" style="color:#aaa;line-height:1.6;">' +
+                    'Requires <strong style="color:#B71C1C;">two-thirds supermajority</strong> (' + overrideSeats + ' of ' + GAME_CONFIG.TOTAL_SEATS + ' seats) to override.<br>' +
+                    'If passed: the original bill becomes law despite the veto.<br>' +
+                    'If failed: the veto stands and the bill is dead.' +
+                '</div>' +
             '</div>';
         document.getElementById('total-upfront').textContent = '$0M';
         document.getElementById('total-ongoing').textContent = '$0M/mo';
@@ -683,6 +743,7 @@ function renderIdeologyWarning() {
     if (currentBill.bill_type === 'no_confidence') return;
     if (currentBill.bill_type === 'foundational') return;
     if (currentBill.bill_type === 'minister_confirmation') return;
+    if (currentBill.bill_type === 'veto_override') return;
 
     if (!factionIdeology || !currentBill) return;
     if (currentBill.bill_type === 'repeal') return;
@@ -849,7 +910,7 @@ function renderSidebar() {
                         ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
                     </div>`).join('')}
                 </div>` : (!isSponsor ? `<div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div><div class="no-amendments">No conditional support offers</div>` : '')}
-            ${!isSponsor && bill.bill_type !== 'foundational' && bill.bill_type !== 'confirmation' && bill.bill_type !== 'minister_confirmation' ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button></div>` : ''}
+            ${!isSponsor && bill.bill_type !== 'foundational' && bill.bill_type !== 'confirmation' && bill.bill_type !== 'minister_confirmation' && bill.bill_type !== 'veto_override' ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button></div>` : ''}
         </div>`;
 
     } else if (isFloor) {
@@ -948,6 +1009,29 @@ async function castVote(vote) {
         myVote = vote;
         await loadBillData();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
+}
+
+// ==================== PRESIDENTIAL SIGN/VETO ====================
+
+async function signBillAction() {
+    if (!isPresidentParty) return;
+    if (!confirm('Sign this bill into law?')) return;
+    try {
+        await signPresidentialBill(_supabase, currentBill.id, currentFaction.id);
+        alert('Bill signed into law.');
+        window.location.reload();
+    } catch (error) { console.error('Sign error:', error); alert('Error: ' + error.message); }
+}
+
+async function vetoBillAction() {
+    if (!isPresidentParty) return;
+    const overrideSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
+    if (!confirm(`VETO this bill?\n\nA veto override bill will be automatically created requiring ${overrideSeats}/${GAME_CONFIG.TOTAL_SEATS} seats (2/3 supermajority).\n\nProceed?`)) return;
+    try {
+        await vetoPresidentialBill(_supabase, currentBill.id, currentFaction.id);
+        alert('Bill vetoed. A veto override bill has been sent to the floor.');
+        window.location.href = 'laws.html';
+    } catch (error) { console.error('Veto error:', error); alert('Error: ' + error.message); }
 }
 
 async function enactDecree() {
