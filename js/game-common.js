@@ -355,11 +355,11 @@ function getIdeologySummary(ideologyRow) {
 
 const IDEOLOGY_POINT_VALUES = {
     VOTE_YES:     3,
-    SPONSOR:      3,
+    PROPOSED:     3,
     BILL_PASSED:  4
 };
 
-function calculateIdeologyShifts({ votedYesBills = [], sponsoredBills = [], passedBills = [] }) {
+function calculateIdeologyShifts({ votedYesBills = [], proposedBills = [], passedBills = [] }) {
     const shifts = {};
 
     function addShift(axisKey, amount) {
@@ -387,11 +387,11 @@ function calculateIdeologyShifts({ votedYesBills = [], sponsoredBills = [], pass
         }
     }
 
-    for (const bill of sponsoredBills) {
+    for (const bill of proposedBills) {
         const tags = getArticleIdeologies(bill);
         for (const tag of tags) {
             const mapping = IDEOLOGY_TO_AXIS[tag];
-            if (mapping) addShift(mapping.axisKey, mapping.direction * IDEOLOGY_POINT_VALUES.SPONSOR);
+            if (mapping) addShift(mapping.axisKey, mapping.direction * IDEOLOGY_POINT_VALUES.PROPOSED);
         }
     }
 
@@ -1239,14 +1239,14 @@ async function processIdeologyTick(supabase, nation, currentTick, resolutions) {
         const factionVotes = (allVotes || []).filter(v => v.faction_id === faction.id);
 
         const votedYesBills = [];
-        const sponsoredBills = [];
+        const proposedBills = [];
         const passedBillsYesVote = [];
 
         for (const bill of allResolvedBills) {
             const vote = factionVotes.find(v => v.bill_id === bill.id);
 
             if (bill.proposed_by === faction.id) {
-                sponsoredBills.push(bill);
+                proposedBills.push(bill);
             }
 
             if (vote?.stance === 'yes') {
@@ -1257,7 +1257,7 @@ async function processIdeologyTick(supabase, nation, currentTick, resolutions) {
             }
         }
 
-        if (votedYesBills.length === 0 && sponsoredBills.length === 0) {
+        if (votedYesBills.length === 0 && proposedBills.length === 0) {
             await snapshotIdeology(supabase, faction.id, currentTick);
             continue;
         }
@@ -1272,7 +1272,7 @@ async function processIdeologyTick(supabase, nation, currentTick, resolutions) {
 
         const shifts = calculateIdeologyShifts({
             votedYesBills,
-            sponsoredBills,
+            proposedBills,
             passedBills: passedBillsYesVote
         });
 
