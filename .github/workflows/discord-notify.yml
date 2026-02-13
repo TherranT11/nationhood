@@ -25,7 +25,7 @@ jobs:
           BRANCH="${{ github.ref_name }}"
 
           MESSAGE="**${REPO}** — pushed to \`${BRANCH}\`
-${COMMITS}"
+          ${COMMITS}"
 
           # Send plain text (no embed) to Discord
           PAYLOAD=$(jq -n --arg content "$MESSAGE" '{"content": $content}')
