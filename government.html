@@ -1507,15 +1507,15 @@ async function confirmAssign() {
                 .eq('nation_id', currentNation.id)
                 .eq('active', true);
 
-            // Insert new PM record
-            await _supabase.from('head_of_government').insert({
+            // Upsert new PM record (nation_id has unique constraint)
+            await _supabase.from('head_of_government').upsert({
                 nation_id: currentNation.id,
                 faction_id: selectedCandidate.partyId,
                 first_name: selectedCandidate.firstName,
                 last_name: selectedCandidate.lastName,
                 age: selectedCandidate.age,
                 active: true
-            });
+            }, { onConflict: 'nation_id' });
 
             // Open new administration under the new PM
             try {

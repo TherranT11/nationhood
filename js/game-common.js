@@ -5321,7 +5321,7 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
 
     const { error: hogErr } = await supabase
         .from('head_of_government')
-        .insert({
+        .upsert({
             nation_id: nationId,
             faction_id: factionId,
             candidate_id: candidateId,
@@ -5332,7 +5332,7 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
             trait_key: candidate.trait_key,
             appointed_tick: currentTick,
             active: true
-        });
+        }, { onConflict: 'nation_id' });
 
     if (hogErr) throw hogErr;
 
