@@ -1219,7 +1219,7 @@ async function processIdeologyTick(supabase, nation, currentTick, resolutions) {
 
     // Only legislative bills affect ideology — exclude ambassador confirmations, no-confidence, foundational
     const allResolvedBills = (rawResolvedBills || []).filter(b =>
-        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational'].includes(b.bill_type)
+        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
     );
 
     if (allResolvedBills.length === 0) {
@@ -1395,7 +1395,7 @@ async function resolveExpiredVotes(supabase, nationId) {
     for (const bill of expiredBills) {
         const { data: nation } = await supabase
             .from('nations')
-            .select('name')
+            .select('name, government_type')
             .eq('id', bill.nation_id)
             .single();
         let votesFor = 0, votesAgainst = 0;
@@ -1408,14 +1408,17 @@ async function resolveExpiredVotes(supabase, nationId) {
         const totalVoted = votesFor + votesAgainst;
 
         // No-confidence uses simple majority (votesFor > votesAgainst)
-        // Foundational bills require 2/3 supermajority
+        // Foundational bills and veto overrides require 2/3 supermajority
         // Normal bills require 51% of total seats
         const isNoConfidence = bill.bill_type === 'no_confidence';
         const isFoundational = bill.bill_type === 'foundational';
+        const isVetoOverride = bill.bill_type === 'veto_override';
+        const supermajorityThreshold = isFoundational ? GAME_CONFIG.SUPERMAJORITY_THRESHOLD
+            : isVetoOverride ? GAME_CONFIG.VETO_OVERRIDE_THRESHOLD : null;
         const passed = isNoConfidence
             ? (totalVoted > 0 && votesFor > votesAgainst)
-            : isFoundational
-                ? (totalVoted > 0 && votesFor >= Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD))
+            : supermajorityThreshold
+                ? (totalVoted > 0 && votesFor >= Math.ceil(GAME_CONFIG.TOTAL_SEATS * supermajorityThreshold))
                 : (totalVoted > 0 && votesFor >= Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.MAJORITY_THRESHOLD));
 
         if (isNoConfidence) {
@@ -1584,22 +1587,78 @@ async function resolveExpiredVotes(supabase, nationId) {
                 } catch (e) { /* non-blocking */ }
             }
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'minister_confirmation' });
-        } else if (passed) {
-            await enactBill(supabase, bill, currentTick);
-            await supabase.rpc('fire_system_event', {
-                p_trigger_key: 'bill_passed',
-                p_nation_id: bill.nation_id,
-                p_tick: currentTick,
-                p_placeholders: {
-                    nation: nation?.name || 'Unknown',
-                    bill_name: bill.bill_name,
-                    sponsor: bill.factions?.faction_name || 'Unknown',
-                    votes_for: String(votesFor),
-                    votes_against: String(votesAgainst),
-                    article_count: String((bill.bill_articles || []).length)
+        } else if (bill.bill_type === 'veto_override' && bill.original_bill_id) {
+            // Veto override bill (Presidential systems)
+            if (passed) {
+                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+                // Enact the ORIGINAL vetoed bill
+                const { data: originalBill } = await supabase.from('bills')
+                    .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+                    .eq('id', bill.original_bill_id).single();
+                if (originalBill) {
+                    await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
+                    await enactBill(supabase, originalBill, currentTick);
                 }
-            });
-            results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst });
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_trigger_key: 'bill_passed',
+                        p_nation_id: bill.nation_id,
+                        p_tick: currentTick,
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), article_count: '0' }
+                    });
+                } catch (e) { /* non-blocking */ }
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'veto_override' });
+            } else {
+                await failBill(supabase, bill);
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_trigger_key: 'bill_failed',
+                        p_nation_id: bill.nation_id,
+                        p_tick: currentTick,
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
+                    });
+                } catch (e) { /* non-blocking */ }
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'veto_override' });
+            }
+        } else if (passed) {
+            // Presidential systems: route regular/repeal bills to president's desk
+            if (nation?.government_type === 'Presidential') {
+                await supabase.from('bills').update({
+                    status: 'president_desk',
+                    passed_tick: currentTick,
+                    president_desk_deadline: currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS
+                }).eq('id', bill.id);
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'bill_passed',
+                    p_nation_id: bill.nation_id,
+                    p_tick: currentTick,
+                    p_placeholders: {
+                        nation: nation?.name || 'Unknown',
+                        bill_name: bill.bill_name + ' (sent to President\'s desk)',
+                        sponsor: bill.factions?.faction_name || 'Unknown',
+                        votes_for: String(votesFor),
+                        votes_against: String(votesAgainst),
+                        article_count: String((bill.bill_articles || []).length)
+                    }
+                });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'president_desk', votesFor, votesAgainst });
+            } else {
+                await enactBill(supabase, bill, currentTick);
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'bill_passed',
+                    p_nation_id: bill.nation_id,
+                    p_tick: currentTick,
+                    p_placeholders: {
+                        nation: nation?.name || 'Unknown',
+                        bill_name: bill.bill_name,
+                        sponsor: bill.factions?.faction_name || 'Unknown',
+                        votes_for: String(votesFor),
+                        votes_against: String(votesAgainst),
+                        article_count: String((bill.bill_articles || []).length)
+                    }
+                });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst });
+            }
         } else {
             await failBill(supabase, bill);
             await supabase.rpc('fire_system_event', {
@@ -3238,6 +3297,151 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
     return { bill, nominee };
 }
 
+
+// ==================== PRESIDENTIAL VETO SYSTEM ====================
+
+/**
+ * President signs a bill into law.
+ * Called from the UI when the President's party clicks "Sign Into Law".
+ */
+async function signPresidentialBill(supabase, billId, presidentFactionId) {
+    const { data: bill } = await supabase.from('bills')
+        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+        .eq('id', billId).single();
+    if (!bill || bill.status !== 'president_desk') throw new Error('Bill is not on the president\'s desk');
+
+    // Validate caller is president's party
+    const { data: president } = await supabase.from('presidents')
+        .select('faction_id').eq('nation_id', bill.nation_id).eq('is_active', true).limit(1).maybeSingle();
+    if (!president || president.faction_id !== presidentFactionId) throw new Error('Only the President\'s party can sign bills');
+
+    const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    await supabase.from('bills').update({
+        president_action: 'signed',
+        president_action_tick: currentTick
+    }).eq('id', bill.id);
+
+    await enactBill(supabase, bill, currentTick);
+
+    try {
+        await supabase.rpc('fire_system_event', {
+            p_trigger_key: 'bill_passed',
+            p_nation_id: bill.nation_id,
+            p_tick: currentTick,
+            p_placeholders: {
+                nation: 'Unknown',
+                bill_name: bill.bill_name + ' (signed by President)',
+                sponsor: bill.factions?.faction_name || 'Unknown',
+                votes_for: '0', votes_against: '0',
+                article_count: String((bill.bill_articles || []).length)
+            }
+        });
+    } catch (e) { /* non-blocking */ }
+}
+
+/**
+ * President vetoes a bill.
+ * Auto-creates a veto_override bill requiring 2/3 supermajority.
+ */
+async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
+    const { data: bill } = await supabase.from('bills')
+        .select('*, factions(faction_name)')
+        .eq('id', billId).single();
+    if (!bill || bill.status !== 'president_desk') throw new Error('Bill is not on the president\'s desk');
+
+    const { data: president } = await supabase.from('presidents')
+        .select('faction_id').eq('nation_id', bill.nation_id).eq('is_active', true).limit(1).maybeSingle();
+    if (!president || president.faction_id !== presidentFactionId) throw new Error('Only the President\'s party can veto bills');
+
+    const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Mark bill as vetoed
+    await supabase.from('bills').update({
+        status: 'vetoed',
+        president_action: 'vetoed',
+        president_action_tick: currentTick
+    }).eq('id', bill.id);
+
+    // Auto-create veto override bill (goes straight to floor)
+    const overrideSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
+    const { data: overrideBill } = await supabase.from('bills').insert({
+        nation_id: bill.nation_id,
+        proposed_by: bill.proposed_by,
+        proposed_tick: currentTick,
+        bill_name: 'Veto Override: ' + bill.bill_name,
+        bill_type: 'veto_override',
+        status: 'floor',
+        voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS,
+        original_bill_id: bill.id,
+        is_veto_override: true,
+        preamble: `The President has vetoed "${bill.bill_name}". The legislature may override this veto with a two-thirds supermajority (${overrideSeats} of ${GAME_CONFIG.TOTAL_SEATS} seats).`
+    }).select().single();
+
+    try {
+        await supabase.rpc('fire_system_event', {
+            p_trigger_key: 'bill_failed',
+            p_nation_id: bill.nation_id,
+            p_tick: currentTick,
+            p_placeholders: {
+                nation: 'Unknown',
+                bill_name: bill.bill_name + ' (VETOED by President)',
+                sponsor: bill.factions?.faction_name || 'Unknown',
+                votes_for: '0', votes_against: '0'
+            }
+        });
+    } catch (e) { /* non-blocking */ }
+
+    return overrideBill;
+}
+
+/**
+ * Auto-sign bills that have been on the president's desk past the deadline.
+ * Called during advanceTick().
+ */
+async function processPresidentDesk(supabase, nation, currentTick) {
+    if (nation.government_type !== 'Presidential') return [];
+
+    const { data: expiredDesks } = await supabase.from('bills')
+        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+        .eq('nation_id', nation.id)
+        .eq('status', 'president_desk')
+        .lte('president_desk_deadline', currentTick);
+
+    if (!expiredDesks || expiredDesks.length === 0) return [];
+
+    const results = [];
+    for (const bill of expiredDesks) {
+        // Auto-sign: president didn't act in time
+        await supabase.from('bills').update({
+            president_action: 'auto_signed',
+            president_action_tick: currentTick
+        }).eq('id', bill.id);
+
+        await enactBill(supabase, bill, currentTick);
+
+        try {
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: 'bill_passed',
+                p_nation_id: nation.id,
+                p_tick: currentTick,
+                p_placeholders: {
+                    nation: nation.name,
+                    bill_name: bill.bill_name + ' (auto-signed by President)',
+                    sponsor: bill.factions?.faction_name || 'Unknown',
+                    votes_for: '0', votes_against: '0',
+                    article_count: String((bill.bill_articles || []).length)
+                }
+            });
+        } catch (e) { /* non-blocking */ }
+
+        results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed' });
+    }
+    return results;
+}
+
 // ==================== TICK HELPERS ====================
 
 function advanceMonth(currentDate) {
@@ -3376,6 +3580,13 @@ async function advanceTick(supabase) {
         // 5. Resolve expired votes for this nation
         const resolutions = await resolveExpiredVotes(supabase, nation.id);
         if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
+
+        // 5b. Auto-sign expired president's desk bills (Presidential systems)
+        const deskResults = await processPresidentDesk(supabase, nation, newTick);
+        if (deskResults.length > 0) {
+            summary.presidentDesk = summary.presidentDesk || [];
+            summary.presidentDesk.push({ nation: nation.name, bills: deskResults });
+        }
 
         // 6. Process ideology shifts from this tick's votes/bills
         const ideologyEvents = await processIdeologyTick(supabase, nation, newTick, resolutions);
