@@ -342,23 +342,29 @@ function calculateRanking(statKey, value, inverted = false) {
     return sorted.indexOf(value) + 1;
 }
 
-function getTrendArrow(statKey, currentValue, inverted = false) {
+function roundDelta(val) {
+    return Math.abs(val) >= 1 ? Math.round(val).toString() : val.toFixed(1);
+}
+
+function getTrendArrow(statKey, currentValue, inverted, format) {
     if (!previousTickData || currentValue === null || currentValue === undefined) {
         return '<span class="trend-arrow trend-neutral">―</span>';
     }
-    const historyKey = statKey === 'GDP' ? 'gdp' : statKey;
-    const previousValue = previousTickData[historyKey];
+    var historyKey = statKey === 'GDP' ? 'gdp' : statKey;
+    var previousValue = previousTickData[historyKey];
     if (previousValue === null || previousValue === undefined) {
         return '<span class="trend-arrow trend-neutral">―</span>';
     }
-    const invertedClass = inverted ? ' inverted' : '';
-    if (currentValue > previousValue) {
-        return '<span class="trend-arrow trend-up' + invertedClass + '">▲</span>';
-    } else if (currentValue < previousValue) {
-        return '<span class="trend-arrow trend-down' + invertedClass + '">▼</span>';
-    } else {
-        return '<span class="trend-arrow trend-neutral">―</span>';
+    var delta = currentValue - previousValue;
+    var invertedClass = inverted ? ' inverted' : '';
+    if (delta > 0) {
+        var formatted = (format === 'currency') ? '+' + formatCurrencyShort(delta) : '+' + roundDelta(delta);
+        return '<span class="trend-arrow trend-up' + invertedClass + '">▲ ' + formatted + '</span>';
+    } else if (delta < 0) {
+        var formatted = (format === 'currency') ? formatCurrencyShort(delta) : roundDelta(delta);
+        return '<span class="trend-arrow trend-down' + invertedClass + '">▼ ' + formatted + '</span>';
     }
+    return '<span class="trend-arrow trend-neutral">―</span>';
 }
 
 function prettyStatName(key) {
@@ -605,7 +611,7 @@ function renderStatBox(name, statKey, value, description, format, inverted) {
     if (format === 'currency' && typeof value === 'number') formattedValue = formatCurrencyShort(value);
     else if (format === 'years' && typeof value === 'number') formattedValue = value + ' yrs';
 
-    var trendArrow = getTrendArrow(statKey, value, inverted);
+    var trendArrow = getTrendArrow(statKey, value, inverted, format);
     var rank = calculateRanking(statKey, value, inverted);
     var rankHTML = rank ? '<div class="stat-box-footer"><span class="ranking-badge' + (rank === 1 ? ' first' : '') + '">#' + rank + ' of ' + totalNations + '</span></div>' : '';
 
