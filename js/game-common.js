@@ -2863,8 +2863,9 @@ async function advanceTick(supabase) {
         const inactiveResults = await processInactiveParties(supabase, nation, newTick);
         if (inactiveResults.length > 0) summary.inactive = (summary.inactive || []).concat(inactiveResults);
 
-        // 11. Snapshot nation stats to history (for trend arrows)
-        await snapshotNationHistory(supabase, nation, newTick);
+        // 11. Re-fetch nation with post-effect values, then snapshot to history
+        const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+        await snapshotNationHistory(supabase, freshNation || nation, newTick);
 
         // 11b. Process crises (persistent negative events that apply effects every tick)
         const crisisResults = await processCrises(supabase, nation, newTick);
