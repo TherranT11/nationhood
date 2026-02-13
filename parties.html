@@ -661,7 +661,7 @@ async function renderPartiesPage(nation, faction) {
                 const loyalty = party.loyalty ?? 50;
                 firstStatLabel = 'Faction Loyalty';
                 firstStatValue = loyalty + '%';
-                firstStatClass = loyalty >= 50 ? 'good' : loyalty <= 30 ? 'bad' : '';
+                firstStatClass = loyalty >= 30 ? 'good' : loyalty < 15 ? 'bad' : '';
             } else {
                 const approval = party.approval_rating || 0;
                 firstStatLabel = 'Approval';
@@ -704,10 +704,10 @@ async function renderPartiesPage(nation, faction) {
                             <div class="party-stat-label">Action Points</div>
                             <div class="party-stat-value">${party.action_points || 0}</div>
                         </div>
-                        <div class="party-stat-item">
+                        ${!isAutocracy ? `<div class="party-stat-item">
                             <div class="party-stat-label">${termSingular} Funds</div>
                             <div class="party-stat-value">$${(party.party_funds || 0).toLocaleString()}</div>
-                        </div>
+                        </div>` : ''}
                     </div>
                 </div>`;
         }
@@ -716,17 +716,22 @@ async function renderPartiesPage(nation, faction) {
         const oppositionCount = oppParties.length;
         const isRulingFaction = isAutocracy && nation.ruling_faction_id === faction?.id;
 
-        let seizeCost = 15, seatDeficit = 0, loyaltyModifier = 0;
+        // Autocracy loyalty thresholds and seize power eligibility
+        let myLoyalty = faction?.loyalty ?? 50;
+        let isSuppressed = isAutocracy && myLoyalty < 15;
+        let isDisloyal = isAutocracy && myLoyalty >= 15 && myLoyalty < 30;
+        let isLockedOut = false;
+        let lockoutTick = faction?.action_lockout_until_tick;
+        let currentTick = 0;
+        if (isAutocracy && faction) {
+            const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            currentTick = shard?.current_tick || 0;
+            isLockedOut = lockoutTick && currentTick < lockoutTick;
+        }
+        let canSeizePower = false;
         if (isAutocracy && !isRulingFaction && faction) {
-            const rulingParty = parties.find(p => p.id === nation.ruling_faction_id);
-            const rulingSeats = rulingParty?.seats || 0;
-            const mySeats = faction.seats || 0;
-            const myLoyalty = faction.loyalty ?? 50;
-            seatDeficit = Math.max(0, rulingSeats - mySeats);
-            seizeCost = 15 + Math.floor(seatDeficit / 10);
-            if (myLoyalty < 15) loyaltyModifier = -Math.round(seizeCost * 0.2);
-            else if (myLoyalty > 75) loyaltyModifier = Math.round(seizeCost * 0.1);
-            seizeCost = Math.max(1, seizeCost + loyaltyModifier);
+            const disloyalCount = parties.filter(p => p.id !== faction?.id && (p.loyalty ?? 50) < 30).length;
+            canSeizePower = disloyalCount >= 2 && (faction?.action_points || 0) >= 15 && !isLockedOut && !isSuppressed;
         }
 
         // Build campaign actions
@@ -761,38 +766,124 @@ async function renderPartiesPage(nation, faction) {
             <div class="section-header" style="margin-top: 30px;">Recent Actions</div>
             <div id="action-log" class="action-log"><div class="action-log-empty">No actions taken yet this campaign.</div></div>`;
         } else {
+            const loyaltyColor = myLoyalty >= 30 ? '#4CAF50' : myLoyalty >= 15 ? '#ff9800' : '#ff4444';
+            const statusText = isLockedOut ? 'LOCKED' : myLoyalty >= 30 ? 'LOYAL' : myLoyalty >= 15 ? 'DISLOYAL' : 'SUPPRESSED';
+            const statusColor = isLockedOut ? '#ff4444' : loyaltyColor;
+
             campaignActionsHTML = `
             <div class="section-header" style="margin-top: 30px;">Your Faction Resources</div>
-            <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
+            <div class="stat-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
                 <div class="stat-card"><div class="stat-label">Action Points</div><div class="stat-value" id="party-ap">${faction?.action_points || 0}</div></div>
                 <div class="stat-card"><div class="stat-label">Seats</div><div class="stat-value" id="party-seats">${faction?.seats || 0} / ${totalSeats}</div></div>
-                <div class="stat-card"><div class="stat-label">Faction Loyalty</div><div class="stat-value" id="party-loyalty">${faction?.loyalty ?? 50}%</div></div>
+                <div class="stat-card"><div class="stat-label">Faction Loyalty</div><div class="stat-value" id="party-loyalty" style="color:${loyaltyColor}">${myLoyalty}%</div></div>
+                <div class="stat-card"><div class="stat-label">Status</div><div class="stat-value" id="party-status" style="color:${statusColor}">${statusText}</div></div>
             </div>
+
+            ${isLockedOut ? `
+            <div style="background: #3a1a1a; border: 1px solid #ff4444; border-radius: 8px; padding: 20px; text-align: center; margin-bottom: 20px;">
+                <div style="color: #ff4444; font-weight: bold; font-size: 1.1rem;">FACTION LOCKED</div>
+                <div style="color: #aaa; margin-top: 8px;">Your faction is locked out of all actions until tick ${lockoutTick} after a failed power seizure.</div>
+            </div>` : ''}
+
             <div class="section-header">Faction Actions</div>
-            <div class="action-grid" style="grid-template-columns: repeat(3, 1fr);">
+
+            ${isSuppressed && !isLockedOut ? `
+            <div style="background: #3a1a1a; border: 1px solid #ff4444; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <div style="color: #ff4444; font-weight: bold;">SUPPRESSED</div>
+                <div style="color: #aaa; margin-top: 4px; font-size: 0.85rem;">Your loyalty is below 15. You receive 0 AP and can only Pledge Loyalty. Losing 2 seats per tick.</div>
+            </div>` : ''}
+
+            ${isDisloyal && !isLockedOut ? `
+            <div style="background: #3a2a1a; border: 1px solid #ff9800; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <div style="color: #ff9800; font-weight: bold;">DISLOYAL</div>
+                <div style="color: #aaa; margin-top: 4px; font-size: 0.85rem;">Your loyalty is below 30. Losing 1 seat per tick, -1 AP per tick, purged from ministries.</div>
+            </div>` : ''}
+
+            <div style="margin-bottom:12px;color:#888;font-size:0.82rem;">
+                <strong>Loyalty Thresholds:</strong> Loyal (30+) = full AP, ministries | Disloyal (15-29) = -1 seat/tick, -1 AP | Suppressed (&lt;15) = -2 seats/tick, 0 AP
+            </div>
+
+            <div class="action-grid" style="grid-template-columns: repeat(2, 1fr);">
+                <!-- RALLY SUPPORT -->
                 <div class="action-card">
-                    <div class="action-header"><div class="action-title">Give Speech</div><div class="action-cost">2 AP</div></div>
-                    <div class="action-desc">Rally your faction to strengthen loyalty to the regime. Roll 1D3 for loyalty gain.</div>
-                    <button class="action-btn" onclick="doGiveSpeech()">Give Speech</button>
-                </div>
-                <div class="action-card">
-                    <div class="action-header"><div class="action-title">Spread Rumors</div><div class="action-cost">3 AP</div></div>
-                    <div class="action-desc">Target a rival faction: steal 1D3 seats and reduce their loyalty by 1D2. Costs 1D3 national stability.</div>
-                    <div style="margin: 10px 0;"><select id="rumor-target" class="action-select"><option value="">Select Target Faction...</option></select></div>
-                    <button class="action-btn action-btn-risk" onclick="doSpreadRumors()">Spread Rumors</button>
-                </div>
-                <div class="action-card" style="border-left-color: #ff4444;">
-                    <div class="action-header"><div class="action-title" style="color: #ff4444;">Seize Power</div><div class="action-cost">${isRulingFaction ? '—' : seizeCost + ' AP'}</div></div>
+                    <div class="action-header"><div class="action-title">Rally Support</div><div class="action-cost">2 AP</div></div>
                     <div class="action-desc">
-                        Attempt to overthrow the ruling faction. Triggers a Shakeup where all factions must choose sides.
-                        ${seatDeficit > 0 ? `<br><br><span style="color: #ff9800; font-size: 0.8rem;">⚠️ Seat deficit: ${seatDeficit} → +${Math.floor(seatDeficit / 10)} AP</span>` : ''}
-                        ${loyaltyModifier < 0 ? `<br><span style="color: #4CAF50; font-size: 0.8rem;">🔥 Low loyalty discount: ${loyaltyModifier} AP</span>` : ''}
-                        ${loyaltyModifier > 0 ? `<br><span style="color: #ff9800; font-size: 0.8rem;">👑 High loyalty penalty: +${loyaltyModifier} AP</span>` : ''}
+                        ${isRulingFaction
+                            ? 'Choose: <strong>Celebrate the Regime</strong> (+1D2 approval, +1 loyalty to ALL factions, +1 corruption) or <strong>Denounce Enemies</strong> (pick target, -1D2 loyalty, +1 approval, +1 polarization).'
+                            : 'Pledge loyalty to the regime. Gain <strong>+1D2 loyalty</strong> for your faction.'
+                        }
                     </div>
-                    <button class="action-btn" style="background: ${isRulingFaction ? '#555' : '#ff4444'};" onclick="doSeizePower(${seizeCost})" ${isRulingFaction ? 'disabled title="You are the ruling faction"' : ''}>
-                        ${isRulingFaction ? '👑 You Rule' : '⚔️ Seize Power'}
+                    ${isRulingFaction ? `
+                    <div style="margin: 10px 0;">
+                        <select id="rally-mode" class="action-select" onchange="toggleDenounceTarget()">
+                            <option value="celebrate">Celebrate the Regime</option>
+                            <option value="denounce">Denounce Enemies</option>
+                        </select>
+                    </div>
+                    <div id="denounce-target-wrap" style="margin: 10px 0; display: none;">
+                        <select id="denounce-target" class="action-select">
+                            <option value="">Select Target Faction...</option>
+                        </select>
+                    </div>` : ''}
+                    <button class="action-btn" onclick="doRallySupport()" ${isLockedOut ? 'disabled' : ''}>
+                        ${isRulingFaction ? 'Rally Support' : 'Pledge Loyalty'}
                     </button>
                 </div>
+
+                <!-- UNDERMINE -->
+                <div class="action-card">
+                    <div class="action-header"><div class="action-title">Undermine</div><div class="action-cost">3 AP</div></div>
+                    <div class="action-desc">
+                        Target a rival faction: <strong>-1D3 loyalty</strong>, nation <strong>-1 stability</strong>.
+                        <br><span style="color: #ff9800; font-size: 0.78rem;">If target loyalty is below 20, they learn who did it.</span>
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <select id="undermine-target" class="action-select">
+                            <option value="">Select Target Faction...</option>
+                        </select>
+                    </div>
+                    <button class="action-btn action-btn-risk" onclick="doUndermine()" ${(isSuppressed || isLockedOut) ? 'disabled' : ''}>
+                        ${isSuppressed ? 'Suppressed' : 'Undermine'}
+                    </button>
+                </div>
+
+                ${isRulingFaction ? `
+                <!-- PATRONAGE NETWORK (Ruling Only) -->
+                <div class="action-card">
+                    <div class="action-header"><div class="action-title">Patronage Network</div><div class="action-cost">2 AP</div></div>
+                    <div class="action-desc">
+                        Give <strong>$50,000</strong> from the national treasury to a faction. Target gains <strong>+2 loyalty</strong>. Nation <strong>+1 corruption</strong>.
+                        <br><span style="color: #ff9800; font-size: 0.78rem;">If you pick yourself, all other factions lose 1 loyalty.</span>
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <select id="patronage-target" class="action-select">
+                            <option value="">Select Faction...</option>
+                        </select>
+                    </div>
+                    <button class="action-btn" onclick="doPatronageNetwork()" ${isLockedOut ? 'disabled' : ''}>
+                        Distribute Patronage
+                    </button>
+                </div>` : ''}
+
+                ${!isRulingFaction ? `
+                <!-- SEIZE POWER (Opposition Only) -->
+                <div class="action-card" style="border-left-color: #ff4444;">
+                    <div class="action-header"><div class="action-title" style="color: #ff4444;">Seize Power</div><div class="action-cost">15 AP</div></div>
+                    <div class="action-desc">
+                        Attempt to overthrow the ruling faction. Requires <strong>2+ factions with loyalty below 30</strong>.
+                        <br><br>
+                        Factions pick sides based on loyalty. Side with more seats wins.
+                        <br><br>
+                        <strong style="color: #4CAF50;">WIN:</strong> You become ruler. Old ruler becomes opposition at 50 loyalty.
+                        <br><strong style="color: #ff4444;">FAIL:</strong> -25 seats, -20 approval, locked 3 ticks, loyalty=0, purged from ministries.
+                    </div>
+                    <button class="action-btn" style="background: ${canSeizePower ? '#ff4444' : '#555'};"
+                        onclick="doSeizePower()"
+                        ${(!canSeizePower || isSuppressed || isLockedOut) ? 'disabled' : ''}
+                        ${!canSeizePower ? 'title="Need 2+ factions with loyalty below 30 and 15 AP"' : ''}>
+                        ${canSeizePower ? 'Seize Power' : 'Cannot Seize (Need 2+ disloyal)'}
+                    </button>
+                </div>` : ''}
             </div>
             <div class="section-header" style="margin-top: 30px;">Recent Actions</div>
             <div id="action-log" class="action-log"><div class="action-log-empty">No actions taken yet.</div></div>`;
@@ -889,6 +980,13 @@ async function loadActionLog() {
         else if (a.action_type === 'lobby') message = `Lobbied ${a.result?.group_name || 'Unknown'}: Received $${(a.result?.payout || 0).toLocaleString()}`;
         else if (a.action_type === 'spread_rumors') message = `Spread Rumors vs ${a.result?.target || 'Unknown'}: Stole ${a.result?.seats_stolen || 0} seats, -${a.result?.stability_loss || 0} stability`;
         else if (a.action_type === 'give_speech') message = `Gave Speech: +${a.result?.approval_gain || 0}% approval`;
+        else if (a.action_type === 'rally_celebrate') message = `Celebrated the Regime: +${a.result?.approval_gain || 0} approval, +1 loyalty to all`;
+        else if (a.action_type === 'rally_denounce') message = `Denounced ${a.result?.target_name || 'Unknown'}: -${a.result?.loyalty_loss || 0} loyalty, +1 polarization`;
+        else if (a.action_type === 'rally_pledge') message = `Pledged Loyalty: +${a.result?.loyalty_gain || 0} loyalty`;
+        else if (a.action_type === 'undermine') message = `Undermined ${a.result?.target_name || 'Unknown'}: -${a.result?.loyalty_loss || 0} loyalty, -1 stability${a.result?.revealed ? ' (REVEALED!)' : ''}`;
+        else if (a.action_type === 'patronage_network') message = `Patronage to ${a.result?.target_name || 'Unknown'}: +$50k, +2 loyalty, +1 corruption${a.result?.is_self ? ' (hoarding!)' : ''}`;
+        else if (a.action_type === 'seize_power_success') message = `SEIZED POWER! (${a.result?.challenger_seats || 0} vs ${a.result?.regime_seats || 0} seats)`;
+        else if (a.action_type === 'seize_power_failed') message = `Failed Coup! -${a.result?.seats_lost || 0} seats, locked until tick ${a.result?.lockout_until || '?'}`;
         return `<div class="action-log-item"><div class="action-log-time">Tick ${a.tick_performed} • ${date}</div><div class="action-log-message">${message}</div></div>`;
     }).join('');
 }
@@ -932,83 +1030,476 @@ async function performAction(actionType) {
 async function populateAutocracyDropdowns() {
     if (!currentFaction || !currentNation) return;
     const { data: factions } = await _supabase
-        .from('factions').select('id, faction_name, seats')
+        .from('factions').select('id, faction_name, seats, loyalty')
         .eq('nation_id', currentNation.id).eq('faction_type', 'party').neq('id', currentFaction.id);
-    const rumorSelect = document.getElementById('rumor-target');
-    if (rumorSelect && factions) {
-        rumorSelect.innerHTML = '<option value="">Select Target Faction...</option>';
-        factions.forEach(f => { rumorSelect.innerHTML += `<option value="${f.id}">${f.faction_name} (${f.seats} seats)</option>`; });
+    if (!factions) return;
+
+    // Undermine target dropdown
+    const undermineSelect = document.getElementById('undermine-target');
+    if (undermineSelect) {
+        undermineSelect.innerHTML = '<option value="">Select Target Faction...</option>';
+        factions.forEach(f => {
+            undermineSelect.innerHTML += `<option value="${f.id}">${f.faction_name} (${f.seats} seats, ${f.loyalty ?? 50}% loyalty)</option>`;
+        });
     }
+
+    // Denounce target dropdown (ruling Rally Support)
+    const denounceSelect = document.getElementById('denounce-target');
+    if (denounceSelect) {
+        denounceSelect.innerHTML = '<option value="">Select Target Faction...</option>';
+        factions.forEach(f => {
+            denounceSelect.innerHTML += `<option value="${f.id}">${f.faction_name}</option>`;
+        });
+    }
+
+    // Patronage target dropdown (ruling Patronage Network)
+    const patronageSelect = document.getElementById('patronage-target');
+    if (patronageSelect) {
+        // Keep existing "Select Faction..." option, add self + others
+        patronageSelect.innerHTML = `<option value="">Select Faction...</option><option value="${currentFaction.id}">${currentFaction.faction_name} (Self)</option>`;
+        factions.forEach(f => {
+            patronageSelect.innerHTML += `<option value="${f.id}">${f.faction_name}</option>`;
+        });
+    }
+}
+
+function toggleDenounceTarget() {
+    const mode = document.getElementById('rally-mode')?.value;
+    const wrap = document.getElementById('denounce-target-wrap');
+    if (wrap) wrap.style.display = mode === 'denounce' ? 'block' : 'none';
 }
 
 function updateAutocracyUI() {
     const apEl = document.getElementById('party-ap');
     const seatsEl = document.getElementById('party-seats');
     const loyaltyEl = document.getElementById('party-loyalty');
+    const statusEl = document.getElementById('party-status');
     if (apEl) apEl.textContent = currentFaction.action_points || 0;
     if (seatsEl) seatsEl.textContent = (currentFaction.seats || 0) + ' / ' + GAME_CONFIG.TOTAL_SEATS;
-    if (loyaltyEl) loyaltyEl.textContent = (currentFaction.loyalty ?? 50) + '%';
+
+    const loyalty = currentFaction.loyalty ?? 50;
+    let loyaltyColor, statusText;
+    if (loyalty >= 30) { loyaltyColor = '#4CAF50'; statusText = 'LOYAL'; }
+    else if (loyalty >= 15) { loyaltyColor = '#ff9800'; statusText = 'DISLOYAL'; }
+    else { loyaltyColor = '#ff4444'; statusText = 'SUPPRESSED'; }
+
+    if (loyaltyEl) { loyaltyEl.textContent = loyalty + '%'; loyaltyEl.style.color = loyaltyColor; }
+    if (statusEl) {
+        statusEl.textContent = currentFaction.action_lockout_until_tick ? 'LOCKED' : statusText;
+        statusEl.style.color = currentFaction.action_lockout_until_tick ? '#ff4444' : loyaltyColor;
+    }
 }
 
-async function doGiveSpeech() {
+// ---- RALLY SUPPORT ----
+async function doRallySupport() {
+    if (!currentFaction || !currentNation) return;
+    const ap = currentFaction.action_points || 0;
+    if (ap < 2) { alert('Not enough AP (need 2).'); return; }
+
+    const isRuling = currentFaction.id === currentNation.ruling_faction_id;
+
     try {
-        const { data, error } = await _supabase.rpc('action_give_speech', { p_faction_id: currentFaction.id });
-        if (error) throw error;
-        if (data.success) {
-            alert('✅ ' + data.message);
-            currentFaction.action_points = data.new_ap;
-            if (data.new_loyalty !== undefined) currentFaction.loyalty = data.new_loyalty;
-            updateAutocracyUI();
-            await loadActionLog();
-            await markFactionActive(_supabase, currentFaction.id);
-            sessionStorage.removeItem('nationhood_state');
-        } else { alert('❌ ' + data.message); }
-    } catch (error) { alert('❌ Error: ' + error.message); }
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shard?.current_tick || 0;
+
+        if (isRuling) {
+            const mode = document.getElementById('rally-mode')?.value || 'celebrate';
+
+            if (mode === 'celebrate') {
+                const approvalGain = Math.floor(Math.random() * 2) + 1; // 1D2
+                const newApproval = Math.min(100, (currentFaction.approval_rating ?? 50) + approvalGain);
+                await _supabase.from('factions')
+                    .update({ action_points: ap - 2, approval_rating: newApproval })
+                    .eq('id', currentFaction.id);
+
+                // +1 loyalty to ALL factions in nation
+                const { data: allFactions } = await _supabase.from('factions')
+                    .select('id, loyalty')
+                    .eq('nation_id', currentNation.id).eq('faction_type', 'party');
+                for (const f of (allFactions || [])) {
+                    await _supabase.from('factions')
+                        .update({ loyalty: Math.min(100, (f.loyalty ?? 50) + 1) })
+                        .eq('id', f.id);
+                }
+
+                // +1 corruption to nation
+                const { data: nat } = await _supabase.from('nations')
+                    .select('corruption').eq('id', currentNation.id).single();
+                await _supabase.from('nations')
+                    .update({ corruption: Math.min(100, (nat?.corruption ?? 50) + 1) })
+                    .eq('id', currentNation.id);
+
+                await _supabase.from('campaign_actions').insert({
+                    party_id: currentFaction.id, nation_id: currentNation.id,
+                    action_type: 'rally_celebrate', tick_performed: tick,
+                    result: { approval_gain: approvalGain, loyalty_gain_all: 1, corruption_gain: 1 }
+                });
+
+                currentFaction.action_points = ap - 2;
+                currentFaction.approval_rating = newApproval;
+                currentFaction.loyalty = Math.min(100, (currentFaction.loyalty ?? 50) + 1);
+                alert(`Celebrated the Regime! +${approvalGain} approval, +1 loyalty to all factions, +1 corruption.`);
+            } else {
+                // Denounce Enemies
+                const targetId = document.getElementById('denounce-target')?.value;
+                if (!targetId) { alert('Select a target faction!'); return; }
+
+                const loyaltyLoss = Math.floor(Math.random() * 2) + 1; // 1D2
+                const { data: target } = await _supabase.from('factions')
+                    .select('loyalty, faction_name').eq('id', targetId).single();
+                const newTargetLoyalty = Math.max(0, (target?.loyalty ?? 50) - loyaltyLoss);
+                await _supabase.from('factions').update({ loyalty: newTargetLoyalty }).eq('id', targetId);
+
+                const newApproval = Math.min(100, (currentFaction.approval_rating ?? 50) + 1);
+                await _supabase.from('factions')
+                    .update({ action_points: ap - 2, approval_rating: newApproval })
+                    .eq('id', currentFaction.id);
+
+                const { data: nat } = await _supabase.from('nations')
+                    .select('polarization').eq('id', currentNation.id).single();
+                await _supabase.from('nations')
+                    .update({ polarization: Math.min(100, (nat?.polarization ?? 50) + 1) })
+                    .eq('id', currentNation.id);
+
+                await _supabase.from('campaign_actions').insert({
+                    party_id: currentFaction.id, nation_id: currentNation.id,
+                    action_type: 'rally_denounce', tick_performed: tick,
+                    result: { target_name: target?.faction_name, loyalty_loss: loyaltyLoss, approval_gain: 1, polarization_gain: 1 }
+                });
+
+                currentFaction.action_points = ap - 2;
+                currentFaction.approval_rating = newApproval;
+                alert(`Denounced ${target?.faction_name}! -${loyaltyLoss} loyalty to them, +1 approval, +1 polarization.`);
+            }
+        } else {
+            // Opposition: Pledge Loyalty (+1D2 loyalty to self)
+            const loyaltyGain = Math.floor(Math.random() * 2) + 1;
+            const newLoyalty = Math.min(100, (currentFaction.loyalty ?? 50) + loyaltyGain);
+            await _supabase.from('factions')
+                .update({ action_points: ap - 2, loyalty: newLoyalty })
+                .eq('id', currentFaction.id);
+
+            await _supabase.from('campaign_actions').insert({
+                party_id: currentFaction.id, nation_id: currentNation.id,
+                action_type: 'rally_pledge', tick_performed: tick,
+                result: { loyalty_gain: loyaltyGain }
+            });
+
+            currentFaction.action_points = ap - 2;
+            currentFaction.loyalty = newLoyalty;
+            alert(`Pledged Loyalty! +${loyaltyGain} loyalty.`);
+        }
+
+        updateAutocracyUI();
+        await loadActionLog();
+        await markFactionActive(_supabase, currentFaction.id);
+        sessionStorage.removeItem('nationhood_state');
+    } catch (error) {
+        console.error('Rally error:', error);
+        alert('Error: ' + error.message);
+    }
 }
 
-async function doSpreadRumors() {
-    const targetId = document.getElementById('rumor-target')?.value;
+// ---- UNDERMINE ----
+async function doUndermine() {
+    if (!currentFaction || !currentNation) return;
+    const ap = currentFaction.action_points || 0;
+    if (ap < 3) { alert('Not enough AP (need 3).'); return; }
+
+    if ((currentFaction.loyalty ?? 50) < 15) {
+        alert('Your faction is suppressed and cannot undermine others.');
+        return;
+    }
+
+    const targetId = document.getElementById('undermine-target')?.value;
     if (!targetId) { alert('Select a target faction!'); return; }
+
+    if (!confirm('Undermine this faction? This will reduce their loyalty and cost -1 national stability.')) return;
+
     try {
-        const { data, error } = await _supabase.rpc('action_spread_rumors', { p_faction_id: currentFaction.id, p_target_id: targetId });
-        if (error) throw error;
-        if (data.success) {
-            alert('✅ ' + data.message);
-            currentFaction.action_points = data.new_ap;
-            if (data.new_seats !== undefined) currentFaction.seats = data.new_seats;
-            updateAutocracyUI();
-            await loadActionLog();
-            await markFactionActive(_supabase, currentFaction.id);
-            sessionStorage.removeItem('nationhood_state');
-        } else { alert('❌ ' + data.message); }
-    } catch (error) { alert('❌ Error: ' + error.message); }
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shard?.current_tick || 0;
+
+        const loyaltyLoss = Math.floor(Math.random() * 3) + 1; // 1D3
+
+        const { data: target } = await _supabase.from('factions')
+            .select('loyalty, faction_name').eq('id', targetId).single();
+        const newTargetLoyalty = Math.max(0, (target?.loyalty ?? 50) - loyaltyLoss);
+        await _supabase.from('factions').update({ loyalty: newTargetLoyalty }).eq('id', targetId);
+
+        const { data: nat } = await _supabase.from('nations')
+            .select('stability').eq('id', currentNation.id).single();
+        await _supabase.from('nations')
+            .update({ stability: Math.max(0, (nat?.stability ?? 50) - 1) })
+            .eq('id', currentNation.id);
+
+        await _supabase.from('factions').update({ action_points: ap - 3 }).eq('id', currentFaction.id);
+
+        const revealed = newTargetLoyalty < 20;
+
+        await _supabase.from('campaign_actions').insert({
+            party_id: currentFaction.id, nation_id: currentNation.id,
+            action_type: 'undermine', tick_performed: tick,
+            result: { target_name: target?.faction_name, target_id: targetId, loyalty_loss: loyaltyLoss, stability_loss: 1, revealed }
+        });
+
+        currentFaction.action_points = ap - 3;
+        let msg = `Undermined ${target?.faction_name}! -${loyaltyLoss} loyalty, -1 national stability.`;
+        if (revealed) msg += '\n\nTheir loyalty is below 20 -- they know it was you!';
+        alert(msg);
+
+        updateAutocracyUI();
+        await loadActionLog();
+        await markFactionActive(_supabase, currentFaction.id);
+        sessionStorage.removeItem('nationhood_state');
+    } catch (error) {
+        console.error('Undermine error:', error);
+        alert('Error: ' + error.message);
+    }
 }
 
-async function doSeizePower(apCost) {
-    if (currentFaction.id === currentNation?.ruling_faction_id) {
+// ---- PATRONAGE NETWORK (Ruling Only) ----
+async function doPatronageNetwork() {
+    if (!currentFaction || !currentNation) return;
+    if (currentFaction.id !== currentNation.ruling_faction_id) {
+        alert('Only the ruling faction can use Patronage Network.');
+        return;
+    }
+    const ap = currentFaction.action_points || 0;
+    if (ap < 2) { alert('Not enough AP (need 2).'); return; }
+
+    const targetId = document.getElementById('patronage-target')?.value;
+    if (!targetId) { alert('Select a target faction!'); return; }
+
+    const isSelf = targetId === currentFaction.id;
+
+    if (!confirm(
+        `Distribute $50,000 from the national treasury to ${isSelf ? 'your own faction' : 'this faction'}?\n\n` +
+        `Effects:\n` +
+        `- Target: +$50,000 funds, +2 loyalty\n` +
+        `- Nation: +1 corruption, -$50,000 treasury\n` +
+        (isSelf ? '- All other factions: -1 loyalty\n' : '') +
+        '\nProceed?'
+    )) return;
+
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shard?.current_tick || 0;
+
+        const { data: targetFaction } = await _supabase.from('factions')
+            .select('loyalty, party_funds, faction_name').eq('id', targetId).single();
+
+        // Target: +$50k funds, +2 loyalty
+        await _supabase.from('factions').update({
+            party_funds: (targetFaction?.party_funds || 0) + 50000,
+            loyalty: Math.min(100, (targetFaction?.loyalty ?? 50) + 2)
+        }).eq('id', targetId);
+
+        // Deduct AP from self
+        await _supabase.from('factions').update({ action_points: ap - 2 }).eq('id', currentFaction.id);
+
+        // Nation: +1 corruption, -$50k budget
+        const { data: nat } = await _supabase.from('nations')
+            .select('corruption, budget').eq('id', currentNation.id).single();
+        await _supabase.from('nations').update({
+            corruption: Math.min(100, (nat?.corruption ?? 50) + 1),
+            budget: (nat?.budget || 0) - 50000
+        }).eq('id', currentNation.id);
+
+        // If self: all other factions -1 loyalty
+        if (isSelf) {
+            const { data: otherFactions } = await _supabase.from('factions')
+                .select('id, loyalty')
+                .eq('nation_id', currentNation.id).eq('faction_type', 'party')
+                .neq('id', currentFaction.id);
+            for (const f of (otherFactions || [])) {
+                await _supabase.from('factions')
+                    .update({ loyalty: Math.max(0, (f.loyalty ?? 50) - 1) })
+                    .eq('id', f.id);
+            }
+        }
+
+        await _supabase.from('campaign_actions').insert({
+            party_id: currentFaction.id, nation_id: currentNation.id,
+            action_type: 'patronage_network', tick_performed: tick,
+            result: {
+                target_name: targetFaction?.faction_name, target_id: targetId,
+                is_self: isSelf, funds_transferred: 50000, loyalty_gain: 2,
+                corruption_gain: 1, others_loyalty_loss: isSelf ? 1 : 0
+            }
+        });
+
+        currentFaction.action_points = ap - 2;
+        if (isSelf) currentFaction.loyalty = Math.min(100, (currentFaction.loyalty ?? 50) + 2);
+        alert(`Patronage distributed! ${targetFaction?.faction_name} received $50,000 and +2 loyalty. Nation +1 corruption.` +
+            (isSelf ? '\nAll other factions: -1 loyalty.' : ''));
+
+        updateAutocracyUI();
+        await loadActionLog();
+        await markFactionActive(_supabase, currentFaction.id);
+        sessionStorage.removeItem('nationhood_state');
+    } catch (error) {
+        console.error('Patronage error:', error);
+        alert('Error: ' + error.message);
+    }
+}
+
+// ---- SEIZE POWER (Opposition Only) ----
+async function doSeizePower() {
+    if (!currentFaction || !currentNation) return;
+    if (currentFaction.id === currentNation.ruling_faction_id) {
         alert('You are already the ruling faction.');
         return;
     }
-    apCost = apCost || 15;
+
+    const ap = currentFaction.action_points || 0;
+    if (ap < 15) { alert('Not enough AP (need 15).'); return; }
+
+    const { data: allFactions } = await _supabase.from('factions')
+        .select('id, faction_name, seats, loyalty')
+        .eq('nation_id', currentNation.id).eq('faction_type', 'party');
+
+    const disloyalFactions = (allFactions || []).filter(f =>
+        f.id !== currentFaction.id && (f.loyalty ?? 50) < 30
+    );
+
+    if (disloyalFactions.length < 2) {
+        alert('Cannot seize power. Need 2+ factions with loyalty below 30. Currently: ' + disloyalFactions.length);
+        return;
+    }
+
+    // Preview the sides
+    const rulingId = currentNation.ruling_faction_id;
+    let previewRegime = [], previewChallenger = [];
+    for (const f of (allFactions || [])) {
+        if (f.id === currentFaction.id) { previewChallenger.push(f.faction_name); continue; }
+        if (f.id === rulingId) { previewRegime.push(f.faction_name); continue; }
+        if ((f.loyalty ?? 50) >= 30) previewRegime.push(f.faction_name);
+        else previewChallenger.push(f.faction_name);
+    }
+
     if (!confirm(
-        '⚔️ SEIZE POWER?\n\nCost: ' + apCost + ' AP\n\n' +
-        'This triggers a Shakeup — all factions must choose sides.\n\n' +
-        'If you WIN:\n• You become the Ruling Faction\n• Old strongman deposed, new leader installed\n' +
-        '• Ruling faction loses 20 seats, their supporters lose 10 each\n• Your coalition gains those seats + 20 Loyalty\n\n' +
-        'If you LOSE:\n• Your side loses 10 seats each, redistributed to winners\n• 6-tick cooldown before you can try again\n\nProceed?'
+        'SEIZE POWER?\n\nCost: 15 AP\n\n' +
+        'Predicted sides:\n' +
+        'Regime: ' + previewRegime.join(', ') + '\n' +
+        'Your side: ' + previewChallenger.join(', ') + '\n\n' +
+        'Side with more total seats wins.\n\n' +
+        'WIN: You become ruler. Old ruler becomes opposition at 50 loyalty.\n' +
+        'FAIL: -25 seats, -20 approval, locked 3 ticks, loyalty=0, purged from ministries.\n\nProceed?'
     )) return;
+
     try {
-        const { data, error } = await _supabase.rpc('action_seize_power', { p_faction_id: currentFaction.id });
-        if (error) throw error;
-        if (data.success) {
-            alert('⚔️ ' + data.message);
-            currentFaction.action_points = data.new_ap;
-            updateAutocracyUI();
-            await loadActionLog();
-            await markFactionActive(_supabase, currentFaction.id);
-            sessionStorage.removeItem('nationhood_state');
-        } else { alert('❌ ' + data.message); }
-    } catch (error) { alert('❌ Error: ' + error.message); }
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shard?.current_tick || 0;
+
+        let regimeSeats = 0, challengerSeats = 0;
+        const regimeSide = [], challengerSide = [];
+
+        for (const f of (allFactions || [])) {
+            if (f.id === currentFaction.id) {
+                challengerSeats += f.seats || 0;
+                challengerSide.push(f.faction_name);
+                continue;
+            }
+            if (f.id === rulingId) {
+                regimeSeats += f.seats || 0;
+                regimeSide.push(f.faction_name);
+                continue;
+            }
+            if ((f.loyalty ?? 50) >= 30) {
+                regimeSeats += f.seats || 0;
+                regimeSide.push(f.faction_name);
+            } else {
+                challengerSeats += f.seats || 0;
+                challengerSide.push(f.faction_name);
+            }
+        }
+
+        const challengerWins = challengerSeats > regimeSeats;
+
+        // Deduct 15 AP
+        await _supabase.from('factions').update({ action_points: Math.max(0, ap - 15) }).eq('id', currentFaction.id);
+
+        if (challengerWins) {
+            // === WIN ===
+            // Old ruler: lose all ministries, become opposition at loyalty 50
+            await _supabase.from('ministries')
+                .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
+                .eq('nation_id', currentNation.id).eq('party_id', rulingId);
+
+            await _supabase.from('factions').update({ loyalty: 50 }).eq('id', rulingId);
+
+            // New ruler
+            await _supabase.from('nations').update({ ruling_faction_id: currentFaction.id }).eq('id', currentNation.id);
+            await _supabase.from('factions').update({ loyalty: 80, action_points: Math.max(0, ap - 15) }).eq('id', currentFaction.id);
+
+            await _supabase.from('campaign_actions').insert({
+                party_id: currentFaction.id, nation_id: currentNation.id,
+                action_type: 'seize_power_success', tick_performed: tick,
+                result: { regime_seats: regimeSeats, challenger_seats: challengerSeats, regime_side: regimeSide, challenger_side: challengerSide, old_ruler_id: rulingId }
+            });
+
+            currentFaction.action_points = Math.max(0, ap - 15);
+            currentFaction.loyalty = 80;
+            currentNation.ruling_faction_id = currentFaction.id;
+
+            alert(
+                'POWER SEIZED!\n\n' +
+                `Your coalition: ${challengerSide.join(', ')} (${challengerSeats} seats)\n` +
+                `Regime: ${regimeSide.join(', ')} (${regimeSeats} seats)\n\n` +
+                'You are now the ruling faction!'
+            );
+        } else {
+            // === FAIL ===
+            const mySeats = currentFaction.seats || 0;
+            const myApproval = currentFaction.approval_rating ?? 50;
+
+            await _supabase.from('factions').update({
+                seats: Math.max(0, mySeats - 25),
+                approval_rating: Math.max(0, myApproval - 20),
+                loyalty: 0,
+                action_lockout_until_tick: tick + 3,
+                action_points: 0
+            }).eq('id', currentFaction.id);
+
+            // Purge from ministries
+            await _supabase.from('ministries')
+                .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
+                .eq('nation_id', currentNation.id).eq('party_id', currentFaction.id);
+
+            await _supabase.from('campaign_actions').insert({
+                party_id: currentFaction.id, nation_id: currentNation.id,
+                action_type: 'seize_power_failed', tick_performed: tick,
+                result: { regime_seats: regimeSeats, challenger_seats: challengerSeats, regime_side: regimeSide, challenger_side: challengerSide, seats_lost: Math.min(25, mySeats), approval_lost: 20, lockout_until: tick + 3 }
+            });
+
+            currentFaction.action_points = 0;
+            currentFaction.seats = Math.max(0, mySeats - 25);
+            currentFaction.approval_rating = Math.max(0, myApproval - 20);
+            currentFaction.loyalty = 0;
+            currentFaction.action_lockout_until_tick = tick + 3;
+
+            alert(
+                'COUP FAILED!\n\n' +
+                `Your coalition: ${challengerSide.join(', ')} (${challengerSeats} seats)\n` +
+                `Regime: ${regimeSide.join(', ')} (${regimeSeats} seats)\n\n` +
+                `Consequences:\n` +
+                `- Lost ${Math.min(25, mySeats)} seats\n` +
+                `- Lost 20 approval\n` +
+                `- Loyalty set to 0\n` +
+                `- Locked out of actions for 3 ticks\n` +
+                `- Purged from all ministries`
+            );
+        }
+
+        updateAutocracyUI();
+        await loadActionLog();
+        await markFactionActive(_supabase, currentFaction.id);
+        sessionStorage.removeItem('nationhood_state');
+    } catch (error) {
+        console.error('Seize power error:', error);
+        alert('Error: ' + error.message);
+    }
 }
 </script>
 </body>
