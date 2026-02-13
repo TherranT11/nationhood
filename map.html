@@ -6,7 +6,10 @@
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
+    <script src="js/supabase-client.js"></script>
+    <script src="js/common.js"></script>
+    <script src="js/game-common.js"></script>
+
     <style>
         body { margin: 0; padding: 0; background-color: #121212; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         
@@ -230,15 +233,9 @@
 </div>
 
 <script>
-    // Your Supabase credentials
-    const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
-    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
-
     let currentUser = null;
     let currentFaction = null;
     let selectedNation = null; // Track currently selected nation
-    let tickInterval = null;
 
     async function initSession() {
         const { data: { user } } = await _supabase.auth.getUser();
@@ -274,154 +271,23 @@ if (!faction) {
 
         currentFaction = faction;
         
-        // Initialize tick system
-        await loadTickData();
-        startTickCountdown();
-    }
-    
-    async function loadTickData() {
-        try {
-            const { data: shard, error } = await _supabase
-                .from('shard')
-                .select('current_date, next_tick_at, current_tick')
-                .eq('name', 'Alpha Shard')
-                .single();
-            
-            if (error) throw error;
-            
-            // Display current game date
-            document.getElementById('game-date').innerText = shard.current_date || 'Unknown';
-            
-            // Store next tick time globally
-            window.nextTickAt = shard.next_tick_at ? new Date(shard.next_tick_at) : null;
-            
-        } catch (error) {
-            console.error('Error loading tick data:', error);
-            document.getElementById('game-date').innerText = 'Error';
-            document.getElementById('tick-countdown').innerText = 'Error';
-        }
-    }
-    
-    function startTickCountdown() {
-        // Update countdown every second
-        tickInterval = setInterval(updateCountdown, 1000);
-        updateCountdown(); // Initial update
-    }
-    
-    function updateCountdown() {
-        if (!window.nextTickAt) {
-            document.getElementById('tick-countdown').innerText = 'Not scheduled';
-            return;
-        }
-        
-        const now = new Date();
-        const timeUntilTick = window.nextTickAt - now;
-        
-        if (timeUntilTick <= 0) {
-            document.getElementById('tick-countdown').innerText = 'Processing tick...';
-            clearInterval(tickInterval);
-            // Process the tick
-            processTick();
-            return;
-        }
-        
-        // Format time remaining
-        const hours = Math.floor(timeUntilTick / (1000 * 60 * 60));
-        const minutes = Math.floor((timeUntilTick % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((timeUntilTick % (1000 * 60)) / 1000);
-        
-        document.getElementById('tick-countdown').innerText = 
-            `${hours}h ${minutes}m ${seconds}s`;
-    }
-    
-    async function processTick() {
-        try {
-            console.log('Processing tick...');
-            
-            // FIRST: Set next tick to future IMMEDIATELY to prevent re-trigger
-            const nextTickTime = new Date();
-            nextTickTime.setHours(nextTickTime.getHours() + 8);
-            
-            const { error: lockError } = await _supabase
-                .from('shard')
-                .update({
-                    next_tick_at: nextTickTime.toISOString()
-                })
-                .eq('name', 'Alpha Shard');
-            
-            if (lockError) throw lockError;
-            
-            console.log('Next tick locked to:', nextTickTime.toISOString());
-            
-            // THEN: Get current data and calculate new date
-            const { data: shard, error: getError } = await _supabase
-                .from('shard')
-                .select('current_date, current_tick')
-                .eq('name', 'Alpha Shard')
-                .single();
-            
-            if (getError) throw getError;
-            
-            const nextDate = advanceMonth(shard.current_date);
-            const nextTick = shard.current_tick + 1;
-            
-            // Update the date and tick counter
-            const { error: updateError } = await _supabase
-                .from('shard')
-                .update({
-                    current_date: nextDate,
-                    current_tick: nextTick
-                })
-                .eq('name', 'Alpha Shard');
-            
-            if (updateError) throw updateError;
-            
-            console.log(`Tick processed! Advanced to ${nextDate} (Tick ${nextTick})`);
-            console.log(`Next tick scheduled for: ${nextTickTime.toISOString()}`);
-            
-            // Wait a moment to ensure DB commits, then reload
-            setTimeout(() => {
-                window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now();
-            }, 2000); // Increased to 2 seconds for safety
-            
-        } catch (error) {
-            console.error('Tick processing error:', error);
-            document.getElementById('tick-countdown').innerText = 'Error processing tick';
-            alert('Error processing tick: ' + error.message + '\nPlease contact admin.');
-        }
-    }
-    
-    function advanceMonth(currentDate) {
-        // Parse the current date (e.g., "January, 2000")
-        const parts = currentDate.split(',');
-        const month = parts[0].trim();
-        const year = parseInt(parts[1].trim());
-        
-        const months = [
-            'January', 'February', 'March', 'April', 'May', 'June',
-            'July', 'August', 'September', 'October', 'November', 'December'
-        ];
-        
-        const currentMonthIndex = months.indexOf(month);
-        
-        if (currentMonthIndex === -1) {
-            console.error('Invalid month:', month);
-            return currentDate; // Return unchanged if error
-        }
-        
-        // Advance to next month
-        let nextMonthIndex = currentMonthIndex + 1;
-        let nextYear = year;
-        
-        // Handle year rollover
-        if (nextMonthIndex >= 12) {
-            nextMonthIndex = 0;
-            nextYear = year + 1;
-        }
-        
-        return `${months[nextMonthIndex]}, ${nextYear}`;
-    }
+        // Initialize tick system (uses shared common.js countdown + game-common.js advanceTick)
+        const { data: shardData } = await _supabase
+            .from('shard')
+            .select('current_date, next_tick_at, current_tick')
+            .eq('name', 'Alpha Shard')
+            .single();
 
+        if (shardData) {
+            document.getElementById('game-date').innerText = shardData.current_date || 'Unknown';
+            document.getElementById('tick-countdown').innerText = '';
+            if (shardData.next_tick_at) {
+                nextTickAt = new Date(shardData.next_tick_at);
+                startTickCountdown();
+            }
+        }
+    }
+    
     async function handleLogout() {
         await _supabase.auth.signOut();
         window.location.href = "index.html";

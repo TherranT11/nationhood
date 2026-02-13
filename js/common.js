@@ -332,7 +332,7 @@ function updateCountdown() {
     if (diff <= 0) {
         el.textContent = 'Processing…';
         clearInterval(tickInterval);
-        pollForNewTick();
+        triggerOrPollTick();
         return;
     }
 
@@ -343,10 +343,78 @@ function updateCountdown() {
 }
 
 /**
+ * When the countdown expires, attempt to run the full advanceTick()
+ * if game-common.js is loaded. Uses a database lock to prevent
+ * concurrent processing from multiple tabs. Falls back to passive
+ * polling if the lock can't be acquired or game-common.js isn't loaded.
+ */
+async function triggerOrPollTick() {
+    // If game-common.js is not loaded, this page cannot process the tick
+    if (typeof advanceTick !== 'function' || typeof acquireTickLock !== 'function') {
+        console.log('game-common.js not loaded on this page; falling back to poll');
+        pollForNewTick();
+        return;
+    }
+
+    // Attempt to acquire the database lock
+    let lockAcquired = false;
+    try {
+        lockAcquired = await acquireTickLock(_supabase);
+    } catch (e) {
+        console.warn('Error acquiring tick lock:', e);
+    }
+
+    if (!lockAcquired) {
+        console.log('Another tab is processing the tick; polling for completion');
+        pollForNewTick();
+        return;
+    }
+
+    // We have the lock — process the full tick
+    console.log('Tick lock acquired, processing full tick...');
+    const el = document.getElementById('tick-countdown');
+    if (el) el.textContent = 'Processing tick…';
+
+    try {
+        const summary = await advanceTick(_supabase);
+        console.log('Tick ' + summary.tick + ' processed successfully (' + summary.nations + ' nations)');
+    } catch (e) {
+        console.error('Tick processing failed:', e);
+    } finally {
+        try { await releaseTickLock(_supabase); } catch (e) { console.warn('Error releasing tick lock:', e); }
+    }
+
+    // Refresh shard data and restart countdown
+    try {
+        const { data: shard } = await _supabase
+            .from('shard')
+            .select('next_tick_at, current_tick, current_date')
+            .eq('name', 'Alpha Shard')
+            .single();
+
+        if (shard?.next_tick_at) {
+            nextTickAt = new Date(shard.next_tick_at);
+
+            const tickEl = document.getElementById('tick-number');
+            if (tickEl) tickEl.textContent = shard.current_tick || '—';
+            const dateEl = document.getElementById('game-date');
+            if (dateEl) dateEl.textContent = shard.current_date || '—';
+
+            sessionStorage.removeItem(STATE_KEY);
+            qCacheBust('');
+
+            startTickCountdown();
+        }
+    } catch (e) {
+        console.warn('Error refreshing shard data after tick:', e);
+        setTimeout(() => window.location.reload(), 3000);
+    }
+}
+
+/**
  * After the countdown reaches zero, poll Supabase every 5 seconds
  * until a new next_tick_at is detected, then restart the countdown.
- * This fixes the "stuck on Processing…" bug — previously the interval
- * was killed and nothing ever checked for the tick to finish.
+ * Used as fallback when this page can't trigger the tick itself.
  */
 function pollForNewTick() {
     // Don't start a second poller if one is already running

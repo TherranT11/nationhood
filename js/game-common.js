@@ -2695,11 +2695,78 @@ async function processElections(supabase, nation, currentTick) {
     return results;
 }
 
-async function advanceTick(supabase) {
-    // 1. Increment tick
+// ==================== TICK HELPERS ====================
+
+function advanceMonth(currentDate) {
+    const parts = currentDate.split(',');
+    const month = parts[0].trim();
+    const year = parseInt(parts[1].trim());
+
+    const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    const idx = months.indexOf(month);
+    if (idx === -1) { console.error('Invalid month:', month); return currentDate; }
+
+    const nextIdx = (idx + 1) % 12;
+    const nextYear = nextIdx === 0 ? year + 1 : year;
+    return `${months[nextIdx]}, ${nextYear}`;
+}
+
+async function acquireTickLock(supabase) {
+    const STALE_LOCK_MS = 5 * 60 * 1000; // 5 minutes
+    const now = new Date().toISOString();
+
+    // Attempt: acquire lock when tick_processing is false
+    const { data: acquired, error: err1 } = await supabase
+        .from('shard')
+        .update({ tick_processing: true, tick_processing_started_at: now })
+        .eq('name', 'Alpha Shard')
+        .eq('tick_processing', false)
+        .select('name');
+
+    if (!err1 && acquired && acquired.length > 0) return true;
+
+    // Check for stale lock (crashed tab)
     const { data: shard } = await supabase
         .from('shard')
-        .select('current_tick, tick_interval_hours')
+        .select('tick_processing, tick_processing_started_at')
+        .eq('name', 'Alpha Shard')
+        .single();
+
+    if (shard && shard.tick_processing && shard.tick_processing_started_at) {
+        const lockAge = Date.now() - new Date(shard.tick_processing_started_at).getTime();
+        if (lockAge > STALE_LOCK_MS) {
+            console.warn('Stale tick lock detected (' + Math.round(lockAge / 1000) + 's old), forcing acquire');
+            const { data: forced, error: err2 } = await supabase
+                .from('shard')
+                .update({ tick_processing: true, tick_processing_started_at: now })
+                .eq('name', 'Alpha Shard')
+                .eq('tick_processing', true)
+                .select('name');
+            return !err2 && forced && forced.length > 0;
+        }
+    }
+
+    return false;
+}
+
+async function releaseTickLock(supabase) {
+    await supabase
+        .from('shard')
+        .update({ tick_processing: false, tick_processing_started_at: null })
+        .eq('name', 'Alpha Shard');
+}
+
+// ==================== ADVANCE TICK ====================
+
+async function advanceTick(supabase) {
+    // 1. Increment tick and advance game date
+    const { data: shard } = await supabase
+        .from('shard')
+        .select('current_tick, tick_interval_hours, current_date')
         .eq('name', 'Alpha Shard')
         .single();
     if (!shard) throw new Error('Shard not found');
@@ -2707,7 +2774,13 @@ async function advanceTick(supabase) {
     const newTick = (shard.current_tick || 0) + 1;
     const nextTickAt = new Date();
     nextTickAt.setHours(nextTickAt.getHours() + (shard.tick_interval_hours || 12));
-    await supabase.from('shard').update({ current_tick: newTick, next_tick_at: nextTickAt.toISOString() }).eq('name', 'Alpha Shard');
+    const newDate = advanceMonth(shard.current_date || 'January, 2000');
+
+    await supabase.from('shard').update({
+        current_tick: newTick,
+        next_tick_at: nextTickAt.toISOString(),
+        current_date: newDate
+    }).eq('name', 'Alpha Shard');
 
     // Clear expired coup cooldowns
     await supabase.from('factions')
