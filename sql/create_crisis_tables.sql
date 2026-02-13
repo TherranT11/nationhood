@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS crisis_effects (
         -- 'coalition_approval'  → change approval_rating for all coalition parties
     stat_key        TEXT,           -- required when target = 'nation'
     minister_key    TEXT,           -- required when target = 'minister_approval'
-    change_per_tick NUMERIC NOT NULL DEFAULT 0
+    change_per_tick NUMERIC NOT NULL DEFAULT 0,
+    stat_floor      NUMERIC DEFAULT NULL   -- floor (if change negative) or ceiling (if change positive); NULL = no limit (uses 0-100)
 );
 
 CREATE INDEX IF NOT EXISTS idx_crisis_effects_crisis ON crisis_effects(crisis_id);

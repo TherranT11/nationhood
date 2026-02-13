@@ -73,7 +73,7 @@
 
         .trigger-item { display: grid; grid-template-columns: 1fr 140px 100px 36px; gap: 10px; align-items: center; padding: 10px; background: #252525; border-radius: 6px; margin-bottom: 8px; border-left: 3px solid #ff4444; }
         .end-trigger-item { display: grid; grid-template-columns: 1fr 140px 100px 36px; gap: 10px; align-items: center; padding: 10px; background: #1a2a1a; border-radius: 6px; margin-bottom: 8px; border-left: 3px solid #4CAF50; }
-        .effect-item { display: grid; grid-template-columns: 160px 1fr 100px 36px; gap: 10px; align-items: center; padding: 10px; background: #252525; border-radius: 6px; margin-bottom: 8px; border-left: 3px solid #e040fb; }
+        .effect-item { display: grid; grid-template-columns: 160px 1fr 100px 90px 36px; gap: 10px; align-items: center; padding: 10px; background: #252525; border-radius: 6px; margin-bottom: 8px; border-left: 3px solid #e040fb; }
 
         .toggle-wrapper { display: flex; align-items: center; gap: 8px; }
         .toggle { position: relative; width: 44px; height: 24px; cursor: pointer; }
@@ -94,7 +94,8 @@
 
         @media (max-width: 768px) {
             .form-row { grid-template-columns: 1fr; }
-            .trigger-item, .end-trigger-item, .effect-item { grid-template-columns: 1fr; }
+            .trigger-item, .end-trigger-item { grid-template-columns: 1fr; }
+            .effect-item { grid-template-columns: 1fr; }
             .crisis-card { flex-direction: column; align-items: flex-start; gap: 12px; }
         }
     </style>
@@ -335,7 +336,7 @@ function renderEditor() {
                         '<div class="editor-section-title">Effects Per Tick</div>' +
                         '<button class="btn btn-ghost btn-small" onclick="addEffect()">+ Add Effect</button>' +
                     '</div>' +
-                    '<div class="form-hint" style="margin-bottom:12px;">Applied EVERY tick while the crisis is active. Use negative values to decrease stats. Maximum 7 effects.</div>' +
+                    '<div class="form-hint" style="margin-bottom:12px;">Applied EVERY tick while the crisis is active. Use negative values to decrease stats. Set a Floor/Ceiling to limit how far the crisis can push the stat (leave blank for no limit). Maximum 7 effects.</div>' +
                     '<div id="effects-list">' + renderEffects() + '</div>' +
                 '</div>' +
 
@@ -411,12 +412,14 @@ function renderEffects() {
         } else {
             secondCol = '<span style="color:#888;font-size:0.8rem;padding:10px;">Applies to all coalition parties</span>';
         }
+        var floorLabel = (e.change_per_tick < 0) ? 'Floor' : 'Ceiling';
         return '<div class="effect-item">' +
             '<select class="form-select" onchange="updateEffectTarget(' + i + ',this.value)">' +
                 EFFECT_TARGETS.map(function(t) { return '<option value="' + t.key + '"' + (e.target === t.key ? ' selected' : '') + '>' + t.label + '</option>'; }).join('') +
             '</select>' +
             secondCol +
-            '<input type="number" class="form-input" value="' + (e.change_per_tick != null ? e.change_per_tick : 0) + '" placeholder="+/- per tick" step="0.1" onchange="editorEffects[' + i + '].change_per_tick=Number(this.value)">' +
+            '<input type="number" class="form-input" value="' + (e.change_per_tick != null ? e.change_per_tick : 0) + '" placeholder="+/- per tick" step="0.1" onchange="editorEffects[' + i + '].change_per_tick=Number(this.value);document.getElementById(\'floor-label-' + i + '\').textContent=this.value<0?\'Floor\':\'Ceiling\'">' +
+            '<div style="position:relative;"><span id="floor-label-' + i + '" style="position:absolute;top:-14px;left:2px;font-size:0.6rem;color:#666;text-transform:uppercase;letter-spacing:0.5px;">' + floorLabel + '</span><input type="number" class="form-input" value="' + (e.stat_floor != null ? e.stat_floor : '') + '" placeholder="None" step="1" min="0" max="100" onchange="editorEffects[' + i + '].stat_floor=this.value===\'\'?null:Number(this.value)"></div>' +
             '<button class="btn-icon" onclick="removeEffect(' + i + ')">&#10005;</button>' +
         '</div>';
     }).join('');
@@ -431,7 +434,7 @@ function updateEffectTarget(i, v) {
 
 function addEffect() {
     if (editorEffects.length >= 7) { alert('Maximum 7 effects.'); return; }
-    editorEffects.push({ id: null, target: 'nation', stat_key: '', minister_key: '', change_per_tick: 0, isNew: true });
+    editorEffects.push({ id: null, target: 'nation', stat_key: '', minister_key: '', change_per_tick: 0, stat_floor: null, isNew: true });
     document.getElementById('effects-list').innerHTML = renderEffects();
 }
 
@@ -545,7 +548,8 @@ async function saveCrisis() {
                 target: e.target,
                 stat_key: (e.target === 'nation') ? e.stat_key : null,
                 minister_key: (e.target === 'minister_approval') ? e.minister_key : null,
-                change_per_tick: e.change_per_tick || 0
+                change_per_tick: e.change_per_tick || 0,
+                stat_floor: (e.stat_floor != null && e.stat_floor !== '') ? e.stat_floor : null
             };
             if (e.isNew || !e.id) await _supabase.from('crisis_effects').insert(ep);
             else await _supabase.from('crisis_effects').update(ep).eq('id', e.id);
