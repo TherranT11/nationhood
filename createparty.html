@@ -574,7 +574,16 @@
             return;
         }
         
-        selectedNation = nationParam.charAt(0).toUpperCase() + nationParam.slice(1);
+        // Map URL slugs back to proper nation names
+        const slugToName = {
+            'melizea': 'Melizea',
+            'avelia': 'Avelia',
+            'sangreza': 'Sangreza',
+            'montequilla': 'Montequilla',
+            'sanestrella': 'San Estrella',
+            'veldaria': 'Veldaria'
+        };
+        selectedNation = slugToName[nationParam.toLowerCase()] || nationParam.charAt(0).toUpperCase() + nationParam.slice(1);
         document.getElementById('nation-subtitle').textContent = `Joining ${selectedNation}`;
         
         // Fetch nation data to check government type
