@@ -3137,6 +3137,12 @@ async function selectPresidentCandidate(supabase, candidateId, nationId, faction
     await supabase.from('pm_candidates').delete()
         .eq('nation_id', nationId).eq('faction_id', factionId).eq('selected', false);
 
+    // Deactivate previous president
+    await supabase.from('presidents')
+        .update({ is_active: false })
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+
     // Insert president record
     const { error: presErr } = await supabase.from('presidents').insert({
         nation_id: nationId,
