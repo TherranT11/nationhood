@@ -302,15 +302,6 @@ let allNations = [];
 let totalNations = 0;
 let previousTickData = null;
 
-// Stats where LOWER is better (inverted coloring & trend arrows)
-const INVERTED_STATS = [
-    'unemployment', 'poverty_rate', 'income_inequality', 'death_rate',
-    'pollution', 'carbon_emissions', 'crime_rate', 'incarceration_rate',
-    'drug_use', 'corruption', 'polarization', 'civil_unrest', 'terrorism',
-    'political_violence', 'emigration', 'sanctions', 'debt', 'debt_growth',
-    'inflation', 'illegal_immigration', 'fuel_prices'
-];
-
 // Initialize page
 initPage('nation', async (state) => {
     const { nation, faction } = state;
