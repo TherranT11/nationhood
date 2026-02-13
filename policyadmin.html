@@ -496,6 +496,11 @@ let opposedSlots = []; // array of policy UUIDs or ''
 let startingNations = new Set(); // nation IDs
 let selectedPrereqId = null; // requires_policy_id
 
+function normalizeEffectDirection(direction) {
+    const dir = String(direction || '').toLowerCase();
+    return dir === 'up' ? 'up' : (dir === 'down' ? 'down' : null);
+}
+
 // ==================== AUTH ====================
 function checkAuth() {
     if (document.getElementById('auth-pw').value === ADMIN_PW) {
@@ -585,8 +590,9 @@ function renderPolicyTable() {
         let effectsHTML = '—';
         if (p.stat_effects && Array.isArray(p.stat_effects) && p.stat_effects.length > 0) {
             effectsHTML = p.stat_effects.map(e => {
-                const arrow = e.direction === 'up' ? '▲' : '▼';
-                const cls = e.direction === 'up' ? 'tag-up' : 'tag-down';
+                const dir = normalizeEffectDirection(e.direction);
+                const arrow = dir === 'up' ? '▲' : '▼';
+                const cls = dir === 'up' ? 'tag-up' : 'tag-down';
                 return `<span class="tag ${cls}">${fmtStat(e.stat_key)} ${arrow} ${e.rate}/t</span>`;
             }).join(' ');
         } else if (p.target_stat) {
@@ -710,12 +716,12 @@ function loadPolicyIntoBuilder(p) {
 
     // Stat effects
     if (p.stat_effects && Array.isArray(p.stat_effects)) {
-        statEffects = p.stat_effects.map(e => ({ ...e }));
+        statEffects = p.stat_effects.map(e => ({ ...e, direction: normalizeEffectDirection(e.direction) || 'up' }));
     } else if (p.target_stat) {
         // Legacy: convert single stat to new format
         statEffects = [{
             stat_key: p.target_stat,
-            direction: (p.stat_direction || 'UP').toLowerCase(),
+            direction: normalizeEffectDirection(p.stat_direction) || 'up',
             rate: p.stat_change_per_tick || 1,
             delay_ticks: 0,
             duration_ticks: p.duration_months || 12
@@ -862,8 +868,8 @@ function renderStatEffects() {
                 <div class="form-field">
                     <label>Dir</label>
                     <div class="dir-toggle">
-                        <button class="dir-btn ${e.direction === 'up' ? 'sel-up' : ''}" onclick="statEffects[${idx}].direction='up'; renderStatEffects()">▲</button>
-                        <button class="dir-btn ${e.direction === 'down' ? 'sel-down' : ''}" onclick="statEffects[${idx}].direction='down'; renderStatEffects()">▼</button>
+                        <button class="dir-btn ${(normalizeEffectDirection(e.direction) || 'up') === 'up' ? 'sel-up' : ''}" onclick="statEffects[${idx}].direction='up'; renderStatEffects()">▲</button>
+                        <button class="dir-btn ${(normalizeEffectDirection(e.direction) || 'up') === 'down' ? 'sel-down' : ''}" onclick="statEffects[${idx}].direction='down'; renderStatEffects()">▼</button>
                     </div>
                 </div>
                 <div class="form-field">
@@ -899,7 +905,7 @@ function updateEffectPreview() {
     html += 'Tick 0: Policy activated. Upfront cost deducted. Ongoing cost begins.<br>';
 
     valid.forEach((e, i) => {
-        const arrow = e.direction === 'up' ? '▲ +' : '▼ -';
+        const arrow = (normalizeEffectDirection(e.direction) || 'up') === 'up' ? '▲ +' : '▼ -';
         const start = e.delay_ticks + 1;
         const end = e.delay_ticks + e.duration_ticks;
         if (e.delay_ticks > 0) {
@@ -1107,7 +1113,7 @@ async function savePolicy() {
         ongoing_scaling_stat: document.getElementById('b-scaling-stat').value || null,
         stat_effects: validEffects.map(e => ({
             stat_key: e.stat_key,
-            direction: e.direction,
+            direction: normalizeEffectDirection(e.direction) || 'up',
             rate: e.rate,
             delay_ticks: e.delay_ticks || 0,
             duration_ticks: e.duration_ticks || 12
@@ -1115,7 +1121,7 @@ async function savePolicy() {
         opposed_policy_ids: opposedIds.length > 0 ? opposedIds : null,
         // Legacy fields — write defaults so old code doesn't break
         target_stat: validEffects[0]?.stat_key || null,
-        stat_direction: (validEffects[0]?.direction || 'up').toUpperCase(),
+        stat_direction: (normalizeEffectDirection(validEffects[0]?.direction) || 'up').toUpperCase(),
         stat_change_per_tick: validEffects[0]?.rate || 1,
         duration_months: validEffects[0]?.duration_ticks || 12,
         stat_floor: 0,

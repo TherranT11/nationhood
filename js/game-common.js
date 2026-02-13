@@ -4357,6 +4357,7 @@ async function processStatEffects(supabase, nation, currentTick) {
                 const delay = eff.delay_ticks || 0;
                 const duration = eff.duration_ticks || 12;
                 const rate = eff.rate || 1;
+                const dir = String(eff.direction || '').toLowerCase();
                 const rawStatKey = eff.stat_key;
                 const statKey = normalizeNationStatKey(rawStatKey);
 
@@ -4364,6 +4365,15 @@ async function processStatEffects(supabase, nation, currentTick) {
                     if (tick === lastApplied + 1) {
                         console.warn(
                             `[processStatEffects] Skipping invalid stat_key "${rawStatKey}" for active_law=${law.id}, policy=${policy?.id || 'unknown'} (${policy?.policy_name || 'Unknown'})`
+                        );
+                    }
+                    continue;
+                }
+
+                if (dir !== 'up' && dir !== 'down') {
+                    if (tick === lastApplied + 1) {
+                        console.warn(
+                            `[processStatEffects] Skipping invalid direction "${eff.direction}" for stat_key="${rawStatKey}" active_law=${law.id}, policy=${policy?.id || 'unknown'} (${policy?.policy_name || 'Unknown'})`
                         );
                     }
                     continue;
@@ -4379,7 +4389,7 @@ async function processStatEffects(supabase, nation, currentTick) {
                         : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
 
                     let newVal;
-                    if (eff.direction === 'up') {
+                    if (dir === 'up') {
                         newVal = currentVal + rate;
                     } else {
                         newVal = currentVal - rate;
@@ -4392,7 +4402,7 @@ async function processStatEffects(supabase, nation, currentTick) {
                     appliedEffects.push({
                         policy: isReversal ? '↩ Reversal: ' + (policy?.policy_name || 'Unknown') : (policy?.policy_name || 'Unknown'),
                         stat: statKey,
-                        direction: eff.direction,
+                        direction: dir,
                         rate: rate,
                         tick: tick,
                         newValue: newVal
