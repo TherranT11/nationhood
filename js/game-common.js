@@ -2511,9 +2511,9 @@ async function processElections(supabase, nation, currentTick) {
 
             await supabase
                 .from('active_coalitions')
-                .update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
+                .update({ dissolved_at: new Date().toISOString() })
                 .eq('nation_id', nation.id)
-                .eq('status', 'caretaker');
+                .is('dissolved_at', null);
 
             // Deactivate PM
             await supabase
