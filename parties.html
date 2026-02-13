@@ -985,6 +985,10 @@ async function doSpreadRumors() {
 }
 
 async function doSeizePower(apCost) {
+    if (currentFaction.id === currentNation?.ruling_faction_id) {
+        alert('You are already the ruling faction.');
+        return;
+    }
     apCost = apCost || 15;
     if (!confirm(
         '⚔️ SEIZE POWER?\n\nCost: ' + apCost + ' AP\n\n' +
