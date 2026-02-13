@@ -418,6 +418,10 @@ initPage('government', async (state) => {
     }
     return;
 }
+
+    renderCandidates();
+});
+
 function getIdeologyClass(tag) {
     return 'ideo-' + (tag || '').toLowerCase();
 }
