@@ -2497,8 +2497,10 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
     if (!election) return null;
 
     // Check if any party has outright majority (no coalition needed)
+    // Use nation-specific total_seats for correct majority threshold
+    const majoritySeatThreshold = Math.ceil((nation.total_seats || GAME_CONFIG.TOTAL_SEATS) * GAME_CONFIG.MAJORITY_THRESHOLD);
     const votes = election.results?.votes || [];
-    const majorityParty = votes.find(p => p.seats >= GAME_CONFIG.MAJORITY_SEATS);
+    const majorityParty = votes.find(p => p.seats >= majoritySeatThreshold);
     if (majorityParty) return null;
 
     // Calculate ticks since election
@@ -2813,36 +2815,38 @@ async function processElections(supabase, nation, currentTick) {
             // Midterm parliamentary election — seats reshuffled, president stays, desk bills remain
             console.log(`Midterm parliamentary election for ${nation.name} — president stays in office`);
         } else {
-            // === PARLIAMENTARY DEMOCRACY: existing coalition/caretaker logic ===
-            let caretakerGov = null;
-            let caretakerSource = null;
-            const { data: caretakerFormation } = await supabase
+            // === PARLIAMENTARY DEMOCRACY: dissolve existing government after election ===
+            // After any election, the old government (whether 'formed' or 'caretaker')
+            // must be dissolved so that processGovernmentVacancy can apply -2 approval
+            // penalties until a new coalition is formed.
+            let existingGov = null;
+            let existingGovSource = null;
+            const { data: govFormation } = await supabase
                 .from('government_formations')
-                .select('id')
+                .select('id, status')
                 .eq('nation_id', nation.id)
-                .eq('status', 'caretaker')
+                .in('status', ['formed', 'caretaker'])
                 .maybeSingle();
-            if (caretakerFormation) {
-                caretakerGov = caretakerFormation;
-                caretakerSource = 'government_formations';
+            if (govFormation) {
+                existingGov = govFormation;
+                existingGovSource = 'government_formations';
             } else {
-                const { data: caretakerLegacy } = await supabase
+                const { data: legacyGov } = await supabase
                     .from('active_coalitions')
-                    .select('id')
+                    .select('id, status')
                     .eq('nation_id', nation.id)
-                    .eq('status', 'caretaker')
                     .is('dissolved_at', null)
                     .maybeSingle();
-                if (caretakerLegacy) {
-                    caretakerGov = caretakerLegacy;
-                    caretakerSource = 'active_coalitions';
+                if (legacyGov) {
+                    existingGov = legacyGov;
+                    existingGovSource = 'active_coalitions';
                 }
             }
 
-            if (caretakerGov) {
-                console.log(`Caretaker government dissolving after election for ${nation.name} (source: ${caretakerSource})`);
+            if (existingGov) {
+                console.log(`Dissolving ${existingGov.status} government after election for ${nation.name} (source: ${existingGovSource})`);
 
-                // Fail all frozen bills
+                // Fail all frozen bills (from caretaker period)
                 await supabase.from('bills')
                     .update({ status: 'failed' })
                     .eq('nation_id', nation.id)
@@ -2855,14 +2859,14 @@ async function processElections(supabase, nation, currentTick) {
                     if (fullNation) {
                         await closeAdministration(supabase, nation.id, fullNation, 'dissolved', currentTick, shardData?.current_date || '', null);
                     }
-                } catch (adminErr) { console.warn('Could not close administration on early election:', adminErr); }
+                } catch (adminErr) { console.warn('Could not close administration on election:', adminErr); }
 
-                // Dissolve caretaker government in BOTH tables (callEarlyElections sets both)
+                // Dissolve government in BOTH tables
                 await supabase
                     .from('government_formations')
                     .update({ status: 'dissolved' })
                     .eq('nation_id', nation.id)
-                    .eq('status', 'caretaker');
+                    .in('status', ['formed', 'caretaker']);
 
                 await supabase
                     .from('active_coalitions')
