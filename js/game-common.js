@@ -3618,13 +3618,27 @@ async function processCrises(supabase, nation, currentTick) {
 
         for (const effect of effects) {
             const changePT = Number(effect.change_per_tick);
+            const hasFloor = effect.stat_floor !== null && effect.stat_floor !== undefined;
+            const floorVal = hasFloor ? Number(effect.stat_floor) : null;
+
+            // Helper: clamp value respecting the per-effect floor/ceiling
+            // If change is negative, stat_floor is a floor (can't go below).
+            // If change is positive, stat_floor is a ceiling (can't go above).
+            function clampWithFloor(current, raw) {
+                let v = Math.max(0, Math.min(100, raw));
+                if (hasFloor) {
+                    if (changePT < 0) v = Math.max(floorVal, v);   // floor
+                    else if (changePT > 0) v = Math.min(floorVal, v); // ceiling
+                }
+                return v;
+            }
 
             if (effect.target === 'nation') {
                 const currentVal = nationUpdates[effect.stat_key] !== undefined
                     ? nationUpdates[effect.stat_key]
                     : (nation[effect.stat_key] !== undefined && nation[effect.stat_key] !== null
                         ? Number(nation[effect.stat_key]) : 50);
-                const newVal = Math.max(0, Math.min(100, currentVal + changePT));
+                const newVal = clampWithFloor(currentVal, currentVal + changePT);
                 nationUpdates[effect.stat_key] = newVal;
                 nation[effect.stat_key] = newVal;
 
@@ -3644,7 +3658,7 @@ async function processCrises(supabase, nation, currentTick) {
                         .single();
                     if (faction) {
                         const currentVal = faction.approval_rating ?? 50;
-                        const newVal = Math.max(0, Math.min(100, currentVal + changePT));
+                        const newVal = clampWithFloor(currentVal, currentVal + changePT);
                         await supabase.from('factions')
                             .update({ approval_rating: newVal })
                             .eq('id', partyId);
@@ -3668,7 +3682,7 @@ async function processCrises(supabase, nation, currentTick) {
 
                 if (ministry) {
                     const currentVal = ministry.minister_approval ?? 50;
-                    const newVal = Math.max(0, Math.min(100, currentVal + changePT));
+                    const newVal = clampWithFloor(currentVal, currentVal + changePT);
                     await supabase.from('ministries')
                         .update({ minister_approval: newVal })
                         .eq('nation_id', nation.id)
@@ -3692,7 +3706,8 @@ async function processCrises(supabase, nation, currentTick) {
                             .single();
                         if (faction) {
                             const factionVal = faction.approval_rating ?? 50;
-                            const newFactionVal = Math.max(0, factionVal - (loss * multiplier));
+                            const cascadeRaw = factionVal - (loss * multiplier);
+                            const newFactionVal = clampWithFloor(factionVal, cascadeRaw);
                             await supabase.from('factions')
                                 .update({ approval_rating: newFactionVal })
                                 .eq('id', ministry.party_id);
