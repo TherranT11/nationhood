@@ -2581,28 +2581,13 @@ async function advanceTick(supabase) {
     nextTickAt.setHours(nextTickAt.getHours() + (shard.tick_interval_hours || 12));
     await supabase.from('shard').update({ current_tick: newTick, next_tick_at: nextTickAt.toISOString() }).eq('name', 'Alpha Shard');
 
-    // Refill action points for all factions (skip locked-out factions from failed coups)
-    // Clear expired lockouts first
+    // Clear expired coup cooldowns
     await supabase.from('factions')
         .update({ action_lockout_until_tick: null })
         .not('action_lockout_until_tick', 'is', null)
         .lte('action_lockout_until_tick', newTick);
 
-    // Find factions still locked out
-    const { data: lockedFactions } = await supabase
-        .from('factions')
-        .select('id')
-        .not('action_lockout_until_tick', 'is', null)
-        .gt('action_lockout_until_tick', newTick);
-    const lockedIds = (lockedFactions || []).map(f => f.id);
-
-    if (lockedIds.length > 0) {
-        // Zero out locked factions' AP
-        for (const lid of lockedIds) {
-            await supabase.from('factions').update({ action_points: 0 }).eq('id', lid);
-        }
-    }
-    // Refill everyone else to 10 (loyalty-based AP reduction happens in processLoyaltyTick)
+    // Refill action points for all factions (loyalty-based AP reduction happens in processLoyaltyTick)
     await supabase.from('factions').update({ action_points: 10 }).lt('action_points', 10);
 
     // 2. Load all nations

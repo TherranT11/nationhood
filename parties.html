@@ -720,18 +720,18 @@ async function renderPartiesPage(nation, faction) {
         let myLoyalty = faction?.loyalty ?? 50;
         let isSuppressed = isAutocracy && myLoyalty < 15;
         let isDisloyal = isAutocracy && myLoyalty >= 15 && myLoyalty < 30;
-        let isLockedOut = false;
-        let lockoutTick = faction?.action_lockout_until_tick;
+        let isCoupCooldown = false;
+        let cooldownTick = faction?.action_lockout_until_tick;
         let currentTick = 0;
         if (isAutocracy && faction) {
             const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
             currentTick = shard?.current_tick || 0;
-            isLockedOut = lockoutTick && currentTick < lockoutTick;
+            isCoupCooldown = cooldownTick && currentTick < cooldownTick;
         }
         let canSeizePower = false;
         if (isAutocracy && !isRulingFaction && faction) {
             const disloyalCount = parties.filter(p => p.id !== faction?.id && (p.loyalty ?? 50) < 30).length;
-            canSeizePower = disloyalCount >= 2 && (faction?.action_points || 0) >= 15 && !isLockedOut && !isSuppressed;
+            canSeizePower = disloyalCount >= 2 && (faction?.action_points || 0) >= 15 && !isCoupCooldown && !isSuppressed;
         }
 
         // Build campaign actions
@@ -767,8 +767,8 @@ async function renderPartiesPage(nation, faction) {
             <div id="action-log" class="action-log"><div class="action-log-empty">No actions taken yet this campaign.</div></div>`;
         } else {
             const loyaltyColor = myLoyalty >= 30 ? '#4CAF50' : myLoyalty >= 15 ? '#ff9800' : '#ff4444';
-            const statusText = isLockedOut ? 'LOCKED' : myLoyalty >= 30 ? 'LOYAL' : myLoyalty >= 15 ? 'DISLOYAL' : 'SUPPRESSED';
-            const statusColor = isLockedOut ? '#ff4444' : loyaltyColor;
+            const statusText = myLoyalty >= 30 ? 'LOYAL' : myLoyalty >= 15 ? 'DISLOYAL' : 'SUPPRESSED';
+            const statusColor = loyaltyColor;
 
             campaignActionsHTML = `
             <div class="section-header" style="margin-top: 30px;">Your Faction Resources</div>
@@ -779,21 +779,21 @@ async function renderPartiesPage(nation, faction) {
                 <div class="stat-card"><div class="stat-label">Status</div><div class="stat-value" id="party-status" style="color:${statusColor}">${statusText}</div></div>
             </div>
 
-            ${isLockedOut ? `
-            <div style="background: #3a1a1a; border: 1px solid #ff4444; border-radius: 8px; padding: 20px; text-align: center; margin-bottom: 20px;">
-                <div style="color: #ff4444; font-weight: bold; font-size: 1.1rem;">FACTION LOCKED</div>
-                <div style="color: #aaa; margin-top: 8px;">Your faction is locked out of all actions until tick ${lockoutTick} after a failed power seizure.</div>
+            ${isCoupCooldown ? `
+            <div style="background: #3a1a1a; border: 1px solid #ff9800; border-radius: 8px; padding: 16px; text-align: center; margin-bottom: 20px;">
+                <div style="color: #ff9800; font-weight: bold; font-size: 1.1rem;">COUP COOLDOWN</div>
+                <div style="color: #aaa; margin-top: 8px;">Seize Power is unavailable until tick ${cooldownTick} after your failed coup attempt. Other actions still work.</div>
             </div>` : ''}
 
             <div class="section-header">Faction Actions</div>
 
-            ${isSuppressed && !isLockedOut ? `
+            ${isSuppressed ? `
             <div style="background: #3a1a1a; border: 1px solid #ff4444; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
                 <div style="color: #ff4444; font-weight: bold;">SUPPRESSED</div>
                 <div style="color: #aaa; margin-top: 4px; font-size: 0.85rem;">Your loyalty is below 15. You receive 0 AP and can only Pledge Loyalty. Losing 2 seats per tick.</div>
             </div>` : ''}
 
-            ${isDisloyal && !isLockedOut ? `
+            ${isDisloyal ? `
             <div style="background: #3a2a1a; border: 1px solid #ff9800; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
                 <div style="color: #ff9800; font-weight: bold;">DISLOYAL</div>
                 <div style="color: #aaa; margin-top: 4px; font-size: 0.85rem;">Your loyalty is below 30. Losing 1 seat per tick, -1 AP per tick, purged from ministries.</div>
@@ -825,7 +825,7 @@ async function renderPartiesPage(nation, faction) {
                             <option value="">Select Target Faction...</option>
                         </select>
                     </div>` : ''}
-                    <button class="action-btn" onclick="doRallySupport()" ${isLockedOut ? 'disabled' : ''}>
+                    <button class="action-btn" onclick="doRallySupport()">
                         ${isRulingFaction ? 'Rally Support' : 'Pledge Loyalty'}
                     </button>
                 </div>
@@ -842,7 +842,7 @@ async function renderPartiesPage(nation, faction) {
                             <option value="">Select Target Faction...</option>
                         </select>
                     </div>
-                    <button class="action-btn action-btn-risk" onclick="doUndermine()" ${(isSuppressed || isLockedOut) ? 'disabled' : ''}>
+                    <button class="action-btn action-btn-risk" onclick="doUndermine()" ${isSuppressed ? 'disabled' : ''}>
                         ${isSuppressed ? 'Suppressed' : 'Undermine'}
                     </button>
                 </div>
@@ -860,7 +860,7 @@ async function renderPartiesPage(nation, faction) {
                             <option value="">Select Faction...</option>
                         </select>
                     </div>
-                    <button class="action-btn" onclick="doPatronageNetwork()" ${isLockedOut ? 'disabled' : ''}>
+                    <button class="action-btn" onclick="doPatronageNetwork()">
                         Distribute Patronage
                     </button>
                 </div>` : ''}
@@ -875,13 +875,13 @@ async function renderPartiesPage(nation, faction) {
                         Factions pick sides based on loyalty. Side with more seats wins.
                         <br><br>
                         <strong style="color: #4CAF50;">WIN:</strong> You become ruler. Old ruler becomes opposition at 50 loyalty.
-                        <br><strong style="color: #ff4444;">FAIL:</strong> -25 seats, -20 approval, locked 3 ticks, loyalty=0, purged from ministries.
+                        <br><strong style="color: #ff4444;">FAIL:</strong> -25 seats, -20 approval, loyalty=0, purged from ministries. Seize Power blocked for 6 ticks.
                     </div>
                     <button class="action-btn" style="background: ${canSeizePower ? '#ff4444' : '#555'};"
                         onclick="doSeizePower()"
-                        ${(!canSeizePower || isSuppressed || isLockedOut) ? 'disabled' : ''}
-                        ${!canSeizePower ? 'title="Need 2+ factions with loyalty below 30 and 15 AP"' : ''}>
-                        ${canSeizePower ? 'Seize Power' : 'Cannot Seize (Need 2+ disloyal)'}
+                        ${(!canSeizePower || isSuppressed || isCoupCooldown) ? 'disabled' : ''}
+                        ${isCoupCooldown ? 'title="Coup cooldown active"' : !canSeizePower ? 'title="Need 2+ factions with loyalty below 30 and 15 AP"' : ''}>
+                        ${isCoupCooldown ? 'Coup Cooldown' : canSeizePower ? 'Seize Power' : 'Cannot Seize (Need 2+ disloyal)'}
                     </button>
                 </div>` : ''}
             </div>
@@ -986,7 +986,7 @@ async function loadActionLog() {
         else if (a.action_type === 'undermine') message = `Undermined ${a.result?.target_name || 'Unknown'}: -${a.result?.loyalty_loss || 0} loyalty, -1 stability${a.result?.revealed ? ' (REVEALED!)' : ''}`;
         else if (a.action_type === 'patronage_network') message = `Patronage to ${a.result?.target_name || 'Unknown'}: +$50k, +2 loyalty, +1 corruption${a.result?.is_self ? ' (hoarding!)' : ''}`;
         else if (a.action_type === 'seize_power_success') message = `SEIZED POWER! (${a.result?.challenger_seats || 0} vs ${a.result?.regime_seats || 0} seats)`;
-        else if (a.action_type === 'seize_power_failed') message = `Failed Coup! -${a.result?.seats_lost || 0} seats, locked until tick ${a.result?.lockout_until || '?'}`;
+        else if (a.action_type === 'seize_power_failed') message = `Failed Coup! -${a.result?.seats_lost || 0} seats, Seize Power blocked until tick ${a.result?.coup_cooldown_until || a.result?.lockout_until || '?'}`;
         return `<div class="action-log-item"><div class="action-log-time">Tick ${a.tick_performed} • ${date}</div><div class="action-log-message">${message}</div></div>`;
     }).join('');
 }
@@ -1085,8 +1085,8 @@ function updateAutocracyUI() {
 
     if (loyaltyEl) { loyaltyEl.textContent = loyalty + '%'; loyaltyEl.style.color = loyaltyColor; }
     if (statusEl) {
-        statusEl.textContent = currentFaction.action_lockout_until_tick ? 'LOCKED' : statusText;
-        statusEl.style.color = currentFaction.action_lockout_until_tick ? '#ff4444' : loyaltyColor;
+        statusEl.textContent = statusText;
+        statusEl.style.color = loyaltyColor;
     }
 }
 
@@ -1385,7 +1385,7 @@ async function doSeizePower() {
         'Your side: ' + previewChallenger.join(', ') + '\n\n' +
         'Side with more total seats wins.\n\n' +
         'WIN: You become ruler. Old ruler becomes opposition at 50 loyalty.\n' +
-        'FAIL: -25 seats, -20 approval, locked 3 ticks, loyalty=0, purged from ministries.\n\nProceed?'
+        'FAIL: -25 seats, -20 approval, loyalty=0, purged from ministries. Seize Power blocked 6 ticks.\n\nProceed?'
     )) return;
 
     try {
@@ -1458,8 +1458,7 @@ async function doSeizePower() {
                 seats: Math.max(0, mySeats - 25),
                 approval_rating: Math.max(0, myApproval - 20),
                 loyalty: 0,
-                action_lockout_until_tick: tick + 3,
-                action_points: 0
+                action_lockout_until_tick: tick + 6
             }).eq('id', currentFaction.id);
 
             // Purge from ministries
@@ -1470,14 +1469,13 @@ async function doSeizePower() {
             await _supabase.from('campaign_actions').insert({
                 party_id: currentFaction.id, nation_id: currentNation.id,
                 action_type: 'seize_power_failed', tick_performed: tick,
-                result: { regime_seats: regimeSeats, challenger_seats: challengerSeats, regime_side: regimeSide, challenger_side: challengerSide, seats_lost: Math.min(25, mySeats), approval_lost: 20, lockout_until: tick + 3 }
+                result: { regime_seats: regimeSeats, challenger_seats: challengerSeats, regime_side: regimeSide, challenger_side: challengerSide, seats_lost: Math.min(25, mySeats), approval_lost: 20, coup_cooldown_until: tick + 6 }
             });
 
-            currentFaction.action_points = 0;
             currentFaction.seats = Math.max(0, mySeats - 25);
             currentFaction.approval_rating = Math.max(0, myApproval - 20);
             currentFaction.loyalty = 0;
-            currentFaction.action_lockout_until_tick = tick + 3;
+            currentFaction.action_lockout_until_tick = tick + 6;
 
             alert(
                 'COUP FAILED!\n\n' +
@@ -1487,8 +1485,8 @@ async function doSeizePower() {
                 `- Lost ${Math.min(25, mySeats)} seats\n` +
                 `- Lost 20 approval\n` +
                 `- Loyalty set to 0\n` +
-                `- Locked out of actions for 3 ticks\n` +
-                `- Purged from all ministries`
+                `- Purged from all ministries\n` +
+                `- Cannot attempt Seize Power for 6 ticks`
             );
         }
 
