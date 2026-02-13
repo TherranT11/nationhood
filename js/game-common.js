@@ -731,6 +731,53 @@ async function fetchActiveCoalition(supabase, nationId) {
         if (cached) return cached;
     }
 
+    // === PRESIDENTIAL SYSTEMS: return virtual coalition from active president ===
+    const { data: nationRow } = await supabase
+        .from('nations')
+        .select('government_type')
+        .eq('id', nationId)
+        .single();
+
+    if (nationRow?.government_type === 'Presidential') {
+        const { data: president } = await supabase
+            .from('presidents')
+            .select('id, nation_id, faction_id, first_name, last_name, elected_tick, is_active')
+            .eq('nation_id', nationId)
+            .eq('is_active', true)
+            .order('elected_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (!president) return null; // No active president yet (candidate selection pending)
+
+        // Build ministry_allocations from active ministries
+        const { data: ministries } = await supabase
+            .from('ministries')
+            .select('ministry_key, party_id')
+            .eq('nation_id', nationId)
+            .eq('is_active', true);
+
+        const ministryAllocations = {};
+        for (const m of (ministries || [])) {
+            if (m.party_id) ministryAllocations[m.ministry_key] = m.party_id;
+        }
+
+        const result = {
+            id: president.id,
+            nation_id: nationId,
+            party_ids: [president.faction_id],
+            lead_party_id: president.faction_id,
+            ministry_allocations: ministryAllocations,
+            formed_at: null,
+            status: 'formed',  // Always 'formed' while president is active
+            _source: 'presidential'
+        };
+        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 2 * 60 * 1000);
+        return result;
+    }
+
+    // === PARLIAMENTARY DEMOCRACY / AUTOCRACY: existing logic ===
+
     // Helper: if status looks active but frozen bills exist, it's actually caretaker
     async function inferCaretakerStatus(result) {
         if (result && (!result.status || result.status === 'formed')) {
@@ -2019,9 +2066,12 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
 
     const { data: nation } = await supabase
         .from('nations')
-        .select('name')
+        .select('name, government_type')
         .eq('id', nationId)
         .single();
+
+    // Presidential systems do not have votes of no confidence
+    if (nation?.government_type === 'Presidential') return;
 
     // Get PM's last name for event text
     const { data: hog } = await supabase
@@ -2148,6 +2198,10 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
  * @param {Array}  coalitionPartyIds - All coalition party IDs
  */
 async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coalitionPartyIds) {
+    // Presidential systems cannot call early elections
+    const { data: nationCheck } = await supabase.from('nations').select('government_type').eq('id', nationId).single();
+    if (nationCheck?.government_type === 'Presidential') return { success: false, error: 'Presidential systems cannot call early elections' };
+
     // 0. Server-side guard: only proceed if coalition is still 'formed' (check both tables)
     let govStatus = null;
     const { data: activeGov } = await supabase
@@ -4843,17 +4897,41 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
 }
 
 async function processPMTraitEffects(supabase, nation, currentTick) {
-    const { data: hog } = await supabase
-        .from('head_of_government')
-        .select('*, leader_traits(*)')
-        .eq('nation_id', nation.id)
-        .eq('active', true)
-        .single();
+    let effects, factionId;
 
-    if (!hog || !hog.leader_traits?.effects) return;
+    if (nation.government_type === 'Presidential') {
+        // For presidential systems, use the active president's trait
+        const { data: president } = await supabase
+            .from('presidents')
+            .select('faction_id, trait')
+            .eq('nation_id', nation.id)
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle();
 
-    const effects = hog.leader_traits.effects;
-    const factionId = hog.faction_id;
+        if (!president?.trait) return;
+
+        const { data: traitData } = await supabase
+            .from('leader_traits')
+            .select('effects')
+            .eq('trait_key', president.trait)
+            .single();
+
+        if (!traitData?.effects) return;
+        effects = traitData.effects;
+        factionId = president.faction_id;
+    } else {
+        const { data: hog } = await supabase
+            .from('head_of_government')
+            .select('*, leader_traits(*)')
+            .eq('nation_id', nation.id)
+            .eq('active', true)
+            .single();
+
+        if (!hog || !hog.leader_traits?.effects) return;
+        effects = hog.leader_traits.effects;
+        factionId = hog.faction_id;
+    }
 
     if (effects.party_approval_per_tick) {
         const { data: faction } = await supabase
