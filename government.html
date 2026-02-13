@@ -696,6 +696,27 @@ async function renderGovernmentPage() {
             }
         }
 
+        // Check if coalition formation is in progress for the latest election
+        let coalitionFormationInProgress = false;
+        if (!isAutocracy && electionData?.id) {
+            const { data: formedGov } = await _supabase
+                .from('government_formations')
+                .select('id')
+                .eq('election_id', electionData.id)
+                .eq('status', 'formed')
+                .limit(1)
+                .maybeSingle();
+            if (!formedGov) {
+                const { data: legacyCoal } = await _supabase
+                    .from('active_coalitions')
+                    .select('id')
+                    .eq('election_id', electionData.id)
+                    .limit(1)
+                    .maybeSingle();
+                coalitionFormationInProgress = !legacyCoal;
+            }
+        }
+
         // Refresh current faction AP
         const freshFaction = allParties.find(p => p.id === currentFaction?.id);
         if (freshFaction && currentFaction) {
@@ -751,7 +772,7 @@ async function renderGovernmentPage() {
         <div style="margin-top:12px;display:inline-block;padding:8px 24px;background:var(--accent);color:#121212;border-radius:6px;font-weight:bold;font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;">Choose Now →</div>
     </div>
 ` : ''}
-                ${renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval, activeHOG)}
+                ${renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress)}
 
                 <div class="section-header">Government Structure</div>
                 <div class="info-block">
@@ -820,13 +841,28 @@ function tickToDate(tick) {
 
 // ==================== ADMINISTRATION BOX ====================
 
-function renderAdministrationBox(coalition, parties, primeMinister, governmentApproval, activeHOG) {
+function renderAdministrationBox(coalition, parties, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress) {
     const hosFirst = currentNation.head_of_state_first_name || 'Unknown';
     const hosLast = currentNation.head_of_state_last_name || 'Unknown';
     const hosAge = currentNation.head_of_state_age || '—';
 
     // Administration name uses Head of Government (PM), falling back to Head of State
     const adminLast = activeHOG?.last_name || primeMinister?.minister_last_name || hosLast;
+
+    // Coalition formation in progress — show placeholder instead of stale admin data
+    if (coalitionFormationInProgress) {
+        return `
+            <div class="administration-box">
+                <div class="administration-header">
+                    <div class="administration-title">Government Being Formed</div>
+                    <div class="administration-subtitle">Coalition negotiations are in progress</div>
+                </div>
+                <div class="administration-content" style="text-align:center;padding:24px;">
+                    <div style="font-size:0.9rem;color:var(--text-secondary);">A new government will be displayed here once a coalition is formed.</div>
+                    <button style="margin-top:16px;padding:8px 20px;background:var(--accent);color:#121212;border:none;border-radius:6px;font-weight:bold;cursor:pointer;" onclick="window.location.href='elections.html'">Go to Elections</button>
+                </div>
+            </div>`;
+    }
 
     if (isAutocracy) {
         const rulingParty = allParties.find(p => p.id === rulingFactionId);
