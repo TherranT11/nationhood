@@ -75,8 +75,32 @@
     .crisis-box.active {
         border: 2px solid var(--red);
         background: var(--bg-card);
-        color: var(--red);
+        color: var(--text-primary);
         font-style: normal;
+        text-align: left;
+        padding: 20px;
+    }
+    .crisis-box.active .crisis-name {
+        color: var(--red);
+        font-size: 1rem;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 8px;
+    }
+    .crisis-box.active .crisis-desc {
+        color: var(--text-secondary);
+        font-size: 0.78rem;
+        line-height: 1.5;
+        margin-bottom: 12px;
+    }
+    .crisis-box.active .crisis-recovery {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+    }
+    .crisis-box.active .crisis-recovery span {
+        color: var(--orange);
+        font-weight: bold;
     }
 
     /* Stats Sections */
@@ -337,6 +361,56 @@ function getTrendArrow(statKey, currentValue, inverted = false) {
     }
 }
 
+function prettyStatName(key) {
+    return key.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+}
+
+async function renderCrisisSection(nationId) {
+    var h = '<div class="crisis-section"><div class="section-header">Ongoing Crises</div><div class="crisis-grid">';
+
+    var crises = [];
+    var cacheKey = 'crises_' + nationId;
+    var cached = qCache(cacheKey);
+    if (cached) {
+        crises = cached;
+    } else {
+        var res = await _supabase
+            .from('active_crises')
+            .select('crisis_id, crisis_templates(name, description, crisis_end_triggers(stat_key))')
+            .eq('nation_id', nationId);
+        if (!res.error && res.data) {
+            crises = res.data;
+            qCacheSet(cacheKey, crises, 2 * 60 * 1000);
+        }
+    }
+
+    if (crises.length === 0) {
+        h += '<div class="crisis-box">No active crises</div>';
+        h += '<div class="crisis-box">No active crises</div>';
+    } else {
+        for (var i = 0; i < crises.length; i++) {
+            var c = crises[i];
+            var t = c.crisis_templates;
+            if (!t) continue;
+            var endTriggers = t.crisis_end_triggers || [];
+            var statNames = [];
+            for (var j = 0; j < endTriggers.length; j++) {
+                statNames.push(prettyStatName(endTriggers[j].stat_key));
+            }
+            h += '<div class="crisis-box active">';
+            h += '<div class="crisis-name">' + t.name + '</div>';
+            h += '<div class="crisis-desc">' + t.description + '</div>';
+            if (statNames.length > 0) {
+                h += '<div class="crisis-recovery">Recovery: <span>' + statNames.join('</span>, <span>') + '</span></div>';
+            }
+            h += '</div>';
+        }
+    }
+
+    h += '</div></div>';
+    return h;
+}
+
 /**
  * Main render — uses string concatenation to avoid template literal escaping issues
  */
@@ -355,7 +429,7 @@ async function renderNationPage(nation) {
     h += '</div></div>';
 
     // Crises
-    h += '<div class="crisis-section"><div class="section-header">Ongoing Crises</div><div class="crisis-grid"><div class="crisis-box">No active crises</div><div class="crisis-box">No active crises</div></div></div>';
+    h += await renderCrisisSection(nation.id);
 
     // Stats
     h += '<div class="stats-section">';
