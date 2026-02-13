@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Crisis Admin | Nationhood Alpha</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="css/dashboard.css">
+    <style>
+        body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; }
+
+        .admin-container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+        .admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 2px solid #ff4444; padding-bottom: 16px; }
+        .admin-title { font-size: 1.6rem; color: #ff4444; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; }
+        .admin-subtitle { font-size: 0.85rem; color: #888; margin-top: 4px; }
+        .admin-actions { display: flex; gap: 10px; }
+
+        .btn { padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px; }
+        .btn:hover { transform: translateY(-1px); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .btn-primary { background: linear-gradient(135deg, #ff4444, #cc3333); color: #fff; }
+        .btn-primary:hover { box-shadow: 0 4px 12px rgba(255, 68, 68, 0.3); }
+        .btn-danger { background: #ff4444; color: #fff; }
+        .btn-danger:hover { box-shadow: 0 4px 12px rgba(255, 68, 68, 0.3); }
+        .btn-ghost { background: #252525; color: #aaa; border: 1px solid #444; }
+        .btn-ghost:hover { color: #fff; border-color: #666; }
+        .btn-small { padding: 6px 12px; font-size: 0.75rem; }
+        .btn-icon { padding: 6px 10px; font-size: 0.85rem; background: none; border: 1px solid #444; color: #888; border-radius: 4px; cursor: pointer; }
+        .btn-icon:hover { color: #ff4444; border-color: #ff4444; }
+        .btn-back { background: none; border: none; color: #888; cursor: pointer; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 6px; margin-bottom: 16px; padding: 0; }
+        .btn-back:hover { color: #ff4444; }
+
+        .filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+        .filters input, .filters select { padding: 10px 14px; background: #1a1a1a; border: 1px solid #333; border-radius: 5px; color: #e0e0e0; font-size: 0.85rem; }
+        .filters input { flex: 1; min-width: 200px; }
+        .filters input:focus, .filters select:focus { outline: none; border-color: #ff4444; }
+        .event-count { color: #888; font-size: 0.85rem; margin-left: auto; }
+
+        .crisis-card { background: #1a1a1a; border-radius: 8px; padding: 16px 20px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.2s; border-left: 4px solid #333; }
+        .crisis-card:hover { background: #222; transform: translateX(4px); }
+        .crisis-card.active { border-left-color: #ff4444; }
+        .crisis-card.inactive { border-left-color: #666; opacity: 0.6; }
+        .crisis-card-left { flex: 1; }
+        .crisis-card-name { font-weight: bold; color: #ff4444; font-size: 1rem; margin-bottom: 4px; }
+        .crisis-card-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.78rem; color: #888; align-items: center; }
+        .crisis-card-right { display: flex; align-items: center; gap: 12px; }
+
+        .tag { display: inline-block; padding: 3px 10px; border-radius: 3px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+        .tag-trigger { background: #2a1a1a; color: #ff6666; border: 1px solid #ff4444; }
+        .tag-effect { background: #2a1a2a; color: #e040fb; border: 1px solid #e040fb; }
+        .tag-end { background: #1a2a1a; color: #4CAF50; border: 1px solid #4CAF50; }
+        .tag-active { background: #2a1a1a; color: #ff4444; }
+        .tag-inactive { background: #1a1a1a; color: #666; }
+
+        .editor { background: #141414; border: 2px solid #333; border-radius: 12px; overflow: hidden; }
+        .editor-header { background: #1a1a1a; padding: 20px 24px; border-bottom: 2px solid #ff4444; display: flex; justify-content: space-between; align-items: center; }
+        .editor-title { font-size: 1.2rem; color: #ff4444; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+        .editor-body { padding: 24px; }
+        .editor-footer { padding: 16px 24px; background: #1a1a1a; border-top: 1px solid #333; display: flex; justify-content: flex-end; gap: 10px; }
+
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+        .form-group { margin-bottom: 16px; }
+        .form-label { display: block; font-size: 0.78rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; font-weight: bold; }
+        .form-input, .form-select, .form-textarea { width: 100%; padding: 10px 14px; background: #252525; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 0.9rem; font-family: inherit; box-sizing: border-box; }
+        .form-input:focus, .form-select:focus, .form-textarea:focus { outline: none; border-color: #ff4444; }
+        .form-textarea { min-height: 80px; resize: vertical; }
+        .form-hint { font-size: 0.75rem; color: #666; margin-top: 4px; }
+
+        .editor-section { background: #1a1a1a; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; border: 1px solid #333; }
+        .editor-section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .editor-section-title { font-size: 0.85rem; color: #ff4444; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
+
+        .trigger-item { display: grid; grid-template-columns: 1fr 140px 100px 36px; gap: 10px; align-items: center; padding: 10px; background: #252525; border-radius: 6px; margin-bottom: 8px; border-left: 3px solid #ff4444; }
+        .end-trigger-item { display: grid; grid-template-columns: 1fr 140px 100px 36px; gap: 10px; align-items: center; padding: 10px; background: #1a2a1a; border-radius: 6px; margin-bottom: 8px; border-left: 3px solid #4CAF50; }
+        .effect-item { display: grid; grid-template-columns: 160px 1fr 100px 36px; gap: 10px; align-items: center; padding: 10px; background: #252525; border-radius: 6px; margin-bottom: 8px; border-left: 3px solid #e040fb; }
+
+        .toggle-wrapper { display: flex; align-items: center; gap: 8px; }
+        .toggle { position: relative; width: 44px; height: 24px; cursor: pointer; }
+        .toggle input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; inset: 0; background: #444; border-radius: 12px; transition: 0.3s; }
+        .toggle-slider:before { content: ''; position: absolute; width: 18px; height: 18px; left: 3px; bottom: 3px; background: #888; border-radius: 50%; transition: 0.3s; }
+        .toggle input:checked + .toggle-slider { background: #ff4444; }
+        .toggle input:checked + .toggle-slider:before { transform: translateX(20px); background: #fff; }
+        .toggle-label { font-size: 0.8rem; color: #888; }
+
+        .empty-state { text-align: center; color: #666; font-style: italic; padding: 30px 20px; }
+        .empty-state-icon { font-size: 2rem; margin-bottom: 8px; }
+
+        .section-divider { text-align: center; color: #444; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 2px; margin: 24px 0; position: relative; }
+        .section-divider::before, .section-divider::after { content: ''; position: absolute; top: 50%; width: 40%; height: 1px; background: #333; }
+        .section-divider::before { left: 0; }
+        .section-divider::after { right: 0; }
+
+        @media (max-width: 768px) {
+            .form-row { grid-template-columns: 1fr; }
+            .trigger-item, .end-trigger-item, .effect-item { grid-template-columns: 1fr; }
+            .crisis-card { flex-direction: column; align-items: flex-start; gap: 12px; }
+        }
+    </style>
+</head>
+<body>
+<div class="admin-container" id="content-area">
+    <div class="loading-container"><div class="loading-spinner"></div><div>Loading crises...</div></div>
+</div>
+
+<script src="js/supabase-client.js"></script>
+<script>
+// ==================== STATE ====================
+var allCrises = [];
+var currentCrisis = null;
+var isNewCrisis = false;
+var editorTriggers = [];
+var editorEffects = [];
+var editorEndTriggers = [];
+var deletedTriggerIds = [];
+var deletedEffectIds = [];
+var deletedEndTriggerIds = [];
+
+// ==================== CONSTANTS ====================
+var NATION_STATS = [
+    { key: 'gdp', label: 'GDP' },{ key: 'budget', label: 'Budget' },{ key: 'debt', label: 'Debt' },
+    { key: 'debt_growth', label: 'Debt Growth' },{ key: 'inflation', label: 'Inflation' },
+    { key: 'unemployment', label: 'Unemployment' },{ key: 'poverty_rate', label: 'Poverty Rate' },
+    { key: 'income_inequality', label: 'Income Inequality' },{ key: 'standard_of_living', label: 'Standard of Living' },
+    { key: 'happiness', label: 'Happiness' },{ key: 'population_growth', label: 'Population Growth' },
+    { key: 'birth_rate', label: 'Birth Rate' },{ key: 'death_rate', label: 'Death Rate' },
+    { key: 'lifespan', label: 'Lifespan' },{ key: 'healthcare_quality', label: 'Healthcare Quality' },
+    { key: 'healthcare_accessibility', label: 'Healthcare Accessibility' },{ key: 'beds_per_100k', label: 'Hospital Beds per 100k' },
+    { key: 'literacy', label: 'Literacy' },{ key: 'higher_education', label: 'Higher Education' },
+    { key: 'education_accessibility', label: 'Education Accessibility' },
+    { key: 'digital_infrastructure', label: 'Digital Infrastructure' },{ key: 'rail_network', label: 'Rail Network' },
+    { key: 'urbanization', label: 'Urbanization' },{ key: 'energy_generation', label: 'Energy Generation' },
+    { key: 'renewable_energy_percentage', label: 'Renewable Energy %' },
+    { key: 'arable_land', label: 'Arable Land' },{ key: 'rare_minerals', label: 'Rare Minerals' },
+    { key: 'oil_and_gas', label: 'Oil & Gas' },{ key: 'fuel_prices', label: 'Fuel Prices' },
+    { key: 'pollution', label: 'Pollution' },{ key: 'carbon_emissions', label: 'Carbon Emissions' },
+    { key: 'immigration', label: 'Immigration' },{ key: 'emigration', label: 'Emigration' },
+    { key: 'illegal_immigration', label: 'Illegal Immigration' },{ key: 'crime_rate', label: 'Crime Rate' },
+    { key: 'incarceration_rate', label: 'Incarceration Rate' },{ key: 'drug_use', label: 'Drug Use' },
+    { key: 'corruption', label: 'Corruption' },{ key: 'stability', label: 'Stability' },
+    { key: 'legitimacy', label: 'Legitimacy' },{ key: 'efficiency', label: 'Efficiency' },
+    { key: 'press_freedom', label: 'Press Freedom' },{ key: 'judicial_independence', label: 'Judicial Independence' },
+    { key: 'freedom_index', label: 'Freedom Index' },{ key: 'polarization', label: 'Polarization' },
+    { key: 'civil_unrest', label: 'Civil Unrest' },{ key: 'terrorism', label: 'Terrorism' },
+    { key: 'political_violence', label: 'Political Violence' },
+    { key: 'international_reputation', label: 'International Reputation' },
+    { key: 'trade_balance', label: 'Trade Balance' },{ key: 'currency_strength', label: 'Currency Strength' },
+    { key: 'foreign_investment', label: 'Foreign Investment' },{ key: 'credit', label: 'Credit' },
+    { key: 'gdp_growth', label: 'GDP Growth' },{ key: 'interest_rates', label: 'Interest Rates' },
+    { key: 'income_tax', label: 'Income Tax' },{ key: 'corporate_tax', label: 'Corporate Tax' },
+    { key: 'sales_tax', label: 'Sales Tax' },{ key: 'tariffs', label: 'Tariffs' },
+    { key: 'labor_force_participation', label: 'Labor Force Participation' },
+    { key: 'minimum_wage', label: 'Minimum Wage' },{ key: 'union_strength', label: 'Union Strength' },
+    { key: 'social_mobility', label: 'Social Mobility' },{ key: 'benefits', label: 'Benefits' },
+    { key: 'sanctions', label: 'Sanctions' },{ key: 'trade_agreements', label: 'Trade Agreements' },
+    { key: 'academic_immigration', label: 'Academic Immigration' },
+    { key: 'median_age', label: 'Median Age' },{ key: 'eligible_voters', label: 'Eligible Voters' },
+    { key: 'ethnic_diversity', label: 'Ethnic Diversity' }
+];
+
+var MINISTRIES = [
+    { key: 'prime_minister', label: '🏛️ Prime Minister', icon: '🏛️' },
+    { key: 'interior', label: '🏠 Interior', icon: '🏠' },
+    { key: 'foreign', label: '🌐 Foreign Affairs', icon: '🌐' },
+    { key: 'defense', label: '🛡️ Defense', icon: '🛡️' },
+    { key: 'finance', label: '💰 Finance', icon: '💰' },
+    { key: 'education', label: '📚 Education', icon: '📚' },
+    { key: 'healthcare', label: '🏥 Healthcare', icon: '🏥' },
+    { key: 'labor', label: '👷 Labor', icon: '👷' },
+    { key: 'justice', label: '⚖️ Justice', icon: '⚖️' },
+    { key: 'transportation', label: '🚄 Transportation', icon: '🚄' },
+    { key: 'security', label: '🔐 Security', icon: '🔐' }
+];
+
+var TRIGGER_OPERATORS = [
+    { key: 'gte', label: '>= (at or above)' },
+    { key: 'lte', label: '<= (at or below)' }
+];
+
+var EFFECT_TARGETS = [
+    { key: 'nation', label: 'Nation Stat' },
+    { key: 'government_approval', label: 'Government Approval' },
+    { key: 'minister_approval', label: 'Minister Approval' },
+    { key: 'coalition_approval', label: 'Coalition Party Approval' }
+];
+
+// ==================== INIT ====================
+(async function() {
+    await loadAllCrises();
+    renderListView();
+})();
+
+async function loadAllCrises() {
+    var r = await _supabase
+        .from('crisis_templates')
+        .select('*, crisis_triggers(*), crisis_effects(*), crisis_end_triggers(*)')
+        .order('created_at', { ascending: false });
+    allCrises = (r.error ? [] : r.data) || [];
+}
+
+// ==================== LIST VIEW ====================
+function renderListView() {
+    currentCrisis = null;
+    var c = document.getElementById('content-area');
+    c.innerHTML =
+        '<div class="admin-header"><div>' +
+            '<div class="admin-title">Crisis Generator</div>' +
+            '<div class="admin-subtitle">Persistent crises that activate when nation stats deteriorate and resolve when they recover</div>' +
+        '</div><div class="admin-actions">' +
+            '<button class="btn btn-primary" onclick="createNewCrisis()">+ New Crisis</button>' +
+        '</div></div>' +
+        '<div class="filters">' +
+            '<input type="text" id="filter-search" placeholder="Search crises..." oninput="applyFilters()">' +
+            '<select id="filter-status" onchange="applyFilters()"><option value="">All Status</option><option value="active">Active</option><option value="inactive">Inactive</option></select>' +
+            '<span class="event-count" id="crisis-count">' + allCrises.length + ' crises</span>' +
+        '</div>' +
+        '<div id="crisis-list"></div>';
+    renderCrisisList(allCrises);
+}
+
+function renderCrisisList(crises) {
+    var c = document.getElementById('crisis-list');
+    if (!crises.length) {
+        c.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🛡️</div>No crises found. Create one to get started.</div>';
+        return;
+    }
+    c.innerHTML = crises.map(function(cr) {
+        var trigCount = (cr.crisis_triggers || []).length;
+        var fxCount = (cr.crisis_effects || []).length;
+        var endCount = (cr.crisis_end_triggers || []).length;
+        var desc = (cr.description || '').substring(0, 100);
+        return '<div class="crisis-card ' + (cr.is_active ? 'active' : 'inactive') + '" onclick="editCrisis(\'' + cr.id + '\')">' +
+            '<div class="crisis-card-left">' +
+                '<div class="crisis-card-name">' + escapeHtml(cr.name) + '</div>' +
+                '<div class="crisis-card-meta">' +
+                    '<span class="tag tag-trigger">' + trigCount + ' trigger' + (trigCount !== 1 ? 's' : '') + '</span>' +
+                    '<span class="tag tag-effect">' + fxCount + ' effect' + (fxCount !== 1 ? 's' : '') + '</span>' +
+                    '<span class="tag tag-end">' + endCount + ' end cond' + (endCount !== 1 ? 's' : '') + '</span>' +
+                    (desc ? '<span style="color:#666;">' + escapeHtml(desc) + (cr.description && cr.description.length > 100 ? '...' : '') + '</span>' : '') +
+                '</div>' +
+            '</div>' +
+            '<div class="crisis-card-right">' +
+                '<span class="tag ' + (cr.is_active ? 'tag-active' : 'tag-inactive') + '">' + (cr.is_active ? 'ACTIVE' : 'INACTIVE') + '</span>' +
+            '</div></div>';
+    }).join('');
+}
+
+function applyFilters() {
+    var search = (document.getElementById('filter-search').value || '').toLowerCase();
+    var status = document.getElementById('filter-status').value;
+    var filtered = allCrises.filter(function(cr) {
+        if (search && cr.name.toLowerCase().indexOf(search) === -1 && (cr.description || '').toLowerCase().indexOf(search) === -1) return false;
+        if (status === 'active' && !cr.is_active) return false;
+        if (status === 'inactive' && cr.is_active) return false;
+        return true;
+    });
+    document.getElementById('crisis-count').textContent = filtered.length + ' crises';
+    renderCrisisList(filtered);
+}
+
+// ==================== CREATE / EDIT ====================
+function createNewCrisis() {
+    isNewCrisis = true;
+    currentCrisis = { name: '', description: '', is_active: true };
+    editorTriggers = [];
+    editorEffects = [];
+    editorEndTriggers = [];
+    deletedTriggerIds = [];
+    deletedEffectIds = [];
+    deletedEndTriggerIds = [];
+    renderEditor();
+}
+
+function editCrisis(id) {
+    var cr = allCrises.find(function(c) { return c.id === id; });
+    if (!cr) return;
+    isNewCrisis = false;
+    currentCrisis = Object.assign({}, cr);
+    editorTriggers = (cr.crisis_triggers || []).map(function(t) { return Object.assign({}, t, { isNew: false }); });
+    editorEffects = (cr.crisis_effects || []).map(function(e) { return Object.assign({}, e, { isNew: false }); });
+    editorEndTriggers = (cr.crisis_end_triggers || []).map(function(t) { return Object.assign({}, t, { isNew: false }); });
+    deletedTriggerIds = [];
+    deletedEffectIds = [];
+    deletedEndTriggerIds = [];
+    renderEditor();
+}
+
+// ==================== EDITOR ====================
+function renderEditor() {
+    var c = document.getElementById('content-area');
+    var title = isNewCrisis ? 'Create New Crisis' : 'Edit Crisis';
+
+    c.innerHTML =
+        '<button class="btn-back" onclick="cancelEditor()">&#8592; Back to Crises</button>' +
+        '<div class="editor">' +
+            '<div class="editor-header"><div class="editor-title">' + title + '</div>' +
+                (!isNewCrisis ? '<button class="btn btn-danger btn-small" onclick="deleteCrisis(\'' + currentCrisis.id + '\')">Delete Crisis</button>' : '') +
+            '</div>' +
+            '<div class="editor-body">' +
+
+                // Name + Status row
+                '<div class="form-row">' +
+                    '<div class="form-group"><label class="form-label">Crisis Name</label>' +
+                        '<input type="text" class="form-input" id="cr-name" value="' + escapeAttr(currentCrisis.name || '') + '" placeholder="e.g., Economic Collapse">' +
+                    '</div>' +
+                    '<div class="form-group"><label class="form-label">Status</label>' +
+                        '<div class="toggle-wrapper" style="margin-top:8px;">' +
+                            '<label class="toggle"><input type="checkbox" id="cr-active" ' + (currentCrisis.is_active ? 'checked' : '') + '><span class="toggle-slider"></span></label>' +
+                            '<span class="toggle-label" id="cr-active-label">' + (currentCrisis.is_active ? 'Active' : 'Inactive') + '</span>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+
+                // Description
+                '<div class="form-group"><label class="form-label">Description</label>' +
+                    '<textarea class="form-textarea" id="cr-description" placeholder="Describe what this crisis represents and its impact on the nation...">' + escapeHtml(currentCrisis.description || '') + '</textarea>' +
+                '</div>' +
+
+                // Activation Triggers
+                '<div class="editor-section">' +
+                    '<div class="editor-section-header">' +
+                        '<div class="editor-section-title">Activation Triggers</div>' +
+                        '<button class="btn btn-ghost btn-small" onclick="addTrigger()">+ Add Trigger</button>' +
+                    '</div>' +
+                    '<div class="form-hint" style="margin-bottom:12px;">ALL conditions must be met to activate the crisis. Maximum 7 triggers.</div>' +
+                    '<div id="triggers-list">' + renderTriggers() + '</div>' +
+                '</div>' +
+
+                '<div class="section-divider">when active, every tick applies</div>' +
+
+                // Effects Per Tick
+                '<div class="editor-section">' +
+                    '<div class="editor-section-header">' +
+                        '<div class="editor-section-title">Effects Per Tick</div>' +
+                        '<button class="btn btn-ghost btn-small" onclick="addEffect()">+ Add Effect</button>' +
+                    '</div>' +
+                    '<div class="form-hint" style="margin-bottom:12px;">Applied EVERY tick while the crisis is active. Use negative values to decrease stats. Maximum 7 effects.</div>' +
+                    '<div id="effects-list">' + renderEffects() + '</div>' +
+                '</div>' +
+
+                '<div class="section-divider">crisis ends when</div>' +
+
+                // End Triggers (Recovery)
+                '<div class="editor-section">' +
+                    '<div class="editor-section-header">' +
+                        '<div class="editor-section-title" style="color:#4CAF50;">Recovery Triggers (End Conditions)</div>' +
+                        '<button class="btn btn-ghost btn-small" onclick="addEndTrigger()">+ Add Condition</button>' +
+                    '</div>' +
+                    '<div class="form-hint" style="margin-bottom:12px;">ALL conditions must be met to resolve the crisis. Use recovery thresholds with hysteresis (e.g., trigger at GDP &lt;= 20, recover at GDP &gt;= 35).</div>' +
+                    '<div id="end-triggers-list">' + renderEndTriggers() + '</div>' +
+                '</div>' +
+
+            '</div>' +
+            '<div class="editor-footer">' +
+                '<button class="btn btn-ghost" onclick="cancelEditor()">Cancel</button>' +
+                '<button class="btn btn-primary" onclick="saveCrisis()">Save Crisis</button>' +
+            '</div>' +
+        '</div>';
+
+    // Bind toggle label
+    var ea = document.getElementById('cr-active');
+    if (ea) ea.onchange = function() { document.getElementById('cr-active-label').textContent = this.checked ? 'Active' : 'Inactive'; };
+}
+
+function cancelEditor() { renderListView(); }
+
+// ==================== TRIGGER RENDERING ====================
+function renderTriggers() {
+    if (!editorTriggers.length) return '<div class="empty-state" style="padding:12px;">No activation triggers. Add at least one.</div>';
+    return editorTriggers.map(function(t, i) {
+        return '<div class="trigger-item">' +
+            '<select class="form-select" onchange="editorTriggers[' + i + '].stat_key=this.value"><option value="">-- Select Stat --</option>' +
+                NATION_STATS.map(function(s) { return '<option value="' + s.key + '"' + (t.stat_key === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
+            '</select>' +
+            '<select class="form-select" onchange="editorTriggers[' + i + '].operator=this.value">' +
+                TRIGGER_OPERATORS.map(function(o) { return '<option value="' + o.key + '"' + (t.operator === o.key ? ' selected' : '') + '>' + o.label + '</option>'; }).join('') +
+            '</select>' +
+            '<input type="number" class="form-input" value="' + (t.threshold != null ? t.threshold : 0) + '" placeholder="Value" step="1" min="0" max="100" onchange="editorTriggers[' + i + '].threshold=Number(this.value)">' +
+            '<button class="btn-icon" onclick="removeTrigger(' + i + ')">&#10005;</button>' +
+        '</div>';
+    }).join('');
+}
+
+function addTrigger() {
+    if (editorTriggers.length >= 7) { alert('Maximum 7 activation triggers.'); return; }
+    editorTriggers.push({ id: null, stat_key: '', operator: 'gte', threshold: 0, isNew: true });
+    document.getElementById('triggers-list').innerHTML = renderTriggers();
+}
+
+function removeTrigger(i) {
+    var t = editorTriggers[i];
+    if (t.id && !t.isNew) deletedTriggerIds.push(t.id);
+    editorTriggers.splice(i, 1);
+    document.getElementById('triggers-list').innerHTML = renderTriggers();
+}
+
+// ==================== EFFECT RENDERING ====================
+function renderEffects() {
+    if (!editorEffects.length) return '<div class="empty-state" style="padding:12px;">No effects. Add at least one.</div>';
+    return editorEffects.map(function(e, i) {
+        var secondCol = '';
+        if (e.target === 'nation') {
+            secondCol = '<select class="form-select" onchange="editorEffects[' + i + '].stat_key=this.value"><option value="">-- Select Stat --</option>' +
+                NATION_STATS.map(function(s) { return '<option value="' + s.key + '"' + (e.stat_key === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
+            '</select>';
+        } else if (e.target === 'minister_approval') {
+            secondCol = '<select class="form-select" onchange="editorEffects[' + i + '].minister_key=this.value"><option value="">-- Select Minister --</option>' +
+                MINISTRIES.map(function(m) { return '<option value="' + m.key + '"' + (e.minister_key === m.key ? ' selected' : '') + '>' + m.label + '</option>'; }).join('') +
+            '</select>';
+        } else {
+            secondCol = '<span style="color:#888;font-size:0.8rem;padding:10px;">Applies to all coalition parties</span>';
+        }
+        return '<div class="effect-item">' +
+            '<select class="form-select" onchange="updateEffectTarget(' + i + ',this.value)">' +
+                EFFECT_TARGETS.map(function(t) { return '<option value="' + t.key + '"' + (e.target === t.key ? ' selected' : '') + '>' + t.label + '</option>'; }).join('') +
+            '</select>' +
+            secondCol +
+            '<input type="number" class="form-input" value="' + (e.change_per_tick != null ? e.change_per_tick : 0) + '" placeholder="+/- per tick" step="0.1" onchange="editorEffects[' + i + '].change_per_tick=Number(this.value)">' +
+            '<button class="btn-icon" onclick="removeEffect(' + i + ')">&#10005;</button>' +
+        '</div>';
+    }).join('');
+}
+
+function updateEffectTarget(i, v) {
+    editorEffects[i].target = v;
+    editorEffects[i].stat_key = '';
+    editorEffects[i].minister_key = '';
+    document.getElementById('effects-list').innerHTML = renderEffects();
+}
+
+function addEffect() {
+    if (editorEffects.length >= 7) { alert('Maximum 7 effects.'); return; }
+    editorEffects.push({ id: null, target: 'nation', stat_key: '', minister_key: '', change_per_tick: 0, isNew: true });
+    document.getElementById('effects-list').innerHTML = renderEffects();
+}
+
+function removeEffect(i) {
+    var e = editorEffects[i];
+    if (e.id && !e.isNew) deletedEffectIds.push(e.id);
+    editorEffects.splice(i, 1);
+    document.getElementById('effects-list').innerHTML = renderEffects();
+}
+
+// ==================== END TRIGGER RENDERING ====================
+function renderEndTriggers() {
+    if (!editorEndTriggers.length) return '<div class="empty-state" style="padding:12px;">No recovery conditions. Add at least one so the crisis can end.</div>';
+    return editorEndTriggers.map(function(t, i) {
+        return '<div class="end-trigger-item">' +
+            '<select class="form-select" onchange="editorEndTriggers[' + i + '].stat_key=this.value"><option value="">-- Select Stat --</option>' +
+                NATION_STATS.map(function(s) { return '<option value="' + s.key + '"' + (t.stat_key === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
+            '</select>' +
+            '<select class="form-select" onchange="editorEndTriggers[' + i + '].operator=this.value">' +
+                TRIGGER_OPERATORS.map(function(o) { return '<option value="' + o.key + '"' + (t.operator === o.key ? ' selected' : '') + '>' + o.label + '</option>'; }).join('') +
+            '</select>' +
+            '<input type="number" class="form-input" value="' + (t.threshold != null ? t.threshold : 0) + '" placeholder="Value" step="1" min="0" max="100" onchange="editorEndTriggers[' + i + '].threshold=Number(this.value)">' +
+            '<button class="btn-icon" onclick="removeEndTrigger(' + i + ')">&#10005;</button>' +
+        '</div>';
+    }).join('');
+}
+
+function addEndTrigger() {
+    editorEndTriggers.push({ id: null, stat_key: '', operator: 'lte', threshold: 0, isNew: true });
+    document.getElementById('end-triggers-list').innerHTML = renderEndTriggers();
+}
+
+function removeEndTrigger(i) {
+    var t = editorEndTriggers[i];
+    if (t.id && !t.isNew) deletedEndTriggerIds.push(t.id);
+    editorEndTriggers.splice(i, 1);
+    document.getElementById('end-triggers-list').innerHTML = renderEndTriggers();
+}
+
+// ==================== SYNC FORM ====================
+function syncForm() {
+    var n = document.getElementById('cr-name');
+    if (n) currentCrisis.name = n.value;
+    var d = document.getElementById('cr-description');
+    if (d) currentCrisis.description = d.value;
+    var a = document.getElementById('cr-active');
+    if (a) currentCrisis.is_active = a.checked;
+}
+
+// ==================== SAVE ====================
+async function saveCrisis() {
+    syncForm();
+    var name = (currentCrisis.name || '').trim();
+    if (!name) { alert('Crisis name is required.'); return; }
+
+    var validTriggers = editorTriggers.filter(function(t) { return t.stat_key; });
+    if (!validTriggers.length) { alert('Add at least one activation trigger.'); return; }
+
+    var validEffects = editorEffects.filter(function(e) {
+        if (e.target === 'nation') return e.stat_key;
+        if (e.target === 'minister_approval') return e.minister_key;
+        return true; // government_approval and coalition_approval don't need extra key
+    });
+    if (!validEffects.length) { alert('Add at least one effect.'); return; }
+
+    // Validate effect details
+    for (var ei = 0; ei < validEffects.length; ei++) {
+        var eff = validEffects[ei];
+        if (eff.target === 'nation' && !eff.stat_key) { alert('Effect #' + (ei + 1) + ': Select a nation stat.'); return; }
+        if (eff.target === 'minister_approval' && !eff.minister_key) { alert('Effect #' + (ei + 1) + ': Select a minister.'); return; }
+        if (!eff.change_per_tick || eff.change_per_tick === 0) { alert('Effect #' + (ei + 1) + ': Change per tick must be non-zero.'); return; }
+    }
+
+    var validEndTriggers = editorEndTriggers.filter(function(t) { return t.stat_key; });
+    if (!validEndTriggers.length) { alert('Add at least one recovery trigger so the crisis can end.'); return; }
+
+    try {
+        var crisisId;
+        var payload = {
+            name: name,
+            description: (currentCrisis.description || '').trim(),
+            is_active: currentCrisis.is_active
+        };
+
+        if (isNewCrisis) {
+            var r = await _supabase.from('crisis_templates').insert(payload).select().single();
+            if (r.error) throw r.error;
+            crisisId = r.data.id;
+        } else {
+            crisisId = currentCrisis.id;
+            var r2 = await _supabase.from('crisis_templates').update(payload).eq('id', crisisId);
+            if (r2.error) throw r2.error;
+        }
+
+        // Delete removed items
+        if (deletedTriggerIds.length) await _supabase.from('crisis_triggers').delete().in('id', deletedTriggerIds);
+        if (deletedEffectIds.length) await _supabase.from('crisis_effects').delete().in('id', deletedEffectIds);
+        if (deletedEndTriggerIds.length) await _supabase.from('crisis_end_triggers').delete().in('id', deletedEndTriggerIds);
+
+        // Upsert triggers
+        for (var t of validTriggers) {
+            var tp = { crisis_id: crisisId, stat_key: t.stat_key, operator: t.operator, threshold: t.threshold };
+            if (t.isNew || !t.id) await _supabase.from('crisis_triggers').insert(tp);
+            else await _supabase.from('crisis_triggers').update(tp).eq('id', t.id);
+        }
+
+        // Upsert effects
+        for (var e of validEffects) {
+            var ep = {
+                crisis_id: crisisId,
+                target: e.target,
+                stat_key: (e.target === 'nation') ? e.stat_key : null,
+                minister_key: (e.target === 'minister_approval') ? e.minister_key : null,
+                change_per_tick: e.change_per_tick || 0
+            };
+            if (e.isNew || !e.id) await _supabase.from('crisis_effects').insert(ep);
+            else await _supabase.from('crisis_effects').update(ep).eq('id', e.id);
+        }
+
+        // Upsert end triggers
+        for (var et of validEndTriggers) {
+            var etp = { crisis_id: crisisId, stat_key: et.stat_key, operator: et.operator, threshold: et.threshold };
+            if (et.isNew || !et.id) await _supabase.from('crisis_end_triggers').insert(etp);
+            else await _supabase.from('crisis_end_triggers').update(etp).eq('id', et.id);
+        }
+
+        alert(isNewCrisis ? 'Crisis created!' : 'Crisis saved!');
+        await loadAllCrises();
+        renderListView();
+    } catch (err) {
+        console.error('Save error:', err);
+        alert('Error: ' + err.message);
+    }
+}
+
+// ==================== DELETE ====================
+async function deleteCrisis(id) {
+    if (!confirm('Delete this crisis and all its data? This cannot be undone.')) return;
+    try {
+        // CASCADE handles triggers/effects/end_triggers, but also clean up active records
+        await _supabase.from('active_crises').delete().eq('crisis_id', id);
+        var r = await _supabase.from('crisis_templates').delete().eq('id', id);
+        if (r.error) throw r.error;
+        alert('Crisis deleted.');
+        await loadAllCrises();
+        renderListView();
+    } catch (err) {
+        console.error('Delete error:', err);
+        alert('Error: ' + err.message);
+    }
+}
+
+// ==================== HELPERS ====================
+function escapeHtml(t) { var d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
+function escapeAttr(t) { return (t || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+</script>
+</body>
+</html>
