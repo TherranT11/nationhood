@@ -2581,7 +2581,13 @@ async function advanceTick(supabase) {
     nextTickAt.setHours(nextTickAt.getHours() + (shard.tick_interval_hours || 12));
     await supabase.from('shard').update({ current_tick: newTick, next_tick_at: nextTickAt.toISOString() }).eq('name', 'Alpha Shard');
 
-    // Refill action points for all factions
+    // Clear expired coup cooldowns
+    await supabase.from('factions')
+        .update({ action_lockout_until_tick: null })
+        .not('action_lockout_until_tick', 'is', null)
+        .lte('action_lockout_until_tick', newTick);
+
+    // Refill action points for all factions (loyalty-based AP reduction happens in processLoyaltyTick)
     await supabase.from('factions').update({ action_points: 10 }).lt('action_points', 10);
 
     // 2. Load all nations
@@ -2720,9 +2726,11 @@ async function processLoyaltyTick(supabase, nation) {
     const rulingId = nation.ruling_faction_id;
     if (!rulingId) return;
 
+    const isAutocracy = (nation.government_type === 'Autocracy');
+
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, loyalty, seats')
+        .select('id, loyalty, seats, action_points')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -2743,12 +2751,26 @@ async function processLoyaltyTick(supabase, nation) {
 
     for (const faction of factions) {
         let loyalty = faction.loyalty ?? 50;
+        let seats = faction.seats || 0;
+        let ap = faction.action_points || 0;
 
         if (faction.id === rulingId) {
-            if (loyalty !== 100) {
+            if (isAutocracy) {
+                // Autocracy ruling faction: dynamic loyalty drifting toward 80
+                const ministryCount = ministryCounts[faction.id] || 0;
+                if (loyalty > 80) loyalty -= 1;
+                else if (loyalty < 80) loyalty += 1;
+                loyalty += ministryCount * 0.5;
+                loyalty = Math.max(0, Math.min(100, Math.round(loyalty * 10) / 10));
                 await supabase.from('factions')
-                    .update({ loyalty: 100 })
+                    .update({ loyalty })
                     .eq('id', faction.id);
+            } else {
+                if (loyalty !== 100) {
+                    await supabase.from('factions')
+                        .update({ loyalty: 100 })
+                        .eq('id', faction.id);
+                }
             }
             continue;
         }
@@ -2769,8 +2791,31 @@ async function processLoyaltyTick(supabase, nation) {
 
         loyalty = Math.max(0, Math.min(100, Math.round(loyalty * 10) / 10));
 
+        // Autocracy loyalty threshold consequences
+        if (isAutocracy) {
+            if (loyalty < 15) {
+                // SUPPRESSED: -2 seats/tick, 0 AP
+                seats = Math.max(0, seats - 2);
+                ap = 0;
+                // Auto-purge from all ministries
+                await supabase.from('ministries')
+                    .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
+                    .eq('nation_id', nation.id)
+                    .eq('party_id', faction.id);
+            } else if (loyalty < 30) {
+                // DISLOYAL: -1 seat/tick, -1 AP/tick
+                seats = Math.max(0, seats - 1);
+                ap = Math.max(0, ap - 1);
+                // Auto-purge from all ministries
+                await supabase.from('ministries')
+                    .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
+                    .eq('nation_id', nation.id)
+                    .eq('party_id', faction.id);
+            }
+        }
+
         await supabase.from('factions')
-            .update({ loyalty })
+            .update({ loyalty, seats, action_points: ap })
             .eq('id', faction.id);
     }
 }
