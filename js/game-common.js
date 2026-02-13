@@ -354,9 +354,9 @@ function getIdeologySummary(ideologyRow) {
 // ==================== IDEOLOGY POINT CALCULATION ====================
 
 const IDEOLOGY_POINT_VALUES = {
-    VOTE_YES:     1,
-    SPONSOR:      1,
-    BILL_PASSED:  1
+    VOTE_YES:     3,
+    SPONSOR:      3,
+    BILL_PASSED:  4
 };
 
 function calculateIdeologyShifts({ votedYesBills = [], sponsoredBills = [], passedBills = [] }) {
