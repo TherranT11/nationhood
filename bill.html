@@ -424,6 +424,8 @@ function renderBill() {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#9C27B0;">🏛 Foundational</span>';
     } else if (bill.bill_type === 'confirmation') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#1a5276;">🏛 Confirmation</span>';
+    } else if (bill.bill_type === 'minister_confirmation') {
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#E65100;">🏛 Cabinet Confirmation</span>';
     }
     if (isFrozen) {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#ff9800;color:#000;">FROZEN</span>';
@@ -556,6 +558,28 @@ function renderArticles() {
         return;
     }
 
+    // Minister confirmation bills show a confirmation notice
+    if (bill.bill_type === 'minister_confirmation') {
+        document.getElementById('bill-articles').innerHTML =
+            '<div class="article preamble" style="border-left-color:#E65100;">' +
+                '<div class="article-number" style="color:#E65100;">NOMINATION</div>' +
+                '<div class="article-title">Cabinet Confirmation Vote</div>' +
+                '<div class="article-description">' + (bill.preamble || 'The President has nominated a minister for this cabinet position.') + '</div>' +
+            '</div>' +
+            '<div class="repeal-notice" style="border-color:#E65100;">' +
+                '<div class="repeal-notice-icon">🏛</div>' +
+                '<div class="repeal-notice-text">Presidential Cabinet Nomination</div>' +
+                '<div class="repeal-notice-sub" style="color:#aaa;line-height:1.6;">' +
+                    'Requires <strong style="color:#4CAF50;">simple majority</strong> (51% of seats) to confirm.<br>' +
+                    'If confirmed: nominee takes office as minister.<br>' +
+                    'If rejected: President must nominate from a different party.' +
+                '</div>' +
+            '</div>';
+        document.getElementById('total-upfront').textContent = '$0M';
+        document.getElementById('total-ongoing').textContent = '$0M/mo';
+        return;
+    }
+
     const articles = (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number);
     let totalUpfront = 0, totalOngoing = 0;
     const html = `
@@ -655,9 +679,10 @@ function renderIdeologyWarning() {
     if (!container) return;
     container.innerHTML = '';
 
-    // No ideology warning for no-confidence motions or foundational bills
+    // No ideology warning for special bill types
     if (currentBill.bill_type === 'no_confidence') return;
     if (currentBill.bill_type === 'foundational') return;
+    if (currentBill.bill_type === 'minister_confirmation') return;
 
     if (!factionIdeology || !currentBill) return;
     if (currentBill.bill_type === 'repeal') return;
@@ -824,7 +849,7 @@ function renderSidebar() {
                         ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
                     </div>`).join('')}
                 </div>` : (!isSponsor ? `<div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div><div class="no-amendments">No conditional support offers</div>` : '')}
-            ${!isSponsor && bill.bill_type !== 'foundational' && bill.bill_type !== 'confirmation' ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button></div>` : ''}
+            ${!isSponsor && bill.bill_type !== 'foundational' && bill.bill_type !== 'confirmation' && bill.bill_type !== 'minister_confirmation' ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button></div>` : ''}
         </div>`;
 
     } else if (isFloor) {

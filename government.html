@@ -531,7 +531,7 @@
         <div id="assign-candidates"></div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeAssignModal()">Cancel</button>
-            <button class="btn-submit" id="assign-confirm-btn" disabled onclick="confirmAssign()">Appoint Minister</button>
+            <button class="btn-submit" id="assign-confirm-btn" disabled onclick="handleConfirmMinister()">Appoint Minister</button>
         </div>
     </div>
 </div>
@@ -587,6 +587,9 @@ let ministryData = [];
 let allParties = [];
 let allPartySeats = {};
 let isAutocracy = false;
+let isPresidential = false;
+let isPresidentParty = false;
+let presidentFactionId = null;
 let isRulingFaction = false;
 let rulingFactionId = null;
 let ministryRequests = [];
@@ -610,6 +613,7 @@ initPage('government', async (state) => {
     }
 
     isAutocracy = (nation.government_type === 'Autocracy');
+    isPresidential = (nation.government_type === 'Presidential');
 
     // Backfill head of state if missing
     if (!nation.head_of_state_first_name || !nation.head_of_state_last_name) {
@@ -738,6 +742,17 @@ async function renderGovernmentPage() {
                 .select('*, factions(faction_name)')
                 .eq('nation_id', currentNation.id);
             ministryRequests = requests || [];
+        }
+
+        // Detect president's party for Presidential systems
+        if (isPresidential) {
+            const { data: activePresident } = await _supabase
+                .from('presidents')
+                .select('faction_id')
+                .eq('nation_id', currentNation.id).eq('is_active', true)
+                .limit(1).maybeSingle();
+            presidentFactionId = activePresident?.faction_id || null;
+            isPresidentParty = (presidentFactionId && currentFaction?.id === presidentFactionId);
         }
 
         // Government approval
@@ -1099,6 +1114,12 @@ function renderCabinet(ministries, coalition) {
             }).join('');
             return `<div class="ministry-grid">${cards}</div>`;
         }
+        if (isPresidential && presidentFactionId) {
+            // Presidential system with active president but no ministry rows yet — show all slots as vacant
+            const presKeys = MINISTRY_KEYS_CABINET.filter(k => k !== 'prime_minister');
+            const cards = presKeys.map(key => renderPresidentialMinistryCard(key, null)).join('');
+            return `<div class="ministry-grid">${cards}</div>`;
+        }
         return '<div class="info-block" style="text-align:center;color:var(--text-secondary);padding:30px;">No cabinet has been formed yet.</div>';
     }
 
@@ -1120,6 +1141,13 @@ function renderCabinet(ministries, coalition) {
                 return `<div class="ministry-card vacant"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests, null)}</div>`;
             }
         }).join('');
+        return `<div class="ministry-grid">${cards}</div>`;
+    }
+
+    // === PRESIDENTIAL SYSTEM ===
+    if (isPresidential) {
+        const presKeys = MINISTRY_KEYS_CABINET.filter(k => k !== 'prime_minister');
+        const cards = presKeys.map(key => renderPresidentialMinistryCard(key, ministryMap[key])).join('');
         return `<div class="ministry-grid">${cards}</div>`;
     }
 
@@ -1176,12 +1204,125 @@ function renderMinistryActions(key, isFilled, requests, ministry) {
     return html;
 }
 
+// ==================== PRESIDENTIAL MINISTRY CARDS ====================
+
+function renderPresidentialMinistryCard(key, ministry) {
+    const isFilled = ministry && ministry.minister_first_name && ministry.confirmation_status === 'confirmed';
+    const isPending = ministry && ministry.confirmation_status === 'pending' && ministry.pending_minister;
+    const wasRejected = ministry && ministry.confirmation_status === 'rejected';
+    const rejectedParties = ministry?.rejected_parties || [];
+
+    if (isFilled) {
+        const partyName = ministry.factions?.faction_name || 'Unknown';
+        const appr = ministry.minister_approval ?? 50;
+        const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
+        return `<div class="ministry-card">
+            <div class="ministry-title">${ministry.ministry_name || MINISTRY_NAMES[key]}</div>
+            <div class="minister-name">${ministry.minister_first_name} ${ministry.minister_last_name}</div>
+            <div class="minister-details">Age ${ministry.minister_age || '?'} • <span class="minister-party">${partyName}</span></div>
+            <div class="minister-approval">Approval: <span class="${apprCls}">${appr}%</span></div>
+        </div>`;
+    }
+
+    if (isPending) {
+        const pm = ministry.pending_minister;
+        const nomineeParty = allParties.find(p => p.id === pm.party_id);
+        return `<div class="ministry-card" style="border-color:#FF9800;">
+            <div class="ministry-title">${MINISTRY_NAMES[key]}</div>
+            <div class="minister-name" style="color:#FF9800;">${pm.first_name} ${pm.last_name}</div>
+            <div class="minister-details">Age ${pm.age || '?'} • <span class="minister-party">${nomineeParty?.faction_name || 'Unknown'}</span></div>
+            <div style="margin-top:8px;padding:4px 10px;background:#332200;border:1px solid #FF9800;border-radius:6px;font-size:0.75rem;color:#FF9800;text-align:center;">Awaiting Senate Confirmation</div>
+        </div>`;
+    }
+
+    // Vacant or rejected — president can nominate
+    let actionHtml = '';
+    if (isPresidentParty) {
+        const rejectedNote = rejectedParties.length > 0
+            ? `<div style="font-size:0.7rem;color:#ff4444;margin-top:4px;">${rejectedParties.length} party nominee${rejectedParties.length > 1 ? 's' : ''} rejected</div>`
+            : '';
+        actionHtml = `<div class="ministry-actions">
+            <button class="ministry-btn assign" onclick="openNominateModal('${key}')">Nominate</button>
+            ${rejectedNote}
+        </div>`;
+    } else if (wasRejected) {
+        actionHtml = `<div style="font-size:0.75rem;color:#ff4444;margin-top:6px;">Last nominee rejected</div>`;
+    }
+
+    return `<div class="ministry-card vacant">
+        <div class="ministry-title">${MINISTRY_NAMES[key]}</div>
+        <div class="minister-name" style="color:var(--text-muted);">Vacant</div>
+        ${actionHtml}
+    </div>`;
+}
+
+// ==================== PRESIDENTIAL NOMINATION (Modal) ====================
+
+function openNominateModal(ministryKey) {
+    assignMinistryKey = ministryKey;
+    selectedCandidate = null;
+    document.getElementById('assign-confirm-btn').disabled = true;
+    document.getElementById('assign-confirm-btn').textContent = 'Nominate for Confirmation';
+    document.getElementById('assign-modal-title').textContent = 'Nominate — ' + (MINISTRY_NAMES[ministryKey] || ministryKey);
+
+    // Find which parties are blocked for this slot
+    const ministry = ministryData.find(m => m.ministry_key === ministryKey);
+    const rejectedParties = ministry?.rejected_parties || [];
+
+    // Generate one candidate per eligible party
+    generatedCandidates = allParties
+        .filter(p => !rejectedParties.includes(p.id))
+        .map(party => ({
+            partyId: party.id,
+            partyName: party.faction_name,
+            firstName: FIRST_NAMES_POOL[Math.floor(Math.random() * FIRST_NAMES_POOL.length)],
+            lastName: LAST_NAMES_POOL[Math.floor(Math.random() * LAST_NAMES_POOL.length)],
+            age: 35 + Math.floor(Math.random() * 31)
+        }));
+
+    if (generatedCandidates.length === 0) {
+        alert('No eligible parties remaining — all have been rejected for this slot.');
+        return;
+    }
+
+    document.getElementById('assign-candidates').innerHTML = generatedCandidates.map((c, i) => {
+        const isPres = c.partyId === presidentFactionId;
+        return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})"><div><div class="candidate-name">${c.firstName} ${c.lastName}</div><div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag ${isPres ? 'ruling' : 'other'}">${c.partyName}</span></div></div>${isPres ? '<span class="ruling-label">PRESIDENT</span>' : ''}</div>`;
+    }).join('');
+
+    document.getElementById('assign-modal').classList.add('active');
+}
+
+async function confirmPresidentialNomination() {
+    if (!selectedCandidate || !assignMinistryKey) return;
+    try {
+        await nominateMinister(_supabase, currentNation.id, currentFaction.id, assignMinistryKey, selectedCandidate);
+        closeAssignModal();
+        alert('Nomination submitted — parliament will vote on confirmation.');
+        await renderGovernmentPage();
+    } catch (e) {
+        console.error('Nomination error:', e);
+        alert('Error: ' + e.message);
+    }
+}
+
+// ==================== CONFIRM DISPATCHER ====================
+
+function handleConfirmMinister() {
+    if (isPresidential) {
+        confirmPresidentialNomination();
+    } else {
+        confirmAssign();
+    }
+}
+
 // ==================== ASSIGN MINISTER (Modal) ====================
 
 function openAssignModal(ministryKey) {
     assignMinistryKey = ministryKey;
     selectedCandidate = null;
     document.getElementById('assign-confirm-btn').disabled = true;
+    document.getElementById('assign-confirm-btn').textContent = 'Appoint Minister';
     document.getElementById('assign-modal-title').textContent = 'Assign — ' + (MINISTRY_NAMES[ministryKey] || ministryKey);
 
     generatedCandidates = allParties.map(party => ({
