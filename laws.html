@@ -629,6 +629,7 @@ function renderFloorBill(bill, isVetoed) {
             <div class="bill-articles">
                 ${bill.bill_type === 'no_confidence' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">⚡ Motion to dissolve the current government</span><div class="article-desc">Requires simple majority (YES > NO) to pass.</div></div></div>' :
                 (bill.bill_type === 'confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#2196F3;">🏛 Ambassador Confirmation Vote</span><div class="article-desc">Requires 51% majority to confirm.</div></div></div>' :
+                (bill.bill_type === 'minister_confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#E65100;">🏛 Cabinet Confirmation Vote</span><div class="article-desc">Requires 51% majority to confirm.</div></div></div>' :
                 (bill.bill_type === 'foundational' ? `<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#9C27B0;">🏛 Electoral Makeup — Proposed: ${bill.proposed_seats || '?'} seats</span><div class="article-desc">Requires 2/3 supermajority (${Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD)} seats) to pass.</div></div></div>` :
                 (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">🗑️ Proposes to rescind an active law</span></div></div>' :
                 (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number).map(art => {
@@ -637,7 +638,7 @@ function renderFloorBill(bill, isVetoed) {
                     }
                     const chipHTML = renderIdeologyChips(art.policies);
                     return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
-                }).join(''))))}
+                }).join('')))))}
             </div>
             ${isVetoed ? `<div class="vetoed-stamp">⛔ VETOED BY HEAD FACTION</div>` : `
                 <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span></div>

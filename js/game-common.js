@@ -1219,7 +1219,7 @@ async function processIdeologyTick(supabase, nation, currentTick, resolutions) {
 
     // Only legislative bills affect ideology — exclude ambassador confirmations, no-confidence, foundational
     const allResolvedBills = (rawResolvedBills || []).filter(b =>
-        !['no_confidence', 'confirmation', 'foundational'].includes(b.bill_type)
+        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational'].includes(b.bill_type)
     );
 
     if (allResolvedBills.length === 0) {
@@ -1503,6 +1503,87 @@ async function resolveExpiredVotes(supabase, nationId) {
                 });
             }
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'confirmation' });
+        } else if (bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
+            // Minister confirmation bill (Presidential systems)
+            const mKey = bill.ministry_key;
+            const { data: ministry } = await supabase.from('ministries')
+                .select('id, pending_minister, rejected_parties')
+                .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
+                .maybeSingle();
+
+            if (passed) {
+                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+                if (ministry?.pending_minister) {
+                    const pm = ministry.pending_minister;
+                    const ministryNames = {
+                        prime_minister: 'Prime Minister', interior: 'Ministry of the Interior',
+                        foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
+                        finance: 'Ministry of Finance', education: 'Ministry of Education',
+                        healthcare: 'Ministry of Healthcare', labor: 'Ministry of Labor',
+                        justice: 'Ministry of Justice', transportation: 'Ministry of Transportation',
+                        security: 'Ministry of Security'
+                    };
+                    await supabase.from('ministries').update({
+                        party_id: pm.party_id,
+                        minister_first_name: pm.first_name,
+                        minister_last_name: pm.last_name,
+                        minister_age: pm.age,
+                        minister_approval: 50,
+                        ministry_name: ministryNames[mKey] || mKey,
+                        confirmation_status: 'confirmed',
+                        pending_minister: null
+                    }).eq('id', ministry.id);
+                }
+
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_trigger_key: 'bill_passed',
+                        p_nation_id: bill.nation_id,
+                        p_tick: currentTick,
+                        p_placeholders: {
+                            nation: nation?.name || 'Unknown',
+                            bill_name: bill.bill_name,
+                            sponsor: bill.factions?.faction_name || 'Unknown',
+                            votes_for: String(votesFor),
+                            votes_against: String(votesAgainst),
+                            article_count: '0'
+                        }
+                    });
+                } catch (e) { /* non-blocking */ }
+            } else {
+                await failBill(supabase, bill);
+
+                // Record rejected party so President can't re-nominate same party for this slot
+                if (ministry?.pending_minister) {
+                    const rejectedPartyId = ministry.pending_minister.party_id;
+                    const existingRejected = ministry.rejected_parties || [];
+                    if (!existingRejected.includes(rejectedPartyId)) {
+                        existingRejected.push(rejectedPartyId);
+                    }
+                    await supabase.from('ministries').update({
+                        confirmation_status: 'rejected',
+                        pending_minister: null,
+                        rejected_parties: existingRejected
+                    }).eq('id', ministry.id);
+                }
+
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_trigger_key: 'bill_failed',
+                        p_nation_id: bill.nation_id,
+                        p_tick: currentTick,
+                        p_placeholders: {
+                            nation: nation?.name || 'Unknown',
+                            bill_name: bill.bill_name,
+                            sponsor: bill.factions?.faction_name || 'Unknown',
+                            votes_for: String(votesFor),
+                            votes_against: String(votesAgainst)
+                        }
+                    });
+                } catch (e) { /* non-blocking */ }
+            }
+            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'minister_confirmation' });
         } else if (passed) {
             await enactBill(supabase, bill, currentTick);
             await supabase.rpc('fire_system_event', {
@@ -3053,6 +3134,108 @@ async function selectPresidentCandidate(supabase, candidateId, nationId, faction
 
     console.log(`President selected: ${candidate.first_name} ${candidate.last_name} (${candidate.trait_key})`);
     return candidate;
+}
+
+
+// ==================== PRESIDENTIAL MINISTER NOMINATION ====================
+
+/**
+ * President nominates a minister for a cabinet slot.
+ * Writes pending data to the ministries table and creates a confirmation bill.
+ * Parliament votes simple majority; if rejected, the party is blocked for that slot.
+ *
+ * @param {object} supabase
+ * @param {string} nationId
+ * @param {string} presidentFactionId - The president's faction (must match active president)
+ * @param {string} ministryKey - Which ministry slot (e.g. 'defense', 'finance')
+ * @param {object} nominee - { partyId, partyName, firstName, lastName, age }
+ */
+async function nominateMinister(supabase, nationId, presidentFactionId, ministryKey, nominee) {
+    // Validate: must be Presidential system
+    const { data: nation } = await supabase.from('nations').select('name, government_type').eq('id', nationId).single();
+    if (nation?.government_type !== 'Presidential') throw new Error('Minister nominations only apply to Presidential systems');
+
+    // Validate: caller must be president's party
+    const { data: president } = await supabase.from('presidents')
+        .select('id, faction_id')
+        .eq('nation_id', nationId).eq('is_active', true)
+        .limit(1).maybeSingle();
+    if (!president || president.faction_id !== presidentFactionId) throw new Error('Only the President\'s party can nominate ministers');
+
+    // Validate: no existing pending confirmation for this slot
+    const { data: existingMinistry } = await supabase.from('ministries')
+        .select('id, confirmation_status, rejected_parties')
+        .eq('nation_id', nationId).eq('ministry_key', ministryKey).eq('is_active', true)
+        .maybeSingle();
+
+    if (existingMinistry?.confirmation_status === 'pending') {
+        throw new Error('A confirmation vote is already pending for this ministry');
+    }
+
+    // Validate: nominee's party was not already rejected for this slot
+    const rejectedParties = existingMinistry?.rejected_parties || [];
+    if (rejectedParties.includes(nominee.partyId)) {
+        throw new Error('This party\'s nominee was already rejected for this ministry slot');
+    }
+
+    // Get current tick
+    const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Write pending minister data to the ministry row
+    const pendingData = {
+        party_id: nominee.partyId,
+        first_name: nominee.firstName,
+        last_name: nominee.lastName,
+        age: nominee.age
+    };
+
+    if (existingMinistry) {
+        await supabase.from('ministries').update({
+            confirmation_status: 'pending',
+            pending_minister: pendingData
+        }).eq('id', existingMinistry.id);
+    } else {
+        await supabase.from('ministries').insert({
+            nation_id: nationId,
+            ministry_key: ministryKey,
+            ministry_name: null, // Will be filled on confirmation
+            is_active: true,
+            confirmation_status: 'pending',
+            pending_minister: pendingData,
+            rejected_parties: []
+        });
+    }
+
+    // Create confirmation bill (goes straight to floor vote)
+    const ministryDisplayName = {
+        prime_minister: 'Prime Minister', interior: 'Ministry of the Interior',
+        foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
+        finance: 'Ministry of Finance', education: 'Ministry of Education',
+        healthcare: 'Ministry of Healthcare', labor: 'Ministry of Labor',
+        justice: 'Ministry of Justice', transportation: 'Ministry of Transportation',
+        security: 'Ministry of Security'
+    }[ministryKey] || ministryKey;
+
+    const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministryDisplayName}`;
+    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as head of the ${ministryDisplayName}. A simple majority (51%) of the legislature is required for confirmation.`;
+
+    const { data: bill, error: billErr } = await supabase.from('bills').insert({
+        nation_id: nationId,
+        proposed_by: presidentFactionId,
+        proposed_tick: currentTick,
+        bill_name: billName,
+        bill_type: 'minister_confirmation',
+        status: 'floor',
+        voting_ends_tick: currentTick + GAME_CONFIG.MINISTER_CONFIRMATION_VOTING_TICKS,
+        ministry_key: ministryKey,
+        preamble
+    }).select().single();
+
+    if (billErr) throw billErr;
+
+    console.log(`Minister nomination: ${nominee.firstName} ${nominee.lastName} for ${ministryKey} (bill ${bill.id})`);
+    return { bill, nominee };
 }
 
 // ==================== TICK HELPERS ====================
