@@ -716,7 +716,21 @@
                 electionType: context.electionType
             });
 
-            if (runResult?.seatResults?.length) {
+            // Display results — candidate results for presidential, seat results for parliamentary
+            const candidateResults = runResult?.completedElection?.results?.presidential_candidates || [];
+            if (candidateResults.length > 0) {
+                const sorted = [...candidateResults].sort((a, b) => b.votes - a.votes);
+                resultsContent.innerHTML = sorted.map(c => {
+                    const isWinner = c.winner;
+                    return `<div class="result-party" style="${isWinner ? 'border-left:3px solid #4CAF50;padding-left:8px;' : ''}">
+                        <div><div class="result-party-name">${isWinner ? '&#x2713; ' : ''}${c.candidate_name} (${c.party_name})</div>
+                        <div style="font-size:0.75rem;color:#888;">${c.ideology || ''}</div>
+                        <div class="result-bar" style="width:200px;"><div class="result-bar-fill" style="width:${c.vote_percentage || 0}%"></div></div></div>
+                        <div class="result-party-seats">${(c.votes || 0).toLocaleString()} votes (${c.vote_percentage || 0}%)</div>
+                    </div>`;
+                }).join('');
+                resultsDiv.classList.remove('hidden');
+            } else if (runResult?.seatResults?.length) {
                 const totalSeats = selectedElectionNation.total_seats || 120;
                 resultsContent.innerHTML = runResult.seatResults
                     .sort((a, b) => b.seats - a.seats)
