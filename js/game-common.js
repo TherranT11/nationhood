@@ -5068,13 +5068,20 @@ async function processOngoingCosts(supabase, nation, currentTick) {
     return { totalCost, details };
 }
 
+// All columns that nations_history tracks (must match the DB table schema)
+const HISTORY_SNAPSHOT_COLUMNS = [
+    ...NATION_STAT_COLUMNS,
+    'national_approval',
+    'competition_voters', 'liberty_voters', 'security_voters', 'globalism_voters',
+    'progressive_voters', 'liberal_voters', 'moderate_voters', 'conservative_voters', 'nationalist_voters'
+];
+
 async function snapshotNationHistory(supabase, nation, currentTick) {
     const snapshot = { nation_id: nation.id, tick: currentTick };
 
-    const exclude = ['id', 'name', 'capital', 'government_type', 'created_at', 'updated_at', 'shard_id'];
-    for (const [key, val] of Object.entries(nation)) {
-        if (!exclude.includes(key) && typeof val === 'number') {
-            snapshot[key] = val;
+    for (const key of HISTORY_SNAPSHOT_COLUMNS) {
+        if (nation[key] !== undefined && nation[key] !== null) {
+            snapshot[key] = Number(nation[key]);
         }
     }
 
