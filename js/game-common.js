@@ -4695,7 +4695,12 @@ async function processStatEffects(supabase, nation, currentTick) {
         }
     }
 
-    if (!activeLaws || activeLaws.length === 0) return [];
+    if (!activeLaws || activeLaws.length === 0) {
+        console.log(`[processStatEffects] No active laws for ${nation.name}`);
+        return [];
+    }
+
+    console.log(`[processStatEffects] Processing ${activeLaws.length} active law(s) for ${nation.name}`);
 
     const appliedEffects = [];
     const nationUpdates = {};
@@ -4816,21 +4821,24 @@ async function processStatEffects(supabase, nation, currentTick) {
 
     if (nationUpdateError) {
         console.error(
-            '[processStatEffects] Failed to persist nation stat updates',
-            {
-                nationId: nation.id,
-                payload: nationUpdates,
-                error: nationUpdateError
-            }
+            '[processStatEffects] Nation stat update FAILED',
+            { nationId: nation.id, payload: nationUpdates, error: nationUpdateError.message }
         );
         return [];
     }
 
+    if (Object.keys(nationUpdates).length > 0) {
+        console.log(`[processStatEffects] Nation stats updated for ${nation.name}:`, JSON.stringify(nationUpdates));
+    }
+
     for (const id of lawsToAdvance) {
-        await supabase
+        const { error: trackErr } = await supabase
             .from('active_laws')
             .update({ effects_applied_through_tick: currentTick })
             .eq('id', id);
+        if (trackErr) {
+            console.error(`[processStatEffects] Tracking update FAILED for active_law ${id}:`, trackErr.message);
+        }
     }
 
     for (const id of lawsToDelete) {
