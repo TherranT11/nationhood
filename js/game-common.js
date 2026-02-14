@@ -1723,13 +1723,16 @@ async function enactBill(supabase, bill, currentTick) {
                 }
             }
 
-            await supabase.from('active_laws').insert({
+            const { error: activeLawError } = await supabase.from('active_laws').insert({
                 nation_id: bill.nation_id,
                 policy_id: policy.id,
                 passed_tick: currentTick,
                 proposed_by: bill.proposed_by,
-                effects_applied_through_tick: currentTick
+                effects_applied_through_tick: currentTick - 1
             });
+            if (activeLawError) {
+                console.error(`[enactBill] Failed to insert active_law for policy ${policy.id} (${policy.policy_name}):`, activeLawError.message);
+            }
         }
     }
 
@@ -1816,15 +1819,18 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
 
     if (reversalEffects.length === 0) return;
 
-    await supabase.from('active_laws').insert({
+    const { error: reversalInsertError } = await supabase.from('active_laws').insert({
         nation_id: nation.id,
         policy_id: policy.id,
         passed_tick: currentTick,
         proposed_by: null,
-        effects_applied_through_tick: currentTick,
+        effects_applied_through_tick: currentTick - 1,
         is_reversal: true,
         reversal_effects: reversalEffects
     });
+    if (reversalInsertError) {
+        console.error(`[reversePolicy] Failed to insert reversal active_law for policy ${policy.id}:`, reversalInsertError.message);
+    }
 }
 
 // ==================== FOUNDATIONAL BILL ENACTMENT ====================
@@ -4611,10 +4617,59 @@ async function deleteInactiveParty(supabase, nation, party, allParties, currentT
 // ==================== STAT EFFECTS PROCESSING ====================
 
 async function processStatEffects(supabase, nation, currentTick) {
-    const { data: activeLaws } = await supabase
+    let activeLaws;
+
+    // Try join query first; fall back to separate lookup if FK is missing
+    const { data, error: joinError } = await supabase
         .from('active_laws')
         .select('*, policies(*)')
         .eq('nation_id', nation.id);
+
+    if (joinError) {
+        console.warn('[processStatEffects] Join query failed, falling back to separate policy lookup:', joinError.message);
+        const { data: lawsOnly, error: fallbackError } = await supabase
+            .from('active_laws')
+            .select('*')
+            .eq('nation_id', nation.id);
+
+        if (fallbackError || !lawsOnly || lawsOnly.length === 0) {
+            if (fallbackError) console.error('[processStatEffects] Fallback query also failed:', fallbackError.message);
+            return [];
+        }
+
+        // Fetch policies separately and attach them
+        const policyIds = [...new Set(lawsOnly.filter(l => l.policy_id).map(l => l.policy_id))];
+        if (policyIds.length > 0) {
+            const { data: policies } = await supabase
+                .from('policies')
+                .select('*')
+                .in('id', policyIds);
+            const policyMap = {};
+            for (const p of (policies || [])) policyMap[p.id] = p;
+            for (const law of lawsOnly) {
+                law.policies = policyMap[law.policy_id] || null;
+            }
+        }
+        activeLaws = lawsOnly;
+    } else {
+        activeLaws = data;
+        // If join succeeded but policies are null for every law, try separate lookup
+        if (activeLaws && activeLaws.length > 0 && activeLaws.every(l => !l.policies && l.policy_id)) {
+            console.warn('[processStatEffects] Join returned null policies for all laws — fetching separately');
+            const policyIds = [...new Set(activeLaws.filter(l => l.policy_id).map(l => l.policy_id))];
+            if (policyIds.length > 0) {
+                const { data: policies } = await supabase
+                    .from('policies')
+                    .select('*')
+                    .in('id', policyIds);
+                const policyMap = {};
+                for (const p of (policies || [])) policyMap[p.id] = p;
+                for (const law of activeLaws) {
+                    if (!law.policies && law.policy_id) law.policies = policyMap[law.policy_id] || null;
+                }
+            }
+        }
+    }
 
     if (!activeLaws || activeLaws.length === 0) return [];
 
@@ -4662,9 +4717,9 @@ async function processStatEffects(supabase, nation, currentTick) {
             const ticksSincePassed = tick - passedTick;
 
             for (const eff of effects) {
-                const delay = eff.delay_ticks || 0;
-                const duration = eff.duration_ticks || 12;
-                const rate = eff.rate || 1;
+                const delay = Number(eff.delay_ticks) || 0;
+                const duration = Number(eff.duration_ticks) || 12;
+                const rate = Number(eff.rate) || 1;
                 const dir = String(eff.direction || '').toLowerCase();
                 const rawStatKey = eff.stat_key;
                 const statKey = normalizeNationStatKey(rawStatKey);
