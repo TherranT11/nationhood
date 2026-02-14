@@ -41,7 +41,8 @@ const GAME_CONFIG = {
     VETO_OVERRIDE_THRESHOLD: 2/3,
     PRESIDENT_DESK_TICKS: 2,
     MINISTER_CONFIRMATION_VOTING_TICKS: 2,
-    PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6  // ticks before presidential election to generate candidates
+    PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
+    MAX_AP: 20  // maximum action points a party can accumulate
 };
 
 /**
@@ -4107,8 +4108,8 @@ async function advanceTick(supabase) {
     const { data: nations } = await supabase.from('nations').select('*');
     if (!nations || nations.length === 0) return { tick: newTick, nations: 0 };
 
-    // Refill AP for party factions each tick:
-    // base 5 AP, +1 if in government, +1 if approval > 6.
+    // Accumulate AP for party factions each tick:
+    // base 5 AP, +1 if in government, +1 if approval > 60. Capped at MAX_AP.
     for (const nation of nations) {
         const { data: factions } = await supabase
             .from('factions')
@@ -4126,11 +4127,14 @@ async function advanceTick(supabase) {
 
         for (const faction of factions) {
             const isInGovernment = governmentPartyIds.has(faction.id);
-            let nextAp = 5;
-            if (isInGovernment) nextAp += 1;
-            if ((faction.approval_rating ?? 50) > 60) nextAp += 1;
+            let apGain = 5;
+            if (isInGovernment) apGain += 1;
+            if ((faction.approval_rating ?? 50) > 60) apGain += 1;
 
-            if ((faction.action_points ?? null) !== nextAp) {
+            const currentAp = faction.action_points ?? 0;
+            const nextAp = Math.min(currentAp + apGain, GAME_CONFIG.MAX_AP);
+
+            if (currentAp !== nextAp) {
                 await supabase
                     .from('factions')
                     .update({ action_points: nextAp })
