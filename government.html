@@ -2083,7 +2083,12 @@ function drawParliament(parties, options = {}) {
     const rows = _calcParliamentRows(total, outerR, minInnerR);
     const dots = _genParliamentDots(rows, cx, cy);
 
-    // Build seat color + name arrays (party order, left to right)
+    // Sort dots by angle (left-to-right), then inner-to-outer within same angle.
+    // This makes party colors fill as radial wedges from center outward.
+    dots.forEach(d => { d.angle = Math.atan2(cy - d.y, d.x - cx); d.radius = Math.hypot(d.x - cx, cy - d.y); });
+    dots.sort((a, b) => b.angle - a.angle || a.radius - b.radius);
+
+    // Build seat color + name arrays (party order)
     const seatColors = [], seatNames = [];
     fmt.forEach(p => { for (let i = 0; i < p.seats; i++) { seatColors.push(p.color); seatNames.push(p.name); } });
 
