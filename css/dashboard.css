@@ -236,10 +236,13 @@ body.light-mode .person-card .person-meta { color: #666; }
 
 /* Parliament half-circle */
 .parliament-wrap { margin: 10px 0 6px; display: flex; justify-content: center; }
-.parliament-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 16px; margin-top: 14px; }
-.legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.76rem; color: #aaa; }
-body.light-mode .legend-item { color: #555; }
-.legend-swatch { width: 13px; height: 13px; border-radius: 2px; }
+.parliament-wrap svg { width: 100%; max-width: 560px; height: auto; }
+.parliament-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px 20px; margin-top: 16px; padding: 0 12px; }
+.legend-item { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--text-secondary); white-space: nowrap; }
+body.light-mode .legend-item { color: var(--text-secondary); }
+.legend-swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.legend-name { font-weight: 500; }
+.legend-seats { color: var(--text-muted); font-size: 0.72rem; font-weight: 600; }
 
 /* ===== PARTY TAB ===== */
 .party-layout { display: grid; grid-template-columns: 300px 1fr; gap: 22px; padding: 24px; }
