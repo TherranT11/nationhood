@@ -751,7 +751,7 @@ async function renderPartiesPage(nation, faction) {
         let canSeizePower = false;
         if (isAutocracy && !isRulingFaction && faction) {
             const disloyalCount = parties.filter(p => p.id !== faction?.id && (p.loyalty ?? 50) < 30).length;
-            canSeizePower = disloyalCount >= 2 && (faction?.action_points || 0) >= 15 && !isCoupCooldown && !isSuppressed;
+            canSeizePower = disloyalCount >= 2 && (faction?.action_points || 0) >= 15 && !isCoupCooldown;
         }
 
         // Build campaign actions
@@ -828,17 +828,17 @@ async function renderPartiesPage(nation, faction) {
             ${isSuppressed ? `
             <div style="background: #3a1a1a; border: 1px solid #ff4444; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
                 <div style="color: #ff4444; font-weight: bold;">SUPPRESSED</div>
-                <div style="color: #aaa; margin-top: 4px; font-size: 0.85rem;">Your loyalty is below 15. You receive 0 AP and can only Pledge Loyalty. Losing 2 seats per tick.</div>
+                <div style="color: #aaa; margin-top: 4px; font-size: 0.85rem;">Low loyalty status only. It no longer drains AP, seats, or ministry positions.</div>
             </div>` : ''}
 
             ${isDisloyal ? `
             <div style="background: #3a2a1a; border: 1px solid #ff9800; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
                 <div style="color: #ff9800; font-weight: bold;">DISLOYAL</div>
-                <div style="color: #aaa; margin-top: 4px; font-size: 0.85rem;">Your loyalty is below 30. Losing 1 seat per tick, -1 AP per tick, purged from ministries.</div>
+                <div style="color: #aaa; margin-top: 4px; font-size: 0.85rem;">Low loyalty status only. It no longer drains AP, seats, or ministry positions.</div>
             </div>` : ''}
 
             <div style="margin-bottom:12px;color:#888;font-size:0.82rem;">
-                <strong>Loyalty Thresholds:</strong> Loyal (30+) = full AP, ministries | Disloyal (15-29) = -1 seat/tick, -1 AP | Suppressed (&lt;15) = -2 seats/tick, 0 AP
+                <strong>Loyalty Thresholds:</strong> Loyal (30+) = status only | Disloyal (15-29) = status only | Suppressed (&lt;15) = status only
             </div>
 
             <div class="action-grid" style="grid-template-columns: repeat(2, 1fr);">
@@ -880,8 +880,8 @@ async function renderPartiesPage(nation, faction) {
                             <option value="">Select Target Faction...</option>
                         </select>
                     </div>
-                    <button class="action-btn action-btn-risk" onclick="doUndermine()" ${isSuppressed ? 'disabled' : ''}>
-                        ${isSuppressed ? 'Suppressed' : 'Undermine'}
+                    <button class="action-btn action-btn-risk" onclick="doUndermine()">
+                        Undermine
                     </button>
                 </div>
 
@@ -917,7 +917,7 @@ async function renderPartiesPage(nation, faction) {
                     </div>
                     <button class="action-btn" style="background: ${canSeizePower ? '#ff4444' : '#555'};"
                         onclick="doSeizePower()"
-                        ${(!canSeizePower || isSuppressed || isCoupCooldown) ? 'disabled' : ''}
+                        ${(!canSeizePower || isCoupCooldown) ? 'disabled' : ''}
                         ${isCoupCooldown ? 'title="Coup cooldown active"' : !canSeizePower ? 'title="Need 2+ factions with loyalty below 30 and 15 AP"' : ''}>
                         ${isCoupCooldown ? 'Coup Cooldown' : canSeizePower ? 'Seize Power' : 'Cannot Seize (Need 2+ disloyal)'}
                     </button>
@@ -1243,11 +1243,6 @@ async function doUndermine() {
     if (!currentFaction || !currentNation) return;
     const ap = currentFaction.action_points || 0;
     if (ap < 3) { alert('Not enough AP (need 3).'); return; }
-
-    if ((currentFaction.loyalty ?? 50) < 15) {
-        alert('Your faction is suppressed and cannot undermine others.');
-        return;
-    }
 
     const targetId = document.getElementById('undermine-target')?.value;
     if (!targetId) { alert('Select a target faction!'); return; }
