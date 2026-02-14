@@ -4141,10 +4141,15 @@ async function advanceTick(supabase) {
             const nextAp = Math.min(currentAp + apGain, GAME_CONFIG.MAX_AP);
 
             if (currentAp !== nextAp) {
-                await supabase
+                const { error: apError, count: apCount } = await supabase
                     .from('factions')
                     .update({ action_points: nextAp })
                     .eq('id', faction.id);
+                if (apError) {
+                    console.error(`[advanceTick] AP update FAILED for faction ${faction.id}: ${apError.message}`);
+                } else {
+                    console.log(`[advanceTick] AP: faction ${faction.id} ${currentAp} → ${nextAp} (+${apGain})`);
+                }
             }
         }
     }
@@ -4341,7 +4346,7 @@ async function processLoyaltyTick(supabase, nation) {
 
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, loyalty, seats, action_points')
+        .select('id, loyalty, seats')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -4363,7 +4368,6 @@ async function processLoyaltyTick(supabase, nation) {
     for (const faction of factions) {
         let loyalty = faction.loyalty ?? 50;
         let seats = faction.seats || 0;
-        let ap = faction.action_points || 0;
 
         if (faction.id === rulingId) {
             if (isAutocracy) {
@@ -4405,7 +4409,7 @@ async function processLoyaltyTick(supabase, nation) {
         // Loyalty is now informational only for autocracies (no AP/seat drain or auto-purges).
 
         await supabase.from('factions')
-            .update({ loyalty, seats, action_points: ap })
+            .update({ loyalty, seats })
             .eq('id', faction.id);
     }
 }
