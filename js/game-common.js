@@ -719,14 +719,14 @@ async function loadSeats(supabase, nationId, isAutocracy, allParties, currentFac
         }
 
         allParties.forEach(p => {
-            if (!allPartySeats[p.id]) {
+            if (allPartySeats[p.id] === undefined) {
                 allPartySeats[p.id] = p.seats || 0;
             }
         });
     }
 
-    const currentSeats = allPartySeats[currentFactionId] ||
-        allParties.find(p => p.id === currentFactionId)?.seats || 0;
+    const currentSeats = allPartySeats[currentFactionId] ??
+        allParties.find(p => p.id === currentFactionId)?.seats ?? 0;
 
     return { allPartySeats, currentSeats };
 }
