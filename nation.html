@@ -364,10 +364,10 @@ function getTrendArrow(statKey, currentValue, inverted, format) {
     var delta = currentValue - previousValue;
     var invertedClass = inverted ? ' inverted' : '';
     if (delta > 0) {
-        var formatted = (format === 'currency') ? '+' + formatCurrencyShort(delta) : '+' + roundDelta(delta);
+        var formatted = (format === 'currency') ? '+' + formatCurrencyShort(delta) : (format === 'gdp') ? '+' + formatCurrencyShort(delta * 1e9) : '+' + roundDelta(delta);
         return '<span class="trend-arrow trend-up' + invertedClass + '">▲ ' + formatted + '</span>';
     } else if (delta < 0) {
-        var formatted = (format === 'currency') ? formatCurrencyShort(delta) : roundDelta(delta);
+        var formatted = (format === 'currency') ? formatCurrencyShort(delta) : (format === 'gdp') ? formatCurrencyShort(delta * 1e9) : roundDelta(delta);
         return '<span class="trend-arrow trend-down' + invertedClass + '">▼ ' + formatted + '</span>';
     }
     return '<span class="trend-arrow trend-neutral">―</span>';
@@ -458,7 +458,7 @@ async function renderNationPage(nation) {
 
     // ECONOMIC
     h += sectorBlock('💰', 'Economic', [
-        renderStatBox('GDP', 'GDP', nation.GDP, 'Gross domestic product in billions', 'currency'),
+        renderStatBox('GDP', 'GDP', nation.GDP, 'Gross domestic product in billions', 'gdp'),
         renderStatBox('GDP Growth', 'gdp_growth', nation.gdp_growth, 'Annual economic growth rate'),
         renderStatBox('National Debt', 'debt', nation.debt, 'Government debt obligations', 'currency', true),
         renderStatBox('Debt Growth', 'debt_growth', nation.debt_growth, 'Rate of debt accumulation', null, true),
@@ -626,6 +626,7 @@ function renderStatBox(name, statKey, value, description, format, inverted) {
 
     var formattedValue = (value !== null && value !== undefined) ? (typeof value === 'number' ? Math.round(value * 10) / 10 : value) : 'N/A';
     if (format === 'currency' && typeof value === 'number') formattedValue = formatCurrencyShort(value);
+    else if (format === 'gdp' && typeof value === 'number') formattedValue = formatCurrencyShort(value * 1e9);
     else if (format === 'years' && typeof value === 'number') formattedValue = Math.round(value * 10) / 10 + ' yrs';
 
     var trendArrow = getTrendArrow(statKey, value, inverted, format);
@@ -669,7 +670,7 @@ function formatCurrencyShort(val) {
 
 function formatGDP(gdp) {
     if (!gdp) return 'N/A';
-    return formatCurrencyShort(gdp);
+    return formatCurrencyShort(gdp * 1e9);
 }
 </script>
 
