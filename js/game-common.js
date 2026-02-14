@@ -4695,7 +4695,12 @@ async function processStatEffects(supabase, nation, currentTick) {
         }
     }
 
-    if (!activeLaws || activeLaws.length === 0) return [];
+    if (!activeLaws || activeLaws.length === 0) {
+        console.log(`[processStatEffects] No active laws for ${nation.name}`);
+        return [];
+    }
+
+    console.log(`[processStatEffects] Processing ${activeLaws.length} active law(s) for ${nation.name}`);
 
     const appliedEffects = [];
     const nationUpdates = {};
@@ -4816,21 +4821,24 @@ async function processStatEffects(supabase, nation, currentTick) {
 
     if (nationUpdateError) {
         console.error(
-            '[processStatEffects] Failed to persist nation stat updates',
-            {
-                nationId: nation.id,
-                payload: nationUpdates,
-                error: nationUpdateError
-            }
+            '[processStatEffects] Nation stat update FAILED',
+            { nationId: nation.id, payload: nationUpdates, error: nationUpdateError.message }
         );
         return [];
     }
 
+    if (Object.keys(nationUpdates).length > 0) {
+        console.log(`[processStatEffects] Nation stats updated for ${nation.name}:`, JSON.stringify(nationUpdates));
+    }
+
     for (const id of lawsToAdvance) {
-        await supabase
+        const { error: trackErr } = await supabase
             .from('active_laws')
             .update({ effects_applied_through_tick: currentTick })
             .eq('id', id);
+        if (trackErr) {
+            console.error(`[processStatEffects] Tracking update FAILED for active_law ${id}:`, trackErr.message);
+        }
     }
 
     for (const id of lawsToDelete) {
@@ -5068,13 +5076,20 @@ async function processOngoingCosts(supabase, nation, currentTick) {
     return { totalCost, details };
 }
 
+// All columns that nations_history tracks (must match the DB table schema)
+const HISTORY_SNAPSHOT_COLUMNS = [
+    ...NATION_STAT_COLUMNS,
+    'national_approval',
+    'competition_voters', 'liberty_voters', 'security_voters', 'globalism_voters',
+    'progressive_voters', 'liberal_voters', 'moderate_voters', 'conservative_voters', 'nationalist_voters'
+];
+
 async function snapshotNationHistory(supabase, nation, currentTick) {
     const snapshot = { nation_id: nation.id, tick: currentTick };
 
-    const exclude = ['id', 'name', 'capital', 'government_type', 'created_at', 'updated_at', 'shard_id'];
-    for (const [key, val] of Object.entries(nation)) {
-        if (!exclude.includes(key) && typeof val === 'number') {
-            snapshot[key] = val;
+    for (const key of HISTORY_SNAPSHOT_COLUMNS) {
+        if (nation[key] !== undefined && nation[key] !== null) {
+            snapshot[key] = Number(nation[key]);
         }
     }
 
