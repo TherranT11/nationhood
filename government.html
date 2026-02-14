@@ -1207,6 +1207,12 @@ function renderFormationInProgress(parties) {
 
 function renderCabinet(ministries, coalition) {
     if (!ministries || ministries.length === 0) {
+        // Presidential systems always use their own rendering (with Nominate buttons)
+        if (isPresidential) {
+            const presKeys = MINISTRY_KEYS_CABINET.filter(k => k !== 'prime_minister');
+            const cards = presKeys.map(key => renderPresidentialMinistryCard(key, null)).join('');
+            return `<div class="ministry-grid">${cards}</div>`;
+        }
         if (coalition && coalition.ministry_allocations) {
             const cards = Object.entries(coalition.ministry_allocations)
                 .filter(([key]) => key !== 'prime_minister')
@@ -1221,12 +1227,6 @@ function renderCabinet(ministries, coalition) {
                 const requests = ministryRequests.filter(r => r.ministry_key === key);
                 return `<div class="ministry-card vacant"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests, null)}</div>`;
             }).join('');
-            return `<div class="ministry-grid">${cards}</div>`;
-        }
-        if (isPresidential) {
-            // Presidential system with no ministry rows yet — show all slots as vacant
-            const presKeys = MINISTRY_KEYS_CABINET.filter(k => k !== 'prime_minister');
-            const cards = presKeys.map(key => renderPresidentialMinistryCard(key, null)).join('');
             return `<div class="ministry-grid">${cards}</div>`;
         }
         return '<div class="info-block" style="text-align:center;color:var(--text-secondary);padding:30px;">No cabinet has been formed yet.</div>';
