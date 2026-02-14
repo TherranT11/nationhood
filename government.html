@@ -828,7 +828,7 @@ async function renderGovernmentPage() {
 
                 <div class="section-header">Current Parliamentary Makeup</div>
                 <div class="parliament-wrap">
-                    <svg id="parliament-svg" width="520" height="280" viewBox="0 0 520 280"></svg>
+                    <svg id="parliament-svg" viewBox="0 0 520 280"></svg>
                 </div>
                 <div class="parliament-legend" id="parliament-legend"></div>
 
@@ -2069,35 +2069,125 @@ async function triggerNPCNoConfidenceVotes(billId, nationId, coalitionPartyIds) 
 
 // ==================== PARLIAMENT VISUALIZATION ====================
 
-function drawParliament(parties) {
-    const colors = ['#E91E63','#2196F3','#4CAF50','#FF9800','#9C27B0','#00BCD4','#F44336','#8BC34A','#FFC107','#673AB7'];
-    const fmt = parties.map((p, i) => ({ name: p.party_name, seats: p.seats, color: colors[i % colors.length] }));
+function drawParliament(parties, options = {}) {
+    const { showLegend = true, showMajorityLine = true, majoritySeats = GAME_CONFIG.MAJORITY_SEATS } = options;
+    const PALETTE = ['#E91E63','#2196F3','#4CAF50','#FF9800','#9C27B0','#00BCD4','#F44336','#8BC34A','#FFC107','#673AB7'];
+    const fmt = parties.map((p, i) => ({ name: p.party_name, seats: p.seats, color: p.color || PALETTE[i % PALETTE.length] }));
     const total = fmt.reduce((s, p) => s + p.seats, 0);
+    if (total === 0) return;
+
     const svg = document.getElementById('parliament-svg');
     if (!svg) return;
-    const w = 520, h = 280, cx = w/2, cy = h-20, sp = 7;
-    const rows = calcRows(total, cy, sp);
-    const seats = [];
-    fmt.forEach(p => { for (let i = 0; i < p.seats; i++) seats.push(p.color); });
-    const dots = genDots(seats.length, rows, cx, cy);
+
+    const cx = 260, cy = 265, outerR = 230, minInnerR = 80;
+    const rows = _calcParliamentRows(total, outerR, minInnerR);
+    const dots = _genParliamentDots(rows, cx, cy);
+
+    // Build seat color + name arrays (party order, left to right)
+    const seatColors = [], seatNames = [];
+    fmt.forEach(p => { for (let i = 0; i < p.seats; i++) { seatColors.push(p.color); seatNames.push(p.name); } });
+
+    // Dynamic dot radius: fit within rows without overlap, capped [2.5, 6]
+    const maxDotR = Math.min(6, ...rows.map(r => r.seats > 1 ? (Math.PI * r.radius) / (r.seats * 2.8) : 6));
+    const dotR = Math.max(2.5, maxDotR);
+
     let c = '';
-    dots.forEach((d, i) => { if (i < seats.length) c += `<circle cx="${d.x}" cy="${d.y}" r="2.5" fill="${seats[i]}" stroke="var(--bg-body)" stroke-width="0.5"/>`; });
-    c += `<text x="${cx}" y="${cy-12}" text-anchor="middle" fill="var(--accent)" font-size="24" font-weight="bold">${total}</text>`;
-    c += `<text x="${cx}" y="${cy+6}" text-anchor="middle" fill="var(--text-muted)" font-size="11">TOTAL SEATS</text>`;
+
+    // Draw seat dots
+    dots.forEach((d, i) => {
+        if (i < seatColors.length) {
+            c += `<circle cx="${d.x.toFixed(1)}" cy="${d.y.toFixed(1)}" r="${dotR.toFixed(1)}" fill="${seatColors[i]}" stroke="var(--bg-panel)" stroke-width="0.8"><title>${seatNames[i]}</title></circle>`;
+        }
+    });
+
+    // Majority threshold line
+    if (showMajorityLine && majoritySeats && majoritySeats < total) {
+        const fraction = majoritySeats / total;
+        const majAngle = Math.PI * (1 - fraction);
+        const innerR = rows[0].radius;
+        const outerRActual = rows[rows.length - 1].radius;
+
+        const x1 = cx + (innerR - 12) * Math.cos(majAngle);
+        const y1 = cy - (innerR - 12) * Math.sin(majAngle);
+        const x2 = cx + (outerRActual + 12) * Math.cos(majAngle);
+        const y2 = cy - (outerRActual + 12) * Math.sin(majAngle);
+
+        c += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="var(--text-muted)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>`;
+
+        // Label at outer tip
+        const lblX = cx + (outerRActual + 22) * Math.cos(majAngle);
+        const lblY = cy - (outerRActual + 22) * Math.sin(majAngle);
+        c += `<text x="${lblX.toFixed(1)}" y="${lblY.toFixed(1)}" text-anchor="middle" fill="var(--text-muted)" font-size="8" font-weight="600">${majoritySeats}</text>`;
+    }
+
+    // Center text
+    c += `<text x="${cx}" y="${cy - 14}" text-anchor="middle" fill="var(--accent)" font-size="26" font-weight="bold">${total}</text>`;
+    c += `<text x="${cx}" y="${cy + 4}" text-anchor="middle" fill="var(--text-muted)" font-size="10" letter-spacing="1.5">TOTAL SEATS</text>`;
+
     svg.innerHTML = c;
-    document.getElementById('parliament-legend').innerHTML = fmt.map(p => `<div class="legend-item"><div class="legend-swatch" style="background:${p.color};"></div>${p.name} (${p.seats})</div>`).join('');
+
+    // Legend
+    if (showLegend) {
+        const legendEl = document.getElementById('parliament-legend');
+        if (legendEl) {
+            legendEl.innerHTML = fmt.map(p =>
+                `<div class="legend-item"><span class="legend-swatch" style="background:${p.color};"></span><span class="legend-name">${p.name}</span><span class="legend-seats">${p.seats}</span></div>`
+            ).join('');
+        }
+    }
 }
 
-function calcRows(total, maxR, sp) {
-    const rows = []; let r = maxR - 60, placed = 0;
-    while (placed < total && r > 40) { const n = Math.floor(Math.PI * r / sp); rows.push({ radius: r, dots: Math.min(n, total - placed) }); placed += n; r -= sp; }
+function _calcParliamentRows(totalSeats, outerR, minInnerR) {
+    let numRows = Math.round(Math.sqrt(totalSeats / 3));
+    numRows = Math.max(3, Math.min(10, numRows));
+
+    const innerR = Math.max(minInnerR, outerR - numRows * 30);
+    const rowSpacing = numRows > 1 ? (outerR - innerR) / (numRows - 1) : 0;
+
+    const radii = [];
+    for (let i = 0; i < numRows; i++) radii.push(innerR + i * rowSpacing);
+
+    // Distribute seats proportionally by arc circumference
+    const totalArc = radii.reduce((sum, r) => sum + Math.PI * r, 0);
+    const rows = [];
+    let allocated = 0;
+
+    for (let i = 0; i < numRows; i++) {
+        const seatsInRow = Math.round(totalSeats * (Math.PI * radii[i]) / totalArc);
+        rows.push({ radius: radii[i], seats: seatsInRow });
+        allocated += seatsInRow;
+    }
+
+    // Correct rounding on outermost row
+    rows[rows.length - 1].seats += (totalSeats - allocated);
     return rows;
 }
 
-function genDots(total, rows, cx, cy) {
-    const pos = []; let idx = 0;
-    for (const row of rows) { const n = Math.min(row.dots, total - idx); const step = Math.PI / (n - 1); for (let i = 0; i < n; i++) { const a = Math.PI - i * step; pos.push({ x: cx + row.radius * Math.cos(a), y: cy - row.radius * Math.sin(a) }); idx++; if (idx >= total) return pos; } }
-    return pos;
+function _genParliamentDots(rows, cx, cy) {
+    const positions = [];
+    const padAngle = 0.08;
+
+    for (const row of rows) {
+        const n = row.seats;
+        const r = row.radius;
+        if (n <= 0) continue;
+
+        if (n === 1) {
+            positions.push({ x: cx + r * Math.cos(Math.PI / 2), y: cy - r * Math.sin(Math.PI / 2) });
+            continue;
+        }
+
+        const startAngle = Math.PI - padAngle;
+        const endAngle = padAngle;
+        const step = (startAngle - endAngle) / (n - 1);
+
+        for (let i = 0; i < n; i++) {
+            const angle = startAngle - i * step;
+            positions.push({ x: cx + r * Math.cos(angle), y: cy - r * Math.sin(angle) });
+        }
+    }
+
+    return positions;
 }
 
 // ==================== RESIGN PM ====================
