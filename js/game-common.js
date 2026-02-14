@@ -5078,11 +5078,12 @@ async function snapshotNationHistory(supabase, nation, currentTick) {
         }
     }
 
-    await supabase.from('nations_history').upsert(snapshot, {
+    const { error: snapError } = await supabase.from('nations_history').upsert(snapshot, {
         onConflict: 'nation_id,tick'
-    }).catch(err => {
-        console.warn('History snapshot warning:', err.message);
     });
+    if (snapError) {
+        console.warn('History snapshot warning:', snapError.message);
+    }
 }
 
 
