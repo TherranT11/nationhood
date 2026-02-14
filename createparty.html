@@ -883,6 +883,19 @@
                 }
                 
                 const seatsAssigned = joinResult?.seats_assigned || 0;
+
+                // Initialize faction_ideology row with neutral scores for autocracy factions
+                try {
+                    await _supabase.from('faction_ideology').upsert({
+                        faction_id: currentUser.id,
+                        liberty_equality: 0,
+                        tradition_progress: 0,
+                        security_freedom: 0,
+                        globalism_nationalism: 0,
+                        individualism_collectivism: 0
+                    }, { onConflict: 'faction_id' });
+                } catch (e) { console.warn('Ideology init (autocracy) non-blocking:', e); }
+
                 alert(`🏛️ ${partyName} has joined the regime in ${selectedNation}!\n\nYou have been assigned ${seatsAssigned} seats.\n${factionNumber === 1 ? '\nAs the first faction, you serve under the Strongman.' : ''}`);
                 window.location.href = 'nation.html';
                 
