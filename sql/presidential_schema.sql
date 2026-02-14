@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS presidents (
 
     -- Term
     elected_tick        INT NOT NULL,
-    term_ends_tick      INT NOT NULL,   -- elected_tick + PRESIDENTIAL_TERM_TICKS (24)
+    term_ends_tick      INT NOT NULL,   -- elected_tick + PRESIDENTIAL_TERM_TICKS (48)
     is_active           BOOLEAN DEFAULT true,
 
     -- Approval
