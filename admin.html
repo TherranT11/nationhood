@@ -659,7 +659,7 @@
     // ==================== ELECTIONS TAB ====================
     async function loadElectionNations() {
         try {
-            const { data } = await _supabase.from('nations').select('id, name, total_seats, eligible_voters').order('name');
+            const { data } = await _supabase.from('nations').select('id, name, total_seats, eligible_voters, government_type').order('name');
             nations = data || [];
             const select = document.getElementById('election-nation-select');
             select.innerHTML = '<option value="">-- Choose a nation --</option>';
@@ -689,27 +689,7 @@
         const btn = document.getElementById('run-election-btn');
         btn.disabled = true; btn.textContent = '⏳ Running Election...';
         status.className = 'status info'; status.textContent = 'Simulating election...'; status.classList.remove('hidden'); resultsDiv.classList.add('hidden');
-        try {
-            const { data: nationRow, error: nationError } = await _supabase
-                .from('nations')
-                .select('id, name, government_type')
-                .eq('id', selectedElectionNation.id)
-                .single();
-            if (nationError) throw nationError;
 
-            const currentTick = await getCurrentTick(_supabase);
-            const context = await resolveManualElectionContext(_supabase, nationRow, currentTick);
-
-            if (context.governmentType === 'Presidential' && context.forcedOutsideSchedule) {
-                const confirmMsg = `⚠️ ${nationRow.name} is a Presidential system.\n\n` +
-                    `You are forcing a ${context.electionType} election early (scheduled for tick ${context.nextScheduledTick}, current tick ${currentTick}).\n\n` +
-                    'This can replace leadership and alter government state immediately. Continue?';
-                if (!window.confirm(confirmMsg)) {
-                    status.className = 'status info';
-                    status.textContent = 'Election cancelled.';
-                    return;
-                }
-            }
 
             const runResult = await runManualElectionByGovernmentType(_supabase, nationRow, {
                 currentTick,

@@ -1,5 +1,5 @@
 -- ============================================================
--- run_election(p_nation_id UUID)
+-- run_election(p_nation_id UUID, p_election_type TEXT DEFAULT 'parliamentary')
 --
 -- Voter-bloc-based election simulation.
 --
@@ -10,7 +10,10 @@
 -- 5. Writes results to elections table + syncs factions.seats
 -- ============================================================
 
-CREATE OR REPLACE FUNCTION run_election(p_nation_id UUID)
+CREATE OR REPLACE FUNCTION run_election(
+    p_nation_id UUID,
+    p_election_type TEXT DEFAULT 'parliamentary'
+)
 RETURNS JSONB
 LANGUAGE plpgsql
 AS $$
@@ -34,7 +37,12 @@ DECLARE
     v_election_id  UUID;
     v_result_rows  JSONB := '[]'::JSONB;
     v_seat_rows    JSONB := '[]'::JSONB;
+    v_election_type TEXT := LOWER(COALESCE(p_election_type, 'parliamentary'));
 BEGIN
+    IF v_election_type NOT IN ('parliamentary', 'presidential') THEN
+        RAISE EXCEPTION 'Invalid election type: % (allowed: parliamentary, presidential)', p_election_type;
+    END IF;
+
     -- ---- Load nation ----
     SELECT id, name, total_seats, eligible_voters
     INTO v_nation
@@ -180,10 +188,11 @@ BEGIN
     );
 
     -- ---- Write election record ----
-    INSERT INTO elections (nation_id, election_tick, status, results)
+    INSERT INTO elections (nation_id, election_tick, election_type, status, results)
     VALUES (
         p_nation_id,
         COALESCE((SELECT current_tick FROM shard WHERE name = 'Alpha Shard'), 0),
+        v_election_type,
         'completed',
         v_results
     )
