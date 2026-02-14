@@ -4314,6 +4314,7 @@ async function processStatEffects(supabase, nation, currentTick) {
 
     const appliedEffects = [];
     const nationUpdates = {};
+    const lawsToAdvance = [];
     const lawsToDelete = [];
 
     for (const law of activeLaws) {
@@ -4343,7 +4344,7 @@ async function processStatEffects(supabase, nation, currentTick) {
         }
 
         if (effects.length === 0) {
-            await supabase.from('active_laws').update({ effects_applied_through_tick: currentTick }).eq('id', law.id);
+            lawsToAdvance.push(law.id);
             continue;
         }
 
@@ -4411,17 +4412,39 @@ async function processStatEffects(supabase, nation, currentTick) {
             }
         }
 
-        await supabase.from('active_laws').update({
-            effects_applied_through_tick: currentTick
-        }).eq('id', law.id);
+        lawsToAdvance.push(law.id);
 
         if (isReversal && allEffectsComplete) {
             lawsToDelete.push(law.id);
         }
     }
 
+    let nationUpdateError = null;
     if (Object.keys(nationUpdates).length > 0) {
-        await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+        const { error } = await supabase
+            .from('nations')
+            .update(nationUpdates)
+            .eq('id', nation.id);
+        nationUpdateError = error;
+    }
+
+    if (nationUpdateError) {
+        console.error(
+            '[processStatEffects] Failed to persist nation stat updates',
+            {
+                nationId: nation.id,
+                payload: nationUpdates,
+                error: nationUpdateError
+            }
+        );
+        return [];
+    }
+
+    for (const id of lawsToAdvance) {
+        await supabase
+            .from('active_laws')
+            .update({ effects_applied_through_tick: currentTick })
+            .eq('id', id);
     }
 
     for (const id of lawsToDelete) {
