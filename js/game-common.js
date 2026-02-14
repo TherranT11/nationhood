@@ -1910,6 +1910,7 @@ const NATION_STAT_COLUMNS = [
     'arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices',
     'pollution', 'carbon_emissions',
     'standard_of_living', 'happiness', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate',
+    'religious',
     'stability', 'legitimacy', 'efficiency', 'corruption', 'press_freedom', 'judicial_independence',
     'freedom_index', 'polarization',
     'civil_unrest', 'terrorism', 'political_violence',

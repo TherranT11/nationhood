@@ -543,6 +543,7 @@ async function renderNationPage(nation) {
     h += sectorBlock('🏠', 'Social', [
         renderStatBox('Standard of Living', 'standard_of_living', nation.standard_of_living, 'Quality of life index'),
         renderStatBox('Happiness', 'happiness', nation.happiness, 'National wellbeing index'),
+        renderStatBox('Religiosity', 'religious', nation.religious, 'Strength of religious belief and institutions'),
         renderStatBox('Social Mobility', 'social_mobility', nation.social_mobility, 'Ability to change class'),
         renderStatBox('Benefits', 'benefits', nation.benefits, 'Social welfare programs'),
         renderStatBox('Crime Rate', 'crime_rate', nation.crime_rate, 'Criminal incidents per capita', null, true),
