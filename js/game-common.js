@@ -4021,12 +4021,41 @@ async function advanceTick(supabase) {
         .not('action_lockout_until_tick', 'is', null)
         .lte('action_lockout_until_tick', newTick);
 
-    // Refill action points for all factions (loyalty-based AP reduction happens in processLoyaltyTick)
-    await supabase.from('factions').update({ action_points: 10 }).lt('action_points', 10);
-
     // 2. Load all nations
     const { data: nations } = await supabase.from('nations').select('*');
     if (!nations || nations.length === 0) return { tick: newTick, nations: 0 };
+
+    // Refill AP for party factions each tick:
+    // base 5 AP, +1 if in government, +1 if approval > 6.
+    for (const nation of nations) {
+        const { data: factions } = await supabase
+            .from('factions')
+            .select('id, approval_rating, action_points, faction_type')
+            .eq('nation_id', nation.id)
+            .eq('faction_type', 'party');
+
+        if (!factions || factions.length === 0) continue;
+
+        const coalition = await fetchActiveCoalition(supabase, nation.id);
+        const governmentPartyIds = new Set([
+            ...(coalition?.party_ids || []),
+            nation.ruling_faction_id
+        ].filter(Boolean));
+
+        for (const faction of factions) {
+            const isInGovernment = governmentPartyIds.has(faction.id);
+            let nextAp = 5;
+            if (isInGovernment) nextAp += 1;
+            if ((faction.approval_rating ?? 50) > 6) nextAp += 1;
+
+            if ((faction.action_points ?? null) !== nextAp) {
+                await supabase
+                    .from('factions')
+                    .update({ action_points: nextAp })
+                    .eq('id', faction.id);
+            }
+        }
+    }
 
     const summary = { tick: newTick, nations: nations.length, effects: [], costs: [], resolutions: [], events: [] };
 
@@ -4281,28 +4310,7 @@ async function processLoyaltyTick(supabase, nation) {
 
         loyalty = Math.max(0, Math.min(100, Math.round(loyalty * 10) / 10));
 
-        // Autocracy loyalty threshold consequences
-        if (isAutocracy) {
-            if (loyalty < 15) {
-                // SUPPRESSED: -2 seats/tick, 0 AP
-                seats = Math.max(0, seats - 2);
-                ap = 0;
-                // Auto-purge from all ministries
-                await supabase.from('ministries')
-                    .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
-                    .eq('nation_id', nation.id)
-                    .eq('party_id', faction.id);
-            } else if (loyalty < 30) {
-                // DISLOYAL: -1 seat/tick, -1 AP/tick
-                seats = Math.max(0, seats - 1);
-                ap = Math.max(0, ap - 1);
-                // Auto-purge from all ministries
-                await supabase.from('ministries')
-                    .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
-                    .eq('nation_id', nation.id)
-                    .eq('party_id', faction.id);
-            }
-        }
+        // Loyalty is now informational only for autocracies (no AP/seat drain or auto-purges).
 
         await supabase.from('factions')
             .update({ loyalty, seats, action_points: ap })
