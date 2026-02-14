@@ -1030,11 +1030,17 @@ async function respondToEvent(eventId, optionIndex) {
     const option = ev.options[optionIndex];
     if (!option) return;
 
-    const ap = currentFaction?.action_points || 0;
-    if (ap < (option.ap || 0)) { alert('Not enough AP.'); return; }
+    const apCost = option.ap || 0;
+    if ((currentFaction?.action_points || 0) < apCost) { alert('Not enough AP.'); return; }
 
     const letter = String.fromCharCode(65 + optionIndex);
-    if (!confirm('Choose Option ' + letter + ': ' + (option.label || '') + '?\n\nCost: ' + (option.ap || 0) + ' AP' + (option.money ? ' + $' + option.money + 'M' : ''))) return;
+    if (!confirm('Choose Option ' + letter + ': ' + (option.label || '') + '?\n\nCost: ' + apCost + ' AP' + (option.money ? ' + $' + option.money + 'M' : ''))) return;
+
+    if (apCost > 0) {
+        const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+        if (!apResult.success) { alert('Not enough AP.'); return; }
+        currentFaction.action_points = apResult.newAp;
+    }
 
     try {
         const outcomes = option.outcomes || [{ chance: 100, label: 'Result', effects: [] }];
@@ -1067,11 +1073,6 @@ async function respondToEvent(eventId, optionIndex) {
             }
             appliedEffects.push({ stat_key: eff.stat_key, change: change, target: eff.target || 'nation' });
         }
-
-        await _supabase.from('factions').update({
-            action_points: Math.max(0, ap - (option.ap || 0))
-        }).eq('id', currentFaction.id);
-        currentFaction.action_points = Math.max(0, ap - (option.ap || 0));
 
         await _supabase.from('ministry_events').update({
             chosen_option: optionIndex,
@@ -1163,15 +1164,13 @@ async function confirmAction() {
         alert('Select a target faction.'); return;
     }
 
-    const ap = currentFaction?.action_points || 0;
-    if (ap < action.ap) { alert('Not enough AP.'); return; }
+    if ((currentFaction?.action_points || 0) < action.ap) { alert('Not enough AP.'); return; }
+
+    const apResult = await deductAP(_supabase, currentFaction.id, action.ap);
+    if (!apResult.success) { alert('Not enough AP.'); return; }
+    currentFaction.action_points = apResult.newAp;
 
     try {
-        await _supabase.from('factions').update({
-            action_points: Math.max(0, ap - action.ap)
-        }).eq('id', currentFaction.id);
-        currentFaction.action_points = Math.max(0, ap - action.ap);
-
         const cooldownUntil = action.cooldownTicks ? currentTick + action.cooldownTicks : null;
         const hasEffects = action.stat_effects && action.stat_effects.length > 0;
         await _supabase.from('ministry_action_log').insert({
