@@ -1323,27 +1323,37 @@ async function formGovernment() {
                     .single();
 
                 // Close previous administration and create new one
-                try {
-                    const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
-                    const { data: allFactions } = await _supabase.from('factions')
-                        .select('id, faction_name, seats')
-                        .eq('nation_id', currentNation.id).eq('faction_type', 'party');
-                    const { data: newFormation } = await _supabase.from('government_formations')
-                        .select('party_ids, lead_party_id')
-                        .eq('id', activeFormationId).single();
-                    if (fullNation && newFormation) {
-                        // Determine end reason: if there was an election recently, it's election_loss
-                        const { data: recentElection } = await _supabase.from('elections')
-                            .select('election_tick').eq('nation_id', currentNation.id)
-                            .eq('status', 'completed').order('election_tick', { ascending: false }).limit(1).maybeSingle();
-                        const endReason = (recentElection && (shard?.current_tick - recentElection.election_tick) <= 8)
-                            ? 'election_loss' : 'new_coalition';
-                        await closeAdministration(_supabase, currentNation.id, fullNation, endReason,
-                            shard?.current_tick || 0, shard?.current_date || '', null);
-                        await createAdministration(_supabase, currentNation.id, fullNation, newFormation,
-                            allFactions || [], shard?.current_tick || 0, shard?.current_date || '', null);
+                const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
+                const { data: allFactions } = await _supabase.from('factions')
+                    .select('id, faction_name, seats')
+                    .eq('nation_id', currentNation.id).eq('faction_type', 'party');
+                const { data: newFormation } = await _supabase.from('government_formations')
+                    .select('party_ids, lead_party_id')
+                    .eq('id', activeFormationId).single();
+                if (fullNation && newFormation) {
+                    // Determine end reason: if there was an election recently, it's election_loss
+                    const { data: recentElection } = await _supabase.from('elections')
+                        .select('election_tick').eq('nation_id', currentNation.id)
+                        .eq('status', 'completed').order('election_tick', { ascending: false }).limit(1).maybeSingle();
+                    const endReason = (recentElection && (shard?.current_tick - recentElection.election_tick) <= 8)
+                        ? 'election_loss' : 'new_coalition';
+
+                    try {
+                        await rolloverAdministration(
+                            _supabase,
+                            currentNation.id,
+                            fullNation,
+                            endReason,
+                            newFormation,
+                            allFactions || [],
+                            shard?.current_tick || 0,
+                            shard?.current_date || '',
+                            null
+                        );
+                    } catch (adminErr) {
+                        throw new Error(`Administration lifecycle failed during government formation: ${adminErr.message || adminErr}`);
                     }
-                } catch (adminErr) { console.warn('Could not manage administration records:', adminErr); }
+                }
 
                 // Generate 3 PM candidates for the PM party
                 await generatePMCandidates(
