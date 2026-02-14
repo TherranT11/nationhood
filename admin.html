@@ -601,6 +601,7 @@
         await loadStats();
         await loadNations();
         await loadElectionNations();
+        await updateScheduleTickHint();
         await loadVoterNations();
         await loadInspectorNations();
     }
@@ -989,6 +990,16 @@
             return;
         }
 
+        // Validate tick is in the future
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shard?.current_tick || 0;
+        if (targetTick <= currentTick) {
+            status.className = 'status error';
+            status.textContent = `❌ Tick must be in the future. Current tick is ${currentTick}.`;
+            status.classList.remove('hidden');
+            return;
+        }
+
         const electionType = typeSelect.value; // 'presidential' or 'parliamentary'
         const nationValue = nationSelect.value;
 
@@ -1010,43 +1021,70 @@
         }
 
         btn.disabled = true;
-        const rows = [];
-        for (const nation of targetNations) {
-            const isPresidential = nation.government_type === 'Presidential';
+        status.className = 'status info'; status.textContent = '⏳ Scheduling...'; status.classList.remove('hidden');
 
-            // Always schedule parliamentary
-            rows.push({
-                nation_id: nation.id,
-                election_tick: targetTick,
-                election_type: 'parliamentary',
-                status: 'scheduled'
-            });
+        try {
+            // Delete any existing scheduled elections for these nations to avoid duplicates
+            for (const nation of targetNations) {
+                const { error: delErr } = await _supabase.from('elections').delete()
+                    .eq('nation_id', nation.id)
+                    .eq('status', 'scheduled');
+                if (delErr) console.warn(`Failed to clear old scheduled elections for ${nation.name}:`, delErr);
+            }
 
-            // For "presidential" type, also add a presidential election
-            // (only for Presidential government nations — standard democracies skip this)
-            if (electionType === 'presidential' && isPresidential) {
+            const rows = [];
+            for (const nation of targetNations) {
+                const isPresidential = nation.government_type === 'Presidential';
+
+                // Always schedule parliamentary
                 rows.push({
                     nation_id: nation.id,
                     election_tick: targetTick,
-                    election_type: 'presidential',
+                    election_type: 'parliamentary',
                     status: 'scheduled'
                 });
+
+                // For "presidential" type, also add a presidential election
+                // (only for Presidential government nations — standard democracies skip this)
+                if (electionType === 'presidential' && isPresidential) {
+                    rows.push({
+                        nation_id: nation.id,
+                        election_tick: targetTick,
+                        election_type: 'presidential',
+                        status: 'scheduled'
+                    });
+                }
             }
-        }
 
-        const { error } = await _supabase.from('elections').insert(rows);
-        btn.disabled = false;
+            // Use .select() to get server confirmation of inserted rows
+            const { data: inserted, error } = await _supabase.from('elections').insert(rows).select();
 
-        if (error) {
+            if (error) {
+                status.className = 'status error';
+                status.textContent = '❌ Insert error: ' + error.message;
+                console.error('Election schedule insert error:', error);
+            } else {
+                const dbCount = inserted?.length || 0;
+                const typeLabel = electionType === 'presidential'
+                    ? 'Parliamentary + Presidential' : 'Parliamentary / Midterm';
+                status.className = 'status success';
+                status.textContent = `✅ Scheduled ${typeLabel} for ${targetNations.length} nation(s) at tick ${targetTick} — ${dbCount} record(s) confirmed in DB`;
+                console.log('Scheduled elections:', inserted);
+            }
+        } catch (err) {
             status.className = 'status error';
-            status.textContent = '❌ Error: ' + error.message;
-        } else {
-            const typeLabel = electionType === 'presidential'
-                ? 'Parliamentary + Presidential' : 'Parliamentary / Midterm';
-            status.className = 'status success';
-            status.textContent = `✅ Scheduled ${typeLabel} for ${targetNations.length} nation(s) at tick ${targetTick} (${rows.length} election record(s) created)`;
+            status.textContent = '❌ Unexpected error: ' + err.message;
+            console.error('scheduleElection error:', err);
         }
+        btn.disabled = false;
         status.classList.remove('hidden');
+    }
+
+    // Populate current tick hint when schedule section is visible
+    async function updateScheduleTickHint() {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const hint = document.getElementById('schedule-tick-hint');
+        if (hint && shard) hint.textContent = `Current shard tick: ${shard.current_tick}. Enter a tick greater than this.`;
     }
 
     function onScheduleNationChange() {
