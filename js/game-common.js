@@ -1892,15 +1892,18 @@ async function failBill(supabase, bill) {
 // ==================== ADMINISTRATION LIFECYCLE ====================
 
 /**
- * All 70 stat keys to snapshot from the nations table.
+ * Canonical nation stat columns.
+ *
+ * Used for administration snapshots, policy effect validation,
+ * and any other direct nations-table stat mutations.
  */
-const ADMINISTRATION_STAT_KEYS = [
+const NATION_STAT_COLUMNS = [
     'gdp', 'gdp_growth', 'debt', 'debt_growth', 'budget', 'inflation', 'interest_rates',
     'trade_balance', 'currency_strength', 'foreign_investment', 'credit',
     'income_tax', 'corporate_tax', 'sales_tax', 'tariffs',
     'unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength',
     'poverty_rate', 'income_inequality',
-    'population_growth', 'birth_rate', 'death_rate', 'median_age', 'eligible_voters', 'ethnic_diversity',
+    'population', 'population_growth', 'birth_rate', 'death_rate', 'median_age', 'eligible_voters', 'ethnic_diversity',
     'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use',
     'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
     'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage',
@@ -1913,6 +1916,18 @@ const ADMINISTRATION_STAT_KEYS = [
     'immigration', 'illegal_immigration', 'emigration',
     'international_reputation', 'trade_agreements', 'sanctions'
 ];
+
+const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
+
+const STAT_KEY_ALIASES = {
+    intl_reputation: 'international_reputation',
+    credit_rating: 'credit'
+};
+
+function normalizeNationStatKey(statKey) {
+    if (!statKey || typeof statKey !== 'string') return null;
+    return STAT_KEY_ALIASES[statKey] || statKey;
+}
 
 /**
  * Stats where HIGHER values are better (increase = achievement).
@@ -1947,7 +1962,7 @@ const STATS_LOWER_IS_BETTER = [
  */
 function snapshotNationStats(nation) {
     const snapshot = {};
-    for (const key of ADMINISTRATION_STAT_KEYS) {
+    for (const key of NATION_STAT_COLUMNS) {
         if (nation[key] !== undefined && nation[key] !== null) {
             snapshot[key] = nation[key];
         }
@@ -4342,7 +4357,27 @@ async function processStatEffects(supabase, nation, currentTick) {
                 const delay = eff.delay_ticks || 0;
                 const duration = eff.duration_ticks || 12;
                 const rate = eff.rate || 1;
-                const statKey = eff.stat_key;
+                const dir = String(eff.direction || '').toLowerCase();
+                const rawStatKey = eff.stat_key;
+                const statKey = normalizeNationStatKey(rawStatKey);
+
+                if (!statKey || !NATION_STAT_COLUMN_SET.has(statKey)) {
+                    if (tick === lastApplied + 1) {
+                        console.warn(
+                            `[processStatEffects] Skipping invalid stat_key "${rawStatKey}" for active_law=${law.id}, policy=${policy?.id || 'unknown'} (${policy?.policy_name || 'Unknown'})`
+                        );
+                    }
+                    continue;
+                }
+
+                if (dir !== 'up' && dir !== 'down') {
+                    if (tick === lastApplied + 1) {
+                        console.warn(
+                            `[processStatEffects] Skipping invalid direction "${eff.direction}" for stat_key="${rawStatKey}" active_law=${law.id}, policy=${policy?.id || 'unknown'} (${policy?.policy_name || 'Unknown'})`
+                        );
+                    }
+                    continue;
+                }
 
                 if (ticksSincePassed <= delay + duration) {
                     allEffectsComplete = false;
@@ -4354,7 +4389,7 @@ async function processStatEffects(supabase, nation, currentTick) {
                         : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
 
                     let newVal;
-                    if (eff.direction === 'up') {
+                    if (dir === 'up') {
                         newVal = currentVal + rate;
                     } else {
                         newVal = currentVal - rate;
@@ -4367,7 +4402,7 @@ async function processStatEffects(supabase, nation, currentTick) {
                     appliedEffects.push({
                         policy: isReversal ? '↩ Reversal: ' + (policy?.policy_name || 'Unknown') : (policy?.policy_name || 'Unknown'),
                         stat: statKey,
-                        direction: eff.direction,
+                        direction: dir,
                         rate: rate,
                         tick: tick,
                         newValue: newVal
