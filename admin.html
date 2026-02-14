@@ -698,46 +698,26 @@
             if (nationError) throw nationError;
 
             const currentTick = await getCurrentTick(_supabase);
-            const governmentType = nationRow?.government_type || 'Democracy';
-            let electionType = 'parliamentary';
+            const context = await resolveManualElectionContext(_supabase, nationRow, currentTick);
 
-            if (governmentType === 'Presidential') {
-                const { data: dueScheduled } = await _supabase
-                    .from('elections')
-                    .select('id, election_type')
-                    .eq('nation_id', selectedElectionNation.id)
-                    .eq('status', 'scheduled')
-                    .lte('election_tick', currentTick)
-                    .order('election_tick', { ascending: true })
-                    .limit(1)
-                    .maybeSingle();
-                electionType = dueScheduled?.election_type || 'presidential';
+            if (context.governmentType === 'Presidential' && context.forcedOutsideSchedule) {
+                const confirmMsg = `⚠️ ${nationRow.name} is a Presidential system.
 
-                const { data: nextScheduled } = await _supabase
-                    .from('elections')
-                    .select('election_tick')
-                    .eq('nation_id', selectedElectionNation.id)
-                    .eq('status', 'scheduled')
-                    .eq('election_type', electionType)
-                    .order('election_tick', { ascending: true })
-                    .limit(1)
-                    .maybeSingle();
+` +
+                    `You are forcing a ${context.electionType} election early (scheduled for tick ${context.nextScheduledTick}, current tick ${currentTick}).
 
-                if (nextScheduled && nextScheduled.election_tick > currentTick) {
-                    const confirmMsg = `⚠️ ${nationRow.name} is a Presidential system.\n\n` +
-                        `You are forcing a ${electionType} election early (scheduled for tick ${nextScheduled.election_tick}, current tick ${currentTick}).\n\n` +
-                        'This can replace leadership and alter government state immediately. Continue?';
-                    if (!window.confirm(confirmMsg)) {
-                        status.className = 'status info';
-                        status.textContent = 'Election cancelled.';
-                        return;
-                    }
+` +
+                    'This can replace leadership and alter government state immediately. Continue?';
+                if (!window.confirm(confirmMsg)) {
+                    status.className = 'status info';
+                    status.textContent = 'Election cancelled.';
+                    return;
                 }
             }
 
             const runResult = await runManualElectionByGovernmentType(_supabase, nationRow, {
                 currentTick,
-                electionType
+                electionType: context.electionType
             });
 
             if (runResult?.seatResults?.length) {
@@ -752,8 +732,14 @@
             const electionLabel = runResult?.electionType ? ` (${runResult.electionType})` : '';
             status.className = 'status success';
             status.textContent = `✅ Election completed for ${selectedElectionNation.name}${electionLabel}!`;
-        } catch (error) { console.error(error); status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
-        btn.disabled = false; btn.textContent = '🗳️ RUN ELECTION NOW';
+        } catch (error) {
+            console.error(error);
+            status.className = 'status error';
+            status.textContent = '❌ Error: ' + error.message;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🗳️ RUN ELECTION NOW';
+        }
     }
 
     async function previewElection() {
