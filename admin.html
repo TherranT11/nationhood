@@ -659,7 +659,7 @@
     // ==================== ELECTIONS TAB ====================
     async function loadElectionNations() {
         try {
-            const { data } = await _supabase.from('nations').select('id, name, total_seats, eligible_voters').order('name');
+            const { data } = await _supabase.from('nations').select('id, name, total_seats, eligible_voters, government_type').order('name');
             nations = data || [];
             const select = document.getElementById('election-nation-select');
             select.innerHTML = '<option value="">-- Choose a nation --</option>';
@@ -690,7 +690,11 @@
         btn.disabled = true; btn.textContent = '⏳ Running Election...';
         status.className = 'status info'; status.textContent = 'Simulating election...'; status.classList.remove('hidden'); resultsDiv.classList.add('hidden');
        try {
-    const { data, error } = await _supabase.rpc('run_election', { p_nation_id: selectedElectionNation.id });
+    const manualElectionType = selectedElectionNation.government_type === 'Presidential' ? 'presidential' : 'parliamentary';
+    const { data, error } = await _supabase.rpc('run_election', {
+        p_nation_id: selectedElectionNation.id,
+        p_election_type: manualElectionType
+    });
     if (error) throw error;
     const { data: election } = await _supabase.from('elections').select('results').eq('nation_id', selectedElectionNation.id).eq('status', 'completed').order('election_tick', { ascending: false }).limit(1).single();
     if (election?.results?.seats) {

@@ -2863,8 +2863,10 @@ async function processElections(supabase, nation, currentTick) {
     // For presidential systems, process parliamentary elections before presidential ones
     // so seats are allocated before we determine the popular vote winner
     const sorted = (dueElections || []).sort((a, b) => {
-        if (a.election_type === 'parliamentary' && b.election_type === 'presidential') return -1;
-        if (a.election_type === 'presidential' && b.election_type === 'parliamentary') return 1;
+        const aType = a.election_type || 'parliamentary';
+        const bType = b.election_type || 'parliamentary';
+        if (aType === 'parliamentary' && bType === 'presidential') return -1;
+        if (aType === 'presidential' && bType === 'parliamentary') return 1;
         return 0;
     });
 
@@ -2880,7 +2882,8 @@ async function processElections(supabase, nation, currentTick) {
         }
 
         const { data, error } = await supabase.rpc('run_election', {
-            p_nation_id: nation.id
+            p_nation_id: nation.id,
+            p_election_type: electionType
         });
 
         if (error) {
