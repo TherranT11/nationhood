@@ -294,7 +294,7 @@
 <script>
 let currentNation = null, currentFaction = null, currentSeats = 0;
 let allPartySeats = {}, allParties = [], allPolicies = [];
-let activeLaws = [], committeeBills = [], floorBills = [], frozenBills = [], presidentDeskBills = [];
+let activeLaws = [], committeeBills = [], floorBills = [], frozenBills = [], presidentDeskBills = [], recentBills = [];
 let isAutocracy = false, isHeadFaction = false, headFactionId = null;
 let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
 let isCaretaker = false;
@@ -391,9 +391,10 @@ async function loadLawsData() {
             _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), factions(faction_name)), bill_support(*)').eq('nation_id', nid).eq('status', 'committee'),
             _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).in('status', ['floor', 'vetoed']),
             _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).eq('status', 'frozen'),
-            isPresidential ? _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).eq('status', 'president_desk') : Promise.resolve({ data: [] })
+            isPresidential ? _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).eq('status', 'president_desk') : Promise.resolve({ data: [] }),
+            _supabase.from('bills').select('*, factions(faction_name)').eq('nation_id', nid).in('status', ['passed', 'failed']).order('passed_tick', { ascending: false }).limit(10)
         ];
-        const [policiesRes, lawsRes, committeeRes, floorRes, frozenRes, deskRes] = await Promise.all(queries);
+        const [policiesRes, lawsRes, committeeRes, floorRes, frozenRes, deskRes, recentRes] = await Promise.all(queries);
 
         allPolicies = policiesRes.data || [];
         if (!cachedPolicies && allPolicies.length) qCacheSet('policies_active', allPolicies, 10 * 60 * 1000);
@@ -402,6 +403,7 @@ async function loadLawsData() {
         floorBills = floorRes.data || [];
         frozenBills = frozenRes.data || [];
         presidentDeskBills = deskRes.data || [];
+        recentBills = recentRes.data || [];
 
         // Load dynamic ideology scores for current player
         if (currentFaction) {
@@ -508,6 +510,7 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
                 ${frozenBills.length > 0 ? renderFrozenBills() : ''}
                 ${floorBills.length > 0 ? renderFloorBills() : ''}
                 ${committeeBills.length > 0 ? renderCommitteeBills() : ''}
+                ${recentBills.length > 0 ? renderRecentBills() : ''}
                 <div class="section-header">Active Laws</div>
                 <div class="sector-accordion">
                     ${MAJOR_SECTORS.map(sector => renderMajorSector(sector)).join('')}
@@ -747,6 +750,30 @@ async function vetoDecree(billId) {
 
 function renderCommitteeBills() {
     return `<div class="section-header" style="color:#ff9800;">In Committee</div><div class="committee-section">${committeeBills.map(bill => renderCommitteeBill(bill)).join('')}</div>`;
+}
+
+function renderRecentBills() {
+    return `<div class="section-header" style="color:#888;">Recently Resolved</div>` +
+        recentBills.map(bill => {
+            const isPassed = bill.status === 'passed';
+            const statusColor = isPassed ? '#4CAF50' : '#ff4444';
+            const statusText = isPassed ? 'PASSED' : 'FAILED';
+            const typeLabel = bill.bill_type === 'foundational'
+                ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Foundational</span>'
+                : (bill.bill_type === 'no_confidence'
+                    ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">No Confidence</span>'
+                    : '');
+            return `
+                <div class="floor-bill clickable-bill" onclick="window.location.href='bill.html?id=${bill.id}'" style="opacity:0.7;">
+                    <div class="committee-bill-header">
+                        <div>
+                            <div class="floor-bill-name">${bill.bill_name || 'Unnamed Bill'}${typeLabel}</div>
+                            <div class="committee-bill-sponsor">Proposed by ${bill.factions?.faction_name || 'Unknown'}</div>
+                        </div>
+                        <div class="floor-status" style="color:${statusColor};font-weight:bold;">${statusText}</div>
+                    </div>
+                </div>`;
+        }).join('');
 }
 
 function renderCommitteeBill(bill) {
