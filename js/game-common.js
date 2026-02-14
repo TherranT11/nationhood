@@ -2847,6 +2847,134 @@ async function processPartialElection(supabase, nation, election, currentTick) {
     console.log(`Partial election completed: ${deltaSeats} new seats allocated across ${factions.length} parties`);
 }
 
+async function resolveManualElectionContext(supabase, nation, currentTick, requestedElectionType = null) {
+    const governmentType = nation?.government_type || 'Democracy';
+    if (governmentType !== 'Presidential') {
+        return {
+            governmentType,
+            electionType: 'parliamentary',
+            forcedOutsideSchedule: false,
+            nextScheduledTick: null
+        };
+    }
+
+    let electionType = requestedElectionType;
+    if (!electionType) {
+        const { data: dueScheduledElection } = await supabase
+            .from('elections')
+            .select('id, election_type')
+            .eq('nation_id', nation.id)
+            .eq('status', 'scheduled')
+            .lte('election_tick', currentTick)
+            .order('election_tick', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+        electionType = dueScheduledElection?.election_type || 'presidential';
+    }
+
+    const { data: nextScheduled } = await supabase
+        .from('elections')
+        .select('election_tick')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .eq('election_type', electionType)
+        .order('election_tick', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+    const nextScheduledTick = nextScheduled?.election_tick ?? null;
+    return {
+        governmentType,
+        electionType,
+        forcedOutsideSchedule: !!(nextScheduledTick && nextScheduledTick > currentTick),
+        nextScheduledTick
+    };
+}
+
+async function runManualElectionByGovernmentType(supabase, nation, options = {}) {
+    if (!nation?.id) throw new Error('Nation is required');
+
+    let currentTick;
+    if (Number.isInteger(options.currentTick)) {
+        currentTick = options.currentTick;
+    } else {
+        const { data: _shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        currentTick = _shard?.current_tick || 0;
+    }
+
+    const context = await resolveManualElectionContext(supabase, nation, currentTick, options.electionType);
+    const isPresidential = context.governmentType === 'Presidential';
+    const normalizedElectionType = context.electionType || 'parliamentary';
+
+    // Use candidate-based voting for presidential elections, party-based for parliamentary
+    if (isPresidential && normalizedElectionType === 'presidential') {
+        // Ensure candidates exist — generate for parties that have none
+        const { data: allParties } = await supabase
+            .from('factions')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('faction_type', 'party');
+
+        if (allParties) {
+            for (const party of allParties) {
+                const { count } = await supabase
+                    .from('pm_candidates')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('nation_id', nation.id)
+                    .eq('faction_id', party.id)
+                    .eq('candidate_type', 'presidential');
+                if (!count || count === 0) {
+                    console.log(`Generating presidential candidates for faction ${party.id} (manual election)`);
+                    await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
+                }
+            }
+        }
+
+        // Auto-select candidates for any party that hasn't chosen
+        await autoSelectPresidentialCandidates(supabase, nation, currentTick);
+        const { error: runError } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id });
+        if (runError) throw runError;
+    } else {
+        const { error: runError } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: normalizedElectionType });
+        if (runError) throw runError;
+    }
+
+    const { data: completedElection, error: electionError } = await supabase
+        .from('elections')
+        .select('id, election_tick, election_type, results, created_at')
+        .eq('nation_id', nation.id)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+    if (electionError) throw electionError;
+
+    // Sync seats for parliamentary elections only (presidential results have no seats)
+    const seatResults = completedElection?.results?.seats || [];
+    for (const r of seatResults) {
+        await supabase
+            .from('factions')
+            .update({ seats: r.seats })
+            .eq('id', r.party_id);
+    }
+
+    if (isPresidential && normalizedElectionType === 'presidential') {
+        await processPresidentialElectionResult(supabase, nation, completedElection, currentTick);
+    }
+
+    return {
+        success: true,
+        nationId: nation.id,
+        governmentType: context.governmentType,
+        electionType: normalizedElectionType,
+        forcedOutsideSchedule: context.forcedOutsideSchedule,
+        nextScheduledTick: context.nextScheduledTick,
+        currentTick,
+        completedElection,
+        seatResults
+    };
+}
+
 async function processElections(supabase, nation, currentTick) {
     if (nation.government_type === 'Autocracy') return [];
 
@@ -2863,8 +2991,10 @@ async function processElections(supabase, nation, currentTick) {
     // For presidential systems, process parliamentary elections before presidential ones
     // so seats are allocated before we determine the popular vote winner
     const sorted = (dueElections || []).sort((a, b) => {
-        if (a.election_type === 'parliamentary' && b.election_type === 'presidential') return -1;
-        if (a.election_type === 'presidential' && b.election_type === 'parliamentary') return 1;
+        const aType = a.election_type || 'parliamentary';
+        const bType = b.election_type || 'parliamentary';
+        if (aType === 'parliamentary' && bType === 'presidential') return -1;
+        if (aType === 'presidential' && bType === 'parliamentary') return 1;
         return 0;
     });
 
@@ -2879,9 +3009,18 @@ async function processElections(supabase, nation, currentTick) {
             continue;
         }
 
-        const { data, error } = await supabase.rpc('run_election', {
-            p_nation_id: nation.id
-        });
+        // Auto-select presidential candidates for any party that hasn't chosen yet
+        if (electionType === 'presidential') {
+            await autoSelectPresidentialCandidates(supabase, nation, currentTick);
+        }
+
+        // Use candidate-based voting for presidential elections, party-based for parliamentary
+        let data, error;
+        if (electionType === 'presidential') {
+            ({ data, error } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id }));
+        } else {
+            ({ data, error } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: electionType }));
+        }
 
         if (error) {
             console.error('Election processing error:', error);
@@ -3060,18 +3199,20 @@ async function processElections(supabase, nation, currentTick) {
 }
 
 /**
- * Presidential election result: determine popular vote winner and generate president candidates.
+ * Presidential election result: read candidate-level popular vote results
+ * and inaugurate the winning candidate.
  */
 async function processPresidentialElectionResult(supabase, nation, completedElection, currentTick) {
-    const voteResults = completedElection?.results?.votes || completedElection?.results?.seats || [];
-    if (voteResults.length === 0) {
-        console.warn(`No vote data for presidential election in ${nation.name}`);
+    const candidateResults = completedElection?.results?.presidential_candidates || [];
+    if (candidateResults.length === 0) {
+        console.warn(`No candidate vote data for presidential election in ${nation.name}`);
         return;
     }
 
-    // Winner = party with the most total popular votes
-    const winner = voteResults.reduce((best, p) => (p.votes > best.votes) ? p : best, voteResults[0]);
-    console.log(`Presidential election winner: ${winner.party_name} with ${winner.votes} votes (${nation.name})`);
+    // Winner = candidate marked as winner by SQL, or highest votes as fallback
+    const winner = candidateResults.find(c => c.winner)
+        || candidateResults.reduce((best, c) => (c.votes > best.votes) ? c : best, candidateResults[0]);
+    console.log(`Presidential election winner: ${winner.candidate_name} (${winner.party_name}) with ${winner.votes} votes (${nation.name})`);
 
     // Deactivate previous president
     await supabase
@@ -3089,48 +3230,42 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
         }
     } catch (adminErr) { console.warn('Could not close administration on presidential election:', adminErr); }
 
-    // Set ruling faction to the winner
+    // Set ruling faction to the winner's party
     await supabase.from('nations')
-        .update({ ruling_faction_id: winner.party_id })
+        .update({ ruling_faction_id: winner.faction_id })
         .eq('id', nation.id);
 
-    // Look up the winning party's pre-selected presidential candidate
+    // Look up the winning candidate from pm_candidates by candidate_id
     const { data: winningCandidate } = await supabase
         .from('pm_candidates')
         .select('*')
-        .eq('nation_id', nation.id)
-        .eq('faction_id', winner.party_id)
-        .eq('candidate_type', 'presidential')
-        .eq('selected', true)
-        .limit(1)
+        .eq('id', winner.candidate_id)
         .maybeSingle();
 
     if (winningCandidate) {
-        // Auto-inaugurate the winning candidate
-        await inauguratePresident(supabase, winningCandidate, nation.id, winner.party_id, currentTick);
-        console.log(`President inaugurated: ${winningCandidate.first_name} ${winningCandidate.last_name} (${winner.party_name})`);
+        await inauguratePresident(supabase, winningCandidate, nation.id, winner.faction_id, currentTick);
+        console.log(`President inaugurated: ${winner.candidate_name} (${winner.party_name})`);
     } else {
-        // Fallback: if no pre-selected candidate (e.g. player didn't pick in time),
-        // grab any presidential candidate for the winning party
+        // Fallback: candidate may have been cleaned up, try by faction
         const { data: fallbackCandidate } = await supabase
             .from('pm_candidates')
             .select('*')
             .eq('nation_id', nation.id)
-            .eq('faction_id', winner.party_id)
+            .eq('faction_id', winner.faction_id)
             .eq('candidate_type', 'presidential')
-            .order('created_at', { ascending: true })
+            .eq('selected', true)
             .limit(1)
             .maybeSingle();
 
         if (fallbackCandidate) {
-            await inauguratePresident(supabase, fallbackCandidate, nation.id, winner.party_id, currentTick);
+            await inauguratePresident(supabase, fallbackCandidate, nation.id, winner.faction_id, currentTick);
             console.log(`President inaugurated (fallback): ${fallbackCandidate.first_name} ${fallbackCandidate.last_name} (${winner.party_name})`);
         } else {
             // No candidates at all — generate one and inaugurate immediately
-            console.warn(`No presidential candidate found for winning party ${winner.party_name} in ${nation.name} — generating emergency candidate`);
-            const emergencyCandidates = await generatePresidentCandidates(supabase, nation.id, winner.party_id, currentTick, 'presidential');
+            console.warn(`No presidential candidate found for winner ${winner.candidate_name} in ${nation.name} — generating emergency candidate`);
+            const emergencyCandidates = await generatePresidentCandidates(supabase, nation.id, winner.faction_id, currentTick, 'presidential');
             if (emergencyCandidates && emergencyCandidates.length > 0) {
-                await inauguratePresident(supabase, emergencyCandidates[0], nation.id, winner.party_id, currentTick);
+                await inauguratePresident(supabase, emergencyCandidates[0], nation.id, winner.faction_id, currentTick);
                 console.log(`Emergency president inaugurated: ${emergencyCandidates[0].first_name} ${emergencyCandidates[0].last_name}`);
             }
         }
@@ -3141,6 +3276,9 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
         .eq('nation_id', nation.id)
         .eq('candidate_type', 'presidential');
 
+    // Sort for runner-up info in event
+    const sorted = [...candidateResults].sort((a, b) => b.votes - a.votes);
+
     // Fire system event
     try {
         await supabase.rpc('fire_system_event', {
@@ -3150,9 +3288,11 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
             p_placeholders: {
                 nation: nation.name,
                 winning_party: winner.party_name,
-                winning_candidate: winningCandidate ? `${winningCandidate.first_name} ${winningCandidate.last_name}` : 'TBD',
+                winning_candidate: winner.candidate_name,
                 votes: winner.votes,
-                vote_percentage: winner.vote_percentage || '?'
+                vote_percentage: winner.vote_percentage || '?',
+                runner_up: sorted[1]?.candidate_name || 'N/A',
+                runner_up_party: sorted[1]?.party_name || 'N/A'
             }
         });
     } catch (e) { console.warn('Presidential election event fire failed (non-blocking):', e); }
@@ -3786,6 +3926,50 @@ async function processPresidentialTermEnd(supabase, nation, currentTick) {
 }
 
 /**
+ * Auto-select a presidential candidate for every party that has unselected
+ * candidates but no selected one. Called immediately before a presidential
+ * election fires so every party participates in the candidate popular vote.
+ */
+async function autoSelectPresidentialCandidates(supabase, nation, currentTick) {
+    // Find all unselected presidential candidates for this nation
+    const { data: unselected } = await supabase
+        .from('pm_candidates')
+        .select('id, faction_id, first_name, last_name')
+        .eq('nation_id', nation.id)
+        .eq('candidate_type', 'presidential')
+        .eq('selected', false)
+        .order('created_at', { ascending: true });
+
+    if (!unselected || unselected.length === 0) return;
+
+    // Find which factions already have a selected candidate
+    const { data: alreadySelected } = await supabase
+        .from('pm_candidates')
+        .select('faction_id')
+        .eq('nation_id', nation.id)
+        .eq('candidate_type', 'presidential')
+        .eq('selected', true);
+
+    const selectedFactions = new Set((alreadySelected || []).map(r => r.faction_id));
+
+    // Group unselected by faction, auto-select the first for factions with no selection
+    const factionGroups = {};
+    for (const c of unselected) {
+        if (selectedFactions.has(c.faction_id)) continue;
+        if (!factionGroups[c.faction_id]) factionGroups[c.faction_id] = c;
+    }
+
+    for (const [factionId, pick] of Object.entries(factionGroups)) {
+        console.log(`Auto-selecting presidential candidate for election: ${pick.first_name} ${pick.last_name} (faction ${factionId}) in ${nation.name}`);
+        try {
+            await selectPresidentCandidate(supabase, pick.id, nation.id, factionId, currentTick);
+        } catch (e) {
+            console.error(`Error auto-selecting presidential candidate for ${nation.name}:`, e);
+        }
+    }
+}
+
+/**
  * Auto-select presidential nominee if a party hasn't chosen within 3 ticks.
  * In the new pre-election flow, this just marks selected=true so the candidate
  * is ready for election day. Does NOT inaugurate — that happens when the
@@ -3919,12 +4103,41 @@ async function advanceTick(supabase) {
         .not('action_lockout_until_tick', 'is', null)
         .lte('action_lockout_until_tick', newTick);
 
-    // Refill action points for all factions (loyalty-based AP reduction happens in processLoyaltyTick)
-    await supabase.from('factions').update({ action_points: 10 }).lt('action_points', 10);
-
     // 2. Load all nations
     const { data: nations } = await supabase.from('nations').select('*');
     if (!nations || nations.length === 0) return { tick: newTick, nations: 0 };
+
+    // Refill AP for party factions each tick:
+    // base 5 AP, +1 if in government, +1 if approval > 6.
+    for (const nation of nations) {
+        const { data: factions } = await supabase
+            .from('factions')
+            .select('id, approval_rating, action_points, faction_type')
+            .eq('nation_id', nation.id)
+            .eq('faction_type', 'party');
+
+        if (!factions || factions.length === 0) continue;
+
+        const coalition = await fetchActiveCoalition(supabase, nation.id);
+        const governmentPartyIds = new Set([
+            ...(coalition?.party_ids || []),
+            nation.ruling_faction_id
+        ].filter(Boolean));
+
+        for (const faction of factions) {
+            const isInGovernment = governmentPartyIds.has(faction.id);
+            let nextAp = 5;
+            if (isInGovernment) nextAp += 1;
+            if ((faction.approval_rating ?? 50) > 60) nextAp += 1;
+
+            if ((faction.action_points ?? null) !== nextAp) {
+                await supabase
+                    .from('factions')
+                    .update({ action_points: nextAp })
+                    .eq('id', faction.id);
+            }
+        }
+    }
 
     const summary = { tick: newTick, nations: nations.length, effects: [], costs: [], resolutions: [], events: [] };
 
@@ -4179,28 +4392,7 @@ async function processLoyaltyTick(supabase, nation) {
 
         loyalty = Math.max(0, Math.min(100, Math.round(loyalty * 10) / 10));
 
-        // Autocracy loyalty threshold consequences
-        if (isAutocracy) {
-            if (loyalty < 15) {
-                // SUPPRESSED: -2 seats/tick, 0 AP
-                seats = Math.max(0, seats - 2);
-                ap = 0;
-                // Auto-purge from all ministries
-                await supabase.from('ministries')
-                    .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
-                    .eq('nation_id', nation.id)
-                    .eq('party_id', faction.id);
-            } else if (loyalty < 30) {
-                // DISLOYAL: -1 seat/tick, -1 AP/tick
-                seats = Math.max(0, seats - 1);
-                ap = Math.max(0, ap - 1);
-                // Auto-purge from all ministries
-                await supabase.from('ministries')
-                    .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
-                    .eq('nation_id', nation.id)
-                    .eq('party_id', faction.id);
-            }
-        }
+        // Loyalty is now informational only for autocracies (no AP/seat drain or auto-purges).
 
         await supabase.from('factions')
             .update({ loyalty, seats, action_points: ap })

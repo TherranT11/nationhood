@@ -300,11 +300,23 @@
                 <select id="election-nation-select" onchange="onElectionNationSelect()"><option value="">-- Choose a nation --</option></select>
             </div>
             <div id="election-nation-info" class="shard-info hidden">
+                <div class="info-row"><span class="info-label">Government Type:</span><span class="info-value" id="election-info-gov-type">-</span></div>
                 <div class="info-row"><span class="info-label">Total Seats:</span><span class="info-value" id="election-info-seats">-</span></div>
                 <div class="info-row"><span class="info-label">Eligible Voters:</span><span class="info-value" id="election-info-voters">-</span></div>
                 <div class="info-row"><span class="info-label">Parties:</span><span class="info-value" id="election-info-parties">-</span></div>
                 <div class="info-row"><span class="info-label">Last Election:</span><span class="info-value" id="election-info-last">-</span></div>
+                <div id="election-info-scheduled" class="info-row" style="display:none;"><span class="info-label">Next Scheduled:</span><span class="info-value" id="election-info-next">-</span></div>
+                <div id="election-info-candidates" class="info-row" style="display:none;"><span class="info-label">Candidates:</span><span class="info-value" id="election-info-cand-status">-</span></div>
             </div>
+            <!-- Election type selector (shown only for Presidential nations) -->
+            <div id="election-type-selector" class="input-group" style="display:none;">
+                <label>Election Type</label>
+                <select id="election-type-select">
+                    <option value="parliamentary">Parliamentary (midterm — seats only, president stays)</option>
+                    <option value="presidential">Presidential (candidate popular vote — new president)</option>
+                </select>
+            </div>
+            <div id="election-type-warning" style="display:none;background:#3a2a1a;border:1px solid #ff9800;border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.82rem;color:#ff9800;"></div>
             <div style="display:flex; gap:10px; margin-bottom:10px;">
                 <button class="btn btn-success" style="flex:1;" id="run-election-btn" disabled onclick="runElection()">🗳️ RUN ELECTION NOW</button>
                 <button class="btn btn-secondary" style="flex:1;" id="preview-election-btn" disabled onclick="previewElection()">🔍 PREVIEW ELECTION</button>
@@ -659,7 +671,7 @@
     // ==================== ELECTIONS TAB ====================
     async function loadElectionNations() {
         try {
-            const { data } = await _supabase.from('nations').select('id, name, total_seats, eligible_voters').order('name');
+            const { data } = await _supabase.from('nations').select('id, name, total_seats, eligible_voters, government_type').order('name');
             nations = data || [];
             const select = document.getElementById('election-nation-select');
             select.innerHTML = '<option value="">-- Choose a nation --</option>';
@@ -671,15 +683,82 @@
         const infoDiv = document.getElementById('election-nation-info');
         const btn = document.getElementById('run-election-btn');
         const previewBtn = document.getElementById('preview-election-btn');
+        const typeSelector = document.getElementById('election-type-selector');
+        const warningDiv = document.getElementById('election-type-warning');
+        warningDiv.style.display = 'none';
+        typeSelector.style.display = 'none';
+        document.getElementById('election-info-scheduled').style.display = 'none';
+        document.getElementById('election-info-candidates').style.display = 'none';
         if (!nationId) { infoDiv.classList.add('hidden'); btn.disabled = true; previewBtn.disabled = true; selectedElectionNation = null; return; }
         selectedElectionNation = nations.find(n => n.id === nationId);
+        const isPresidential = selectedElectionNation.government_type === 'Presidential';
         const { count: partyCount } = await _supabase.from('factions').select('*', { count: 'exact', head: true }).eq('nation_id', nationId).eq('faction_type', 'party');
         const { data: lastElection } = await _supabase.from('elections').select('election_tick').eq('nation_id', nationId).eq('status', 'completed').order('election_tick', { ascending: false }).limit(1).maybeSingle();
+        document.getElementById('election-info-gov-type').textContent = selectedElectionNation.government_type || 'Democracy';
         document.getElementById('election-info-seats').textContent = selectedElectionNation.total_seats || 120;
         document.getElementById('election-info-voters').textContent = (selectedElectionNation.eligible_voters || 0).toLocaleString();
         document.getElementById('election-info-parties').textContent = partyCount || 0;
         document.getElementById('election-info-last').textContent = lastElection ? `Tick ${lastElection.election_tick}` : 'Never';
+
+        if (isPresidential) {
+            typeSelector.style.display = 'block';
+            const { data: _shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            const currentTick = _shard?.current_tick || 0;
+
+            // Show next scheduled elections
+            const { data: nextParl } = await _supabase.from('elections').select('election_tick')
+                .eq('nation_id', nationId).eq('status', 'scheduled').eq('election_type', 'parliamentary')
+                .order('election_tick', { ascending: true }).limit(1).maybeSingle();
+            const { data: nextPres } = await _supabase.from('elections').select('election_tick')
+                .eq('nation_id', nationId).eq('status', 'scheduled').eq('election_type', 'presidential')
+                .order('election_tick', { ascending: true }).limit(1).maybeSingle();
+
+            let schedText = '';
+            if (nextParl) schedText += `Parliamentary: tick ${nextParl.election_tick} (${nextParl.election_tick - currentTick} away)`;
+            if (nextPres) schedText += `${schedText ? ' | ' : ''}Presidential: tick ${nextPres.election_tick} (${nextPres.election_tick - currentTick} away)`;
+            if (schedText) {
+                document.getElementById('election-info-next').textContent = schedText;
+                document.getElementById('election-info-scheduled').style.display = '';
+            }
+
+            // Show candidate status
+            const { count: selectedCandidates } = await _supabase.from('pm_candidates').select('*', { count: 'exact', head: true })
+                .eq('nation_id', nationId).eq('candidate_type', 'presidential').eq('selected', true);
+            const { count: unselectedCandidates } = await _supabase.from('pm_candidates').select('*', { count: 'exact', head: true })
+                .eq('nation_id', nationId).eq('candidate_type', 'presidential').eq('selected', false);
+            const candText = (selectedCandidates || 0) > 0
+                ? `${selectedCandidates} selected, ${unselectedCandidates || 0} unselected`
+                : (unselectedCandidates || 0) > 0
+                    ? `${unselectedCandidates} generated (none selected)`
+                    : 'None generated yet';
+            document.getElementById('election-info-cand-status').textContent = candText;
+            document.getElementById('election-info-candidates').style.display = '';
+
+            // Update warning when type changes
+            updateElectionTypeWarning(currentTick, selectedCandidates || 0, unselectedCandidates || 0);
+            document.getElementById('election-type-select').onchange = () => updateElectionTypeWarning(currentTick, selectedCandidates || 0, unselectedCandidates || 0);
+        }
+
         infoDiv.classList.remove('hidden'); btn.disabled = false; previewBtn.disabled = false;
+    }
+
+    function updateElectionTypeWarning(currentTick, selectedCount, unselectedCount) {
+        const warningDiv = document.getElementById('election-type-warning');
+        const elType = document.getElementById('election-type-select').value;
+        if (elType !== 'presidential') {
+            warningDiv.style.display = 'none';
+            return;
+        }
+        const hasCandidates = selectedCount > 0 || unselectedCount > 0;
+        if (!hasCandidates) {
+            warningDiv.style.display = 'block';
+            warningDiv.innerHTML = '<strong>No candidates exist.</strong> Running a presidential election will auto-generate candidates for all parties and auto-select them. No player will get to choose their nominee.';
+        } else if (selectedCount === 0) {
+            warningDiv.style.display = 'block';
+            warningDiv.innerHTML = '<strong>Candidates generated but none selected.</strong> All parties will have a candidate auto-selected before the vote runs.';
+        } else {
+            warningDiv.style.display = 'none';
+        }
     }
     async function runElection() {
         if (!selectedElectionNation) return;
@@ -689,27 +768,76 @@
         const btn = document.getElementById('run-election-btn');
         btn.disabled = true; btn.textContent = '⏳ Running Election...';
         status.className = 'status info'; status.textContent = 'Simulating election...'; status.classList.remove('hidden'); resultsDiv.classList.add('hidden');
-       try {
-    const { data, error } = await _supabase.rpc('run_election', { p_nation_id: selectedElectionNation.id });
-    if (error) throw error;
-    const { data: election } = await _supabase.from('elections').select('results').eq('nation_id', selectedElectionNation.id).eq('status', 'completed').order('election_tick', { ascending: false }).limit(1).single();
-    if (election?.results?.seats) {
-        // Sync seats back to factions table
-        for (const r of election.results.seats) {
-            await _supabase
-                .from('factions')
-                .update({ seats: r.seats })
-                .eq('id', r.party_id);
-        }
-        console.log('Seats synced to factions table');
+        try {
+            const { data: nationRow, error: nationError } = await _supabase
+                .from('nations')
+                .select('id, name, government_type')
+                .eq('id', selectedElectionNation.id)
+                .single();
+            if (nationError) throw nationError;
 
-        const totalSeats = selectedElectionNation.total_seats || 120;
-        resultsContent.innerHTML = election.results.seats.sort((a, b) => b.seats - a.seats).map(r => `<div class="result-party"><div><div class="result-party-name">${r.party_name}</div><div class="result-bar" style="width:200px;"><div class="result-bar-fill" style="width:${(r.seats/totalSeats)*100}%"></div></div></div><div class="result-party-seats">${r.seats} seats</div></div>`).join('');
-        resultsDiv.classList.remove('hidden');
-    }
-            status.className = 'status success'; status.textContent = `✅ Election completed for ${selectedElectionNation.name}!`;
-        } catch (error) { console.error(error); status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
-        btn.disabled = false; btn.textContent = '🗳️ RUN ELECTION NOW';
+            const { data: _shard2 } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            const currentTick = _shard2?.current_tick || 0;
+            const isPresidential = nationRow.government_type === 'Presidential';
+
+            // Use admin-selected election type for Presidential nations
+            const selectedElectionType = isPresidential
+                ? document.getElementById('election-type-select').value
+                : 'parliamentary';
+
+            if (isPresidential) {
+                const typeLabel = selectedElectionType === 'presidential' ? 'Presidential (new president)' : 'Parliamentary (midterm)';
+                const confirmMsg = `Run a ${typeLabel} election for ${nationRow.name}?\n\n` +
+                    (selectedElectionType === 'presidential'
+                        ? 'This will determine a new president via candidate popular vote. If no candidates exist, they will be auto-generated and auto-selected.'
+                        : 'This will reshuffle parliamentary seats. The president stays in office.') +
+                    '\n\nContinue?';
+                if (!window.confirm(confirmMsg)) {
+                    status.className = 'status info';
+                    status.textContent = 'Election cancelled.';
+                    return;
+                }
+            }
+
+            const runResult = await runManualElectionByGovernmentType(_supabase, nationRow, {
+                currentTick,
+                electionType: selectedElectionType
+            });
+
+            // Display results — candidate results for presidential, seat results for parliamentary
+            const candidateResults = runResult?.completedElection?.results?.presidential_candidates || [];
+            if (candidateResults.length > 0) {
+                const sorted = [...candidateResults].sort((a, b) => b.votes - a.votes);
+                resultsContent.innerHTML = sorted.map(c => {
+                    const isWinner = c.winner;
+                    return `<div class="result-party" style="${isWinner ? 'border-left:3px solid #4CAF50;padding-left:8px;' : ''}">
+                        <div><div class="result-party-name">${isWinner ? '&#x2713; ' : ''}${c.candidate_name} (${c.party_name})</div>
+                        <div style="font-size:0.75rem;color:#888;">${c.ideology || ''}</div>
+                        <div class="result-bar" style="width:200px;"><div class="result-bar-fill" style="width:${c.vote_percentage || 0}%"></div></div></div>
+                        <div class="result-party-seats">${(c.votes || 0).toLocaleString()} votes (${c.vote_percentage || 0}%)</div>
+                    </div>`;
+                }).join('');
+                resultsDiv.classList.remove('hidden');
+            } else if (runResult?.seatResults?.length) {
+                const totalSeats = selectedElectionNation.total_seats || 120;
+                resultsContent.innerHTML = runResult.seatResults
+                    .sort((a, b) => b.seats - a.seats)
+                    .map(r => `<div class="result-party"><div><div class="result-party-name">${r.party_name}</div><div class="result-bar" style="width:200px;"><div class="result-bar-fill" style="width:${(r.seats/totalSeats)*100}%"></div></div></div><div class="result-party-seats">${r.seats} seats</div></div>`)
+                    .join('');
+                resultsDiv.classList.remove('hidden');
+            }
+
+            const electionLabel = runResult?.electionType ? ` (${runResult.electionType})` : '';
+            status.className = 'status success';
+            status.textContent = `✅ Election completed for ${selectedElectionNation.name}${electionLabel}!`;
+        } catch (error) {
+            console.error(error);
+            status.className = 'status error';
+            status.textContent = '❌ Error: ' + error.message;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🗳️ RUN ELECTION NOW';
+        }
     }
 
     async function previewElection() {

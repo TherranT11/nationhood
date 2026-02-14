@@ -2297,7 +2297,17 @@ async function loadPastAdministrations() {
 
         if (error) throw error;
         if (!admins || admins.length === 0) {
-            container.innerHTML = '';
+            container.innerHTML = `
+                <div class="past-admins-toggle" style="cursor: default;">
+                    <span class="past-admins-toggle-text">Past Administrations (0)</span>
+                </div>
+                <div class="info-block" style="margin-top: 8px;">
+                    <div class="info-row">
+                        <span class="info-label">History</span>
+                        <span class="info-value" style="color: var(--text-muted);">No administrations recorded yet.</span>
+                    </div>
+                </div>
+            `;
             return;
         }
 
