@@ -4618,7 +4618,7 @@ async function processStatEffects(supabase, nation, currentTick) {
                         newVal = currentVal - rate;
                     }
 
-                    newVal = Math.max(0, Math.min(100, newVal));
+                    newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
                     nationUpdates[statKey] = newVal;
                     anyEffectApplied = true;
 
@@ -4755,7 +4755,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
                         }
                         currentVal = ministerUpdates[mKey];
                         newVal = eff.direction === 'up' ? currentVal + rate : currentVal - rate;
-                        newVal = Math.max(0, Math.min(100, newVal));
+                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
                         ministerUpdates[mKey] = newVal;
                     } else if (target === 'faction') {
                         const fKey = action.faction_id;
@@ -4769,7 +4769,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
                         }
                         currentVal = factionUpdates[fKey];
                         newVal = eff.direction === 'up' ? currentVal + rate : currentVal - rate;
-                        newVal = Math.max(0, Math.min(100, newVal));
+                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
                         factionUpdates[fKey] = newVal;
                     } else {
                         // Default: nation stat
@@ -4777,7 +4777,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
                             ? nationUpdates[statKey]
                             : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
                         newVal = eff.direction === 'up' ? currentVal + rate : currentVal - rate;
-                        newVal = Math.max(0, Math.min(100, newVal));
+                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
                         nationUpdates[statKey] = newVal;
                     }
 

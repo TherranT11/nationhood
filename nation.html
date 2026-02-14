@@ -624,9 +624,9 @@ function renderStatBox(name, statKey, value, description, format, inverted) {
         }
     }
 
-    var formattedValue = (value !== null && value !== undefined) ? value : 'N/A';
+    var formattedValue = (value !== null && value !== undefined) ? (typeof value === 'number' ? Math.round(value * 10) / 10 : value) : 'N/A';
     if (format === 'currency' && typeof value === 'number') formattedValue = formatCurrencyShort(value);
-    else if (format === 'years' && typeof value === 'number') formattedValue = value + ' yrs';
+    else if (format === 'years' && typeof value === 'number') formattedValue = Math.round(value * 10) / 10 + ' yrs';
 
     var trendArrow = getTrendArrow(statKey, value, inverted, format);
     var rank = calculateRanking(statKey, value, inverted);
@@ -643,8 +643,8 @@ function renderStatBox(name, statKey, value, description, format, inverted) {
 }
 
 function renderVoterAxis(leftLabel, leftValue, rightLabel) {
-    var leftPct = (leftValue !== null && leftValue !== undefined) ? leftValue : 50;
-    var rightPct = 100 - leftPct;
+    var leftPct = (leftValue !== null && leftValue !== undefined) ? Math.round(leftValue * 10) / 10 : 50;
+    var rightPct = Math.round((100 - leftPct) * 10) / 10;
     return '<div class="voter-axis">' +
         '<div class="voter-axis-header"><span class="voter-axis-left">' + leftLabel + '</span><span class="voter-axis-right">' + rightLabel + '</span></div>' +
         '<div class="voter-bar-container">' +
