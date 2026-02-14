@@ -3406,14 +3406,6 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
                 await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
             }
         }
-        if (trait.effects.npc_approval_shift) {
-            const { data: npcParties } = await supabase.from('factions').select('id, approval_rating')
-                .eq('nation_id', nationId).eq('is_npc', true).eq('faction_type', 'party');
-            for (const npc of (npcParties || [])) {
-                const newApproval = Math.max(0, Math.min(100, (npc.approval_rating ?? 50) + trait.effects.npc_approval_shift));
-                await supabase.from('factions').update({ approval_rating: newApproval }).eq('id', npc.id);
-            }
-        }
     }
 
     // Get faction info for administration record
@@ -3900,7 +3892,7 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
     // Get all parties in this nation
     const { data: allParties } = await supabase
         .from('factions')
-        .select('id, faction_name, is_npc')
+        .select('id, faction_name')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -3909,30 +3901,6 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
     for (const party of allParties) {
         await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
 
-        // NPC parties auto-select their first candidate immediately
-        if (party.is_npc) {
-            const { data: npcCandidates } = await supabase
-                .from('pm_candidates')
-                .select('id')
-                .eq('nation_id', nation.id)
-                .eq('faction_id', party.id)
-                .eq('candidate_type', 'presidential')
-                .eq('selected', false)
-                .order('created_at', { ascending: true })
-                .limit(1)
-                .maybeSingle();
-
-            if (npcCandidates) {
-                await supabase.from('pm_candidates').update({ selected: true }).eq('id', npcCandidates.id);
-                // Delete the other unselected candidates for this NPC party
-                await supabase.from('pm_candidates').delete()
-                    .eq('nation_id', nation.id)
-                    .eq('faction_id', party.id)
-                    .eq('candidate_type', 'presidential')
-                    .eq('selected', false);
-                console.log(`NPC party ${party.faction_name} auto-selected presidential candidate`);
-            }
-        }
     }
 }
 
@@ -5862,25 +5830,6 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
             }
         }
 
-        if (effects.npc_approval_shift) {
-            const { data: npcParties } = await supabase
-                .from('factions')
-                .select('id, approval_rating')
-                .eq('nation_id', nationId)
-                .eq('is_npc', true)
-                .eq('faction_type', 'party');
-
-            for (const npc of (npcParties || [])) {
-                const newApproval = Math.max(0, Math.min(100,
-                    (npc.approval_rating ?? 50) + effects.npc_approval_shift
-                ));
-                await supabase
-                    .from('factions')
-                    .update({ approval_rating: newApproval })
-                    .eq('id', npc.id);
-            }
-            console.log(`Firebrand: NPC parties shifted by ${effects.npc_approval_shift}`);
-        }
     }
 
     console.log(`PM selected: ${candidate.first_name} ${candidate.last_name} (${candidate.trait_key})`);
