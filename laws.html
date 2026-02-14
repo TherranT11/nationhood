@@ -423,10 +423,10 @@ async function loadLawsData() {
  * dynamic ideology scores. Green = aligned, Red = opposed, Gray = neutral.
  */
 function getIdeologyChipClass(ideologyTag) {
-    if (!factionIdeology) return '';
+    if (!factionIdeology) return 'neutral';
     const tag = (ideologyTag || '').toUpperCase();
     const mapping = IDEOLOGY_TO_AXIS[tag];
-    if (!mapping) return '';
+    if (!mapping) return 'neutral';
 
     const score = factionIdeology[mapping.axisKey] || 0;
     const alignment = score * mapping.direction;
