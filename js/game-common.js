@@ -3385,18 +3385,22 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
     });
     if (presErr) throw presErr;
 
-    // Apply ideology shift (+15 on candidate's axis) — with null guard
+    // Apply ideology shift (+15 on candidate's axis)
     const axisKey = candidate.ideology_axis;
     const direction = candidate.ideology_direction;
     if (axisKey && typeof direction === 'number') {
         const shift = 15 * direction;
-        const factionIdeology = await loadFactionIdeology(supabase, factionId);
-        if (factionIdeology) {
-            const currentVal = factionIdeology[axisKey] || 0;
-            const newVal = Math.max(-100, Math.min(100, currentVal + shift));
-            await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
-            console.log(`President ideology shift: ${axisKey} ${currentVal} → ${newVal} (${shift > 0 ? '+' : ''}${shift})`);
+        let factionIdeology = await loadFactionIdeology(supabase, factionId);
+        if (!factionIdeology) {
+            const newRow = { faction_id: factionId, liberty_equality: 0, tradition_progress: 0, security_freedom: 0, globalism_nationalism: 0, individualism_collectivism: 0 };
+            await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id' });
+            factionIdeology = newRow;
+            console.warn(`Created missing faction_ideology row for faction ${factionId}`);
         }
+        const currentVal = factionIdeology[axisKey] || 0;
+        const newVal = Math.max(-100, Math.min(100, currentVal + shift));
+        await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
+        console.log(`President ideology shift: ${axisKey} ${currentVal} → ${newVal} (${shift > 0 ? '+' : ''}${shift})`);
     }
 
     // Apply trait effects (same logic as PM)
@@ -5792,18 +5796,23 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
     const axisKey = candidate.ideology_axis;
     const shift = 15 * candidate.ideology_direction;
 
-    const factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology) {
-        const currentVal = factionIdeology[axisKey] || 0;
-        const newVal = Math.max(-100, Math.min(100, currentVal + shift));
-
-        await supabase
-            .from('faction_ideology')
-            .update({ [axisKey]: newVal })
-            .eq('faction_id', factionId);
-
-        console.log(`Ideology shift: ${axisKey} ${currentVal} → ${newVal} (${shift > 0 ? '+' : ''}${shift})`);
+    let factionIdeology = await loadFactionIdeology(supabase, factionId);
+    if (!factionIdeology) {
+        const newRow = { faction_id: factionId, liberty_equality: 0, tradition_progress: 0, security_freedom: 0, globalism_nationalism: 0, individualism_collectivism: 0 };
+        await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id' });
+        factionIdeology = newRow;
+        console.warn(`Created missing faction_ideology row for faction ${factionId}`);
     }
+    const currentVal = factionIdeology[axisKey] || 0;
+    const newVal = Math.max(-100, Math.min(100, currentVal + shift));
+
+    await supabase
+        .from('faction_ideology')
+        .update({ [axisKey]: newVal })
+        .eq('faction_id', factionId);
+
+    console.log(`Ideology shift: ${axisKey} ${currentVal} → ${newVal} (${shift > 0 ? '+' : ''}${shift})`);
+
 
     const { data: trait } = await supabase
         .from('leader_traits')
