@@ -943,25 +943,6 @@
         btn.disabled = false; btn.textContent = '🔍 PREVIEW ELECTION';
     }
 
-    // ==================== NPCS TAB ====================
-    async function generateAllNPCs() {
-        if (!confirm('Generate NPCs for all nations?')) return;
-        const status = document.getElementById('npc-status');
-        status.className = 'status info'; status.textContent = 'Generating...'; status.classList.remove('hidden');
-        try {
-            const { data: allNations } = await _supabase.from('nations').select('id');
-            for (const nation of allNations) { await _supabase.rpc('generate_npc_parties_for_nation', { p_nation_id: nation.id }); }
-            status.className = 'status success'; status.textContent = '✅ NPCs generated!'; await loadStats();
-        } catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
-    }
-    async function runNPCActions() {
-        const status = document.getElementById('npc-status');
-        status.className = 'status info'; status.textContent = 'Running NPC actions...'; status.classList.remove('hidden');
-        try { await _supabase.rpc('run_all_npc_party_actions'); status.className = 'status success'; status.textContent = '✅ NPC actions complete!'; }
-        catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
-    }
-
-
     // ==================== PLAYERS TAB ====================
     let allPlayersCache = [];
     async function loadNations() { await loadAllPlayers('all'); }
