@@ -3385,11 +3385,11 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
     });
     if (presErr) throw presErr;
 
-    // Apply ideology shift (+5 on candidate's axis) — with null guard
+    // Apply ideology shift (+15 on candidate's axis) — with null guard
     const axisKey = candidate.ideology_axis;
     const direction = candidate.ideology_direction;
     if (axisKey && typeof direction === 'number') {
-        const shift = 5 * direction;
+        const shift = 15 * direction;
         const factionIdeology = await loadFactionIdeology(supabase, factionId);
         if (factionIdeology) {
             const currentVal = factionIdeology[axisKey] || 0;
@@ -5790,7 +5790,7 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
     if (hogErr) throw hogErr;
 
     const axisKey = candidate.ideology_axis;
-    const shift = 5 * candidate.ideology_direction;
+    const shift = 15 * candidate.ideology_direction;
 
     const factionIdeology = await loadFactionIdeology(supabase, factionId);
     if (factionIdeology) {
