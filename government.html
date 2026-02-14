@@ -703,7 +703,7 @@ async function renderGovernmentPage() {
 
         // Check if coalition formation is in progress for the latest election
         let coalitionFormationInProgress = false;
-        if (!isAutocracy && !isPresidential && electionData?.id) {
+        if (!isAutocracy && !isPresidential && electionData?.id && !coalition) {
             const { data: formedGov } = await _supabase
                 .from('government_formations')
                 .select('id')

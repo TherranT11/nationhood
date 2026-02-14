@@ -2637,12 +2637,14 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     if (coalition) return null;
 
-    // Get latest completed election
+    // Get latest completed election (filter out records without results to avoid
+    // picking up scheduled-turned-completed records that lack election data)
     const { data: election } = await supabase
         .from('elections')
         .select('id, election_tick, results')
         .eq('nation_id', nation.id)
         .eq('status', 'completed')
+        .not('results', 'is', null)
         .order('election_tick', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -3054,9 +3056,9 @@ async function processElections(supabase, nation, currentTick) {
             continue;
         }
 
-        // Mark the scheduled election record as completed so it doesn't re-fire
+        // Mark the scheduled election record as completed with full results
         await supabase.from('elections')
-            .update({ status: 'completed' })
+            .update({ status: 'completed', results: data })
             .eq('id', election.id);
 
         // Sync seats back to factions table (run_election creates a new record, so
@@ -3065,6 +3067,7 @@ async function processElections(supabase, nation, currentTick) {
             .from('elections').select('results')
             .eq('nation_id', nation.id)
             .eq('status', 'completed')
+            .not('results', 'is', null)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
