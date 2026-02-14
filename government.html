@@ -1584,8 +1584,7 @@ async function purgeMinister(ministryKey) {
     const ministry = ministryData.find(m => m.ministry_key === ministryKey);
     if (!ministry) return;
 
-    const ap = currentFaction?.action_points || 0;
-    if (ap < 1) { alert('Not enough AP (need 1).'); return; }
+    if ((currentFaction?.action_points || 0) < 1) { alert('Not enough AP (need 1).'); return; }
 
     const partyName = ministry.factions?.faction_name || 'Unknown';
     const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
@@ -1599,6 +1598,10 @@ async function purgeMinister(ministryKey) {
         '• Nation: +1 Corruption, Stability shifts ±1–2\n\n' +
         'Proceed?'
     )) return;
+
+    const apResult = await deductAP(_supabase, currentFaction.id, 1);
+    if (!apResult.success) { alert('Not enough AP (need 1).'); return; }
+    currentFaction.action_points = apResult.newAp;
 
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -1653,10 +1656,8 @@ async function purgeMinister(ministryKey) {
         const rulerApproval = currentFaction.approval_rating ?? 50;
         const newRulerApproval = Math.min(100, rulerApproval + approvalBoost);
         await _supabase.from('factions').update({
-            action_points: Math.max(0, ap - 1),
             approval_rating: newRulerApproval
         }).eq('id', currentFaction.id);
-        currentFaction.action_points = Math.max(0, ap - 1);
         currentFaction.approval_rating = newRulerApproval;
 
         if (ministry.party_id && ministry.party_id !== rulingFactionId) {
@@ -1735,6 +1736,10 @@ async function requestMinistry(ministryKey) {
     if (myCount >= 2) { alert('You can only have 2 active ministry requests.'); return; }
     if ((currentFaction.action_points || 0) < 1) { alert('Not enough AP (need 1).'); return; }
 
+    const apResult = await deductAP(_supabase, currentFaction.id, 1);
+    if (!apResult.success) { alert('Not enough AP (need 1).'); return; }
+    currentFaction.action_points = apResult.newAp;
+
     try {
         const { error } = await _supabase.from('ministry_requests').insert({
             nation_id: currentNation.id,
@@ -1742,11 +1747,6 @@ async function requestMinistry(ministryKey) {
             ministry_key: ministryKey
         });
         if (error) throw error;
-
-        await _supabase.from('factions').update({
-            action_points: Math.max(0, currentFaction.action_points - 1)
-        }).eq('id', currentFaction.id);
-        currentFaction.action_points = Math.max(0, currentFaction.action_points - 1);
 
         await markFactionActive(_supabase, currentFaction.id);
         await renderGovernmentPage();
@@ -1791,9 +1791,8 @@ function renderNoConfidenceButton(coalition) {
 async function fileNoConfidence() {
     if (!currentFaction || !currentNation || !coalitionData) return;
 
-    const ap = currentFaction.action_points || 0;
-    if (ap < GAME_CONFIG.NO_CONFIDENCE_AP_COST) {
-        alert(`Not enough AP. You need ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP (you have ${ap}).`);
+    if ((currentFaction.action_points || 0) < GAME_CONFIG.NO_CONFIDENCE_AP_COST) {
+        alert(`Not enough AP. You need ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP (you have ${currentFaction.action_points || 0}).`);
         return;
     }
 
@@ -1867,6 +1866,10 @@ async function fileNoConfidence() {
         `Proceed?`
     )) return;
 
+    const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.NO_CONFIDENCE_AP_COST);
+    if (!apResult.success) { alert(`Not enough AP. You need ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP.`); return; }
+    currentFaction.action_points = apResult.newAp;
+
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const tick = shard?.current_tick || 0;
@@ -1884,12 +1887,6 @@ async function fileNoConfidence() {
         }).select().single();
 
         if (billError) throw billError;
-
-        // Deduct AP
-        await _supabase.from('factions').update({
-            action_points: Math.max(0, ap - GAME_CONFIG.NO_CONFIDENCE_AP_COST)
-        }).eq('id', currentFaction.id);
-        currentFaction.action_points = Math.max(0, ap - GAME_CONFIG.NO_CONFIDENCE_AP_COST);
 
         // Auto-cast the filer's own vote as YES
         const seatData = await loadSeats(_supabase, currentNation.id, false, allParties, currentFaction.id);

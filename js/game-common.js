@@ -59,6 +59,26 @@ function initGameConfigForNation(nation) {
 const FORMATION_DEADLINE_TICKS = 6; // ticks before snap election when no government
 
 /**
+ * Atomic AP deduction via database RPC.
+ * Returns { success: true, newAp } on success, or { success: false, error } on failure.
+ * The DB function checks balance and deducts in a single UPDATE, preventing race conditions.
+ */
+async function deductAP(supabase, factionId, cost) {
+    const { data, error } = await supabase.rpc('deduct_ap', {
+        p_faction_id: factionId,
+        p_cost: cost
+    });
+    if (error) {
+        console.error(`[deductAP] RPC failed for faction ${factionId}, cost ${cost}:`, error.message);
+        return { success: false, error: error.message };
+    }
+    if (data === -1) {
+        return { success: false, error: 'Insufficient AP' };
+    }
+    return { success: true, newAp: data };
+}
+
+/**
  * Government type helpers.
  * Call with a nation object (must have government_type field).
  */

@@ -1185,6 +1185,11 @@ async function submitToCommittee() {
         }
     }
 
+    // Atomic AP deduction — prevents race conditions and double-spend
+    const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.DRAFT_BILL_AP_COST);
+    if (!apResult.success) { alert('Not enough AP to draft this bill.'); isSubmitting = false; return; }
+    currentFaction.action_points = apResult.newAp;
+
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const currentTick = shard?.current_tick || 0;
@@ -1215,8 +1220,6 @@ async function submitToCommittee() {
             await _supabase.from('bill_articles').insert(articles);
         }
 
-        await _supabase.from('factions').update({ action_points: currentFaction.action_points - GAME_CONFIG.DRAFT_BILL_AP_COST }).eq('id', currentFaction.id);
-        currentFaction.action_points -= GAME_CONFIG.DRAFT_BILL_AP_COST;
         if (!isAutocracy) await _supabase.rpc('process_npc_committee_votes', { p_nation_id: currentNation.id });
         closeModal(); await loadLawsData(); renderLawsPage();
         alert(`"${billName}" submitted to committee!${isFoundationalBill ? '\n\nYou need at least one co-sponsor to send it to the floor.' : ''}`);

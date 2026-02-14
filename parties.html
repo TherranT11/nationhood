@@ -1131,8 +1131,11 @@ function updateAutocracyUI() {
 // ---- RALLY SUPPORT ----
 async function doRallySupport() {
     if (!currentFaction || !currentNation) return;
-    const ap = currentFaction.action_points || 0;
-    if (ap < 2) { alert('Not enough AP (need 2).'); return; }
+    if ((currentFaction.action_points || 0) < 2) { alert('Not enough AP (need 2).'); return; }
+
+    const apResult = await deductAP(_supabase, currentFaction.id, 2);
+    if (!apResult.success) { alert('Not enough AP (need 2).'); return; }
+    currentFaction.action_points = apResult.newAp;
 
     const isRuling = currentFaction.id === currentNation.ruling_faction_id;
 
@@ -1147,7 +1150,7 @@ async function doRallySupport() {
                 const approvalGain = Math.floor(Math.random() * 2) + 1; // 1D2
                 const newApproval = Math.min(100, (currentFaction.approval_rating ?? 50) + approvalGain);
                 await _supabase.from('factions')
-                    .update({ action_points: ap - 2, approval_rating: newApproval })
+                    .update({ approval_rating: newApproval })
                     .eq('id', currentFaction.id);
 
                 // +1 loyalty to ALL factions in nation
@@ -1173,7 +1176,6 @@ async function doRallySupport() {
                     result: { approval_gain: approvalGain, loyalty_gain_all: 1, corruption_gain: 1 }
                 });
 
-                currentFaction.action_points = ap - 2;
                 currentFaction.approval_rating = newApproval;
                 currentFaction.loyalty = Math.min(100, (currentFaction.loyalty ?? 50) + 1);
                 alert(`Celebrated the Regime! +${approvalGain} approval, +1 loyalty to all factions, +1 corruption.`);
@@ -1190,7 +1192,7 @@ async function doRallySupport() {
 
                 const newApproval = Math.min(100, (currentFaction.approval_rating ?? 50) + 1);
                 await _supabase.from('factions')
-                    .update({ action_points: ap - 2, approval_rating: newApproval })
+                    .update({ approval_rating: newApproval })
                     .eq('id', currentFaction.id);
 
                 const { data: nat } = await _supabase.from('nations')
@@ -1205,7 +1207,6 @@ async function doRallySupport() {
                     result: { target_name: target?.faction_name, loyalty_loss: loyaltyLoss, approval_gain: 1, polarization_gain: 1 }
                 });
 
-                currentFaction.action_points = ap - 2;
                 currentFaction.approval_rating = newApproval;
                 alert(`Denounced ${target?.faction_name}! -${loyaltyLoss} loyalty to them, +1 approval, +1 polarization.`);
             }
@@ -1214,7 +1215,7 @@ async function doRallySupport() {
             const loyaltyGain = Math.floor(Math.random() * 2) + 1;
             const newLoyalty = Math.min(100, (currentFaction.loyalty ?? 50) + loyaltyGain);
             await _supabase.from('factions')
-                .update({ action_points: ap - 2, loyalty: newLoyalty })
+                .update({ loyalty: newLoyalty })
                 .eq('id', currentFaction.id);
 
             await _supabase.from('campaign_actions').insert({
@@ -1223,7 +1224,6 @@ async function doRallySupport() {
                 result: { loyalty_gain: loyaltyGain }
             });
 
-            currentFaction.action_points = ap - 2;
             currentFaction.loyalty = newLoyalty;
             alert(`Pledged Loyalty! +${loyaltyGain} loyalty.`);
         }
@@ -1241,13 +1241,16 @@ async function doRallySupport() {
 // ---- UNDERMINE ----
 async function doUndermine() {
     if (!currentFaction || !currentNation) return;
-    const ap = currentFaction.action_points || 0;
-    if (ap < 3) { alert('Not enough AP (need 3).'); return; }
+    if ((currentFaction.action_points || 0) < 3) { alert('Not enough AP (need 3).'); return; }
 
     const targetId = document.getElementById('undermine-target')?.value;
     if (!targetId) { alert('Select a target faction!'); return; }
 
     if (!confirm('Undermine this faction? This will reduce their loyalty and cost -1 national stability.')) return;
+
+    const apResult = await deductAP(_supabase, currentFaction.id, 3);
+    if (!apResult.success) { alert('Not enough AP (need 3).'); return; }
+    currentFaction.action_points = apResult.newAp;
 
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -1266,8 +1269,6 @@ async function doUndermine() {
             .update({ stability: Math.max(0, (nat?.stability ?? 50) - 1) })
             .eq('id', currentNation.id);
 
-        await _supabase.from('factions').update({ action_points: ap - 3 }).eq('id', currentFaction.id);
-
         const revealed = newTargetLoyalty < 20;
 
         await _supabase.from('campaign_actions').insert({
@@ -1276,7 +1277,6 @@ async function doUndermine() {
             result: { target_name: target?.faction_name, target_id: targetId, loyalty_loss: loyaltyLoss, stability_loss: 1, revealed }
         });
 
-        currentFaction.action_points = ap - 3;
         let msg = `Undermined ${target?.faction_name}! -${loyaltyLoss} loyalty, -1 national stability.`;
         if (revealed) msg += '\n\nTheir loyalty is below 20 -- they know it was you!';
         alert(msg);
@@ -1298,8 +1298,7 @@ async function doPatronageNetwork() {
         alert('Only the ruling faction can use Patronage Network.');
         return;
     }
-    const ap = currentFaction.action_points || 0;
-    if (ap < 2) { alert('Not enough AP (need 2).'); return; }
+    if ((currentFaction.action_points || 0) < 2) { alert('Not enough AP (need 2).'); return; }
 
     const targetId = document.getElementById('patronage-target')?.value;
     if (!targetId) { alert('Select a target faction!'); return; }
@@ -1315,6 +1314,10 @@ async function doPatronageNetwork() {
         '\nProceed?'
     )) return;
 
+    const apResult = await deductAP(_supabase, currentFaction.id, 2);
+    if (!apResult.success) { alert('Not enough AP (need 2).'); return; }
+    currentFaction.action_points = apResult.newAp;
+
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const tick = shard?.current_tick || 0;
@@ -1327,9 +1330,6 @@ async function doPatronageNetwork() {
             party_funds: (targetFaction?.party_funds || 0) + 50000,
             loyalty: Math.min(100, (targetFaction?.loyalty ?? 50) + 2)
         }).eq('id', targetId);
-
-        // Deduct AP from self
-        await _supabase.from('factions').update({ action_points: ap - 2 }).eq('id', currentFaction.id);
 
         // Nation: +1 corruption, -$50k budget
         const { data: nat } = await _supabase.from('nations')
@@ -1362,7 +1362,6 @@ async function doPatronageNetwork() {
             }
         });
 
-        currentFaction.action_points = ap - 2;
         if (isSelf) currentFaction.loyalty = Math.min(100, (currentFaction.loyalty ?? 50) + 2);
         alert(`Patronage distributed! ${targetFaction?.faction_name} received $50,000 and +2 loyalty. Nation +1 corruption.` +
             (isSelf ? '\nAll other factions: -1 loyalty.' : ''));
@@ -1385,8 +1384,12 @@ async function doSeizePower() {
         return;
     }
 
-    const ap = currentFaction.action_points || 0;
-    if (ap < 15) { alert('Not enough AP (need 15).'); return; }
+    if ((currentFaction.action_points || 0) < 15) { alert('Not enough AP (need 15).'); return; }
+
+    // Atomic AP deduction — prevents race conditions and double-spend
+    const apResult = await deductAP(_supabase, currentFaction.id, 15);
+    if (!apResult.success) { alert('Not enough AP (need 15).'); return; }
+    currentFaction.action_points = apResult.newAp;
 
     const { data: allFactions } = await _supabase.from('factions')
         .select('id, faction_name, seats, loyalty')
@@ -1450,9 +1453,6 @@ async function doSeizePower() {
 
         const challengerWins = challengerSeats > regimeSeats;
 
-        // Deduct 15 AP
-        await _supabase.from('factions').update({ action_points: Math.max(0, ap - 15) }).eq('id', currentFaction.id);
-
         if (challengerWins) {
             // === WIN ===
             // Old ruler: lose all ministries, become opposition at loyalty 50
@@ -1464,7 +1464,7 @@ async function doSeizePower() {
 
             // New ruler
             await _supabase.from('nations').update({ ruling_faction_id: currentFaction.id }).eq('id', currentNation.id);
-            await _supabase.from('factions').update({ loyalty: 80, action_points: Math.max(0, ap - 15) }).eq('id', currentFaction.id);
+            await _supabase.from('factions').update({ loyalty: 80 }).eq('id', currentFaction.id);
 
             await _supabase.from('campaign_actions').insert({
                 party_id: currentFaction.id, nation_id: currentNation.id,
@@ -1472,7 +1472,6 @@ async function doSeizePower() {
                 result: { regime_seats: regimeSeats, challenger_seats: challengerSeats, regime_side: regimeSide, challenger_side: challengerSide, old_ruler_id: rulingId }
             });
 
-            currentFaction.action_points = Math.max(0, ap - 15);
             currentFaction.loyalty = 80;
             currentNation.ruling_faction_id = currentFaction.id;
 
