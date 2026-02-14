@@ -4046,7 +4046,7 @@ async function advanceTick(supabase) {
             const isInGovernment = governmentPartyIds.has(faction.id);
             let nextAp = 5;
             if (isInGovernment) nextAp += 1;
-            if ((faction.approval_rating ?? 50) > 6) nextAp += 1;
+            if ((faction.approval_rating ?? 50) > 60) nextAp += 1;
 
             if ((faction.action_points ?? null) !== nextAp) {
                 await supabase
