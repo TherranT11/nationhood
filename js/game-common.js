@@ -79,6 +79,28 @@ async function deductAP(supabase, factionId, cost) {
 }
 
 /**
+ * Atomic AP accumulation via database RPC.
+ * Returns { success: true, newAp } on success, or { success: false, error } on failure.
+ * The DB function atomically increments AP capped at max, preventing race conditions
+ * with concurrent deductions.
+ */
+async function accumulateAP(supabase, factionId, gain, maxAp = GAME_CONFIG.MAX_AP) {
+    const { data, error } = await supabase.rpc('accumulate_ap', {
+        p_faction_id: factionId,
+        p_gain: gain,
+        p_max_ap: maxAp
+    });
+    if (error) {
+        console.error(`[accumulateAP] RPC failed for faction ${factionId}, gain ${gain}:`, error.message);
+        return { success: false, error: error.message };
+    }
+    if (data === -1) {
+        return { success: false, error: 'Faction not found' };
+    }
+    return { success: true, newAp: data };
+}
+
+/**
  * Government type helpers.
  * Call with a nation object (must have government_type field).
  */
@@ -4139,10 +4161,11 @@ async function advanceTick(supabase) {
 
     // Accumulate AP for party factions each tick:
     // base 5 AP, +1 if in government, +1 if approval > 60. Capped at MAX_AP.
+    // Uses atomic RPC to prevent race conditions with concurrent player deductions.
     for (const nation of nations) {
         const { data: factions } = await supabase
             .from('factions')
-            .select('id, approval_rating, action_points, faction_type')
+            .select('id, approval_rating, faction_type')
             .eq('nation_id', nation.id)
             .eq('faction_type', 'party');
 
@@ -4160,19 +4183,11 @@ async function advanceTick(supabase) {
             if (isInGovernment) apGain += 1;
             if ((faction.approval_rating ?? 50) > 60) apGain += 1;
 
-            const currentAp = faction.action_points ?? 0;
-            const nextAp = Math.min(currentAp + apGain, GAME_CONFIG.MAX_AP);
-
-            if (currentAp !== nextAp) {
-                const { error: apError, count: apCount } = await supabase
-                    .from('factions')
-                    .update({ action_points: nextAp })
-                    .eq('id', faction.id);
-                if (apError) {
-                    console.error(`[advanceTick] AP update FAILED for faction ${faction.id}: ${apError.message}`);
-                } else {
-                    console.log(`[advanceTick] AP: faction ${faction.id} ${currentAp} → ${nextAp} (+${apGain})`);
-                }
+            const result = await accumulateAP(supabase, faction.id, apGain);
+            if (result.success) {
+                console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+${apGain})`);
+            } else {
+                console.error(`[advanceTick] AP accumulation FAILED for faction ${faction.id}: ${result.error}`);
             }
         }
     }
