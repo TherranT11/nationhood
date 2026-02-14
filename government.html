@@ -1223,8 +1223,8 @@ function renderCabinet(ministries, coalition) {
             }).join('');
             return `<div class="ministry-grid">${cards}</div>`;
         }
-        if (isPresidential && presidentFactionId) {
-            // Presidential system with active president but no ministry rows yet — show all slots as vacant
+        if (isPresidential) {
+            // Presidential system with no ministry rows yet — show all slots as vacant
             const presKeys = MINISTRY_KEYS_CABINET.filter(k => k !== 'prime_minister');
             const cards = presKeys.map(key => renderPresidentialMinistryCard(key, null)).join('');
             return `<div class="ministry-grid">${cards}</div>`;
