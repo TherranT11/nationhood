@@ -3663,24 +3663,6 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
         age: nominee.age
     };
 
-    if (existingMinistry) {
-        await supabase.from('ministries').update({
-            confirmation_status: 'pending',
-            pending_minister: pendingData
-        }).eq('id', existingMinistry.id);
-    } else {
-        await supabase.from('ministries').insert({
-            nation_id: nationId,
-            ministry_key: ministryKey,
-            ministry_name: null, // Will be filled on confirmation
-            is_active: true,
-            confirmation_status: 'pending',
-            pending_minister: pendingData,
-            rejected_parties: []
-        });
-    }
-
-    // Create confirmation bill (goes straight to floor vote)
     const ministryDisplayName = {
         prime_minister: 'Prime Minister', interior: 'Ministry of the Interior',
         foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
@@ -3689,6 +3671,27 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
         justice: 'Ministry of Justice', transportation: 'Ministry of Transportation',
         security: 'Ministry of Security'
     }[ministryKey] || ministryKey;
+
+    if (existingMinistry) {
+        const { error: updErr } = await supabase.from('ministries').update({
+            confirmation_status: 'pending',
+            pending_minister: pendingData
+        }).eq('id', existingMinistry.id);
+        if (updErr) throw new Error('Failed to update ministry: ' + updErr.message);
+    } else {
+        const { error: insErr } = await supabase.from('ministries').insert({
+            nation_id: nationId,
+            ministry_key: ministryKey,
+            ministry_name: ministryDisplayName,
+            is_active: true,
+            confirmation_status: 'pending',
+            pending_minister: pendingData,
+            rejected_parties: []
+        });
+        if (insErr) throw new Error('Failed to create ministry row: ' + insErr.message);
+    }
+
+    // Create confirmation bill (goes straight to floor vote)
 
     const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministryDisplayName}`;
     const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as head of the ${ministryDisplayName}. A simple majority (51%) of the legislature is required for confirmation.`;
