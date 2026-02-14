@@ -1910,6 +1910,7 @@ const NATION_STAT_COLUMNS = [
     'arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices',
     'pollution', 'carbon_emissions',
     'standard_of_living', 'happiness', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate',
+    'religious',
     'stability', 'legitimacy', 'efficiency', 'corruption', 'press_freedom', 'judicial_independence',
     'freedom_index', 'polarization',
     'civil_unrest', 'terrorism', 'political_violence',
@@ -1921,7 +1922,13 @@ const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
 
 const STAT_KEY_ALIASES = {
     intl_reputation: 'international_reputation',
-    credit_rating: 'credit'
+    credit_rating: 'credit',
+    credit_score: 'credit',
+    trade: 'trade_balance',
+    trade_volume: 'trade_balance',
+    education: 'higher_education',
+    education_quality: 'higher_education',
+    military_strength: 'stability'
 };
 
 function normalizeNationStatKey(statKey) {
@@ -1984,93 +1991,115 @@ function snapshotNationStats(nation) {
  */
 async function closeAdministration(supabase, nationId, nation, endReason, currentTick, currentDate, governmentApproval) {
     try {
-        // Find current (open) administration
-        const { data: currentAdmin } = await supabase
+        // Find all currently open administrations (defensive against legacy duplicates)
+        const { data: openAdmins, error: openAdminsErr } = await supabase
             .from('administrations')
             .select('*')
             .eq('nation_id', nationId)
             .is('ended_at_tick', null)
-            .maybeSingle();
+            .order('started_at_tick', { ascending: false })
+            .order('created_at', { ascending: false });
 
-        if (!currentAdmin) {
+        if (openAdminsErr) throw openAdminsErr;
+
+        if (!openAdmins || openAdmins.length === 0) {
             console.warn('closeAdministration: No open administration found for nation', nationId);
             return;
         }
 
+        if (openAdmins.length > 1) {
+            console.warn('closeAdministration: duplicate open administrations detected', {
+                event: 'duplicate_open_administrations',
+                nation_id: nationId,
+                open_count: openAdmins.length,
+                open_admin_ids: openAdmins.map(a => a.id),
+                resolution: 'closing_all_open_rows_with_consistent_end_fields',
+                end_reason: endReason,
+                end_tick: currentTick
+            });
+        }
+
         const statsAtEnd = snapshotNationStats(nation);
 
-        // Query bills passed during this administration
-        const { data: passedBills } = await supabase
-            .from('bills')
-            .select('id, bill_name, passed_tick')
-            .eq('nation_id', nationId)
-            .eq('status', 'passed')
-            .gte('passed_tick', currentAdmin.started_at_tick)
-            .lte('passed_tick', currentTick);
+        for (const currentAdmin of openAdmins) {
+            // Query bills passed during this administration
+            const { data: passedBills, error: passedBillsErr } = await supabase
+                .from('bills')
+                .select('id, bill_name, passed_tick')
+                .eq('nation_id', nationId)
+                .eq('status', 'passed')
+                .gte('passed_tick', currentAdmin.started_at_tick)
+                .lte('passed_tick', currentTick);
+            if (passedBillsErr) throw passedBillsErr;
 
-        const billsPassed = (passedBills || []).map(b => ({
-            bill_id: b.id,
-            bill_name: b.bill_name,
-            passed_tick: b.passed_tick
-        }));
-
-        // Query crises (events with category 'crisis' or matching crisis event names)
-        const { data: eventsDuring } = await supabase
-            .from('event_log')
-            .select('event_id, event_name, category, fired_at_tick')
-            .eq('nation_id', nationId)
-            .gte('fired_at_tick', currentAdmin.started_at_tick)
-            .lte('fired_at_tick', currentTick);
-
-        const crisisEvents = (eventsDuring || []).filter(e =>
-            e.category === 'crisis' || e.category === 'disaster' || e.category === 'conflict'
-        );
-
-        const crisesStarted = crisisEvents
-            .filter(e => !e.event_name || !e.event_name.startsWith('CRISIS_RESOLVED:'))
-            .map(e => ({
-                event_id: e.event_id,
-                title: e.event_name,
-                started_tick: e.fired_at_tick
+            const billsPassed = (passedBills || []).map(b => ({
+                bill_id: b.id,
+                bill_name: b.bill_name,
+                passed_tick: b.passed_tick
             }));
 
-        const crisesSolved = (eventsDuring || [])
-            .filter(e => e.event_name && e.event_name.startsWith('CRISIS_RESOLVED:'))
-            .map(e => ({
-                title: e.event_name.replace('CRISIS_RESOLVED: ', ''),
-                solved_tick: e.fired_at_tick
-            }));
+            // Query crises (events with category 'crisis' or matching crisis event names)
+            const { data: eventsDuring, error: eventsErr } = await supabase
+                .from('event_log')
+                .select('event_id, event_name, category, fired_at_tick')
+                .eq('nation_id', nationId)
+                .gte('fired_at_tick', currentAdmin.started_at_tick)
+                .lte('fired_at_tick', currentTick);
+            if (eventsErr) throw eventsErr;
 
-        // Count elections survived (elections that occurred during this admin where the coalition continued)
-        const { data: electionsDuring } = await supabase
-            .from('elections')
-            .select('id, election_tick')
-            .eq('nation_id', nationId)
-            .eq('status', 'completed')
-            .gte('election_tick', currentAdmin.started_at_tick)
-            .lt('election_tick', currentTick);
+            const crisisEvents = (eventsDuring || []).filter(e =>
+                e.category === 'crisis' || e.category === 'disaster' || e.category === 'conflict'
+            );
 
-        // Update the administration record
-        await supabase
-            .from('administrations')
-            .update({
-                stats_at_end: statsAtEnd,
-                approval_at_end: governmentApproval,
-                ended_at_tick: currentTick,
-                ended_at_date: currentDate,
-                end_reason: endReason,
-                bills_passed: billsPassed,
-                laws_repealed: [],
-                crises_started: crisesStarted,
-                crises_solved: crisesSolved,
-                elections_survived: (electionsDuring || []).length,
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', currentAdmin.id);
+            const crisesStarted = crisisEvents
+                .filter(e => !e.event_name || !e.event_name.startsWith('CRISIS_RESOLVED:'))
+                .map(e => ({
+                    event_id: e.event_id,
+                    title: e.event_name,
+                    started_tick: e.fired_at_tick
+                }));
 
-        console.log(`Administration closed: "${currentAdmin.admin_name}" — reason: ${endReason}`);
+            const crisesSolved = (eventsDuring || [])
+                .filter(e => e.event_name && e.event_name.startsWith('CRISIS_RESOLVED:'))
+                .map(e => ({
+                    title: e.event_name.replace('CRISIS_RESOLVED: ', ''),
+                    solved_tick: e.fired_at_tick
+                }));
+
+            // Count elections survived (elections that occurred during this admin where the coalition continued)
+            const { data: electionsDuring, error: electionsErr } = await supabase
+                .from('elections')
+                .select('id, election_tick')
+                .eq('nation_id', nationId)
+                .eq('status', 'completed')
+                .gte('election_tick', currentAdmin.started_at_tick)
+                .lt('election_tick', currentTick);
+            if (electionsErr) throw electionsErr;
+
+            // Update the administration record
+            const { error: updateErr } = await supabase
+                .from('administrations')
+                .update({
+                    stats_at_end: statsAtEnd,
+                    approval_at_end: governmentApproval,
+                    ended_at_tick: currentTick,
+                    ended_at_date: currentDate,
+                    end_reason: endReason,
+                    bills_passed: billsPassed,
+                    laws_repealed: [],
+                    crises_started: crisesStarted,
+                    crises_solved: crisesSolved,
+                    elections_survived: (electionsDuring || []).length,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', currentAdmin.id);
+            if (updateErr) throw updateErr;
+
+            console.log(`Administration closed: "${currentAdmin.admin_name}" — reason: ${endReason}`);
+        }
     } catch (err) {
         console.error('closeAdministration error:', err);
+        throw err;
     }
 }
 
@@ -2129,7 +2158,7 @@ async function createAdministration(supabase, nationId, nation, coalition, allPa
                 ? `${nation.head_of_state_last_name} Administration`
                 : `${pmPartyName} Administration`);
 
-        await supabase
+        const { error: insertErr } = await supabase
             .from('administrations')
             .insert({
                 nation_id: nationId,
@@ -2146,11 +2175,92 @@ async function createAdministration(supabase, nationId, nation, coalition, allPa
                 stats_at_start: statsAtStart,
                 approval_at_start: governmentApproval
             });
+        if (insertErr) throw insertErr;
 
         console.log(`Administration created: "${adminName}" at tick ${currentTick}`);
     } catch (err) {
         console.error('createAdministration error:', err);
+        throw err;
     }
+}
+
+/**
+ * Atomically close existing open administrations and create a new one.
+ * Falls back to sequential close + create if RPC is unavailable.
+ */
+async function rolloverAdministration(supabase, nationId, nation, endReason, coalition, allParties, currentTick, currentDate, governmentApproval) {
+    const statsAtStart = snapshotNationStats(nation);
+
+    const coalitionPartyIds = coalition?.party_ids || [];
+    const coalitionParties = coalitionPartyIds.map(pid => {
+        const party = allParties.find(p => p.id === pid);
+        return {
+            party_id: pid,
+            party_name: party?.faction_name || 'Unknown',
+            seats: party?.seats || 0
+        };
+    });
+    const totalSeats = coalitionParties.reduce((sum, p) => sum + p.seats, 0);
+
+    const leadPartyId = coalition?.lead_party_id;
+    const leadParty = allParties.find(p => p.id === leadPartyId);
+    const pmPartyName = leadParty?.faction_name || 'Unknown';
+
+    const { data: activeHOG, error: hogErr } = await supabase
+        .from('head_of_government')
+        .select('first_name, last_name')
+        .eq('nation_id', nationId)
+        .eq('active', true)
+        .maybeSingle();
+    if (hogErr) throw hogErr;
+
+    const pmName = activeHOG ? `${activeHOG.first_name} ${activeHOG.last_name}` : null;
+    const hosName = (nation.head_of_state_first_name && nation.head_of_state_last_name)
+        ? `${nation.head_of_state_first_name} ${nation.head_of_state_last_name}`
+        : null;
+    const adminName = activeHOG?.last_name
+        ? `${activeHOG.last_name} Administration`
+        : (nation.head_of_state_last_name
+            ? `${nation.head_of_state_last_name} Administration`
+            : `${pmPartyName} Administration`);
+
+    const payload = {
+        nation_id: nationId,
+        admin_name: adminName,
+        head_of_state: hosName,
+        prime_minister: pmName,
+        pm_party_name: pmPartyName,
+        pm_party_id: leadPartyId,
+        coalition_parties: coalitionParties,
+        total_seats: totalSeats,
+        government_type: nation.government_type || 'Democracy',
+        started_at_tick: currentTick,
+        started_at_date: currentDate,
+        stats_at_start: statsAtStart,
+        approval_at_start: governmentApproval
+    };
+
+    const { error: rpcErr } = await supabase.rpc('rollover_administration', {
+        p_nation_id: nationId,
+        p_end_reason: endReason,
+        p_end_tick: currentTick,
+        p_end_date: currentDate,
+        p_end_approval: governmentApproval,
+        p_new_administration: payload
+    });
+
+    if (!rpcErr) {
+        console.log(`Administration rolled over atomically: "${adminName}" at tick ${currentTick}`);
+        return;
+    }
+
+    // Graceful fallback if DB function has not been deployed yet
+    const rpcUnavailable = /rollover_administration/i.test(rpcErr.message || '') || rpcErr.code === 'PGRST202';
+    if (!rpcUnavailable) throw rpcErr;
+
+    console.warn('rolloverAdministration RPC unavailable; falling back to sequential close + create');
+    await closeAdministration(supabase, nationId, nation, endReason, currentTick, currentDate, governmentApproval);
+    await createAdministration(supabase, nationId, nation, coalition, allParties, currentTick, currentDate, governmentApproval);
 }
 
 
@@ -4314,10 +4424,12 @@ async function processStatEffects(supabase, nation, currentTick) {
 
     const appliedEffects = [];
     const nationUpdates = {};
+    const lawsToAdvance = [];
     const lawsToDelete = [];
 
     for (const law of activeLaws) {
         const policy = law.policies;
+        const effectSource = `active_law=${law.id}, bill=${law.bill_id || 'unknown'}, policy=${policy?.id || 'unknown'} (${policy?.policy_name || 'Unknown'})`;
         const lastApplied = law.effects_applied_through_tick || 0;
         if (lastApplied >= currentTick) continue;
 
@@ -4343,7 +4455,7 @@ async function processStatEffects(supabase, nation, currentTick) {
         }
 
         if (effects.length === 0) {
-            await supabase.from('active_laws').update({ effects_applied_through_tick: currentTick }).eq('id', law.id);
+            lawsToAdvance.push(law.id);
             continue;
         }
 
@@ -4357,13 +4469,23 @@ async function processStatEffects(supabase, nation, currentTick) {
                 const delay = eff.delay_ticks || 0;
                 const duration = eff.duration_ticks || 12;
                 const rate = eff.rate || 1;
+                const dir = String(eff.direction || '').toLowerCase();
                 const rawStatKey = eff.stat_key;
                 const statKey = normalizeNationStatKey(rawStatKey);
 
                 if (!statKey || !NATION_STAT_COLUMN_SET.has(statKey)) {
                     if (tick === lastApplied + 1) {
                         console.warn(
-                            `[processStatEffects] Skipping invalid stat_key "${rawStatKey}" for active_law=${law.id}, policy=${policy?.id || 'unknown'} (${policy?.policy_name || 'Unknown'})`
+                            `[processStatEffects] Skipping invalid stat_key "${rawStatKey}" for ${effectSource}`
+                        );
+                    }
+                    continue;
+                }
+
+                if (dir !== 'up' && dir !== 'down') {
+                    if (tick === lastApplied + 1) {
+                        console.warn(
+                            `[processStatEffects] Skipping invalid direction "${eff.direction}" for stat_key="${rawStatKey}" from ${effectSource}`
                         );
                     }
                     continue;
@@ -4379,7 +4501,7 @@ async function processStatEffects(supabase, nation, currentTick) {
                         : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
 
                     let newVal;
-                    if (eff.direction === 'up') {
+                    if (dir === 'up') {
                         newVal = currentVal + rate;
                     } else {
                         newVal = currentVal - rate;
@@ -4392,7 +4514,7 @@ async function processStatEffects(supabase, nation, currentTick) {
                     appliedEffects.push({
                         policy: isReversal ? '↩ Reversal: ' + (policy?.policy_name || 'Unknown') : (policy?.policy_name || 'Unknown'),
                         stat: statKey,
-                        direction: eff.direction,
+                        direction: dir,
                         rate: rate,
                         tick: tick,
                         newValue: newVal
@@ -4401,17 +4523,39 @@ async function processStatEffects(supabase, nation, currentTick) {
             }
         }
 
-        await supabase.from('active_laws').update({
-            effects_applied_through_tick: currentTick
-        }).eq('id', law.id);
+        lawsToAdvance.push(law.id);
 
         if (isReversal && allEffectsComplete) {
             lawsToDelete.push(law.id);
         }
     }
 
+    let nationUpdateError = null;
     if (Object.keys(nationUpdates).length > 0) {
-        await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+        const { error } = await supabase
+            .from('nations')
+            .update(nationUpdates)
+            .eq('id', nation.id);
+        nationUpdateError = error;
+    }
+
+    if (nationUpdateError) {
+        console.error(
+            '[processStatEffects] Failed to persist nation stat updates',
+            {
+                nationId: nation.id,
+                payload: nationUpdates,
+                error: nationUpdateError
+            }
+        );
+        return [];
+    }
+
+    for (const id of lawsToAdvance) {
+        await supabase
+            .from('active_laws')
+            .update({ effects_applied_through_tick: currentTick })
+            .eq('id', id);
     }
 
     for (const id of lawsToDelete) {

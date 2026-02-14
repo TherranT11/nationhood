@@ -1492,16 +1492,8 @@ async function confirmAssign() {
         await _supabase.from('ministry_requests').delete()
             .eq('nation_id', currentNation.id).eq('ministry_key', assignMinistryKey);
 
-        // If assigning PM, also update head_of_government and create new administration
+        // If assigning PM, also update head_of_government and roll over administration
         if (assignMinistryKey === 'prime_minister') {
-            // Close current administration if one exists
-            try {
-                const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
-                if (fullNation) {
-                    await closeAdministration(_supabase, currentNation.id, fullNation, 'pm_replaced', currentTick, '', null);
-                }
-            } catch (adminErr) { console.warn('Could not close administration on PM assign:', adminErr); }
-
             // Deactivate any current PM
             await _supabase.from('head_of_government')
                 .update({ active: false })
@@ -1518,14 +1510,25 @@ async function confirmAssign() {
                 active: true
             }, { onConflict: 'nation_id' });
 
-            // Open new administration under the new PM
-            try {
-                const { data: freshNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
-                const coalition = await fetchActiveCoalition(_supabase, currentNation.id);
-                if (freshNation && coalition) {
-                    await createAdministration(_supabase, currentNation.id, freshNation, coalition, allParties, currentTick, '', null);
+            const { data: freshNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
+            const coalition = await fetchActiveCoalition(_supabase, currentNation.id);
+            if (freshNation && coalition) {
+                try {
+                    await rolloverAdministration(
+                        _supabase,
+                        currentNation.id,
+                        freshNation,
+                        'pm_replaced',
+                        coalition,
+                        allParties,
+                        currentTick,
+                        '',
+                        null
+                    );
+                } catch (adminErr) {
+                    throw new Error(`Administration lifecycle failed on PM assign: ${adminErr.message || adminErr}`);
                 }
-            } catch (adminErr) { console.warn('Could not create administration on PM assign:', adminErr); }
+            }
         }
 
         // Create welcome event in ministry inbox
@@ -1637,12 +1640,14 @@ async function purgeMinister(ministryKey) {
                 .eq('nation_id', currentNation.id)
                 .eq('active', true);
 
-            try {
-                const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
-                if (fullNation) {
+            const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
+            if (fullNation) {
+                try {
                     await closeAdministration(_supabase, currentNation.id, fullNation, 'pm_replaced', tick, '', null);
+                } catch (adminErr) {
+                    throw new Error(`Administration lifecycle failed on PM purge: ${adminErr.message || adminErr}`);
                 }
-            } catch (adminErr) { console.warn('Could not close administration on PM purge:', adminErr); }
+            }
         }
 
         const rulerApproval = currentFaction.approval_rating ?? 50;
