@@ -700,6 +700,7 @@ async function loadSeats(supabase, nationId, isAutocracy, allParties, currentFac
                 .select('results')
                 .eq('nation_id', nationId)
                 .eq('status', 'completed')
+                .eq('election_type', 'parliamentary')
                 .order('election_tick', { ascending: false })
                 .limit(1)
                 .maybeSingle();
@@ -1908,6 +1909,7 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             .select('id, results')
             .eq('nation_id', bill.nation_id)
             .eq('status', 'completed')
+            .eq('election_type', 'parliamentary')
             .order('election_tick', { ascending: false })
             .limit(1)
             .maybeSingle();
