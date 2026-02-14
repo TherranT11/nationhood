@@ -3497,7 +3497,7 @@ async function generatePresidentCandidates(supabase, nationId, factionId, curren
         while (usedLastNames.has(lastName));
         usedLastNames.add(lastName);
 
-        const age = 40 + Math.floor(Math.random() * 21); // Presidents: age 40-60
+        const age = 35 + Math.floor(Math.random() * 16); // Presidents: age 35-50
         const ideology = chosenIdeologies[i];
 
         candidates.push({
