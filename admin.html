@@ -689,25 +689,69 @@
         const btn = document.getElementById('run-election-btn');
         btn.disabled = true; btn.textContent = '⏳ Running Election...';
         status.className = 'status info'; status.textContent = 'Simulating election...'; status.classList.remove('hidden'); resultsDiv.classList.add('hidden');
-       try {
-    const { data, error } = await _supabase.rpc('run_election', { p_nation_id: selectedElectionNation.id });
-    if (error) throw error;
-    const { data: election } = await _supabase.from('elections').select('results').eq('nation_id', selectedElectionNation.id).eq('status', 'completed').order('election_tick', { ascending: false }).limit(1).single();
-    if (election?.results?.seats) {
-        // Sync seats back to factions table
-        for (const r of election.results.seats) {
-            await _supabase
-                .from('factions')
-                .update({ seats: r.seats })
-                .eq('id', r.party_id);
-        }
-        console.log('Seats synced to factions table');
+        try {
+            const { data: nationRow, error: nationError } = await _supabase
+                .from('nations')
+                .select('id, name, government_type')
+                .eq('id', selectedElectionNation.id)
+                .single();
+            if (nationError) throw nationError;
 
-        const totalSeats = selectedElectionNation.total_seats || 120;
-        resultsContent.innerHTML = election.results.seats.sort((a, b) => b.seats - a.seats).map(r => `<div class="result-party"><div><div class="result-party-name">${r.party_name}</div><div class="result-bar" style="width:200px;"><div class="result-bar-fill" style="width:${(r.seats/totalSeats)*100}%"></div></div></div><div class="result-party-seats">${r.seats} seats</div></div>`).join('');
-        resultsDiv.classList.remove('hidden');
-    }
-            status.className = 'status success'; status.textContent = `✅ Election completed for ${selectedElectionNation.name}!`;
+            const currentTick = await getCurrentTick(_supabase);
+            const governmentType = nationRow?.government_type || 'Democracy';
+            let electionType = 'parliamentary';
+
+            if (governmentType === 'Presidential') {
+                const { data: dueScheduled } = await _supabase
+                    .from('elections')
+                    .select('id, election_type')
+                    .eq('nation_id', selectedElectionNation.id)
+                    .eq('status', 'scheduled')
+                    .lte('election_tick', currentTick)
+                    .order('election_tick', { ascending: true })
+                    .limit(1)
+                    .maybeSingle();
+                electionType = dueScheduled?.election_type || 'presidential';
+
+                const { data: nextScheduled } = await _supabase
+                    .from('elections')
+                    .select('election_tick')
+                    .eq('nation_id', selectedElectionNation.id)
+                    .eq('status', 'scheduled')
+                    .eq('election_type', electionType)
+                    .order('election_tick', { ascending: true })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (nextScheduled && nextScheduled.election_tick > currentTick) {
+                    const confirmMsg = `⚠️ ${nationRow.name} is a Presidential system.\n\n` +
+                        `You are forcing a ${electionType} election early (scheduled for tick ${nextScheduled.election_tick}, current tick ${currentTick}).\n\n` +
+                        'This can replace leadership and alter government state immediately. Continue?';
+                    if (!window.confirm(confirmMsg)) {
+                        status.className = 'status info';
+                        status.textContent = 'Election cancelled.';
+                        return;
+                    }
+                }
+            }
+
+            const runResult = await runManualElectionByGovernmentType(_supabase, nationRow, {
+                currentTick,
+                electionType
+            });
+
+            if (runResult?.seatResults?.length) {
+                const totalSeats = selectedElectionNation.total_seats || 120;
+                resultsContent.innerHTML = runResult.seatResults
+                    .sort((a, b) => b.seats - a.seats)
+                    .map(r => `<div class="result-party"><div><div class="result-party-name">${r.party_name}</div><div class="result-bar" style="width:200px;"><div class="result-bar-fill" style="width:${(r.seats/totalSeats)*100}%"></div></div></div><div class="result-party-seats">${r.seats} seats</div></div>`)
+                    .join('');
+                resultsDiv.classList.remove('hidden');
+            }
+
+            const electionLabel = runResult?.electionType ? ` (${runResult.electionType})` : '';
+            status.className = 'status success';
+            status.textContent = `✅ Election completed for ${selectedElectionNation.name}${electionLabel}!`;
         } catch (error) { console.error(error); status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
         btn.disabled = false; btn.textContent = '🗳️ RUN ELECTION NOW';
     }
