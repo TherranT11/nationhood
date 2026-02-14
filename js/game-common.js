@@ -2894,9 +2894,13 @@ async function resolveManualElectionContext(supabase, nation, currentTick, reque
 async function runManualElectionByGovernmentType(supabase, nation, options = {}) {
     if (!nation?.id) throw new Error('Nation is required');
 
-    const currentTick = Number.isInteger(options.currentTick)
-        ? options.currentTick
-        : (await getCurrentTick(supabase));
+    let currentTick;
+    if (Number.isInteger(options.currentTick)) {
+        currentTick = options.currentTick;
+    } else {
+        const { data: _shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        currentTick = _shard?.current_tick || 0;
+    }
 
     const context = await resolveManualElectionContext(supabase, nation, currentTick, options.electionType);
     const isPresidential = context.governmentType === 'Presidential';

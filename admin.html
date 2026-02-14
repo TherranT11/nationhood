@@ -702,7 +702,8 @@
 
         if (isPresidential) {
             typeSelector.style.display = 'block';
-            const currentTick = await getCurrentTick(_supabase);
+            const { data: _shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            const currentTick = _shard?.current_tick || 0;
 
             // Show next scheduled elections
             const { data: nextParl } = await _supabase.from('elections').select('election_tick')
@@ -775,7 +776,8 @@
                 .single();
             if (nationError) throw nationError;
 
-            const currentTick = await getCurrentTick(_supabase);
+            const { data: _shard2 } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            const currentTick = _shard2?.current_tick || 0;
             const isPresidential = nationRow.government_type === 'Presidential';
 
             // Use admin-selected election type for Presidential nations
