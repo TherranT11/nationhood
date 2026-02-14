@@ -2904,6 +2904,28 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
 
     // Use candidate-based voting for presidential elections, party-based for parliamentary
     if (isPresidential && normalizedElectionType === 'presidential') {
+        // Ensure candidates exist — generate for parties that have none
+        const { data: allParties } = await supabase
+            .from('factions')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('faction_type', 'party');
+
+        if (allParties) {
+            for (const party of allParties) {
+                const { count } = await supabase
+                    .from('pm_candidates')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('nation_id', nation.id)
+                    .eq('faction_id', party.id)
+                    .eq('candidate_type', 'presidential');
+                if (!count || count === 0) {
+                    console.log(`Generating presidential candidates for faction ${party.id} (manual election)`);
+                    await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
+                }
+            }
+        }
+
         // Auto-select candidates for any party that hasn't chosen
         await autoSelectPresidentialCandidates(supabase, nation, currentTick);
         const { error: runError } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id });
