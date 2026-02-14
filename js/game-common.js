@@ -1922,7 +1922,13 @@ const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
 
 const STAT_KEY_ALIASES = {
     intl_reputation: 'international_reputation',
-    credit_rating: 'credit'
+    credit_rating: 'credit',
+    credit_score: 'credit',
+    trade: 'trade_balance',
+    trade_volume: 'trade_balance',
+    education: 'higher_education',
+    education_quality: 'higher_education',
+    military_strength: 'stability'
 };
 
 function normalizeNationStatKey(statKey) {
@@ -4320,6 +4326,7 @@ async function processStatEffects(supabase, nation, currentTick) {
 
     for (const law of activeLaws) {
         const policy = law.policies;
+        const effectSource = `active_law=${law.id}, bill=${law.bill_id || 'unknown'}, policy=${policy?.id || 'unknown'} (${policy?.policy_name || 'Unknown'})`;
         const lastApplied = law.effects_applied_through_tick || 0;
         if (lastApplied >= currentTick) continue;
 
@@ -4366,7 +4373,7 @@ async function processStatEffects(supabase, nation, currentTick) {
                 if (!statKey || !NATION_STAT_COLUMN_SET.has(statKey)) {
                     if (tick === lastApplied + 1) {
                         console.warn(
-                            `[processStatEffects] Skipping invalid stat_key "${rawStatKey}" for active_law=${law.id}, policy=${policy?.id || 'unknown'} (${policy?.policy_name || 'Unknown'})`
+                            `[processStatEffects] Skipping invalid stat_key "${rawStatKey}" for ${effectSource}`
                         );
                     }
                     continue;
@@ -4375,7 +4382,7 @@ async function processStatEffects(supabase, nation, currentTick) {
                 if (dir !== 'up' && dir !== 'down') {
                     if (tick === lastApplied + 1) {
                         console.warn(
-                            `[processStatEffects] Skipping invalid direction "${eff.direction}" for stat_key="${rawStatKey}" active_law=${law.id}, policy=${policy?.id || 'unknown'} (${policy?.policy_name || 'Unknown'})`
+                            `[processStatEffects] Skipping invalid direction "${eff.direction}" for stat_key="${rawStatKey}" from ${effectSource}`
                         );
                     }
                     continue;

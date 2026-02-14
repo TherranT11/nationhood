@@ -483,6 +483,22 @@ function buildStatOptions() {
     ).join('');
 }
 const STAT_OPTIONS_HTML = buildStatOptions();
+const CANONICAL_STAT_KEYS = new Set(STAT_GROUPS.flatMap(group => group.stats));
+const POLICY_STAT_KEY_ALIASES = {
+    intl_reputation: 'international_reputation',
+    credit_rating: 'credit',
+    credit_score: 'credit',
+    trade: 'trade_balance',
+    trade_volume: 'trade_balance',
+    education: 'higher_education',
+    education_quality: 'higher_education',
+    military_strength: 'stability'
+};
+
+function normalizePolicyStatKey(statKey) {
+    if (!statKey || typeof statKey !== 'string') return null;
+    return POLICY_STAT_KEY_ALIASES[statKey] || statKey;
+}
 
 // ==================== STATE ====================
 let allPolicies = [];
@@ -717,11 +733,15 @@ function loadPolicyIntoBuilder(p) {
 
     // Stat effects
     if (p.stat_effects && Array.isArray(p.stat_effects)) {
-        statEffects = p.stat_effects.map(e => ({ ...e, direction: normalizeEffectDirection(e.direction) || 'up' }));
+        statEffects = p.stat_effects.map(e => ({
+            ...e,
+            stat_key: normalizePolicyStatKey(e.stat_key),
+            direction: normalizeEffectDirection(e.direction) || 'up'
+        }));
     } else if (p.target_stat) {
         // Legacy: convert single stat to new format
         statEffects = [{
-            stat_key: p.target_stat,
+            stat_key: normalizePolicyStatKey(p.target_stat),
             direction: normalizeEffectDirection(p.stat_direction) || 'up',
             rate: p.stat_change_per_tick || 1,
             delay_ticks: 0,
@@ -1095,6 +1115,18 @@ async function savePolicy() {
     const validEffects = statEffects.filter(e => e.stat_key);
     if (validEffects.length === 0) { alert('Add at least 1 stat effect.'); return; }
 
+    const normalizedEffects = validEffects.map(e => ({ ...e, stat_key: normalizePolicyStatKey(e.stat_key) }));
+    const unknownStatKeys = [...new Set(
+        normalizedEffects
+            .map(e => e.stat_key)
+            .filter(statKey => !statKey || !CANONICAL_STAT_KEYS.has(statKey))
+    )];
+
+    if (unknownStatKeys.length > 0) {
+        alert('Unknown stat key(s): ' + unknownStatKeys.join(', ') + '. Please choose supported nation stats only.');
+        return;
+    }
+
     const ideologiesArr = [...selectedIdeologies];
     const opposedIds = opposedSlots.filter(Boolean);
 
@@ -1112,7 +1144,7 @@ async function savePolicy() {
         upfront_scaling_stat: document.getElementById('b-upfront-scaling').value || null,
         ongoing_base_cost: parseFloat(document.getElementById('b-ongoing-base').value) || 0,
         ongoing_scaling_stat: document.getElementById('b-scaling-stat').value || null,
-        stat_effects: validEffects.map(e => ({
+        stat_effects: normalizedEffects.map(e => ({
             stat_key: e.stat_key,
             direction: normalizeEffectDirection(e.direction) || 'up',
             rate: e.rate,
@@ -1121,10 +1153,10 @@ async function savePolicy() {
         })),
         opposed_policy_ids: opposedIds.length > 0 ? opposedIds : null,
         // Legacy fields — write defaults so old code doesn't break
-        target_stat: validEffects[0]?.stat_key || null,
-        stat_direction: (normalizeEffectDirection(validEffects[0]?.direction) || 'up').toUpperCase(),
-        stat_change_per_tick: validEffects[0]?.rate || 1,
-        duration_months: validEffects[0]?.duration_ticks || 12,
+        target_stat: normalizedEffects[0]?.stat_key || null,
+        stat_direction: (normalizeEffectDirection(normalizedEffects[0]?.direction) || 'up').toUpperCase(),
+        stat_change_per_tick: normalizedEffects[0]?.rate || 1,
+        duration_months: normalizedEffects[0]?.duration_ticks || 12,
         stat_floor: 0,
         stat_ceiling: 100,
         ongoing_cost_per_tick: parseFloat(document.getElementById('b-ongoing-base').value) || 0,
@@ -1144,7 +1176,7 @@ async function savePolicy() {
 
             // Create nation_policies records for starting nations
             if (startingNations.size > 0 && inserted) {
-                const totalDuration = Math.max(...validEffects.map(e => (e.delay_ticks || 0) + (e.duration_ticks || 12)));
+                const totalDuration = Math.max(...normalizedEffects.map(e => (e.delay_ticks || 0) + (e.duration_ticks || 12)));
                 const records = [...startingNations].map(nationId => ({
                     nation_id: nationId,
                     policy_id: inserted.id,
