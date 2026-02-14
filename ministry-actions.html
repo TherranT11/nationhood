@@ -1186,7 +1186,7 @@ async function confirmAction() {
             processed: !hasEffects,
             cooldown_until_tick: cooldownUntil,
             stat_effects: hasEffects ? action.stat_effects : null,
-            effects_applied_through_tick: hasEffects ? currentTick : null
+            effects_applied_through_tick: hasEffects ? currentTick - 1 : null
         });
 
         if (cooldownUntil) {

@@ -4845,12 +4845,16 @@ async function processStatEffects(supabase, nation, currentTick) {
  * Mirrors processStatEffects but reads from ministry_action_log.
  */
 async function processMinistryActions(supabase, nation, currentTick) {
-    const { data: actions } = await supabase
+    const { data: actions, error: fetchError } = await supabase
         .from('ministry_action_log')
         .select('*')
         .eq('nation_id', nation.id)
         .eq('processed', false);
 
+    if (fetchError) {
+        console.error('[processMinistryActions] Failed to fetch actions:', fetchError.message);
+        return [];
+    }
     if (!actions || actions.length === 0) return [];
 
     const appliedEffects = [];
@@ -4861,6 +4865,8 @@ async function processMinistryActions(supabase, nation, currentTick) {
     const ministerBaseline = {};
     // Track faction approval changes keyed by faction_id
     const factionUpdates = {};
+    // Defer tracking updates until after nation stats are persisted
+    const trackingUpdates = [];
 
     for (const action of actions) {
         const effects = action.stat_effects;
@@ -4881,9 +4887,9 @@ async function processMinistryActions(supabase, nation, currentTick) {
             const ticksSinceAction = tick - appliedTick;
 
             for (const eff of effects) {
-                const delay = eff.delay_ticks || 0;
-                const duration = eff.duration_ticks || 4;
-                const rate = eff.rate || 1;
+                const delay = Number(eff.delay_ticks) || 0;
+                const duration = Number(eff.duration_ticks) || 4;
+                const rate = Number(eff.rate) || 1;
                 const statKey = eff.stat_key;
                 const target = eff.target || 'nation';
 
@@ -4950,16 +4956,31 @@ async function processMinistryActions(supabase, nation, currentTick) {
             }
         }
 
-        // Update tracking
-        await supabase.from('ministry_action_log').update({
-            effects_applied_through_tick: currentTick,
-            processed: allEffectsComplete
-        }).eq('id', action.id);
+        // Defer tracking update — only apply after nation stats are persisted
+        trackingUpdates.push({ id: action.id, allEffectsComplete });
     }
 
-    // Bulk update nation stats
+    // Bulk update nation stats FIRST — before advancing tracking
+    let nationUpdateFailed = false;
     if (Object.keys(nationUpdates).length > 0) {
-        await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+        const { error: nationError } = await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+        if (nationError) {
+            console.error('[processMinistryActions] Nation stat update FAILED — effects will be retried next tick',
+                { nationId: nation.id, payload: nationUpdates, error: nationError.message });
+            nationUpdateFailed = true;
+        } else {
+            console.log('[processMinistryActions] Nation stats updated:', JSON.stringify(nationUpdates));
+        }
+    }
+
+    // Only advance tracking if nation update succeeded (or had nothing to update)
+    if (!nationUpdateFailed) {
+        for (const tu of trackingUpdates) {
+            await supabase.from('ministry_action_log').update({
+                effects_applied_through_tick: currentTick,
+                processed: tu.allEffectsComplete
+            }).eq('id', tu.id);
+        }
     }
 
     // Bulk update minister approval
@@ -5057,11 +5078,12 @@ async function snapshotNationHistory(supabase, nation, currentTick) {
         }
     }
 
-    await supabase.from('nations_history').upsert(snapshot, {
+    const { error: snapError } = await supabase.from('nations_history').upsert(snapshot, {
         onConflict: 'nation_id,tick'
-    }).catch(err => {
-        console.warn('History snapshot warning:', err.message);
     });
+    if (snapError) {
+        console.warn('History snapshot warning:', snapError.message);
+    }
 }
 
 
