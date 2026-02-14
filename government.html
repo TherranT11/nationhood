@@ -1898,9 +1898,6 @@ async function fileNoConfidence() {
             seat_count: mySeats
         }, { onConflict: 'bill_id,faction_id' });
 
-        // Trigger NPC floor votes for the no-confidence motion
-        await triggerNPCNoConfidenceVotes(bill.id, currentNation.id, coalitionData.party_ids);
-
         await markFactionActive(_supabase, currentFaction.id);
 
         alert(`⚡ "${motionName}" has been filed!\n\nVoting is now open for ${GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS} ticks. All parties will vote.`);
@@ -2009,59 +2006,6 @@ async function callEarlyElections() {
         const retryBtn = document.getElementById('early-elections-btn');
         if (retryBtn) { retryBtn.disabled = false; retryBtn.textContent = '⚡ Call Early Elections'; }
     }
-}
-
-/**
- * NPC parties vote on a no-confidence motion based on:
- * - Coalition members vote NO (defending the government)
- * - Opposition NPCs lean YES, weighted by loyalty + approval
- */
-async function triggerNPCNoConfidenceVotes(billId, nationId, coalitionPartyIds) {
-    const { data: npcParties } = await _supabase
-        .from('factions')
-        .select('id, faction_name, is_npc, seats, loyalty, approval_rating')
-        .eq('nation_id', nationId)
-        .eq('faction_type', 'party')
-        .eq('is_npc', true);
-
-    if (!npcParties || npcParties.length === 0) return;
-
-    const seatData = await loadSeats(_supabase, nationId, false, npcParties, null);
-
-    for (const npc of npcParties) {
-        const seats = seatData.allPartySeats[npc.id] || npc.seats || 0;
-        if (seats === 0) continue;
-
-        const isCoalitionMember = coalitionPartyIds.includes(npc.id);
-        let stance;
-
-        if (isCoalitionMember) {
-            // Coalition NPCs almost always vote NO (defend government)
-            // Very low loyalty might flip them
-            const loyalty = npc.loyalty ?? 50;
-            stance = loyalty < 20 ? 'yes' : 'no';
-        } else {
-            // Opposition NPCs lean YES (topple government)
-            // Higher approval of government = more likely to abstain/vote no
-            const approval = npc.approval_rating ?? 50;
-            const loyalty = npc.loyalty ?? 50;
-            const yesChance = 0.7 - (loyalty / 200) - (approval / 400);
-            const roll = Math.random();
-            if (roll < yesChance) stance = 'yes';
-            else if (roll < yesChance + 0.15) stance = 'abstain';
-            else stance = 'no';
-        }
-
-        await _supabase.from('bill_support').upsert({
-            bill_id: billId,
-            faction_id: npc.id,
-            stance: stance,
-            seat_count: seats
-        }, { onConflict: 'bill_id,faction_id' });
-    }
-
-    // Sync vote tallies
-    await syncVoteTallies(_supabase, billId);
 }
 
 // ==================== PARLIAMENT VISUALIZATION ====================
