@@ -284,14 +284,42 @@ async function renderDemocracyPage() {
         .order('seats', { ascending: false });
     allParties = parties || [];
 
-    const { data: election } = await _supabase
-        .from('elections')
-        .select('*')
-        .eq('nation_id', currentNation.id)
-        .eq('status', 'completed')
-        .order('election_tick', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    // For Presidential systems, fetch both latest parliamentary and presidential elections separately
+    let election = null;
+    let presidentialElection = null;
+    if (isPresidential) {
+        const { data: parlElection } = await _supabase
+            .from('elections')
+            .select('*')
+            .eq('nation_id', currentNation.id)
+            .eq('status', 'completed')
+            .eq('election_type', 'parliamentary')
+            .order('election_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        election = parlElection;
+
+        const { data: presElection } = await _supabase
+            .from('elections')
+            .select('*')
+            .eq('nation_id', currentNation.id)
+            .eq('status', 'completed')
+            .eq('election_type', 'presidential')
+            .order('election_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        presidentialElection = presElection;
+    } else {
+        const { data: latestElection } = await _supabase
+            .from('elections')
+            .select('*')
+            .eq('nation_id', currentNation.id)
+            .eq('status', 'completed')
+            .order('election_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        election = latestElection;
+    }
 
     currentElectionId = election?.id || null;
     electionResults = election?.results?.votes || [];
@@ -367,9 +395,19 @@ async function renderDemocracyPage() {
         <div style="margin-top:12px;display:inline-block;padding:8px 24px;background:var(--accent);color:#121212;border-radius:6px;font-weight:bold;font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;">Nominate Now →</div>
     </div>
 ` : ''}
-            <!-- Election Results -->
+            <!-- Presidential Candidate Results (Presidential systems only) -->
+            ${isPresidential ? `
+            <div id="presidential-results-section" style="display: ${presidentialElection ? 'block' : 'none'};">
+                <div class="section-header">Presidential Election — <span id="presidential-election-year"></span></div>
+                <div class="info-block" style="margin-bottom: 24px;">
+                    <div id="presidential-results-list"></div>
+                </div>
+            </div>
+            ` : ''}
+
+            <!-- Parliamentary Election Results -->
             <div id="election-results-section" style="display: ${election ? 'block' : 'none'};">
-                <div class="section-header">Election Results — <span id="election-year"></span></div>
+                <div class="section-header">${isPresidential ? 'Parliamentary Election' : 'Election Results'} — <span id="election-year"></span></div>
                 <div class="info-block" style="margin-bottom: 24px;">
                     <div id="election-results-list"></div>
                 </div>
@@ -424,6 +462,9 @@ async function renderDemocracyPage() {
 
     document.getElementById('content-area').innerHTML = html;
 
+    if (isPresidential && presidentialElection) {
+        await renderPresidentialResults(presidentialElection);
+    }
     await renderElectionResults(election);
     if (showFormation) await loadFormationsList();
     await loadElectionInfo();
@@ -453,23 +494,7 @@ async function renderElectionResults(election) {
 
     const results = election.results.votes || [];
 
-    // Presidential winner banner: party with most votes wins the presidency
-    let presidentWinnerHTML = '';
-    if (isPresidential && results.length > 0) {
-        const winner = results.reduce((best, r) => (r.votes || 0) > (best.votes || 0) ? r : best, results[0]);
-        const mostSeats = results.reduce((best, r) => (r.seats || 0) > (best.seats || 0) ? r : best, results[0]);
-        const isDivided = winner.party_id !== mostSeats.party_id;
-
-        presidentWinnerHTML = `
-            <div style="background:linear-gradient(135deg,#1a2a1a,#0a1a0a);border:2px solid #4CAF50;border-radius:8px;padding:16px;margin-bottom:16px;">
-                <div style="font-size:0.75rem;color:#4CAF50;text-transform:uppercase;letter-spacing:1px;font-weight:bold;margin-bottom:6px;">Presidential Election Winner</div>
-                <div style="font-size:1.1rem;color:#fff;font-weight:bold;">${winner.party_name}</div>
-                <div style="font-size:0.82rem;color:#aaa;margin-top:4px;">${(winner.votes || 0).toLocaleString()} votes (${winner.vote_percentage || 0}%)</div>
-                ${isDivided ? `<div style="font-size:0.75rem;color:#ff9800;margin-top:8px;font-weight:bold;">Divided Government — ${mostSeats.party_name} holds the most seats</div>` : ''}
-            </div>`;
-    }
-
-    document.getElementById('election-results-list').innerHTML = presidentWinnerHTML + results.map(r => `
+    document.getElementById('election-results-list').innerHTML = results.map(r => `
         <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid #222; align-items: center;">
             <span style="font-size: 0.9rem; color: #ffcc00; font-weight: bold;">${r.party_name}</span>
             <span style="font-size: 0.85rem; color: #aaa; text-align: right;">${(r.votes || 0).toLocaleString()} Votes</span>
@@ -477,6 +502,96 @@ async function renderElectionResults(election) {
             <span style="font-size: 0.85rem; font-weight: bold; color: #4CAF50; text-align: right;">${r.seats || 0} Seats</span>
         </div>
     `).join('');
+}
+
+/**
+ * Render presidential candidate election results (candidate-level popular vote).
+ */
+async function renderPresidentialResults(election) {
+    if (!election || !election.results) return;
+    const candidates = election.results.presidential_candidates || [];
+    if (candidates.length === 0) {
+        const el = document.getElementById('presidential-results-list');
+        if (el) el.innerHTML = '<div style="color:#888;padding:12px 0;">No presidential election results yet.</div>';
+        return;
+    }
+
+    // Calculate election date
+    const { data: shard } = await _supabase.from('shard').select('current_date, current_tick').eq('name', 'Alpha Shard').single();
+    if (shard) {
+        const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        const currentMonth = shard.current_date.split(', ')[0];
+        const currentYear = parseInt(shard.current_date.split(', ')[1]);
+        const currentMonthIndex = months.indexOf(currentMonth);
+        const tickDiff = shard.current_tick - election.election_tick;
+        let electionMonthIndex = currentMonthIndex - tickDiff;
+        let electionYear = currentYear;
+        while (electionMonthIndex < 0) { electionMonthIndex += 12; electionYear -= 1; }
+        const dateStr = `${months[electionMonthIndex % 12]}, ${electionYear}`;
+        const yearEl = document.getElementById('presidential-election-year');
+        if (yearEl) yearEl.textContent = dateStr;
+    }
+
+    const sorted = [...candidates].sort((a, b) => b.votes - a.votes);
+    const winner = sorted[0];
+
+    const ideologyColors = {
+        'LIBERTY': '#9C27B0', 'EQUALITY': '#E91E63', 'FREEDOM': '#2196F3',
+        'SECURITY': '#FF9800', 'INDIVIDUALISM': '#eab308', 'COLLECTIVISM': '#ec4899',
+        'TRADITION': '#795548', 'PROGRESS': '#00BCD4', 'NATIONALISM': '#FF5722',
+        'GLOBALISM': '#3F51B5'
+    };
+
+    // Winner banner
+    const winnerIdeology = (winner.ideology || '').toUpperCase();
+    const winnerColor = ideologyColors[winnerIdeology] || '#888';
+    let html = `
+        <div style="background:linear-gradient(135deg,#1a2a1a,#0a1a0a);border:2px solid #4CAF50;border-radius:8px;padding:16px;margin-bottom:16px;">
+            <div style="font-size:0.75rem;color:#4CAF50;text-transform:uppercase;letter-spacing:1px;font-weight:bold;margin-bottom:6px;">Presidential Election Winner</div>
+            <div style="font-size:1.1rem;color:#fff;font-weight:bold;">${winner.candidate_name}</div>
+            <div style="font-size:0.85rem;color:#aaa;margin-top:4px;">
+                ${winner.party_name}
+                <span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;color:#fff;background:${winnerColor};margin-left:8px;vertical-align:middle;">${winner.ideology}</span>
+            </div>
+            <div style="font-size:0.82rem;color:#aaa;margin-top:4px;">${(winner.votes || 0).toLocaleString()} votes (${winner.vote_percentage || 0}%)</div>
+        </div>`;
+
+    // Header row
+    html += `
+        <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 0.8fr;gap:12px;padding:8px 0;border-bottom:2px solid #333;font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:1px;">
+            <span>Candidate</span>
+            <span>Party</span>
+            <span style="text-align:right;">Votes</span>
+            <span style="text-align:right;">%</span>
+        </div>`;
+
+    // Candidate rows
+    html += sorted.map(c => {
+        const ideo = (c.ideology || '').toUpperCase();
+        const color = ideologyColors[ideo] || '#888';
+        const isWinner = c.winner || c.candidate_id === winner.candidate_id;
+        return `
+            <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 0.8fr;gap:12px;padding:12px 0;border-bottom:1px solid #222;align-items:center;">
+                <span style="font-size:0.9rem;color:${isWinner ? '#4CAF50' : '#e0e0e0'};font-weight:bold;">
+                    ${isWinner ? '&#x2713; ' : ''}${c.candidate_name}
+                    <span style="display:inline-block;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;color:#fff;background:${color};margin-left:6px;vertical-align:middle;">${c.ideology}</span>
+                </span>
+                <span style="font-size:0.85rem;color:#aaa;">${c.party_name}</span>
+                <span style="font-size:0.85rem;color:#aaa;text-align:right;">${(c.votes || 0).toLocaleString()}</span>
+                <span style="font-size:0.85rem;color:#aaa;text-align:right;">${c.vote_percentage || 0}%</span>
+            </div>`;
+    }).join('');
+
+    // Turnout info
+    const turnout = election.results.turnout_pct || 0;
+    const totalVotes = election.results.total_votes_cast || 0;
+    const totalAbstentions = election.results.total_abstentions || 0;
+    html += `
+        <div style="margin-top:12px;font-size:0.78rem;color:#666;">
+            Turnout: ${turnout}% &middot; ${totalVotes.toLocaleString()} votes cast &middot; ${totalAbstentions.toLocaleString()} abstentions
+        </div>`;
+
+    document.getElementById('presidential-results-list').innerHTML = html;
 }
 
 
