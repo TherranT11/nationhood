@@ -49,3 +49,4 @@ CREATE TABLE IF NOT EXISTS administrations (
 
 CREATE INDEX IF NOT EXISTS idx_administrations_nation ON administrations(nation_id);
 CREATE INDEX IF NOT EXISTS idx_administrations_current ON administrations(nation_id) WHERE ended_at_tick IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_open_administration_per_nation ON administrations(nation_id) WHERE ended_at_tick IS NULL;
