@@ -701,12 +701,8 @@
             const context = await resolveManualElectionContext(_supabase, nationRow, currentTick);
 
             if (context.governmentType === 'Presidential' && context.forcedOutsideSchedule) {
-                const confirmMsg = `⚠️ ${nationRow.name} is a Presidential system.
-
-` +
-                    `You are forcing a ${context.electionType} election early (scheduled for tick ${context.nextScheduledTick}, current tick ${currentTick}).
-
-` +
+                const confirmMsg = `⚠️ ${nationRow.name} is a Presidential system.\n\n` +
+                    `You are forcing a ${context.electionType} election early (scheduled for tick ${context.nextScheduledTick}, current tick ${currentTick}).\n\n` +
                     'This can replace leadership and alter government state immediately. Continue?';
                 if (!window.confirm(confirmMsg)) {
                     status.className = 'status info';
