@@ -236,7 +236,7 @@ body.light-mode .person-card .person-meta { color: #666; }
 
 /* Parliament half-circle */
 .parliament-wrap { margin: 10px 0 6px; display: flex; justify-content: center; }
-.parliament-wrap svg { width: 100%; max-width: 224px; height: auto; }
+.parliament-wrap svg { width: 100%; max-width: 269px; height: auto; }
 .parliament-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px 20px; margin-top: 16px; padding: 0 12px; }
 .legend-item { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--text-secondary); white-space: nowrap; }
 body.light-mode .legend-item { color: var(--text-secondary); }
