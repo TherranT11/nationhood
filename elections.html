@@ -1404,6 +1404,13 @@ async function formGovernment() {
         });
         if (error) throw error;
         if (data.success) {
+            // Clear any leftover frozen bills from a previous caretaker period
+            // so that inferCaretakerStatus() doesn't override the new 'formed' status
+            await _supabase.from('bills')
+                .update({ status: 'failed' })
+                .eq('nation_id', currentNation.id)
+                .eq('status', 'frozen');
+
             // Get the PM party from ministry assignments
             const { data: formation } = await _supabase
                 .from('government_formations')

@@ -3162,14 +3162,16 @@ async function processElections(supabase, nation, currentTick) {
                 }
             }
 
+            // Fail all frozen bills (from caretaker period) regardless of whether
+            // an existing government row was found — bills may have been frozen by
+            // early elections even if the government row was already cleaned up.
+            await supabase.from('bills')
+                .update({ status: 'failed' })
+                .eq('nation_id', nation.id)
+                .eq('status', 'frozen');
+
             if (existingGov) {
                 console.log(`Dissolving ${existingGov.status} government after election for ${nation.name} (source: ${existingGovSource})`);
-
-                // Fail all frozen bills (from caretaker period)
-                await supabase.from('bills')
-                    .update({ status: 'failed' })
-                    .eq('nation_id', nation.id)
-                    .eq('status', 'frozen');
 
                 // Close the administration
                 try {
