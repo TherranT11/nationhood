@@ -689,31 +689,33 @@
         const btn = document.getElementById('run-election-btn');
         btn.disabled = true; btn.textContent = '⏳ Running Election...';
         status.className = 'status info'; status.textContent = 'Simulating election...'; status.classList.remove('hidden'); resultsDiv.classList.add('hidden');
-       try {
-    const manualElectionType = selectedElectionNation.government_type === 'Presidential' ? 'presidential' : 'parliamentary';
-    const { data, error } = await _supabase.rpc('run_election', {
-        p_nation_id: selectedElectionNation.id,
-        p_election_type: manualElectionType
-    });
-    if (error) throw error;
-    const { data: election } = await _supabase.from('elections').select('results').eq('nation_id', selectedElectionNation.id).eq('status', 'completed').order('election_tick', { ascending: false }).limit(1).single();
-    if (election?.results?.seats) {
-        // Sync seats back to factions table
-        for (const r of election.results.seats) {
-            await _supabase
-                .from('factions')
-                .update({ seats: r.seats })
-                .eq('id', r.party_id);
-        }
-        console.log('Seats synced to factions table');
 
-        const totalSeats = selectedElectionNation.total_seats || 120;
-        resultsContent.innerHTML = election.results.seats.sort((a, b) => b.seats - a.seats).map(r => `<div class="result-party"><div><div class="result-party-name">${r.party_name}</div><div class="result-bar" style="width:200px;"><div class="result-bar-fill" style="width:${(r.seats/totalSeats)*100}%"></div></div></div><div class="result-party-seats">${r.seats} seats</div></div>`).join('');
-        resultsDiv.classList.remove('hidden');
-    }
-            status.className = 'status success'; status.textContent = `✅ Election completed for ${selectedElectionNation.name}!`;
-        } catch (error) { console.error(error); status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
-        btn.disabled = false; btn.textContent = '🗳️ RUN ELECTION NOW';
+
+            const runResult = await runManualElectionByGovernmentType(_supabase, nationRow, {
+                currentTick,
+                electionType: context.electionType
+            });
+
+            if (runResult?.seatResults?.length) {
+                const totalSeats = selectedElectionNation.total_seats || 120;
+                resultsContent.innerHTML = runResult.seatResults
+                    .sort((a, b) => b.seats - a.seats)
+                    .map(r => `<div class="result-party"><div><div class="result-party-name">${r.party_name}</div><div class="result-bar" style="width:200px;"><div class="result-bar-fill" style="width:${(r.seats/totalSeats)*100}%"></div></div></div><div class="result-party-seats">${r.seats} seats</div></div>`)
+                    .join('');
+                resultsDiv.classList.remove('hidden');
+            }
+
+            const electionLabel = runResult?.electionType ? ` (${runResult.electionType})` : '';
+            status.className = 'status success';
+            status.textContent = `✅ Election completed for ${selectedElectionNation.name}${electionLabel}!`;
+        } catch (error) {
+            console.error(error);
+            status.className = 'status error';
+            status.textContent = '❌ Error: ' + error.message;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🗳️ RUN ELECTION NOW';
+        }
     }
 
     async function previewElection() {

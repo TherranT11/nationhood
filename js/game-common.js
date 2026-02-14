@@ -2847,6 +2847,105 @@ async function processPartialElection(supabase, nation, election, currentTick) {
     console.log(`Partial election completed: ${deltaSeats} new seats allocated across ${factions.length} parties`);
 }
 
+async function resolveManualElectionContext(supabase, nation, currentTick, requestedElectionType = null) {
+    const governmentType = nation?.government_type || 'Democracy';
+    if (governmentType !== 'Presidential') {
+        return {
+            governmentType,
+            electionType: 'parliamentary',
+            forcedOutsideSchedule: false,
+            nextScheduledTick: null
+        };
+    }
+
+    let electionType = requestedElectionType;
+    if (!electionType) {
+        const { data: dueScheduledElection } = await supabase
+            .from('elections')
+            .select('id, election_type')
+            .eq('nation_id', nation.id)
+            .eq('status', 'scheduled')
+            .lte('election_tick', currentTick)
+            .order('election_tick', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+        electionType = dueScheduledElection?.election_type || 'presidential';
+    }
+
+    const { data: nextScheduled } = await supabase
+        .from('elections')
+        .select('election_tick')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .eq('election_type', electionType)
+        .order('election_tick', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+    const nextScheduledTick = nextScheduled?.election_tick ?? null;
+    return {
+        governmentType,
+        electionType,
+        forcedOutsideSchedule: !!(nextScheduledTick && nextScheduledTick > currentTick),
+        nextScheduledTick
+    };
+}
+
+async function runManualElectionByGovernmentType(supabase, nation, options = {}) {
+    if (!nation?.id) throw new Error('Nation is required');
+
+    const currentTick = Number.isInteger(options.currentTick)
+        ? options.currentTick
+        : (await getCurrentTick(supabase));
+
+    const context = await resolveManualElectionContext(supabase, nation, currentTick, options.electionType);
+    const isPresidential = context.governmentType === 'Presidential';
+
+    const { error: runError } = await supabase.rpc('run_election', { p_nation_id: nation.id });
+    if (runError) throw runError;
+
+    const { data: completedElection, error: electionError } = await supabase
+        .from('elections')
+        .select('id, election_tick, election_type, results, created_at')
+        .eq('nation_id', nation.id)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+    if (electionError) throw electionError;
+
+    const normalizedElectionType = context.electionType || completedElection.election_type || 'parliamentary';
+
+    await supabase
+        .from('elections')
+        .update({ election_type: normalizedElectionType })
+        .eq('id', completedElection.id);
+
+    const seatResults = completedElection?.results?.seats || [];
+    for (const r of seatResults) {
+        await supabase
+            .from('factions')
+            .update({ seats: r.seats })
+            .eq('id', r.party_id);
+    }
+
+    if (isPresidential && normalizedElectionType === 'presidential') {
+        await processPresidentialElectionResult(supabase, nation, completedElection, currentTick);
+    }
+
+    return {
+        success: true,
+        nationId: nation.id,
+        governmentType: context.governmentType,
+        electionType: normalizedElectionType,
+        forcedOutsideSchedule: context.forcedOutsideSchedule,
+        nextScheduledTick: context.nextScheduledTick,
+        currentTick,
+        completedElection,
+        seatResults
+    };
+}
+
 async function processElections(supabase, nation, currentTick) {
     if (nation.government_type === 'Autocracy') return [];
 
