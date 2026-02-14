@@ -332,6 +332,31 @@
                 <div id="election-preview-content"></div>
                 <div id="election-preview-blocs" style="margin-top:15px;"></div>
             </div>
+
+            <!-- ========== SCHEDULE ELECTION ========== -->
+            <hr style="border-color:#333; margin:20px 0;">
+            <h3>📅 Schedule Election</h3>
+            <div class="info-box"><strong>ℹ️ Schedule elections</strong><br>Insert scheduled election(s) at a future tick. When advanceTick reaches that tick, the election runs automatically and subsequent elections are auto-scheduled.</div>
+            <div class="input-group">
+                <label>Nation</label>
+                <select id="schedule-nation-select" onchange="onScheduleNationChange()">
+                    <option value="__all__">All Nations (Democracies)</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Election Type</label>
+                <select id="schedule-type-select">
+                    <option value="presidential">Presidential (Parliamentary + Presidential)</option>
+                    <option value="parliamentary">Parliamentary / Midterm</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Election Tick</label>
+                <input type="number" id="schedule-tick-input" min="1" placeholder="e.g. 24">
+                <div style="font-size:0.75rem;color:#888;" id="schedule-tick-hint"></div>
+            </div>
+            <button class="btn btn-primary" style="width:100%;" id="schedule-election-btn" onclick="scheduleElection()">📅 SCHEDULE ELECTION</button>
+            <div id="schedule-status" class="status info hidden"></div>
         </div>
 
 
@@ -676,6 +701,13 @@
             const select = document.getElementById('election-nation-select');
             select.innerHTML = '<option value="">-- Choose a nation --</option>';
             nations.forEach(n => { select.innerHTML += `<option value="${n.id}">${n.name}</option>`; });
+
+            // Populate schedule-election nation dropdown
+            const schedSelect = document.getElementById('schedule-nation-select');
+            schedSelect.innerHTML = '<option value="__all__">All Nations (Democracies)</option>';
+            nations.filter(n => n.government_type !== 'Autocracy').forEach(n => {
+                schedSelect.innerHTML += `<option value="${n.id}">${n.name} (${n.government_type || 'Democracy'})</option>`;
+            });
         } catch (error) { console.error(error); }
     }
     async function onElectionNationSelect() {
@@ -941,6 +973,98 @@
             status.className = 'status error'; status.textContent = '❌ Preview error: ' + error.message;
         }
         btn.disabled = false; btn.textContent = '🔍 PREVIEW ELECTION';
+    }
+
+    // ==================== SCHEDULE ELECTION ====================
+    async function scheduleElection() {
+        const nationSelect = document.getElementById('schedule-nation-select');
+        const typeSelect = document.getElementById('schedule-type-select');
+        const tickInput = document.getElementById('schedule-tick-input');
+        const status = document.getElementById('schedule-status');
+        const btn = document.getElementById('schedule-election-btn');
+
+        const targetTick = parseInt(tickInput.value);
+        if (!targetTick || targetTick < 1) {
+            status.className = 'status error'; status.textContent = 'Enter a valid tick.'; status.classList.remove('hidden');
+            return;
+        }
+
+        const electionType = typeSelect.value; // 'presidential' or 'parliamentary'
+        const nationValue = nationSelect.value;
+
+        // Determine which nations to schedule for
+        let targetNations;
+        if (nationValue === '__all__') {
+            const { data } = await _supabase.from('nations').select('id, name, government_type')
+                .neq('government_type', 'Autocracy');
+            targetNations = data || [];
+        } else {
+            const { data } = await _supabase.from('nations').select('id, name, government_type')
+                .eq('id', nationValue).single();
+            targetNations = data ? [data] : [];
+        }
+
+        if (targetNations.length === 0) {
+            status.className = 'status error'; status.textContent = 'No eligible nations found.'; status.classList.remove('hidden');
+            return;
+        }
+
+        btn.disabled = true;
+        const rows = [];
+        for (const nation of targetNations) {
+            const isPresidential = nation.government_type === 'Presidential';
+
+            // Always schedule parliamentary
+            rows.push({
+                nation_id: nation.id,
+                election_tick: targetTick,
+                election_type: 'parliamentary',
+                status: 'scheduled'
+            });
+
+            // For "presidential" type, also add a presidential election
+            // (only for Presidential government nations — standard democracies skip this)
+            if (electionType === 'presidential' && isPresidential) {
+                rows.push({
+                    nation_id: nation.id,
+                    election_tick: targetTick,
+                    election_type: 'presidential',
+                    status: 'scheduled'
+                });
+            }
+        }
+
+        const { error } = await _supabase.from('elections').insert(rows);
+        btn.disabled = false;
+
+        if (error) {
+            status.className = 'status error';
+            status.textContent = '❌ Error: ' + error.message;
+        } else {
+            const typeLabel = electionType === 'presidential'
+                ? 'Parliamentary + Presidential' : 'Parliamentary / Midterm';
+            status.className = 'status success';
+            status.textContent = `✅ Scheduled ${typeLabel} for ${targetNations.length} nation(s) at tick ${targetTick} (${rows.length} election record(s) created)`;
+        }
+        status.classList.remove('hidden');
+    }
+
+    function onScheduleNationChange() {
+        const nationValue = document.getElementById('schedule-nation-select').value;
+        const typeSelect = document.getElementById('schedule-type-select');
+        const presOption = typeSelect.querySelector('option[value="presidential"]');
+
+        if (nationValue === '__all__') {
+            presOption.disabled = false;
+        } else {
+            const nation = nations.find(n => n.id === nationValue);
+            if (nation && nation.government_type !== 'Presidential') {
+                presOption.disabled = true;
+                typeSelect.value = 'parliamentary';
+            } else {
+                presOption.disabled = false;
+            }
+        }
     }
 
     // ==================== PLAYERS TAB ====================
