@@ -1412,7 +1412,8 @@ async function formGovernment() {
         if (error) throw error;
         if (data.success) {
             // Dissolve old coalition AFTER RPC succeeds (prevents orphaned dissolved state on RPC failure)
-            await dissolveCoalition(_supabase, currentNation.id);
+            // Exclude the new formation so it isn't dissolved along with the old one
+            await dissolveCoalition(_supabase, currentNation.id, activeFormationId);
 
             // Cancel any other active formation proposals for this nation
             await _supabase.from('government_formations')
