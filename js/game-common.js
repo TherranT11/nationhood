@@ -1477,37 +1477,33 @@ async function resolveExpiredVotes(supabase, nationId) {
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'no_confidence' });
         } else if (isFoundational) {
             // Handle foundational bill resolution (electoral makeup, etc.)
+            let enacted = false;
             if (passed) {
-                await enactFoundationalBill(supabase, bill, currentTick);
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'bill_passed',
-                    p_nation_id: bill.nation_id,
-                    p_tick: currentTick,
-                    p_placeholders: {
-                        nation: nation?.name || 'Unknown',
-                        bill_name: bill.bill_name,
-                        sponsor: bill.factions?.faction_name || 'Unknown',
-                        votes_for: String(votesFor),
-                        votes_against: String(votesAgainst),
-                        article_count: '0'
-                    }
-                });
-            } else {
-                await failBill(supabase, bill);
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'bill_failed',
-                    p_nation_id: bill.nation_id,
-                    p_tick: currentTick,
-                    p_placeholders: {
-                        nation: nation?.name || 'Unknown',
-                        bill_name: bill.bill_name,
-                        sponsor: bill.factions?.faction_name || 'Unknown',
-                        votes_for: String(votesFor),
-                        votes_against: String(votesAgainst)
-                    }
-                });
+                enacted = await enactFoundationalBill(supabase, bill, currentTick);
             }
-            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'foundational' });
+            if (!passed || !enacted) {
+                if (!enacted && passed) {
+                    // enactFoundationalBill already marked it 'failed' internally
+                    console.warn(`[resolveExpiredVotes] Foundational bill ${bill.id} had enough votes but enactment failed (invalid proposed_seats).`);
+                } else {
+                    await failBill(supabase, bill);
+                }
+            }
+            const eventKey = enacted ? 'bill_passed' : 'bill_failed';
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: eventKey,
+                p_nation_id: bill.nation_id,
+                p_tick: currentTick,
+                p_placeholders: {
+                    nation: nation?.name || 'Unknown',
+                    bill_name: bill.bill_name,
+                    sponsor: bill.factions?.faction_name || 'Unknown',
+                    votes_for: String(votesFor),
+                    votes_against: String(votesAgainst),
+                    article_count: '0'
+                }
+            });
+            results.push({ billId: bill.id, billName: bill.bill_name, result: enacted ? 'passed' : 'failed', votesFor, votesAgainst, type: 'foundational' });
         } else if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
             // Ambassador confirmation bill
             if (passed) {
@@ -1879,14 +1875,23 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
 // ==================== FOUNDATIONAL BILL ENACTMENT ====================
 
 async function enactFoundationalBill(supabase, bill, currentTick) {
-    // Mark bill as passed
+    // Validate proposed_seats BEFORE marking the bill as passed
+    const newTotalSeats = bill.proposed_seats;
+    if (!newTotalSeats || newTotalSeats < 50 || newTotalSeats > 500) {
+        console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_seats: ${newTotalSeats}. Marking as failed.`);
+        await supabase.from('bills').update({
+            status: 'failed',
+            passed_tick: currentTick
+        }).eq('id', bill.id);
+        return false;
+    }
+
+    // Validation passed — mark bill as passed
+    console.log(`[enactFoundationalBill] Bill ${bill.id}: proposed_seats=${newTotalSeats}. Marking as passed.`);
     await supabase.from('bills').update({
         status: 'passed',
         passed_tick: currentTick
     }).eq('id', bill.id);
-
-    const newTotalSeats = bill.proposed_seats;
-    if (!newTotalSeats || newTotalSeats < 50 || newTotalSeats > 500) return;
 
     // Get current total seats to compute delta
     const { data: nationData } = await supabase
@@ -1925,12 +1930,15 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
                 await supabase.from('factions').update({ seats }).eq('id', partyId);
             }
         }
-        console.log(`Foundational bill passed: ${currentTotalSeats} → ${newTotalSeats} (${delta > 0 ? '+' : ''}${delta}). Seats rescaled proportionally.`);
+        console.log(`[enactFoundationalBill] ${currentTotalSeats} -> ${newTotalSeats} (${delta > 0 ? '+' : ''}${delta}). Seats rescaled.`);
+    } else {
+        console.log(`[enactFoundationalBill] No seat change (already ${newTotalSeats}).`);
     }
 
     // Update GAME_CONFIG for current session
     GAME_CONFIG.TOTAL_SEATS = newTotalSeats;
     GAME_CONFIG.MAJORITY_SEATS = Math.ceil(newTotalSeats * GAME_CONFIG.MAJORITY_THRESHOLD);
+    return true;
 }
 
 async function failBill(supabase, bill) {

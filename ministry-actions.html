@@ -1040,6 +1040,7 @@ async function respondToEvent(eventId, optionIndex) {
         const apResult = await deductAP(_supabase, currentFaction.id, apCost);
         if (!apResult.success) { alert('Not enough AP.'); return; }
         currentFaction.action_points = apResult.newAp;
+        sessionStorage.removeItem('nationhood_state');
     }
 
     try {
@@ -1169,6 +1170,7 @@ async function confirmAction() {
     const apResult = await deductAP(_supabase, currentFaction.id, action.ap);
     if (!apResult.success) { alert('Not enough AP.'); return; }
     currentFaction.action_points = apResult.newAp;
+    sessionStorage.removeItem('nationhood_state');
 
     try {
         const cooldownUntil = action.cooldownTicks ? currentTick + action.cooldownTicks : null;
