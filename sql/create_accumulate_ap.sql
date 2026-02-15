@@ -9,6 +9,7 @@ CREATE OR REPLACE FUNCTION accumulate_ap(
 )
 RETURNS INT
 LANGUAGE plpgsql
+SECURITY DEFINER
 AS $$
 DECLARE
     v_new_ap INT;
