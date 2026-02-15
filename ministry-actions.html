@@ -640,6 +640,7 @@ let currentTick = 0;
 let actionCooldowns = {};
 let pendingActionKey = null;
 let pendingTargetFactionId = null;
+let isCaretaker = false;
 
 // ==================== INIT ====================
 initPage('ministry-actions', async (state) => {
@@ -668,6 +669,10 @@ initPage('ministry-actions', async (state) => {
         currentFaction.faction_name = fresh.faction_name;
         currentFaction.approval_rating = fresh.approval_rating;
     }
+
+    // Check caretaker status
+    const coalition = await fetchActiveCoalition(_supabase, nation.id);
+    isCaretaker = (coalition?.status === 'caretaker');
 
     const { data: ministries } = await _supabase.from('ministries')
         .select('*').eq('nation_id', nation.id).eq('is_active', true).eq('party_id', faction.id);
@@ -1024,6 +1029,7 @@ function renderEmailDetail() {
 
 // ==================== RESPOND TO EVENT ====================
 async function respondToEvent(eventId, optionIndex) {
+    if (isCaretaker) { alert('Ministry actions are restricted during caretaker government.'); return; }
     const ev = inboxEvents.find(e => e.id === eventId);
     if (!ev || ev.status !== 'active') return;
 
@@ -1155,6 +1161,7 @@ function closeActionModal() {
 }
 
 async function confirmAction() {
+    if (isCaretaker) { alert('Ministry actions are restricted during caretaker government.'); return; }
     const govType = isAutocracy ? 'Autocracy' : 'Democracy';
     const actions = (MINISTRY_ACTIONS[activeMinistryKey] || {})[govType] || [];
     const action = actions.find(a => a.key === pendingActionKey);

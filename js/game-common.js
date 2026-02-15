@@ -869,6 +869,7 @@ async function fetchActiveCoalition(supabase, nationId) {
         .from('active_coalitions')
         .select('*')
         .eq('nation_id', nationId)
+        .is('dissolved_at', null)
         .order('formed_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -2168,6 +2169,21 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
  */
 async function createAdministration(supabase, nationId, nation, coalition, allParties, currentTick, currentDate, governmentApproval) {
     try {
+        // Safety net: close any orphaned open administrations before creating a new one
+        const { data: orphaned } = await supabase
+            .from('administrations')
+            .select('id')
+            .eq('nation_id', nationId)
+            .is('ended_at_tick', null);
+        if (orphaned && orphaned.length > 0) {
+            console.warn(`createAdministration: closing ${orphaned.length} orphaned open administration(s) for nation ${nationId}`);
+            await supabase
+                .from('administrations')
+                .update({ ended_at_tick: currentTick, ended_at_date: currentDate, end_reason: 'new_coalition' })
+                .eq('nation_id', nationId)
+                .is('ended_at_tick', null);
+        }
+
         const statsAtStart = snapshotNationStats(nation);
 
         // Build coalition party info
@@ -2406,53 +2422,58 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
         const coalition = await fetchActiveCoalition(supabase, nationId);
         const coalitionPartyIds = coalition?.party_ids || [];
 
-        // Close the current administration before dissolving
-        try {
-            const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
-            const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-            if (fullNation) {
-                await closeAdministration(supabase, nationId, fullNation, 'coalition_collapse', currentTick, shard?.current_date || '', null);
-            }
-        } catch (adminErr) { console.warn('Could not close administration on no-confidence:', adminErr); }
+        // Guard: skip dissolution if coalition was already dissolved (e.g. by election on same tick)
+        if (!coalition || coalition.status === 'dissolved') {
+            console.warn('resolveNoConfidence: coalition already dissolved, skipping dissolution penalties');
+        } else {
+            // Close the current administration before dissolving
+            try {
+                const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
+                const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                if (fullNation) {
+                    await closeAdministration(supabase, nationId, fullNation, 'coalition_collapse', currentTick, shard?.current_date || '', null);
+                }
+            } catch (adminErr) { console.warn('Could not close administration on no-confidence:', adminErr); }
 
-        // Dissolve coalition
-        await dissolveCoalition(supabase, nationId);
+            // Dissolve coalition
+            await dissolveCoalition(supabase, nationId);
 
-        // Calling party gets +3 approval
-        const { data: callerFaction } = await supabase
-            .from('factions')
-            .select('approval_rating')
-            .eq('id', callingPartyId)
-            .single();
-        if (callerFaction) {
-            await supabase.from('factions')
-                .update({ approval_rating: Math.min(100, (callerFaction.approval_rating ?? 50) + 3) })
-                .eq('id', callingPartyId);
-        }
-
-        // All coalition parties get -5 approval
-        for (const partyId of coalitionPartyIds) {
-            const { data: faction } = await supabase
+            // Calling party gets +3 approval
+            const { data: callerFaction } = await supabase
                 .from('factions')
                 .select('approval_rating')
-                .eq('id', partyId)
+                .eq('id', callingPartyId)
                 .single();
-            if (faction) {
+            if (callerFaction) {
                 await supabase.from('factions')
-                    .update({ approval_rating: Math.max(0, (faction.approval_rating ?? 50) - 5) })
-                    .eq('id', partyId);
+                    .update({ approval_rating: Math.min(100, (callerFaction.approval_rating ?? 50) + 3) })
+                    .eq('id', callingPartyId);
             }
-        }
 
-        // Log event
-        await supabase.from('event_log').insert({
-            nation_id: nationId,
-            event_name: 'No Confidence — Government Falls',
-            fired_at_tick: currentTick,
-            category: 'government',
-            description_chosen: `The ${pmLastName} Government has fallen. A motion of no confidence passed ${votesFor} to ${votesAgainst}.`,
-            effects_applied: { coalition_dissolved: true, caller_approval: +3, coalition_approval: -5 }
-        });
+            // All coalition parties get -5 approval
+            for (const partyId of coalitionPartyIds) {
+                const { data: faction } = await supabase
+                    .from('factions')
+                    .select('approval_rating')
+                    .eq('id', partyId)
+                    .single();
+                if (faction) {
+                    await supabase.from('factions')
+                        .update({ approval_rating: Math.max(0, (faction.approval_rating ?? 50) - 5) })
+                        .eq('id', partyId);
+                }
+            }
+
+            // Log event
+            await supabase.from('event_log').insert({
+                nation_id: nationId,
+                event_name: 'No Confidence — Government Falls',
+                fired_at_tick: currentTick,
+                category: 'government',
+                description_chosen: `The ${pmLastName} Government has fallen. A motion of no confidence passed ${votesFor} to ${votesAgainst}.`,
+                effects_applied: { coalition_dissolved: true, caller_approval: +3, coalition_approval: -5 }
+            });
+        } // end else (coalition not already dissolved)
 
     } else {
         // FAILED: calling party gets -5 approval
@@ -2574,11 +2595,16 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
     }
 
     // 3. Set government to caretaker (both tables — legacy active_coalitions may be source)
-    await supabase
+    // Use status='formed' filter as optimistic lock — only one caller can transition formed→caretaker
+    const { data: updatedGov, count: updatedCount } = await supabase
         .from('government_formations')
         .update({ status: 'caretaker' })
         .eq('nation_id', nationId)
-        .in('status', ['formed']);
+        .in('status', ['formed'])
+        .select('id');
+    if (!updatedGov || updatedGov.length === 0) {
+        throw new Error('Government was already changed by another action. Please refresh.');
+    }
     await supabase
         .from('active_coalitions')
         .update({ status: 'caretaker' })
@@ -2596,7 +2622,8 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
     await supabase.from('elections').insert({
         nation_id: nationId,
         election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
-        status: 'scheduled'
+        status: 'scheduled',
+        election_type: 'parliamentary'
     });
 
     // 6. Freeze all active bills (committee and floor)
@@ -3191,7 +3218,7 @@ async function processElections(supabase, nation, currentTick) {
 
                 await supabase
                     .from('active_coalitions')
-                    .update({ dissolved_at: new Date().toISOString() })
+                    .update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
                     .eq('nation_id', nation.id)
                     .is('dissolved_at', null);
 
@@ -6047,6 +6074,14 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
 
     if (hog.trait_key === 'iron_will') {
         console.log('Iron Will resignation — coalition collapses');
+        try {
+            const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
+            const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+            if (fullNation) {
+                await closeAdministration(supabase, nationId, fullNation, 'coalition_collapse', currentTick, shard?.current_date || '', null);
+            }
+        } catch (adminErr) { console.warn('Could not close administration on iron_will collapse:', adminErr); }
+        await dissolveCoalition(supabase, nationId);
         return { result: 'coalition_collapsed', reason: 'iron_will' };
     }
 
@@ -6083,6 +6118,14 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
     }
 
     console.log('No eligible partner — coalition collapsed');
+    try {
+        const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
+        const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+        if (fullNation) {
+            await closeAdministration(supabase, nationId, fullNation, 'coalition_collapse', currentTick, shard?.current_date || '', null);
+        }
+    } catch (adminErr) { console.warn('Could not close administration on coalition collapse:', adminErr); }
+    await dissolveCoalition(supabase, nationId);
     return { result: 'coalition_collapsed', reason: 'no_eligible_partner' };
 }
 

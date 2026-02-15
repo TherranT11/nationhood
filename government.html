@@ -1791,6 +1791,12 @@ function renderNoConfidenceButton(coalition) {
 async function fileNoConfidence() {
     if (!currentFaction || !currentNation || !coalitionData) return;
 
+    // Cannot file no-confidence against a caretaker government
+    if (coalitionData.status === 'caretaker') {
+        alert('Cannot file a vote of no confidence against a caretaker government. Elections are already scheduled.');
+        return;
+    }
+
     if ((currentFaction.action_points || 0) < GAME_CONFIG.NO_CONFIDENCE_AP_COST) {
         alert(`Not enough AP. You need ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP (you have ${currentFaction.action_points || 0}).`);
         return;
@@ -1817,11 +1823,12 @@ async function fileNoConfidence() {
         return;
     }
 
-    // Check: 6-tick cooldown since last failed no-confidence
+    // Check: 6-tick cooldown since last failed no-confidence (per-party)
     const { data: lastFailed } = await _supabase
         .from('campaign_actions')
         .select('tick_performed')
         .eq('nation_id', currentNation.id)
+        .eq('party_id', currentFaction.id)
         .eq('action_type', 'no_confidence_failed')
         .order('tick_performed', { ascending: false })
         .limit(1)
@@ -1866,10 +1873,6 @@ async function fileNoConfidence() {
         `Proceed?`
     )) return;
 
-    const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.NO_CONFIDENCE_AP_COST);
-    if (!apResult.success) { alert(`Not enough AP. You need ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP.`); return; }
-    currentFaction.action_points = apResult.newAp;
-
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const tick = shard?.current_tick || 0;
@@ -1887,6 +1890,11 @@ async function fileNoConfidence() {
         }).select().single();
 
         if (billError) throw billError;
+
+        // Deduct AP only after bill creation succeeds
+        const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.NO_CONFIDENCE_AP_COST);
+        if (!apResult.success) { alert(`Not enough AP. You need ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP.`); return; }
+        currentFaction.action_points = apResult.newAp;
 
         // Auto-cast the filer's own vote as YES
         const seatData = await loadSeats(_supabase, currentNation.id, false, allParties, currentFaction.id);
@@ -2197,6 +2205,12 @@ async function resignPMAction() {
     async function resignMinistry(ministryKey) {
     const ministry = ministryData.find(m => m.ministry_key === ministryKey);
     if (!ministry) return;
+
+    // Cannot resign ministry during caretaker government
+    if (coalitionData?.status === 'caretaker') {
+        alert('Cannot resign ministries during a caretaker government.');
+        return;
+    }
 
     const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
     if (!confirm('📋 Resign ' + ministerName + ' from ' + (ministry.ministry_name || ministryKey) + '?\n\nThis vacates the position. Your coalition leader may reassign it.')) return;

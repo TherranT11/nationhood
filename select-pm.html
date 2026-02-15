@@ -367,7 +367,7 @@ initPage('government', async (state) => {
             .from('government_formations')
             .select('ministry_assignments')
             .eq('nation_id', nation.id)
-            .eq('status', 'formed')
+            .in('status', ['formed', 'caretaker'])
             .order('formed_at', { ascending: false })
             .limit(1)
             .maybeSingle();
