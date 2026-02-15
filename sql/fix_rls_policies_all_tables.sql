@@ -31,7 +31,8 @@ DECLARE
         'active_crises',
         'ministry_action_log',
         'ministry_events',
-        'ministry_event_templates'
+        'ministry_event_templates',
+        'ministry_requests'
     ];
     has_rls BOOLEAN;
     pol_exists BOOLEAN;
