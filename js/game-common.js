@@ -5560,6 +5560,7 @@ async function processCrises(supabase, nation, currentTick) {
  */
 async function processMinistryInboxEvents(supabase, nation, currentTick) {
     const firedEvents = [];
+    const dbg = (msg) => console.log(`[MinistryEvents][${nation.name}][tick ${currentTick}] ${msg}`);
 
     // --- 1. Expire overdue active ministry events ---
     const { data: overdueEvents } = await supabase
@@ -5583,16 +5584,24 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
         .eq('is_active', true);
 
     if (templateError) {
-        console.warn(`processMinistryInboxEvents: failed to load ministry_event_templates for ${nation.name}:`, templateError.message);
+        dbg(`BLOCKED: failed to load ministry_event_templates: ${templateError.message}`);
         return firedEvents;
     }
 
-    if (!templates || templates.length === 0) return firedEvents;
+    if (!templates || templates.length === 0) {
+        dbg('BLOCKED: No active ministry_event_templates found in DB.');
+        return firedEvents;
+    }
+    dbg(`Loaded ${templates.length} active template(s): [${templates.map(t => t.event_key).join(', ')}]`);
 
     // --- 3. Filter by government type ---
     const govType = nation.government_type || 'Democracy';
     const eligible = templates.filter(t => (t.gov_types || []).includes(govType));
-    if (eligible.length === 0) return firedEvents;
+    if (eligible.length === 0) {
+        dbg(`BLOCKED: 0/${templates.length} templates match gov_type "${govType}". Template gov_types: ${templates.map(t => `${t.event_key}=${JSON.stringify(t.gov_types)}`).join(', ')}`);
+        return firedEvents;
+    }
+    dbg(`${eligible.length}/${templates.length} template(s) match gov_type "${govType}": [${eligible.map(t => t.event_key).join(', ')}]`);
 
     // --- 4. Load active ministries for this nation ---
     const { data: ministries } = await supabase
@@ -5601,7 +5610,11 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
         .eq('nation_id', nation.id)
         .eq('is_active', true);
 
-    if (!ministries || ministries.length === 0) return firedEvents;
+    if (!ministries || ministries.length === 0) {
+        dbg('BLOCKED: No active ministries found for this nation.');
+        return firedEvents;
+    }
+    dbg(`Active ministries: [${ministries.map(m => `${m.ministry_key}(party=${m.party_id})`).join(', ')}]`);
 
     // For Presidential nations with pending-confirmation ministers, party_id may be null.
     // Fall back to the PM/President's faction so events can still fire.
@@ -5620,6 +5633,7 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
     for (const m of ministries) {
         ministryMap[m.ministry_key] = m.party_id || fallbackFactionId;
     }
+    dbg(`Ministry map: ${JSON.stringify(ministryMap)}`);
 
     // --- 5. Check cooldowns: find last fired tick for each template ---
     const templateIds = eligible.map(t => t.id);
@@ -5650,19 +5664,32 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
     }
 
     // --- 7. Process each eligible template ---
+    dbg(`Processing ${eligible.length} eligible template(s)…`);
     for (const tmpl of eligible) {
+        const tKey = tmpl.event_key;
+
         // Skip if this ministry doesn't exist or isn't staffed
         const controllingFactionId = ministryMap[tmpl.ministry_key];
-        if (!controllingFactionId) continue;
+        if (!controllingFactionId) {
+            dbg(`  [${tKey}] SKIP: ministry "${tmpl.ministry_key}" not in ministryMap or has null faction. Map keys: [${Object.keys(ministryMap).join(', ')}]`);
+            continue;
+        }
 
         // Skip if ministry already has 3+ active events (prevent inbox flood)
-        if ((activeCountByMinistry[tmpl.ministry_key] || 0) >= 3) continue;
+        const activeCount = activeCountByMinistry[tmpl.ministry_key] || 0;
+        if (activeCount >= 3) {
+            dbg(`  [${tKey}] SKIP: ministry "${tmpl.ministry_key}" already has ${activeCount} active events (max 3).`);
+            continue;
+        }
 
         // Check cooldown
         const lastFired = lastFiredMap[tmpl.id];
         if (lastFired !== undefined) {
             const ticksSince = currentTick - lastFired;
-            if (ticksSince < (tmpl.cooldown_ticks || 6)) continue;
+            if (ticksSince < (tmpl.cooldown_ticks || 6)) {
+                dbg(`  [${tKey}] SKIP: cooldown — last fired tick ${lastFired}, ${ticksSince} ticks ago, need ${tmpl.cooldown_ticks || 6}.`);
+                continue;
+            }
         }
 
         // --- 8. Evaluate weight conditions ---
@@ -5683,15 +5710,18 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
             for (const cond of weightConditions) {
                 const statVal = nation[cond.stat];
                 if (statVal === null || statVal === undefined) {
+                    dbg(`  [${tKey}] Weight cond: nation.${cond.stat} is ${statVal} (missing!) — condition FAILED`);
                     allConditionsMet = false;
                     break;
                 }
                 const val = Number(statVal);
                 const threshold = Number(cond.value);
-                if (cond.op === '>' && !(val > threshold)) { allConditionsMet = false; break; }
-                if (cond.op === '<' && !(val < threshold)) { allConditionsMet = false; break; }
-                if (cond.op === '>=' && !(val >= threshold)) { allConditionsMet = false; break; }
-                if (cond.op === '<=' && !(val <= threshold)) { allConditionsMet = false; break; }
+                const passed = (cond.op === '>' && val > threshold) ||
+                               (cond.op === '<' && val < threshold) ||
+                               (cond.op === '>=' && val >= threshold) ||
+                               (cond.op === '<=' && val <= threshold);
+                dbg(`  [${tKey}] Weight cond: nation.${cond.stat}=${val} ${cond.op} ${threshold} → ${passed ? 'PASS' : 'FAIL'}`);
+                if (!passed) { allConditionsMet = false; break; }
             }
         }
 
@@ -5708,6 +5738,7 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
         }
 
         const roll = Math.random() * 100;
+        dbg(`  [${tKey}] Probability: ${fireProbability}% (conditions=${weightConditions.length}, met=${allConditionsMet}), roll=${roll.toFixed(1)} → ${roll < fireProbability ? 'FIRE!' : 'SKIP (bad roll)'}`);
         if (roll >= fireProbability) continue;
 
         // --- 10. Pick random variants ---
@@ -5744,7 +5775,9 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
             resolved_at_tick: null
         });
 
-        if (!error) {
+        if (error) {
+            dbg(`  [${tKey}] ERROR inserting ministry_event: ${error.message}`);
+        } else {
             // Update active count to prevent flooding within same tick
             activeCountByMinistry[tmpl.ministry_key] = (activeCountByMinistry[tmpl.ministry_key] || 0) + 1;
 
@@ -5755,10 +5788,11 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
                 conditionsMet: allConditionsMet
             });
 
-            console.log(`Ministry event fired: "${chosenTitle}" → ${tmpl.ministry_key} in ${nation.name} (tick ${currentTick})`);
+            dbg(`  [${tKey}] ✓ FIRED: "${chosenTitle}" → ${tmpl.ministry_key}`);
         }
     }
 
+    dbg(`Done. Fired ${firedEvents.length} event(s) this tick.`);
     return firedEvents;
 }
 
