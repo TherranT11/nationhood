@@ -2395,16 +2395,18 @@ async function rolloverAdministration(supabase, nationId, nation, endReason, coa
  * - Vacates all ministries
  * Nation enters formation period (processGovernmentVacancy handles penalties).
  */
-async function dissolveCoalition(supabase, nationId) {
+async function dissolveCoalition(supabase, nationId, excludeFormationId) {
     // Bust coalition cache so pages immediately see the dissolved state
     if (typeof qCacheBust === 'function') qCacheBust('coalition_' + nationId);
 
-    // Dissolve government_formations
-    await supabase
+    // Dissolve government_formations (skip the new formation if one is being created)
+    let dissolveQuery = supabase
         .from('government_formations')
         .update({ status: 'dissolved' })
         .eq('nation_id', nationId)
         .in('status', ['formed', 'caretaker']);
+    if (excludeFormationId) dissolveQuery = dissolveQuery.neq('id', excludeFormationId);
+    await dissolveQuery;
 
     // Also dissolve legacy active_coalitions
     await supabase
@@ -5977,6 +5979,34 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
         }, { onConflict: 'nation_id' });
 
     if (hogErr) throw hogErr;
+
+    // Update the prime_minister ministry row so ministry-actions picks it up
+    const { data: pmMinistry } = await supabase.from('ministries')
+        .select('id').eq('nation_id', nationId)
+        .eq('ministry_key', 'prime_minister').eq('is_active', true)
+        .maybeSingle();
+
+    if (pmMinistry) {
+        await supabase.from('ministries').update({
+            party_id: factionId,
+            minister_first_name: candidate.first_name,
+            minister_last_name: candidate.last_name,
+            minister_age: candidate.age,
+            minister_approval: 50
+        }).eq('id', pmMinistry.id);
+    } else {
+        await supabase.from('ministries').insert({
+            nation_id: nationId,
+            ministry_key: 'prime_minister',
+            ministry_name: 'Prime Minister',
+            is_active: true,
+            party_id: factionId,
+            minister_first_name: candidate.first_name,
+            minister_last_name: candidate.last_name,
+            minister_age: candidate.age,
+            minister_approval: 50
+        });
+    }
 
     const axisKey = candidate.ideology_axis;
     const shift = 15 * candidate.ideology_direction;
