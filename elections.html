@@ -1395,15 +1395,21 @@ async function retractProposal(formationId) {
     } catch (err) { alert('❌ Error retracting proposal: ' + err.message); }
 }
 
+let _formingInProgress = false;
 async function formGovernment() {
+    if (_formingInProgress) return;
     if (!activeFormationId) return;
     if (!confirm('🏛️ Form this government? This will finalize all ministry assignments.')) return;
+    _formingInProgress = true;
     try {
         const { data, error } = await _supabase.rpc('form_government', {
             p_formation_id: activeFormationId, p_caller_faction_id: currentFaction.id
         });
         if (error) throw error;
         if (data.success) {
+            // Dissolve old coalition AFTER RPC succeeds (prevents orphaned dissolved state on RPC failure)
+            await dissolveCoalition(_supabase, currentNation.id);
+
             // Clear any leftover frozen bills from a previous caretaker period
             // so that inferCaretakerStatus() doesn't override the new 'formed' status
             await _supabase.from('bills')
@@ -1460,6 +1466,13 @@ async function formGovernment() {
                     const endReason = (recentElection && (shard?.current_tick - recentElection.election_tick) <= 8)
                         ? 'election_loss' : 'new_coalition';
 
+                    // Compute average coalition approval for the administration baseline
+                    const coalitionFactions = (allFactions || []).filter(f =>
+                        (newFormation.party_ids || []).includes(f.id));
+                    const govApproval = coalitionFactions.length > 0
+                        ? Math.round(coalitionFactions.reduce((sum, f) => sum + (f.approval_rating ?? 50), 0) / coalitionFactions.length)
+                        : null;
+
                     try {
                         await rolloverAdministration(
                             _supabase,
@@ -1470,7 +1483,7 @@ async function formGovernment() {
                             allFactions || [],
                             shard?.current_tick || 0,
                             shard?.current_date || '',
-                            null
+                            govApproval
                         );
                     } catch (adminErr) {
                         throw new Error(`Administration lifecycle failed during government formation: ${adminErr.message || adminErr}`);
@@ -1514,6 +1527,7 @@ async function formGovernment() {
             }
         } else { alert('❌ ' + data.message); }
     } catch (err) { alert('❌ Error: ' + err.message); }
+    finally { _formingInProgress = false; }
 }
 
 
