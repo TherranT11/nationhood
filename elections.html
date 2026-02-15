@@ -1399,6 +1399,9 @@ async function formGovernment() {
     if (!activeFormationId) return;
     if (!confirm('🏛️ Form this government? This will finalize all ministry assignments.')) return;
     try {
+        // Dissolve any existing coalition (caretaker or formed) before creating the new one
+        await dissolveCoalition(_supabase, currentNation.id);
+
         const { data, error } = await _supabase.rpc('form_government', {
             p_formation_id: activeFormationId, p_caller_faction_id: currentFaction.id
         });
