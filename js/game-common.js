@@ -5980,6 +5980,34 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
 
     if (hogErr) throw hogErr;
 
+    // Update the prime_minister ministry row so ministry-actions picks it up
+    const { data: pmMinistry } = await supabase.from('ministries')
+        .select('id').eq('nation_id', nationId)
+        .eq('ministry_key', 'prime_minister').eq('is_active', true)
+        .maybeSingle();
+
+    if (pmMinistry) {
+        await supabase.from('ministries').update({
+            party_id: factionId,
+            minister_first_name: candidate.first_name,
+            minister_last_name: candidate.last_name,
+            minister_age: candidate.age,
+            minister_approval: 50
+        }).eq('id', pmMinistry.id);
+    } else {
+        await supabase.from('ministries').insert({
+            nation_id: nationId,
+            ministry_key: 'prime_minister',
+            ministry_name: 'Prime Minister',
+            is_active: true,
+            party_id: factionId,
+            minister_first_name: candidate.first_name,
+            minister_last_name: candidate.last_name,
+            minister_age: candidate.age,
+            minister_approval: 50
+        });
+    }
+
     const axisKey = candidate.ideology_axis;
     const shift = 15 * candidate.ideology_direction;
 
