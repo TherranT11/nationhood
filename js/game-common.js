@@ -5727,6 +5727,7 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
             ministry_key: tmpl.ministry_key,
             controlling_faction_id: controllingFactionId,
             template_id: tmpl.id,
+            event_key: tmpl.event_key,
             title: chosenTitle,
             sender: tmpl.sender || 'Ministry Office',
             body: chosenBody,
