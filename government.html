@@ -1875,8 +1875,6 @@ async function fileNoConfidence() {
         `Proceed?`
     )) return;
 
-claude/debug-game-issue-9OzUs
-
     const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.NO_CONFIDENCE_AP_COST);
     if (!apResult.success) { alert(`Not enough AP. You need ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP.`); return; }
     currentFaction.action_points = apResult.newAp;
