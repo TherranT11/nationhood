@@ -803,21 +803,25 @@ async function fetchActiveCoalition(supabase, nationId) {
             .eq('is_active', true);
 
         const ministryAllocations = {};
+        const cabinetPartyIds = new Set([president.faction_id]);
         for (const m of (ministries || [])) {
-            if (m.party_id) ministryAllocations[m.ministry_key] = m.party_id;
+            if (m.party_id) {
+                ministryAllocations[m.ministry_key] = m.party_id;
+                cabinetPartyIds.add(m.party_id);
+            }
         }
 
         const result = {
             id: president.id,
             nation_id: nationId,
-            party_ids: [president.faction_id],
+            party_ids: Array.from(cabinetPartyIds),
             lead_party_id: president.faction_id,
             ministry_allocations: ministryAllocations,
             formed_at: null,
             status: 'formed',  // Always 'formed' while president is active
             _source: 'presidential'
         };
-        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 2 * 60 * 1000);
+        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 15 * 1000);
         return result;
     }
 
@@ -861,7 +865,20 @@ async function fetchActiveCoalition(supabase, nationId) {
             _source: 'government_formations'
         };
         await inferCaretakerStatus(result);
-        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 2 * 60 * 1000);
+
+        // Reconcile: if government_formations has a definitive status, ensure active_coalitions matches
+        if (result.status === 'dissolved' || result.status === 'caretaker') {
+            supabase.from('active_coalitions')
+                .update(result.status === 'dissolved'
+                    ? { status: 'dissolved', dissolved_at: new Date().toISOString() }
+                    : { status: 'caretaker' })
+                .eq('nation_id', nationId)
+                .is('dissolved_at', null)
+                .then(() => {}) // fire-and-forget reconciliation
+                .catch(e => console.warn('Coalition table reconciliation failed:', e));
+        }
+
+        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 15 * 1000);
         return result;
     }
 
@@ -876,7 +893,7 @@ async function fetchActiveCoalition(supabase, nationId) {
 
     if (data) {
         await inferCaretakerStatus(data);
-        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 2 * 60 * 1000);
+        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 15 * 1000);
     }
     return data;
 }
@@ -1558,6 +1575,26 @@ async function resolveExpiredVotes(supabase, nationId) {
 
             if (passed) {
                 await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+                if (!ministry) {
+                    // Ministry row doesn't exist — create it so the confirmation can proceed
+                    console.warn(`Minister confirmation passed but ministry row missing for ${mKey} in nation ${bill.nation_id}. Creating it.`);
+                    const { data: createdMinistry } = await supabase.from('ministries').insert({
+                        nation_id: bill.nation_id,
+                        ministry_key: mKey,
+                        ministry_name: mKey,
+                        is_active: true,
+                        confirmation_status: 'pending',
+                        pending_minister: null,
+                        rejected_parties: []
+                    }).select('id, pending_minister, rejected_parties').single();
+                    // Use the bill's metadata as fallback for pending_minister
+                    if (createdMinistry && bill.metadata?.pending_minister) {
+                        await supabase.from('ministries').update({
+                            pending_minister: bill.metadata.pending_minister
+                        }).eq('id', createdMinistry.id);
+                    }
+                }
 
                 if (ministry?.pending_minister) {
                     const pm = ministry.pending_minister;
@@ -2349,6 +2386,9 @@ async function rolloverAdministration(supabase, nationId, nation, endReason, coa
  * Nation enters formation period (processGovernmentVacancy handles penalties).
  */
 async function dissolveCoalition(supabase, nationId) {
+    // Bust coalition cache so pages immediately see the dissolved state
+    if (typeof qCacheBust === 'function') qCacheBust('coalition_' + nationId);
+
     // Dissolve government_formations
     await supabase
         .from('government_formations')
@@ -2472,14 +2512,30 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
                 }
             }
 
+            // Schedule snap election (same pattern as early elections)
+            await supabase.from('elections').delete()
+                .eq('nation_id', nationId).eq('status', 'scheduled');
+            await supabase.from('elections').insert({
+                nation_id: nationId,
+                election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
+                status: 'scheduled',
+                election_type: 'parliamentary'
+            });
+
+            // Freeze active bills (same as early elections)
+            await supabase.from('bills')
+                .update({ status: 'frozen' })
+                .eq('nation_id', nationId)
+                .in('status', ['committee', 'floor']);
+
             // Log event
             await supabase.from('event_log').insert({
                 nation_id: nationId,
                 event_name: 'No Confidence — Government Falls',
                 fired_at_tick: currentTick,
                 category: 'government',
-                description_chosen: `The ${pmLastName} Government has fallen. A motion of no confidence passed ${votesFor} to ${votesAgainst}.`,
-                effects_applied: { coalition_dissolved: true, caller_approval: +3, coalition_approval: -5 }
+                description_chosen: `The ${pmLastName} Government has fallen. A motion of no confidence passed ${votesFor} to ${votesAgainst}. Snap elections scheduled.`,
+                effects_applied: { coalition_dissolved: true, caller_approval: +3, coalition_approval: -5, election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS, bills_frozen: true }
             });
         } // end else (coalition not already dissolved)
 
@@ -2618,6 +2674,9 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
         .update({ status: 'caretaker' })
         .eq('nation_id', nationId)
         .is('dissolved_at', null);
+
+    // Bust coalition cache after caretaker transition
+    if (typeof qCacheBust === 'function') qCacheBust('coalition_' + nationId);
 
     // 4. Cancel any existing scheduled elections
     await supabase
@@ -3387,6 +3446,11 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
             }
         });
     } catch (e) { console.warn('Presidential election event fire failed (non-blocking):', e); }
+
+    // Proactively schedule next elections (instead of relying on processPresidentialTermEnd safety net)
+    try {
+        await scheduleNextPresidentialElections(supabase, nation, currentTick);
+    } catch (e) { console.warn('Could not schedule next presidential elections:', e); }
 }
 
 /**
@@ -4076,6 +4140,56 @@ async function processPresidentCandidateTimeout(supabase, nation, currentTick) {
     }
 }
 
+/**
+ * Auto-select parliamentary PM candidates that have timed out (3 ticks).
+ * Mirrors processPresidentCandidateTimeout but for parliamentary systems.
+ */
+async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
+    if (nation.government_type !== 'Democracy') return;
+
+    const timeoutTicks = 3;
+    const { data: staleCandidates } = await supabase
+        .from('pm_candidates')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .eq('candidate_type', 'parliamentary')
+        .eq('selected', false)
+        .lte('created_at_tick', currentTick - timeoutTicks)
+        .order('created_at_tick', { ascending: true });
+
+    if (!staleCandidates || staleCandidates.length === 0) return;
+
+    // Group by faction to auto-select one per party
+    const factionGroups = {};
+    for (const c of staleCandidates) {
+        if (!factionGroups[c.faction_id]) factionGroups[c.faction_id] = [];
+        factionGroups[c.faction_id].push(c);
+    }
+
+    for (const [factionId, candidates] of Object.entries(factionGroups)) {
+        // Check if this faction already has a selected candidate
+        const { data: alreadySelected } = await supabase
+            .from('pm_candidates')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('faction_id', factionId)
+            .eq('candidate_type', 'parliamentary')
+            .eq('selected', true)
+            .limit(1)
+            .maybeSingle();
+        if (alreadySelected) continue;
+
+        const pick = candidates[0];
+        console.log(`Auto-selecting parliamentary PM for ${nation.name}: ${pick.first_name} ${pick.last_name} — selection timed out after ${timeoutTicks} ticks`);
+
+        try {
+            await selectPMCandidate(supabase, pick.id, nation.id, factionId, currentTick);
+        } catch (e) {
+            console.error(`Error auto-selecting parliamentary PM for ${nation.name}:`, e);
+        }
+    }
+}
+
 // ==================== TICK HELPERS ====================
 
 function advanceMonth(currentDate) {
@@ -4256,6 +4370,7 @@ async function advanceTick(supabase) {
         await triggerPresidentialCandidateSelection(supabase, nation, newTick);
         await processPresidentialTermEnd(supabase, nation, newTick);
         await processPresidentCandidateTimeout(supabase, nation, newTick);
+        await processParliamentaryPMTimeout(supabase, nation, newTick);
 
         // 6. Process ideology shifts from this tick's votes/bills
         const ideologyEvents = await processIdeologyTick(supabase, nation, newTick, resolutions);

@@ -1899,6 +1899,19 @@ main
 
         if (billError) throw billError;
 
+        // Post-insert guard: verify no duplicate no-confidence motions were created concurrently
+        const { count: ncCount } = await _supabase.from('bills')
+            .select('id', { count: 'exact', head: true })
+            .eq('nation_id', currentNation.id)
+            .eq('bill_type', 'no_confidence')
+            .in('status', ['committee', 'floor']);
+        if (ncCount > 1) {
+            // Another motion was filed at the same time — delete ours
+            await _supabase.from('bills').delete().eq('id', bill.id);
+            alert('Another motion of no confidence was just filed. Please refresh.');
+            return;
+        }
+
         // Deduct AP only after bill creation succeeds
         const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.NO_CONFIDENCE_AP_COST);
         if (!apResult.success) { alert(`Not enough AP. You need ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP.`); return; }
