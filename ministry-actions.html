@@ -983,6 +983,7 @@ function renderEmailDetail() {
         const chosen = options[ev.chosen_option];
         const resolved = ev.resolved_effects || {};
         const outcomeLabel = resolved.outcome_label || chosen?.label || 'Action taken';
+        const outcomeMessage = resolved.outcome_message || '';
         const effects = resolved.effects || (Array.isArray(ev.resolved_effects) ? ev.resolved_effects : []);
         const effectsStr = effects.map(e =>
             e.stat_key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ': ' + (e.change > 0 ? '+' : '') + e.change
@@ -992,6 +993,7 @@ function renderEmailDetail() {
             '<div class="resolved-banner success">' +
                 '<div class="resolved-title success">✓ ' + escapeHtml(chosen?.label || 'Responded') + '</div>' +
                 '<div style="font-size:0.8rem;color:#aaa;margin-bottom:4px;">Outcome: <strong style="color:var(--accent);">' + escapeHtml(outcomeLabel) + '</strong></div>' +
+                (outcomeMessage ? '<div style="font-size:0.82rem;color:#ccc;margin-bottom:6px;font-style:italic;line-height:1.4;">' + escapeHtml(outcomeMessage) + '</div>' : '') +
                 (effectsStr ? '<div class="resolved-effects">Effects: ' + effectsStr + '</div>' : '') +
             '</div>';
     } else if (ev.status === 'expired') {
@@ -1025,6 +1027,18 @@ function renderEmailDetail() {
             '<div class="email-body"><div class="email-body-text">' + escapeHtml(ev.body) + '</div></div>' +
             bottomSection +
         '</div>';
+}
+
+// ==================== PLACEHOLDER RESOLUTION ====================
+function resolveOutcomePlaceholders(message, context) {
+    if (!message) return '';
+    return message
+        .replace(/\{nation\}/g, context.nation || '')
+        .replace(/\{minister\}/g, context.minister || '')
+        .replace(/\{party\}/g, context.party || '')
+        .replace(/\{sender\}/g, context.sender || '')
+        .replace(/\{outcome\}/g, context.outcome || '')
+        .replace(/\{cost\}/g, context.cost || '');
 }
 
 // ==================== RESPOND TO EVENT ====================
@@ -1081,9 +1095,20 @@ async function respondToEvent(eventId, optionIndex) {
             appliedEffects.push({ stat_key: eff.stat_key, change: change, target: eff.target || 'nation' });
         }
 
+        // Resolve outcome message placeholders
+        const placeholderCtx = {
+            nation: currentNation?.name || '',
+            minister: currentFaction?.name || '',
+            party: currentFaction?.name || '',
+            sender: ev.sender || '',
+            outcome: chosenOutcome.label || 'Result',
+            cost: option.money ? '$' + option.money + 'M' : '$0'
+        };
+        const resolvedMessage = resolveOutcomePlaceholders(chosenOutcome.message || '', placeholderCtx);
+
         await _supabase.from('ministry_events').update({
             chosen_option: optionIndex,
-            resolved_effects: { outcome_label: chosenOutcome.label || 'Result', effects: appliedEffects },
+            resolved_effects: { outcome_label: chosenOutcome.label || 'Result', outcome_message: resolvedMessage || null, effects: appliedEffects },
             status: 'resolved',
             resolved_at_tick: currentTick
         }).eq('id', eventId);
@@ -1094,7 +1119,7 @@ async function respondToEvent(eventId, optionIndex) {
             e.stat_key.replace(/_/g, ' ') + ': ' + (e.change > 0 ? '+' : '') + e.change
         ).join('\n');
 
-        alert('📋 ' + chosenOutcome.label + '\n\n' + effectsStr);
+        alert('📋 ' + chosenOutcome.label + (resolvedMessage ? '\n\n' + resolvedMessage : '') + (effectsStr ? '\n\n' + effectsStr : ''));
 
         await loadInboxEvents(activeMinistryKey);
         selectEvent(eventId);
