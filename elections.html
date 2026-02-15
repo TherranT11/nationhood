@@ -335,7 +335,7 @@ async function renderDemocracyPage() {
             .from('government_formations')
             .select('id')
             .eq('election_id', currentElectionId)
-            .in('status', ['formed', 'caretaker'])
+            .in('status', ['formed', 'caretaker', 'dissolved'])
             .limit(1)
             .maybeSingle();
         govFormed = !!formed;
