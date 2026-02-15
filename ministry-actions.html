@@ -244,13 +244,13 @@
         .email-deadline-bar.critical { background: #1a1010; border-color: #ff4444; color: #ff4444; }
         .deadline-timer { font-family: monospace; font-weight: 700; }
 
-        .email-body { flex: 1; padding: 24px 28px; overflow-y: auto; }
+        .email-body { padding: 24px 28px; }
         .email-body-text { font-size: 0.92rem; line-height: 1.7; color: #bbb; max-width: 680px; white-space: pre-line; }
+        .email-scroll-area { flex: 1; overflow-y: auto; min-height: 0; }
 
         /* ===== RESOLVED BANNER ===== */
         .resolved-banner {
             padding: 16px 28px; border-top: 1px solid #222; background: #111;
-            flex-shrink: 0;
         }
         .resolved-banner.success { border-left: 4px solid var(--green); }
         .resolved-banner.expired { border-left: 4px solid var(--red); }
@@ -262,7 +262,6 @@
         /* ===== RESPONSE OPTIONS ===== */
         .response-section {
             padding: 12px 28px 16px; border-top: 1px solid #222; background: #111;
-            flex-shrink: 0;
         }
         .response-label {
             font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.5px;
@@ -990,8 +989,10 @@ function renderEmailDetail() {
                 '</div>' +
                 (ev.status === 'active' && ticksLeft !== null ? '<div class="email-deadline-bar' + (isCritical ? ' critical' : '') + '">⏱ <span class="deadline-timer">' + ticksLeft + ' tick' + (ticksLeft !== 1 ? 's' : '') + '</span> remaining to respond</div>' : '') +
             '</div>' +
-            '<div class="email-body"><div class="email-body-text">' + escapeHtml(ev.body) + '</div></div>' +
-            bottomSection +
+            '<div class="email-scroll-area">' +
+                '<div class="email-body"><div class="email-body-text">' + escapeHtml(ev.body) + '</div></div>' +
+                bottomSection +
+            '</div>' +
         '</div>';
 }
 
@@ -1080,6 +1081,21 @@ async function respondToEvent(eventId, optionIndex) {
         }).eq('id', eventId);
 
         await markFactionActive(_supabase, currentFaction.id);
+
+        // If outcome has a civic event, insert into event_log for the CIVIC feed
+        if (chosenOutcome.civic_event_text) {
+            const civicText = resolveOutcomePlaceholders(chosenOutcome.civic_event_text, placeholderCtx);
+            const civicName = resolveOutcomePlaceholders(chosenOutcome.civic_event_name || chosenOutcome.label || 'Ministry Event', placeholderCtx);
+            const civicCategory = chosenOutcome.civic_event_category || 'General';
+            await _supabase.from('event_log').insert({
+                nation_id: currentNation.id,
+                event_name: civicName,
+                description_used: civicText,
+                effects_applied: appliedEffects,
+                category: civicCategory,
+                fired_at_tick: currentTick
+            });
+        }
 
         const effectsStr = appliedEffects.map(e =>
             e.stat_key.replace(/_/g, ' ') + ': ' + (e.change > 0 ? '+' : '') + e.change

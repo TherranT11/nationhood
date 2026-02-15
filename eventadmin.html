@@ -167,6 +167,14 @@
 
         .outcome-message-area { width: 100%; min-height: 50px; margin-top: 6px; margin-bottom: 6px; padding: 8px 10px; background: #252525; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; font-size: 0.82rem; font-family: inherit; resize: vertical; box-sizing: border-box; }
         .outcome-message-area:focus { outline: none; border-color: #ffcc00; }
+        .civic-event-box { margin-top: 8px; padding: 10px 12px; background: #1a1a2e; border: 1px solid #3a3a5c; border-radius: 5px; border-left: 3px solid #58a6ff; }
+        .civic-event-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.78rem; color: #58a6ff; user-select: none; }
+        .civic-event-toggle input[type="checkbox"] { accent-color: #58a6ff; }
+        .civic-event-fields { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+        .civic-event-fields .form-label { font-size: 0.72rem; color: #8b929e; margin-bottom: 0; }
+        .civic-event-textarea { width: 100%; min-height: 60px; padding: 8px 10px; background: #0e1117; border: 1px solid #3a3a5c; border-radius: 4px; color: #e2e6eb; font-size: 0.82rem; font-family: inherit; resize: vertical; box-sizing: border-box; }
+        .civic-event-textarea:focus { outline: none; border-color: #58a6ff; }
+        .civic-event-textarea::placeholder { color: #5a6272; }
         .placeholder-ref { background: #1a1a2a; border: 1px solid #3a3a5a; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
         .placeholder-ref-title { font-size: 0.78rem; color: #ff9800; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold; margin-bottom: 8px; }
         .placeholder-ref-grid { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -902,6 +910,25 @@ function renderVariantSection(govType) {
                 '<textarea class="outcome-message-area" placeholder="Outcome message — describe what happens (supports placeholders)..." onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'message\',this.value)">' + escapeHtml(outcome.message || '') + '</textarea>' +
                 effectsHTML +
                 '<button class="btn btn-ghost btn-small" onclick="addOutcomeEffect(\'' + govType + '\',' + oi + ',' + ri + ')" style="margin-top:4px;">+ Add Effect</button>' +
+                // Civic Event Field — optional public news story generated from this outcome
+                '<div class="civic-event-box">' +
+                    '<label class="civic-event-toggle">' +
+                        '<input type="checkbox" ' + (outcome.civic_event_text ? 'checked' : '') + ' onchange="toggleCivicEvent(\'' + govType + '\',' + oi + ',' + ri + ',this.checked)">' +
+                        '📰 Generate CIVIC News Event' +
+                    '</label>' +
+                    (outcome.civic_event_text || outcome.civic_event_text === '' ? (
+                        '<div class="civic-event-fields">' +
+                            '<label class="form-label">Category</label>' +
+                            '<select class="form-select" style="background:#0e1117;border-color:#3a3a5c;color:#e2e6eb;" onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'civic_event_category\',this.value)">' +
+                                EVENT_CATEGORIES.map(function(c) { return '<option value="' + c + '"' + ((outcome.civic_event_category || 'General') === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') +
+                            '</select>' +
+                            '<label class="form-label">News Headline / Event Name</label>' +
+                            '<input type="text" class="form-input" style="background:#0e1117;border-color:#3a3a5c;color:#e2e6eb;" value="' + escapeAttr(outcome.civic_event_name || '') + '" placeholder="e.g., Prison Break Quelled in {nation}" onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'civic_event_name\',this.value)">' +
+                            '<label class="form-label">News Story (appears in CIVIC feed — supports placeholders)</label>' +
+                            '<textarea class="civic-event-textarea" placeholder="e.g., A prison break was successfully put down in {nation} when the Minister of Justice {minister} ordered soldiers to..." onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'civic_event_text\',this.value)">' + escapeHtml(outcome.civic_event_text || '') + '</textarea>' +
+                        '</div>'
+                    ) : '') +
+                '</div>' +
             '</div>';
         }).join('');
 
@@ -941,6 +968,22 @@ function renderVariantSection(govType) {
 
 // Ministry variant helpers
 function updateMOpt(govType, oi, field, value) { mEditorVariants[govType].options[oi][field] = value; }
+
+// Civic event toggle — enables/disables the civic news fields on an outcome
+function toggleCivicEvent(govType, oi, ri, checked) {
+    var outcome = mEditorVariants[govType].options[oi].outcomes[ri];
+    if (checked) {
+        outcome.civic_event_text = outcome.civic_event_text || '';
+        outcome.civic_event_name = outcome.civic_event_name || '';
+        outcome.civic_event_category = outcome.civic_event_category || 'General';
+    } else {
+        delete outcome.civic_event_text;
+        delete outcome.civic_event_name;
+        delete outcome.civic_event_category;
+    }
+    syncMinistryBody();
+    renderMinistryEditor();
+}
 
 // Outcome helpers
 function updateOutcome(govType, oi, ri, field, value) {
