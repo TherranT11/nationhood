@@ -260,13 +260,13 @@
 
         /* ===== RESPONSE OPTIONS ===== */
         .response-section {
-            padding: 20px 28px 28px; border-top: 1px solid #222; background: #111;
+            padding: 12px 28px 16px; border-top: 1px solid #222; background: #111;
         }
         .response-label {
             font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.5px;
-            color: #666; font-weight: 600; margin-bottom: 14px;
+            color: #666; font-weight: 600; margin-bottom: 8px;
         }
-        .response-options { display: flex; flex-direction: column; gap: 10px; }
+        .response-options { display: flex; flex-direction: column; gap: 6px; }
         .response-option {
             display: flex; align-items: stretch; background: #1a1a1a;
             border: 1px solid #2a2a2a; border-radius: 8px; cursor: pointer;
@@ -276,41 +276,18 @@
         .response-option.disabled { opacity: 0.4; cursor: not-allowed; }
         .response-option.disabled:hover { border-color: #2a2a2a; background: #1a1a1a; transform: none; }
         .response-option-letter {
-            width: 44px; display: flex; align-items: center; justify-content: center;
-            font-weight: 700; font-size: 0.85rem; color: #000; flex-shrink: 0;
+            width: 36px; display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 0.78rem; color: #000; flex-shrink: 0;
         }
         .response-option-letter.opt-a { background: #4CAF50; }
         .response-option-letter.opt-b { background: #2196F3; }
         .response-option-letter.opt-c { background: #ff9800; }
-        .response-option-content { flex: 1; padding: 12px 16px; }
-        .response-option-title { font-size: 0.88rem; font-weight: 600; color: #e0e0e0; margin-bottom: 4px; }
-        .response-option-outcomes { margin-top: 8px; }
-        .outcome-row {
-            display: flex; align-items: center; gap: 8px; padding: 4px 0;
-            font-size: 0.78rem; color: #888;
-        }
-        .outcome-chance-badge {
-            font-family: monospace; font-size: 0.7rem; font-weight: 700;
-            padding: 2px 6px; border-radius: 3px; min-width: 36px; text-align: center;
-        }
-        .outcome-chance-badge.high { background: #1a2a1a; color: #4CAF50; }
-        .outcome-chance-badge.mid { background: #2a2a1a; color: #ff9800; }
-        .outcome-chance-badge.low { background: #2a1a1a; color: #ff4444; }
-        .outcome-label { flex: 1; color: #aaa; }
-        .outcome-effects-inline {
-            display: flex; flex-wrap: wrap; gap: 4px;
-        }
-        .fx-tag {
-            font-family: monospace; font-size: 0.65rem; padding: 1px 6px;
-            border-radius: 3px; font-weight: 600;
-        }
-        .fx-tag.pos { background: #1a2a1a; color: #4CAF50; }
-        .fx-tag.neg { background: #2a1a1a; color: #ff4444; }
-        .fx-tag.neutral { background: #1a1a2a; color: #64B5F6; }
+        .response-option-content { flex: 1; padding: 8px 14px; }
+        .response-option-title { font-size: 0.88rem; font-weight: 600; color: #e0e0e0; }
 
         .response-option-costs {
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            gap: 4px; padding: 12px 16px; border-left: 1px solid #252525;
+            gap: 4px; padding: 8px 14px; border-left: 1px solid #252525;
             min-width: 80px; flex-shrink: 0;
         }
         .cost-tag {
@@ -435,6 +412,14 @@
 <script src="js/common.js"></script>
 <script src="js/game-common.js"></script>
 <script>
+// ==================== HELPERS ====================
+function formatMoneyDisplay(m) {
+    if (!m || m <= 0) return '';
+    const dollars = m * 1000000;
+    if (dollars >= 1000000) return '$' + (dollars / 1000000) + 'M';
+    return '$' + Math.round(dollars).toLocaleString();
+}
+
 // ==================== CONSTANTS ====================
 const MINISTRY_INFO = {
     prime_minister: { icon: '🏛️', name: 'Prime Minister\'s Office' },
@@ -807,7 +792,7 @@ async function renderMinistryHeader(key) {
 
         let costHtml = '<span class="ap">' + a.ap + ' AP</span>';
         if (a.moneyFormula) costHtml += ' <span class="money">+ $</span>';
-        else if (a.money) costHtml += ' <span class="money">$' + a.money + 'M</span>';
+        else if (a.money) costHtml += ' <span class="money">' + formatMoneyDisplay(a.money) + '</span>';
 
         return '<button class="ministry-action-btn" ' + (disabled ? 'disabled' : 'onclick="openActionModal(\'' + a.key + '\')"') + '>' +
             '<span>' + a.icon + '</span>' + a.label +
@@ -940,35 +925,14 @@ function renderEmailDetail() {
             const letterClasses = ['opt-a', 'opt-b', 'opt-c'];
             const canAfford = ap >= (opt.ap || 0);
 
-            const outcomesHtml = (opt.outcomes || []).map(oc => {
-                const chance = oc.chance || 0;
-                let chanceClass = 'high';
-                if (chance < 30) chanceClass = 'low';
-                else if (chance < 60) chanceClass = 'mid';
-
-                const effectTags = (oc.effects || []).map(eff => {
-                    const change = eff.change || 0;
-                    const cls = change > 0 ? 'pos' : (change < 0 ? 'neg' : 'neutral');
-                    const statLabel = eff.stat_key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                    return '<span class="fx-tag ' + cls + '">' + statLabel + ' ' + (change > 0 ? '+' : '') + change + '</span>';
-                }).join('');
-
-                return '<div class="outcome-row">' +
-                    '<span class="outcome-chance-badge ' + chanceClass + '">' + chance + '%</span>' +
-                    '<span class="outcome-label">' + escapeHtml(oc.label || 'Result') + '</span>' +
-                    '<div class="outcome-effects-inline">' + effectTags + '</div>' +
-                '</div>';
-            }).join('');
-
             let costHtml = '<span class="cost-tag ap">' + (opt.ap || 0) + ' AP</span>';
-            if (opt.money && opt.money > 0) costHtml += '<span class="cost-tag money">$' + opt.money + 'M</span>';
+            if (opt.money && opt.money > 0) costHtml += '<span class="cost-tag money">' + formatMoneyDisplay(opt.money) + '</span>';
 
             return '<div class="response-option' + (!canAfford ? ' disabled' : '') + '" ' +
                 (canAfford ? 'onclick="respondToEvent(\'' + ev.id + '\',' + i + ')"' : '') + '>' +
                 '<div class="response-option-letter ' + (letterClasses[i] || 'opt-a') + '">' + letter + '</div>' +
                 '<div class="response-option-content">' +
                     '<div class="response-option-title">' + escapeHtml(opt.label || 'Option ' + letter) + '</div>' +
-                    '<div class="response-option-outcomes">' + outcomesHtml + '</div>' +
                 '</div>' +
                 '<div class="response-option-costs">' + costHtml + '</div>' +
             '</div>';
@@ -1054,7 +1018,7 @@ async function respondToEvent(eventId, optionIndex) {
     if ((currentFaction?.action_points || 0) < apCost) { alert('Not enough AP.'); return; }
 
     const letter = String.fromCharCode(65 + optionIndex);
-    if (!confirm('Choose Option ' + letter + ': ' + (option.label || '') + '?\n\nCost: ' + apCost + ' AP' + (option.money ? ' + $' + option.money + 'M' : ''))) return;
+    if (!confirm('Choose Option ' + letter + ': ' + (option.label || '') + '?\n\nCost: ' + apCost + ' AP' + (option.money ? ' + ' + formatMoneyDisplay(option.money) : ''))) return;
 
     if (apCost > 0) {
         const apResult = await deductAP(_supabase, currentFaction.id, apCost);
@@ -1102,7 +1066,7 @@ async function respondToEvent(eventId, optionIndex) {
             party: currentFaction?.name || '',
             sender: ev.sender || '',
             outcome: chosenOutcome.label || 'Result',
-            cost: option.money ? '$' + option.money + 'M' : '$0'
+            cost: option.money ? formatMoneyDisplay(option.money) : '$0'
         };
         const resolvedMessage = resolveOutcomePlaceholders(chosenOutcome.message || '', placeholderCtx);
 
@@ -1148,7 +1112,7 @@ function openActionModal(actionKey) {
     bodyHtml += '<div class="modal-cost-row">' +
         '<span class="cost-tag ap">' + action.ap + ' AP</span>' +
         (action.moneyFormula ? '<span class="cost-tag money">$1M × ' + action.moneyFormula.replace(/_/g, ' ') + '</span>' : '') +
-        (action.money ? '<span class="cost-tag money">$' + action.money + 'M</span>' : '') +
+        (action.money ? '<span class="cost-tag money">' + formatMoneyDisplay(action.money) + '</span>' : '') +
     '</div>';
 
     if (action.stat_effects && action.stat_effects.length > 0) {
