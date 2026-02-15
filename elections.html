@@ -792,8 +792,10 @@ async function createProposal() {
     }
 
     const partyIds = [currentFaction.id, ...proposalSelectedParties.filter(p => p !== currentFaction.id)];
-    if (partyIds.length < 2) {
-        alert('Select at least one other party for your coalition.');
+    const coalitionSeats = getCoalitionSeats(partyIds);
+    const coalitionPct = totalLegislatureSeats ? Math.round((coalitionSeats / totalLegislatureSeats) * 100) : 0;
+    if (coalitionPct < 51) {
+        alert('Your coalition does not meet the 51% seat threshold. Add more parties.');
         return;
     }
 
@@ -1331,8 +1333,10 @@ async function saveCoalitionEdit(formationId) {
         alert('Your party must remain in the coalition.');
         return;
     }
-    if (editSelectedParties.length < 2) {
-        alert('Select at least one other party for your coalition.');
+    const editSeats = getCoalitionSeats(editSelectedParties);
+    const editPct = totalLegislatureSeats ? Math.round((editSeats / totalLegislatureSeats) * 100) : 0;
+    if (editPct < 51) {
+        alert('Your coalition does not meet the 51% seat threshold. Add more parties.');
         return;
     }
 
