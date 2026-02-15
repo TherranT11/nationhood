@@ -1414,6 +1414,13 @@ async function formGovernment() {
             // Dissolve old coalition AFTER RPC succeeds (prevents orphaned dissolved state on RPC failure)
             await dissolveCoalition(_supabase, currentNation.id);
 
+            // Cancel any other active formation proposals for this nation
+            await _supabase.from('government_formations')
+                .update({ status: 'cancelled' })
+                .eq('nation_id', currentNation.id)
+                .eq('status', 'active')
+                .neq('id', activeFormationId);
+
             // Clear any leftover frozen bills from a previous caretaker period
             // so that inferCaretakerStatus() doesn't override the new 'formed' status
             await _supabase.from('bills')
