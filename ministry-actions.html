@@ -156,13 +156,13 @@
         /* ===== INBOX LAYOUT ===== */
         .inbox-layout {
             display: grid; grid-template-columns: 360px 1fr;
-            max-width: 1400px; margin: 0 auto; min-height: calc(100vh - 250px);
+            max-width: 1400px; margin: 0 auto; height: calc(100vh - 250px);
         }
 
         /* ===== LEFT: INBOX LIST ===== */
         .inbox-panel {
             border-right: 1px solid #222; background: #111;
-            display: flex; flex-direction: column;
+            display: flex; flex-direction: column; overflow: hidden;
         }
         .inbox-header {
             padding: 14px 18px; border-bottom: 1px solid #222;
@@ -223,7 +223,7 @@
         @keyframes pulse-text { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
 
         /* ===== RIGHT: EMAIL DETAIL ===== */
-        .email-panel { background: #0e0e0e; display: flex; flex-direction: column; }
+        .email-panel { background: #0e0e0e; display: flex; flex-direction: column; overflow: hidden; }
         .email-empty {
             flex: 1; display: flex; align-items: center; justify-content: center;
             flex-direction: column; gap: 12px; color: #333;
@@ -364,7 +364,7 @@
 
         @media (max-width: 900px) {
             .inbox-layout { grid-template-columns: 1fr; }
-            .inbox-panel { max-height: 300px; }
+            .inbox-panel { max-height: 50vh; }
             .email-header { padding: 16px; }
             .email-body { padding: 16px; }
             .response-section { padding: 16px; }
