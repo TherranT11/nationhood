@@ -669,6 +669,10 @@
             if (summary.effects?.length) parts.push(`${summary.effects.reduce((s,e) => s + e.effects.length, 0)} law effects`);
             if (summary.ministryActions?.length) parts.push(`${summary.ministryActions.reduce((s,e) => s + e.effects.length, 0)} ministry effects`);
             if (summary.costs?.length) parts.push(`${summary.costs.length} cost deductions`);
+            if (summary.ministryEvents?.length) {
+                const mEvtCount = summary.ministryEvents.reduce((s,e) => s + e.events.length, 0);
+                parts.push(`${mEvtCount} ministry inbox event(s) fired`);
+            }
             if (parts.length) msg += ' — ' + parts.join(', ');
             status.className = 'status success'; status.textContent = msg;
             await loadShardInfo(); await loadStats();
