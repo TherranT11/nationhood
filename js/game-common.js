@@ -1914,7 +1914,17 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
 
 async function enactFoundationalBill(supabase, bill, currentTick) {
     // Validate proposed_seats BEFORE marking the bill as passed
-    const newTotalSeats = bill.proposed_seats;
+    let newTotalSeats = bill.proposed_seats;
+
+    // Fallback: if proposed_seats is null (column missing or data lost), parse from preamble
+    if (!newTotalSeats && bill.preamble) {
+        const match = bill.preamble.match(/from\s+\d+\s+to\s+(\d+)/i);
+        if (match) {
+            newTotalSeats = parseInt(match[1], 10);
+            console.warn(`[enactFoundationalBill] proposed_seats was null, recovered ${newTotalSeats} from preamble`);
+        }
+    }
+
     if (!newTotalSeats || newTotalSeats < 50 || newTotalSeats > 500) {
         console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_seats: ${newTotalSeats}. Marking as failed.`);
         await supabase.from('bills').update({
@@ -4323,6 +4333,9 @@ async function advanceTick(supabase) {
     const summary = { tick: newTick, nations: nations.length, effects: [], costs: [], resolutions: [], events: [] };
 
     for (const nation of nations) {
+        // Set correct seat count for this nation (affects supermajority thresholds, etc.)
+        initGameConfigForNation(nation);
+
         // 3. Process stat effects (from passed bills/active laws)
         const effectResults = await processStatEffects(supabase, nation, newTick);
         if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });

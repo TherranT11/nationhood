@@ -565,7 +565,15 @@ function renderArticles() {
     // Foundational bills show a special notice instead of articles
     if (bill.bill_type === 'foundational') {
         const currentSeatsDisplay = GAME_CONFIG.TOTAL_SEATS;
-        const proposedSeats = bill.proposed_seats || currentSeatsDisplay;
+        let proposedSeats = bill.proposed_seats;
+        if (!proposedSeats && bill.preamble) {
+            const match = bill.preamble.match(/from\s+\d+\s+to\s+(\d+)/i);
+            if (match) proposedSeats = parseInt(match[1], 10);
+        }
+        if (!proposedSeats) {
+            console.warn('[bill.html] proposed_seats is null for foundational bill', bill.id);
+            proposedSeats = currentSeatsDisplay;
+        }
         const change = proposedSeats - currentSeatsDisplay;
         const changeText = change > 0 ? `+${change}` : `${change}`;
         document.getElementById('bill-articles').innerHTML =
