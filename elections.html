@@ -335,7 +335,7 @@ async function renderDemocracyPage() {
             .from('government_formations')
             .select('id')
             .eq('election_id', currentElectionId)
-            .eq('status', 'formed')
+            .in('status', ['formed', 'caretaker'])
             .limit(1)
             .maybeSingle();
         govFormed = !!formed;
@@ -351,8 +351,21 @@ async function renderDemocracyPage() {
         govFormed = !!legacy;
     }
 
-    // Presidential systems never show coalition formation
-    const showFormation = isPresidential ? false : (currentElectionId && !govFormed);
+    // Never show formation if an election is pending (caretaker period)
+    let electionPending = false;
+    if (!isPresidential) {
+        const { data: scheduledEl } = await _supabase
+            .from('elections')
+            .select('id')
+            .eq('nation_id', currentNation.id)
+            .eq('status', 'scheduled')
+            .limit(1)
+            .maybeSingle();
+        electionPending = !!scheduledEl;
+    }
+
+    // Presidential systems never show coalition formation; hide during caretaker/pending election
+    const showFormation = isPresidential ? false : (currentElectionId && !govFormed && !electionPending);
 
     // Check if current player has pending PM or President selection
     let hasPendingPM = false;

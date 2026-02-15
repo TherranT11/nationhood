@@ -165,6 +165,16 @@
         .chance-sum.valid { background: #1a2a1a; color: #4CAF50; }
         .chance-sum.invalid { background: #2a1a1a; color: #ff4444; }
 
+        .outcome-message-area { width: 100%; min-height: 50px; margin-top: 6px; margin-bottom: 6px; padding: 8px 10px; background: #252525; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; font-size: 0.82rem; font-family: inherit; resize: vertical; box-sizing: border-box; }
+        .outcome-message-area:focus { outline: none; border-color: #ffcc00; }
+        .placeholder-ref { background: #1a1a2a; border: 1px solid #3a3a5a; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+        .placeholder-ref-title { font-size: 0.78rem; color: #ff9800; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold; margin-bottom: 8px; }
+        .placeholder-ref-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+        .placeholder-ref-item { display: inline-flex; align-items: center; gap: 4px; background: #2a2a1a; border: 1px solid #ff9800; color: #ff9800; padding: 3px 10px; border-radius: 4px; font-size: 0.72rem; font-family: 'Courier New', monospace; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+        .placeholder-ref-item:hover { background: #ff9800; color: #121212; }
+        .placeholder-ref-item .ph-hint { font-family: 'Segoe UI', Tahoma, sans-serif; color: #888; font-weight: normal; font-size: 0.68rem; margin-left: 2px; }
+        .placeholder-ref-item:hover .ph-hint { color: #121212; }
+
         @media (max-width: 768px) {
             .form-row, .form-row-3, .form-row-4 { grid-template-columns: 1fr; }
             .trigger-item, .effect-item { grid-template-columns: 1fr; }
@@ -250,6 +260,15 @@ var PRIORITIES = [
     { key: 'urgent', label: '🔴 Urgent', color: '#ff4444' },
     { key: 'routine', label: '🟡 Routine', color: '#ff9800' },
     { key: 'opportunity', label: '🟢 Opportunity', color: '#4CAF50' }
+];
+
+var MINISTRY_PLACEHOLDERS = [
+    { tag: '{nation}', hint: 'Nation name' },
+    { tag: '{minister}', hint: 'Minister name' },
+    { tag: '{party}', hint: 'Controlling faction' },
+    { tag: '{sender}', hint: 'Event sender' },
+    { tag: '{outcome}', hint: 'Outcome label' },
+    { tag: '{cost}', hint: 'Money cost' }
 ];
 
 var SYSTEM_TRIGGERS = [
@@ -817,6 +836,17 @@ function renderMinistryEditor() {
                     '<div id="weight-conditions-list">' + renderWeightConditions() + '</div>' +
                 '</div>' +
 
+                // Placeholder reference
+                '<div class="placeholder-ref">' +
+                    '<div class="placeholder-ref-title">Available Placeholders — click to copy</div>' +
+                    '<div class="placeholder-ref-grid">' +
+                        MINISTRY_PLACEHOLDERS.map(function(p) {
+                            return '<span class="placeholder-ref-item" onclick="copyPlaceholder(\'' + p.tag + '\')" title="Click to copy">' + p.tag + '<span class="ph-hint">' + p.hint + '</span></span>';
+                        }).join('') +
+                    '</div>' +
+                    '<div class="form-hint" style="margin-top:8px;">Use these in email bodies and outcome messages. Resolved at runtime with actual game data.</div>' +
+                '</div>' +
+
                 // Variants
                 (govDem ? renderVariantSection('Democracy') : '') +
                 (govAut ? renderVariantSection('Autocracy') : '') +
@@ -869,6 +899,7 @@ function renderVariantSection(govType) {
                     '<input type="text" class="form-input outcome-label-input" value="' + escapeAttr(outcome.label || '') + '" placeholder="Outcome label (e.g., Order Restored)" onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'label\',this.value)">' +
                     (opt.outcomes.length > 1 ? '<button class="btn-icon" onclick="removeOutcome(\'' + govType + '\',' + oi + ',' + ri + ')">✕</button>' : '') +
                 '</div>' +
+                '<textarea class="outcome-message-area" placeholder="Outcome message — describe what happens (supports placeholders)..." onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'message\',this.value)">' + escapeHtml(outcome.message || '') + '</textarea>' +
                 effectsHTML +
                 '<button class="btn btn-ghost btn-small" onclick="addOutcomeEffect(\'' + govType + '\',' + oi + ',' + ri + ')" style="margin-top:4px;">+ Add Effect</button>' +
             '</div>';
