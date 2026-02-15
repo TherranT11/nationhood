@@ -1081,6 +1081,21 @@ async function respondToEvent(eventId, optionIndex) {
 
         await markFactionActive(_supabase, currentFaction.id);
 
+        // If outcome has a civic event, insert into event_log for the CIVIC feed
+        if (chosenOutcome.civic_event_text) {
+            const civicText = resolveOutcomePlaceholders(chosenOutcome.civic_event_text, placeholderCtx);
+            const civicName = resolveOutcomePlaceholders(chosenOutcome.civic_event_name || chosenOutcome.label || 'Ministry Event', placeholderCtx);
+            const civicCategory = chosenOutcome.civic_event_category || 'General';
+            await _supabase.from('event_log').insert({
+                nation_id: currentNation.id,
+                event_name: civicName,
+                description_used: civicText,
+                effects_applied: appliedEffects,
+                category: civicCategory,
+                fired_at_tick: currentTick
+            });
+        }
+
         const effectsStr = appliedEffects.map(e =>
             e.stat_key.replace(/_/g, ' ') + ': ' + (e.change > 0 ? '+' : '') + e.change
         ).join('\n');
