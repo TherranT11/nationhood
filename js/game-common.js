@@ -5155,9 +5155,12 @@ async function processEvents(supabase, nation, currentTick) {
         if (roll >= event.probability) continue;
 
         const descriptions = event.event_descriptions || [];
-        const description = descriptions.length > 0
+        let description = descriptions.length > 0
             ? descriptions[Math.floor(Math.random() * descriptions.length)].description_text
             : event.name;
+
+        // Resolve placeholders in event description
+        description = description.replace(/\{nation\}/g, nation.name || 'Unknown');
 
         const effects = event.event_effects || [];
         const appliedEffects = [];
