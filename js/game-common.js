@@ -2651,24 +2651,7 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
         .single();
     const currentTick = shard?.current_tick || 0;
 
-    // 2. Apply approval penalties — PM party: -5, other coalition parties: -3
-    for (const partyId of coalitionPartyIds) {
-        const { data: faction } = await supabase
-            .from('factions')
-            .select('approval_rating')
-            .eq('id', partyId)
-            .single();
-        if (!faction) continue;
-
-        const penalty = partyId === pmFactionId
-            ? GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST
-            : GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST;
-        await supabase.from('factions')
-            .update({ approval_rating: Math.max(0, (faction.approval_rating ?? 50) - penalty) })
-            .eq('id', partyId);
-    }
-
-    // 3. Set government to caretaker (both tables — legacy active_coalitions may be source)
+    // 2. Set government to caretaker (both tables — legacy active_coalitions may be source)
     // Use status='formed' filter as optimistic lock — only one caller can transition formed→caretaker
     const { data: updatedGov, count: updatedCount } = await supabase
         .from('government_formations')
@@ -2684,6 +2667,24 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
         .update({ status: 'caretaker' })
         .eq('nation_id', nationId)
         .is('dissolved_at', null);
+
+    // 3. Apply approval penalties — PM party: -5, other coalition parties: -3
+    // (After status transition so penalties aren't lost if transition fails)
+    for (const partyId of coalitionPartyIds) {
+        const { data: faction } = await supabase
+            .from('factions')
+            .select('approval_rating')
+            .eq('id', partyId)
+            .single();
+        if (!faction) continue;
+
+        const penalty = partyId === pmFactionId
+            ? GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST
+            : GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST;
+        await supabase.from('factions')
+            .update({ approval_rating: Math.max(0, (faction.approval_rating ?? 50) - penalty) })
+            .eq('id', partyId);
+    }
 
     // Bust coalition cache after caretaker transition
     if (typeof qCacheBust === 'function') qCacheBust('coalition_' + nationId);
