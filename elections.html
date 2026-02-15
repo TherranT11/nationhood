@@ -1511,8 +1511,11 @@ async function formGovernment() {
                     .select('id, faction_name, seats')
                     .eq('nation_id', currentNation.id).eq('faction_type', 'party');
                 const { data: newFormation } = await _supabase.from('government_formations')
-                    .select('party_ids, lead_party_id')
+                    .select('party_ids, ministry_assignments, proposed_by')
                     .eq('id', activeFormationId).single();
+                if (newFormation) {
+                    newFormation.lead_party_id = newFormation.ministry_assignments?.prime_minister || newFormation.proposed_by;
+                }
                 if (fullNation && newFormation) {
                     // Determine end reason: if there was an election recently, it's election_loss
                     const { data: recentElection } = await _supabase.from('elections')
