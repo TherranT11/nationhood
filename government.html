@@ -1602,6 +1602,7 @@ async function purgeMinister(ministryKey) {
     const apResult = await deductAP(_supabase, currentFaction.id, 1);
     if (!apResult.success) { alert('Not enough AP (need 1).'); return; }
     currentFaction.action_points = apResult.newAp;
+    sessionStorage.removeItem('nationhood_state');
 
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -1739,6 +1740,7 @@ async function requestMinistry(ministryKey) {
     const apResult = await deductAP(_supabase, currentFaction.id, 1);
     if (!apResult.success) { alert('Not enough AP (need 1).'); return; }
     currentFaction.action_points = apResult.newAp;
+    sessionStorage.removeItem('nationhood_state');
 
     try {
         const { error } = await _supabase.from('ministry_requests').insert({
@@ -1873,6 +1875,14 @@ async function fileNoConfidence() {
         `Proceed?`
     )) return;
 
+claude/debug-game-issue-9OzUs
+
+    const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.NO_CONFIDENCE_AP_COST);
+    if (!apResult.success) { alert(`Not enough AP. You need ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP.`); return; }
+    currentFaction.action_points = apResult.newAp;
+    sessionStorage.removeItem('nationhood_state');
+
+main
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const tick = shard?.current_tick || 0;
