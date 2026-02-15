@@ -814,7 +814,7 @@ async function renderGovernmentPage() {
         <div style="margin-top:12px;display:inline-block;padding:8px 24px;background:var(--accent);color:#121212;border-radius:6px;font-weight:bold;font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;">Nominate Now →</div>
     </div>
 ` : ''}
-                ${renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress)}
+                ${renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress, allPartySeats)}
 
                 <div class="section-header">Government Structure</div>
                 <div class="info-block">
@@ -852,6 +852,7 @@ async function renderGovernmentPage() {
 async function fetchLatestElection() {
     const { data } = await _supabase.from('elections').select('*')
         .eq('nation_id', currentNation.id).eq('status', 'completed')
+        .eq('election_type', 'parliamentary')
         .order('election_tick', { ascending: false }).order('created_at', { ascending: false }).limit(1).maybeSingle();
     return data;
 }
@@ -883,7 +884,8 @@ function tickToDate(tick) {
 
 // ==================== ADMINISTRATION BOX ====================
 
-function renderAdministrationBox(coalition, parties, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress) {
+function renderAdministrationBox(coalition, parties, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress, allPartySeats) {
+    allPartySeats = allPartySeats || {};
     const hosFirst = currentNation.head_of_state_first_name || 'Unknown';
     const hosLast = currentNation.head_of_state_last_name || 'Unknown';
     const hosAge = currentNation.head_of_state_age || '—';
@@ -969,7 +971,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
 
         const presParty = allParties.find(p => p.id === presidentFactionId);
         const presPartyName = presParty?.faction_name || '—';
-        const presPartySeats = presParty?.seats || 0;
+        const presPartySeats = allPartySeats[presidentFactionId] || presParty?.seats || 0;
         const majoritySeats = GAME_CONFIG.MAJORITY_SEATS || 61;
         const hasMajority = presPartySeats >= majoritySeats;
         const govStatus = hasMajority ? 'Unified Government' : 'Divided Government';
@@ -1066,7 +1068,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
         const pmParty = primeMinister ? (primeMinister.factions?.faction_name || getPartyNameById(primeMinister.party_id)) : '—';
         let approvalClass = '';
         if (governmentApproval !== null) { if (governmentApproval < 35) approvalClass = 'low'; else if (governmentApproval < 50) approvalClass = 'medium'; }
-        const coalitionParties = coalition.party_ids.map(id => { const p = parties.find(x => x.party_id === id); return p || { party_name: 'Unknown', seats: 0 }; }).sort((a,b) => b.seats - a.seats);
+        const coalitionParties = coalition.party_ids.map(id => { const p = parties.find(x => x.party_id === id); const fallbackName = allParties.find(f => f.id === id)?.faction_name || 'Unknown'; return p ? { ...p, seats: allPartySeats[id] || p.seats || 0 } : { party_name: fallbackName, seats: allPartySeats[id] || 0 }; }).sort((a,b) => b.seats - a.seats);
         return `
             <div class="administration-box">
                 <div class="administration-header"><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">${coalition.status === 'caretaker' ? 'Caretaker Government' : 'Coalition Government'}</div></div>
