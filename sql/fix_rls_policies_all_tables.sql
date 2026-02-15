@@ -30,7 +30,8 @@ DECLARE
         'nations_history',
         'active_crises',
         'ministry_action_log',
-        'ministry_events'
+        'ministry_events',
+        'ministry_event_templates'
     ];
     has_rls BOOLEAN;
     pol_exists BOOLEAN;

@@ -4290,7 +4290,7 @@ async function advanceTick(supabase) {
         if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
 
         // 13. Process ministry inbox events (fire from templates + expire overdue)
-        const ministryEventResults = await processMinistryInboxEvents(supabase, nation, newTick);
+        const ministryEventResults = await processMinistryInboxEvents(supabase, freshNation || nation, newTick);
         if (ministryEventResults.length > 0) {
             summary.ministryEvents = summary.ministryEvents || [];
             summary.ministryEvents.push({ nation: nation.name, events: ministryEventResults });
@@ -5438,10 +5438,15 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
     }
 
     // --- 2. Load all active templates ---
-    const { data: templates } = await supabase
+    const { data: templates, error: templateError } = await supabase
         .from('ministry_event_templates')
         .select('*')
         .eq('is_active', true);
+
+    if (templateError) {
+        console.warn(`processMinistryInboxEvents: failed to load ministry_event_templates for ${nation.name}:`, templateError.message);
+        return firedEvents;
+    }
 
     if (!templates || templates.length === 0) return firedEvents;
 
@@ -5459,9 +5464,22 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
 
     if (!ministries || ministries.length === 0) return firedEvents;
 
+    // For Presidential nations with pending-confirmation ministers, party_id may be null.
+    // Fall back to the PM/President's faction so events can still fire.
+    let fallbackFactionId = null;
+    if (govType === 'Presidential') {
+        const { data: president } = await supabase
+            .from('presidents')
+            .select('party_id')
+            .eq('nation_id', nation.id)
+            .eq('is_active', true)
+            .maybeSingle();
+        fallbackFactionId = president?.party_id || null;
+    }
+
     const ministryMap = {};
     for (const m of ministries) {
-        ministryMap[m.ministry_key] = m.party_id;
+        ministryMap[m.ministry_key] = m.party_id || fallbackFactionId;
     }
 
     // --- 5. Check cooldowns: find last fired tick for each template ---
