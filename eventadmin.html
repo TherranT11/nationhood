@@ -714,12 +714,13 @@ function createNewMinistryEvent() {
     currentMinistryTemplate = {
         event_key: '', ministry_key: 'justice', title: '', sender: '',
         priority: 'routine', deadline_ticks: 3, cooldown_ticks: 6,
-        gov_types: ['Democracy', 'Autocracy'], is_active: true,
+        gov_types: ['Democracy', 'Autocracy', 'Presidential'], is_active: true,
         weight_stat: '', weight_operator: '>', weight_value: null,
         variants: {
             titles: [''],
             Democracy: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] }] },
-            Autocracy: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] }] }
+            Autocracy: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] }] },
+            Presidential: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] }] }
         }
     };
     mEditorVariants = JSON.parse(JSON.stringify(currentMinistryTemplate.variants));
@@ -743,6 +744,10 @@ function editMinistryEvent(id) {
         Autocracy: v.Autocracy ? {
             bodies: v.Autocracy.bodies || (v.Autocracy.body ? [v.Autocracy.body] : ['']),
             options: v.Autocracy.options || []
+        } : { bodies: [''], options: [] },
+        Presidential: v.Presidential ? {
+            bodies: v.Presidential.bodies || (v.Presidential.body ? [v.Presidential.body] : ['']),
+            options: v.Presidential.options || []
         } : { bodies: [''], options: [] }
     };
     // Load weight conditions from variants (new format) or migrate from old flat columns
@@ -763,6 +768,7 @@ function renderMinistryEditor() {
     var title = isNewMinistry ? 'Create Ministry Event' : 'Edit Ministry Event';
     var govDem = (tmpl.gov_types || []).includes('Democracy');
     var govAut = (tmpl.gov_types || []).includes('Autocracy');
+    var govPres = (tmpl.gov_types || []).includes('Presidential');
 
     c.innerHTML =
         '<button class="btn-back" onclick="cancelMinistryEditor()">← Back to Ministry Events</button>' +
@@ -801,6 +807,7 @@ function renderMinistryEditor() {
                     '<div class="form-group"><label class="form-label">Government Types</label><div class="checkbox-row" style="margin-top:8px;">' +
                         '<div class="checkbox-item"><input type="checkbox" id="me-gov-dem" ' + (govDem ? 'checked' : '') + '><label for="me-gov-dem">🗳️ Democracy</label></div>' +
                         '<div class="checkbox-item"><input type="checkbox" id="me-gov-aut" ' + (govAut ? 'checked' : '') + '><label for="me-gov-aut">👑 Autocracy</label></div>' +
+                        '<div class="checkbox-item"><input type="checkbox" id="me-gov-pres" ' + (govPres ? 'checked' : '') + '><label for="me-gov-pres">🏛️ Presidential</label></div>' +
                     '</div></div>' +
                 '</div>' +
 
@@ -813,6 +820,7 @@ function renderMinistryEditor() {
                 // Variants
                 (govDem ? renderVariantSection('Democracy') : '') +
                 (govAut ? renderVariantSection('Autocracy') : '') +
+                (govPres ? renderVariantSection('Presidential') : '') +
 
             '</div>' +
             '<div class="editor-footer"><button class="btn btn-ghost" onclick="cancelMinistryEditor()">Cancel</button><button class="btn btn-primary" onclick="saveMinistryEvent()">💾 Save Ministry Event</button></div>' +
@@ -822,7 +830,7 @@ function renderMinistryEditor() {
 function renderVariantSection(govType) {
     var variant = mEditorVariants[govType] || { body: '', options: [] };
     var cssClass = govType.toLowerCase();
-    var icon = govType === 'Democracy' ? '🗳️' : '👑';
+    var icon = govType === 'Democracy' ? '🗳️' : (govType === 'Presidential' ? '🏛️' : '👑');
     var optionsHTML = (variant.options || []).map(function(opt, oi) {
         var letter = String.fromCharCode(65 + oi);
 
@@ -996,6 +1004,9 @@ function syncMinistryBody() {
     document.querySelectorAll('#me-bodies-Autocracy textarea').forEach(function(el, i) {
         if (mEditorVariants.Autocracy && mEditorVariants.Autocracy.bodies[i] !== undefined) mEditorVariants.Autocracy.bodies[i] = el.value;
     });
+    document.querySelectorAll('#me-bodies-Presidential textarea').forEach(function(el, i) {
+        if (mEditorVariants.Presidential && mEditorVariants.Presidential.bodies[i] !== undefined) mEditorVariants.Presidential.bodies[i] = el.value;
+    });
 }
 
 // Title variant helpers
@@ -1064,6 +1075,7 @@ async function saveMinistryEvent() {
     var isActive = document.getElementById('me-active').checked;
     var govDem = document.getElementById('me-gov-dem').checked;
     var govAut = document.getElementById('me-gov-aut').checked;
+    var govPres = document.getElementById('me-gov-pres').checked;
     // Collect weight conditions from editor state
     var validConditions = mEditorWeightConditions.filter(function(c) { return c.stat; });
     // Backward compat: write first condition to old flat columns
@@ -1099,11 +1111,13 @@ async function saveMinistryEvent() {
     var govTypes = [];
     if (govDem) govTypes.push('Democracy');
     if (govAut) govTypes.push('Autocracy');
+    if (govPres) govTypes.push('Presidential');
 
     // Clean variants — only include enabled gov types, store title variants + weight conditions
     var cleanVariants = { titles: validTitles };
     if (govDem && mEditorVariants.Democracy) cleanVariants.Democracy = mEditorVariants.Democracy;
     if (govAut && mEditorVariants.Autocracy) cleanVariants.Autocracy = mEditorVariants.Autocracy;
+    if (govPres && mEditorVariants.Presidential) cleanVariants.Presidential = mEditorVariants.Presidential;
     if (validConditions.length > 0) cleanVariants.weight_conditions = validConditions;
 
     var payload = {
