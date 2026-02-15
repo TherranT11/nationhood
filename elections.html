@@ -1428,14 +1428,57 @@ async function formGovernment() {
                 .eq('nation_id', currentNation.id)
                 .eq('status', 'frozen');
 
-            // Get the PM party from ministry assignments
+            // Get the PM party and minister data from the formation
             const { data: formation } = await _supabase
                 .from('government_formations')
-                .select('ministry_assignments')
+                .select('ministry_assignments, minister_names')
                 .eq('id', activeFormationId)
                 .single();
 
-            const pmPartyId = formation?.ministry_assignments?.prime_minister;
+            const assignments = formation?.ministry_assignments || {};
+            const ministerNames = formation?.minister_names || {};
+            const pmPartyId = assignments.prime_minister;
+
+            // Populate ministries table from formation data
+            // (PM is handled separately via the PM selection flow)
+            const ministryDisplayNames = {
+                prime_minister: 'Prime Minister', interior: 'Ministry of the Interior',
+                foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
+                finance: 'Ministry of Finance', education: 'Ministry of Education',
+                healthcare: 'Ministry of Healthcare', labor: 'Ministry of Labor',
+                justice: 'Ministry of Justice', transportation: 'Ministry of Transportation',
+                security: 'Ministry of Security'
+            };
+            for (const [ministryKey, partyId] of Object.entries(assignments)) {
+                if (!partyId || ministryKey === 'prime_minister') continue;
+                const minister = ministerNames[ministryKey];
+                if (!minister) continue;
+
+                const ministryData = {
+                    party_id: partyId,
+                    minister_first_name: minister.first_name,
+                    minister_last_name: minister.last_name,
+                    minister_age: minister.age,
+                    minister_approval: 50
+                };
+
+                const { data: existing } = await _supabase.from('ministries')
+                    .select('id').eq('nation_id', currentNation.id)
+                    .eq('ministry_key', ministryKey).eq('is_active', true)
+                    .maybeSingle();
+
+                if (existing) {
+                    await _supabase.from('ministries').update(ministryData).eq('id', existing.id);
+                } else {
+                    await _supabase.from('ministries').insert({
+                        nation_id: currentNation.id,
+                        ministry_key: ministryKey,
+                        ministry_name: ministryDisplayNames[ministryKey] || ministryKey,
+                        is_active: true,
+                        ...ministryData
+                    });
+                }
+            }
 
             // Auto-generate Head of State if missing
             if (!currentNation.head_of_state_first_name || !currentNation.head_of_state_last_name) {
