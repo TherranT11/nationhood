@@ -12,6 +12,10 @@
 --        Go to Dashboard → Database → Extensions
 --        Enable: pg_cron, pg_net
 --
+-- BEFORE RUNNING: Replace YOUR_SERVICE_ROLE_KEY_HERE below with
+-- your actual service_role key from:
+--   Dashboard → Settings → API → service_role key (the secret one)
+--
 -- This schedules a job that calls the advance-tick Edge Function
 -- every minute. The function checks next_tick_at internally and
 -- only processes a tick when it's actually due.
@@ -36,29 +40,12 @@ SELECT cron.schedule(
         url    := 'https://pbumjalxclmegzckhqqr.supabase.co/functions/v1/advance-tick',
         headers := jsonb_build_object(
             'Content-Type', 'application/json',
-            'Authorization', 'Bearer ' || current_setting('app.settings.service_role_key', true)
+            'Authorization', 'Bearer YOUR_SERVICE_ROLE_KEY_HERE'
         ),
         body   := '{}'::jsonb
     ) AS request_id;
     $$
 );
-
--- ============================================================
--- IMPORTANT: The service_role_key must be available to pg_cron.
---
--- Option A (recommended): Set it as an app setting:
---   ALTER DATABASE postgres SET app.settings.service_role_key = 'your-service-role-key-here';
---
--- Option B: Hardcode the key directly in the SQL above
---   (less secure but simpler for testing):
---   Replace:
---     current_setting('app.settings.service_role_key', true)
---   With:
---     'eyJhbGciOiJIUzI1NiIs...'  (your actual service_role_key)
---
--- To find your service_role_key:
---   Supabase Dashboard → Settings → API → service_role key
--- ============================================================
 
 -- Verify the job is scheduled:
 -- SELECT * FROM cron.job WHERE jobname = 'advance-tick';
