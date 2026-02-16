@@ -289,6 +289,7 @@ $$;
 -- Drop any duplicate overloads so CREATE OR REPLACE is unambiguous
 DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB);
 DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], BIGINT, JSONB);
+DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB, JSONB, NUMERIC);
 
 CREATE OR REPLACE FUNCTION _election_process_bloc(
     p_parties        JSONB,
