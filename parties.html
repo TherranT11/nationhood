@@ -1600,7 +1600,7 @@ async function doPolicyPlatform() {
 
         // Log the campaign action
         const sectorDef = MAJOR_SECTORS.find(s => s.key === sectorKey);
-        await _supabase.from('campaign_actions').insert({
+        const { error: logErr } = await _supabase.from('campaign_actions').insert({
             party_id: currentFaction.id,
             nation_id: currentNation.id,
             action_type: 'policy_platform',
@@ -1618,6 +1618,7 @@ async function doPolicyPlatform() {
                 new_derived_approval: newDerived
             }
         });
+        if (logErr) throw new Error('Failed to log action: ' + logErr.message);
 
         // Update UI
         const apEl = document.getElementById('party-ap');

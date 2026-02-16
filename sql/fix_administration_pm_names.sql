@@ -38,8 +38,9 @@ WHERE hog.nation_id = a.nation_id
 -- PART 2: Fix coalition_parties with 0 seats and total_seats = 0
 -- ============================================================
 
--- Rebuild coalition_parties JSONB and total_seats from current factions data
--- for any administration where total_seats is 0 but the coalition has parties.
+-- Rebuild coalition_parties JSONB and total_seats by checking:
+--   1) The most recent election results (authoritative historical source)
+--   2) Falling back to current factions.seats
 UPDATE administrations a
 SET coalition_parties = cp.rebuilt_parties,
     total_seats      = cp.rebuilt_total,
@@ -49,18 +50,29 @@ FROM (
         a2.id AS admin_id,
         jsonb_agg(
             jsonb_build_object(
-                'party_id', f.id,
-                'party_name', f.faction_name,
-                'seats', f.seats
+                'party_id', elem->>'party_id',
+                'party_name', elem->>'party_name',
+                'seats', COALESCE(es.seats, f.seats, 0)
             )
-            ORDER BY f.faction_name
+            ORDER BY elem->>'party_name'
         ) AS rebuilt_parties,
-        SUM(f.seats) AS rebuilt_total
-    FROM administrations a2,
-         jsonb_array_elements(a2.coalition_parties) elem
-    JOIN factions f ON f.id = (elem->>'party_id')::uuid
-    WHERE a2.total_seats = 0
-      AND jsonb_array_length(a2.coalition_parties) > 0
+        SUM(COALESCE(es.seats, f.seats, 0)) AS rebuilt_total
+    FROM administrations a2
+    CROSS JOIN jsonb_array_elements(a2.coalition_parties) elem
+    LEFT JOIN factions f ON f.id = (elem->>'party_id')::uuid
+    LEFT JOIN LATERAL (
+        SELECT (s->>'seats')::int AS seats
+        FROM elections e
+        CROSS JOIN jsonb_array_elements(e.results->'seats') s
+        WHERE e.nation_id = a2.nation_id
+          AND e.status = 'completed'
+          AND e.results IS NOT NULL
+          AND s->>'party_id' = elem->>'party_id'
+        ORDER BY e.election_tick DESC
+        LIMIT 1
+    ) es ON true
+    WHERE (a2.total_seats = 0 OR a2.total_seats IS NULL)
+      AND jsonb_array_length(COALESCE(a2.coalition_parties, '[]'::jsonb)) > 0
     GROUP BY a2.id
 ) cp
 WHERE a.id = cp.admin_id
