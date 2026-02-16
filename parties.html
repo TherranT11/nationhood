@@ -1653,7 +1653,7 @@ async function doPolicyPlatform() {
                 new_derived_approval: newDerived
             }
         });
-        if (logErr) throw new Error('Failed to log action: ' + logErr.message);
+        if (logErr) console.warn('Policy platform log insert failed:', logErr);
 
         // Update UI
         const apEl = document.getElementById('party-ap');
