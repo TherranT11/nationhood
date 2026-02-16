@@ -1446,6 +1446,7 @@ async function doGeneratePoll() {
         const { error: insertErr } = await _supabase.from('campaign_actions').insert({
             party_id: currentFaction.id,
             action_type: 'generate_poll',
+            ap_cost: POLL_AP_COST,
             tick_performed: tick,
             result: {
                 bloc_results: blocResults,
