@@ -451,20 +451,37 @@
         <!-- ==================== DANGER ZONE TAB ==================== -->
         <div class="tab-content" id="tab-danger">
             <h2>🔥 Danger Zone</h2>
+
+            <!-- Seed Snapshot Section -->
+            <div style="background:#1a2a1a; border:1px solid #4CAF50; border-radius:8px; padding:16px; margin-bottom:24px;">
+                <strong style="color:#4CAF50;">📸 Seed Snapshot</strong><br>
+                <p style="color:#aaa; font-size:0.85rem; margin:8px 0;">
+                    Saves every nation's current stats as the reset point. When you reset the shard, nation stats will be restored to this snapshot.
+                    Do this once after setting up nations and before starting gameplay.
+                </p>
+                <button class="btn btn-success" onclick="snapshotSeedStats()">Save Current Stats as Seed</button>
+                <span id="seed-status" style="margin-left:12px;"></span>
+                <div id="seed-info" style="margin-top:8px; font-size:0.8rem; color:#888;"></div>
+            </div>
+
+            <!-- Reset Section -->
             <div class="warning">
-                <strong>⚠️ DANGER ZONE</strong><br>
-                Resets the entire Alpha Shard to January 2000.<br><br>
+                <strong>⚠️ FULL SHARD RESET</strong><br><br>
                 This will:<br>
-                • Reset game date to January, 2000<br>
-                • Reset current_tick to 0<br>
-                • Set next tick based on current interval<br>
-                • Reset ALL nation stats to defaults<br>
-                • Kick out ALL players (forces re-selection)<br>
-                • Clear ALL party data<br>
-                • Does NOT delete user accounts
+                • Reset game date to January, 2000 &amp; tick to 0<br>
+                • Restore ALL nation stats from seed snapshot<br>
+                • <strong>DELETE</strong> all political parties (players must recreate)<br>
+                • Clear all bills, laws, elections, administrations<br>
+                • Clear all ministry events, PM candidates, crises<br>
+                • Clear event logs, campaign actions, history<br>
+                • Reset voter bloc approvals<br>
+                • Clear diplomatic messages, proposals, action logs<br>
+                • Does NOT delete user accounts<br>
+                • Does NOT delete voter blocs, policies, or templates
             </div>
             <button class="btn btn-danger btn-full" id="reset-btn" onclick="resetShard()">🔥 RESET ALPHA SHARD 🔥</button>
             <div id="reset-status" class="status info hidden"></div>
+            <div id="reset-log" style="margin-top:12px; font-size:0.8rem; color:#aaa; max-height:300px; overflow-y:auto;"></div>
         </div>
 
         <!-- ==================== INSPECTOR TAB ==================== -->
@@ -1126,16 +1143,148 @@
     }
 
     // ==================== DANGER ZONE ====================
-    async function resetShard() {
-        if (!confirm('⚠️ RESET ENTIRE SHARD? This cannot be undone!')) return;
-        const btn = document.getElementById('reset-btn'); const status = document.getElementById('reset-status');
-        btn.disabled = true; status.className = 'status info'; status.textContent = 'Resetting...'; status.classList.remove('hidden');
+
+    /** Save every nation's current stats into seed_stats JSONB column */
+    async function snapshotSeedStats() {
+        const statusEl = document.getElementById('seed-status');
+        const infoEl = document.getElementById('seed-info');
+        statusEl.innerHTML = '<span style="color:#2196F3; font-weight:bold;">Snapshotting...</span>';
+
         try {
+            const { data: nations, error } = await _supabase.from('nations').select('*');
+            if (error) throw error;
+            if (!nations || nations.length === 0) { statusEl.innerHTML = '<span style="color:#ff9800;">No nations found.</span>'; return; }
+
+            let count = 0;
+            for (const nation of nations) {
+                const snapshot = {};
+                for (const key of NATION_STAT_COLUMNS) {
+                    if (nation[key] !== undefined && nation[key] !== null) {
+                        snapshot[key] = nation[key];
+                    }
+                }
+                // Also save government-adjacent fields
+                ['total_seats', 'government_type', 'national_approval'].forEach(k => {
+                    if (nation[k] !== undefined && nation[k] !== null) snapshot[k] = nation[k];
+                });
+
+                const { error: uErr } = await _supabase.from('nations')
+                    .update({ seed_stats: snapshot })
+                    .eq('id', nation.id);
+                if (uErr) throw uErr;
+                count++;
+            }
+
+            statusEl.innerHTML = `<span style="color:#4CAF50; font-weight:bold;">✅ Saved seed for ${count} nation(s)</span>`;
+            infoEl.textContent = 'Snapshot taken at ' + new Date().toLocaleString();
+        } catch (error) {
+            console.error(error);
+            statusEl.innerHTML = `<span style="color:#ff4444; font-weight:bold;">❌ ${error.message}</span>`;
+        }
+    }
+
+    /** Full shard reset — restores nation stats, deletes all game state */
+    async function resetShard() {
+        if (!confirm('⚠️ FULL SHARD RESET — this will delete ALL parties, laws, elections, and game data. Continue?')) return;
+        if (!confirm('⚠️ SECOND CONFIRMATION — Are you absolutely sure? This cannot be undone!')) return;
+
+        const btn = document.getElementById('reset-btn');
+        const status = document.getElementById('reset-status');
+        const log = document.getElementById('reset-log');
+        btn.disabled = true;
+        status.className = 'status info'; status.textContent = 'Resetting...'; status.classList.remove('hidden');
+        log.innerHTML = '';
+
+        const logMsg = (msg, color = '#aaa') => {
+            log.innerHTML += `<div style="color:${color};">${msg}</div>`;
+            log.scrollTop = log.scrollHeight;
+        };
+
+        try {
+            // 1. Reset shard clock
+            logMsg('Resetting shard clock...');
             const nextTick = new Date(); nextTick.setHours(nextTick.getHours() + currentTickInterval);
-            await _supabase.from('shard').update({ current_date: 'January, 2000', current_tick: 0, next_tick_at: nextTick.toISOString() }).eq('name', 'Alpha Shard');
-            await _supabase.from('factions').update({ nation_id: null, faction_type: 'pending' }).not('nation_id', 'is', null);
-            status.className = 'status success'; status.textContent = '✅ Shard reset complete!'; await loadAllData();
-        } catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
+            await _supabase.from('shard').update({
+                current_date: 'January, 2000', current_tick: 0,
+                next_tick_at: nextTick.toISOString()
+            }).eq('name', 'Alpha Shard');
+            logMsg('✓ Shard clock reset to January 2000, tick 0', '#4CAF50');
+
+            // 2. Delete all factions (parties) — CASCADE will clean faction_bloc_approval, faction_ideology, bill_support
+            logMsg('Deleting all political parties...');
+            const { error: facErr } = await _supabase.from('factions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+            if (facErr) logMsg('⚠ factions: ' + facErr.message, '#ff9800');
+            else logMsg('✓ All political parties deleted', '#4CAF50');
+
+            // 3. Clear game-state tables (order matters for FK constraints)
+            const tablesToClear = [
+                'bill_support',
+                'bills',
+                'active_laws',
+                'campaign_actions',
+                'elections',
+                'ministry_events',
+                'pm_candidates',
+                'shakeups',
+                'head_of_government',
+                'presidents',
+                'administrations',
+                'active_crises',
+                'event_log',
+                'nations_history',
+                'ideology_history',
+                'faction_bloc_approval',
+                'faction_ideology',
+                'diplomatic_messages',
+                'diplomatic_proposals',
+                'diplomatic_action_log',
+                'ambassadors'
+            ];
+
+            logMsg('Clearing game state tables...');
+            for (const table of tablesToClear) {
+                try {
+                    // Use neq on a non-existent value to match all rows (supabase .delete() requires a filter)
+                    const { error: tErr } = await _supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+                    if (tErr) logMsg(`  ⚠ ${table}: ${tErr.message}`, '#ff9800');
+                    else logMsg(`  ✓ ${table} cleared`, '#666');
+                } catch (e) {
+                    logMsg(`  ⚠ ${table}: ${e.message}`, '#ff9800');
+                }
+            }
+            logMsg('✓ Game state tables cleared', '#4CAF50');
+
+            // 4. Restore nation stats from seed_stats
+            logMsg('Restoring nation stats from seed...');
+            const { data: nations, error: nErr } = await _supabase.from('nations').select('id, name, seed_stats');
+            if (nErr) throw nErr;
+
+            let restored = 0, skipped = 0;
+            for (const nation of (nations || [])) {
+                if (!nation.seed_stats || Object.keys(nation.seed_stats).length === 0) {
+                    logMsg(`  ⚠ ${nation.name}: no seed stats saved, skipping`, '#ff9800');
+                    skipped++;
+                    continue;
+                }
+                const update = { ...nation.seed_stats };
+                // Also reset approval-related fields
+                update.national_approval = nation.seed_stats.national_approval ?? 50;
+                const { error: uErr } = await _supabase.from('nations').update(update).eq('id', nation.id);
+                if (uErr) logMsg(`  ⚠ ${nation.name}: ${uErr.message}`, '#ff9800');
+                else { logMsg(`  ✓ ${nation.name} restored (${Object.keys(update).length} stats)`, '#666'); restored++; }
+            }
+            if (skipped > 0) logMsg(`⚠ ${skipped} nation(s) had no seed — use "Save Current Stats as Seed" first`, '#ff9800');
+            logMsg(`✓ ${restored} nation(s) restored from seed`, '#4CAF50');
+
+            // 5. Done
+            status.className = 'status success';
+            status.textContent = `✅ Shard reset complete! ${restored} nations restored, ${tablesToClear.length + 1} tables cleared.`;
+            await loadAllData();
+        } catch (error) {
+            console.error(error);
+            logMsg('❌ FATAL: ' + error.message, '#ff4444');
+            status.className = 'status error'; status.textContent = '❌ Error: ' + error.message;
+        }
         btn.disabled = false;
     }
 
