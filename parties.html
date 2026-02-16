@@ -402,6 +402,116 @@
             color: #aaa;
         }
 
+        /* ===== DONOR PANEL ===== */
+        .donor-panel {
+            background: #1a1a2e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            display: none;
+        }
+        .donor-panel.open { display: block; }
+        .donor-panel-title {
+            font-size: 0.82rem;
+            font-weight: bold;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+        }
+        .donor-bloc-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            border-radius: 6px;
+            border: 1px solid #2a2a3e;
+            margin-bottom: 8px;
+            background: rgba(255,255,255,0.02);
+        }
+        .donor-bloc-row:hover { background: rgba(255,255,255,0.04); }
+        .donor-bloc-row.disabled { opacity: 0.5; }
+        .donor-bloc-name {
+            font-weight: bold;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            min-width: 160px;
+        }
+        .donor-bloc-stats {
+            display: flex;
+            gap: 12px;
+            font-size: 0.75rem;
+            color: #aaa;
+            flex: 1;
+        }
+        .donor-bloc-stats .stat-pill {
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.06);
+            white-space: nowrap;
+        }
+        .donor-align-champion { color: #4CAF50; }
+        .donor-align-good { color: #c8aa6e; }
+        .donor-align-baseline { color: #888; }
+        .donor-align-blocked { color: #ff4444; }
+        .donor-yield { color: #ffcc00; font-weight: bold; font-size: 0.78rem; }
+        .donor-cost-row {
+            width: 100%;
+            padding-left: 12px;
+            font-size: 0.72rem;
+            color: #888;
+            margin-top: 2px;
+        }
+        .donor-cost-negative { color: #ff6666; }
+        .donor-cost-positive { color: #66ff66; }
+        .donor-court-btn {
+            padding: 5px 14px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.78rem;
+            background: #ffcc00;
+            color: #121212;
+            white-space: nowrap;
+        }
+        .donor-court-btn:disabled {
+            background: #555;
+            color: #888;
+            cursor: not-allowed;
+        }
+        .donor-court-btn.cooldown {
+            background: #333;
+            color: #ff9800;
+        }
+        .donor-grassroots-row {
+            border-color: #3a5a3a;
+            background: rgba(76, 175, 80, 0.05);
+        }
+        .donor-blocked-reason {
+            font-size: 0.72rem;
+            color: #ff6666;
+            font-style: italic;
+        }
+        .donor-panel-footer {
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .donor-panel-footer button {
+            padding: 8px 16px;
+            border: 1px solid #555;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.82rem;
+            background: transparent;
+            color: #aaa;
+        }
+
         /* ===== PARTY STANDINGS ===== */
         .standings-section {
             margin-bottom: 28px;
@@ -504,6 +614,129 @@ let _currentShardDate = '';
 const POLL_AP_COST = 2;
 const POLL_COST_PER_BLOC = 25000;
 const POLL_COOLDOWN_TICKS = 3;
+
+// ===================================================================
+// COURT DONORS CONFIG
+// ===================================================================
+const COURT_DONORS_AP_COST = 2;
+const COURT_DONORS_COOLDOWN_TICKS = 3;
+
+const DONOR_BLOC_CONFIG = {
+    'Business Owners': {
+        yield: [300000, 500000],
+        bonus: null,
+        approvalCosts: [
+            { blocName: 'Urban Workers', delta: -5 },
+            { blocName: 'Ethnic Minorities', delta: -3 }
+        ]
+    },
+    'Military & Security': {
+        yield: [150000, 300000],
+        bonus: null,
+        approvalCosts: [
+            { blocName: 'Urban Progressives', delta: -3 },
+            { blocName: 'Academics & Professionals', delta: -3 }
+        ]
+    },
+    'Religious Conservatives': {
+        yield: [100000, 200000],
+        bonus: { type: 'approval', label: 'Volunteer Network', delta: 2 },
+        approvalCosts: [
+            { blocName: 'Urban Progressives', delta: -5 },
+            { blocName: 'Academics & Professionals', delta: -3 }
+        ]
+    },
+    'Nationalist Bloc': {
+        yield: [150000, 300000],
+        bonus: { type: 'approval', label: 'Rally Turnout', delta: 2 },
+        approvalCosts: [
+            { blocName: 'Ethnic Minorities', delta: -5 },
+            { blocName: 'Urban Progressives', delta: -3 }
+        ]
+    },
+    'Rural Traditionalists': {
+        yield: [50000, 150000],
+        bonus: { type: 'money', label: 'In-Kind Support', amount: 25000 },
+        approvalCosts: [
+            { blocName: 'Urban Progressives', delta: -3 },
+            { blocName: 'Urban Workers', delta: -3 }
+        ]
+    },
+    'Urban Workers': {
+        yield: [75000, 200000],
+        bonus: null,
+        approvalCosts: [
+            { blocName: 'Business Owners', delta: -5 }
+        ]
+    },
+    'Urban Progressives': {
+        yield: [100000, 250000],
+        bonus: { type: 'approval', label: 'Media Boost', delta: 2 },
+        approvalCosts: [
+            { blocName: 'Religious Conservatives', delta: -3 },
+            { blocName: 'Rural Traditionalists', delta: -3 }
+        ]
+    },
+    'Academics & Professionals': {
+        yield: [100000, 300000],
+        bonus: { type: 'approval', label: 'Policy Credibility', delta: 2 },
+        approvalCosts: [
+            { blocName: 'Religious Conservatives', delta: -3 },
+            { blocName: 'Nationalist Bloc', delta: -3 }
+        ]
+    },
+    'Ethnic Minorities': {
+        yield: [50000, 150000],
+        bonus: { type: 'approval', label: 'Community Mobilization', delta: 2 },
+        approvalCosts: [
+            { blocName: 'Nationalist Bloc', delta: -3 },
+            { blocName: 'Religious Conservatives', delta: -3 }
+        ]
+    }
+};
+
+const GRASSROOTS_YIELD = [25000, 75000];
+
+/**
+ * Compute alignment (0-100) between a faction's ideology axes and a voter bloc's axes.
+ * Uses faction_ideology (-100..+100) normalized to 0-100, compared to bloc axes (0-100).
+ */
+function computeFactionBlocAlignment(factionIdeo, bloc) {
+    let totalScore = 0;
+    let count = 0;
+    for (const axis of IDEOLOGY_AXES) {
+        const fVal = factionIdeo[axis.key] ?? 0; // -100 to +100
+        const bVal = bloc['axis_' + axis.key] ?? 50; // 0 to 100
+        const fNorm = (fVal + 100) / 2; // normalize to 0-100
+        totalScore += 100 - Math.abs(fNorm - bVal);
+        count++;
+    }
+    return count > 0 ? Math.round(totalScore / count) : 50;
+}
+
+function getAlignmentMultiplier(alignment) {
+    if (alignment > 70) return { mult: 2.0, label: 'Champion', cls: 'donor-align-champion' };
+    if (alignment >= 50) return { mult: 1.5, label: 'Good Fit', cls: 'donor-align-good' };
+    if (alignment >= 30) return { mult: 1.0, label: 'Baseline', cls: 'donor-align-baseline' };
+    return { mult: 0, label: 'Blocked', cls: 'donor-align-blocked' };
+}
+
+function rollDonorYield(config, alignment) {
+    const [min, max] = config.yield;
+    const base = min + Math.floor(Math.random() * (max - min + 1));
+    const { mult } = getAlignmentMultiplier(alignment);
+    let total = Math.round(base * mult);
+    if (config.bonus?.type === 'money') total += config.bonus.amount;
+    return total;
+}
+
+function rollGrassrootsYield(overallApproval) {
+    const [min, max] = GRASSROOTS_YIELD;
+    const base = min + Math.floor(Math.random() * (max - min + 1));
+    if (overallApproval < 30) return Math.round(base * 0.5);
+    if (overallApproval > 50) return Math.round(base * 1.5);
+    return base;
+}
 
 initPage('parties', async (state) => {
     const { nation, faction } = state;
@@ -834,6 +1067,15 @@ async function renderPartiesPage(nation, faction) {
             .from('faction_bloc_approval').select('faction_id, bloc_id, approval')
             .in('faction_id', parties.map(p => p.id));
 
+        // Load current faction's donor cooldowns for Court Donors panel
+        if (faction) {
+            const { data: myBlocApprovals } = await _supabase
+                .from('faction_bloc_approval')
+                .select('id, bloc_id, approval, donor_cooldown_until_tick')
+                .eq('faction_id', faction.id);
+            _donorBlocApprovals = myBlocApprovals || [];
+        }
+
         // Derive overall approval per party from bloc-weighted average
         function getDerivedApproval(factionId) {
             if (!blocApprovals || !voterBlocs || voterBlocs.length === 0) return null;
@@ -1079,7 +1321,7 @@ async function renderPartiesPage(nation, faction) {
             <div id="poll-selector" class="poll-selector"></div>
 
             <div class="section-header" style="margin-top: 20px;">Party Actions</div>
-            <div class="action-grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 16px;">
+            <div class="action-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 16px;">
                 <div class="action-card">
                     <div class="action-header">
                         <div class="action-title">Generate Poll</div>
@@ -1119,7 +1361,22 @@ async function renderPartiesPage(nation, faction) {
                         Announce Platform
                     </button>
                 </div>
+                <div class="action-card">
+                    <div class="action-header">
+                        <div class="action-title">Court Donors</div>
+                        <div class="action-cost">2 AP</div>
+                    </div>
+                    <div class="action-desc">
+                        Approach a voter bloc for financial support. Higher alignment yields more funds,
+                        but other blocs may disapprove.
+                        <br><span style="color: #888; font-size: 0.78rem;">Cooldown: 3 ticks per bloc.</span>
+                    </div>
+                    <button class="action-btn" id="btn-court-donors" onclick="openDonorPanel()">
+                        Court Donors
+                    </button>
+                </div>
             </div>
+            <div id="donor-panel" class="donor-panel"></div>
 
             <div class="section-header" style="margin-top: 20px;">Recent Actions</div>
             <div id="action-log" class="action-log"><div class="action-log-empty">No actions taken yet this campaign.</div></div>`;
@@ -1458,6 +1715,17 @@ async function loadActionLog() {
             const hurt = a.result?.total_blocs_hurt || 0;
             message = `Policy Platform: ${a.result?.stance_name || 'Unknown'} (${a.result?.sector_name || '?'}) \u2014 ${helped} bloc${helped !== 1 ? 's' : ''} approve, ${hurt} oppose`;
         }
+        else if (a.action_type === 'court_donors') {
+            const y = a.result?.yield || 0;
+            const bn = a.result?.bloc_name || 'Unknown';
+            const mult = a.result?.multiplier || 1;
+            const bonus = a.result?.bonus ? ` + ${a.result.bonus}` : '';
+            message = `Courted ${bn}: +$${y.toLocaleString()} (x${mult})${bonus}`;
+        }
+        else if (a.action_type === 'court_grassroots') {
+            const y = a.result?.yield || 0;
+            message = `Grassroots Fundraising: +$${y.toLocaleString()}`;
+        }
         return `<div class="action-log-item"><div class="action-log-time">Tick ${a.tick_performed} • ${date}</div><div class="action-log-message">${message}</div></div>`;
     }).join('');
 }
@@ -1681,6 +1949,335 @@ async function doPolicyPlatform() {
         console.error('[PolicyPlatform] Error:', error);
         alert('Policy Platform error: ' + error.message);
         if (btn) btn.disabled = false;
+    }
+}
+
+// ===================================================================
+// COURT DONORS
+// ===================================================================
+
+let _donorBlocApprovals = []; // faction_bloc_approval rows with donor_cooldown_until_tick
+
+function openDonorPanel() {
+    const container = document.getElementById('donor-panel');
+    if (!container) return;
+    if (!currentFaction) { alert('No faction loaded.'); return; }
+    if (_voterBlocs.length === 0) { alert('No voter blocs found.'); return; }
+
+    // Toggle if already open
+    if (container.classList.contains('open')) { closeDonorPanel(); return; }
+
+    const factionIdeo = ideologyDataMap[currentFaction.id];
+    const overallApproval = currentFaction._derivedApproval ?? currentFaction.approval_rating ?? 0;
+    const tick = _currentShardTick;
+
+    let blocsHTML = '';
+
+    for (const bloc of _voterBlocs) {
+        const config = DONOR_BLOC_CONFIG[bloc.bloc_name];
+        if (!config) continue; // skip blocs not in the config
+
+        const fba = _donorBlocApprovals.find(r => r.bloc_id === bloc.id);
+        const approval = fba?.approval ?? 40;
+        const cooldownTick = fba?.donor_cooldown_until_tick || 0;
+        const alignment = factionIdeo ? computeFactionBlocAlignment(factionIdeo, bloc) : 50;
+        const alignInfo = getAlignmentMultiplier(alignment);
+        const onCooldown = cooldownTick > tick;
+        const cooldownLeft = onCooldown ? cooldownTick - tick : 0;
+
+        // Gate checks
+        const approvalGateOk = approval > 30;
+        const alignmentGateOk = alignment >= 30;
+        const blocked = !approvalGateOk || !alignmentGateOk || onCooldown;
+
+        let blockedReason = '';
+        if (onCooldown) blockedReason = `Cooldown: ${cooldownLeft} tick${cooldownLeft !== 1 ? 's' : ''}`;
+        else if (!approvalGateOk) blockedReason = 'Approval too low (need > 30)';
+        else if (!alignmentGateOk) blockedReason = 'Platform too misaligned (need \u2265 30)';
+
+        // Yield range display with multiplier
+        const [minY, maxY] = config.yield;
+        const displayMin = Math.round(minY * alignInfo.mult / 1000);
+        const displayMax = Math.round(maxY * alignInfo.mult / 1000);
+        const yieldText = alignInfo.mult > 0 ? `$${displayMin}k\u2013$${displayMax}k` : '\u2014';
+        const multText = alignInfo.mult > 1 ? ` (x${alignInfo.mult})` : '';
+
+        // Approval cost text
+        const costParts = config.approvalCosts.map(c => `<span class="donor-cost-negative">${c.delta} ${c.blocName}</span>`).join(', ');
+        // Bonus text
+        let bonusText = '';
+        if (config.bonus) {
+            if (config.bonus.type === 'approval') bonusText = `<span class="donor-cost-positive">+${config.bonus.delta} approval (${config.bonus.label})</span>`;
+            else if (config.bonus.type === 'money') bonusText = `<span class="donor-cost-positive">+$${(config.bonus.amount / 1000)}k (${config.bonus.label})</span>`;
+        }
+
+        const approvalColor = approval > 50 ? '#4CAF50' : approval > 30 ? '#ff9800' : '#ff4444';
+
+        blocsHTML += `
+        <div class="donor-bloc-row ${blocked ? 'disabled' : ''}">
+            <div class="donor-bloc-name">${bloc.bloc_name}</div>
+            <div class="donor-bloc-stats">
+                <span class="stat-pill">Approval: <span style="color:${approvalColor}">${approval}%</span></span>
+                <span class="stat-pill">Alignment: <span class="${alignInfo.cls}">${alignment}% ${alignInfo.label}</span></span>
+                <span class="stat-pill donor-yield">${yieldText}${multText}</span>
+            </div>
+            ${blocked
+                ? `<span class="donor-blocked-reason">${blockedReason}</span>`
+                : `<button class="donor-court-btn" onclick="doCourtDonors('${bloc.id}')">Court</button>`
+            }
+            <div class="donor-cost-row">
+                Costs: ${costParts}${bonusText ? ' | Bonus: ' + bonusText : ''}
+            </div>
+        </div>`;
+    }
+
+    // Grassroots Small Donors (always available)
+    const grassMin = Math.round(GRASSROOTS_YIELD[0] / 1000);
+    const grassMax = Math.round(GRASSROOTS_YIELD[1] / 1000);
+    let grassMult = '';
+    if (overallApproval < 30) grassMult = ' (x0.5)';
+    else if (overallApproval > 50) grassMult = ' (x1.5)';
+
+    blocsHTML += `
+    <div class="donor-bloc-row donor-grassroots-row">
+        <div class="donor-bloc-name" style="color: #4CAF50;">Grassroots Small Donors</div>
+        <div class="donor-bloc-stats">
+            <span class="stat-pill" style="color: #4CAF50;">Always Available</span>
+            <span class="stat-pill">Overall Approval: ${overallApproval}%</span>
+            <span class="stat-pill donor-yield">$${grassMin}k\u2013$${grassMax}k${grassMult}</span>
+        </div>
+        <button class="donor-court-btn" onclick="doCourtGrassroots()">Court</button>
+        <div class="donor-cost-row" style="color: #4CAF50;">No approval cost. No cooldown. Yield scales with overall approval.</div>
+    </div>`;
+
+    container.innerHTML = `
+        <div class="donor-panel-title">Court Donors \u2014 Select a Voter Bloc</div>
+        ${blocsHTML}
+        <div class="donor-panel-footer">
+            <span style="font-size: 0.75rem; color: #888;">Gates: Approval > 30% AND Alignment \u2265 30%</span>
+            <button onclick="closeDonorPanel()">Close</button>
+        </div>
+    `;
+    container.classList.add('open');
+}
+
+function closeDonorPanel() {
+    const container = document.getElementById('donor-panel');
+    if (container) { container.classList.remove('open'); container.innerHTML = ''; }
+}
+
+async function doCourtDonors(blocId) {
+    if (!currentFaction || !currentNation) return;
+
+    const bloc = _voterBlocs.find(b => b.id === blocId);
+    if (!bloc) { alert('Voter bloc not found.'); return; }
+
+    const config = DONOR_BLOC_CONFIG[bloc.bloc_name];
+    if (!config) { alert('No donor config for this bloc.'); return; }
+
+    // Check AP
+    if ((currentFaction.action_points || 0) < COURT_DONORS_AP_COST) {
+        alert(`Not enough AP (need ${COURT_DONORS_AP_COST}).`);
+        return;
+    }
+
+    // Fetch fresh tick
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const tick = shard?.current_tick || 0;
+
+    // Re-fetch bloc approval to check cooldown and approval freshly
+    const { data: fbaRow } = await _supabase.from('faction_bloc_approval')
+        .select('id, bloc_id, approval, donor_cooldown_until_tick')
+        .eq('faction_id', currentFaction.id).eq('bloc_id', blocId).single();
+    if (!fbaRow) { alert('No approval data found for this bloc.'); return; }
+
+    const approval = fbaRow.approval ?? 40;
+    const cooldownTick = fbaRow.donor_cooldown_until_tick || 0;
+
+    if (cooldownTick > tick) {
+        alert(`Cooldown: ${cooldownTick - tick} tick(s) remaining for ${bloc.bloc_name}.`);
+        return;
+    }
+    if (approval <= 30) { alert(`Approval too low with ${bloc.bloc_name} (${approval}%, need > 30).`); return; }
+
+    const factionIdeo = ideologyDataMap[currentFaction.id];
+    const alignment = factionIdeo ? computeFactionBlocAlignment(factionIdeo, bloc) : 50;
+    if (alignment < 30) { alert(`Platform too misaligned with ${bloc.bloc_name} (${alignment}%, need >= 30).`); return; }
+
+    const alignInfo = getAlignmentMultiplier(alignment);
+
+    // Confirm
+    const [minY, maxY] = config.yield;
+    const displayMin = Math.round(minY * alignInfo.mult / 1000);
+    const displayMax = Math.round(maxY * alignInfo.mult / 1000);
+    const costDesc = config.approvalCosts.map(c => `${c.delta} ${c.blocName}`).join(', ');
+    let confirmMsg = `Court ${bloc.bloc_name} donors?\n\n`;
+    confirmMsg += `Yield: $${displayMin}k\u2013$${displayMax}k (${alignInfo.label} x${alignInfo.mult})\n`;
+    confirmMsg += `Approval costs: ${costDesc}\n`;
+    if (config.bonus) confirmMsg += `Bonus: ${config.bonus.label}\n`;
+    confirmMsg += `AP cost: ${COURT_DONORS_AP_COST}\n`;
+    confirmMsg += `Cooldown: ${COURT_DONORS_COOLDOWN_TICKS} ticks`;
+    if (!confirm(confirmMsg)) return;
+
+    // Deduct AP
+    const apResult = await deductAP(_supabase, currentFaction.id, COURT_DONORS_AP_COST);
+    if (!apResult.success) { alert('Not enough AP.'); return; }
+    currentFaction.action_points = apResult.newAp;
+
+    try {
+        // Roll yield
+        const yield$ = rollDonorYield(config, alignment);
+
+        // Add to party_funds
+        const newFunds = (currentFaction.party_funds || 0) + yield$;
+        await _supabase.from('factions').update({ party_funds: newFunds }).eq('id', currentFaction.id);
+        currentFaction.party_funds = newFunds;
+
+        // Apply approval bonus to the courted bloc only
+        const { data: allBlocApprovals } = await _supabase.from('faction_bloc_approval')
+            .select('id, bloc_id, approval').eq('faction_id', currentFaction.id);
+
+        if (config.bonus?.type === 'approval') {
+            const donorRow = allBlocApprovals?.find(r => r.bloc_id === blocId);
+            if (donorRow) {
+                donorRow.approval = Math.max(0, Math.min(100, donorRow.approval + config.bonus.delta));
+                await _supabase.from('faction_bloc_approval')
+                    .update({ approval: donorRow.approval }).eq('id', donorRow.id);
+            }
+        }
+
+        const blocChanges = {};
+        for (const cost of config.approvalCosts) {
+            const targetBloc = _voterBlocs.find(b => b.bloc_name === cost.blocName);
+            if (!targetBloc) continue;
+            const targetRow = allBlocApprovals?.find(r => r.bloc_id === targetBloc.id);
+            if (!targetRow) continue;
+            const newApproval = Math.max(0, Math.min(100, targetRow.approval + cost.delta));
+            await _supabase.from('faction_bloc_approval')
+                .update({ approval: newApproval }).eq('id', targetRow.id);
+            targetRow.approval = newApproval;
+            blocChanges[targetBloc.id] = { delta: cost.delta, bloc_name: cost.blocName };
+        }
+
+        // Recalculate derived overall approval
+        const newDerived = await recalcDerivedApproval(_supabase, currentFaction.id, allBlocApprovals);
+        currentFaction._derivedApproval = newDerived;
+        currentFaction.approval_rating = newDerived;
+
+        // Set cooldown on the courted bloc
+        await _supabase.from('faction_bloc_approval')
+            .update({ donor_cooldown_until_tick: tick + COURT_DONORS_COOLDOWN_TICKS })
+            .eq('id', fbaRow.id);
+
+        // Log the campaign action
+        await _supabase.from('campaign_actions').insert({
+            party_id: currentFaction.id,
+            nation_id: currentNation.id,
+            action_type: 'court_donors',
+            ap_cost: COURT_DONORS_AP_COST,
+            tick_performed: tick,
+            result: {
+                bloc_name: bloc.bloc_name,
+                bloc_id: blocId,
+                yield: yield$,
+                alignment,
+                multiplier: alignInfo.mult,
+                bonus: config.bonus?.label || null,
+                approval_costs: blocChanges,
+                new_derived_approval: newDerived
+            }
+        });
+
+        // Update UI
+        const apEl = document.getElementById('party-ap');
+        if (apEl) apEl.textContent = currentFaction.action_points || 0;
+        const fundsEl = document.getElementById('party-funds');
+        if (fundsEl) fundsEl.textContent = '$' + (currentFaction.party_funds || 0).toLocaleString();
+        const approvalEl = document.getElementById('party-approval');
+        if (approvalEl) approvalEl.textContent = (newDerived ?? currentFaction.approval_rating ?? 0) + '%';
+
+        let msg = `Courted ${bloc.bloc_name} donors!\n\n`;
+        msg += `Received: $${yield$.toLocaleString()}\n`;
+        msg += `Alignment: ${alignment}% (${alignInfo.label} x${alignInfo.mult})`;
+        if (config.bonus) msg += `\nBonus: ${config.bonus.label}`;
+        const costSummary = config.approvalCosts.map(c => `${c.delta} ${c.blocName}`).join(', ');
+        msg += `\nApproval costs: ${costSummary}`;
+        alert(msg);
+
+        // Refresh donor panel and action log
+        closeDonorPanel();
+        // Reload donor cooldowns
+        const { data: freshBlocApprovals } = await _supabase.from('faction_bloc_approval')
+            .select('id, bloc_id, approval, donor_cooldown_until_tick')
+            .eq('faction_id', currentFaction.id);
+        _donorBlocApprovals = freshBlocApprovals || [];
+        await loadActionLog();
+        await markFactionActive(_supabase, currentFaction.id);
+        sessionStorage.removeItem('nationhood_state');
+
+    } catch (error) {
+        console.error('[CourtDonors] Error:', error);
+        alert('Court Donors error: ' + error.message);
+    }
+}
+
+async function doCourtGrassroots() {
+    if (!currentFaction || !currentNation) return;
+
+    if ((currentFaction.action_points || 0) < COURT_DONORS_AP_COST) {
+        alert(`Not enough AP (need ${COURT_DONORS_AP_COST}).`);
+        return;
+    }
+
+    const overallApproval = currentFaction._derivedApproval ?? currentFaction.approval_rating ?? 0;
+    const yield$ = rollGrassrootsYield(overallApproval);
+
+    let msg = `Court Grassroots Small Donors?\n\n`;
+    msg += `Estimated yield: $${GRASSROOTS_YIELD[0].toLocaleString()}\u2013$${GRASSROOTS_YIELD[1].toLocaleString()}`;
+    if (overallApproval < 30) msg += ' (x0.5 — low approval)';
+    else if (overallApproval > 50) msg += ' (x1.5 — high approval)';
+    msg += `\nNo approval costs. AP cost: ${COURT_DONORS_AP_COST}`;
+    if (!confirm(msg)) return;
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const tick = shard?.current_tick || 0;
+
+    const apResult = await deductAP(_supabase, currentFaction.id, COURT_DONORS_AP_COST);
+    if (!apResult.success) { alert('Not enough AP.'); return; }
+    currentFaction.action_points = apResult.newAp;
+
+    try {
+        const newFunds = (currentFaction.party_funds || 0) + yield$;
+        await _supabase.from('factions').update({ party_funds: newFunds }).eq('id', currentFaction.id);
+        currentFaction.party_funds = newFunds;
+
+        await _supabase.from('campaign_actions').insert({
+            party_id: currentFaction.id,
+            nation_id: currentNation.id,
+            action_type: 'court_grassroots',
+            ap_cost: COURT_DONORS_AP_COST,
+            tick_performed: tick,
+            result: {
+                yield: yield$,
+                overall_approval: overallApproval
+            }
+        });
+
+        const apEl = document.getElementById('party-ap');
+        if (apEl) apEl.textContent = currentFaction.action_points || 0;
+        const fundsEl = document.getElementById('party-funds');
+        if (fundsEl) fundsEl.textContent = '$' + (currentFaction.party_funds || 0).toLocaleString();
+
+        alert(`Grassroots fundraising: Received $${yield$.toLocaleString()}`);
+
+        closeDonorPanel();
+        await loadActionLog();
+        await markFactionActive(_supabase, currentFaction.id);
+        sessionStorage.removeItem('nationhood_state');
+
+    } catch (error) {
+        console.error('[CourtGrassroots] Error:', error);
+        alert('Grassroots fundraising error: ' + error.message);
     }
 }
 
