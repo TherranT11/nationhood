@@ -28,7 +28,8 @@ DECLARE
         'administrations',
         'active_coalitions',
         'government_formations',
-        -- Legislative
+        -- Legislative (coalition_proposals references elections)
+        'coalition_proposals',
         'bills',
         'active_laws',
         'elections',
