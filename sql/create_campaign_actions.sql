@@ -16,6 +16,15 @@ CREATE TABLE IF NOT EXISTS campaign_actions (
     created_at      TIMESTAMPTZ DEFAULT now()
 );
 
+-- Fix columns that may have been created with NOT NULL in the live table
+ALTER TABLE campaign_actions ALTER COLUMN nation_id DROP NOT NULL;
+ALTER TABLE campaign_actions ALTER COLUMN money_cost DROP NOT NULL;
+ALTER TABLE campaign_actions ALTER COLUMN ap_cost DROP NOT NULL;
+ALTER TABLE campaign_actions ALTER COLUMN tick_performed DROP NOT NULL;
+
+-- Add nation_id if missing (table may predate this column)
+ALTER TABLE campaign_actions ADD COLUMN IF NOT EXISTS nation_id UUID;
+
 CREATE INDEX IF NOT EXISTS idx_campaign_actions_party_id
     ON campaign_actions(party_id);
 
