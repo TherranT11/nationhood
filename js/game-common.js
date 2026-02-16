@@ -5772,6 +5772,43 @@ async function processCrises(supabase, nation, currentTick) {
                     });
                 }
 
+            } else if (effect.target === 'pm_approval') {
+                const { data: pmMinistry } = await supabase
+                    .from('ministries')
+                    .select('minister_approval, party_id')
+                    .eq('nation_id', nation.id)
+                    .eq('ministry_key', 'prime_minister')
+                    .eq('is_active', true)
+                    .maybeSingle();
+
+                if (pmMinistry) {
+                    const currentVal = pmMinistry.minister_approval ?? 50;
+                    const newVal = clampWithFloor(currentVal, currentVal + changePT);
+                    await supabase.from('ministries')
+                        .update({ minister_approval: newVal })
+                        .eq('nation_id', nation.id)
+                        .eq('ministry_key', 'prime_minister')
+                        .eq('is_active', true);
+
+                    appliedEffects.push({
+                        stat: 'minister_approval', change: changePT,
+                        target: 'pm_approval', minister_key: 'prime_minister',
+                        old: currentVal, new: newVal
+                    });
+
+                    // Cascade PM approval loss to party approval (2x multiplier)
+                    if (changePT < 0 && pmMinistry.party_id) {
+                        const cascadeDelta = -(Math.abs(changePT) * 2);
+                        await adjustBlocApproval(supabase, pmMinistry.party_id, cascadeDelta);
+
+                        appliedEffects.push({
+                            stat: 'approval_rating', change: cascadeDelta,
+                            target: 'minister_cascade', faction_id: pmMinistry.party_id,
+                            minister_key: 'prime_minister'
+                        });
+                    }
+                }
+
             } else if (effect.target === 'minister_approval') {
                 const { data: ministry } = await supabase
                     .from('ministries')
