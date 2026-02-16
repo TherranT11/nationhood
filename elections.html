@@ -412,6 +412,13 @@ async function renderDemocracyPage() {
                     <div id="election-results-list"></div>
                 </div>
             </div>
+            ${!election ? `
+            <div class="info-block" style="margin-bottom: 24px; text-align: center; padding: 32px 16px;">
+                <div style="font-size: 1.6rem; margin-bottom: 10px;">🗳️</div>
+                <div style="font-size: 1rem; color: var(--text-secondary); font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px;">No Election Held Yet</div>
+                <div style="font-size: 0.85rem; color: #666;">The first election will be held once enough parties have joined the nation.</div>
+            </div>
+            ` : ''}
 
             <!-- Government Formation (hidden for Presidential systems) -->
             <div id="gov-formation-section" style="display: ${showFormation ? 'block' : 'none'};">
