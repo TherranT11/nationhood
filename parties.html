@@ -401,6 +401,72 @@
             border: 1px solid #555 !important;
             color: #aaa;
         }
+
+        /* ===== PARTY STANDINGS ===== */
+        .standings-section {
+            margin-bottom: 28px;
+        }
+        .standings-container {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-main);
+            border-radius: 8px;
+            padding: 16px 20px;
+        }
+        .standings-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .standings-row:last-child { border-bottom: none; }
+        .standings-row.standings-yours {
+            background: rgba(255, 204, 0, 0.06);
+            margin: 0 -12px;
+            padding: 7px 12px;
+            border-radius: 4px;
+        }
+        .standings-rank {
+            font-size: 0.75rem;
+            font-weight: bold;
+            color: var(--text-muted);
+            width: 22px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .standings-name {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            min-width: 120px;
+            flex-shrink: 0;
+        }
+        .standings-bar {
+            flex: 1;
+            background: #222;
+            border-radius: 3px;
+            height: 14px;
+            overflow: hidden;
+        }
+        .standings-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.4s ease;
+        }
+        .standings-value {
+            font-size: 0.82rem;
+            font-weight: bold;
+            min-width: 40px;
+            text-align: right;
+            flex-shrink: 0;
+        }
+        .standings-note {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            text-align: right;
+            margin-top: 8px;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -1171,6 +1237,36 @@ async function renderPartiesPage(nation, faction) {
         const ideologySectionHTML = buildIdeologySection(parties, faction);
         const ideologyEventsFeedHTML = buildIdeologyEventsFeed();
 
+        // Build Party Standings section (weighted amalgamation of all voter blocs)
+        const standingsHTML = (() => {
+            if (isAutocracy) return '';
+            const sorted = [...parties].sort((a, b) => {
+                const aApp = a._derivedApproval ?? a.approval_rating ?? 0;
+                const bApp = b._derivedApproval ?? b.approval_rating ?? 0;
+                return bApp - aApp;
+            });
+            const rows = sorted.map((p, i) => {
+                const approval = p._derivedApproval ?? p.approval_rating ?? 0;
+                const isYours = p.id === faction?.id;
+                const origIdx = parties.indexOf(p);
+                const color = FACTION_COLORS[origIdx % FACTION_COLORS.length];
+                const barColor = approval >= 50 ? '#4CAF50' : approval >= 35 ? '#ff9800' : '#ff4444';
+                return `<div class="standings-row${isYours ? ' standings-yours' : ''}">
+                    <span class="standings-rank">${i + 1}</span>
+                    <span class="standings-name" style="border-left: 3px solid ${color}; padding-left: 8px;">${p.abbreviation || p.faction_name}${isYours ? ' ★' : ''}</span>
+                    <div class="standings-bar"><div class="standings-bar-fill" style="width:${approval}%;background:${barColor};"></div></div>
+                    <span class="standings-value" style="color:${barColor};">${approval}%</span>
+                </div>`;
+            }).join('');
+            return `<div class="standings-section">
+                <div class="section-header">Party Standings</div>
+                <div class="standings-container">
+                    ${rows}
+                    <div class="standings-note">Weighted by voter bloc size</div>
+                </div>
+            </div>`;
+        })();
+
         document.getElementById('content-area').innerHTML = `
             <div class="panel-padding">
                 <div class="section-header">${headerText} in ${nation.name}</div>
@@ -1181,6 +1277,8 @@ async function renderPartiesPage(nation, faction) {
                     <div class="stat-card"><div class="stat-label">${isAutocracy ? 'Max Factions' : 'Opposition'}</div><div class="stat-value" style="color:${isAutocracy ? '#ffcc00' : '#ff4444'};">${isAutocracy ? (nation.max_parties || 4) : oppositionCount}</div></div>
                     <div class="stat-card"><div class="stat-label">Total Seats</div><div class="stat-value">${totalSeats}</div></div>
                 </div>
+
+                ${standingsHTML}
 
                 ${isAutocracy ? `
                     <div class="parties-section-label regime">⚡ Regime Factions</div>
