@@ -251,6 +251,156 @@
         .ideology-events-empty {
             text-align: center; color: var(--text-muted); font-style: italic; padding: 20px;
         }
+
+        /* ===== POLL PANEL ===== */
+        .poll-panel {
+            background: #1a1a2e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .poll-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .poll-panel-title {
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: #ffcc00;
+        }
+        .poll-panel-date {
+            font-size: 0.72rem;
+            color: #888;
+        }
+        .poll-no-data {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            padding: 16px 0;
+            font-size: 0.82rem;
+        }
+        .poll-bloc-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 5px;
+        }
+        .poll-bloc-name {
+            font-size: 0.75rem;
+            color: #888;
+            min-width: 140px;
+            text-align: right;
+        }
+        .poll-bloc-bar {
+            flex: 1;
+            background: #222;
+            border-radius: 3px;
+            height: 12px;
+            overflow: hidden;
+        }
+        .poll-bloc-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.3s;
+        }
+        .poll-bloc-value {
+            font-size: 0.75rem;
+            font-weight: bold;
+            min-width: 35px;
+        }
+        .poll-bloc-delta {
+            font-size: 0.7rem;
+            min-width: 40px;
+            text-align: right;
+        }
+        .poll-bloc-delta.up { color: #4CAF50; }
+        .poll-bloc-delta.down { color: #ff4444; }
+        .poll-bloc-delta.flat { color: #666; }
+        .poll-bloc-unpolled {
+            font-size: 0.72rem;
+            color: #555;
+            font-style: italic;
+            padding: 2px 0;
+            text-align: center;
+        }
+        .poll-margin-note {
+            font-size: 0.68rem;
+            color: #666;
+            text-align: right;
+            margin-top: 8px;
+            font-style: italic;
+        }
+
+        /* ===== POLL SELECTOR ===== */
+        .poll-selector {
+            background: #1a1a2e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            display: none;
+        }
+        .poll-selector.open { display: block; }
+        .poll-selector-title {
+            font-size: 0.82rem;
+            font-weight: bold;
+            color: var(--text-primary);
+            margin-bottom: 10px;
+        }
+        .poll-bloc-check {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+        }
+        .poll-bloc-check:hover { background: rgba(255,255,255,0.05); }
+        .poll-bloc-check input { cursor: pointer; }
+        .poll-selector-cost {
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.82rem;
+        }
+        .poll-selector-cost .cost-label { color: #aaa; }
+        .poll-selector-cost .cost-value { color: #ffcc00; font-weight: bold; }
+        .poll-submit-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .poll-submit-row button {
+            flex: 1;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.82rem;
+        }
+        .poll-submit-btn {
+            background: #ffcc00;
+            color: #121212;
+        }
+        .poll-submit-btn:disabled {
+            background: #555;
+            color: #888;
+            cursor: not-allowed;
+        }
+        .poll-cancel-btn {
+            background: transparent;
+            border: 1px solid #555 !important;
+            color: #aaa;
+        }
     </style>
 </head>
 <body>
@@ -280,6 +430,14 @@ const FACTION_COLORS = [
     '#9C27B0', '#00BCD4', '#E91E63', '#8BC34A', '#FF5722'
 ];
 let factionColorMap = {};
+
+// Poll / voter bloc data
+let _voterBlocs = [];
+let _currentShardTick = 0;
+let _currentShardDate = '';
+const POLL_AP_COST = 2;
+const POLL_COST_PER_BLOC = 25000;
+const POLL_COOLDOWN_TICKS = 3;
 
 initPage('parties', async (state) => {
     const { nation, faction } = state;
@@ -636,6 +794,31 @@ async function renderPartiesPage(nation, faction) {
         });
 
         allPartiesCache = parties;
+        _voterBlocs = voterBlocs || [];
+
+        // Load shard date for poll display
+        const { data: shardInfo } = await _supabase
+            .from('shard').select('current_tick, current_date').eq('name', 'Alpha Shard').single();
+        const currentShardTick = shardInfo?.current_tick || 0;
+        const currentShardDate = shardInfo?.current_date || '';
+        _currentShardTick = currentShardTick;
+        _currentShardDate = currentShardDate;
+
+        // Load latest poll data for player's party
+        let lastPollData = null;
+        let previousPollData = null;
+        if (faction) {
+            const { data: pollActions } = await _supabase
+                .from('campaign_actions').select('*')
+                .eq('party_id', faction.id)
+                .eq('action_type', 'generate_poll')
+                .order('created_at', { ascending: false })
+                .limit(2);
+            if (pollActions && pollActions.length > 0) {
+                lastPollData = pollActions[0];
+                if (pollActions.length > 1) previousPollData = pollActions[1];
+            }
+        }
 
         // Load all ideology data
         await loadAllIdeologyData(nation.id);
@@ -794,29 +977,71 @@ async function renderPartiesPage(nation, faction) {
                 <div class="stat-card"><div class="stat-label">Approval Rating</div><div class="stat-value" id="party-approval">${faction?._derivedApproval ?? faction?.approval_rating ?? 0}%</div></div>
             </div>
             ${(() => {
-                if (!blocApprovals || !voterBlocs || !faction) return '';
-                const myApprovals = blocApprovals.filter(a => a.faction_id === faction.id);
-                if (myApprovals.length === 0) return '';
-                return `<div style="background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:16px;">
-                    <div style="font-size:0.78rem;color:#aaa;font-weight:bold;margin-bottom:8px;">Approval by Voter Bloc</div>
-                    <div style="display:flex;flex-direction:column;gap:4px;">
-                        ${myApprovals.map(ba => {
-                            const bloc = voterBlocs.find(b => b.id === ba.bloc_id);
-                            if (!bloc) return '';
-                            const color = ba.approval >= 55 ? '#4CAF50' : ba.approval <= 35 ? '#ff4444' : '#ff9800';
-                            const barWidth = ba.approval;
-                            return `<div style="display:flex;align-items:center;gap:8px;">
-                                <span style="font-size:0.75rem;color:#888;min-width:140px;text-align:right;">${bloc.bloc_name}</span>
-                                <div style="flex:1;background:#222;border-radius:3px;height:12px;overflow:hidden;">
-                                    <div style="width:${barWidth}%;height:100%;background:${color};border-radius:3px;transition:width 0.3s;"></div>
-                                </div>
-                                <span style="font-size:0.75rem;color:${color};font-weight:bold;min-width:35px;">${ba.approval}%</span>
-                            </div>`;
-                        }).join('')}
+                if (!voterBlocs || voterBlocs.length === 0 || !faction) return '';
+                const pollResult = lastPollData?.result;
+                const prevResult = previousPollData?.result;
+                const pollDate = lastPollData?.result?.poll_date || null;
+                const polledBlocIds = pollResult?.bloc_results ? Object.keys(pollResult.bloc_results) : [];
+
+                if (!pollResult) {
+                    return `<div class="poll-panel">
+                        <div class="poll-panel-header">
+                            <div class="poll-panel-title">Poll for ${faction.faction_name}</div>
+                        </div>
+                        <div class="poll-no-data">No polls conducted yet. Use <strong>Generate Poll</strong> to survey voter blocs.</div>
+                    </div>`;
+                }
+
+                const blocRows = voterBlocs.map(bloc => {
+                    const polled = pollResult.bloc_results?.[bloc.id];
+                    if (!polled) return `<div class="poll-bloc-unpolled">${bloc.bloc_name} — not polled</div>`;
+                    const prev = prevResult?.bloc_results?.[bloc.id];
+                    const color = polled.shown >= 55 ? '#4CAF50' : polled.shown <= 35 ? '#ff4444' : '#ff9800';
+                    let deltaHTML = '';
+                    if (prev) {
+                        const diff = polled.shown - prev.shown;
+                        if (diff > 0) deltaHTML = `<span class="poll-bloc-delta up">+${diff}</span>`;
+                        else if (diff < 0) deltaHTML = `<span class="poll-bloc-delta down">${diff}</span>`;
+                        else deltaHTML = `<span class="poll-bloc-delta flat">—</span>`;
+                    }
+                    return `<div class="poll-bloc-row">
+                        <span class="poll-bloc-name">${bloc.bloc_name}</span>
+                        <div class="poll-bloc-bar"><div class="poll-bloc-bar-fill" style="width:${polled.shown}%;background:${color};"></div></div>
+                        <span class="poll-bloc-value" style="color:${color};">${polled.shown}%</span>
+                        ${deltaHTML}
+                    </div>`;
+                }).join('');
+
+                return `<div class="poll-panel">
+                    <div class="poll-panel-header">
+                        <div class="poll-panel-title">Poll for ${faction.faction_name}</div>
+                        <div class="poll-panel-date">${pollDate ? 'Conducted: ' + pollDate : ''}</div>
                     </div>
+                    <div>${blocRows}</div>
+                    <div class="poll-margin-note">± margin of error</div>
                 </div>`;
             })()}
-            <div class="section-header" style="margin-top: 30px;">Recent Actions</div>
+            <div id="poll-selector" class="poll-selector"></div>
+
+            <div class="section-header" style="margin-top: 20px;">Party Actions</div>
+            <div class="action-grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 16px;">
+                <div class="action-card">
+                    <div class="action-header">
+                        <div class="action-title">Generate Poll</div>
+                        <div class="action-cost">2 AP + $25k/bloc</div>
+                    </div>
+                    <div class="action-desc">
+                        Commission a poll to reveal your approval with selected voter blocs.
+                        Results have a <strong>margin of error</strong>.
+                        <br><span style="color: #888; font-size: 0.78rem;">Cooldown: 1 per 3 ticks.</span>
+                    </div>
+                    <button class="action-btn" id="btn-generate-poll" onclick="openPollSelector()">
+                        Generate Poll
+                    </button>
+                </div>
+            </div>
+
+            <div class="section-header" style="margin-top: 20px;">Recent Actions</div>
             <div id="action-log" class="action-log"><div class="action-log-empty">No actions taken yet this campaign.</div></div>`;
         } else {
             const loyaltyColor = myLoyalty >= 30 ? '#4CAF50' : myLoyalty >= 15 ? '#ff9800' : '#ff4444';
@@ -982,8 +1207,24 @@ async function renderPartiesPage(nation, faction) {
                 ${campaignActionsHTML}
             </div>`;
 
-        if (!isAutocracy) await populateDropdowns();
-        else await populateAutocracyDropdowns();
+        if (!isAutocracy) {
+            await populateDropdowns();
+            // Update poll button cooldown state
+            if (faction && lastPollData) {
+                const ticksSince = currentShardTick - (lastPollData.tick_performed || 0);
+                if (ticksSince < POLL_COOLDOWN_TICKS) {
+                    const btn = document.getElementById('btn-generate-poll');
+                    if (btn) {
+                        const ticksLeft = POLL_COOLDOWN_TICKS - ticksSince;
+                        btn.disabled = true;
+                        btn.textContent = `Cooldown (${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''})`;
+                        btn.style.background = '#555';
+                    }
+                }
+            }
+        } else {
+            await populateAutocracyDropdowns();
+        }
         await loadActionLog();
 
     } catch (error) {
@@ -1037,8 +1278,180 @@ async function loadActionLog() {
         else if (a.action_type === 'patronage_network') message = `Patronage to ${a.result?.target_name || 'Unknown'}: +$50k, +2 loyalty, +1 corruption${a.result?.is_self ? ' (hoarding!)' : ''}`;
         else if (a.action_type === 'seize_power_success') message = `SEIZED POWER! (${a.result?.challenger_seats || 0} vs ${a.result?.regime_seats || 0} seats)`;
         else if (a.action_type === 'seize_power_failed') message = `Failed Coup! -${a.result?.seats_lost || 0} seats, Seize Power blocked until tick ${a.result?.coup_cooldown_until || a.result?.lockout_until || '?'}`;
+        else if (a.action_type === 'generate_poll') {
+            const blocCount = a.result?.blocs_polled || 0;
+            const cost = a.result?.cost || 0;
+            message = `Conducted Poll: ${blocCount} bloc${blocCount !== 1 ? 's' : ''} surveyed ($${cost.toLocaleString()})`;
+        }
         return `<div class="action-log-item"><div class="action-log-time">Tick ${a.tick_performed} • ${date}</div><div class="action-log-message">${message}</div></div>`;
     }).join('');
+}
+
+// ===================================================================
+// GENERATE POLL
+// ===================================================================
+
+function openPollSelector() {
+    const container = document.getElementById('poll-selector');
+    if (!container || !currentFaction || _voterBlocs.length === 0) return;
+
+    // Check cooldown
+    const btn = document.getElementById('btn-generate-poll');
+
+    const blocsHTML = _voterBlocs.map(bloc => `
+        <label class="poll-bloc-check">
+            <input type="checkbox" value="${bloc.id}" onchange="updatePollCost()">
+            ${bloc.bloc_name}
+            <span style="color:#666;font-size:0.72rem;margin-left:auto;">${parseFloat(bloc.population_weight) || 0}% pop</span>
+        </label>
+    `).join('');
+
+    container.innerHTML = `
+        <div class="poll-selector-title">Select Voter Blocs to Poll</div>
+        ${blocsHTML}
+        <div style="margin-top:8px;">
+            <label class="poll-bloc-check" style="color:#ffcc00;font-weight:bold;">
+                <input type="checkbox" id="poll-select-all" onchange="togglePollSelectAll()">
+                Select All ($${(_voterBlocs.length * POLL_COST_PER_BLOC).toLocaleString()})
+            </label>
+        </div>
+        <div class="poll-selector-cost">
+            <span class="cost-label">Cost: <span id="poll-cost-display">2 AP + $0</span></span>
+            <span class="cost-label">Funds: $${(currentFaction.party_funds || 0).toLocaleString()}</span>
+        </div>
+        <div class="poll-submit-row">
+            <button class="poll-cancel-btn" onclick="closePollSelector()">Cancel</button>
+            <button class="poll-submit-btn" id="poll-submit-btn" onclick="doGeneratePoll()" disabled>Submit Poll</button>
+        </div>
+    `;
+    container.classList.add('open');
+}
+
+function closePollSelector() {
+    const container = document.getElementById('poll-selector');
+    if (container) {
+        container.classList.remove('open');
+        container.innerHTML = '';
+    }
+}
+
+function togglePollSelectAll() {
+    const selectAll = document.getElementById('poll-select-all');
+    if (!selectAll) return;
+    const checks = document.querySelectorAll('#poll-selector input[type=checkbox]:not(#poll-select-all)');
+    checks.forEach(cb => cb.checked = selectAll.checked);
+    updatePollCost();
+}
+
+function updatePollCost() {
+    const checks = document.querySelectorAll('#poll-selector input[type=checkbox]:not(#poll-select-all)');
+    const count = [...checks].filter(cb => cb.checked).length;
+    const cost = count * POLL_COST_PER_BLOC;
+    const costDisplay = document.getElementById('poll-cost-display');
+    if (costDisplay) costDisplay.textContent = `${POLL_AP_COST} AP + $${cost.toLocaleString()}`;
+    const submitBtn = document.getElementById('poll-submit-btn');
+    if (submitBtn) submitBtn.disabled = count === 0;
+}
+
+async function doGeneratePoll() {
+    if (!currentFaction || !currentNation) return;
+
+    // Gather selected blocs
+    const checks = document.querySelectorAll('#poll-selector input[type=checkbox]:not(#poll-select-all)');
+    const selectedBlocIds = [...checks].filter(cb => cb.checked).map(cb => cb.value);
+    if (selectedBlocIds.length === 0) { alert('Select at least one voter bloc to poll.'); return; }
+
+    // Check AP
+    if ((currentFaction.action_points || 0) < POLL_AP_COST) {
+        alert(`Not enough AP (need ${POLL_AP_COST}).`);
+        return;
+    }
+
+    // Check funds
+    const totalCost = selectedBlocIds.length * POLL_COST_PER_BLOC;
+    if ((currentFaction.party_funds || 0) < totalCost) {
+        alert(`Not enough Party Funds. Need $${totalCost.toLocaleString()}, have $${(currentFaction.party_funds || 0).toLocaleString()}.`);
+        return;
+    }
+
+    // Check cooldown (3 ticks since last poll)
+    const { data: lastPoll } = await _supabase
+        .from('campaign_actions').select('tick_performed')
+        .eq('party_id', currentFaction.id)
+        .eq('action_type', 'generate_poll')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (lastPoll && (_currentShardTick - lastPoll.tick_performed) < POLL_COOLDOWN_TICKS) {
+        const ticksLeft = POLL_COOLDOWN_TICKS - (_currentShardTick - lastPoll.tick_performed);
+        alert(`Poll cooldown: ${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} remaining.`);
+        return;
+    }
+
+    // Deduct AP
+    const apResult = await deductAP(_supabase, currentFaction.id, POLL_AP_COST);
+    if (!apResult.success) { alert('Not enough AP.'); return; }
+    currentFaction.action_points = apResult.newAp;
+
+    // Deduct party funds
+    const newFunds = (currentFaction.party_funds || 0) - totalCost;
+    await _supabase.from('factions')
+        .update({ party_funds: newFunds })
+        .eq('id', currentFaction.id);
+    currentFaction.party_funds = newFunds;
+
+    // Load actual bloc approval data
+    const { data: actualApprovals } = await _supabase
+        .from('faction_bloc_approval')
+        .select('bloc_id, approval')
+        .eq('faction_id', currentFaction.id)
+        .in('bloc_id', selectedBlocIds);
+
+    // Build poll results with margin of error
+    const blocResults = {};
+    for (const blocId of selectedBlocIds) {
+        const actual = actualApprovals?.find(a => a.bloc_id === blocId);
+        const realApproval = actual?.approval ?? 40;
+        // 1D3 margin of error, randomly + or -
+        const margin = Math.floor(Math.random() * 3) + 1;
+        const direction = Math.random() < 0.5 ? 1 : -1;
+        const shown = Math.max(0, Math.min(100, realApproval + (margin * direction)));
+        blocResults[blocId] = { shown, margin };
+    }
+
+    // Calculate shown overall approval with 1D3 margin
+    const derivedApproval = currentFaction._derivedApproval ?? currentFaction.approval_rating ?? 50;
+    const overallMargin = Math.floor(Math.random() * 3) + 1;
+    const overallDir = Math.random() < 0.5 ? 1 : -1;
+    const shownOverall = Math.max(0, Math.min(100, derivedApproval + (overallMargin * overallDir)));
+
+    // Save campaign action
+    await _supabase.from('campaign_actions').insert({
+        party_id: currentFaction.id,
+        nation_id: currentNation.id,
+        action_type: 'generate_poll',
+        tick_performed: _currentShardTick,
+        result: {
+            bloc_results: blocResults,
+            blocs_polled: selectedBlocIds.length,
+            cost: totalCost,
+            shown_overall: shownOverall,
+            poll_date: _currentShardDate
+        }
+    });
+
+    // Update UI
+    const fundsEl = document.getElementById('party-funds');
+    if (fundsEl) fundsEl.textContent = '$' + newFunds.toLocaleString();
+    const apEl = document.getElementById('party-ap');
+    if (apEl) apEl.textContent = currentFaction.action_points || 0;
+
+    closePollSelector();
+    alert(`Poll complete! Surveyed ${selectedBlocIds.length} bloc${selectedBlocIds.length !== 1 ? 's' : ''} for $${totalCost.toLocaleString()}.`);
+
+    // Reload to show new poll results
+    await renderPartiesPage(currentNation, currentFaction);
 }
 
 // ===================================================================
