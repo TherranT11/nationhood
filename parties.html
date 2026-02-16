@@ -1293,7 +1293,13 @@ async function loadActionLog() {
 
 function openPollSelector() {
     const container = document.getElementById('poll-selector');
-    if (!container || !currentFaction || _voterBlocs.length === 0) return;
+    if (!container) { console.error('[Poll] No poll-selector container found'); return; }
+    if (!currentFaction) { alert('No faction loaded.'); return; }
+    if (_voterBlocs.length === 0) {
+        alert('No voter blocs found for this nation. Cannot generate poll.');
+        console.error('[Poll] _voterBlocs is empty');
+        return;
+    }
 
     // Check cooldown
     const btn = document.getElementById('btn-generate-poll');
@@ -1374,8 +1380,13 @@ async function doGeneratePoll() {
         return;
     }
 
+    // Fetch fresh tick for cooldown + insert
+    const { data: shard } = await _supabase.from('shard').select('current_tick, current_date').eq('name', 'Alpha Shard').single();
+    const tick = shard?.current_tick || 0;
+    const shardDate = shard?.current_date || '';
+
     // Check cooldown (3 ticks since last poll)
-    const { data: lastPoll } = await _supabase
+    const { data: lastPoll, error: cooldownErr } = await _supabase
         .from('campaign_actions').select('tick_performed')
         .eq('party_id', currentFaction.id)
         .eq('action_type', 'generate_poll')
@@ -1383,8 +1394,10 @@ async function doGeneratePoll() {
         .limit(1)
         .maybeSingle();
 
-    if (lastPoll && (_currentShardTick - lastPoll.tick_performed) < POLL_COOLDOWN_TICKS) {
-        const ticksLeft = POLL_COOLDOWN_TICKS - (_currentShardTick - lastPoll.tick_performed);
+    if (cooldownErr) console.error('[Poll] Cooldown check error:', cooldownErr.message);
+
+    if (lastPoll && (tick - lastPoll.tick_performed) < POLL_COOLDOWN_TICKS) {
+        const ticksLeft = POLL_COOLDOWN_TICKS - (tick - lastPoll.tick_performed);
         alert(`Poll cooldown: ${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} remaining.`);
         return;
     }
@@ -1394,64 +1407,72 @@ async function doGeneratePoll() {
     if (!apResult.success) { alert('Not enough AP.'); return; }
     currentFaction.action_points = apResult.newAp;
 
-    // Deduct party funds
-    const newFunds = (currentFaction.party_funds || 0) - totalCost;
-    await _supabase.from('factions')
-        .update({ party_funds: newFunds })
-        .eq('id', currentFaction.id);
-    currentFaction.party_funds = newFunds;
+    try {
+        // Deduct party funds
+        const newFunds = (currentFaction.party_funds || 0) - totalCost;
+        const { error: fundsErr } = await _supabase.from('factions')
+            .update({ party_funds: newFunds })
+            .eq('id', currentFaction.id);
+        if (fundsErr) throw new Error('Failed to deduct funds: ' + fundsErr.message);
+        currentFaction.party_funds = newFunds;
 
-    // Load actual bloc approval data
-    const { data: actualApprovals } = await _supabase
-        .from('faction_bloc_approval')
-        .select('bloc_id, approval')
-        .eq('faction_id', currentFaction.id)
-        .in('bloc_id', selectedBlocIds);
+        // Load actual bloc approval data
+        const { data: actualApprovals, error: approvalErr } = await _supabase
+            .from('faction_bloc_approval')
+            .select('bloc_id, approval')
+            .eq('faction_id', currentFaction.id)
+            .in('bloc_id', selectedBlocIds);
+        if (approvalErr) console.error('[Poll] Approval fetch error:', approvalErr.message);
 
-    // Build poll results with margin of error
-    const blocResults = {};
-    for (const blocId of selectedBlocIds) {
-        const actual = actualApprovals?.find(a => a.bloc_id === blocId);
-        const realApproval = actual?.approval ?? 40;
-        // 1D3 margin of error, randomly + or -
-        const margin = Math.floor(Math.random() * 3) + 1;
-        const direction = Math.random() < 0.5 ? 1 : -1;
-        const shown = Math.max(0, Math.min(100, realApproval + (margin * direction)));
-        blocResults[blocId] = { shown, margin };
-    }
-
-    // Calculate shown overall approval with 1D3 margin
-    const derivedApproval = currentFaction._derivedApproval ?? currentFaction.approval_rating ?? 50;
-    const overallMargin = Math.floor(Math.random() * 3) + 1;
-    const overallDir = Math.random() < 0.5 ? 1 : -1;
-    const shownOverall = Math.max(0, Math.min(100, derivedApproval + (overallMargin * overallDir)));
-
-    // Save campaign action
-    await _supabase.from('campaign_actions').insert({
-        party_id: currentFaction.id,
-        nation_id: currentNation.id,
-        action_type: 'generate_poll',
-        tick_performed: _currentShardTick,
-        result: {
-            bloc_results: blocResults,
-            blocs_polled: selectedBlocIds.length,
-            cost: totalCost,
-            shown_overall: shownOverall,
-            poll_date: _currentShardDate
+        // Build poll results with margin of error
+        const blocResults = {};
+        for (const blocId of selectedBlocIds) {
+            const actual = actualApprovals?.find(a => a.bloc_id === blocId);
+            const realApproval = actual?.approval ?? 40;
+            // 1D3 margin of error, randomly + or -
+            const margin = Math.floor(Math.random() * 3) + 1;
+            const direction = Math.random() < 0.5 ? 1 : -1;
+            const shown = Math.max(0, Math.min(100, realApproval + (margin * direction)));
+            blocResults[blocId] = { shown, margin };
         }
-    });
 
-    // Update UI
-    const fundsEl = document.getElementById('party-funds');
-    if (fundsEl) fundsEl.textContent = '$' + newFunds.toLocaleString();
-    const apEl = document.getElementById('party-ap');
-    if (apEl) apEl.textContent = currentFaction.action_points || 0;
+        // Calculate shown overall approval with 1D3 margin
+        const derivedApproval = currentFaction._derivedApproval ?? currentFaction.approval_rating ?? 50;
+        const overallMargin = Math.floor(Math.random() * 3) + 1;
+        const overallDir = Math.random() < 0.5 ? 1 : -1;
+        const shownOverall = Math.max(0, Math.min(100, derivedApproval + (overallMargin * overallDir)));
 
-    closePollSelector();
-    alert(`Poll complete! Surveyed ${selectedBlocIds.length} bloc${selectedBlocIds.length !== 1 ? 's' : ''} for $${totalCost.toLocaleString()}.`);
+        // Save campaign action
+        const { error: insertErr } = await _supabase.from('campaign_actions').insert({
+            party_id: currentFaction.id,
+            nation_id: currentNation.id,
+            action_type: 'generate_poll',
+            tick_performed: tick,
+            result: {
+                bloc_results: blocResults,
+                blocs_polled: selectedBlocIds.length,
+                cost: totalCost,
+                shown_overall: shownOverall,
+                poll_date: shardDate
+            }
+        });
+        if (insertErr) throw new Error('Failed to save poll: ' + insertErr.message);
 
-    // Reload to show new poll results
-    await renderPartiesPage(currentNation, currentFaction);
+        // Update UI
+        const fundsEl = document.getElementById('party-funds');
+        if (fundsEl) fundsEl.textContent = '$' + newFunds.toLocaleString();
+        const apEl = document.getElementById('party-ap');
+        if (apEl) apEl.textContent = currentFaction.action_points || 0;
+
+        closePollSelector();
+        alert(`Poll complete! Surveyed ${selectedBlocIds.length} bloc${selectedBlocIds.length !== 1 ? 's' : ''} for $${totalCost.toLocaleString()}.`);
+
+        // Reload to show new poll results
+        await renderPartiesPage(currentNation, currentFaction);
+    } catch (error) {
+        console.error('[Poll] Error:', error);
+        alert('Poll error: ' + error.message);
+    }
 }
 
 // ===================================================================
