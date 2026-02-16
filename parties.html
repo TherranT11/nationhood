@@ -1410,6 +1410,7 @@ async function loadActionLog() {
         else if (a.action_type === 'rally_pledge') message = `Pledged Loyalty: +${a.result?.loyalty_gain || 0} loyalty`;
         else if (a.action_type === 'undermine') message = `Undermined ${a.result?.target_name || 'Unknown'}: -${a.result?.loyalty_loss || 0} loyalty, -1 stability${a.result?.revealed ? ' (REVEALED!)' : ''}`;
         else if (a.action_type === 'patronage_network') message = `Patronage to ${a.result?.target_name || 'Unknown'}: +$50k, +2 loyalty, +1 corruption${a.result?.is_self ? ' (hoarding!)' : ''}`;
+        else if (a.action_type === 'claim_power') message = `CLAIMED POWER! Established government with ${a.result?.ministries_assigned || 0} ministers.`;
         else if (a.action_type === 'seize_power_success') message = `SEIZED POWER! (${a.result?.challenger_seats || 0} vs ${a.result?.regime_seats || 0} seats)`;
         else if (a.action_type === 'seize_power_failed') message = `Failed Coup! -${a.result?.seats_lost || 0} seats, Seize Power blocked until tick ${a.result?.coup_cooldown_until || a.result?.lockout_until || '?'}`;
         else if (a.action_type === 'generate_poll') {
