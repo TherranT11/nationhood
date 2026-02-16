@@ -886,6 +886,17 @@ async function renderPartiesPage(nation, faction) {
             }
         }
 
+        let lastPlatformData = null;
+        if (faction) {
+            const { data: platformActions } = await _supabase
+                .from('campaign_actions').select('tick_performed')
+                .eq('party_id', faction.id)
+                .eq('action_type', 'policy_platform')
+                .order('created_at', { ascending: false })
+                .limit(1);
+            if (platformActions && platformActions.length > 0) lastPlatformData = platformActions[0];
+        }
+
         // Load all ideology data
         await loadAllIdeologyData(nation.id);
 
@@ -1081,6 +1092,31 @@ async function renderPartiesPage(nation, faction) {
                     </div>
                     <button class="action-btn" id="btn-generate-poll" onclick="openPollSelector()">
                         Generate Poll
+                    </button>
+                </div>
+                <div class="action-card">
+                    <div class="action-header">
+                        <div class="action-title">Policy Platform</div>
+                        <div class="action-cost">3 AP</div>
+                    </div>
+                    <div class="action-desc">
+                        Announce a stance on a national issue. Aligned voter blocs <strong>gain approval</strong>;
+                        opposed blocs <strong>lose approval</strong>. Choose wisely.
+                        <br><span style="color: #888; font-size: 0.78rem;">Cooldown: 1 per 2 ticks.</span>
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <select id="platform-sector" class="action-select" onchange="onPlatformSectorChange()">
+                            <option value="">Select Sector...</option>
+                        </select>
+                    </div>
+                    <div id="platform-stance-wrap" style="margin: 10px 0; display: none;">
+                        <select id="platform-stance" class="action-select" onchange="onPlatformStanceChange()">
+                            <option value="">Select Stance...</option>
+                        </select>
+                    </div>
+                    <div id="platform-stance-preview" style="display: none; background: #1a1a2e; border-left: 3px solid var(--accent); border-radius: 4px; padding: 8px 12px; margin: 8px 0;"></div>
+                    <button class="action-btn" id="btn-policy-platform" onclick="doPolicyPlatform()" disabled>
+                        Announce Platform
                     </button>
                 </div>
             </div>
@@ -1298,6 +1334,20 @@ async function renderPartiesPage(nation, faction) {
                     }
                 }
             }
+            // Update policy platform button cooldown state
+            if (faction && lastPlatformData) {
+                const ticksSince = currentShardTick - (lastPlatformData.tick_performed || 0);
+                if (ticksSince < POLICY_PLATFORM_COOLDOWN_TICKS) {
+                    const btn = document.getElementById('btn-policy-platform');
+                    if (btn) {
+                        const ticksLeft = POLICY_PLATFORM_COOLDOWN_TICKS - ticksSince;
+                        btn.disabled = true;
+                        btn.dataset.cooldown = 'true';
+                        btn.textContent = `Cooldown (${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''})`;
+                        btn.style.background = '#555';
+                    }
+                }
+            }
         } else {
             await populateAutocracyDropdowns();
         }
@@ -1327,6 +1377,14 @@ async function populateDropdowns() {
     if (attackSelect && parties) {
         attackSelect.innerHTML = '<option value="">Select Target Party...</option>';
         parties.forEach(p => { attackSelect.innerHTML += `<option value="${p.id}">${p.faction_name}</option>`; });
+    }
+    // Populate policy platform sector dropdown
+    const sectorSelect = document.getElementById('platform-sector');
+    if (sectorSelect) {
+        sectorSelect.innerHTML = '<option value="">Select Sector...</option>';
+        MAJOR_SECTORS.forEach(s => {
+            sectorSelect.innerHTML += `<option value="${s.key}">${s.icon} ${s.label}</option>`;
+        });
     }
 }
 
@@ -1359,8 +1417,228 @@ async function loadActionLog() {
             const cost = a.result?.cost || 0;
             message = `Conducted Poll: ${blocCount} bloc${blocCount !== 1 ? 's' : ''} surveyed ($${cost.toLocaleString()})`;
         }
+        else if (a.action_type === 'policy_platform') {
+            const helped = a.result?.total_blocs_helped || 0;
+            const hurt = a.result?.total_blocs_hurt || 0;
+            message = `Policy Platform: ${a.result?.stance_name || 'Unknown'} (${a.result?.sector_name || '?'}) \u2014 ${helped} bloc${helped !== 1 ? 's' : ''} approve, ${hurt} oppose`;
+        }
         return `<div class="action-log-item"><div class="action-log-time">Tick ${a.tick_performed} • ${date}</div><div class="action-log-message">${message}</div></div>`;
     }).join('');
+}
+
+// ===================================================================
+// POLICY PLATFORM
+// ===================================================================
+
+function onPlatformSectorChange() {
+    const sectorKey = document.getElementById('platform-sector')?.value;
+    const stanceWrap = document.getElementById('platform-stance-wrap');
+    const stanceSelect = document.getElementById('platform-stance');
+    const previewDiv = document.getElementById('platform-stance-preview');
+    const btn = document.getElementById('btn-policy-platform');
+
+    if (!sectorKey || !POLICY_STANCES[sectorKey]) {
+        if (stanceWrap) stanceWrap.style.display = 'none';
+        if (previewDiv) previewDiv.style.display = 'none';
+        if (btn && !btn.dataset.cooldown) btn.disabled = true;
+        return;
+    }
+
+    const stances = POLICY_STANCES[sectorKey];
+    stanceSelect.innerHTML = '<option value="">Select Stance...</option>';
+    stances.forEach(s => {
+        stanceSelect.innerHTML += `<option value="${s.key}">${s.name}</option>`;
+    });
+    stanceWrap.style.display = 'block';
+    if (previewDiv) previewDiv.style.display = 'none';
+    if (btn && !btn.dataset.cooldown) btn.disabled = true;
+}
+
+function onPlatformStanceChange() {
+    const sectorKey = document.getElementById('platform-sector')?.value;
+    const stanceKey = document.getElementById('platform-stance')?.value;
+    const previewDiv = document.getElementById('platform-stance-preview');
+    const btn = document.getElementById('btn-policy-platform');
+
+    if (!sectorKey || !stanceKey) {
+        if (previewDiv) previewDiv.style.display = 'none';
+        if (btn && !btn.dataset.cooldown) btn.disabled = true;
+        return;
+    }
+
+    const stance = POLICY_STANCES[sectorKey]?.find(s => s.key === stanceKey);
+    if (!stance) return;
+
+    // Build ideology tag HTML for the two poles
+    const tagsHTML = stance.poles.map(pole => {
+        const axisInfo = IDEOLOGY_TO_AXIS[pole];
+        if (!axisInfo) return pole;
+        const axisDef = IDEOLOGY_AXES.find(a => a.key === axisInfo.axisKey);
+        const label = axisInfo.direction === -1 ? axisDef.leftLabel : axisDef.rightLabel;
+        return `<span class="ideology-tag tag-${label.toLowerCase()}" style="font-size:0.7rem;padding:2px 8px;">${label}</span>`;
+    }).join(' ');
+
+    previewDiv.innerHTML = `
+        <div style="font-size:0.82rem;color:#ccc;margin-bottom:4px;">${stance.desc}</div>
+        <div style="margin-top:4px;">Leans: ${tagsHTML}</div>
+    `;
+    previewDiv.style.display = 'block';
+
+    // Enable button unless cooldown is active
+    if (btn && !btn.dataset.cooldown) btn.disabled = false;
+}
+
+async function doPolicyPlatform() {
+    if (!currentFaction || !currentNation) return;
+
+    const sectorKey = document.getElementById('platform-sector')?.value;
+    const stanceKey = document.getElementById('platform-stance')?.value;
+    if (!sectorKey || !stanceKey) { alert('Select a sector and stance.'); return; }
+
+    const stance = POLICY_STANCES[sectorKey]?.find(s => s.key === stanceKey);
+    if (!stance) { alert('Invalid stance selection.'); return; }
+
+    if ((currentFaction.action_points || 0) < POLICY_PLATFORM_AP_COST) {
+        alert(`Not enough AP (need ${POLICY_PLATFORM_AP_COST}).`);
+        return;
+    }
+
+    // Disable button to prevent double-click
+    const btn = document.getElementById('btn-policy-platform');
+    if (btn) btn.disabled = true;
+
+    // Fetch current tick
+    const { data: shard } = await _supabase
+        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const tick = shard?.current_tick || 0;
+
+    // Check cooldown
+    const { data: lastPlatform } = await _supabase
+        .from('campaign_actions').select('tick_performed')
+        .eq('party_id', currentFaction.id).eq('action_type', 'policy_platform')
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (lastPlatform && (tick - lastPlatform.tick_performed) < POLICY_PLATFORM_COOLDOWN_TICKS) {
+        const ticksLeft = POLICY_PLATFORM_COOLDOWN_TICKS - (tick - lastPlatform.tick_performed);
+        alert(`Policy Platform cooldown: ${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} remaining.`);
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    // Deduct AP (atomic)
+    const apResult = await deductAP(_supabase, currentFaction.id, POLICY_PLATFORM_AP_COST);
+    if (!apResult.success) { alert('Not enough AP.'); if (btn) btn.disabled = false; return; }
+    currentFaction.action_points = apResult.newAp;
+
+    try {
+        // Fetch all faction_bloc_approval rows for this faction
+        const { data: blocRows, error: blocErr } = await _supabase
+            .from('faction_bloc_approval')
+            .select('id, bloc_id, approval')
+            .eq('faction_id', currentFaction.id);
+        if (blocErr) throw new Error('Failed to load bloc approvals: ' + blocErr.message);
+        if (!blocRows || blocRows.length === 0) {
+            alert('No voter bloc data found. Cannot announce platform.');
+            return;
+        }
+
+        // Compute per-bloc alignment and deltas
+        const blocChanges = {};
+        let totalHelped = 0, totalHurt = 0;
+
+        for (const row of blocRows) {
+            const bloc = _voterBlocs.find(b => b.id === row.bloc_id);
+            if (!bloc) continue;
+
+            // Compute alignment score for each of the stance's 2 poles
+            const poleScores = stance.poles.map(pole => {
+                const axisInfo = IDEOLOGY_TO_AXIS[pole];
+                if (!axisInfo) return 50;
+                const axisValue = bloc['axis_' + axisInfo.axisKey];
+                if (axisValue == null) return 50; // neutral fallback
+                // direction=-1 means left pole: alignment = 100 - value
+                // direction=+1 means right pole: alignment = value
+                return axisInfo.direction === -1 ? (100 - axisValue) : axisValue;
+            });
+
+            const alignment = (poleScores[0] + poleScores[1]) / 2;
+
+            let delta = 0;
+            if (alignment > 60) {
+                // Supporter: +2 to +4
+                delta = Math.floor(Math.random() * 3) + 2;
+                totalHelped++;
+            } else if (alignment < 40) {
+                // Opponent: -1 to -3
+                delta = -(Math.floor(Math.random() * 3) + 1);
+                totalHurt++;
+            }
+            // 40-60 = indifferent, delta stays 0
+
+            if (delta !== 0) {
+                row.approval = Math.max(0, Math.min(100, row.approval + delta));
+                await _supabase.from('faction_bloc_approval')
+                    .update({
+                        approval: row.approval,
+                        last_platform: { sector: sectorKey, stance: stanceKey, stance_name: stance.name, poles: stance.poles },
+                        platform_tick: tick
+                    })
+                    .eq('id', row.id);
+            }
+
+            blocChanges[row.bloc_id] = { delta, bloc_name: bloc.bloc_name };
+        }
+
+        // Recalculate derived overall approval
+        const newDerived = await recalcDerivedApproval(_supabase, currentFaction.id, blocRows);
+
+        // Log the campaign action
+        const sectorDef = MAJOR_SECTORS.find(s => s.key === sectorKey);
+        await _supabase.from('campaign_actions').insert({
+            party_id: currentFaction.id,
+            nation_id: currentNation.id,
+            action_type: 'policy_platform',
+            ap_cost: POLICY_PLATFORM_AP_COST,
+            tick_performed: tick,
+            result: {
+                sector: sectorKey,
+                sector_name: sectorDef?.label || sectorKey,
+                stance: stanceKey,
+                stance_name: stance.name,
+                poles: stance.poles,
+                bloc_changes: blocChanges,
+                total_blocs_helped: totalHelped,
+                total_blocs_hurt: totalHurt,
+                new_derived_approval: newDerived
+            }
+        });
+
+        // Update UI
+        const apEl = document.getElementById('party-ap');
+        if (apEl) apEl.textContent = currentFaction.action_points || 0;
+
+        // Build summary message
+        const indifferent = blocRows.length - totalHelped - totalHurt;
+        let msg = `Platform announced: ${stance.name} (${sectorDef?.label || sectorKey})\n\n`;
+        msg += `Blocs in favor: ${totalHelped}\n`;
+        msg += `Blocs opposed: ${totalHurt}\n`;
+        msg += `Blocs indifferent: ${indifferent}`;
+        alert(msg);
+
+        // Reload action log and refresh page
+        await loadActionLog();
+        await markFactionActive(_supabase, currentFaction.id);
+        sessionStorage.removeItem('nationhood_state');
+
+        // Reset selectors
+        const sectorSelect = document.getElementById('platform-sector');
+        if (sectorSelect) sectorSelect.value = '';
+        onPlatformSectorChange();
+
+    } catch (error) {
+        console.error('[PolicyPlatform] Error:', error);
+        alert('Policy Platform error: ' + error.message);
+        if (btn) btn.disabled = false;
+    }
 }
 
 // ===================================================================
