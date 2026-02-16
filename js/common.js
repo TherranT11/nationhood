@@ -330,9 +330,11 @@ function updateCountdown() {
     const diff = nextTickAt - Date.now();
 
     if (diff <= 0) {
-        el.textContent = 'Processing…';
+        el.textContent = 'Tick due — awaiting server…';
         clearInterval(tickInterval);
-        triggerOrPollTick();
+        // Don't auto-advance from the browser. The server-side Edge Function
+        // (or admin panel) will process the tick. Poll for the update.
+        pollForNewTick();
         return;
     }
 
