@@ -6610,6 +6610,114 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
 }
 
 
+// ==================== DISBAND PARTY ====================
+
+async function disbandParty(supabase, nationId, factionId, currentTick) {
+    // 1. Cooldown check
+    const { data: faction } = await supabase
+        .from('factions')
+        .select('disband_cooldown_until_tick, faction_name')
+        .eq('id', factionId)
+        .single();
+
+    if (faction?.disband_cooldown_until_tick && faction.disband_cooldown_until_tick > currentTick) {
+        const remaining = faction.disband_cooldown_until_tick - currentTick;
+        throw new Error(`Disband is on cooldown for ${remaining} more tick${remaining !== 1 ? 's' : ''}.`);
+    }
+
+    // 2. Autocracy ruling faction guard
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('ruling_faction_id, government_type')
+        .eq('id', nationId)
+        .single();
+
+    if (nation?.government_type === 'Autocracy' && nation.ruling_faction_id === factionId) {
+        throw new Error('The ruling faction cannot disband.');
+    }
+
+    // 3. PM check — if this faction is the active PM, resign first
+    const { data: hog } = await supabase
+        .from('head_of_government')
+        .select('id, trait_key')
+        .eq('nation_id', nationId)
+        .eq('faction_id', factionId)
+        .eq('active', true)
+        .maybeSingle();
+
+    let pmResigned = false;
+    if (hog) {
+        if (hog.trait_key === 'survivor') {
+            throw new Error('Cannot disband while your PM has the Survivor trait. They cling to power.');
+        }
+        await resignPM(supabase, nationId, factionId, currentTick);
+        pmResigned = true;
+    }
+
+    // 4. Coalition check — handle if in coalition but not PM (or PM resignation didn't dissolve)
+    if (!pmResigned) {
+        const { data: formations } = await supabase
+            .from('government_formations')
+            .select('id, lead_party_id, party_ids')
+            .eq('nation_id', nationId)
+            .in('status', ['formed', 'caretaker']);
+
+        const myFormation = (formations || []).find(f =>
+            (f.party_ids || []).includes(factionId)
+        );
+
+        if (myFormation) {
+            if (myFormation.lead_party_id === factionId) {
+                // Lead party disbanding — dissolve entire coalition
+                await dissolveCoalition(supabase, nationId);
+            } else {
+                // Junior partner — remove from party_ids and vacate ministries
+                const newPartyIds = (myFormation.party_ids || []).filter(id => id !== factionId);
+                const { error: formErr } = await supabase
+                    .from('government_formations')
+                    .update({ party_ids: newPartyIds })
+                    .eq('id', myFormation.id);
+                if (formErr) console.warn('disbandParty: could not update formation party_ids:', formErr);
+
+                const { error: minErr } = await supabase
+                    .from('ministries')
+                    .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
+                    .eq('nation_id', nationId)
+                    .eq('party_id', factionId)
+                    .eq('is_active', true);
+                if (minErr) console.warn('disbandParty: could not vacate ministries:', minErr);
+            }
+        }
+    }
+
+    // 5. Core disband — null out nation membership, set cooldown
+    const { error: disbandErr } = await supabase
+        .from('factions')
+        .update({
+            nation_id: null,
+            abandoned_at: new Date().toISOString(),
+            disband_cooldown_until_tick: currentTick + 24
+        })
+        .eq('id', factionId);
+
+    if (disbandErr) throw new Error('Failed to disband party: ' + disbandErr.message);
+
+    // 6. Audit log
+    const { error: logErr } = await supabase
+        .from('campaign_actions')
+        .insert({
+            party_id: factionId,
+            nation_id: nationId,
+            action_type: 'party_disbanded',
+            tick_performed: currentTick,
+            result: { faction_name: faction?.faction_name || 'Unknown' }
+        });
+    if (logErr) console.warn('disbandParty: could not log action:', logErr);
+
+    return { result: 'disbanded' };
+}
+
+
 // ==================== ELECTION SIMULATION ====================
 
 /**
