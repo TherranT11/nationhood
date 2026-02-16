@@ -1210,54 +1210,22 @@
             }).eq('name', 'Alpha Shard');
             logMsg('✓ Shard clock reset to January 2000, tick 0', '#4CAF50');
 
-            // 2. Clear all game-state tables FIRST (before deleting factions, to satisfy FK constraints)
-            //    Order matters: child tables before parent tables.
-            //    Each entry specifies the column to filter on (some tables have no UUID 'id').
-            const tablesToClear = [
-                // Tables that reference factions — must clear before factions delete
-                { table: 'campaign_actions',      col: 'id' },
-                { table: 'bill_support',          col: 'id' },
-                { table: 'faction_bloc_approval',  col: 'id' },
-                { table: 'faction_ideology',       col: 'faction_id' },
-                // Government tables — clear children before parents
-                { table: 'head_of_government',     col: 'id' },
-                { table: 'pm_candidates',          col: 'id' },
-                { table: 'shakeups',               col: 'id' },
-                { table: 'presidents',             col: 'id' },
-                { table: 'ministries',             col: 'id' },
-                { table: 'administrations',        col: 'id' },
-                { table: 'active_coalitions',      col: 'id' },
-                { table: 'government_formations',  col: 'id' },
-                // Legislative
-                { table: 'bills',                  col: 'id' },
-                { table: 'active_laws',            col: 'id' },
-                { table: 'elections',              col: 'id' },
-                // Events & crises
-                { table: 'ministry_events',        col: 'id' },
-                { table: 'active_crises',          col: 'id' },
-                { table: 'event_log',              col: 'id' },
-                // History (non-UUID primary keys)
-                { table: 'nations_history',        col: 'nation_id' },
-                { table: 'ideology_history',       col: 'faction_id' },
-                // Diplomacy
-                { table: 'diplomatic_messages',    col: 'id' },
-                { table: 'diplomatic_proposals',   col: 'id' },
-                { table: 'diplomatic_action_log',  col: 'id' },
-                { table: 'ambassadors',            col: 'id' }
-            ];
-
+            // 2. Clear all game-state tables via RPC (bypasses RLS, handles FK ordering)
             logMsg('Clearing game state tables...');
-            for (const { table, col } of tablesToClear) {
-                try {
-                    const dummy = '00000000-0000-0000-0000-000000000000';
-                    const { error: tErr } = await _supabase.from(table).delete().neq(col, dummy);
-                    if (tErr) logMsg(`  ⚠ ${table}: ${tErr.message}`, '#ff9800');
-                    else logMsg(`  ✓ ${table} cleared`, '#666');
-                } catch (e) {
-                    logMsg(`  ⚠ ${table}: ${e.message}`, '#ff9800');
+            const { data: clearResult, error: clearErr } = await _supabase.rpc('admin_reset_tables');
+            if (clearErr) {
+                logMsg('⚠ admin_reset_tables RPC failed: ' + clearErr.message, '#ff9800');
+                logMsg('  (Run sql/create_admin_reset_tables.sql in Supabase first)', '#888');
+            } else {
+                for (const [table, val] of Object.entries(clearResult || {})) {
+                    if (typeof val === 'number') {
+                        logMsg(`  ✓ ${table}: ${val} rows deleted`, '#666');
+                    } else {
+                        logMsg(`  ⚠ ${table}: ${val}`, '#ff9800');
+                    }
                 }
+                logMsg('✓ Game state tables cleared', '#4CAF50');
             }
-            logMsg('✓ Game state tables cleared', '#4CAF50');
 
             // 3. Delete all factions using admin_delete_party RPC (bypasses RLS)
             logMsg('Deleting all political parties...');
