@@ -1128,10 +1128,7 @@ async function doRallySupport() {
 
             if (mode === 'celebrate') {
                 const approvalGain = Math.floor(Math.random() * 2) + 1; // 1D2
-                const newApproval = Math.min(100, (currentFaction.approval_rating ?? 50) + approvalGain);
-                await _supabase.from('factions')
-                    .update({ approval_rating: newApproval })
-                    .eq('id', currentFaction.id);
+                await adjustBlocApproval(_supabase, currentFaction.id, approvalGain);
 
                 // +1 loyalty to ALL factions in nation
                 const { data: allFactions } = await _supabase.from('factions')
@@ -1156,7 +1153,7 @@ async function doRallySupport() {
                     result: { approval_gain: approvalGain, loyalty_gain_all: 1, corruption_gain: 1 }
                 });
 
-                currentFaction.approval_rating = newApproval;
+                currentFaction.approval_rating = Math.min(100, (currentFaction.approval_rating ?? 50) + approvalGain);
                 currentFaction.loyalty = Math.min(100, (currentFaction.loyalty ?? 50) + 1);
                 alert(`Celebrated the Regime! +${approvalGain} approval, +1 loyalty to all factions, +1 corruption.`);
             } else {
@@ -1170,10 +1167,7 @@ async function doRallySupport() {
                 const newTargetLoyalty = Math.max(0, (target?.loyalty ?? 50) - loyaltyLoss);
                 await _supabase.from('factions').update({ loyalty: newTargetLoyalty }).eq('id', targetId);
 
-                const newApproval = Math.min(100, (currentFaction.approval_rating ?? 50) + 1);
-                await _supabase.from('factions')
-                    .update({ approval_rating: newApproval })
-                    .eq('id', currentFaction.id);
+                await adjustBlocApproval(_supabase, currentFaction.id, 1);
 
                 const { data: nat } = await _supabase.from('nations')
                     .select('polarization').eq('id', currentNation.id).single();
@@ -1187,7 +1181,7 @@ async function doRallySupport() {
                     result: { target_name: target?.faction_name, loyalty_loss: loyaltyLoss, approval_gain: 1, polarization_gain: 1 }
                 });
 
-                currentFaction.approval_rating = newApproval;
+                currentFaction.approval_rating = Math.min(100, (currentFaction.approval_rating ?? 50) + 1);
                 alert(`Denounced ${target?.faction_name}! -${loyaltyLoss} loyalty to them, +1 approval, +1 polarization.`);
             }
         } else {
@@ -1464,14 +1458,13 @@ async function doSeizePower() {
         } else {
             // === FAIL ===
             const mySeats = currentFaction.seats || 0;
-            const myApproval = currentFaction.approval_rating ?? 50;
 
             await _supabase.from('factions').update({
                 seats: Math.max(0, mySeats - 25),
-                approval_rating: Math.max(0, myApproval - 20),
                 loyalty: 0,
                 action_lockout_until_tick: tick + 6
             }).eq('id', currentFaction.id);
+            await adjustBlocApproval(_supabase, currentFaction.id, -20);
 
             // Purge from ministries
             await _supabase.from('ministries')
@@ -1485,7 +1478,7 @@ async function doSeizePower() {
             });
 
             currentFaction.seats = Math.max(0, mySeats - 25);
-            currentFaction.approval_rating = Math.max(0, myApproval - 20);
+            currentFaction.approval_rating = Math.max(0, (currentFaction.approval_rating ?? 50) - 20);
             currentFaction.loyalty = 0;
             currentFaction.action_lockout_until_tick = tick + 6;
 
