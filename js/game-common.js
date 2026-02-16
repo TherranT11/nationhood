@@ -6671,7 +6671,7 @@ function getEffectiveApproval(party, tags) {
  * @param {object}   tally             - Mutable { [partyId]: voteCount } accumulator
  * @returns {number} Number of abstentions produced (only >0 for step 4)
  */
-function distributeVotes(eligible, tags, blocCount, allParties, step, tally) {
+function distributeVotes(eligible, tags, blocCount, allParties, step, tally, ideologySaturation, avgSaturation) {
     if (blocCount <= 0) return 0;
 
     // ---- Base abstention: realistic turnout varies by cascade step ----
@@ -6681,7 +6681,21 @@ function distributeVotes(eligible, tags, blocCount, allParties, step, tally) {
     // Step 3 (No Opposition): ~33% abstain — lukewarm support
     // Step 4 (Forced/Abstain): ~75% abstain — deeply disaffected
     const abstainRates = { 0: 0.35, 1: 0.20, 2: 0.28, 3: 0.33, 4: 0.75 };
-    const abstainRate = abstainRates[step] ?? 0.30;
+    let abstainRate = abstainRates[step] ?? 0.30;
+
+    // ---- Ideology Saturation modifier ----
+    // Over-served blocs (many parties share their ideology) abstain more (complacency).
+    // Under-served blocs (few parties) abstain less (underdog motivation).
+    if (tags.length > 0 && ideologySaturation && avgSaturation > 0) {
+        const satTags = tags.map(t => t.toUpperCase());
+        const blocSaturation = satTags.reduce((s, t) => s + (ideologySaturation[t] || 0), 0) / satTags.length;
+        const SATURATION_RATE = 0.04;
+        const SATURATION_CAP  = 0.12;
+        let satMod = (blocSaturation - avgSaturation) * SATURATION_RATE;
+        satMod = Math.max(-SATURATION_CAP, Math.min(SATURATION_CAP, satMod));
+        abstainRate = Math.max(0.05, Math.min(0.85, abstainRate + satMod));
+    }
+
     const abstentions = Math.floor(blocCount * abstainRate);
     const voters = blocCount - abstentions;
 
@@ -6802,6 +6816,20 @@ function runElectionSimulation(blocs, parties, totalSeats = GAME_CONFIG.TOTAL_SE
     let totalAbstentions = 0;
     const details = []; // per-bloc breakdown for debugging
 
+    // ---- Ideology Saturation: penalise over-served ideologies with higher abstention ----
+    const SATURATION_RATE = 0.04; // 4% abstention adjustment per unit above/below average
+    const SATURATION_CAP  = 0.12; // max ±12% adjustment
+    const ALL_IDEOLOGY_TAGS = ['LIBERTY','EQUALITY','TRADITION','PROGRESS','SECURITY','FREEDOM',
+                               'GLOBALISM','NATIONALISM','INDIVIDUALISM','COLLECTIVISM'];
+    const ideologySaturation = {};
+    for (const tag of ALL_IDEOLOGY_TAGS) {
+        ideologySaturation[tag] = parties.filter(p => getPartyAlignment(p.axes, tag) > 0).length;
+    }
+    const activeSatTags = ALL_IDEOLOGY_TAGS.filter(t => ideologySaturation[t] > 0);
+    const avgSaturation = activeSatTags.length > 0
+        ? activeSatTags.reduce((s, t) => s + ideologySaturation[t], 0) / activeSatTags.length
+        : 1;
+
     for (const bloc of blocs) {
         if (!bloc.is_active) continue;
         const count = bloc.voter_count || 0;
@@ -6821,12 +6849,12 @@ function runElectionSimulation(blocs, parties, totalSeats = GAME_CONFIG.TOTAL_SE
             // Unaligned bloc — distribute purely by approval across all parties
             eligible = parties;
             step = 0;
-            abstentions = distributeVotes(eligible, [], count, parties, 0, tally);
+            abstentions = distributeVotes(eligible, [], count, parties, 0, tally, ideologySaturation, avgSaturation);
         } else {
             const result = findEligibleParties(tags, parties);
             eligible = result.eligible;
             step = result.step;
-            abstentions = distributeVotes(eligible, tags, count, parties, step, tally);
+            abstentions = distributeVotes(eligible, tags, count, parties, step, tally, ideologySaturation, avgSaturation);
         }
 
         // Compute per-party votes from this bloc
