@@ -1211,44 +1211,44 @@
             logMsg('✓ Shard clock reset to January 2000, tick 0', '#4CAF50');
 
             // 2. Clear all game-state tables FIRST (before deleting factions, to satisfy FK constraints)
-            //    Order matters: child tables before parent tables
+            //    Order matters: child tables before parent tables.
+            //    Each entry specifies the column to filter on (some tables have no UUID 'id').
             const tablesToClear = [
                 // Tables that reference factions — must clear before factions delete
-                { table: 'campaign_actions',     col: 'id' },
-                { table: 'bill_support',         col: 'id' },
-                { table: 'faction_bloc_approval', col: 'id' },
-                // faction_ideology has no id column; use faction_id
-                { table: 'faction_ideology',     col: 'faction_id' },
-                // Government tables — head_of_government references pm_candidates
-                { table: 'head_of_government',   col: 'id' },
-                { table: 'pm_candidates',        col: 'id' },
-                { table: 'shakeups',             col: 'id' },
-                { table: 'presidents',           col: 'id' },
-                { table: 'administrations',      col: 'id' },
-                // government_formations references elections
-                { table: 'government_formations', col: 'id' },
+                { table: 'campaign_actions',      col: 'id' },
+                { table: 'bill_support',          col: 'id' },
+                { table: 'faction_bloc_approval',  col: 'id' },
+                { table: 'faction_ideology',       col: 'faction_id' },
+                // Government tables — clear children before parents
+                { table: 'head_of_government',     col: 'id' },
+                { table: 'pm_candidates',          col: 'id' },
+                { table: 'shakeups',               col: 'id' },
+                { table: 'presidents',             col: 'id' },
+                { table: 'ministries',             col: 'id' },
+                { table: 'administrations',        col: 'id' },
+                { table: 'active_coalitions',      col: 'id' },
+                { table: 'government_formations',  col: 'id' },
                 // Legislative
-                { table: 'bills',                col: 'id' },
-                { table: 'active_laws',          col: 'id' },
-                { table: 'elections',            col: 'id' },
+                { table: 'bills',                  col: 'id' },
+                { table: 'active_laws',            col: 'id' },
+                { table: 'elections',              col: 'id' },
                 // Events & crises
-                { table: 'ministry_events',      col: 'id' },
-                { table: 'active_crises',        col: 'id' },
-                { table: 'event_log',            col: 'id' },
-                // History — ideology_history has bigint id, not UUID
-                { table: 'nations_history',      col: 'nation_id' },
-                { table: 'ideology_history',     col: 'faction_id' },
+                { table: 'ministry_events',        col: 'id' },
+                { table: 'active_crises',          col: 'id' },
+                { table: 'event_log',              col: 'id' },
+                // History (non-UUID primary keys)
+                { table: 'nations_history',        col: 'nation_id' },
+                { table: 'ideology_history',       col: 'faction_id' },
                 // Diplomacy
-                { table: 'diplomatic_messages',  col: 'id' },
-                { table: 'diplomatic_proposals', col: 'id' },
-                { table: 'diplomatic_action_log', col: 'id' },
-                { table: 'ambassadors',          col: 'id' }
+                { table: 'diplomatic_messages',    col: 'id' },
+                { table: 'diplomatic_proposals',   col: 'id' },
+                { table: 'diplomatic_action_log',  col: 'id' },
+                { table: 'ambassadors',            col: 'id' }
             ];
 
             logMsg('Clearing game state tables...');
             for (const { table, col } of tablesToClear) {
                 try {
-                    // Use neq on the appropriate column with a dummy value to match all rows
                     const dummy = '00000000-0000-0000-0000-000000000000';
                     const { error: tErr } = await _supabase.from(table).delete().neq(col, dummy);
                     if (tErr) logMsg(`  ⚠ ${table}: ${tErr.message}`, '#ff9800');
@@ -1259,11 +1259,25 @@
             }
             logMsg('✓ Game state tables cleared', '#4CAF50');
 
-            // 3. Now delete all factions (parties) — FK children already cleared above
+            // 3. Delete all factions (parties) — FK children already cleared above
             logMsg('Deleting all political parties...');
-            const { error: facErr } = await _supabase.from('factions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-            if (facErr) logMsg('⚠ factions: ' + facErr.message, '#ff9800');
-            else logMsg('✓ All political parties deleted', '#4CAF50');
+            const { data: deleted, error: facErr } = await _supabase
+                .from('factions').delete().neq('id', '00000000-0000-0000-0000-000000000000').select('id');
+            if (facErr) {
+                logMsg('⚠ factions delete error: ' + facErr.message, '#ff9800');
+            }
+            const delCount = deleted ? deleted.length : 0;
+            if (delCount > 0) {
+                logMsg(`✓ Deleted ${delCount} political parties`, '#4CAF50');
+            } else {
+                // Delete returned 0 rows — likely RLS blocking. Fall back to nullifying nation assignments.
+                logMsg('⚠ Delete returned 0 rows (RLS may be blocking). Disconnecting parties from nations...', '#ff9800');
+                const { error: updErr } = await _supabase.from('factions')
+                    .update({ nation_id: null, faction_type: 'pending', seats: 0, approval_rating: 0, action_points: 0 })
+                    .neq('id', '00000000-0000-0000-0000-000000000000');
+                if (updErr) logMsg('⚠ factions update fallback: ' + updErr.message, '#ff9800');
+                else logMsg('✓ All parties disconnected from nations (RLS prevented full delete)', '#ff9800');
+            }
 
             // 4. Restore nation stats from seed_stats
             logMsg('Restoring nation stats from seed...');
