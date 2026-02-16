@@ -1259,25 +1259,22 @@
             }
             logMsg('✓ Game state tables cleared', '#4CAF50');
 
-            // 3. Delete all factions (parties) — FK children already cleared above
+            // 3. Delete all factions using admin_delete_party RPC (bypasses RLS)
             logMsg('Deleting all political parties...');
-            const { data: deleted, error: facErr } = await _supabase
-                .from('factions').delete().neq('id', '00000000-0000-0000-0000-000000000000').select('id');
-            if (facErr) {
-                logMsg('⚠ factions delete error: ' + facErr.message, '#ff9800');
+            const { data: allFactions } = await _supabase.from('factions').select('id, faction_name');
+            let delOk = 0, delFail = 0;
+            for (const f of (allFactions || [])) {
+                const { error: rpcErr } = await _supabase.rpc('admin_delete_party', { p_faction_id: f.id });
+                if (rpcErr) {
+                    logMsg(`  ⚠ ${f.faction_name}: ${rpcErr.message}`, '#ff9800');
+                    delFail++;
+                } else {
+                    delOk++;
+                }
             }
-            const delCount = deleted ? deleted.length : 0;
-            if (delCount > 0) {
-                logMsg(`✓ Deleted ${delCount} political parties`, '#4CAF50');
-            } else {
-                // Delete returned 0 rows — likely RLS blocking. Fall back to nullifying nation assignments.
-                logMsg('⚠ Delete returned 0 rows (RLS may be blocking). Disconnecting parties from nations...', '#ff9800');
-                const { error: updErr } = await _supabase.from('factions')
-                    .update({ nation_id: null, faction_type: 'pending', seats: 0, approval_rating: 0, action_points: 0 })
-                    .neq('id', '00000000-0000-0000-0000-000000000000');
-                if (updErr) logMsg('⚠ factions update fallback: ' + updErr.message, '#ff9800');
-                else logMsg('✓ All parties disconnected from nations (RLS prevented full delete)', '#ff9800');
-            }
+            if (delOk > 0) logMsg(`✓ Deleted ${delOk} political parties`, '#4CAF50');
+            if (delFail > 0) logMsg(`⚠ ${delFail} parties failed to delete`, '#ff9800');
+            if (delOk === 0 && delFail === 0) logMsg('No parties to delete', '#888');
 
             // 4. Restore nation stats from seed_stats
             logMsg('Restoring nation stats from seed...');
