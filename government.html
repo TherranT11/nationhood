@@ -763,14 +763,8 @@ async function renderGovernmentPage() {
             }
         }
 
-        // Government approval
-        let governmentApproval = null;
-        if (coalition && coalition.party_ids) {
-            governmentApproval = await calculateGovernmentApproval(coalition.party_ids);
-        } else if (ministries && ministries.length > 0) {
-            const uniquePartyIds = [...new Set(ministries.map(m => m.party_id).filter(Boolean))];
-            if (uniquePartyIds.length > 0) governmentApproval = await calculateGovernmentApproval(uniquePartyIds);
-        }
+        // Government approval (average of all minister approvals)
+        let governmentApproval = await calculateGovernmentApproval();
 
         // Check for pending PM or President candidates (player needs to select)
         const primeMinister = ministries?.find(m => m.ministry_key === 'prime_minister');
@@ -881,11 +875,15 @@ async function fetchMinistries() {
     return data || [];
 }
 
-async function calculateGovernmentApproval(partyIds) {
-    const { data: parties } = await _supabase.from('factions').select('approval_rating').in('id', partyIds);
-    if (!parties || parties.length === 0) return null;
-    const total = parties.reduce((sum, p) => sum + (p.approval_rating || 0), 0);
-    return Math.round(total / parties.length);
+async function calculateGovernmentApproval() {
+    const { data: ministers } = await _supabase
+        .from('ministries')
+        .select('minister_approval')
+        .eq('nation_id', currentNation.id)
+        .eq('is_active', true);
+    if (!ministers || ministers.length === 0) return null;
+    const total = ministers.reduce((sum, m) => sum + (m.minister_approval ?? 50), 0);
+    return Math.round(total / ministers.length);
 }
 
 function getPartyNameById(partyId) {
@@ -1142,7 +1140,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                             ` : ''}
                         ` : ''}
                     </div>
-                    <div class="admin-section admin-approval"><div class="admin-section-title">Government Approval</div><div class="admin-approval-value ${approvalClass}">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div><div class="admin-approval-label">Coalition Median</div></div>
+                    <div class="admin-section admin-approval"><div class="admin-section-title">Government Approval</div><div class="admin-approval-value ${approvalClass}">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div><div class="admin-approval-label">Minister Average</div></div>
                 </div>
                 <div class="coalition-parties">
                     ${coalitionParties.map((p, i) => `${i > 0 ? '<span class="coalition-divider">|</span>' : ''}<div class="coalition-party-tag">${p.party_name}<span class="seats">${p.seats} Seats</span></div>`).join('')}

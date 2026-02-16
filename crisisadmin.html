@@ -181,6 +181,7 @@ var TRIGGER_OPERATORS = [
 
 var EFFECT_TARGETS = [
     { key: 'nation', label: 'Nation Stat' },
+    { key: 'pm_approval', label: 'Prime Minister Approval' },
     { key: 'government_approval', label: 'Government Approval' },
     { key: 'minister_approval', label: 'Minister Approval' },
     { key: 'coalition_approval', label: 'Coalition Party Approval' }
@@ -409,6 +410,8 @@ function renderEffects() {
             secondCol = '<select class="form-select" onchange="editorEffects[' + i + '].minister_key=this.value"><option value="">-- Select Minister --</option>' +
                 MINISTRIES.map(function(m) { return '<option value="' + m.key + '"' + (e.minister_key === m.key ? ' selected' : '') + '>' + m.label + '</option>'; }).join('') +
             '</select>';
+        } else if (e.target === 'pm_approval') {
+            secondCol = '<span style="color:#888;font-size:0.8rem;padding:10px;">Applies to Prime Minister</span>';
         } else {
             secondCol = '<span style="color:#888;font-size:0.8rem;padding:10px;">Applies to all coalition parties</span>';
         }
@@ -547,7 +550,7 @@ async function saveCrisis() {
                 crisis_id: crisisId,
                 target: e.target,
                 stat_key: (e.target === 'nation') ? e.stat_key : null,
-                minister_key: (e.target === 'minister_approval') ? e.minister_key : null,
+                minister_key: (e.target === 'minister_approval') ? e.minister_key : (e.target === 'pm_approval' ? 'prime_minister' : null),
                 change_per_tick: e.change_per_tick || 0,
                 stat_floor: (e.stat_floor != null && e.stat_floor !== '') ? e.stat_floor : null
             };
