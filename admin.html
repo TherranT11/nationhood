@@ -1164,7 +1164,7 @@
                     }
                 }
                 // Also save government-adjacent fields
-                ['total_seats', 'government_type', 'national_approval'].forEach(k => {
+                ['total_seats', 'government_type'].forEach(k => {
                     if (nation[k] !== undefined && nation[k] !== null) snapshot[k] = nation[k];
                 });
 
@@ -1210,42 +1210,47 @@
             }).eq('name', 'Alpha Shard');
             logMsg('✓ Shard clock reset to January 2000, tick 0', '#4CAF50');
 
-            // 2. Delete all factions (parties) — CASCADE will clean faction_bloc_approval, faction_ideology, bill_support
-            logMsg('Deleting all political parties...');
-            const { error: facErr } = await _supabase.from('factions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-            if (facErr) logMsg('⚠ factions: ' + facErr.message, '#ff9800');
-            else logMsg('✓ All political parties deleted', '#4CAF50');
-
-            // 3. Clear game-state tables (order matters for FK constraints)
+            // 2. Clear all game-state tables FIRST (before deleting factions, to satisfy FK constraints)
+            //    Order matters: child tables before parent tables
             const tablesToClear = [
-                'bill_support',
-                'bills',
-                'active_laws',
-                'campaign_actions',
-                'elections',
-                'ministry_events',
-                'pm_candidates',
-                'shakeups',
-                'head_of_government',
-                'presidents',
-                'administrations',
-                'active_crises',
-                'event_log',
-                'nations_history',
-                'ideology_history',
-                'faction_bloc_approval',
-                'faction_ideology',
-                'diplomatic_messages',
-                'diplomatic_proposals',
-                'diplomatic_action_log',
-                'ambassadors'
+                // Tables that reference factions — must clear before factions delete
+                { table: 'campaign_actions',     col: 'id' },
+                { table: 'bill_support',         col: 'id' },
+                { table: 'faction_bloc_approval', col: 'id' },
+                // faction_ideology has no id column; use faction_id
+                { table: 'faction_ideology',     col: 'faction_id' },
+                // Government tables — head_of_government references pm_candidates
+                { table: 'head_of_government',   col: 'id' },
+                { table: 'pm_candidates',        col: 'id' },
+                { table: 'shakeups',             col: 'id' },
+                { table: 'presidents',           col: 'id' },
+                { table: 'administrations',      col: 'id' },
+                // government_formations references elections
+                { table: 'government_formations', col: 'id' },
+                // Legislative
+                { table: 'bills',                col: 'id' },
+                { table: 'active_laws',          col: 'id' },
+                { table: 'elections',            col: 'id' },
+                // Events & crises
+                { table: 'ministry_events',      col: 'id' },
+                { table: 'active_crises',        col: 'id' },
+                { table: 'event_log',            col: 'id' },
+                // History — ideology_history has bigint id, not UUID
+                { table: 'nations_history',      col: 'nation_id' },
+                { table: 'ideology_history',     col: 'faction_id' },
+                // Diplomacy
+                { table: 'diplomatic_messages',  col: 'id' },
+                { table: 'diplomatic_proposals', col: 'id' },
+                { table: 'diplomatic_action_log', col: 'id' },
+                { table: 'ambassadors',          col: 'id' }
             ];
 
             logMsg('Clearing game state tables...');
-            for (const table of tablesToClear) {
+            for (const { table, col } of tablesToClear) {
                 try {
-                    // Use neq on a non-existent value to match all rows (supabase .delete() requires a filter)
-                    const { error: tErr } = await _supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+                    // Use neq on the appropriate column with a dummy value to match all rows
+                    const dummy = '00000000-0000-0000-0000-000000000000';
+                    const { error: tErr } = await _supabase.from(table).delete().neq(col, dummy);
                     if (tErr) logMsg(`  ⚠ ${table}: ${tErr.message}`, '#ff9800');
                     else logMsg(`  ✓ ${table} cleared`, '#666');
                 } catch (e) {
@@ -1253,6 +1258,12 @@
                 }
             }
             logMsg('✓ Game state tables cleared', '#4CAF50');
+
+            // 3. Now delete all factions (parties) — FK children already cleared above
+            logMsg('Deleting all political parties...');
+            const { error: facErr } = await _supabase.from('factions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+            if (facErr) logMsg('⚠ factions: ' + facErr.message, '#ff9800');
+            else logMsg('✓ All political parties deleted', '#4CAF50');
 
             // 4. Restore nation stats from seed_stats
             logMsg('Restoring nation stats from seed...');
@@ -1266,9 +1277,12 @@
                     skipped++;
                     continue;
                 }
-                const update = { ...nation.seed_stats };
-                // Also reset approval-related fields
-                update.national_approval = nation.seed_stats.national_approval ?? 50;
+                // Only restore columns that exist in NATION_STAT_COLUMNS + known extras
+                const update = {};
+                const validKeys = new Set([...NATION_STAT_COLUMNS, 'total_seats', 'government_type']);
+                for (const [k, v] of Object.entries(nation.seed_stats)) {
+                    if (validKeys.has(k)) update[k] = v;
+                }
                 const { error: uErr } = await _supabase.from('nations').update(update).eq('id', nation.id);
                 if (uErr) logMsg(`  ⚠ ${nation.name}: ${uErr.message}`, '#ff9800');
                 else { logMsg(`  ✓ ${nation.name} restored (${Object.keys(update).length} stats)`, '#666'); restored++; }
