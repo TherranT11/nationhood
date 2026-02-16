@@ -4403,6 +4403,9 @@ async function advanceTick(supabase) {
         // 7c. Process bloc approval decay toward ideology-based targets
         await processBlocApprovalDecay(supabase, nation);
 
+        // 7d. Apply random ±1D3% jitter to party standings (democracies only)
+        await processPartyStandingsJitter(supabase, nation);
+
         // 8. Process faction loyalty (autocracy)
         if (nation.government_type === 'Autocracy') {
             await processLoyaltyTick(supabase, nation);
@@ -4624,6 +4627,72 @@ async function processBlocApprovalDecay(supabase, nation) {
             await recalcDerivedApproval(supabase, fId, factionBlocRows);
         }
     }
+}
+
+
+// ==================== PARTY STANDINGS JITTER ====================
+
+/**
+ * Each tick, every party's bloc approvals shift by a random ±1D3%.
+ * This creates natural public-opinion fluctuation on top of the ideology-based drift.
+ * The ideology decay system anchors values so jitter doesn't accumulate.
+ */
+async function processPartyStandingsJitter(supabase, nation) {
+    // Only for democracies
+    if (nation.government_type === 'Autocracy') return;
+
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+    if (!factions || factions.length === 0) return;
+
+    const factionIds = factions.map(f => f.id);
+
+    const { data: allBlocRows } = await supabase
+        .from('faction_bloc_approval')
+        .select('id, faction_id, bloc_id, approval')
+        .in('faction_id', factionIds);
+    if (!allBlocRows || allBlocRows.length === 0) return;
+
+    // Group by faction
+    const factionGroups = {};
+    for (const row of allBlocRows) {
+        if (!factionGroups[row.faction_id]) factionGroups[row.faction_id] = [];
+        factionGroups[row.faction_id].push(row);
+    }
+
+    const updates = [];
+
+    for (const factionId of Object.keys(factionGroups)) {
+        const rows = factionGroups[factionId];
+        // Roll 1D3: random 1-3, then randomly positive or negative
+        const delta = (Math.floor(Math.random() * 3) + 1) * (Math.random() < 0.5 ? -1 : 1);
+
+        for (const row of rows) {
+            const newApproval = Math.max(0, Math.min(100, row.approval + delta));
+            if (newApproval !== row.approval) {
+                row.approval = newApproval;
+                updates.push({ id: row.id, approval: newApproval });
+            }
+        }
+    }
+
+    // Batch update changed rows
+    for (const u of updates) {
+        await supabase.from('faction_bloc_approval')
+            .update({ approval: u.approval })
+            .eq('id', u.id);
+    }
+
+    // Recalculate derived approval for all factions
+    for (const factionId of Object.keys(factionGroups)) {
+        const factionBlocRows = factionGroups[factionId];
+        await recalcDerivedApproval(supabase, factionId, factionBlocRows);
+    }
+
+    console.log(`[Standings Jitter] Applied random ±1-3% jitter to ${Object.keys(factionGroups).length} parties, ${updates.length} rows updated`);
 }
 
 
