@@ -1317,6 +1317,41 @@ async function renderPartiesPage(nation, faction) {
 
                 <!-- Campaign / Faction Actions -->
                 ${campaignActionsHTML}
+
+                <!-- Disband Party (always at bottom) -->
+                ${(() => {
+                    if (!faction || faction.is_npc) return '';
+                    const isRulingInAutocracy = isAutocracy && nation.ruling_faction_id === faction.id;
+                    let disbandDisabled = false;
+                    let disbandReason = '';
+                    if (isRulingInAutocracy) {
+                        disbandDisabled = true;
+                        disbandReason = 'Ruling faction cannot disband';
+                    } else if (faction.disband_cooldown_until_tick && faction.disband_cooldown_until_tick > currentShardTick) {
+                        disbandDisabled = true;
+                        const remaining = faction.disband_cooldown_until_tick - currentShardTick;
+                        disbandReason = 'Cooldown (' + remaining + ' tick' + (remaining !== 1 ? 's' : '') + ')';
+                    }
+                    return '<div style="margin-top: 60px; padding-top: 30px; border-top: 1px solid #333;">' +
+                        '<div class="action-card" style="border-left-color: #ff4444;">' +
+                            '<div class="action-header">' +
+                                '<div class="action-title" style="color: #ff4444;">Disband Party</div>' +
+                            '</div>' +
+                            '<div class="action-desc">' +
+                                'Permanently leave ' + nation.name + '. Your seats remain vacant until the next election. ' +
+                                'If you are PM or in the coalition, those roles are vacated. ' +
+                                'You will need to join a new nation to continue playing.' +
+                                '<br><span style="color: #888; font-size: 0.78rem;">Cooldown: 24 ticks after disbanding.</span>' +
+                            '</div>' +
+                            '<button class="action-btn" style="background: ' + (disbandDisabled ? '#555' : '#ff4444') + ';"' +
+                                ' onclick="doDisbandParty()"' +
+                                (disbandDisabled ? ' disabled' : '') +
+                                (disbandDisabled ? ' title="' + disbandReason + '"' : '') + '>' +
+                                (disbandDisabled ? disbandReason : 'Disband Party') +
+                            '</button>' +
+                        '</div>' +
+                    '</div>';
+                })()}
             </div>`;
 
         if (!isAutocracy) {
@@ -1618,7 +1653,7 @@ async function doPolicyPlatform() {
                 new_derived_approval: newDerived
             }
         });
-        if (logErr) throw new Error('Failed to log action: ' + logErr.message);
+        if (logErr) console.warn('Policy platform log insert failed:', logErr);
 
         // Update UI
         const apEl = document.getElementById('party-ap');
@@ -2307,6 +2342,55 @@ async function doSeizePower() {
         sessionStorage.removeItem('nationhood_state');
     } catch (error) {
         console.error('Seize power error:', error);
+        alert('Error: ' + error.message);
+    }
+}
+
+// ---- DISBAND PARTY ----
+async function doDisbandParty() {
+    if (!currentFaction || !currentNation) return;
+
+    // Block autocracy ruling faction
+    if (currentNation.government_type === 'Autocracy' &&
+        currentFaction.id === currentNation.ruling_faction_id) {
+        alert('The ruling faction cannot disband.');
+        return;
+    }
+
+    // Fetch current tick
+    const { data: shard } = await _supabase
+        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const tick = shard?.current_tick || 0;
+
+    // Check cooldown
+    if (currentFaction.disband_cooldown_until_tick &&
+        currentFaction.disband_cooldown_until_tick > tick) {
+        const remaining = currentFaction.disband_cooldown_until_tick - tick;
+        alert(`Disband is on cooldown for ${remaining} more tick${remaining !== 1 ? 's' : ''}.`);
+        return;
+    }
+
+    // Confirmation dialog
+    if (!confirm(
+        'DISBAND PARTY?\n\n' +
+        'This will permanently remove your party from ' + currentNation.name + '.\n\n' +
+        'Consequences:\n' +
+        '- Your party leaves the nation immediately\n' +
+        '- If you are PM, you will resign first\n' +
+        '- If you are in the coalition, it may collapse\n' +
+        '- Your seats remain vacant until the next election\n' +
+        '- 24-tick cooldown before you can disband again\n\n' +
+        'You will need to join a new nation to continue playing.\n\n' +
+        'Are you sure?'
+    )) return;
+
+    try {
+        await disbandParty(_supabase, currentNation.id, currentFaction.id, tick);
+        sessionStorage.removeItem('nationhood_state');
+        alert('Your party has been disbanded. Redirecting to nation selection...');
+        window.location.href = 'world.html';
+    } catch (error) {
+        console.error('Disband error:', error);
         alert('Error: ' + error.message);
     }
 }
