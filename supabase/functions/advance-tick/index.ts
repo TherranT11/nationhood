@@ -4355,14 +4355,20 @@ async function advanceTick(supabase) {
     // 1. Increment tick and advance game date
     const { data: shard } = await supabase
         .from('shard')
-        .select('current_tick, tick_interval_hours, current_date')
+        .select('current_tick, tick_interval_hours, current_date, next_tick_at')
         .eq('name', 'Alpha Shard')
         .single();
     if (!shard) throw new Error('Shard not found');
 
     const newTick = (shard.current_tick || 0) + 1;
-    const nextTickAt = new Date();
+    // Anchor next_tick_at to the previous schedule to prevent drift
+    const prevTickAt = new Date(shard.next_tick_at || new Date());
+    const nextTickAt = new Date(prevTickAt);
     nextTickAt.setHours(nextTickAt.getHours() + (shard.tick_interval_hours || 12));
+    // Safety: if calculated next tick is in the past (e.g. server was down), advance to future
+    while (nextTickAt <= new Date()) {
+        nextTickAt.setHours(nextTickAt.getHours() + (shard.tick_interval_hours || 12));
+    }
     const newDate = advanceMonth(shard.current_date || 'January, 2000');
 
     await supabase.from('shard').update({
