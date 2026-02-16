@@ -939,19 +939,6 @@ async function renderPartiesPage(nation, faction) {
             const { party, seats, status, statusText } = entry;
             const isYourParty = party.id === faction?.id;
 
-            let firstStatLabel, firstStatValue, firstStatClass;
-            if (isAutocracy) {
-                const loyalty = party.loyalty ?? 50;
-                firstStatLabel = 'Faction Loyalty';
-                firstStatValue = loyalty + '%';
-                firstStatClass = loyalty >= 30 ? 'good' : loyalty < 15 ? 'bad' : '';
-            } else {
-                const approval = party._derivedApproval ?? party.approval_rating ?? 0;
-                firstStatLabel = 'Approval';
-                firstStatValue = approval + '%';
-                firstStatClass = approval >= 50 ? 'good' : approval <= 30 ? 'bad' : '';
-            }
-
             // Dynamic ideology tags: strongest 2 from spectrum (or declared fallback)
             const ideoTags = getStrongestIdeologyTags(party);
             const ideoTagsHTML = ideoTags.length > 0
@@ -974,29 +961,20 @@ async function renderPartiesPage(nation, faction) {
                     <div class="party-display-ideologies">
                         ${ideoTagsHTML}
                     </div>
-                    <div class="party-display-stats">
-                        <div class="party-stat-item">
-                            <div class="party-stat-label">${firstStatLabel}</div>
-                            <div class="party-stat-value ${firstStatClass}">${firstStatValue}</div>
-                        </div>
-                        <div class="party-stat-item">
-                            <div class="party-stat-label">Seats</div>
-                            <div class="party-stat-value">${seats} / ${totalSeats}</div>
-                        </div>
-                        <div class="party-stat-item">
-                            <div class="party-stat-label">Action Points</div>
-                            <div class="party-stat-value">${party.action_points || 0}</div>
-                        </div>
-                        ${!isAutocracy ? `<div class="party-stat-item">
-                            <div class="party-stat-label">${termSingular} Funds</div>
-                            <div class="party-stat-value">$${(party.party_funds || 0).toLocaleString()}</div>
-                        </div>` : ''}
+                    <div class="party-display-stats-compact">
+                        <span class="party-compact-stat"><span class="party-compact-label">Seats</span> ${seats} / ${totalSeats}</span>
+                        <span class="party-compact-stat"><span class="party-compact-label">AP</span> ${party.action_points || 0}</span>
+                        ${isAutocracy ? (() => {
+                            const loyalty = party.loyalty ?? 50;
+                            const loyaltyClass = loyalty >= 30 ? 'good' : loyalty < 15 ? 'bad' : '';
+                            return `<span class="party-compact-stat"><span class="party-compact-label">Loyalty</span> <span class="${loyaltyClass}">${loyalty}%</span></span>`;
+                        })() : ''}
                     </div>
                     ${(() => {
                         const mods = party.ideology_modifiers || {};
                         const entries = Object.entries(mods).filter(([_, v]) => v !== 0);
                         if (entries.length === 0 || isAutocracy) return '';
-                        return `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;padding:0 12px 8px;">
+                        return `<div style="display:flex;flex-wrap:wrap;gap:4px;padding:4px 0 0;">
                             ${entries.map(([tag, val]) => {
                                 const color = val > 0 ? '#4CAF50' : '#ff4444';
                                 const sign = val > 0 ? '+' : '';
