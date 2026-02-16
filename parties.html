@@ -1531,14 +1531,20 @@ async function doPolicyPlatform() {
 
     try {
         // Fetch all faction_bloc_approval rows for this faction
-        const { data: blocRows, error: blocErr } = await _supabase
+        let { data: blocRows, error: blocErr } = await _supabase
             .from('faction_bloc_approval')
             .select('id, bloc_id, approval')
             .eq('faction_id', currentFaction.id);
         if (blocErr) throw new Error('Failed to load bloc approvals: ' + blocErr.message);
+
+        // Self-healing: if no rows exist, seed them now
         if (!blocRows || blocRows.length === 0) {
-            alert('No voter bloc data found. Cannot announce platform.');
-            return;
+            console.warn('[doPolicyPlatform] No bloc approval rows found — auto-seeding...');
+            blocRows = await ensureBlocApprovals(_supabase, currentFaction.id, currentNation.id);
+            if (!blocRows || blocRows.length === 0) {
+                alert('No voter bloc data found. Cannot announce platform.');
+                return;
+            }
         }
 
         // Compute per-bloc alignment and deltas
