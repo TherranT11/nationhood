@@ -1271,7 +1271,7 @@
 
             // 5. Done
             status.className = 'status success';
-            status.textContent = `✅ Shard reset complete! ${restored} nations restored, ${tablesToClear.length + 1} tables cleared.`;
+            status.textContent = `✅ Shard reset complete! ${restored} nations restored, all game tables cleared.`;
             await loadAllData();
         } catch (error) {
             console.error(error);
