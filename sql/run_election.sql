@@ -256,6 +256,10 @@ $$;
 -- Runs the 4-step cascade for one voter bloc and distributes votes.
 -- ============================================================
 
+-- Drop any duplicate overloads so CREATE OR REPLACE is unambiguous
+DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB);
+DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], BIGINT, JSONB);
+
 CREATE OR REPLACE FUNCTION _election_process_bloc(
     p_parties    JSONB,
     p_tags       TEXT[],
@@ -457,6 +461,9 @@ $$;
 -- Distributes votes using approval × alignment weighting.
 -- ============================================================
 
+DROP FUNCTION IF EXISTS _election_distribute_votes(JSONB, TEXT[], TEXT[], INT, JSONB);
+DROP FUNCTION IF EXISTS _election_distribute_votes(JSONB, TEXT[], TEXT[], BIGINT, JSONB);
+
 CREATE OR REPLACE FUNCTION _election_distribute_votes(
     p_parties      JSONB,
     p_eligible_ids TEXT[],
@@ -572,6 +579,9 @@ $$;
 -- For Unaligned blocs: distribute purely by approval rating.
 -- ============================================================
 
+DROP FUNCTION IF EXISTS _election_distribute_votes_approval_only(JSONB, INT, JSONB);
+DROP FUNCTION IF EXISTS _election_distribute_votes_approval_only(JSONB, BIGINT, JSONB);
+
 CREATE OR REPLACE FUNCTION _election_distribute_votes_approval_only(
     p_parties    JSONB,
     p_bloc_count INT,
@@ -666,6 +676,9 @@ $$;
 --
 -- Largest Remainder / Hare Quota seat allocation.
 -- ============================================================
+
+DROP FUNCTION IF EXISTS _election_allocate_seats(JSONB, BIGINT, INT);
+DROP FUNCTION IF EXISTS _election_allocate_seats(JSONB, BIGINT, BIGINT);
 
 CREATE OR REPLACE FUNCTION _election_allocate_seats(
     p_tally       JSONB,
