@@ -1377,6 +1377,61 @@ async function adjustBlocApproval(supabase, factionId, delta) {
     return await recalcDerivedApproval(supabase, factionId, blocRows);
 }
 
+/**
+ * Ensures faction_bloc_approval rows exist for a given faction.
+ * If none exist, seeds them with default approval of 40 for all active blocs.
+ * Returns the (possibly newly created) bloc approval rows, or null on failure.
+ */
+async function ensureBlocApprovals(supabase, factionId, nationId) {
+    const { data: existing, error: checkErr } = await supabase
+        .from('faction_bloc_approval')
+        .select('id, bloc_id, approval')
+        .eq('faction_id', factionId);
+
+    if (checkErr) {
+        console.error('[ensureBlocApprovals] Check failed:', checkErr.message);
+        return null;
+    }
+
+    if (existing && existing.length > 0) {
+        return existing;
+    }
+
+    const { data: blocs, error: blocErr } = await supabase
+        .from('voter_blocs')
+        .select('id')
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+
+    if (blocErr || !blocs || blocs.length === 0) {
+        console.warn('[ensureBlocApprovals] No active voter blocs found for nation', nationId);
+        return null;
+    }
+
+    const rows = blocs.map(bloc => ({
+        faction_id: factionId,
+        bloc_id: bloc.id,
+        approval: 40
+    }));
+
+    const { error: upsertErr } = await supabase
+        .from('faction_bloc_approval')
+        .upsert(rows, { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true });
+
+    if (upsertErr) {
+        console.error('[ensureBlocApprovals] Upsert failed:', upsertErr.message);
+        return null;
+    }
+
+    const { data: newRows } = await supabase
+        .from('faction_bloc_approval')
+        .select('id, bloc_id, approval')
+        .eq('faction_id', factionId);
+
+    console.log(`[ensureBlocApprovals] Seeded ${rows.length} bloc approval rows for faction ${factionId}`);
+    return newRows;
+}
+
 
 // ==================== IDEOLOGY TICK PROCESSOR ====================
 
