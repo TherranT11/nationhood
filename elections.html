@@ -1470,21 +1470,28 @@ async function formGovernment() {
                     minister_approval: 50
                 };
 
-                const { data: existing } = await _supabase.from('ministries')
+                const { data: existing, error: lookupErr } = await _supabase.from('ministries')
                     .select('id').eq('nation_id', currentNation.id)
                     .eq('ministry_key', ministryKey).eq('is_active', true)
                     .maybeSingle();
 
+                if (lookupErr) {
+                    console.warn(`Ministry lookup failed for ${ministryKey}:`, lookupErr);
+                    continue;
+                }
+
                 if (existing) {
-                    await _supabase.from('ministries').update(ministryData).eq('id', existing.id);
+                    const { error: updErr } = await _supabase.from('ministries').update(ministryData).eq('id', existing.id);
+                    if (updErr) console.warn(`Ministry update failed for ${ministryKey}:`, updErr);
                 } else {
-                    await _supabase.from('ministries').insert({
+                    const { error: insErr } = await _supabase.from('ministries').insert({
                         nation_id: currentNation.id,
                         ministry_key: ministryKey,
                         ministry_name: ministryDisplayNames[ministryKey] || ministryKey,
                         is_active: true,
                         ...ministryData
                     });
+                    if (insErr) console.warn(`Ministry insert failed for ${ministryKey}:`, insErr);
                 }
             }
 
@@ -1515,7 +1522,7 @@ async function formGovernment() {
                 // Close previous administration and create new one
                 const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
                 const { data: allFactions } = await _supabase.from('factions')
-                    .select('id, faction_name, seats')
+                    .select('id, faction_name, seats, approval_rating')
                     .eq('nation_id', currentNation.id).eq('faction_type', 'party');
                 const { data: newFormation } = await _supabase.from('government_formations')
                     .select('party_ids, ministry_assignments, proposed_by')

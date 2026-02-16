@@ -2587,24 +2587,27 @@ async function dissolveCoalition(supabase, nationId, excludeFormationId) {
         .eq('nation_id', nationId)
         .in('status', ['formed', 'caretaker']);
     if (excludeFormationId) dissolveQuery = dissolveQuery.neq('id', excludeFormationId);
-    await dissolveQuery;
+    const { error: formErr } = await dissolveQuery;
+    if (formErr) console.warn('dissolveCoalition: formations update failed:', formErr);
 
     // Also dissolve legacy active_coalitions
-    await supabase
+    const { error: acErr } = await supabase
         .from('active_coalitions')
         .update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
         .eq('nation_id', nationId)
         .is('dissolved_at', null);
+    if (acErr) console.warn('dissolveCoalition: active_coalitions update failed:', acErr);
 
     // Deactivate PM
-    await supabase
+    const { error: pmErr } = await supabase
         .from('head_of_government')
         .update({ active: false })
         .eq('nation_id', nationId)
         .eq('active', true);
+    if (pmErr) console.warn('dissolveCoalition: PM deactivation failed:', pmErr);
 
     // Vacate all ministries
-    await supabase
+    const { error: minErr } = await supabase
         .from('ministries')
         .update({
             minister_first_name: null,
@@ -2614,6 +2617,7 @@ async function dissolveCoalition(supabase, nationId, excludeFormationId) {
         })
         .eq('nation_id', nationId)
         .eq('is_active', true);
+    if (minErr) console.warn('dissolveCoalition: ministry vacating failed:', minErr);
 }
 
 
@@ -6306,6 +6310,19 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
         }, { onConflict: 'nation_id' });
 
     if (hogErr) throw hogErr;
+
+    // Update the open administration record with the newly appointed PM
+    const pmFullName = `${candidate.first_name} ${candidate.last_name}`;
+    const { error: adminUpdErr } = await supabase
+        .from('administrations')
+        .update({
+            prime_minister: pmFullName,
+            admin_name: `${candidate.last_name} Administration`,
+            updated_at: new Date().toISOString()
+        })
+        .eq('nation_id', nationId)
+        .is('ended_at_tick', null);
+    if (adminUpdErr) console.warn('selectPMCandidate: could not update administration record:', adminUpdErr);
 
     // Update the prime_minister ministry row so ministry-actions picks it up
     const { data: pmMinistry } = await supabase.from('ministries')
