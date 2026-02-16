@@ -2090,14 +2090,18 @@ async function doCourtDonors(blocId) {
         await _supabase.from('factions').update({ party_funds: newFunds }).eq('id', currentFaction.id);
         currentFaction.party_funds = newFunds;
 
-        // Apply approval bonus (affects all blocs uniformly)
-        if (config.bonus?.type === 'approval') {
-            await adjustBlocApproval(_supabase, currentFaction.id, config.bonus.delta);
-        }
-
-        // Apply approval costs to specific blocs
+        // Apply approval bonus to the courted bloc only
         const { data: allBlocApprovals } = await _supabase.from('faction_bloc_approval')
             .select('id, bloc_id, approval').eq('faction_id', currentFaction.id);
+
+        if (config.bonus?.type === 'approval') {
+            const donorRow = allBlocApprovals?.find(r => r.bloc_id === blocId);
+            if (donorRow) {
+                donorRow.approval = Math.max(0, Math.min(100, donorRow.approval + config.bonus.delta));
+                await _supabase.from('faction_bloc_approval')
+                    .update({ approval: donorRow.approval }).eq('id', donorRow.id);
+            }
+        }
 
         const blocChanges = {};
         for (const cost of config.approvalCosts) {
@@ -2147,7 +2151,7 @@ async function doCourtDonors(blocId) {
         const fundsEl = document.getElementById('party-funds');
         if (fundsEl) fundsEl.textContent = '$' + (currentFaction.party_funds || 0).toLocaleString();
         const approvalEl = document.getElementById('party-approval');
-        if (approvalEl) approvalEl.textContent = (newDerived ?? overallApproval) + '%';
+        if (approvalEl) approvalEl.textContent = (newDerived ?? currentFaction.approval_rating ?? 0) + '%';
 
         let msg = `Courted ${bloc.bloc_name} donors!\n\n`;
         msg += `Received: $${yield$.toLocaleString()}\n`;
