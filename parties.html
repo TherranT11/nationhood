@@ -1447,6 +1447,7 @@ async function doGeneratePoll() {
             party_id: currentFaction.id,
             action_type: 'generate_poll',
             ap_cost: POLL_AP_COST,
+            money_cost: totalCost,
             tick_performed: tick,
             result: {
                 bloc_results: blocResults,
