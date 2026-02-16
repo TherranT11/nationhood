@@ -827,7 +827,7 @@ async function renderPartiesPage(nation, faction) {
 
         // Load voter bloc approval data for derived approval
         const { data: voterBlocs } = await _supabase
-            .from('voter_blocs').select('id, bloc_name, population_weight')
+            .from('voter_blocs').select('id, bloc_name, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
             .eq('nation_id', nation.id).eq('is_active', true);
 
         const { data: blocApprovals } = await _supabase
@@ -1402,13 +1402,22 @@ function openPollSelector() {
     // Check cooldown
     const btn = document.getElementById('btn-generate-poll');
 
-    const blocsHTML = _voterBlocs.map(bloc => `
-        <label class="poll-bloc-check">
+    const blocsHTML = _voterBlocs.map(bloc => {
+        // Derive ideology tags from axis values (< 35 → left, > 65 → right)
+        const ideoTags = IDEOLOGY_AXES.map(axis => {
+            const val = bloc['axis_' + axis.key];
+            if (val != null && val < 35) return `<span class="ideology-tag tag-${axis.leftLabel.toLowerCase()}" style="font-size:0.6rem;padding:1px 5px;margin:1px;">${axis.leftLabel}</span>`;
+            if (val != null && val > 65) return `<span class="ideology-tag tag-${axis.rightLabel.toLowerCase()}" style="font-size:0.6rem;padding:1px 5px;margin:1px;">${axis.rightLabel}</span>`;
+            return '';
+        }).filter(Boolean).join('');
+        return `
+        <label class="poll-bloc-check" style="flex-wrap:wrap;">
             <input type="checkbox" value="${bloc.id}" onchange="updatePollCost()">
             ${bloc.bloc_name}
             <span style="color:#666;font-size:0.72rem;margin-left:auto;">${parseFloat(bloc.population_weight) || 0}% pop</span>
-        </label>
-    `).join('');
+            ${ideoTags ? `<div style="width:100%;padding-left:22px;margin-top:2px;">${ideoTags}</div>` : ''}
+        </label>`;
+    }).join('');
 
     container.innerHTML = `
         <div class="poll-selector-title">Select Voter Blocs to Poll</div>
