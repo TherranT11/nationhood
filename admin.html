@@ -1891,13 +1891,15 @@
             }
 
             // Build upsert rows: one per party x bloc combination
+            // Randomize initial approval ±10 around baseline 40 so the first election isn't a flat tie
             const rows = [];
             for (const party of parties) {
                 for (const bloc of voterBlocsCache) {
+                    const jitter = Math.floor(Math.random() * 21) - 10; // -10 to +10
                     rows.push({
                         faction_id: party.id,
                         bloc_id: bloc.id,
-                        approval: 40
+                        approval: Math.max(0, Math.min(100, 40 + jitter))
                     });
                 }
             }
@@ -1906,7 +1908,13 @@
                 .upsert(rows, { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true });
             if (error) throw error;
 
-            statusEl.innerHTML = `<span style="color:#4CAF50;font-weight:bold;">✅ Initialized approval for ${parties.length} parties × ${voterBlocsCache.length} blocs (${rows.length} records, default 40%)</span>`;
+            // Recalculate derived approval_rating for each party from the randomized per-bloc values
+            for (const party of parties) {
+                const partyRows = rows.filter(r => r.faction_id === party.id);
+                await recalcDerivedApproval(_supabase, party.id, partyRows.map(r => ({ bloc_id: r.bloc_id, approval: r.approval })));
+            }
+
+            statusEl.innerHTML = `<span style="color:#4CAF50;font-weight:bold;">✅ Initialized approval for ${parties.length} parties × ${voterBlocsCache.length} blocs (${rows.length} records, randomized 30–50%)</span>`;
             setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
         } catch (error) {
             console.error(error);
