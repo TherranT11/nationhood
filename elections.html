@@ -1551,7 +1551,8 @@ async function formGovernment() {
                             govApproval
                         );
                     } catch (adminErr) {
-                        throw new Error(`Administration lifecycle failed during government formation: ${adminErr.message || adminErr}`);
+                        console.error('Administration lifecycle error (non-fatal):', adminErr);
+                        // Don't throw — PM candidate generation must still proceed
                     }
                 }
 

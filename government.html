@@ -785,6 +785,24 @@ async function renderGovernmentPage() {
                 .eq('selected', false);
             hasPendingPMSelection = (count || 0) > 0;
         }
+
+        // Auto-recover orphaned PM state: coalition exists, PM has null names, no candidates
+        if (!hasPendingPMSelection && !isPresidential && coalition && !activeHOG) {
+            const pmPartyId = coalition.ministry_assignments?.prime_minister || coalition.lead_party_id;
+            const pmHasNullNames = primeMinister && (!primeMinister.minister_first_name || !primeMinister.minister_last_name);
+            if (pmPartyId && pmHasNullNames && currentFaction?.id === pmPartyId) {
+                try {
+                    const { data: shard } = await _supabase.from('shard')
+                        .select('current_tick').eq('name', 'Alpha Shard').single();
+                    await generatePMCandidates(_supabase, currentNation.id, pmPartyId, shard?.current_tick || 0);
+                    hasPendingPMSelection = true;
+                    console.log('Auto-recovered orphaned PM state: generated PM candidates');
+                } catch (recoverErr) {
+                    console.error('PM auto-recovery failed:', recoverErr);
+                }
+            }
+        }
+
         if (currentFaction && isPresidential) {
             const { count } = await _supabase
                 .from('pm_candidates')
@@ -890,6 +908,12 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
     const hosLast = currentNation.head_of_state_last_name || 'Unknown';
     const hosAge = currentNation.head_of_state_age || '—';
 
+    // Safe PM name: prevents "null null" when ministry row exists but names are SQL NULL
+    function safePmName(pm) {
+        if (!pm || !pm.minister_first_name || !pm.minister_last_name) return '—';
+        return `${pm.minister_first_name} ${pm.minister_last_name}`;
+    }
+
     // Administration name uses Head of Government (PM), falling back to Head of State
     const adminLast = activeHOG?.last_name || primeMinister?.minister_last_name || hosLast;
 
@@ -939,7 +963,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
     if (isAutocracy) {
         const rulingParty = allParties.find(p => p.id === rulingFactionId);
         const rulingPartyName = rulingParty?.faction_name || '—';
-        const pmName = primeMinister ? `${primeMinister.minister_first_name} ${primeMinister.minister_last_name}` : '—';
+        const pmName = safePmName(primeMinister);
         const pmAge = primeMinister?.minister_age || '—';
         const pmPartyName = primeMinister?.factions?.faction_name || '—';
         let approvalClass = '';
@@ -1073,7 +1097,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                     <div class="administration-header"><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">Single Party Government</div></div>
                     <div class="administration-content">
                         <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${hosFirst} ${hosLast}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${majorityParty.party_name}</span></div></div>
-                        <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${primeMinister ? `${primeMinister.minister_first_name} ${primeMinister.minister_last_name}` : '—'}</div><div class="admin-person-details">${primeMinister ? `Age ${primeMinister.minister_age} • ` : ''}<span class="admin-person-party">${majorityParty.party_name}</span></div></div>
+                        <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${safePmName(primeMinister)}</div><div class="admin-person-details">${primeMinister?.minister_age ? `Age ${primeMinister.minister_age} • ` : ''}<span class="admin-person-party">${majorityParty.party_name}</span></div></div>
                         <div class="admin-section admin-approval"><div class="admin-section-title">Government Approval</div><div class="admin-approval-value">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div></div>
                     </div>
                     <div class="coalition-parties"><div class="coalition-party-tag">${majorityParty.party_name}<span class="seats">${majorityParty.seats} Seats</span></div></div>
@@ -1091,7 +1115,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
     if (coalition) {
         const leadParty = parties.find(p => p.party_id === coalition.lead_party_id);
         const leadPartyName = leadParty ? leadParty.party_name : 'Unknown';
-        const pmName = primeMinister ? `${primeMinister.minister_first_name} ${primeMinister.minister_last_name}` : '—';
+        const pmName = safePmName(primeMinister);
         const pmAge = primeMinister?.minister_age || '—';
         const pmParty = primeMinister ? (primeMinister.factions?.faction_name || getPartyNameById(primeMinister.party_id)) : '—';
         let approvalClass = '';
