@@ -1066,12 +1066,8 @@ async function enactDecree() {
         if (sponsorIdeology) {
             const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, currentBill.bill_articles || []);
             if (dynamicPenalty < 0) {
-                const { data: faction } = await _supabase.from('factions').select('approval_rating').eq('id', currentBill.proposed_by).single();
-                if (faction) {
-                    const newApproval = Math.max(0, Math.min(100, (faction.approval_rating ?? 50) + dynamicPenalty));
-                    await _supabase.from('factions').update({ approval_rating: newApproval }).eq('id', currentBill.proposed_by);
-                    console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
-                }
+                await adjustBlocApproval(_supabase, currentBill.proposed_by, dynamicPenalty);
+                console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
             }
         }
 
@@ -1093,12 +1089,8 @@ async function sendToFloor() {
         if (factionIdeology) {
             const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, currentBill.bill_articles || []);
             if (dynamicPenalty < 0) {
-                const { data: faction } = await _supabase.from('factions').select('approval_rating').eq('id', currentBill.proposed_by).single();
-                if (faction) {
-                    const newApproval = Math.max(0, Math.min(100, (faction.approval_rating ?? 50) + dynamicPenalty));
-                    await _supabase.from('factions').update({ approval_rating: newApproval }).eq('id', currentBill.proposed_by);
-                    penaltyMsg = `\n\n⚠ Ideology penalty: ${dynamicPenalty.toFixed(1)} approval (bill conflicts with your values)`;
-                }
+                await adjustBlocApproval(_supabase, currentBill.proposed_by, dynamicPenalty);
+                penaltyMsg = `\n\n⚠ Ideology penalty: ${dynamicPenalty.toFixed(1)} approval (bill conflicts with your values)`;
             }
         }
 

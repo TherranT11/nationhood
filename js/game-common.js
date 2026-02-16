@@ -1053,22 +1053,7 @@ function calculateEnactmentApproval(articles, billSupport, sponsorId, factionIde
 async function applyEnactmentApproval(supabase, approvalDeltas) {
     for (const [factionId, delta] of Object.entries(approvalDeltas)) {
         if (delta === 0) continue;
-
-        const { data: faction } = await supabase
-            .from('factions')
-            .select('approval_rating')
-            .eq('id', factionId)
-            .single();
-
-        if (!faction) continue;
-
-        const current = faction.approval_rating ?? 50;
-        const updated = Math.max(0, Math.min(100, current + delta));
-
-        await supabase
-            .from('factions')
-            .update({ approval_rating: updated })
-            .eq('id', factionId);
+        await adjustBlocApproval(supabase, factionId, delta);
     }
 }
 
@@ -1234,22 +1219,94 @@ function calculateIdeologyPenalty(stage, opposedCount, polarization) {
 
 async function applyIdeologyPenalty(supabase, sponsorId, penalty) {
     if (penalty === 0 || !sponsorId) return;
+    await adjustBlocApproval(supabase, sponsorId, penalty);
+}
 
-    const { data: faction } = await supabase
-        .from('factions')
-        .select('approval_rating')
-        .eq('id', sponsorId)
-        .single();
 
-    if (!faction) return;
+// ==================== BLOC APPROVAL HELPERS ====================
 
-    const current = faction.approval_rating ?? 50;
-    const updated = Math.max(0, Math.min(100, current + penalty));
+/**
+ * Recalculate derived overall approval_rating for a faction from
+ * faction_bloc_approval rows weighted by voter_blocs population_weight.
+ * Updates the factions table and returns the new value.
+ */
+async function recalcDerivedApproval(supabase, factionId, blocRows) {
+    if (!blocRows) {
+        const { data } = await supabase
+            .from('faction_bloc_approval')
+            .select('bloc_id, approval')
+            .eq('faction_id', factionId);
+        blocRows = data || [];
+    }
+    if (blocRows.length === 0) return null;
 
-    await supabase
-        .from('factions')
-        .update({ approval_rating: updated })
-        .eq('id', sponsorId);
+    const blocIds = blocRows.map(r => r.bloc_id);
+    const { data: blocs } = await supabase
+        .from('voter_blocs')
+        .select('id, population_weight')
+        .in('id', blocIds);
+    if (!blocs || blocs.length === 0) return null;
+
+    const weightMap = {};
+    for (const b of blocs) weightMap[b.id] = parseFloat(b.population_weight) || 0;
+
+    let weightedSum = 0;
+    for (const row of blocRows) {
+        weightedSum += row.approval * (weightMap[row.bloc_id] || 0);
+    }
+    const derived = Math.round(weightedSum / 100);
+
+    await supabase.from('factions')
+        .update({ approval_rating: derived })
+        .eq('id', factionId);
+
+    return derived;
+}
+
+/**
+ * Adjust approval for a single faction across all voter blocs uniformly.
+ * Updates faction_bloc_approval rows, then recalculates derived approval_rating.
+ * Falls back to direct approval_rating update if no bloc rows exist.
+ * Returns the new derived overall approval.
+ */
+async function adjustBlocApproval(supabase, factionId, delta) {
+    if (delta === 0) return;
+
+    const { data: blocRows } = await supabase
+        .from('faction_bloc_approval')
+        .select('id, bloc_id, approval')
+        .eq('faction_id', factionId);
+
+    // Fallback: no bloc rows — use legacy direct update
+    if (!blocRows || blocRows.length === 0) {
+        const { data: faction } = await supabase
+            .from('factions')
+            .select('approval_rating')
+            .eq('id', factionId)
+            .single();
+        if (!faction) return null;
+        const current = faction.approval_rating ?? 50;
+        const updated = Math.max(0, Math.min(100, current + delta));
+        await supabase.from('factions')
+            .update({ approval_rating: updated })
+            .eq('id', factionId);
+        return updated;
+    }
+
+    // Apply delta to each bloc row, clamped 0-100
+    for (const row of blocRows) {
+        row.approval = Math.max(0, Math.min(100, row.approval + delta));
+    }
+
+    // Update all rows
+    for (const row of blocRows) {
+        await supabase.from('faction_bloc_approval')
+            .update({ approval: row.approval })
+            .eq('id', row.id);
+    }
+
+    // Recalculate and update derived approval
+    return await recalcDerivedApproval(supabase, factionId, blocRows);
 }
 
 
@@ -1391,14 +1448,8 @@ async function processIdeologyTick(supabase, nation, currentTick, resolutions) {
                     if (declaredDir !== null) {
                         const penalty = calculateHypocrisyPenalty(evt.score, declaredDir);
                         if (penalty < 0) {
-                            const { data: fData } = await supabase
-                                .from('factions').select('approval_rating').eq('id', faction.id).single();
-                            if (fData) {
-                                const newApproval = Math.max(0, (fData.approval_rating ?? 50) + penalty);
-                                await supabase.from('factions')
-                                    .update({ approval_rating: newApproval }).eq('id', faction.id);
-                                console.log(`HYPOCRISY: ${faction.faction_name} approval ${fData.approval_rating} → ${newApproval} (${penalty})`);
-                            }
+                            await adjustBlocApproval(supabase, faction.id, penalty);
+                            console.log(`HYPOCRISY: ${faction.faction_name} approval penalty ${penalty}`);
                         }
                     }
                 }
@@ -2499,29 +2550,11 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
             await dissolveCoalition(supabase, nationId);
 
             // Calling party gets +3 approval
-            const { data: callerFaction } = await supabase
-                .from('factions')
-                .select('approval_rating')
-                .eq('id', callingPartyId)
-                .single();
-            if (callerFaction) {
-                await supabase.from('factions')
-                    .update({ approval_rating: Math.min(100, (callerFaction.approval_rating ?? 50) + 3) })
-                    .eq('id', callingPartyId);
-            }
+            await adjustBlocApproval(supabase, callingPartyId, 3);
 
             // All coalition parties get -5 approval
             for (const partyId of coalitionPartyIds) {
-                const { data: faction } = await supabase
-                    .from('factions')
-                    .select('approval_rating')
-                    .eq('id', partyId)
-                    .single();
-                if (faction) {
-                    await supabase.from('factions')
-                        .update({ approval_rating: Math.max(0, (faction.approval_rating ?? 50) - 5) })
-                        .eq('id', partyId);
-                }
+                await adjustBlocApproval(supabase, partyId, -5);
             }
 
             // Schedule snap election (same pattern as early elections)
@@ -2553,29 +2586,11 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
 
     } else {
         // FAILED: calling party gets -5 approval
-        const { data: callerFaction } = await supabase
-            .from('factions')
-            .select('approval_rating')
-            .eq('id', callingPartyId)
-            .single();
-        if (callerFaction) {
-            await supabase.from('factions')
-                .update({ approval_rating: Math.max(0, (callerFaction.approval_rating ?? 50) - 5) })
-                .eq('id', callingPartyId);
-        }
+        await adjustBlocApproval(supabase, callingPartyId, -5);
 
         // PM's party gets +3 approval
         if (pmFactionId) {
-            const { data: pmFaction } = await supabase
-                .from('factions')
-                .select('approval_rating')
-                .eq('id', pmFactionId)
-                .single();
-            if (pmFaction) {
-                await supabase.from('factions')
-                    .update({ approval_rating: Math.min(100, (pmFaction.approval_rating ?? 50) + 3) })
-                    .eq('id', pmFactionId);
-            }
+            await adjustBlocApproval(supabase, pmFactionId, 3);
         }
 
         // Record cooldown: store the tick when the no-confidence failed
@@ -2673,19 +2688,10 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
     // 3. Apply approval penalties — PM party: -5, other coalition parties: -3
     // (After status transition so penalties aren't lost if transition fails)
     for (const partyId of coalitionPartyIds) {
-        const { data: faction } = await supabase
-            .from('factions')
-            .select('approval_rating')
-            .eq('id', partyId)
-            .single();
-        if (!faction) continue;
-
         const penalty = partyId === pmFactionId
             ? GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST
             : GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST;
-        await supabase.from('factions')
-            .update({ approval_rating: Math.max(0, (faction.approval_rating ?? 50) - penalty) })
-            .eq('id', partyId);
+        await adjustBlocApproval(supabase, partyId, -penalty);
     }
 
     // Bust coalition cache after caretaker transition
@@ -2816,20 +2822,14 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
         if (parties && parties.length > 0) {
             // Largest party: -10% approval
             const largest = parties[0];
-            const newApprovalLargest = Math.max(0, (largest.approval_rating ?? 50) - 10);
-            await supabase.from('factions')
-                .update({ approval_rating: newApprovalLargest })
-                .eq('id', largest.id);
-            console.log(`  Snap penalty: ${largest.faction_name} -10% approval (${largest.approval_rating} → ${newApprovalLargest})`);
+            await adjustBlocApproval(supabase, largest.id, -10);
+            console.log(`  Snap penalty: ${largest.faction_name} -10% approval`);
 
             // Second largest: -5% approval
             if (parties.length > 1) {
                 const second = parties[1];
-                const newApprovalSecond = Math.max(0, (second.approval_rating ?? 50) - 5);
-                await supabase.from('factions')
-                    .update({ approval_rating: newApprovalSecond })
-                    .eq('id', second.id);
-                console.log(`  Snap penalty: ${second.faction_name} -5% approval (${second.approval_rating} → ${newApprovalSecond})`);
+                await adjustBlocApproval(supabase, second.id, -5);
+                console.log(`  Snap penalty: ${second.faction_name} -5% approval`);
             }
         }
 
@@ -2883,15 +2883,12 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
     // -2 approval to ALL parties
     const { data: parties } = await supabase
         .from('factions')
-        .select('id, faction_name, approval_rating')
+        .select('id, faction_name')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
     for (const party of (parties || [])) {
-        const newApproval = Math.max(0, (party.approval_rating ?? 50) - 2);
-        await supabase.from('factions')
-            .update({ approval_rating: newApproval })
-            .eq('id', party.id);
+        await adjustBlocApproval(supabase, party.id, -2);
     }
 
     // -1 stability to nation
@@ -4403,6 +4400,9 @@ async function advanceTick(supabase) {
         // 7b. Process ideology modifier decay (all government types)
         await processIdeologyModifierDecay(supabase, nation.id);
 
+        // 7c. Process bloc approval decay toward ideology-based targets
+        await processBlocApprovalDecay(supabase, nation);
+
         // 8. Process faction loyalty (autocracy)
         if (nation.government_type === 'Autocracy') {
             await processLoyaltyTick(supabase, nation);
@@ -4453,19 +4453,7 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
         if (!result || !result.decay_ticks_remaining || result.decay_ticks_remaining <= 0) continue;
 
         const decayRate = result.decay_rate || 1;
-
-        const { data: faction } = await supabase
-            .from('factions')
-            .select('approval_rating')
-            .eq('id', action.party_id)
-            .single();
-
-        if (faction) {
-            const newApproval = Math.max(0, (faction.approval_rating ?? 50) - decayRate);
-            await supabase.from('factions')
-                .update({ approval_rating: newApproval })
-                .eq('id', action.party_id);
-        }
+        await adjustBlocApproval(supabase, action.party_id, -decayRate);
 
         const newRemaining = result.decay_ticks_remaining - 1;
         await supabase.from('campaign_actions')
@@ -4510,6 +4498,130 @@ async function processIdeologyModifierDecay(supabase, nationId) {
                 .from('factions')
                 .update({ ideology_modifiers: updated })
                 .eq('id', faction.id);
+        }
+    }
+}
+
+
+// ==================== BLOC APPROVAL DECAY ====================
+
+/**
+ * Drift each faction x bloc approval toward an ideology-based target.
+ * Base target: 40. If a voter bloc opposes the party's declared
+ * ideology, the target drops (minimum 20). Drift rate: 0.5 per tick.
+ */
+async function processBlocApprovalDecay(supabase, nation) {
+    const BASE_TARGET = 40;
+    const MIN_TARGET = 20;
+    const MAX_PENALTY_PER_AXIS = 10;
+    const DRIFT_RATE = 0.5;
+
+    // 1. Load all party factions
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+    if (!factions || factions.length === 0) return;
+
+    const factionIds = factions.map(f => f.id);
+
+    // 2. Load all faction_bloc_approval rows
+    const { data: allBlocRows } = await supabase
+        .from('faction_bloc_approval')
+        .select('id, faction_id, bloc_id, approval')
+        .in('faction_id', factionIds);
+    if (!allBlocRows || allBlocRows.length === 0) return;
+
+    // 3. Load voter blocs with ideology axes
+    const { data: voterBlocs } = await supabase
+        .from('voter_blocs')
+        .select('id, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
+        .eq('nation_id', nation.id)
+        .eq('is_active', true);
+    if (!voterBlocs || voterBlocs.length === 0) return;
+
+    const blocMap = {};
+    for (const b of voterBlocs) blocMap[b.id] = b;
+
+    // 4. Load faction ideologies (declared axes)
+    const { data: ideologies } = await supabase
+        .from('faction_ideology')
+        .select('faction_id, declared_axis_1, declared_direction_1, declared_axis_2, declared_direction_2')
+        .in('faction_id', factionIds);
+
+    const ideoMap = {};
+    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
+
+    // 5. Process each faction x bloc pair
+    const updates = [];
+
+    for (const row of allBlocRows) {
+        const bloc = blocMap[row.bloc_id];
+        if (!bloc) continue;
+
+        const ideo = ideoMap[row.faction_id];
+        let totalPenalty = 0;
+
+        if (ideo) {
+            for (const [axisKey, dirKey] of [
+                ['declared_axis_1', 'declared_direction_1'],
+                ['declared_axis_2', 'declared_direction_2']
+            ]) {
+                const axis = ideo[axisKey];
+                const dir = ideo[dirKey];
+                if (!axis || dir === null || dir === undefined) continue;
+
+                const blocAxisCol = 'axis_' + axis;
+                const blocScore = bloc[blocAxisCol] ?? 50;
+
+                // Opposition: party favors one pole, bloc leans opposite
+                let oppositionStrength = 0;
+                if (dir === -1) {
+                    // Party favors Pole A (low values); bloc opposes if > 50
+                    oppositionStrength = Math.max(0, (blocScore - 50) / 50);
+                } else {
+                    // Party favors Pole B (high values); bloc opposes if < 50
+                    oppositionStrength = Math.max(0, (50 - blocScore) / 50);
+                }
+
+                totalPenalty += Math.floor(oppositionStrength * MAX_PENALTY_PER_AXIS);
+            }
+        }
+
+        const target = Math.max(MIN_TARGET, BASE_TARGET - totalPenalty);
+
+        // Drift toward target
+        let newApproval = row.approval;
+        if (row.approval > target) {
+            newApproval = Math.round(Math.max(target, row.approval - DRIFT_RATE));
+        } else if (row.approval < target) {
+            newApproval = Math.round(Math.min(target, row.approval + DRIFT_RATE));
+        }
+
+        if (newApproval !== row.approval) {
+            row.approval = newApproval;
+            updates.push({ id: row.id, approval: newApproval });
+        }
+    }
+
+    // 6. Batch update changed rows
+    for (const u of updates) {
+        await supabase.from('faction_bloc_approval')
+            .update({ approval: u.approval })
+            .eq('id', u.id);
+    }
+
+    // 7. Recalculate derived approval for affected factions
+    if (updates.length > 0) {
+        const affectedFactions = [...new Set(
+            allBlocRows
+                .filter(r => updates.some(u => u.id === r.id))
+                .map(r => r.faction_id)
+        )];
+        for (const fId of affectedFactions) {
+            const factionBlocRows = allBlocRows.filter(r => r.faction_id === fId);
+            await recalcDerivedApproval(supabase, fId, factionBlocRows);
         }
     }
 }
@@ -4867,6 +4979,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
     const ministerBaseline = {};
     // Track faction approval changes keyed by faction_id
     const factionUpdates = {};
+    const factionBaseline = {};
     // Defer tracking updates until after nation stats are persisted
     const trackingUpdates = [];
 
@@ -4929,6 +5042,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
                                 .eq('id', action.faction_id)
                                 .single();
                             factionUpdates[fKey] = (faction?.approval_rating ?? 50);
+                            factionBaseline[fKey] = factionUpdates[fKey];
                         }
                         currentVal = factionUpdates[fKey];
                         newVal = eff.direction === 'up' ? currentVal + rate : currentVal - rate;
@@ -5011,15 +5125,17 @@ async function processMinistryActions(supabase, nation, currentTick) {
                 .eq('id', factionId)
                 .single();
             factionUpdates[factionId] = (faction?.approval_rating ?? 50);
+            factionBaseline[factionId] = factionUpdates[factionId];
         }
         factionUpdates[factionId] = Math.max(0, factionUpdates[factionId] - (loss * multiplier));
     }
 
-    // Bulk update faction approval
+    // Bulk update faction approval via bloc system
     for (const fKey of Object.keys(factionUpdates)) {
-        await supabase.from('factions')
-            .update({ approval_rating: factionUpdates[fKey] })
-            .eq('id', fKey);
+        const delta = Math.round((factionUpdates[fKey] - (factionBaseline[fKey] ?? 50)) * 10) / 10;
+        if (delta !== 0) {
+            await adjustBlocApproval(supabase, fKey, delta);
+        }
     }
 
     return appliedEffects;
@@ -5446,24 +5562,11 @@ async function processCrises(supabase, nation, currentTick) {
                 const coalition = await fetchActiveCoalition(supabase, nation.id);
                 const partyIds = coalition?.party_ids || [];
                 for (const partyId of partyIds) {
-                    const { data: faction } = await supabase
-                        .from('factions')
-                        .select('approval_rating')
-                        .eq('id', partyId)
-                        .single();
-                    if (faction) {
-                        const currentVal = faction.approval_rating ?? 50;
-                        const newVal = clampWithFloor(currentVal, currentVal + changePT);
-                        await supabase.from('factions')
-                            .update({ approval_rating: newVal })
-                            .eq('id', partyId);
-
-                        appliedEffects.push({
-                            stat: 'approval_rating', change: changePT,
-                            target: effect.target, faction_id: partyId,
-                            old: currentVal, new: newVal
-                        });
-                    }
+                    await adjustBlocApproval(supabase, partyId, changePT);
+                    appliedEffects.push({
+                        stat: 'approval_rating', change: changePT,
+                        target: effect.target, faction_id: partyId
+                    });
                 }
 
             } else if (effect.target === 'minister_approval') {
@@ -5494,26 +5597,14 @@ async function processCrises(supabase, nation, currentTick) {
                     if (changePT < 0 && ministry.party_id) {
                         const loss = Math.abs(changePT);
                         const multiplier = effect.minister_key === 'prime_minister' ? 2 : 1;
-                        const { data: faction } = await supabase
-                            .from('factions')
-                            .select('approval_rating')
-                            .eq('id', ministry.party_id)
-                            .single();
-                        if (faction) {
-                            const factionVal = faction.approval_rating ?? 50;
-                            const cascadeRaw = factionVal - (loss * multiplier);
-                            const newFactionVal = clampWithFloor(factionVal, cascadeRaw);
-                            await supabase.from('factions')
-                                .update({ approval_rating: newFactionVal })
-                                .eq('id', ministry.party_id);
+                        const cascadeDelta = -(loss * multiplier);
+                        await adjustBlocApproval(supabase, ministry.party_id, cascadeDelta);
 
-                            appliedEffects.push({
-                                stat: 'approval_rating', change: -(loss * multiplier),
-                                target: 'minister_cascade', faction_id: ministry.party_id,
-                                minister_key: effect.minister_key,
-                                old: factionVal, new: newFactionVal
-                            });
-                        }
+                        appliedEffects.push({
+                            stat: 'approval_rating', change: cascadeDelta,
+                            target: 'minister_cascade', faction_id: ministry.party_id,
+                            minister_key: effect.minister_key
+                        });
                     }
                 }
             }
@@ -6137,21 +6228,7 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
     }
 
     if (effects.party_approval_per_tick) {
-        const { data: faction } = await supabase
-            .from('factions')
-            .select('approval_rating')
-            .eq('id', factionId)
-            .single();
-
-        if (faction) {
-            const newApproval = Math.max(0, Math.min(100,
-                (faction.approval_rating ?? 50) + effects.party_approval_per_tick
-            ));
-            await supabase
-                .from('factions')
-                .update({ approval_rating: newApproval })
-                .eq('id', factionId);
-        }
+        await adjustBlocApproval(supabase, factionId, effects.party_approval_per_tick);
     }
 
     if (effects.nation_stat_per_tick) {
@@ -6182,11 +6259,7 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
                 delta = effects.approval_above_60_penalty;
             }
             if (delta !== 0) {
-                const newApproval = Math.max(0, Math.min(100, faction.approval_rating + delta));
-                await supabase
-                    .from('factions')
-                    .update({ approval_rating: newApproval })
-                    .eq('id', factionId);
+                await adjustBlocApproval(supabase, factionId, delta);
             }
         }
     }
@@ -6194,19 +6267,13 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
     if (effects.opposition_approval_per_tick) {
         const { data: oppParties } = await supabase
             .from('factions')
-            .select('id, approval_rating')
+            .select('id')
             .eq('nation_id', nation.id)
             .eq('faction_type', 'party')
             .neq('id', factionId);
 
         for (const opp of (oppParties || [])) {
-            const newApproval = Math.max(0, Math.min(100,
-                (opp.approval_rating ?? 50) + effects.opposition_approval_per_tick
-            ));
-            await supabase
-                .from('factions')
-                .update({ approval_rating: newApproval })
-                .eq('id', opp.id);
+            await adjustBlocApproval(supabase, opp.id, effects.opposition_approval_per_tick);
         }
     }
 
@@ -6220,21 +6287,7 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
             .eq('passed_tick', currentTick - 1);
 
         if (!count || count === 0) {
-            const { data: faction } = await supabase
-                .from('factions')
-                .select('approval_rating')
-                .eq('id', factionId)
-                .single();
-
-            if (faction) {
-                const newApproval = Math.max(0, Math.min(100,
-                    (faction.approval_rating ?? 50) + effects.no_bill_penalty_per_tick
-                ));
-                await supabase
-                    .from('factions')
-                    .update({ approval_rating: newApproval })
-                    .eq('id', factionId);
-            }
+            await adjustBlocApproval(supabase, factionId, effects.no_bill_penalty_per_tick);
         }
     }
 }
@@ -6262,19 +6315,7 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
         .update({ active: false })
         .eq('id', hog.id);
 
-    const { data: faction } = await supabase
-        .from('factions')
-        .select('approval_rating')
-        .eq('id', factionId)
-        .single();
-
-    if (faction) {
-        const newApproval = Math.max(0, (faction.approval_rating ?? 50) - 5);
-        await supabase
-            .from('factions')
-            .update({ approval_rating: newApproval })
-            .eq('id', factionId);
-    }
+    await adjustBlocApproval(supabase, factionId, -5);
 
     const { data: nation } = await supabase
         .from('nations')

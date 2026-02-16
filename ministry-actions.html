@@ -1060,8 +1060,7 @@ async function respondToEvent(eventId, optionIndex) {
                     await _supabase.from('ministries').update({ minister_approval: Math.max(0, Math.min(100, current + change)) }).eq('id', ministry.id);
                 }
             } else if (eff.target === 'faction') {
-                const current = currentFaction.approval_rating || 50;
-                await _supabase.from('factions').update({ approval_rating: Math.max(0, Math.min(100, current + change)) }).eq('id', currentFaction.id);
+                await adjustBlocApproval(_supabase, currentFaction.id, change);
             }
             appliedEffects.push({ stat_key: eff.stat_key, change: change, target: eff.target || 'nation' });
         }
