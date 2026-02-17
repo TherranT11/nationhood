@@ -107,6 +107,32 @@ BEGIN
         v_tally := v_tally || jsonb_build_object(v_cand.value->>'id', 0);
     END LOOP;
 
+    -- ---- Compute ideology saturation ----
+    DECLARE
+        v_saturation     JSONB := '{}'::JSONB;
+        v_avg_saturation NUMERIC := 1;
+        v_sat_count      INT;
+        v_sat_total      NUMERIC := 0;
+        v_sat_active     INT := 0;
+        v_all_tags       TEXT[] := ARRAY['LIBERTY','EQUALITY','TRADITION','PROGRESS','SECURITY',
+                                         'FREEDOM','GLOBALISM','NATIONALISM','INDIVIDUALISM','COLLECTIVISM'];
+        v_stag           TEXT;
+    BEGIN
+        FOREACH v_stag IN ARRAY v_all_tags LOOP
+            v_sat_count := 0;
+            FOR v_cand IN SELECT * FROM jsonb_array_elements(v_candidates) LOOP
+                IF _election_get_alignment(v_cand.value, v_stag) > 0 THEN
+                    v_sat_count := v_sat_count + 1;
+                END IF;
+            END LOOP;
+            v_saturation := v_saturation || jsonb_build_object(v_stag, v_sat_count);
+            IF v_sat_count > 0 THEN
+                v_sat_total := v_sat_total + v_sat_count;
+                v_sat_active := v_sat_active + 1;
+            END IF;
+        END LOOP;
+        IF v_sat_active > 0 THEN v_avg_saturation := v_sat_total / v_sat_active; END IF;
+
     -- ---- Compute voter bloc scale factor ----
     DECLARE
         v_total_bloc_voters BIGINT;
@@ -170,11 +196,12 @@ BEGIN
         -- Run cascade + distribute (candidates used in place of parties)
         SELECT r.step, r.abstentions, r.updated_tally
         INTO v_step, v_abstentions, v_tally
-        FROM _election_process_bloc(v_candidates, v_tags, v_bloc.voter_count, v_tally, v_bloc_approvals) r;
+        FROM _election_process_bloc(v_candidates, v_tags, v_bloc.voter_count, v_tally, v_bloc_approvals, v_saturation, v_avg_saturation) r;
 
         v_total_abstentions := v_total_abstentions + COALESCE(v_abstentions, 0);
     END LOOP;
     END; -- close DECLARE block for v_bloc_scale
+    END; -- close DECLARE block for v_saturation
 
     -- ---- Calculate total votes ----
     FOR v_cand IN SELECT * FROM jsonb_each_text(v_tally)

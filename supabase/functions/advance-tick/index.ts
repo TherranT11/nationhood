@@ -6621,18 +6621,6 @@ function findEligibleParties(tags, parties) {
     return { eligible: parties, step: 4 };
 }
 
-/**
- * Calculate effective approval for a party given a voter bloc's ideology tags.
- * effective_approval = base_approval + avg(modifier for each matching tag)
- */
-function getEffectiveApproval(party, tags) {
-    const base = party.approval_rating ?? 0;
-    const mods = party.ideology_modifiers || {};
-    if (!tags || tags.length === 0) return base;
-    let sum = 0;
-    for (const tag of tags) sum += (mods[tag.toUpperCase()] || 0);
-    return Math.max(0, Math.min(100, base + sum / tags.length));
-}
 
 /**
  * Distribute a voter bloc's votes among eligible parties using

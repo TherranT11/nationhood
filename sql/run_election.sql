@@ -179,7 +179,7 @@ BEGIN
         -- Run cascade + distribute (single call)
         SELECT r.step, r.abstentions, r.updated_tally
         INTO v_step, v_abstentions, v_tally
-        FROM _election_process_bloc(v_parties, v_tags, v_bloc.voter_count, v_tally, v_bloc_approvals) r;
+        FROM _election_process_bloc(v_parties, v_tags, v_bloc.voter_count, v_tally, v_bloc_approvals, v_saturation, v_avg_saturation) r;
 
         v_total_abstentions := v_total_abstentions + COALESCE(v_abstentions, 0);
     END LOOP;
@@ -308,13 +308,16 @@ DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB);
 DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], BIGINT, JSONB);
 DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB, JSONB);
 DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB, JSONB, NUMERIC);
+DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB, JSONB, JSONB, NUMERIC);
 
 CREATE OR REPLACE FUNCTION _election_process_bloc(
-    p_parties        JSONB,
-    p_tags           TEXT[],
-    p_bloc_count     INT,
-    p_tally          JSONB,
-    p_bloc_approvals JSONB
+    p_parties          JSONB,
+    p_tags             TEXT[],
+    p_bloc_count       INT,
+    p_tally            JSONB,
+    p_bloc_approvals   JSONB,
+    p_saturation       JSONB DEFAULT '{}'::JSONB,
+    p_avg_saturation   NUMERIC DEFAULT 1
 )
 RETURNS TABLE(step INT, abstentions BIGINT, updated_tally JSONB)
 LANGUAGE plpgsql
@@ -332,6 +335,12 @@ DECLARE
     v_abstain      BIGINT := 0;
     v_voters       INT;
     v_abstain_rate NUMERIC;
+    -- Saturation variables
+    c_SAT_RATE     CONSTANT NUMERIC := 0.04;  -- 4% abstention adjustment per unit above/below avg
+    c_SAT_CAP      CONSTANT NUMERIC := 0.12;  -- max ±12% adjustment
+    v_sat_sum      NUMERIC := 0;
+    v_bloc_sat     NUMERIC := 0;
+    v_sat_mod      NUMERIC := 0;
     -- Leakage variables
     v_leakage_rate   NUMERIC;
     v_votes_added    BIGINT;
