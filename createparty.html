@@ -558,15 +558,26 @@
         // Check if user already has a party
         const { data: existingParty } = await _supabase
             .from('factions')
-            .select('*')
+            .select('*, needs_rebuild')
             .eq('id', currentUser.id)
             .eq('faction_type', 'party')
             .single();
 
         if (existingParty && existingParty.nation_id) {
-            showError('You already have a party in ' + existingParty.nation + '. You can only have one party.');
-            document.getElementById('confirm-btn').disabled = true;
-            return;
+            if (existingParty.needs_rebuild) {
+                // Party survived a revolution — show rebuild banner, allow editing
+                const rebuildBanner = document.createElement('div');
+                rebuildBanner.style.cssText = 'background:linear-gradient(135deg,#2a1a00,#1a1200);border:2px solid #ff9800;border-radius:12px;padding:20px;margin-bottom:24px;text-align:center;';
+                rebuildBanner.innerHTML = '<div style="font-size:1.8rem;margin-bottom:8px;">&#x1F3DB;</div>'
+                    + '<div style="font-size:1.1rem;color:#ff9800;font-weight:bold;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Rebuild Your Party</div>'
+                    + '<div style="font-size:0.85rem;color:var(--text-secondary);line-height:1.5;">Your party survived the revolution! Update your party name, ideology, and platform for the new democratic era.</div>';
+                const form = document.querySelector('.main-container') || document.querySelector('form') || document.body;
+                form.insertBefore(rebuildBanner, form.firstChild);
+            } else {
+                showError('You already have a party in ' + existingParty.nation + '. You can only have one party.');
+                document.getElementById('confirm-btn').disabled = true;
+                return;
+            }
         }
         
         if (!nationParam) {
@@ -894,7 +905,8 @@
                         nation: selectedNation,
                         abbreviation: partyAbbr,
                         ideology_value_1: null,
-                        ideology_value_2: null
+                        ideology_value_2: null,
+                        needs_rebuild: false
                     });
                 
                 if (updateError) {
@@ -956,7 +968,8 @@
                         ideology_value_1: selectedIdeologies[0],
                         ideology_value_2: selectedIdeologies[1],
                         abbreviation: partyAbbr,
-                        seats: 0
+                        seats: 0,
+                        needs_rebuild: false
                     });
                 
                 if (updateError) throw updateError;

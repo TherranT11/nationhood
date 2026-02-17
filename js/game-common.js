@@ -4658,6 +4658,13 @@ async function advanceTick(supabase) {
             summary.crises.push({ nation: nation.name, crises: crisisResults });
         }
 
+        // 11c. Process democratic revolution (autocracy only)
+        const revolutionResult = await processRevolution(supabase, nation, newTick);
+        if (revolutionResult) {
+            summary.revolutions = summary.revolutions || [];
+            summary.revolutions.push(revolutionResult);
+        }
+
         // 12. Process random events
         const eventResults = await processEvents(supabase, nation, newTick);
         if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
@@ -5982,6 +5989,211 @@ async function processCrises(supabase, nation, currentTick) {
     }
 
     return crisisEvents;
+}
+
+
+// ==================== DEMOCRATIC REVOLUTION ====================
+
+/**
+ * Process democratic revolution for autocracies.
+ * Triggers when: stability < 15, freedom_index > 50, civil_unrest > 70 (Autocracy only).
+ * Random 13-22 tick duration. Per-tick: stability -1, civil_unrest +1, intl_reputation -1.
+ * Avertable if ANY trigger condition breaks. Fires regime change if duration expires.
+ */
+async function processRevolution(supabase, nation, currentTick) {
+    // Only autocracies can have democratic revolutions
+    if (nation.government_type !== 'Autocracy') {
+        if (nation.revolution_started_tick != null) {
+            await supabase.from('nations').update({ revolution_started_tick: null, revolution_duration: null }).eq('id', nation.id);
+            nation.revolution_started_tick = null;
+            nation.revolution_duration = null;
+        }
+        return null;
+    }
+
+    // Check all trigger conditions
+    const conditionsMet =
+        Number(nation.stability) < 15 &&
+        Number(nation.freedom_index) > 50 &&
+        Number(nation.civil_unrest) > 70;
+
+    const crisisActive = nation.revolution_started_tick != null;
+
+    // Conditions NOT met — avert if active
+    if (!conditionsMet) {
+        if (crisisActive) {
+            await supabase.from('nations').update({ revolution_started_tick: null, revolution_duration: null }).eq('id', nation.id);
+            nation.revolution_started_tick = null;
+            nation.revolution_duration = null;
+
+            await supabase.from('event_log').insert({
+                nation_id: nation.id,
+                event_name: 'REVOLUTION_AVERTED',
+                description_used: 'The revolutionary movement has lost momentum. The regime has stabilized — for now.',
+                category: 'crisis',
+                effects_applied: [],
+                fired_at_tick: currentTick
+            });
+            console.log(`[Revolution] AVERTED for ${nation.name} at tick ${currentTick}`);
+        }
+        return null;
+    }
+
+    // --- Conditions ARE met ---
+
+    // Apply per-tick effects (stability -1, civil_unrest +1, intl_reputation -1)
+    const newStability = Math.max(0, Math.round((Number(nation.stability) - 1) * 10) / 10);
+    const newUnrest = Math.min(100, Math.round((Number(nation.civil_unrest) + 1) * 10) / 10);
+    const newReputation = Math.max(0, Math.round((Number(nation.international_reputation) - 1) * 10) / 10);
+
+    await supabase.from('nations').update({
+        stability: newStability,
+        civil_unrest: newUnrest,
+        international_reputation: newReputation
+    }).eq('id', nation.id);
+    Object.assign(nation, { stability: newStability, civil_unrest: newUnrest, international_reputation: newReputation });
+
+    // START new crisis
+    if (!crisisActive) {
+        const duration = Math.floor(Math.random() * 10) + 13; // 13-22 ticks
+        await supabase.from('nations').update({
+            revolution_started_tick: currentTick,
+            revolution_duration: duration
+        }).eq('id', nation.id);
+        nation.revolution_started_tick = currentTick;
+        nation.revolution_duration = duration;
+
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'REVOLUTION_WARNING',
+            description_used: 'Pro-democracy demonstrations have erupted across multiple cities. Opposition groups are calling for free elections. The regime must act to restore order — or face revolution.',
+            category: 'crisis',
+            effects_applied: [
+                { stat: 'stability', change: -1, target: 'nation' },
+                { stat: 'civil_unrest', change: 1, target: 'nation' },
+                { stat: 'international_reputation', change: -1, target: 'nation' }
+            ],
+            fired_at_tick: currentTick
+        });
+        console.log(`[Revolution] WARNING — crisis started for ${nation.name}, duration ${duration} ticks`);
+        return { phase: 'warning', nation: nation.name, tick: currentTick, duration };
+    }
+
+    // ONGOING crisis — check if duration expired
+    const ticksElapsed = currentTick - nation.revolution_started_tick;
+    const duration = Number(nation.revolution_duration);
+
+    if (ticksElapsed < duration) {
+        // Not yet expired — log escalation
+        const remaining = duration - ticksElapsed;
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'REVOLUTION_ESCALATION',
+            description_used: `The revolutionary movement grows stronger. General strikes have paralyzed the capital. International observers are calling for dialogue. ${remaining} tick${remaining !== 1 ? 's' : ''} remain before the regime falls.`,
+            category: 'crisis',
+            effects_applied: [
+                { stat: 'stability', change: -1, target: 'nation' },
+                { stat: 'civil_unrest', change: 1, target: 'nation' },
+                { stat: 'international_reputation', change: -1, target: 'nation' }
+            ],
+            fired_at_tick: currentTick
+        });
+        console.log(`[Revolution] ESCALATION — ${nation.name}, ${remaining} ticks remaining`);
+        return { phase: 'escalation', nation: nation.name, tick: currentTick, remaining };
+    }
+
+    // === REVOLUTION FIRES ===
+    console.log(`[Revolution] REVOLUTION FIRES for ${nation.name} at tick ${currentTick}`);
+
+    // 1. Pick new government type randomly
+    const newGovType = Math.random() < 0.5 ? 'Democracy' : 'Presidential';
+    const govLabel = newGovType === 'Presidential' ? 'Presidential Democracy' : 'Parliamentary Democracy';
+
+    // 2. Close current administration
+    try {
+        const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+        await closeAdministration(supabase, nation.id, nation, 'revolution', currentTick, shardData?.current_date || '', null);
+    } catch (err) {
+        console.warn('[Revolution] Could not close administration:', err);
+    }
+
+    // 3. Update nation stats
+    const newFreedomIndex = Math.min(100, Math.round((Number(nation.freedom_index) + 15) * 10) / 10);
+    const newIntlRep = Math.min(100, Math.round((Number(nation.international_reputation) + 5) * 10) / 10);
+    const nationUpdates = {
+        government_type: newGovType,
+        ruling_faction_id: null,
+        stability: 30,
+        freedom_index: newFreedomIndex,
+        civil_unrest: 40,
+        international_reputation: newIntlRep,
+        revolution_started_tick: null,
+        revolution_duration: null
+    };
+    await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+    Object.assign(nation, nationUpdates);
+
+    // 4. Reset all faction bloc approvals to 50
+    const { data: allFactions } = await supabase
+        .from('factions')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+
+    if (allFactions && allFactions.length > 0) {
+        for (const faction of allFactions) {
+            await supabase.from('faction_bloc_approval')
+                .update({ approval: 50 })
+                .eq('faction_id', faction.id);
+            await recalcDerivedApproval(supabase, faction.id);
+        }
+    }
+
+    // 5. Flag factions for rebuild
+    await supabase.from('factions')
+        .update({ needs_rebuild: true })
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+
+    // 6. Schedule emergency election in 3 ticks
+    await supabase.from('elections').delete()
+        .eq('nation_id', nation.id).eq('status', 'scheduled');
+
+    const electionType = newGovType === 'Presidential' ? 'presidential' : 'parliamentary';
+    const { error: electionErr } = await supabase.from('elections').insert({
+        nation_id: nation.id,
+        election_tick: currentTick + 3,
+        status: 'scheduled',
+        election_type: electionType
+    });
+    if (electionErr) {
+        console.error('[Revolution] Election insert failed, retrying:', electionErr);
+        await supabase.from('elections').insert({
+            nation_id: nation.id,
+            election_tick: currentTick + 3,
+            status: 'scheduled',
+            election_type: electionType
+        });
+    }
+
+    // 7. Log the revolution event
+    await supabase.from('event_log').insert({
+        nation_id: nation.id,
+        event_name: 'DEMOCRATIC_REVOLUTION',
+        description_used: `The people have risen. The autocratic regime has fallen. A ${govLabel} has been established — emergency elections will determine the first freely elected government.`,
+        category: 'crisis',
+        effects_applied: [
+            { stat: 'government_type', change: `Autocracy → ${govLabel}`, target: 'nation' },
+            { stat: 'stability', change: '→ 30', target: 'nation' },
+            { stat: 'freedom_index', change: '+15', target: 'nation' },
+            { stat: 'civil_unrest', change: '→ 40', target: 'nation' },
+            { stat: 'international_reputation', change: '+5', target: 'nation' }
+        ],
+        fired_at_tick: currentTick
+    });
+
+    console.log(`[Revolution] COMPLETE — ${nation.name} is now a ${govLabel}. Emergency ${electionType} election at tick ${currentTick + 3}`);
+    return { phase: 'revolution', nation: nation.name, tick: currentTick, newGovType: govLabel, electionTick: currentTick + 3 };
 }
 
 
