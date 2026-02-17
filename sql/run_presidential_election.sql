@@ -6,7 +6,7 @@
 -- 1. Loads selected presidential candidates + parent faction ideology
 -- 2. Builds "virtual party" objects per candidate (faction profile + candidate bonus)
 -- 3. For each bloc, loads per-bloc approval from faction_bloc_approval
--- 4. Runs same voter-bloc 4-step cascade as parliamentary elections
+-- 4. All candidates compete via Weighted Competition Model (same as parliamentary)
 -- 5. Tallies popular votes per candidate (no seat allocation)
 -- 6. Writes results to elections table
 -- ============================================================
