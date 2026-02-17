@@ -4252,7 +4252,10 @@ async function advanceTick(supabase) {
         }
 
         // 10. Re-fetch nation with post-effect values, then snapshot to history
+        //     Also update in-memory nation so downstream steps (crises, revolution, events)
+        //     see post-processStatEffects values for trigger checks.
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+        if (freshNation) Object.assign(nation, freshNation);
         await snapshotNationHistory(supabase, freshNation || nation, newTick);
 
         // 11b. Process crises (persistent negative events that apply effects every tick)
@@ -5411,8 +5414,9 @@ async function processCrises(supabase, nation, currentTick) {
             // Helper: clamp value respecting the per-effect floor/ceiling
             // If change is negative, stat_floor is a floor (can't go below).
             // If change is positive, stat_floor is a ceiling (can't go above).
+            // Round to 1dp to match processStatEffects and prevent floating-point drift.
             function clampWithFloor(current, raw) {
-                let v = Math.max(0, Math.min(100, raw));
+                let v = Math.round(Math.max(0, Math.min(100, raw)) * 10) / 10;
                 if (hasFloor) {
                     if (changePT < 0) v = Math.max(floorVal, v);   // floor
                     else if (changePT > 0) v = Math.min(floorVal, v); // ceiling
@@ -5443,6 +5447,43 @@ async function processCrises(supabase, nation, currentTick) {
                         stat: 'approval_rating', change: changePT,
                         target: effect.target, faction_id: partyId
                     });
+                }
+
+            } else if (effect.target === 'pm_approval') {
+                const { data: pmMinistry } = await supabase
+                    .from('ministries')
+                    .select('minister_approval, party_id')
+                    .eq('nation_id', nation.id)
+                    .eq('ministry_key', 'prime_minister')
+                    .eq('is_active', true)
+                    .maybeSingle();
+
+                if (pmMinistry) {
+                    const currentVal = pmMinistry.minister_approval ?? 50;
+                    const newVal = clampWithFloor(currentVal, currentVal + changePT);
+                    await supabase.from('ministries')
+                        .update({ minister_approval: newVal })
+                        .eq('nation_id', nation.id)
+                        .eq('ministry_key', 'prime_minister')
+                        .eq('is_active', true);
+
+                    appliedEffects.push({
+                        stat: 'minister_approval', change: changePT,
+                        target: 'pm_approval', minister_key: 'prime_minister',
+                        old: currentVal, new: newVal
+                    });
+
+                    // Cascade PM approval loss to party approval (2x multiplier)
+                    if (changePT < 0 && pmMinistry.party_id) {
+                        const cascadeDelta = -(Math.abs(changePT) * 2);
+                        await adjustBlocApproval(supabase, pmMinistry.party_id, cascadeDelta);
+
+                        appliedEffects.push({
+                            stat: 'approval_rating', change: cascadeDelta,
+                            target: 'minister_cascade', faction_id: pmMinistry.party_id,
+                            minister_key: 'prime_minister'
+                        });
+                    }
                 }
 
             } else if (effect.target === 'minister_approval') {
