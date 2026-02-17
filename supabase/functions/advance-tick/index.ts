@@ -4625,7 +4625,10 @@ async function advanceTick(supabase) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
-        // 7b. Process ideology modifier decay (all government types)
+        // 7b. Apply ideology modifiers to axis scores (before decay)
+        await applyIdeologyModifiersToAxes(supabase, nation.id);
+
+        // 7c. Process ideology modifier decay (all government types)
         await processIdeologyModifierDecay(supabase, nation.id);
 
         // 7c. Process bloc approval decay toward ideology-based targets
@@ -4707,6 +4710,54 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
     }
 }
 
+
+// ==================== APPLY IDEOLOGY MODIFIERS TO AXIS SCORES ====================
+
+async function applyIdeologyModifiersToAxes(supabase, nationId) {
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, ideology_modifiers')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+
+    if (!factions || factions.length === 0) return;
+
+    for (const faction of factions) {
+        const mods = faction.ideology_modifiers;
+        if (!mods || typeof mods !== 'object' || Object.keys(mods).length === 0) continue;
+
+        const ideologyRow = await loadFactionIdeology(supabase, faction.id);
+        if (!ideologyRow) continue;
+
+        const currentScores = extractAxisScores(ideologyRow);
+        const updateObj: Record<string, number> = {};
+        let hasChanges = false;
+
+        for (const [tag, value] of Object.entries(mods)) {
+            if (typeof value !== 'number' || value === 0) continue;
+
+            const mapping = IDEOLOGY_TO_AXIS[tag.toUpperCase()];
+            if (!mapping) continue;
+
+            const shift = value * mapping.direction;
+            const oldScore = currentScores[mapping.axisKey] || 0;
+            const newScore = Math.max(-100, Math.min(100, oldScore + shift));
+
+            if (newScore !== oldScore) {
+                updateObj[mapping.axisKey] = newScore;
+                currentScores[mapping.axisKey] = newScore;
+                hasChanges = true;
+            }
+        }
+
+        if (hasChanges) {
+            await supabase
+                .from('faction_ideology')
+                .update(updateObj)
+                .eq('faction_id', faction.id);
+        }
+    }
+}
 
 // ==================== IDEOLOGY MODIFIER DECAY ====================
 
