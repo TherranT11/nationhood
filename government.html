@@ -2268,14 +2268,19 @@ function renderCaretakerBanner() {
     // Calculate ticks until election
     const scheduledElectionTick = coalitionData?._earlyElectionTick || null;
     const ticksUntil = scheduledElectionTick ? Math.max(0, scheduledElectionTick - currentTick) : '?';
+    const isOverdue = scheduledElectionTick != null && scheduledElectionTick <= currentTick;
     const electionDate = scheduledElectionTick ? tickToDate(scheduledElectionTick) : 'TBD';
+
+    const statusText = isOverdue
+        ? 'Elections overdue — will be processed next tick.'
+        : `Elections in <strong>${ticksUntil}</strong> tick${ticksUntil !== 1 ? 's' : ''} (${electionDate}).`;
 
     return `
         <div class="caretaker-banner">
             <div class="caretaker-icon">⚡</div>
             <div class="caretaker-title">Caretaker Government</div>
             <div class="caretaker-subtitle">
-                Legislature dissolved. Elections in <strong>${ticksUntil}</strong> tick${ticksUntil !== 1 ? 's' : ''} (${electionDate}).
+                Legislature dissolved. ${statusText}
             </div>
             <div class="caretaker-restrictions">
                 <span class="caretaker-restriction-tag">No Legislation</span>
