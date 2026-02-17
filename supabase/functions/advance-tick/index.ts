@@ -4370,12 +4370,14 @@ async function advanceTick(supabase) {
 
     const newTick = (shard.current_tick || 0) + 1;
     // Anchor next_tick_at to the previous schedule to prevent drift
+    // Uses UTC-safe millisecond arithmetic instead of setHours() which is timezone-dependent
+    const intervalMs = (shard.tick_interval_hours || 12) * 60 * 60 * 1000;
     const prevTickAt = new Date(shard.next_tick_at || new Date());
-    const nextTickAt = new Date(prevTickAt);
-    nextTickAt.setHours(nextTickAt.getHours() + (shard.tick_interval_hours || 12));
+    let nextTickAt = new Date(prevTickAt.getTime() + intervalMs);
     // Safety: if calculated next tick is in the past (e.g. server was down), advance to future
-    while (nextTickAt <= new Date()) {
-        nextTickAt.setHours(nextTickAt.getHours() + (shard.tick_interval_hours || 12));
+    const now = Date.now();
+    while (nextTickAt.getTime() <= now) {
+        nextTickAt = new Date(nextTickAt.getTime() + intervalMs);
     }
     const newDate = advanceMonth(shard.current_date || 'January, 2000');
 
