@@ -5,6 +5,7 @@ DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB);
 DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], BIGINT, JSONB);
 DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB, JSONB);
 DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB, JSONB, NUMERIC);
+DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB, JSONB, JSONB, NUMERIC);
 
 DROP FUNCTION IF EXISTS _election_distribute_votes(JSONB, TEXT[], TEXT[], INT, JSONB);
 DROP FUNCTION IF EXISTS _election_distribute_votes(JSONB, TEXT[], TEXT[], BIGINT, JSONB);
