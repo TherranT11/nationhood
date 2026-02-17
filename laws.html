@@ -308,7 +308,8 @@ let showingAllLaws = false;
 let factionIdeology = null; // Dynamic ideology scores for current player
 
 function _getCompatiblePolicies(sector) {
-    return getCompatiblePolicies(sector, allPolicies, currentFaction, isAutocracy, draftArticles.map(a => a.policy?.id).filter(Boolean));
+    const _activePolicyIds = new Set(activeLaws.map(al => al.policy_id));
+    return getCompatiblePolicies(sector, allPolicies, currentFaction, isAutocracy, draftArticles.map(a => a.policy?.id).filter(Boolean), _activePolicyIds);
 }
 
 initPage('laws', async (state) => {
@@ -718,8 +719,8 @@ function renderFloorBill(bill, isVetoed) {
             </div>
             <div class="bill-articles">
                 ${bill.bill_type === 'no_confidence' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">⚡ Motion to dissolve the current government</span><div class="article-desc">Requires simple majority (YES > NO) to pass.</div></div></div>' :
-                (bill.bill_type === 'confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#2196F3;">🏛 Ambassador Confirmation Vote</span><div class="article-desc">Requires 51% majority to confirm.</div></div></div>' :
-                (bill.bill_type === 'minister_confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#E65100;">🏛 Cabinet Confirmation Vote</span><div class="article-desc">Requires 51% majority to confirm.</div></div></div>' :
+                (bill.bill_type === 'confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#2196F3;">🏛 Ambassador Confirmation Vote</span><div class="article-desc">Requires simple majority (' + GAME_CONFIG.MAJORITY_SEATS + ' seats) to confirm.</div></div></div>' :
+                (bill.bill_type === 'minister_confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#E65100;">🏛 Cabinet Confirmation Vote</span><div class="article-desc">Requires simple majority (' + GAME_CONFIG.MAJORITY_SEATS + ' seats) to confirm.</div></div></div>' :
                 (bill.bill_type === 'veto_override' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#B71C1C;">⚖ Veto Override Vote</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD) + ' seats) to override presidential veto.</div></div></div>' :
                 (bill.bill_type === 'foundational' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#9C27B0;">🏛 Electoral Makeup — Proposed: ' + (bill.proposed_seats || '?') + ' seats</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
                 (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">🗑️ Proposes to rescind an active law</span></div></div>' :
@@ -1042,10 +1043,12 @@ function renderPolicyOptions(policies, containerId, buttonId) {
             return `<span class="article-ideology ${colorClass}">${i}</span>`;
         }).join(' ');
         const isPending = pendingPolicyIds.has(policy.id);
+        const isEnacted = policy.alreadyEnacted;
         const opposedClass = policy.isOpposed ? ' opposed' : '';
-        const pendingClass = isPending ? ' pending' : '';
+        const pendingClass = (isPending || isEnacted) ? ' pending' : '';
         const opposedBadge = policy.isOpposed ? '<span class="opposed-badge">⚠ Opposed</span>' : '';
         const pendingBadge = isPending ? '<span class="opposed-badge" style="background:#555;color:#ccc;">⏳ In Active Bill</span>' : '';
+        const enactedBadge = isEnacted ? '<span class="opposed-badge" style="background:#2E7D32;color:#fff;">✅ Already Enacted</span>' : '';
         const opposedWarn = policy.isOpposed ? '<div class="opposed-warning">Ideologically opposed — approval penalty if proposed</div>' : '';
         let effectHTML = '';
         if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
@@ -1059,7 +1062,7 @@ function renderPolicyOptions(policies, containerId, buttonId) {
             const cls = policy.stat_direction === 'UP' ? 'effect-up' : 'effect-down';
             effectHTML = `${formatStatName(policy.target_stat)} <span class="${cls}">${dir}</span>`;
         }
-        return `<div class="policy-option${opposedClass}${pendingClass}" data-policy-id="${policy.id}" onclick="selectPolicyOption('${policy.id}','${buttonId}')"><div class="policy-option-name">${policy.policy_name} ${ideoHTML} ${opposedBadge}${pendingBadge}</div><div class="policy-option-desc">${policy.description || ''}</div><div class="policy-option-effects">${effectHTML}</div>${opposedWarn}</div>`;
+        return `<div class="policy-option${opposedClass}${pendingClass}" data-policy-id="${policy.id}" onclick="${isEnacted ? '' : `selectPolicyOption('${policy.id}','${buttonId}')`}"><div class="policy-option-name">${policy.policy_name} ${ideoHTML} ${opposedBadge}${pendingBadge}${enactedBadge}</div><div class="policy-option-desc">${policy.description || ''}</div><div class="policy-option-effects">${effectHTML}</div>${opposedWarn}</div>`;
     }).join('');
 }
 

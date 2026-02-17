@@ -549,7 +549,7 @@ async function confirmNomination() {
                     status: 'floor',
                     voting_ends_tick: currentTick + 2,
                     ambassador_id: newAmb.id,
-                    preamble: `This motion, filed by the ${currentFaction.faction_name}, confirms the appointment of ${candidate.firstName} ${candidate.lastName} (${candidate.partyName}) as Ambassador to ${targetNation.name}. A simple majority (51%) is required for confirmation.`
+                    preamble: `This motion, filed by the ${currentFaction.faction_name}, confirms the appointment of ${candidate.firstName} ${candidate.lastName} (${candidate.partyName}) as Ambassador to ${targetNation.name}. A simple majority is required for confirmation.`
                 })
                 .select()
                 .single();

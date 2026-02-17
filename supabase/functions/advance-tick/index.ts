@@ -1078,7 +1078,10 @@ function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy, exclud
                 }
             }
 
-            return { ...p, isOpposed, prerequisiteMissing, prerequisiteName };
+            // Structural policies that are already active laws cannot be enacted again
+            const alreadyEnacted = activePolicyIds && activePolicyIds.has(p.id) && p.policy_type === 'structural';
+
+            return { ...p, isOpposed, prerequisiteMissing, prerequisiteName, alreadyEnacted };
         });
 }
 
@@ -4012,7 +4015,7 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
     // Create confirmation bill (goes straight to floor vote)
 
     const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministryDisplayName}`;
-    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as head of the ${ministryDisplayName}. A simple majority (51%) of the legislature is required for confirmation.`;
+    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as head of the ${ministryDisplayName}. A simple majority (${GAME_CONFIG.MAJORITY_SEATS} of ${GAME_CONFIG.TOTAL_SEATS} seats) is required for confirmation.`;
 
     const { data: bill, error: billErr } = await supabase.from('bills').insert({
         nation_id: nationId,

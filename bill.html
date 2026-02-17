@@ -530,7 +530,7 @@ function renderBill() {
         ? '<div style="color:#4fc3f7;font-size:0.78rem;margin-top:10px;text-align:center;">🏛️ Legislature is suspended until a new government is formed.</div>'
         : (canSendToFloor ? '' : isFoundational
         ? '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ Foundational laws require at least one co-sponsor to advance.</div>'
-        : '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or 51% of seats to send this to the floor.</div>');
+        : '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or a simple majority of seats to send this to the floor.</div>');
 
     el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">Send to Floor</button><button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>` + reason;
 }
@@ -649,7 +649,7 @@ function renderArticles() {
                 '<div class="repeal-notice-icon">🏛</div>' +
                 '<div class="repeal-notice-text">Presidential Cabinet Nomination</div>' +
                 '<div class="repeal-notice-sub" style="color:#aaa;line-height:1.6;">' +
-                    'Requires <strong style="color:#4CAF50;">simple majority</strong> (51% of seats) to confirm.<br>' +
+                    'Requires <strong style="color:#4CAF50;">simple majority</strong> (' + GAME_CONFIG.MAJORITY_SEATS + ' of ' + GAME_CONFIG.TOTAL_SEATS + ' seats) to confirm.<br>' +
                     'If confirmed: nominee takes office as minister.<br>' +
                     'If rejected: President must nominate from a different party.' +
                 '</div>' +
