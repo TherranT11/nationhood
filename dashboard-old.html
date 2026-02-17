@@ -2079,7 +2079,7 @@ const activeCoalition = null;
         
         const coalitionPartyIds = activeCoalition?.party_ids || [];
         const totalSeats = currentNation?.total_seats || 120;
-        const majorityThreshold = Math.ceil(totalSeats * 0.51);
+        const majorityThreshold = Math.floor(totalSeats / 2) + 1;
         
         // Build party cards
         const partiesHTML = parties.map(party => {

@@ -967,7 +967,7 @@ function renderSidebar() {
             : isFoundationalBill
                 ? Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD)
                 : GAME_CONFIG.MAJORITY_SEATS;
-        const thresholdLabel = isNoConfidenceBill ? 'Simple Majority' : isFoundationalBill ? '2/3 Supermajority' : '51% Majority';
+        const thresholdLabel = isNoConfidenceBill ? 'Simple Majority' : isFoundationalBill ? '2/3 Supermajority' : 'Simple Majority';
 
         html = `<div class="vote-tally"><div class="vote-tally-header"><div class="vote-tally-title">Current Tally</div></div><div class="vote-tally-content">
             <div class="vote-tally-row"><span class="vote-tally-label">For</span><span class="vote-tally-value for">${f} seats</span></div>

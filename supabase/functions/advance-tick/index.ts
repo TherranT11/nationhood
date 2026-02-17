@@ -37,7 +37,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const GAME_CONFIG = {
     TOTAL_SEATS: 120,
-    MAJORITY_THRESHOLD: 0.51,
     MAJORITY_SEATS: 61,
     VOTING_WINDOW_TICKS: 3,
     DRAFT_BILL_AP_COST: 2,
@@ -68,7 +67,7 @@ const GAME_CONFIG = {
 function initGameConfigForNation(nation) {
     if (nation && nation.total_seats) {
         GAME_CONFIG.TOTAL_SEATS = nation.total_seats;
-        GAME_CONFIG.MAJORITY_SEATS = Math.ceil(nation.total_seats * GAME_CONFIG.MAJORITY_THRESHOLD);
+        GAME_CONFIG.MAJORITY_SEATS = Math.floor(nation.total_seats / 2) + 1;
     }
 }
 
@@ -1681,7 +1680,7 @@ async function resolveExpiredVotes(supabase, nationId) {
 
         // No-confidence uses simple majority (votesFor > votesAgainst)
         // Foundational bills and veto overrides require 2/3 supermajority
-        // Normal bills require 51% of total seats
+        // Normal bills require simple majority (50% + 1)
         const isNoConfidence = bill.bill_type === 'no_confidence';
         const isFoundational = bill.bill_type === 'foundational';
         const isVetoOverride = bill.bill_type === 'veto_override';
@@ -1691,7 +1690,7 @@ async function resolveExpiredVotes(supabase, nationId) {
             ? (totalVoted > 0 && votesFor > votesAgainst)
             : supermajorityThreshold
                 ? (totalVoted > 0 && votesFor >= Math.ceil(GAME_CONFIG.TOTAL_SEATS * supermajorityThreshold))
-                : (totalVoted > 0 && votesFor >= Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.MAJORITY_THRESHOLD));
+                : (totalVoted > 0 && votesFor >= GAME_CONFIG.MAJORITY_SEATS);
 
         if (isNoConfidence) {
             // Handle no-confidence resolution (pass or fail)
@@ -2194,7 +2193,7 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
     // Update GAME_CONFIG for current session
     GAME_CONFIG.TOTAL_SEATS = newTotalSeats;
-    GAME_CONFIG.MAJORITY_SEATS = Math.ceil(newTotalSeats * GAME_CONFIG.MAJORITY_THRESHOLD);
+    GAME_CONFIG.MAJORITY_SEATS = Math.floor(newTotalSeats / 2) + 1;
     return true;
 }
 
@@ -2974,7 +2973,7 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
 
     // Check if any party has outright majority (no coalition needed)
     // Use nation-specific total_seats for correct majority threshold
-    const majoritySeatThreshold = Math.ceil((nation.total_seats || GAME_CONFIG.TOTAL_SEATS) * GAME_CONFIG.MAJORITY_THRESHOLD);
+    const majoritySeatThreshold = Math.floor((nation.total_seats || GAME_CONFIG.TOTAL_SEATS) / 2) + 1;
     const votes = election.results?.votes || [];
     const majorityParty = votes.find(p => p.seats >= majoritySeatThreshold);
     if (majorityParty) return null;
