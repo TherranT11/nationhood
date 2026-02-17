@@ -1401,8 +1401,7 @@ async function processIdeologyTick(supabase, nation, currentTick, resolutions) {
         .from('factions')
         .select('id, faction_name, ideology_value_1, ideology_value_2')
         .eq('nation_id', nation.id)
-        .eq('faction_type', 'party')
-        .eq('is_npc', false);
+        .eq('faction_type', 'party');
 
     if (!factions || factions.length === 0) return [];
 
@@ -1448,12 +1447,21 @@ async function processIdeologyTick(supabase, nation, currentTick, resolutions) {
 
         for (const bill of allResolvedBills) {
             const vote = factionVotes.find(v => v.bill_id === bill.id);
+            // Normalize committee stances: 'accept' → 'yes', 'reject' → 'no'
+            const normalizedStance = vote?.stance === 'accept' ? 'yes' : vote?.stance === 'reject' ? 'no' : vote?.stance;
 
             if (bill.proposed_by === faction.id) {
                 proposedBills.push(bill);
+                // Sponsor always counts as YES voter on their own bill
+                if (!votedYesBills.includes(bill)) {
+                    votedYesBills.push(bill);
+                    if (passedBillIds.has(bill.id)) {
+                        passedBillsYesVote.push(bill);
+                    }
+                }
             }
 
-            if (vote?.stance === 'yes') {
+            if (normalizedStance === 'yes' && !votedYesBills.includes(bill)) {
                 votedYesBills.push(bill);
                 if (passedBillIds.has(bill.id)) {
                     passedBillsYesVote.push(bill);
@@ -1599,8 +1607,10 @@ async function resolveExpiredVotes(supabase, nationId) {
         let votesFor = 0, votesAgainst = 0;
 
         (bill.bill_support || []).forEach(s => {
-            if (s.stance === 'yes') votesFor += s.seat_count;
-            else if (s.stance === 'no') votesAgainst += s.seat_count;
+            // Normalize committee stances: 'accept' → 'yes', 'reject' → 'no'
+            const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+            if (stance === 'yes') votesFor += s.seat_count;
+            else if (stance === 'no') votesAgainst += s.seat_count;
         });
 
         const totalVoted = votesFor + votesAgainst;
@@ -4486,7 +4496,12 @@ async function advanceTick(supabase) {
         await processParliamentaryPMTimeout(supabase, nation, newTick);
 
         // 6. Process ideology shifts from this tick's votes/bills
-        const ideologyEvents = await processIdeologyTick(supabase, nation, newTick, resolutions);
+        // Combine floor resolutions + president desk results for ideology processing
+        const allResolutions = [
+            ...resolutions,
+            ...deskResults.map(d => ({ billId: d.billId, billName: d.billName, result: 'passed' }))
+        ];
+        const ideologyEvents = await processIdeologyTick(supabase, nation, newTick, allResolutions);
         if (ideologyEvents.length > 0) {
             summary.ideology = summary.ideology || [];
             summary.ideology.push({ nation: nation.name, events: ideologyEvents });
