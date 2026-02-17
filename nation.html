@@ -364,10 +364,10 @@ function getTrendArrow(statKey, currentValue, inverted, format) {
     var delta = currentValue - previousValue;
     var invertedClass = inverted ? ' inverted' : '';
     if (delta > 0) {
-        var formatted = (format === 'currency') ? '+' + formatCurrencyShort(delta) : (format === 'gdp') ? '+' + formatCurrencyShort(delta * 1e9) : '+' + roundDelta(delta);
+        var formatted = (format === 'currency') ? '+' + formatCurrencyShort(delta) : (format === 'gdp') ? '+' + formatCurrencyShort(delta) : '+' + roundDelta(delta);
         return '<span class="trend-arrow trend-up' + invertedClass + '">▲ ' + formatted + '</span>';
     } else if (delta < 0) {
-        var formatted = (format === 'currency') ? formatCurrencyShort(delta) : (format === 'gdp') ? formatCurrencyShort(delta * 1e9) : roundDelta(delta);
+        var formatted = (format === 'currency') ? formatCurrencyShort(delta) : (format === 'gdp') ? formatCurrencyShort(delta) : roundDelta(delta);
         return '<span class="trend-arrow trend-down' + invertedClass + '">▼ ' + formatted + '</span>';
     }
     return '<span class="trend-arrow trend-neutral">―</span>';
@@ -462,7 +462,7 @@ async function renderNationPage(nation) {
         renderStatBox('GDP Growth', 'gdp_growth', nation.gdp_growth, 'Annual economic growth rate'),
         renderStatBox('National Debt', 'debt', nation.debt, 'Government debt obligations', 'currency', true),
         renderStatBox('Debt Growth', 'debt_growth', nation.debt_growth, 'Rate of debt accumulation', null, true),
-        renderStatBox('Budget', 'budget', nation.budget, 'Government budget surplus/deficit'),
+        renderStatBox('Budget', 'budget', nation.budget, 'Available government revenue per tick', 'currency'),
         renderStatBox('Inflation', 'inflation', nation.inflation, 'Rate of price increases', null, true),
         renderStatBox('Interest Rates', 'interest_rates', nation.interest_rates, 'Central bank lending rate'),
         renderStatBox('Trade Balance', 'trade_balance', nation.trade_balance, 'Exports minus imports'),
@@ -626,7 +626,7 @@ function renderStatBox(name, statKey, value, description, format, inverted) {
 
     var formattedValue = (value !== null && value !== undefined) ? (typeof value === 'number' ? Math.round(value * 10) / 10 : value) : 'N/A';
     if (format === 'currency' && typeof value === 'number') formattedValue = formatCurrencyShort(value);
-    else if (format === 'gdp' && typeof value === 'number') formattedValue = formatCurrencyShort(value * 1e9);
+    else if (format === 'gdp' && typeof value === 'number') formattedValue = formatCurrencyShort(value);
     else if (format === 'years' && typeof value === 'number') formattedValue = Math.round(value * 10) / 10 + ' yrs';
 
     var trendArrow = getTrendArrow(statKey, value, inverted, format);
@@ -662,15 +662,17 @@ function formatPopulation(pop) {
 function formatCurrencyShort(val) {
     if (val == null) return 'N/A';
     val = Number(val);
-    if (val >= 1e12) return '$' + (val / 1e12).toFixed(1) + ' Trillion';
-    if (val >= 1e9) return '$' + (val / 1e9).toFixed(1) + ' Billion';
-    if (val >= 1e6) return '$' + (val / 1e6).toFixed(1) + ' Million';
-    return '$' + val.toLocaleString();
+    var sign = val < 0 ? '-' : '';
+    var abs = Math.abs(val);
+    if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(1) + ' Trillion';
+    if (abs >= 1e9)  return sign + '$' + (abs / 1e9).toFixed(1) + ' Billion';
+    if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(1) + ' Million';
+    return sign + '$' + abs.toLocaleString();
 }
 
 function formatGDP(gdp) {
     if (!gdp) return 'N/A';
-    return formatCurrencyShort(gdp * 1e9);
+    return formatCurrencyShort(gdp);
 }
 </script>
 
