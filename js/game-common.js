@@ -4301,7 +4301,10 @@ async function advanceTick(supabase) {
         }
 
         // 10. Re-fetch nation with post-effect values, then snapshot to history
+        //     Also update in-memory nation so downstream steps (crises, revolution, events)
+        //     see post-processStatEffects values for trigger checks.
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+        if (freshNation) Object.assign(nation, freshNation);
         await snapshotNationHistory(supabase, freshNation || nation, newTick);
 
         // 11b. Process crises (persistent negative events that apply effects every tick)
@@ -5460,8 +5463,9 @@ async function processCrises(supabase, nation, currentTick) {
             // Helper: clamp value respecting the per-effect floor/ceiling
             // If change is negative, stat_floor is a floor (can't go below).
             // If change is positive, stat_floor is a ceiling (can't go above).
+            // Round to 1dp to match processStatEffects and prevent floating-point drift.
             function clampWithFloor(current, raw) {
-                let v = Math.max(0, Math.min(100, raw));
+                let v = Math.round(Math.max(0, Math.min(100, raw)) * 10) / 10;
                 if (hasFloor) {
                     if (changePT < 0) v = Math.max(floorVal, v);   // floor
                     else if (changePT > 0) v = Math.min(floorVal, v); // ceiling
