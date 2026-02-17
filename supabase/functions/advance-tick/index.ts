@@ -5123,16 +5123,20 @@ async function processStatEffects(supabase, nation, currentTick) {
                         ? nationUpdates[statKey]
                         : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
 
+                    // For raw-value stats (GDP, debt, population), scale rate by divisor
+                    // so rate: 1 means +$1B for GDP/debt, +1M for population
+                    const scaledRate = RAW_SCALING_DIVISORS[statKey] ? rate * RAW_SCALING_DIVISORS[statKey] : rate;
+
                     let newVal;
                     if (dir === 'up') {
-                        newVal = currentVal + rate;
+                        newVal = currentVal + scaledRate;
                     } else {
-                        newVal = currentVal - rate;
+                        newVal = currentVal - scaledRate;
                     }
 
-                    // Raw-value stats (GDP, debt, population) — don't clamp to 0-100
+                    // Raw-value stats — don't clamp to 0-100
                     if (RAW_SCALING_DIVISORS[statKey]) {
-                        newVal = Math.round(Math.max(0, newVal) * 10) / 10;
+                        newVal = Math.max(0, newVal);
                     } else {
                         newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
                     }
