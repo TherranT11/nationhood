@@ -576,7 +576,7 @@ async function renderNationPage(nation) {
     h += '<div class="overview-item"><div class="overview-label">Government</div><div class="overview-value">' + (nation.government_type === 'Presidential' ? 'Presidential Republic' : (nation.government_type || '—')) + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">Population</div><div class="overview-value">' + formatPopulation(nation.population) + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">National Approval</div><div class="overview-value gold">' + (nation.national_approval || 50) + '%</div></div>';
-    h += '<div class="overview-item"><div class="overview-label">GDP</div><div class="overview-value gold">' + formatGDP(nation.GDP) + '</div></div>';
+    h += '<div class="overview-item"><div class="overview-label">GDP</div><div class="overview-value gold">' + formatGDP(nation.gdp) + '</div></div>';
     h += '</div></div>';
 
     // Revolution banner (above crises)
@@ -590,7 +590,7 @@ async function renderNationPage(nation) {
 
     // ECONOMIC
     h += sectorBlock('💰', 'Economic', [
-        renderStatBox('GDP', 'GDP', nation.GDP, 'Gross domestic product in billions', 'gdp'),
+        renderStatBox('GDP', 'gdp', nation.gdp, 'Gross domestic product', 'gdp'),
         renderStatBox('GDP Growth', 'gdp_growth', nation.gdp_growth, 'Annual economic growth rate'),
         renderStatBox('National Debt', 'debt', nation.debt, 'Government debt obligations', 'currency', true),
         renderStatBox('Debt Growth', 'debt_growth', nation.debt_growth, 'Rate of debt accumulation', null, true),

@@ -1143,7 +1143,7 @@ function setupWorldMap() {
                     '<div style="display:flex;flex-direction:column;gap:8px;">' +
                         sRow('Population', fmt(nation.population), '#ffcc00') +
                         sRow('Government', nation.government_type||'—', '#fff') +
-                        sRow('GDP',        fmtCur(nation.GDP), '#4CAF50') +
+                        sRow('GDP',        fmtCur(nation.gdp), '#4CAF50') +
                         sRow('Debt',       fmtCur(nation.debt), '#ff9800') +
                     '</div>';
             } catch(e) { sidebar.innerHTML = '<p style="color:#f44;">Error loading data.</p>'; }

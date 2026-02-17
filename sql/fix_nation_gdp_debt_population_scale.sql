@@ -79,7 +79,16 @@ WHERE seed_stats IS NOT NULL
   AND (seed_stats->>'population')::numeric > 0
   AND (seed_stats->>'population')::numeric < 100000;
 
--- 6. Verify: show final values
+-- 6. Clean up floating-point artifacts (e.g. 51600000000.00001 → 51600000000)
+UPDATE nations
+SET gdp = ROUND(gdp),
+    debt = ROUND(debt),
+    population = ROUND(population)
+WHERE gdp != ROUND(gdp)
+   OR debt != ROUND(debt)
+   OR population != ROUND(population);
+
+-- 7. Verify: show final values
 SELECT name, gdp, debt, population,
     CASE WHEN gdp >= 1000000000 THEN '✓' ELSE '⚠' END AS gdp_ok,
     CASE WHEN debt >= 1000000000 OR debt = 0 THEN '✓' ELSE '⚠' END AS debt_ok,
