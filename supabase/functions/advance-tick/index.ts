@@ -5545,6 +5545,10 @@ async function processRevolution(supabase: any, nation: any, currentTick: number
         return null;
     }
 
+    // Re-fetch nation to get post-effect stat values (processStatEffects etc. update DB but not in-memory)
+    const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+    if (freshNation) Object.assign(nation, freshNation);
+
     // Check all trigger conditions
     const conditionsMet =
         Number(nation.stability) < 15 &&
@@ -5643,12 +5647,17 @@ async function processRevolution(supabase: any, nation: any, currentTick: number
     const newGovType = Math.random() < 0.5 ? 'Democracy' : 'Presidential';
     const govLabel = newGovType === 'Presidential' ? 'Presidential Democracy' : 'Parliamentary Democracy';
 
-    // 2. Close current administration
+    // 2. Close current administration and dissolve government/ministries
     try {
         const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
         await closeAdministration(supabase, nation.id, nation, 'revolution', currentTick, shardData?.current_date || '', null);
     } catch (err) {
         console.warn('[Revolution] Could not close administration:', err);
+    }
+    try {
+        await dissolveCoalition(supabase, nation.id);
+    } catch (err) {
+        console.warn('[Revolution] Could not dissolve coalition:', err);
     }
 
     // 3. Update nation stats
@@ -5667,6 +5676,9 @@ async function processRevolution(supabase: any, nation: any, currentTick: number
     await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
     Object.assign(nation, nationUpdates);
 
+    // 3b. Clear all active crises — revolution resets the political landscape
+    await supabase.from('active_crises').delete().eq('nation_id', nation.id);
+
     // 4. Reset all faction bloc approvals to 50
     const { data: allFactions } = await supabase
         .from('factions')
@@ -5683,11 +5695,23 @@ async function processRevolution(supabase: any, nation: any, currentTick: number
         }
     }
 
+    // 4b. Reset all faction loyalty to 50
+    await supabase.from('factions')
+        .update({ loyalty: 50 })
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+
     // 5. Flag factions for rebuild
     await supabase.from('factions')
         .update({ needs_rebuild: true })
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
+
+    // 5b. Freeze all active bills — government has fallen
+    await supabase.from('bills')
+        .update({ status: 'frozen' })
+        .eq('nation_id', nation.id)
+        .in('status', ['committee', 'floor']);
 
     // 6. Schedule emergency election in 3 ticks
     await supabase.from('elections').delete()
