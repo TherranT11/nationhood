@@ -4,10 +4,12 @@
 -- Voter-bloc-based election simulation.
 --
 -- 1. Loads voter blocs + party ideology axes
--- 2. For each bloc, runs a 4-step cascade to find eligible parties
--- 3. Distributes votes using approval × alignment weighting
--- 4. Allocates 120 seats via Largest Remainder (Hare Quota)
--- 5. Writes results to elections table + syncs factions.seats
+-- 2. For each bloc, loads per-bloc approval from faction_bloc_approval
+-- 3. Runs a 4-step cascade to find eligible parties
+-- 4. Distributes votes using per-bloc approval x alignment weighting
+-- 5. Applies leakage: unmatched parties gain votes proportional to their bloc approval
+-- 6. Allocates 120 seats via Largest Remainder (Hare Quota)
+-- 7. Writes results to elections table + syncs factions.seats
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION run_election(
@@ -38,6 +40,7 @@ DECLARE
     v_result_rows  JSONB := '[]'::JSONB;
     v_seat_rows    JSONB := '[]'::JSONB;
     v_election_type TEXT := LOWER(COALESCE(p_election_type, 'parliamentary'));
+    v_bloc_approvals JSONB;
 BEGIN
     IF v_election_type NOT IN ('parliamentary', 'presidential') THEN
         RAISE EXCEPTION 'Invalid election type: % (allowed: parliamentary, presidential)', p_election_type;
@@ -55,16 +58,13 @@ BEGIN
 
     v_total_seats := COALESCE(v_nation.total_seats, 120);
 
-    -- ---- Load parties with ideology axes ----
-    -- Build a JSON array of party objects
+    -- ---- Load parties with ideology axes (no approval_rating or ideology_modifiers) ----
     SELECT COALESCE(jsonb_agg(row_to_json(t)::JSONB), '[]'::JSONB)
     INTO v_parties
     FROM (
         SELECT
             f.id,
             f.faction_name,
-            COALESCE(f.approval_rating, 0) AS approval_rating,
-            COALESCE(f.ideology_modifiers, '{}'::JSONB) AS ideology_modifiers,
             COALESCE(fi.liberty_equality, 0)           AS liberty_equality,
             COALESCE(fi.tradition_progress, 0)         AS tradition_progress,
             COALESCE(fi.security_freedom, 0)           AS security_freedom,
@@ -131,10 +131,26 @@ BEGIN
             v_tags := v_tags || UPPER(v_bloc.ideology_5);
         END IF;
 
+        -- Build per-bloc approval map: { party_id: approval }
+        SELECT COALESCE(
+            jsonb_object_agg(sub.party_id, sub.approval),
+            '{}'::JSONB
+        )
+        INTO v_bloc_approvals
+        FROM (
+            SELECT
+                (p.value->>'id') AS party_id,
+                COALESCE(fba.approval, 40) AS approval
+            FROM jsonb_array_elements(v_parties) AS p(value)
+            LEFT JOIN faction_bloc_approval fba
+                ON fba.faction_id = (p.value->>'id')::UUID
+                AND fba.bloc_id = v_bloc.id
+        ) sub;
+
         -- Run cascade + distribute (single call)
         SELECT r.step, r.abstentions, r.updated_tally
         INTO v_step, v_abstentions, v_tally
-        FROM _election_process_bloc(v_parties, v_tags, v_bloc.voter_count, v_tally) r;
+        FROM _election_process_bloc(v_parties, v_tags, v_bloc.voter_count, v_tally, v_bloc_approvals) r;
 
         v_total_abstentions := v_total_abstentions + COALESCE(v_abstentions, 0);
     END LOOP;
@@ -212,7 +228,7 @@ $$;
 
 
 -- ============================================================
--- _election_get_alignment(party JSONB, tag TEXT) → INT
+-- _election_get_alignment(party JSONB, tag TEXT) -> INT
 --
 -- Returns party's alignment score toward a specific ideology tag.
 -- Positive = supports, negative = opposes.
@@ -228,7 +244,7 @@ DECLARE
     v_dir    INT;
     v_value  INT;
 BEGIN
-    -- Map tag → axis key + direction
+    -- Map tag -> axis key + direction
     CASE v_tag
         WHEN 'LIBERTY'        THEN v_axis := 'liberty_equality';           v_dir := -1;
         WHEN 'EQUALITY'       THEN v_axis := 'liberty_equality';           v_dir :=  1;
@@ -250,22 +266,25 @@ $$;
 
 
 -- ============================================================
--- _election_process_bloc(parties JSONB, tags TEXT[], bloc_count INT, tally JSONB)
--- → TABLE(step INT, abstentions BIGINT, updated_tally JSONB)
+-- _election_process_bloc(parties, tags, bloc_count, tally, bloc_approvals)
+-- -> TABLE(step INT, abstentions BIGINT, updated_tally JSONB)
 --
--- Runs the 4-step cascade for one voter bloc and distributes votes.
+-- Runs the 4-step cascade for one voter bloc, distributes votes,
+-- and applies leakage to unmatched parties.
 -- ============================================================
 
 -- Drop any duplicate overloads so CREATE OR REPLACE is unambiguous
 DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB);
 DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], BIGINT, JSONB);
+DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB, JSONB);
 DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB, JSONB, NUMERIC);
 
 CREATE OR REPLACE FUNCTION _election_process_bloc(
-    p_parties    JSONB,
-    p_tags       TEXT[],
-    p_bloc_count INT,
-    p_tally      JSONB
+    p_parties        JSONB,
+    p_tags           TEXT[],
+    p_bloc_count     INT,
+    p_tally          JSONB,
+    p_bloc_approvals JSONB
 )
 RETURNS TABLE(step INT, abstentions BIGINT, updated_tally JSONB)
 LANGUAGE plpgsql
@@ -283,6 +302,14 @@ DECLARE
     v_abstain      BIGINT := 0;
     v_voters       INT;
     v_abstain_rate NUMERIC;
+    -- Leakage variables
+    v_leakage_rate   NUMERIC;
+    v_votes_added    BIGINT;
+    v_leaked_total   BIGINT;
+    v_unmatched_ids  TEXT[];
+    v_total_unmatched_appr NUMERIC;
+    v_party_id       TEXT;
+    v_leak_allocated BIGINT;
 BEGIN
     -- Handle Unaligned bloc (no tags)
     IF v_tag_count IS NULL OR v_tag_count = 0 THEN
@@ -290,7 +317,7 @@ BEGIN
         v_abstain := FLOOR(p_bloc_count * 0.35);
         v_voters := p_bloc_count - v_abstain;
         IF v_voters > 0 THEN
-            v_tally := _election_distribute_votes_approval_only(p_parties, v_voters, v_tally);
+            v_tally := _election_distribute_votes_approval_only(p_parties, v_voters, v_tally, p_bloc_approvals);
         END IF;
         RETURN QUERY SELECT 0, v_abstain, v_tally;
         RETURN;
@@ -321,7 +348,74 @@ BEGIN
         v_abstain := FLOOR(p_bloc_count * 0.20);
         v_voters := p_bloc_count - v_abstain;
         IF v_voters > 0 THEN
-            v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, v_voters, v_tally);
+            v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, v_voters, v_tally, p_bloc_approvals);
+
+            -- ==== LEAKAGE: 10% for full match ====
+            v_leakage_rate := 0.10;
+            v_votes_added := 0;
+            FOREACH v_party_id IN ARRAY v_eligible_ids LOOP
+                v_votes_added := v_votes_added +
+                    COALESCE((v_tally->>v_party_id)::BIGINT, 0) -
+                    COALESCE((p_tally->>v_party_id)::BIGINT, 0);
+            END LOOP;
+
+            v_leaked_total := FLOOR(v_votes_added * v_leakage_rate);
+
+            IF v_leaked_total > 0 THEN
+                v_unmatched_ids := ARRAY[]::TEXT[];
+                v_total_unmatched_appr := 0;
+                FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties) LOOP
+                    v_party_id := v_party.value->>'id';
+                    IF NOT (v_party_id = ANY(v_eligible_ids)) THEN
+                        v_unmatched_ids := v_unmatched_ids || v_party_id;
+                        v_total_unmatched_appr := v_total_unmatched_appr +
+                            COALESCE((p_bloc_approvals->>v_party_id)::NUMERIC, 40);
+                    END IF;
+                END LOOP;
+
+                IF array_length(v_unmatched_ids, 1) > 0 AND v_total_unmatched_appr > 0 THEN
+                    -- Subtract leaked votes from matched parties proportionally
+                    v_leak_allocated := 0;
+                    FOREACH v_party_id IN ARRAY v_eligible_ids LOOP
+                        DECLARE
+                            v_party_votes BIGINT := COALESCE((v_tally->>v_party_id)::BIGINT, 0) -
+                                                     COALESCE((p_tally->>v_party_id)::BIGINT, 0);
+                            v_party_loss  BIGINT;
+                        BEGIN
+                            IF v_votes_added > 0 THEN
+                                v_party_loss := FLOOR(v_leaked_total::NUMERIC * v_party_votes / v_votes_added);
+                            ELSE
+                                v_party_loss := 0;
+                            END IF;
+                            v_tally := jsonb_set(v_tally, ARRAY[v_party_id],
+                                to_jsonb(COALESCE((v_tally->>v_party_id)::BIGINT, 0) - v_party_loss));
+                            v_leak_allocated := v_leak_allocated + v_party_loss;
+                        END;
+                    END LOOP;
+
+                    -- Distribute leaked votes to unmatched parties by per-bloc approval
+                    DECLARE
+                        v_leak_given BIGINT := 0;
+                        v_um_approval NUMERIC;
+                        v_um_share    BIGINT;
+                        v_um_idx      INT := 0;
+                        v_um_count    INT := array_length(v_unmatched_ids, 1);
+                    BEGIN
+                        FOREACH v_party_id IN ARRAY v_unmatched_ids LOOP
+                            v_um_idx := v_um_idx + 1;
+                            v_um_approval := COALESCE((p_bloc_approvals->>v_party_id)::NUMERIC, 40);
+                            IF v_um_idx = v_um_count THEN
+                                v_um_share := v_leak_allocated - v_leak_given;
+                            ELSE
+                                v_um_share := FLOOR(v_leak_allocated::NUMERIC * v_um_approval / v_total_unmatched_appr);
+                            END IF;
+                            v_tally := jsonb_set(v_tally, ARRAY[v_party_id],
+                                to_jsonb(COALESCE((v_tally->>v_party_id)::BIGINT, 0) + v_um_share));
+                            v_leak_given := v_leak_given + v_um_share;
+                        END LOOP;
+                    END;
+                END IF;
+            END IF;
         END IF;
         RETURN QUERY SELECT 1, v_abstain, v_tally;
         RETURN;
@@ -345,7 +439,72 @@ BEGIN
         v_abstain := FLOOR(p_bloc_count * 0.28);
         v_voters := p_bloc_count - v_abstain;
         IF v_voters > 0 THEN
-            v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, v_voters, v_tally);
+            v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, v_voters, v_tally, p_bloc_approvals);
+
+            -- ==== LEAKAGE: 15% for partial match ====
+            v_leakage_rate := 0.15;
+            v_votes_added := 0;
+            FOREACH v_party_id IN ARRAY v_eligible_ids LOOP
+                v_votes_added := v_votes_added +
+                    COALESCE((v_tally->>v_party_id)::BIGINT, 0) -
+                    COALESCE((p_tally->>v_party_id)::BIGINT, 0);
+            END LOOP;
+
+            v_leaked_total := FLOOR(v_votes_added * v_leakage_rate);
+
+            IF v_leaked_total > 0 THEN
+                v_unmatched_ids := ARRAY[]::TEXT[];
+                v_total_unmatched_appr := 0;
+                FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties) LOOP
+                    v_party_id := v_party.value->>'id';
+                    IF NOT (v_party_id = ANY(v_eligible_ids)) THEN
+                        v_unmatched_ids := v_unmatched_ids || v_party_id;
+                        v_total_unmatched_appr := v_total_unmatched_appr +
+                            COALESCE((p_bloc_approvals->>v_party_id)::NUMERIC, 40);
+                    END IF;
+                END LOOP;
+
+                IF array_length(v_unmatched_ids, 1) > 0 AND v_total_unmatched_appr > 0 THEN
+                    v_leak_allocated := 0;
+                    FOREACH v_party_id IN ARRAY v_eligible_ids LOOP
+                        DECLARE
+                            v_party_votes BIGINT := COALESCE((v_tally->>v_party_id)::BIGINT, 0) -
+                                                     COALESCE((p_tally->>v_party_id)::BIGINT, 0);
+                            v_party_loss  BIGINT;
+                        BEGIN
+                            IF v_votes_added > 0 THEN
+                                v_party_loss := FLOOR(v_leaked_total::NUMERIC * v_party_votes / v_votes_added);
+                            ELSE
+                                v_party_loss := 0;
+                            END IF;
+                            v_tally := jsonb_set(v_tally, ARRAY[v_party_id],
+                                to_jsonb(COALESCE((v_tally->>v_party_id)::BIGINT, 0) - v_party_loss));
+                            v_leak_allocated := v_leak_allocated + v_party_loss;
+                        END;
+                    END LOOP;
+
+                    DECLARE
+                        v_leak_given BIGINT := 0;
+                        v_um_approval NUMERIC;
+                        v_um_share    BIGINT;
+                        v_um_idx      INT := 0;
+                        v_um_count    INT := array_length(v_unmatched_ids, 1);
+                    BEGIN
+                        FOREACH v_party_id IN ARRAY v_unmatched_ids LOOP
+                            v_um_idx := v_um_idx + 1;
+                            v_um_approval := COALESCE((p_bloc_approvals->>v_party_id)::NUMERIC, 40);
+                            IF v_um_idx = v_um_count THEN
+                                v_um_share := v_leak_allocated - v_leak_given;
+                            ELSE
+                                v_um_share := FLOOR(v_leak_allocated::NUMERIC * v_um_approval / v_total_unmatched_appr);
+                            END IF;
+                            v_tally := jsonb_set(v_tally, ARRAY[v_party_id],
+                                to_jsonb(COALESCE((v_tally->>v_party_id)::BIGINT, 0) + v_um_share));
+                            v_leak_given := v_leak_given + v_um_share;
+                        END LOOP;
+                    END;
+                END IF;
+            END IF;
         END IF;
         RETURN QUERY SELECT 2, v_abstain, v_tally;
         RETURN;
@@ -376,7 +535,72 @@ BEGIN
         v_abstain := FLOOR(p_bloc_count * 0.33);
         v_voters := p_bloc_count - v_abstain;
         IF v_voters > 0 THEN
-            v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, v_voters, v_tally);
+            v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, v_voters, v_tally, p_bloc_approvals);
+
+            -- ==== LEAKAGE: 20% for no-opposition match ====
+            v_leakage_rate := 0.20;
+            v_votes_added := 0;
+            FOREACH v_party_id IN ARRAY v_eligible_ids LOOP
+                v_votes_added := v_votes_added +
+                    COALESCE((v_tally->>v_party_id)::BIGINT, 0) -
+                    COALESCE((p_tally->>v_party_id)::BIGINT, 0);
+            END LOOP;
+
+            v_leaked_total := FLOOR(v_votes_added * v_leakage_rate);
+
+            IF v_leaked_total > 0 THEN
+                v_unmatched_ids := ARRAY[]::TEXT[];
+                v_total_unmatched_appr := 0;
+                FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties) LOOP
+                    v_party_id := v_party.value->>'id';
+                    IF NOT (v_party_id = ANY(v_eligible_ids)) THEN
+                        v_unmatched_ids := v_unmatched_ids || v_party_id;
+                        v_total_unmatched_appr := v_total_unmatched_appr +
+                            COALESCE((p_bloc_approvals->>v_party_id)::NUMERIC, 40);
+                    END IF;
+                END LOOP;
+
+                IF array_length(v_unmatched_ids, 1) > 0 AND v_total_unmatched_appr > 0 THEN
+                    v_leak_allocated := 0;
+                    FOREACH v_party_id IN ARRAY v_eligible_ids LOOP
+                        DECLARE
+                            v_party_votes BIGINT := COALESCE((v_tally->>v_party_id)::BIGINT, 0) -
+                                                     COALESCE((p_tally->>v_party_id)::BIGINT, 0);
+                            v_party_loss  BIGINT;
+                        BEGIN
+                            IF v_votes_added > 0 THEN
+                                v_party_loss := FLOOR(v_leaked_total::NUMERIC * v_party_votes / v_votes_added);
+                            ELSE
+                                v_party_loss := 0;
+                            END IF;
+                            v_tally := jsonb_set(v_tally, ARRAY[v_party_id],
+                                to_jsonb(COALESCE((v_tally->>v_party_id)::BIGINT, 0) - v_party_loss));
+                            v_leak_allocated := v_leak_allocated + v_party_loss;
+                        END;
+                    END LOOP;
+
+                    DECLARE
+                        v_leak_given BIGINT := 0;
+                        v_um_approval NUMERIC;
+                        v_um_share    BIGINT;
+                        v_um_idx      INT := 0;
+                        v_um_count    INT := array_length(v_unmatched_ids, 1);
+                    BEGIN
+                        FOREACH v_party_id IN ARRAY v_unmatched_ids LOOP
+                            v_um_idx := v_um_idx + 1;
+                            v_um_approval := COALESCE((p_bloc_approvals->>v_party_id)::NUMERIC, 40);
+                            IF v_um_idx = v_um_count THEN
+                                v_um_share := v_leak_allocated - v_leak_given;
+                            ELSE
+                                v_um_share := FLOOR(v_leak_allocated::NUMERIC * v_um_approval / v_total_unmatched_appr);
+                            END IF;
+                            v_tally := jsonb_set(v_tally, ARRAY[v_party_id],
+                                to_jsonb(COALESCE((v_tally->>v_party_id)::BIGINT, 0) + v_um_share));
+                            v_leak_given := v_leak_given + v_um_share;
+                        END LOOP;
+                    END;
+                END IF;
+            END IF;
         END IF;
         RETURN QUERY SELECT 3, v_abstain, v_tally;
         RETURN;
@@ -394,7 +618,7 @@ BEGIN
         IF v_forced > 0 THEN
             FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
             LOOP
-                v_cur_approval := _election_effective_approval(v_party.value, p_tags)::INT;
+                v_cur_approval := COALESCE((p_bloc_approvals->>(v_party.value->>'id'))::INT, 40);
                 IF v_cur_approval > v_best_approval THEN
                     v_best_approval := v_cur_approval;
                     v_best_id := v_party.value->>'id';
@@ -416,61 +640,30 @@ $$;
 
 
 -- ============================================================
--- _election_effective_approval(party JSONB, tags TEXT[])
--- → NUMERIC
---
--- Returns effective approval = base_approval + avg(matched tag modifiers).
--- For unaligned blocs (empty tags), returns base approval unchanged.
--- Clamped to [0, 100].
+-- Drop the old _election_effective_approval function (no longer used)
 -- ============================================================
-
-CREATE OR REPLACE FUNCTION _election_effective_approval(
-    p_party JSONB,
-    p_tags  TEXT[]
-)
-RETURNS NUMERIC
-LANGUAGE plpgsql IMMUTABLE
-AS $$
-DECLARE
-    v_base       NUMERIC := COALESCE((p_party->>'approval_rating')::NUMERIC, 0);
-    v_mods       JSONB   := COALESCE(p_party->'ideology_modifiers', '{}'::JSONB);
-    v_tag_count  INT     := COALESCE(array_length(p_tags, 1), 0);
-    v_sum        NUMERIC := 0;
-    v_i          INT;
-    v_tag        TEXT;
-    v_mod_val    NUMERIC;
-BEGIN
-    IF v_tag_count = 0 THEN
-        RETURN v_base;
-    END IF;
-
-    FOR v_i IN 1..v_tag_count LOOP
-        v_tag := UPPER(p_tags[v_i]);
-        v_mod_val := COALESCE((v_mods->>v_tag)::NUMERIC, 0);
-        v_sum := v_sum + v_mod_val;
-    END LOOP;
-
-    RETURN GREATEST(0, LEAST(100, v_base + (v_sum / v_tag_count)));
-END;
-$$;
+DROP FUNCTION IF EXISTS _election_effective_approval(JSONB, TEXT[]);
 
 
 -- ============================================================
--- _election_distribute_votes(parties, eligible_ids, tags, bloc_count, tally)
--- → JSONB (updated tally)
+-- _election_distribute_votes(parties, eligible_ids, tags, bloc_count, tally, bloc_approvals)
+-- -> JSONB (updated tally)
 --
--- Distributes votes using approval × alignment weighting.
+-- Distributes votes using per-bloc approval x alignment weighting.
 -- ============================================================
 
 DROP FUNCTION IF EXISTS _election_distribute_votes(JSONB, TEXT[], TEXT[], INT, JSONB);
 DROP FUNCTION IF EXISTS _election_distribute_votes(JSONB, TEXT[], TEXT[], BIGINT, JSONB);
+DROP FUNCTION IF EXISTS _election_distribute_votes(JSONB, TEXT[], TEXT[], INT, JSONB, JSONB);
+DROP FUNCTION IF EXISTS _election_distribute_votes(JSONB, TEXT[], TEXT[], BIGINT, JSONB, JSONB);
 
 CREATE OR REPLACE FUNCTION _election_distribute_votes(
-    p_parties      JSONB,
-    p_eligible_ids TEXT[],
-    p_tags         TEXT[],
-    p_bloc_count   INT,
-    p_tally        JSONB
+    p_parties        JSONB,
+    p_eligible_ids   TEXT[],
+    p_tags           TEXT[],
+    p_bloc_count     INT,
+    p_tally          JSONB,
+    p_bloc_approvals JSONB
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -513,7 +706,8 @@ BEGIN
             v_align_score := 1;
         END IF;
 
-        v_weight := _election_effective_approval(v_party.value, p_tags) * v_align_score;
+        -- Use per-bloc approval instead of _election_effective_approval
+        v_weight := COALESCE((p_bloc_approvals->>v_pid)::NUMERIC, 40) * v_align_score;
         v_weights := v_weights || jsonb_build_object(v_pid, v_weight);
         v_total_weight := v_total_weight + v_weight;
     END LOOP;
@@ -574,19 +768,22 @@ $$;
 
 
 -- ============================================================
--- _election_distribute_votes_approval_only(parties, bloc_count, tally)
--- → JSONB (updated tally)
+-- _election_distribute_votes_approval_only(parties, bloc_count, tally, bloc_approvals)
+-- -> JSONB (updated tally)
 --
--- For Unaligned blocs: distribute purely by approval rating.
+-- For Unaligned blocs: distribute purely by per-bloc approval rating.
 -- ============================================================
 
 DROP FUNCTION IF EXISTS _election_distribute_votes_approval_only(JSONB, INT, JSONB);
 DROP FUNCTION IF EXISTS _election_distribute_votes_approval_only(JSONB, BIGINT, JSONB);
+DROP FUNCTION IF EXISTS _election_distribute_votes_approval_only(JSONB, INT, JSONB, JSONB);
+DROP FUNCTION IF EXISTS _election_distribute_votes_approval_only(JSONB, BIGINT, JSONB, JSONB);
 
 CREATE OR REPLACE FUNCTION _election_distribute_votes_approval_only(
-    p_parties    JSONB,
-    p_bloc_count INT,
-    p_tally      JSONB
+    p_parties        JSONB,
+    p_bloc_count     INT,
+    p_tally          JSONB,
+    p_bloc_approvals JSONB
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -605,10 +802,10 @@ DECLARE
     v_frac           RECORD;
     v_count          INT := 0;
 BEGIN
-    -- Sum all approvals
+    -- Sum all per-bloc approvals
     FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
     LOOP
-        v_total_approval := v_total_approval + COALESCE((v_party.value->>'approval_rating')::NUMERIC, 0);
+        v_total_approval := v_total_approval + COALESCE((p_bloc_approvals->>(v_party.value->>'id'))::NUMERIC, 40);
         v_count := v_count + 1;
     END LOOP;
 
@@ -634,11 +831,11 @@ BEGIN
         END;
     END IF;
 
-    -- Distribute proportionally by approval
+    -- Distribute proportionally by per-bloc approval
     FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
     LOOP
         v_pid := v_party.value->>'id';
-        v_approval := COALESCE((v_party.value->>'approval_rating')::NUMERIC, 0);
+        v_approval := COALESCE((p_bloc_approvals->>v_pid)::NUMERIC, 40);
         v_exact := (p_bloc_count::NUMERIC * v_approval) / v_total_approval;
         v_floored := FLOOR(v_exact);
 
@@ -673,7 +870,7 @@ $$;
 
 -- ============================================================
 -- _election_allocate_seats(tally JSONB, total_votes BIGINT, total_seats INT)
--- → JSONB { party_id: seats }
+-- -> JSONB { party_id: seats }
 --
 -- Largest Remainder / Hare Quota seat allocation.
 -- ============================================================

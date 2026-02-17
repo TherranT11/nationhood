@@ -5,9 +5,10 @@
 --
 -- 1. Loads selected presidential candidates + parent faction ideology
 -- 2. Builds "virtual party" objects per candidate (faction profile + candidate bonus)
--- 3. Runs same voter-bloc 4-step cascade as parliamentary elections
--- 4. Tallies popular votes per candidate (no seat allocation)
--- 5. Writes results to elections table
+-- 3. For each bloc, loads per-bloc approval from faction_bloc_approval
+-- 4. Runs same voter-bloc 4-step cascade as parliamentary elections
+-- 5. Tallies popular votes per candidate (no seat allocation)
+-- 6. Writes results to elections table
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION run_presidential_election(
@@ -33,6 +34,7 @@ DECLARE
     v_max_votes    BIGINT := -1;
     v_max_approval NUMERIC := -1;
     v_winner_id    TEXT;
+    v_bloc_approvals JSONB;
 BEGIN
     -- ---- Load nation ----
     SELECT id, name, eligible_voters
@@ -48,6 +50,8 @@ BEGIN
     -- Each candidate inherits their faction's ideology profile + a +15 bonus
     -- on their personal ideology axis. This lets us reuse the existing
     -- _election_process_bloc / _election_distribute_votes helpers unchanged.
+    -- Note: approval_rating and ideology_modifiers are no longer loaded here;
+    -- per-bloc approval is fetched from faction_bloc_approval in the bloc loop.
     SELECT COALESCE(jsonb_agg(row_to_json(t)::JSONB), '[]'::JSONB)
     INTO v_candidates
     FROM (
@@ -58,8 +62,6 @@ BEGIN
             f.faction_name,
             pc.ideology,
             pc.trait_key,
-            COALESCE(f.approval_rating, 0) AS approval_rating,
-            COALESCE(f.ideology_modifiers, '{}'::JSONB) AS ideology_modifiers,
             -- Inherit party axes with candidate ideology bonus (+15 on personal axis)
             -- For globalism_nationalism, negate ideology_direction (JS/SQL convention mismatch)
             LEAST(100, GREATEST(-100,
@@ -149,10 +151,26 @@ BEGIN
             v_tags := v_tags || UPPER(v_bloc.ideology_5);
         END IF;
 
+        -- Build per-bloc approval map for candidates (keyed by candidate ID, looked up by faction_id)
+        SELECT COALESCE(
+            jsonb_object_agg(sub.candidate_id, sub.approval),
+            '{}'::JSONB
+        )
+        INTO v_bloc_approvals
+        FROM (
+            SELECT
+                (c.value->>'id') AS candidate_id,
+                COALESCE(fba.approval, 40) AS approval
+            FROM jsonb_array_elements(v_candidates) AS c(value)
+            LEFT JOIN faction_bloc_approval fba
+                ON fba.faction_id = (c.value->>'faction_id')::UUID
+                AND fba.bloc_id = v_bloc.id
+        ) sub;
+
         -- Run cascade + distribute (candidates used in place of parties)
         SELECT r.step, r.abstentions, r.updated_tally
         INTO v_step, v_abstentions, v_tally
-        FROM _election_process_bloc(v_candidates, v_tags, v_bloc.voter_count, v_tally) r;
+        FROM _election_process_bloc(v_candidates, v_tags, v_bloc.voter_count, v_tally, v_bloc_approvals) r;
 
         v_total_abstentions := v_total_abstentions + COALESCE(v_abstentions, 0);
     END LOOP;
@@ -164,13 +182,18 @@ BEGIN
         v_total_votes := v_total_votes + v_cand.value::BIGINT;
     END LOOP;
 
-    -- ---- Determine winner (highest votes, tiebreak by approval) ----
+    -- ---- Determine winner (highest votes, tiebreak by avg faction_bloc_approval) ----
     FOR v_cand IN SELECT * FROM jsonb_array_elements(v_candidates)
     LOOP
         DECLARE
             cid TEXT := v_cand.value->>'id';
             cvotes BIGINT := COALESCE((v_tally->>cid)::BIGINT, 0);
-            capproval NUMERIC := COALESCE((v_cand.value->>'approval_rating')::NUMERIC, 0);
+            capproval NUMERIC := COALESCE(
+                (SELECT AVG(fba.approval)
+                 FROM faction_bloc_approval fba
+                 WHERE fba.faction_id = (v_cand.value->>'faction_id')::UUID),
+                40
+            );
         BEGIN
             IF cvotes > v_max_votes OR (cvotes = v_max_votes AND capproval > v_max_approval) THEN
                 v_max_votes := cvotes;
