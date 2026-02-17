@@ -1980,6 +1980,18 @@ function renderNoConfidenceButton(coalition) {
     const isInCoalition = coalition.party_ids.includes(currentFaction.id);
     if (isInCoalition) return '';
 
+    // Parties with no seats cannot file no-confidence
+    const mySeats = allPartySeats[currentFaction.id] || currentFaction.seats || 0;
+    if (mySeats < 1) {
+        return `
+            <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
+                <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" disabled>
+                    ⚡ Vote of No Confidence
+                </button>
+                <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">Need at least 1 seat in the legislature.</div>
+            </div>`;
+    }
+
     return `
         <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
             <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="fileNoConfidence()" id="no-confidence-btn">
@@ -1991,6 +2003,13 @@ function renderNoConfidenceButton(coalition) {
 
 async function fileNoConfidence() {
     if (!currentFaction || !currentNation || !coalitionData) return;
+
+    // Must have at least 1 seat
+    const mySeatsCheck = allPartySeats[currentFaction.id] || currentFaction.seats || 0;
+    if (mySeatsCheck < 1) {
+        alert('Need at least 1 seat in the legislature to file a vote of no confidence.');
+        return;
+    }
 
     // Cannot file no-confidence against a caretaker government
     if (coalitionData.status === 'caretaker') {
