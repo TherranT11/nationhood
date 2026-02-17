@@ -533,73 +533,6 @@ function getIdeologySummary(ideologyRow) {
 }
 
 
-// ==================== IDEOLOGY POINT CALCULATION ====================
-
-const IDEOLOGY_POINT_VALUES = {
-    VOTE_YES:     3,
-    PROPOSED:     3,
-    BILL_PASSED:  4
-};
-
-function calculateIdeologyShifts({ votedYesBills = [], proposedBills = [], passedBills = [] }) {
-    const shifts = {};
-
-    function addShift(axisKey, amount) {
-        shifts[axisKey] = (shifts[axisKey] || 0) + amount;
-    }
-
-    function getArticleIdeologies(bill) {
-        const tags = [];
-        for (const art of (bill.bill_articles || [])) {
-            const p = art.policies || art;
-            if (!p) continue;
-            const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
-                ? p.ideologies.map(i => i.toUpperCase())
-                : (p.ideology ? [p.ideology.toUpperCase()] : []);
-            tags.push(...ideos);
-        }
-        return tags;
-    }
-
-    for (const bill of votedYesBills) {
-        const tags = getArticleIdeologies(bill);
-        for (const tag of tags) {
-            const mapping = IDEOLOGY_TO_AXIS[tag];
-            if (mapping) addShift(mapping.axisKey, mapping.direction * IDEOLOGY_POINT_VALUES.VOTE_YES);
-        }
-    }
-
-    for (const bill of proposedBills) {
-        const tags = getArticleIdeologies(bill);
-        for (const tag of tags) {
-            const mapping = IDEOLOGY_TO_AXIS[tag];
-            if (mapping) addShift(mapping.axisKey, mapping.direction * IDEOLOGY_POINT_VALUES.PROPOSED);
-        }
-    }
-
-    for (const bill of passedBills) {
-        const tags = getArticleIdeologies(bill);
-        for (const tag of tags) {
-            const mapping = IDEOLOGY_TO_AXIS[tag];
-            if (mapping) addShift(mapping.axisKey, mapping.direction * IDEOLOGY_POINT_VALUES.BILL_PASSED);
-        }
-    }
-
-    return shifts;
-}
-
-function applyIdeologyShifts(currentScores, shifts) {
-    const newScores = { ...currentScores };
-    for (const axis of IDEOLOGY_AXES) {
-        const shift = shifts[axis.key] || 0;
-        if (shift === 0) continue;
-        const current = newScores[axis.key] || 0;
-        newScores[axis.key] = Math.max(-100, Math.min(100, current + shift));
-    }
-    return newScores;
-}
-
-
 // ==================== DRIFT DETECTION ====================
 
 const DRIFT_THRESHOLDS = {
@@ -1228,7 +1161,9 @@ function calculateEnactmentIdeologyModifiers(articles, billSupport, sponsorId, f
     votes[sponsorId] = 'yes';
     for (const s of (billSupport || [])) {
         if (s.faction_id !== sponsorId) {
-            votes[s.faction_id] = s.stance;
+            // Normalize committee stances: 'accept' → 'yes', 'reject' → 'no'
+            const normalizedStance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+            votes[s.faction_id] = normalizedStance;
         }
     }
 
@@ -1508,123 +1443,34 @@ async function ensureBlocApprovals(supabase, factionId, nationId) {
 
 // ==================== IDEOLOGY TICK PROCESSOR ====================
 
-async function processIdeologyTick(supabase, nation, currentTick, resolutions) {
+async function processIdeologyTick(supabase, nation, currentTick) {
+    // Snapshot current ideology scores and detect drift/hypocrisy.
+    // Axis shifts are now handled exclusively by ideology_modifiers
+    // (set by enactBill → applyEnactmentIdeologyModifiers, applied by applyIdeologyModifiersToAxes).
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, faction_name, ideology_value_1, ideology_value_2')
+        .select('id, faction_name')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
     if (!factions || factions.length === 0) return [];
 
-    const resolvedBillIds = (resolutions || []).map(r => r.billId);
-    const passedBillIds = new Set((resolutions || []).filter(r => r.result === 'passed').map(r => r.billId));
-
-    if (resolvedBillIds.length === 0) {
-        for (const faction of factions) {
-            await snapshotIdeology(supabase, faction.id, currentTick);
-        }
-        return [];
-    }
-
-    const { data: rawResolvedBills } = await supabase
-        .from('bills')
-        .select('*, bill_articles(*, policies(*))')
-        .in('id', resolvedBillIds);
-
-    // Only legislative bills affect ideology — exclude ambassador confirmations, no-confidence, foundational
-    const allResolvedBills = (rawResolvedBills || []).filter(b =>
-        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
-    );
-
-    if (allResolvedBills.length === 0) {
-        for (const faction of factions) {
-            await snapshotIdeology(supabase, faction.id, currentTick);
-        }
-        return [];
-    }
-
-    const { data: allVotes } = await supabase
-        .from('bill_support')
-        .select('bill_id, faction_id, stance')
-        .in('bill_id', resolvedBillIds);
     const allEvents = [];
 
     for (const faction of factions) {
-        const factionVotes = (allVotes || []).filter(v => v.faction_id === faction.id);
-
-        const votedYesBills = [];
-        const proposedBills = [];
-        const passedBillsYesVote = [];
-
-        for (const bill of allResolvedBills) {
-            const vote = factionVotes.find(v => v.bill_id === bill.id);
-            // Normalize committee stances: 'accept' → 'yes', 'reject' → 'no'
-            const normalizedStance = vote?.stance === 'accept' ? 'yes' : vote?.stance === 'reject' ? 'no' : vote?.stance;
-
-            if (bill.proposed_by === faction.id) {
-                proposedBills.push(bill);
-                // Sponsor always counts as YES voter on their own bill
-                if (!votedYesBills.includes(bill)) {
-                    votedYesBills.push(bill);
-                    if (passedBillIds.has(bill.id)) {
-                        passedBillsYesVote.push(bill);
-                    }
-                }
-            }
-
-            if (normalizedStance === 'yes' && !votedYesBills.includes(bill)) {
-                votedYesBills.push(bill);
-                if (passedBillIds.has(bill.id)) {
-                    passedBillsYesVote.push(bill);
-                }
-            }
-        }
-
-        if (votedYesBills.length === 0 && proposedBills.length === 0) {
-            await snapshotIdeology(supabase, faction.id, currentTick);
-            continue;
-        }
-
         const ideologyRow = await loadFactionIdeology(supabase, faction.id);
         if (!ideologyRow) {
-            console.warn(`No ideology row for ${faction.faction_name} (${faction.id}) — skipping`);
+            await snapshotIdeology(supabase, faction.id, currentTick);
             continue;
         }
 
         const currentScores = extractAxisScores(ideologyRow);
-
-        const shifts = calculateIdeologyShifts({
-            votedYesBills,
-            proposedBills,
-            passedBills: passedBillsYesVote
-        });
-
-        const newScores = applyIdeologyShifts(currentScores, shifts);
-
-        const updateObj = {};
-        let hasChanges = false;
-        for (const axis of IDEOLOGY_AXES) {
-            if (newScores[axis.key] !== currentScores[axis.key]) {
-                updateObj[axis.key] = newScores[axis.key];
-                hasChanges = true;
-            }
-        }
-
-        if (hasChanges) {
-            const { error: updateError } = await supabase
-                .from('faction_ideology')
-                .update(updateObj)
-                .eq('faction_id', faction.id);
-            if (updateError) console.error(`Ideology update failed for ${faction.faction_name}:`, updateError.message);
-        }
-
-        await snapshotIdeology(supabase, faction.id, currentTick, newScores);
+        await snapshotIdeology(supabase, faction.id, currentTick, currentScores);
 
         const previousSnapshot = await loadPreviousIdeologySnapshot(supabase, faction.id, currentTick);
         if (previousSnapshot) {
             const previousScores = extractAxisScores(previousSnapshot);
-            const driftEvents = detectIdeologyDrift(newScores, previousScores, ideologyRow, faction.faction_name);
+            const driftEvents = detectIdeologyDrift(currentScores, previousScores, ideologyRow, faction.faction_name);
 
             for (const evt of driftEvents) {
                 allEvents.push({ ...evt, factionId: faction.id, factionName: faction.faction_name });
@@ -1658,16 +1504,6 @@ async function processIdeologyTick(supabase, nation, currentTick, resolutions) {
                     }
                 }
             }
-        }
-
-        const shiftEntries = Object.entries(shifts).filter(([, v]) => v !== 0);
-        if (shiftEntries.length > 0) {
-            const shiftStr = shiftEntries.map(([axis, delta]) => {
-                const axisDef = IDEOLOGY_AXES.find(a => a.key === axis);
-                const label = delta < 0 ? axisDef?.leftLabel : axisDef?.rightLabel;
-                return `${axis}: ${delta > 0 ? '+' : ''}${delta} → ${newScores[axis]} (${label})`;
-            }).join(', ');
-            console.log(`Ideology shifts for ${faction.faction_name}: ${shiftStr}`);
         }
     }
 
@@ -4658,13 +4494,11 @@ async function advanceTick(supabase) {
         await processPresidentCandidateTimeout(supabase, nation, newTick);
         await processParliamentaryPMTimeout(supabase, nation, newTick);
 
-        // 6. Process ideology shifts from this tick's votes/bills
-        // Combine floor resolutions + president desk results for ideology processing
-        const allResolutions = [
-            ...resolutions,
-            ...deskResults.map(d => ({ billId: d.billId, billName: d.billName, result: 'passed' }))
-        ];
-        const ideologyEvents = await processIdeologyTick(supabase, nation, newTick, allResolutions);
+        // 6. Apply ideology modifiers to axis scores (before snapshot)
+        await applyIdeologyModifiersToAxes(supabase, nation.id);
+
+        // 6b. Snapshot ideology scores and detect drift/hypocrisy
+        const ideologyEvents = await processIdeologyTick(supabase, nation, newTick);
         if (ideologyEvents.length > 0) {
             summary.ideology = summary.ideology || [];
             summary.ideology.push({ nation: nation.name, events: ideologyEvents });
@@ -4675,10 +4509,7 @@ async function advanceTick(supabase) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
-        // 7b. Apply ideology modifiers to axis scores (before decay)
-        await applyIdeologyModifiersToAxes(supabase, nation.id);
-
-        // 7c. Process ideology modifier decay (all government types)
+        // 7b. Process ideology modifier decay (all government types)
         await processIdeologyModifierDecay(supabase, nation.id);
 
         // 7c. Process bloc approval decay toward ideology-based targets
