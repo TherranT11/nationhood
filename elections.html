@@ -1887,6 +1887,28 @@ async function loadElectionInfo() {
     }
 
     if (isPresidential) {
+        // Check for overdue scheduled elections before fetching future ones
+        const { data: overduePresElection } = await _supabase
+            .from('elections').select('*').eq('nation_id', currentNation.id).eq('status', 'scheduled')
+            .lte('election_tick', shard.current_tick)
+            .order('election_tick', { ascending: true }).limit(1).maybeSingle();
+
+        if (overduePresElection) {
+            const parlDateEl = document.getElementById('next-parliamentary-tick');
+            const parlTicksEl = document.getElementById('ticks-until-parliamentary');
+            const presDateEl = document.getElementById('next-presidential-tick');
+            const presTicksEl = document.getElementById('ticks-until-presidential');
+            const elType = overduePresElection.election_type || 'parliamentary';
+            if (elType === 'presidential') {
+                if (presDateEl) presDateEl.textContent = 'Overdue — pending';
+                if (presTicksEl) presTicksEl.textContent = 'Will process next tick';
+            } else {
+                if (parlDateEl) parlDateEl.textContent = 'Overdue — pending';
+                if (parlTicksEl) parlTicksEl.textContent = 'Will process next tick';
+            }
+            // Still fetch the other election type normally below
+        }
+
         // Presidential systems have dual elections — fetch both types
         let { data: parlElection, error: parlErr } = await _supabase
             .from('elections').select('*').eq('nation_id', currentNation.id).eq('status', 'scheduled')
@@ -1960,6 +1982,21 @@ async function loadElectionInfo() {
     }
 
     const DEFAULT_ELECTION_INTERVAL = 48; // ticks between elections (baseline, can be changed by law)
+
+    // Check for overdue scheduled elections (election_tick in the past but still 'scheduled')
+    const { data: overdueElection } = await _supabase
+        .from('elections').select('*').eq('nation_id', currentNation.id).eq('status', 'scheduled')
+        .lte('election_tick', shard.current_tick)
+        .order('election_tick', { ascending: true }).limit(1).maybeSingle();
+
+    if (overdueElection) {
+        // Show overdue notice — don't auto-schedule a duplicate
+        const nextEl = document.getElementById('next-election-tick');
+        const ticksEl = document.getElementById('ticks-until-election');
+        if (nextEl) nextEl.textContent = 'Overdue — pending';
+        if (ticksEl) ticksEl.textContent = 'Will process next tick';
+        return;
+    }
 
     // Only fetch elections scheduled in the future (tick > current tick)
     let { data: election } = await _supabase

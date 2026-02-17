@@ -2922,6 +2922,32 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
 
     // Check for active coalition
     const coalition = await fetchActiveCoalition(supabase, nation.id);
+
+    // Safety net: detect stale caretaker government with overdue election
+    if (coalition && coalition.status === 'caretaker') {
+        const { data: overdueElection } = await supabase
+            .from('elections')
+            .select('id, election_tick')
+            .eq('nation_id', nation.id)
+            .eq('status', 'scheduled')
+            .lte('election_tick', currentTick)
+            .order('election_tick', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+        if (overdueElection) {
+            const overdueBy = currentTick - overdueElection.election_tick;
+            if (overdueBy >= 2) {
+                // Election has been stuck for 2+ ticks — reschedule to next tick
+                await supabase.from('elections')
+                    .update({ election_tick: currentTick + 1 })
+                    .eq('id', overdueElection.id);
+                console.log(`Safety net: rescheduled stale caretaker election ${overdueElection.id} to tick ${currentTick + 1} (was overdue by ${overdueBy} ticks)`);
+            }
+        }
+        return null; // Caretaker is a valid government state
+    }
+
     if (coalition) return null;
 
     // Get latest completed election (filter out records without results to avoid
@@ -3338,8 +3364,26 @@ async function processElections(supabase, nation, currentTick) {
         }
 
         if (error) {
-            console.error('Election processing error:', error);
-            continue;
+            console.error(`Election RPC failed (attempt 1) for ${nation.name}:`, error);
+            // Retry once
+            if (electionType === 'presidential') {
+                ({ data, error } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id }));
+            } else {
+                ({ data, error } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: electionType }));
+            }
+
+            if (error) {
+                console.error(`Election RPC failed (attempt 2) for ${nation.name}:`, error);
+                // If overdue, reschedule to next tick to prevent permanent stuck state
+                if (election.election_tick < currentTick) {
+                    await supabase.from('elections')
+                        .update({ election_tick: currentTick + 1 })
+                        .eq('id', election.id);
+                    console.log(`Rescheduled overdue election ${election.id} to tick ${currentTick + 1}`);
+                }
+                continue;
+            }
+            console.log(`Election RPC succeeded on retry for ${nation.name}`);
         }
 
         // Mark the scheduled election record as completed with full results
