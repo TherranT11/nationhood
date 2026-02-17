@@ -826,7 +826,45 @@
             console.log('Ideology initialized via client-side fallback');
         }
     }
-    
+
+    // Seed faction_bloc_approval rows for a new faction — all active blocs get default 40% approval
+    async function seedBlocApprovalsForFaction(factionId, nationId) {
+        try {
+            const { data: blocs, error: blocErr } = await _supabase
+                .from('voter_blocs')
+                .select('id')
+                .eq('nation_id', nationId)
+                .eq('is_active', true);
+
+            if (blocErr) {
+                console.warn('Failed to fetch voter blocs for approval seeding:', blocErr.message);
+                return;
+            }
+            if (!blocs || blocs.length === 0) {
+                console.log('No active voter blocs found — skipping approval seeding.');
+                return;
+            }
+
+            const rows = blocs.map(bloc => ({
+                faction_id: factionId,
+                bloc_id: bloc.id,
+                approval: 40
+            }));
+
+            const { error: upsertErr } = await _supabase
+                .from('faction_bloc_approval')
+                .upsert(rows, { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true });
+
+            if (upsertErr) {
+                console.warn('Failed to seed bloc approvals:', upsertErr.message);
+            } else {
+                console.log(`Seeded ${rows.length} bloc approval rows for faction ${factionId}`);
+            }
+        } catch (e) {
+            console.warn('Bloc approval seeding non-blocking error:', e);
+        }
+    }
+
     async function createParty() {
         const confirmBtn = document.getElementById('confirm-btn');
         confirmBtn.disabled = true;
@@ -896,6 +934,9 @@
                     }, { onConflict: 'faction_id' });
                 } catch (e) { console.warn('Ideology init (autocracy) non-blocking:', e); }
 
+                // Seed bloc approval rows for the new faction
+                await seedBlocApprovalsForFaction(currentUser.id, nation.id);
+
                 alert(`🏛️ ${partyName} has joined the regime in ${selectedNation}!\n\nYou have been assigned ${seatsAssigned} seats.\n${factionNumber === 1 ? '\nAs the first faction, you serve under the Strongman.' : ''}`);
                 window.location.href = 'nation.html';
                 
@@ -930,6 +971,9 @@
                     console.warn('Ideology RPC failed, using client-side fallback:', ideoError);
                     await initializeIdeologyFallback(currentUser.id, selectedIdeologies[0], selectedIdeologies[1]);
                 }
+
+                // Seed bloc approval rows for the new faction
+                await seedBlocApprovalsForFaction(currentUser.id, nation.id);
 
                 alert(`🎉 ${partyName} has been created! Welcome to the ${selectedNation} political scene.`);
                 window.location.href = 'nation.html';

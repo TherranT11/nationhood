@@ -177,6 +177,28 @@
         .no-gov-warning { background: #2a1a1a; border: 1px solid #ff9800; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; }
         .no-gov-warning-icon { font-size: 1.5rem; }
         .no-gov-warning-text { font-size: 0.85rem; color: #ff9800; }
+
+        /* ===== ELECTION BREAKDOWN ===== */
+        .bloc-row { background: #1a1a1a; border-radius: 8px; margin-bottom: 8px; overflow: hidden; border: 1px solid #2a2a2a; }
+        .bloc-row-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; cursor: pointer; transition: background 0.2s; }
+        .bloc-row-header:hover { background: #252525; }
+        .bloc-row-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+        .bloc-row-name { font-size: 0.9rem; font-weight: bold; color: #e0e0e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .bloc-row-count { font-size: 0.78rem; color: #888; white-space: nowrap; }
+        .bloc-row-arrow { color: #666; font-size: 1rem; transition: transform 0.3s; margin-left: 12px; }
+        .bloc-row.expanded .bloc-row-arrow { transform: rotate(90deg); }
+        .bloc-row-content { display: none; padding: 0 20px 16px; }
+        .bloc-row.expanded .bloc-row-content { display: block; }
+        .bloc-tags-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+        .bloc-vote-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 0.82rem; }
+        .bloc-vote-name { width: 140px; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .bloc-vote-name.top-party { color: #ffcc00; font-weight: bold; }
+        .bloc-vote-bar-wrap { flex: 1; height: 10px; background: #222; border-radius: 4px; overflow: hidden; }
+        .bloc-vote-bar { height: 100%; border-radius: 4px; transition: width 0.3s; }
+        .bloc-vote-count { width: 110px; text-align: right; color: #aaa; font-size: 0.78rem; }
+        .bloc-vote-count.top-party { color: #ffcc00; font-weight: bold; }
+        .bloc-abstentions { margin-top: 8px; font-size: 0.78rem; color: #ff6666; padding-top: 8px; border-top: 1px solid #222; }
+        .breakdown-loading { text-align: center; padding: 24px; color: #888; font-size: 0.85rem; }
     </style>
 </head>
 <body>
@@ -464,6 +486,14 @@ async function renderDemocracyPage() {
                 </div>
             </div>
             `}
+
+            <!-- Election Breakdown (per-bloc voting detail) -->
+            <div id="election-breakdown-section" style="display: ${election ? 'block' : 'none'}; margin-top: 30px;">
+                <div class="section-header">Election Breakdown</div>
+                <div id="election-breakdown-content">
+                    <div class="breakdown-loading">Simulating voter bloc breakdown...</div>
+                </div>
+            </div>
         </div>
     `;
 
@@ -473,6 +503,7 @@ async function renderDemocracyPage() {
         await renderPresidentialResults(presidentialElection);
     }
     await renderElectionResults(election);
+    if (election) renderElectionBreakdown(); // fire-and-forget
     if (showFormation) await loadFormationsList();
     await loadElectionInfo();
 }
@@ -510,6 +541,91 @@ async function renderElectionResults(election) {
         </div>
     `).join('');
 }
+
+
+// ===================================================================
+// ELECTION BREAKDOWN (per-bloc voter detail)
+// ===================================================================
+
+async function renderElectionBreakdown() {
+    const container = document.getElementById('election-breakdown-content');
+    if (!container) return;
+
+    try {
+        const result = await runElectionPreview(_supabase, currentNation.id);
+        const blocDetails = result.bloc_details || [];
+        const partyNames = result.partyNames || {};
+
+        if (blocDetails.length === 0) {
+            container.innerHTML = '<div style="color:#666; padding:16px; font-size:0.85rem;">No voter bloc data available.</div>';
+            return;
+        }
+
+        const sorted = [...blocDetails].sort((a, b) => b.voter_count - a.voter_count);
+
+        const ideologyColors = {
+            'LIBERTY': '#9C27B0', 'EQUALITY': '#E91E63', 'FREEDOM': '#2196F3',
+            'SECURITY': '#FF9800', 'INDIVIDUALISM': '#eab308', 'COLLECTIVISM': '#ec4899',
+            'TRADITION': '#795548', 'PROGRESS': '#00BCD4', 'NATIONALISM': '#FF5722',
+            'GLOBALISM': '#3F51B5'
+        };
+
+        container.innerHTML = sorted.map((bloc, idx) => {
+            const blocId = 'breakdown-bloc-' + idx;
+
+            // Ideology tags
+            const tagsHtml = (bloc.tags || []).length > 0
+                ? bloc.tags.map(tag => `<span class="ideology-tag tag-${tag.toLowerCase()}">${tag.toUpperCase()}</span>`).join('')
+                : '<span style="font-size:0.78rem; color:#666; font-style:italic;">Unaligned</span>';
+
+            // Party vote bars
+            const voteEntries = Object.entries(bloc.blocVotes || {})
+                .map(([pid, votes]) => ({ name: partyNames[pid] || pid.slice(0, 8), votes }))
+                .sort((a, b) => b.votes - a.votes);
+            const maxVotes = voteEntries.length > 0 ? voteEntries[0].votes : 0;
+
+            const votesHtml = voteEntries.map(e => {
+                const barWidth = maxVotes > 0 ? (e.votes / maxVotes) * 100 : 0;
+                const isTop = e.votes === maxVotes;
+                const barColor = isTop ? '#ffcc00' : '#555';
+                const topClass = isTop ? ' top-party' : '';
+                const actualVoters = bloc.voter_count - bloc.abstentions;
+                const pct = actualVoters > 0 ? ((e.votes / actualVoters) * 100).toFixed(1) : '0.0';
+                return `<div class="bloc-vote-row">
+                    <span class="bloc-vote-name${topClass}">${e.name}</span>
+                    <div class="bloc-vote-bar-wrap">
+                        <div class="bloc-vote-bar" style="width:${barWidth}%; background:${barColor};"></div>
+                    </div>
+                    <span class="bloc-vote-count${topClass}">${e.votes.toLocaleString()} (${pct}%)</span>
+                </div>`;
+            }).join('');
+
+            // Abstentions
+            const abstentionsHtml = bloc.abstentions > 0
+                ? `<div class="bloc-abstentions">Abstained: ${bloc.abstentions.toLocaleString()} voters</div>`
+                : '';
+
+            return `<div class="bloc-row" id="${blocId}">
+                <div class="bloc-row-header" onclick="document.getElementById('${blocId}').classList.toggle('expanded')">
+                    <div class="bloc-row-left">
+                        <span class="bloc-row-name">${bloc.bloc_name}</span>
+                        <span class="bloc-row-count">${bloc.voter_count.toLocaleString()} voters</span>
+                    </div>
+                    <div class="bloc-row-arrow">&#9654;</div>
+                </div>
+                <div class="bloc-row-content">
+                    <div class="bloc-tags-row">${tagsHtml}</div>
+                    <div>${votesHtml}</div>
+                    ${abstentionsHtml}
+                </div>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        console.error('Election breakdown error:', err);
+        container.innerHTML = '<div style="color:#ff6666; padding:16px; font-size:0.85rem;">Could not load election breakdown.</div>';
+    }
+}
+
 
 /**
  * Render presidential candidate election results (candidate-level popular vote).
@@ -1470,21 +1586,28 @@ async function formGovernment() {
                     minister_approval: 50
                 };
 
-                const { data: existing } = await _supabase.from('ministries')
+                const { data: existing, error: lookupErr } = await _supabase.from('ministries')
                     .select('id').eq('nation_id', currentNation.id)
                     .eq('ministry_key', ministryKey).eq('is_active', true)
                     .maybeSingle();
 
+                if (lookupErr) {
+                    console.warn(`Ministry lookup failed for ${ministryKey}:`, lookupErr);
+                    continue;
+                }
+
                 if (existing) {
-                    await _supabase.from('ministries').update(ministryData).eq('id', existing.id);
+                    const { error: updErr } = await _supabase.from('ministries').update(ministryData).eq('id', existing.id);
+                    if (updErr) console.warn(`Ministry update failed for ${ministryKey}:`, updErr);
                 } else {
-                    await _supabase.from('ministries').insert({
+                    const { error: insErr } = await _supabase.from('ministries').insert({
                         nation_id: currentNation.id,
                         ministry_key: ministryKey,
                         ministry_name: ministryDisplayNames[ministryKey] || ministryKey,
                         is_active: true,
                         ...ministryData
                     });
+                    if (insErr) console.warn(`Ministry insert failed for ${ministryKey}:`, insErr);
                 }
             }
 
@@ -1515,7 +1638,7 @@ async function formGovernment() {
                 // Close previous administration and create new one
                 const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
                 const { data: allFactions } = await _supabase.from('factions')
-                    .select('id, faction_name, seats')
+                    .select('id, faction_name, seats, approval_rating')
                     .eq('nation_id', currentNation.id).eq('faction_type', 'party');
                 const { data: newFormation } = await _supabase.from('government_formations')
                     .select('party_ids, ministry_assignments, proposed_by')
@@ -1551,7 +1674,8 @@ async function formGovernment() {
                             govApproval
                         );
                     } catch (adminErr) {
-                        throw new Error(`Administration lifecycle failed during government formation: ${adminErr.message || adminErr}`);
+                        console.error('Administration lifecycle error (non-fatal):', adminErr);
+                        // Don't throw — PM candidate generation must still proceed
                     }
                 }
 

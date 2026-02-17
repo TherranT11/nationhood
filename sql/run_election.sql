@@ -86,6 +86,35 @@ BEGIN
         v_tally := v_tally || jsonb_build_object(v_party.value->>'id', 0);
     END LOOP;
 
+    -- ---- Compute ideology saturation ----
+    -- Count how many parties positively align with each ideology tag.
+    -- Over-served ideologies get higher abstention (voter complacency);
+    -- under-served get lower abstention (underdog motivation).
+    DECLARE
+        v_saturation     JSONB := '{}'::JSONB;
+        v_avg_saturation NUMERIC := 1;
+        v_sat_count      INT;
+        v_sat_total      NUMERIC := 0;
+        v_sat_active     INT := 0;
+        v_all_tags       TEXT[] := ARRAY['LIBERTY','EQUALITY','TRADITION','PROGRESS','SECURITY',
+                                         'FREEDOM','GLOBALISM','NATIONALISM','INDIVIDUALISM','COLLECTIVISM'];
+        v_stag           TEXT;
+    BEGIN
+        FOREACH v_stag IN ARRAY v_all_tags LOOP
+            v_sat_count := 0;
+            FOR v_party IN SELECT * FROM jsonb_array_elements(v_parties) LOOP
+                IF _election_get_alignment(v_party.value, v_stag) > 0 THEN
+                    v_sat_count := v_sat_count + 1;
+                END IF;
+            END LOOP;
+            v_saturation := v_saturation || jsonb_build_object(v_stag, v_sat_count);
+            IF v_sat_count > 0 THEN
+                v_sat_total := v_sat_total + v_sat_count;
+                v_sat_active := v_sat_active + 1;
+            END IF;
+        END LOOP;
+        IF v_sat_active > 0 THEN v_avg_saturation := v_sat_total / v_sat_active; END IF;
+
     -- ---- Compute voter bloc scale factor ----
     -- Blocs are generated from population, but elections use eligible_voters
     DECLARE
@@ -155,6 +184,7 @@ BEGIN
         v_total_abstentions := v_total_abstentions + COALESCE(v_abstentions, 0);
     END LOOP;
     END; -- close DECLARE block for v_bloc_scale
+    END; -- close DECLARE block for v_saturation
 
     -- ---- Calculate total votes ----
     v_total_votes := 0;
@@ -311,6 +341,16 @@ DECLARE
     v_party_id       TEXT;
     v_leak_allocated BIGINT;
 BEGIN
+    -- Pre-compute saturation modifier for this bloc's tags
+    IF v_tag_count IS NOT NULL AND v_tag_count > 0 AND p_saturation != '{}'::JSONB THEN
+        FOR v_i IN 1..v_tag_count LOOP
+            v_sat_sum := v_sat_sum + COALESCE((p_saturation->>UPPER(p_tags[v_i]))::NUMERIC, 0);
+        END LOOP;
+        v_bloc_sat := v_sat_sum / v_tag_count;
+        v_sat_mod := (v_bloc_sat - p_avg_saturation) * c_SAT_RATE;
+        v_sat_mod := GREATEST(-c_SAT_CAP, LEAST(c_SAT_CAP, v_sat_mod));
+    END IF;
+
     -- Handle Unaligned bloc (no tags)
     IF v_tag_count IS NULL OR v_tag_count = 0 THEN
         -- Step 0: 35% base abstention for unaligned blocs
@@ -344,8 +384,9 @@ BEGIN
     END LOOP;
 
     IF array_length(v_eligible_ids, 1) > 0 THEN
-        -- Step 1: 20% base abstention — most motivated voters
-        v_abstain := FLOOR(p_bloc_count * 0.20);
+        -- Step 1: 20% base abstention + saturation modifier
+        v_abstain_rate := GREATEST(0.05, LEAST(0.85, 0.20 + v_sat_mod));
+        v_abstain := FLOOR(p_bloc_count * v_abstain_rate);
         v_voters := p_bloc_count - v_abstain;
         IF v_voters > 0 THEN
             v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, v_voters, v_tally, p_bloc_approvals);
@@ -435,8 +476,9 @@ BEGIN
     END LOOP;
 
     IF array_length(v_eligible_ids, 1) > 0 THEN
-        -- Step 2: 28% base abstention — moderate motivation
-        v_abstain := FLOOR(p_bloc_count * 0.28);
+        -- Step 2: 28% base abstention + saturation modifier
+        v_abstain_rate := GREATEST(0.05, LEAST(0.85, 0.28 + v_sat_mod));
+        v_abstain := FLOOR(p_bloc_count * v_abstain_rate);
         v_voters := p_bloc_count - v_abstain;
         IF v_voters > 0 THEN
             v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, v_voters, v_tally, p_bloc_approvals);
@@ -531,8 +573,9 @@ BEGIN
     END LOOP;
 
     IF array_length(v_eligible_ids, 1) > 0 THEN
-        -- Step 3: 33% base abstention — lukewarm support
-        v_abstain := FLOOR(p_bloc_count * 0.33);
+        -- Step 3: 33% base abstention + saturation modifier
+        v_abstain_rate := GREATEST(0.05, LEAST(0.85, 0.33 + v_sat_mod));
+        v_abstain := FLOOR(p_bloc_count * v_abstain_rate);
         v_voters := p_bloc_count - v_abstain;
         IF v_voters > 0 THEN
             v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, v_voters, v_tally, p_bloc_approvals);
@@ -607,8 +650,9 @@ BEGIN
     END IF;
 
     -- ==== STEP 4: Forced choice / abstention ====
-    -- Step 4: 75% abstain — deeply disaffected
-    v_abstain := FLOOR(p_bloc_count * 0.75);
+    -- Step 4: 75% base abstention + saturation modifier
+    v_abstain_rate := GREATEST(0.05, LEAST(0.85, 0.75 + v_sat_mod));
+    v_abstain := FLOOR(p_bloc_count * v_abstain_rate);
     DECLARE
         v_forced INT := p_bloc_count - v_abstain;
         v_best_id TEXT;

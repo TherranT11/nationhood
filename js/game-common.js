@@ -276,7 +276,8 @@ const MAJOR_SECTORS = [
     { key: 'MILITARY',      label: 'Military & Security', icon: '🛡️' },
     { key: 'GOVERNANCE',    label: 'Governance',          icon: '🏛️' },
     { key: 'IMMIGRATION',   label: 'Immigration',         icon: '🌍' },
-    { key: 'INTERNATIONAL', label: 'International',       icon: '🌐' }
+    { key: 'INTERNATIONAL', label: 'International',       icon: '🌐' },
+    { key: 'TRADE',         label: 'Trade',               icon: '📦' }
 ];
 
 // Policy Platform stances — each sector has 4 stances, each leaning toward 2 ideology poles.
@@ -331,16 +332,22 @@ const POLICY_STANCES = {
         { key: 'decentralization',  name: 'Decentralization',      desc: 'Distribute power to local communities and regions.',       poles: ['FREEDOM', 'EQUALITY'] }
     ],
     IMMIGRATION: [
-        { key: 'closed_borders',       name: 'Closed Borders',       desc: 'Restrict immigration and strengthen border security.',  poles: ['SECURITY', 'TRADITION'] },
+        { key: 'closed_borders',       name: 'Closed Borders',       desc: 'Restrict immigration and strengthen border security.',  poles: ['NATIONALISM', 'SECURITY'] },
         { key: 'skilled_migration',    name: 'Skilled Migration',    desc: 'Attract highly skilled immigrants selectively.',         poles: ['LIBERTY', 'INDIVIDUALISM'] },
-        { key: 'open_arms',           name: 'Open Arms',            desc: 'Welcome refugees and increase immigration quotas.',      poles: ['EQUALITY', 'FREEDOM'] },
-        { key: 'cultural_integration', name: 'Cultural Integration', desc: 'Require cultural assimilation for new arrivals.',       poles: ['TRADITION', 'COLLECTIVISM'] }
+        { key: 'open_arms',           name: 'Open Arms',            desc: 'Welcome refugees and increase immigration quotas.',      poles: ['GLOBALISM', 'FREEDOM'] },
+        { key: 'cultural_integration', name: 'Cultural Integration', desc: 'Require cultural assimilation for new arrivals.',       poles: ['NATIONALISM', 'TRADITION'] }
     ],
     INTERNATIONAL: [
-        { key: 'non_interventionist',  name: 'Non-Interventionist',  desc: 'Avoid foreign entanglements and focus on domestic affairs.', poles: ['INDIVIDUALISM', 'FREEDOM'] },
-        { key: 'global_leadership',    name: 'Global Leadership',    desc: 'Lead international institutions and alliances.',             poles: ['PROGRESS', 'COLLECTIVISM'] },
-        { key: 'military_deterrence',  name: 'Military Deterrence',  desc: 'Project strength to deter foreign aggression.',              poles: ['SECURITY', 'INDIVIDUALISM'] },
-        { key: 'humanitarian_focus',   name: 'Humanitarian Focus',   desc: 'Prioritize foreign aid and human rights advocacy.',           poles: ['EQUALITY', 'PROGRESS'] }
+        { key: 'non_interventionist',  name: 'Non-Interventionist',  desc: 'Avoid foreign entanglements and focus on domestic affairs.', poles: ['NATIONALISM', 'FREEDOM'] },
+        { key: 'global_leadership',    name: 'Global Leadership',    desc: 'Lead international institutions and alliances.',             poles: ['GLOBALISM', 'PROGRESS'] },
+        { key: 'military_deterrence',  name: 'Military Deterrence',  desc: 'Project strength to deter foreign aggression.',              poles: ['SECURITY', 'NATIONALISM'] },
+        { key: 'humanitarian_focus',   name: 'Humanitarian Focus',   desc: 'Prioritize foreign aid and human rights advocacy.',           poles: ['GLOBALISM', 'EQUALITY'] }
+    ],
+    TRADE: [
+        { key: 'free_trade',          name: 'Free Trade',            desc: 'Eliminate tariffs and open markets to global commerce.',      poles: ['GLOBALISM', 'LIBERTY'] },
+        { key: 'buy_domestic',         name: 'Buy Domestic',          desc: 'Promote domestic products and restrict foreign goods.',      poles: ['NATIONALISM', 'TRADITION'] },
+        { key: 'fair_trade',           name: 'Fair Trade',            desc: 'Enforce ethical standards and workers\' rights in trade.',   poles: ['GLOBALISM', 'COLLECTIVISM'] },
+        { key: 'economic_sovereignty', name: 'Economic Sovereignty',  desc: 'Protect national industries from foreign ownership.',       poles: ['NATIONALISM', 'INDIVIDUALISM'] }
     ]
 };
 
@@ -1375,6 +1382,61 @@ async function adjustBlocApproval(supabase, factionId, delta) {
 
     // Recalculate and update derived approval
     return await recalcDerivedApproval(supabase, factionId, blocRows);
+}
+
+/**
+ * Ensures faction_bloc_approval rows exist for a given faction.
+ * If none exist, seeds them with default approval of 40 for all active blocs.
+ * Returns the (possibly newly created) bloc approval rows, or null on failure.
+ */
+async function ensureBlocApprovals(supabase, factionId, nationId) {
+    const { data: existing, error: checkErr } = await supabase
+        .from('faction_bloc_approval')
+        .select('id, bloc_id, approval')
+        .eq('faction_id', factionId);
+
+    if (checkErr) {
+        console.error('[ensureBlocApprovals] Check failed:', checkErr.message);
+        return null;
+    }
+
+    if (existing && existing.length > 0) {
+        return existing;
+    }
+
+    const { data: blocs, error: blocErr } = await supabase
+        .from('voter_blocs')
+        .select('id')
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+
+    if (blocErr || !blocs || blocs.length === 0) {
+        console.warn('[ensureBlocApprovals] No active voter blocs found for nation', nationId);
+        return null;
+    }
+
+    const rows = blocs.map(bloc => ({
+        faction_id: factionId,
+        bloc_id: bloc.id,
+        approval: 40
+    }));
+
+    const { error: upsertErr } = await supabase
+        .from('faction_bloc_approval')
+        .upsert(rows, { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true });
+
+    if (upsertErr) {
+        console.error('[ensureBlocApprovals] Upsert failed:', upsertErr.message);
+        return null;
+    }
+
+    const { data: newRows } = await supabase
+        .from('faction_bloc_approval')
+        .select('id, bloc_id, approval')
+        .eq('faction_id', factionId);
+
+    console.log(`[ensureBlocApprovals] Seeded ${rows.length} bloc approval rows for faction ${factionId}`);
+    return newRows;
 }
 
 
@@ -2525,24 +2587,27 @@ async function dissolveCoalition(supabase, nationId, excludeFormationId) {
         .eq('nation_id', nationId)
         .in('status', ['formed', 'caretaker']);
     if (excludeFormationId) dissolveQuery = dissolveQuery.neq('id', excludeFormationId);
-    await dissolveQuery;
+    const { error: formErr } = await dissolveQuery;
+    if (formErr) console.warn('dissolveCoalition: formations update failed:', formErr);
 
     // Also dissolve legacy active_coalitions
-    await supabase
+    const { error: acErr } = await supabase
         .from('active_coalitions')
         .update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
         .eq('nation_id', nationId)
         .is('dissolved_at', null);
+    if (acErr) console.warn('dissolveCoalition: active_coalitions update failed:', acErr);
 
     // Deactivate PM
-    await supabase
+    const { error: pmErr } = await supabase
         .from('head_of_government')
         .update({ active: false })
         .eq('nation_id', nationId)
         .eq('active', true);
+    if (pmErr) console.warn('dissolveCoalition: PM deactivation failed:', pmErr);
 
     // Vacate all ministries
-    await supabase
+    const { error: minErr } = await supabase
         .from('ministries')
         .update({
             minister_first_name: null,
@@ -2552,6 +2617,7 @@ async function dissolveCoalition(supabase, nationId, excludeFormationId) {
         })
         .eq('nation_id', nationId)
         .eq('is_active', true);
+    if (minErr) console.warn('dissolveCoalition: ministry vacating failed:', minErr);
 }
 
 
@@ -5712,6 +5778,43 @@ async function processCrises(supabase, nation, currentTick) {
                     });
                 }
 
+            } else if (effect.target === 'pm_approval') {
+                const { data: pmMinistry } = await supabase
+                    .from('ministries')
+                    .select('minister_approval, party_id')
+                    .eq('nation_id', nation.id)
+                    .eq('ministry_key', 'prime_minister')
+                    .eq('is_active', true)
+                    .maybeSingle();
+
+                if (pmMinistry) {
+                    const currentVal = pmMinistry.minister_approval ?? 50;
+                    const newVal = clampWithFloor(currentVal, currentVal + changePT);
+                    await supabase.from('ministries')
+                        .update({ minister_approval: newVal })
+                        .eq('nation_id', nation.id)
+                        .eq('ministry_key', 'prime_minister')
+                        .eq('is_active', true);
+
+                    appliedEffects.push({
+                        stat: 'minister_approval', change: changePT,
+                        target: 'pm_approval', minister_key: 'prime_minister',
+                        old: currentVal, new: newVal
+                    });
+
+                    // Cascade PM approval loss to party approval (2x multiplier)
+                    if (changePT < 0 && pmMinistry.party_id) {
+                        const cascadeDelta = -(Math.abs(changePT) * 2);
+                        await adjustBlocApproval(supabase, pmMinistry.party_id, cascadeDelta);
+
+                        appliedEffects.push({
+                            stat: 'approval_rating', change: cascadeDelta,
+                            target: 'minister_cascade', faction_id: pmMinistry.party_id,
+                            minister_key: 'prime_minister'
+                        });
+                    }
+                }
+
             } else if (effect.target === 'minister_approval') {
                 const { data: ministry } = await supabase
                     .from('ministries')
@@ -6251,6 +6354,19 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
 
     if (hogErr) throw hogErr;
 
+    // Update the open administration record with the newly appointed PM
+    const pmFullName = `${candidate.first_name} ${candidate.last_name}`;
+    const { error: adminUpdErr } = await supabase
+        .from('administrations')
+        .update({
+            prime_minister: pmFullName,
+            admin_name: `${candidate.last_name} Administration`,
+            updated_at: new Date().toISOString()
+        })
+        .eq('nation_id', nationId)
+        .is('ended_at_tick', null);
+    if (adminUpdErr) console.warn('selectPMCandidate: could not update administration record:', adminUpdErr);
+
     // Update the prime_minister ministry row so ministry-actions picks it up
     const { data: pmMinistry } = await supabase.from('ministries')
         .select('id').eq('nation_id', nationId)
@@ -6537,6 +6653,114 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
 }
 
 
+// ==================== DISBAND PARTY ====================
+
+async function disbandParty(supabase, nationId, factionId, currentTick) {
+    // 1. Cooldown check
+    const { data: faction } = await supabase
+        .from('factions')
+        .select('disband_cooldown_until_tick, faction_name')
+        .eq('id', factionId)
+        .single();
+
+    if (faction?.disband_cooldown_until_tick && faction.disband_cooldown_until_tick > currentTick) {
+        const remaining = faction.disband_cooldown_until_tick - currentTick;
+        throw new Error(`Disband is on cooldown for ${remaining} more tick${remaining !== 1 ? 's' : ''}.`);
+    }
+
+    // 2. Autocracy ruling faction guard
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('ruling_faction_id, government_type')
+        .eq('id', nationId)
+        .single();
+
+    if (nation?.government_type === 'Autocracy' && nation.ruling_faction_id === factionId) {
+        throw new Error('The ruling faction cannot disband.');
+    }
+
+    // 3. PM check — if this faction is the active PM, resign first
+    const { data: hog } = await supabase
+        .from('head_of_government')
+        .select('id, trait_key')
+        .eq('nation_id', nationId)
+        .eq('faction_id', factionId)
+        .eq('active', true)
+        .maybeSingle();
+
+    let pmResigned = false;
+    if (hog) {
+        if (hog.trait_key === 'survivor') {
+            throw new Error('Cannot disband while your PM has the Survivor trait. They cling to power.');
+        }
+        await resignPM(supabase, nationId, factionId, currentTick);
+        pmResigned = true;
+    }
+
+    // 4. Coalition check — handle if in coalition but not PM (or PM resignation didn't dissolve)
+    if (!pmResigned) {
+        const { data: formations } = await supabase
+            .from('government_formations')
+            .select('id, lead_party_id, party_ids')
+            .eq('nation_id', nationId)
+            .in('status', ['formed', 'caretaker']);
+
+        const myFormation = (formations || []).find(f =>
+            (f.party_ids || []).includes(factionId)
+        );
+
+        if (myFormation) {
+            if (myFormation.lead_party_id === factionId) {
+                // Lead party disbanding — dissolve entire coalition
+                await dissolveCoalition(supabase, nationId);
+            } else {
+                // Junior partner — remove from party_ids and vacate ministries
+                const newPartyIds = (myFormation.party_ids || []).filter(id => id !== factionId);
+                const { error: formErr } = await supabase
+                    .from('government_formations')
+                    .update({ party_ids: newPartyIds })
+                    .eq('id', myFormation.id);
+                if (formErr) console.warn('disbandParty: could not update formation party_ids:', formErr);
+
+                const { error: minErr } = await supabase
+                    .from('ministries')
+                    .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
+                    .eq('nation_id', nationId)
+                    .eq('party_id', factionId)
+                    .eq('is_active', true);
+                if (minErr) console.warn('disbandParty: could not vacate ministries:', minErr);
+            }
+        }
+    }
+
+    // 5. Core disband — null out nation membership, set cooldown
+    const { error: disbandErr } = await supabase
+        .from('factions')
+        .update({
+            nation_id: null,
+            abandoned_at: new Date().toISOString(),
+            disband_cooldown_until_tick: currentTick + 24
+        })
+        .eq('id', factionId);
+
+    if (disbandErr) throw new Error('Failed to disband party: ' + disbandErr.message);
+
+    // 6. Audit log
+    const { error: logErr } = await supabase
+        .from('campaign_actions')
+        .insert({
+            party_id: factionId,
+            nation_id: nationId,
+            action_type: 'party_disbanded',
+            tick_performed: currentTick,
+            result: { faction_name: faction?.faction_name || 'Unknown' }
+        });
+    if (logErr) console.warn('disbandParty: could not log action:', logErr);
+
+    return { result: 'disbanded' };
+}
+
+
 // ==================== ELECTION SIMULATION ====================
 
 /**
@@ -6622,7 +6846,7 @@ function getEffectiveApproval(party, tags) {
  * @param {object}   tally             - Mutable { [partyId]: voteCount } accumulator
  * @returns {number} Number of abstentions produced (only >0 for step 4)
  */
-function distributeVotes(eligible, tags, blocCount, allParties, step, tally) {
+function distributeVotes(eligible, tags, blocCount, allParties, step, tally, ideologySaturation, avgSaturation) {
     if (blocCount <= 0) return 0;
 
     // ---- Base abstention: realistic turnout varies by cascade step ----
@@ -6632,7 +6856,21 @@ function distributeVotes(eligible, tags, blocCount, allParties, step, tally) {
     // Step 3 (No Opposition): ~33% abstain — lukewarm support
     // Step 4 (Forced/Abstain): ~75% abstain — deeply disaffected
     const abstainRates = { 0: 0.35, 1: 0.20, 2: 0.28, 3: 0.33, 4: 0.75 };
-    const abstainRate = abstainRates[step] ?? 0.30;
+    let abstainRate = abstainRates[step] ?? 0.30;
+
+    // ---- Ideology Saturation modifier ----
+    // Over-served blocs (many parties share their ideology) abstain more (complacency).
+    // Under-served blocs (few parties) abstain less (underdog motivation).
+    if (tags.length > 0 && ideologySaturation && avgSaturation > 0) {
+        const satTags = tags.map(t => t.toUpperCase());
+        const blocSaturation = satTags.reduce((s, t) => s + (ideologySaturation[t] || 0), 0) / satTags.length;
+        const SATURATION_RATE = 0.04;
+        const SATURATION_CAP  = 0.12;
+        let satMod = (blocSaturation - avgSaturation) * SATURATION_RATE;
+        satMod = Math.max(-SATURATION_CAP, Math.min(SATURATION_CAP, satMod));
+        abstainRate = Math.max(0.05, Math.min(0.85, abstainRate + satMod));
+    }
+
     const abstentions = Math.floor(blocCount * abstainRate);
     const voters = blocCount - abstentions;
 
@@ -6753,6 +6991,20 @@ function runElectionSimulation(blocs, parties, totalSeats = GAME_CONFIG.TOTAL_SE
     let totalAbstentions = 0;
     const details = []; // per-bloc breakdown for debugging
 
+    // ---- Ideology Saturation: penalise over-served ideologies with higher abstention ----
+    const SATURATION_RATE = 0.04; // 4% abstention adjustment per unit above/below average
+    const SATURATION_CAP  = 0.12; // max ±12% adjustment
+    const ALL_IDEOLOGY_TAGS = ['LIBERTY','EQUALITY','TRADITION','PROGRESS','SECURITY','FREEDOM',
+                               'GLOBALISM','NATIONALISM','INDIVIDUALISM','COLLECTIVISM'];
+    const ideologySaturation = {};
+    for (const tag of ALL_IDEOLOGY_TAGS) {
+        ideologySaturation[tag] = parties.filter(p => getPartyAlignment(p.axes, tag) > 0).length;
+    }
+    const activeSatTags = ALL_IDEOLOGY_TAGS.filter(t => ideologySaturation[t] > 0);
+    const avgSaturation = activeSatTags.length > 0
+        ? activeSatTags.reduce((s, t) => s + ideologySaturation[t], 0) / activeSatTags.length
+        : 1;
+
     for (const bloc of blocs) {
         if (!bloc.is_active) continue;
         const count = bloc.voter_count || 0;
@@ -6772,12 +7024,12 @@ function runElectionSimulation(blocs, parties, totalSeats = GAME_CONFIG.TOTAL_SE
             // Unaligned bloc — distribute purely by approval across all parties
             eligible = parties;
             step = 0;
-            abstentions = distributeVotes(eligible, [], count, parties, 0, tally);
+            abstentions = distributeVotes(eligible, [], count, parties, 0, tally, ideologySaturation, avgSaturation);
         } else {
             const result = findEligibleParties(tags, parties);
             eligible = result.eligible;
             step = result.step;
-            abstentions = distributeVotes(eligible, tags, count, parties, step, tally);
+            abstentions = distributeVotes(eligible, tags, count, parties, step, tally, ideologySaturation, avgSaturation);
         }
 
         // Compute per-party votes from this bloc

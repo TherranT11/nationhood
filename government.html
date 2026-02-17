@@ -763,14 +763,8 @@ async function renderGovernmentPage() {
             }
         }
 
-        // Government approval
-        let governmentApproval = null;
-        if (coalition && coalition.party_ids) {
-            governmentApproval = await calculateGovernmentApproval(coalition.party_ids);
-        } else if (ministries && ministries.length > 0) {
-            const uniquePartyIds = [...new Set(ministries.map(m => m.party_id).filter(Boolean))];
-            if (uniquePartyIds.length > 0) governmentApproval = await calculateGovernmentApproval(uniquePartyIds);
-        }
+        // Government approval (average of all minister approvals)
+        let governmentApproval = await calculateGovernmentApproval();
 
         // Check for pending PM or President candidates (player needs to select)
         const primeMinister = ministries?.find(m => m.ministry_key === 'prime_minister');
@@ -785,6 +779,24 @@ async function renderGovernmentPage() {
                 .eq('selected', false);
             hasPendingPMSelection = (count || 0) > 0;
         }
+
+        // Auto-recover orphaned PM state: coalition exists, PM has null names, no candidates
+        if (!hasPendingPMSelection && !isPresidential && coalition && !activeHOG) {
+            const pmPartyId = coalition.ministry_assignments?.prime_minister || coalition.lead_party_id;
+            const pmHasNullNames = primeMinister && (!primeMinister.minister_first_name || !primeMinister.minister_last_name);
+            if (pmPartyId && pmHasNullNames && currentFaction?.id === pmPartyId) {
+                try {
+                    const { data: shard } = await _supabase.from('shard')
+                        .select('current_tick').eq('name', 'Alpha Shard').single();
+                    await generatePMCandidates(_supabase, currentNation.id, pmPartyId, shard?.current_tick || 0);
+                    hasPendingPMSelection = true;
+                    console.log('Auto-recovered orphaned PM state: generated PM candidates');
+                } catch (recoverErr) {
+                    console.error('PM auto-recovery failed:', recoverErr);
+                }
+            }
+        }
+
         if (currentFaction && isPresidential) {
             const { count } = await _supabase
                 .from('pm_candidates')
@@ -863,11 +875,15 @@ async function fetchMinistries() {
     return data || [];
 }
 
-async function calculateGovernmentApproval(partyIds) {
-    const { data: parties } = await _supabase.from('factions').select('approval_rating').in('id', partyIds);
-    if (!parties || parties.length === 0) return null;
-    const total = parties.reduce((sum, p) => sum + (p.approval_rating || 0), 0);
-    return Math.round(total / parties.length);
+async function calculateGovernmentApproval() {
+    const { data: ministers } = await _supabase
+        .from('ministries')
+        .select('minister_approval')
+        .eq('nation_id', currentNation.id)
+        .eq('is_active', true);
+    if (!ministers || ministers.length === 0) return null;
+    const total = ministers.reduce((sum, m) => sum + (m.minister_approval ?? 50), 0);
+    return Math.round(total / ministers.length);
 }
 
 function getPartyNameById(partyId) {
@@ -890,6 +906,12 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
     const hosLast = currentNation.head_of_state_last_name || 'Unknown';
     const hosAge = currentNation.head_of_state_age || '—';
 
+    // Safe PM name: prevents "null null" when ministry row exists but names are SQL NULL
+    function safePmName(pm) {
+        if (!pm || !pm.minister_first_name || !pm.minister_last_name) return '—';
+        return `${pm.minister_first_name} ${pm.minister_last_name}`;
+    }
+
     // Administration name uses Head of Government (PM), falling back to Head of State
     const adminLast = activeHOG?.last_name || primeMinister?.minister_last_name || hosLast;
 
@@ -908,10 +930,38 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
             </div>`;
     }
 
+    // === AUTOCRACY: No ruling faction yet — show Seize Power prompt ===
+    if (isAutocracy && !rulingFactionId) {
+        return `
+            <div class="administration-box" style="border-color: #ff4444;">
+                <div class="administration-header" style="border-bottom-color: #3a1a1a;">
+                    <div style="font-size: 2.5rem; margin-bottom: 8px;">&#9876;</div>
+                    <div class="administration-title" style="color: #ff4444;">Power Vacuum</div>
+                    <div class="administration-subtitle">No faction controls the government</div>
+                </div>
+                <div class="administration-content" style="display:block; text-align:center; padding: 24px;">
+                    <div style="font-size:0.9rem; color:var(--text-secondary); margin-bottom: 20px;">
+                        The nation has no ruling faction. The Head of State, <strong style="color:var(--text-primary);">${hosFirst} ${hosLast}</strong>, awaits a faction bold enough to seize the reins of government.
+                    </div>
+                    <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom: 20px;">
+                        Claiming power will make your faction the ruling faction, granting control over all ministries and the Prime Minister's office.
+                    </div>
+                    <button id="claim-power-btn"
+                        style="padding: 14px 36px; background: linear-gradient(135deg, #ff4444, #cc0000); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; cursor: pointer; transition: all 0.2s;"
+                        onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 20px rgba(255,68,68,0.4)';"
+                        onmouseout="this.style.transform='none'; this.style.boxShadow='none';"
+                        onclick="claimPower()">
+                        Seize Power
+                    </button>
+                    <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 10px;">Cost: 0 AP &mdash; Uncontested</div>
+                </div>
+            </div>`;
+    }
+
     if (isAutocracy) {
         const rulingParty = allParties.find(p => p.id === rulingFactionId);
         const rulingPartyName = rulingParty?.faction_name || '—';
-        const pmName = primeMinister ? `${primeMinister.minister_first_name} ${primeMinister.minister_last_name}` : '—';
+        const pmName = safePmName(primeMinister);
         const pmAge = primeMinister?.minister_age || '—';
         const pmPartyName = primeMinister?.factions?.faction_name || '—';
         let approvalClass = '';
@@ -1045,7 +1095,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                     <div class="administration-header"><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">Single Party Government</div></div>
                     <div class="administration-content">
                         <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${hosFirst} ${hosLast}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${majorityParty.party_name}</span></div></div>
-                        <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${primeMinister ? `${primeMinister.minister_first_name} ${primeMinister.minister_last_name}` : '—'}</div><div class="admin-person-details">${primeMinister ? `Age ${primeMinister.minister_age} • ` : ''}<span class="admin-person-party">${majorityParty.party_name}</span></div></div>
+                        <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${safePmName(primeMinister)}</div><div class="admin-person-details">${primeMinister?.minister_age ? `Age ${primeMinister.minister_age} • ` : ''}<span class="admin-person-party">${majorityParty.party_name}</span></div></div>
                         <div class="admin-section admin-approval"><div class="admin-section-title">Government Approval</div><div class="admin-approval-value">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div></div>
                     </div>
                     <div class="coalition-parties"><div class="coalition-party-tag">${majorityParty.party_name}<span class="seats">${majorityParty.seats} Seats</span></div></div>
@@ -1063,7 +1113,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
     if (coalition) {
         const leadParty = parties.find(p => p.party_id === coalition.lead_party_id);
         const leadPartyName = leadParty ? leadParty.party_name : 'Unknown';
-        const pmName = primeMinister ? `${primeMinister.minister_first_name} ${primeMinister.minister_last_name}` : '—';
+        const pmName = safePmName(primeMinister);
         const pmAge = primeMinister?.minister_age || '—';
         const pmParty = primeMinister ? (primeMinister.factions?.faction_name || getPartyNameById(primeMinister.party_id)) : '—';
         let approvalClass = '';
@@ -1090,7 +1140,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                             ` : ''}
                         ` : ''}
                     </div>
-                    <div class="admin-section admin-approval"><div class="admin-section-title">Government Approval</div><div class="admin-approval-value ${approvalClass}">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div><div class="admin-approval-label">Coalition Median</div></div>
+                    <div class="admin-section admin-approval"><div class="admin-section-title">Government Approval</div><div class="admin-approval-value ${approvalClass}">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div><div class="admin-approval-label">Minister Average</div></div>
                 </div>
                 <div class="coalition-parties">
                     ${coalitionParties.map((p, i) => `${i > 0 ? '<span class="coalition-divider">|</span>' : ''}<div class="coalition-party-tag">${p.party_name}<span class="seats">${p.seats} Seats</span></div>`).join('')}
@@ -1577,6 +1627,153 @@ async function confirmAssign() {
     } catch (e) {
         console.error('Assign error:', e);
         alert('Error: ' + e.message);
+    }
+}
+
+// ==================== CLAIM POWER (Autocracy — No Ruler) ====================
+
+async function claimPower() {
+    if (!currentFaction || !currentNation) return;
+    if (!isAutocracy) return;
+
+    // Race condition guard: re-check that no one claimed power in the meantime
+    const { data: freshNation } = await _supabase
+        .from('nations')
+        .select('ruling_faction_id')
+        .eq('id', currentNation.id)
+        .single();
+
+    if (freshNation?.ruling_faction_id) {
+        alert('Another faction has already claimed power. Refreshing...');
+        await renderGovernmentPage();
+        return;
+    }
+
+    if (!confirm(
+        'SEIZE POWER?\n\n' +
+        'As the first faction to act, you will claim uncontested control of the government.\n\n' +
+        'You will become the Ruling Faction and receive:\n' +
+        '- Control of the Head of State\n' +
+        '- A Prime Minister from your faction\n' +
+        '- All cabinet ministries staffed with your appointees\n' +
+        '- Loyalty set to 80\n\n' +
+        'Cost: 0 AP\n\nProceed?'
+    )) return;
+
+    const btn = document.getElementById('claim-power-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'SEIZING POWER...'; }
+
+    try {
+        const { data: shard } = await _supabase
+            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shard?.current_tick || 0;
+
+        // 1. Set this faction as the ruling faction
+        await _supabase.from('nations')
+            .update({ ruling_faction_id: currentFaction.id })
+            .eq('id', currentNation.id);
+
+        // 2. Set faction loyalty to 80
+        await _supabase.from('factions')
+            .update({ loyalty: 80 })
+            .eq('id', currentFaction.id);
+
+        // 3. Generate and insert ministry rows for all positions
+        const ministryInserts = MINISTRY_KEYS_CABINET.map(key => ({
+            nation_id: currentNation.id,
+            ministry_key: key,
+            ministry_name: MINISTRY_NAMES[key] || key,
+            party_id: currentFaction.id,
+            minister_first_name: FIRST_NAMES_POOL[Math.floor(Math.random() * FIRST_NAMES_POOL.length)],
+            minister_last_name: LAST_NAMES_POOL[Math.floor(Math.random() * LAST_NAMES_POOL.length)],
+            minister_age: 35 + Math.floor(Math.random() * 31),
+            is_active: true
+        }));
+
+        const { error: ministryError } = await _supabase
+            .from('ministries').insert(ministryInserts);
+        if (ministryError) throw ministryError;
+
+        // 4. Create head_of_government record for the PM
+        const pmInsert = ministryInserts.find(m => m.ministry_key === 'prime_minister');
+        if (pmInsert) {
+            await _supabase.from('head_of_government')
+                .update({ active: false })
+                .eq('nation_id', currentNation.id)
+                .eq('active', true);
+
+            await _supabase.from('head_of_government').upsert({
+                nation_id: currentNation.id,
+                faction_id: currentFaction.id,
+                first_name: pmInsert.minister_first_name,
+                last_name: pmInsert.minister_last_name,
+                age: pmInsert.minister_age,
+                active: true
+            }, { onConflict: 'nation_id' });
+        }
+
+        // 5. Log to campaign_actions
+        await _supabase.from('campaign_actions').insert({
+            party_id: currentFaction.id,
+            nation_id: currentNation.id,
+            action_type: 'claim_power',
+            tick_performed: tick,
+            result: {
+                faction_name: currentFaction.faction_name,
+                ministries_assigned: MINISTRY_KEYS_CABINET.length,
+                pm_name: pmInsert ? `${pmInsert.minister_first_name} ${pmInsert.minister_last_name}` : null
+            }
+        });
+
+        // 6. Create initial administration record (non-blocking)
+        try {
+            const hosName = (currentNation.head_of_state_first_name && currentNation.head_of_state_last_name)
+                ? `${currentNation.head_of_state_first_name} ${currentNation.head_of_state_last_name}`
+                : null;
+            const adminName = pmInsert
+                ? `${pmInsert.minister_last_name} Administration`
+                : `${currentNation.head_of_state_last_name || currentFaction.faction_name} Administration`;
+
+            await _supabase.from('administrations').insert({
+                nation_id: currentNation.id,
+                admin_name: adminName,
+                head_of_state: hosName,
+                prime_minister: pmInsert ? `${pmInsert.minister_first_name} ${pmInsert.minister_last_name}` : null,
+                pm_party_name: currentFaction.faction_name,
+                pm_party_id: currentFaction.id,
+                coalition_parties: [{ party_id: currentFaction.id, party_name: currentFaction.faction_name, seats: currentFaction.seats || 0 }],
+                total_seats: currentFaction.seats || 0,
+                government_type: 'Autocracy',
+                started_at_tick: tick,
+                started_at_date: tickToDate(tick)
+            });
+        } catch (adminErr) {
+            console.warn('Administration record creation failed (non-blocking):', adminErr);
+        }
+
+        // 7. Update local state
+        currentFaction.loyalty = 80;
+        currentNation.ruling_faction_id = currentFaction.id;
+        rulingFactionId = currentFaction.id;
+        isRulingFaction = true;
+
+        // 8. Clear cache and re-render
+        sessionStorage.removeItem('nationhood_state');
+        qCacheBust('coalition_');
+
+        alert(
+            'POWER SEIZED!\n\n' +
+            `${currentFaction.faction_name} now controls the government.\n\n` +
+            `Prime Minister: ${pmInsert?.minister_first_name} ${pmInsert?.minister_last_name}\n` +
+            `All ${MINISTRY_KEYS_CABINET.length} cabinet positions filled.`
+        );
+
+        await renderGovernmentPage();
+
+    } catch (error) {
+        console.error('Claim power error:', error);
+        alert('Error claiming power: ' + error.message);
+        if (btn) { btn.disabled = false; btn.textContent = 'Seize Power'; }
     }
 }
 
