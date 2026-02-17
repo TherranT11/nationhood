@@ -413,6 +413,19 @@ function calculateNationalBudget(nation) {
     return { grossRevenue, debtService, availableBudget, collectionRate };
 }
 
+// Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -5% to +5% per tick
+async function applyGdpGrowth(supabase, nation) {
+    const gdpGrowth = Number(nation.gdp_growth ?? 50);
+    const currentGdp = Number(nation.gdp ?? 0);
+    if (currentGdp <= 0) return;
+
+    const gdpRate = (gdpGrowth - 50) / 1000;
+    const newGdp = Math.max(0, currentGdp * (1 + gdpRate));
+    nation.gdp = newGdp;
+
+    await supabase.from('nations').update({ gdp: newGdp }).eq('id', nation.id);
+}
+
 // Ideology spectrum opposites
 const IDEOLOGY_OPPOSITES = {
     'LIBERTY': 'EQUALITY',           'EQUALITY': 'LIBERTY',
@@ -4549,6 +4562,9 @@ async function advanceTick(supabase) {
             summary.ministryActions = summary.ministryActions || [];
             summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
         }
+
+        // 3c. Apply GDP growth rate
+        await applyGdpGrowth(supabase, nation);
 
         // 4. Process ongoing costs
         const costResult = await processOngoingCosts(supabase, nation, newTick);
