@@ -370,6 +370,49 @@ const RAW_SCALING_DIVISORS = {
     debt: 1_000_000_000
 };
 
+// ==================== NATIONAL BUDGET CALCULATION ====================
+
+function calculateNationalBudget(nation) {
+    // GDP and Debt are stored as raw dollars
+    const gdp = Number(nation.gdp ?? nation.GDP ?? 0);
+    const debt = Number(nation.debt ?? 0);
+
+    // Tax rates: 0-100 percentages
+    const incomeTaxRate  = Number(nation.income_tax ?? 0);
+    const corpTaxRate    = Number(nation.corporate_tax ?? 0);
+    const salesTaxRate   = Number(nation.sales_tax ?? 0);
+    const tariffsRate    = Number(nation.tariffs ?? 0);
+
+    // Other 0-100 stats
+    const efficiency     = Number(nation.efficiency ?? 50);
+    const corruption     = Number(nation.corruption ?? 50);
+    const oilGas         = Number(nation.oil_and_gas ?? 0);
+    const creditRating   = Number(nation.credit ?? 50);
+
+    // Collection Rate = (Efficiency + (100 - Corruption)) / 200  →  0.0 to 1.0
+    const collectionRate = (efficiency + (100 - corruption)) / 200;
+
+    // Tax Revenue (raw dollars, since GDP is raw dollars)
+    const incomeRevenue  = gdp * (incomeTaxRate / 100) * 0.40 * collectionRate;
+    const corpRevenue    = gdp * (corpTaxRate / 100)   * 0.10 * collectionRate;
+    const salesRevenue   = gdp * (salesTaxRate / 100)  * 0.30 * collectionRate;
+    const tariffRevenue  = gdp * (tariffsRate / 100)   * 0.05 * collectionRate;
+
+    // Oil & Gas Revenue (only if oil_and_gas stat > 30)
+    const oilRevenue = oilGas > 30 ? gdp * (oilGas / 100) * 0.06 : 0;
+
+    const grossRevenue = incomeRevenue + corpRevenue + salesRevenue + tariffRevenue + oilRevenue;
+
+    // Debt Service: Effective Interest = 15% - (Credit × 0.13%), clamped 2%-18%
+    const effectiveInterest = Math.min(0.18, Math.max(0.02, 0.15 - (creditRating * 0.0013)));
+    const debtService = debt * effectiveInterest;
+
+    // Available Budget = Revenue - Debt Service
+    const availableBudget = grossRevenue - debtService;
+
+    return { grossRevenue, debtService, availableBudget, collectionRate };
+}
+
 // Ideology spectrum opposites
 const IDEOLOGY_OPPOSITES = {
     'LIBERTY': 'EQUALITY',           'EQUALITY': 'LIBERTY',
@@ -4581,6 +4624,13 @@ async function advanceTick(supabase) {
             await autoResolveStaleShakeups(supabase, nation.id, newTick);
         }
 
+        // 10a. Calculate national budget from current stats (revenue formula)
+        const budgetResult = calculateNationalBudget(nation);
+        await supabase.from('nations').update({
+            budget: budgetResult.availableBudget
+        }).eq('id', nation.id);
+        console.log(`[advanceTick] Budget for ${nation.name}: $${(budgetResult.availableBudget / 1e9).toFixed(1)}B (revenue: $${(budgetResult.grossRevenue / 1e9).toFixed(1)}B, debt service: $${(budgetResult.debtService / 1e9).toFixed(1)}B, collection: ${(budgetResult.collectionRate * 100).toFixed(1)}%)`);
+
         // 10. Re-fetch nation with post-effect values, then snapshot to history
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         await snapshotNationHistory(supabase, freshNation || nation, newTick);
@@ -5102,6 +5152,9 @@ async function processStatEffects(supabase, nation, currentTick) {
                     continue;
                 }
 
+                // Budget is a derived value (computed from revenue formulas) — skip direct modification
+                if (statKey === 'budget') continue;
+
                 if (dir !== 'up' && dir !== 'down') {
                     if (tick === lastApplied + 1) {
                         console.warn(
@@ -5127,7 +5180,12 @@ async function processStatEffects(supabase, nation, currentTick) {
                         newVal = currentVal - rate;
                     }
 
-                    newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                    // Raw-value stats (GDP, debt, population) — don't clamp to 0-100
+                    if (RAW_SCALING_DIVISORS[statKey]) {
+                        newVal = Math.round(Math.max(0, newVal) * 10) / 10;
+                    } else {
+                        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+                    }
                     nationUpdates[statKey] = newVal;
                     anyEffectApplied = true;
 
@@ -5411,11 +5469,8 @@ async function processOngoingCosts(supabase, nation, currentTick) {
         details.push({ policy: policy.policy_name, cost: tickCost });
     }
 
-    if (totalCost !== 0) {
-        const currentBudget = nation.budget || 0;
-        const newBudget = currentBudget - totalCost;
-        await supabase.from('nations').update({ budget: newBudget }).eq('id', nation.id);
-    }
+    // Budget is now a derived value (computed by calculateNationalBudget each tick).
+    // Policy costs are tracked in active_laws.ongoing_accumulated.
 
     return { totalCost, details };
 }
