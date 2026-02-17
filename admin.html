@@ -1203,7 +1203,7 @@
         try {
             // 1. Reset shard clock
             logMsg('Resetting shard clock...');
-            const nextTick = new Date(); nextTick.setHours(nextTick.getHours() + currentTickInterval);
+            const nextTick = new Date(Date.now() + currentTickInterval * 60 * 60 * 1000);
             await _supabase.from('shard').update({
                 current_date: 'January, 2000', current_tick: 0,
                 next_tick_at: nextTick.toISOString()
