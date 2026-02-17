@@ -1069,7 +1069,10 @@ function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy, exclud
                 }
             }
 
-            return { ...p, isOpposed, prerequisiteMissing, prerequisiteName };
+            // Structural policies that are already active laws cannot be enacted again
+            const alreadyEnacted = activePolicyIds && activePolicyIds.has(p.id) && p.policy_type === 'structural';
+
+            return { ...p, isOpposed, prerequisiteMissing, prerequisiteName, alreadyEnacted };
         });
 }
 
