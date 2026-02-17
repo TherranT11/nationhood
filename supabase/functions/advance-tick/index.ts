@@ -1835,7 +1835,7 @@ async function failBill(supabase, bill) {
  * and any other direct nations-table stat mutations.
  */
 const NATION_STAT_COLUMNS = [
-    'gdp', 'gdp_growth', 'debt', 'debt_growth', 'budget', 'inflation', 'interest_rates',
+    'gdp', 'gdp_growth', 'debt', 'debt_growth', 'inflation', 'interest_rates',
     'trade_balance', 'currency_strength', 'foreign_investment', 'credit',
     'income_tax', 'corporate_tax', 'sales_tax', 'tariffs',
     'unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength',
@@ -1877,7 +1877,7 @@ function normalizeNationStatKey(statKey) {
  * Stats where HIGHER values are better (increase = achievement).
  */
 const STATS_HIGHER_IS_BETTER = [
-    'gdp', 'gdp_growth', 'budget', 'currency_strength', 'foreign_investment', 'credit',
+    'gdp', 'gdp_growth', 'currency_strength', 'foreign_investment', 'credit',
     'labor_force_participation', 'minimum_wage', 'union_strength',
     'population_growth', 'eligible_voters', 'ethnic_diversity',
     'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan',
@@ -4251,13 +4251,6 @@ async function advanceTick(supabase) {
             await autoResolveStaleShakeups(supabase, nation.id, newTick);
         }
 
-        // 10a. Calculate national budget from current stats (revenue formula)
-        const budgetResult = calculateNationalBudget(nation);
-        await supabase.from('nations').update({
-            budget: budgetResult.availableBudget
-        }).eq('id', nation.id);
-        console.log(`[advanceTick] Budget for ${nation.name}: $${(budgetResult.availableBudget / 1e9).toFixed(1)}B (revenue: $${(budgetResult.grossRevenue / 1e9).toFixed(1)}B, debt service: $${(budgetResult.debtService / 1e9).toFixed(1)}B, collection: ${(budgetResult.collectionRate * 100).toFixed(1)}%)`);
-
         // 10. Re-fetch nation with post-effect values, then snapshot to history
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         await snapshotNationHistory(supabase, freshNation || nation, newTick);
@@ -4746,9 +4739,6 @@ async function processStatEffects(supabase, nation, currentTick) {
                     continue;
                 }
 
-                // Budget is a derived value (computed from revenue formulas) — skip direct modification
-                if (statKey === 'budget') continue;
-
                 if (dir !== 'up' && dir !== 'down') {
                     if (tick === lastApplied + 1) {
                         console.warn(
@@ -5067,7 +5057,6 @@ async function processOngoingCosts(supabase, nation, currentTick) {
         details.push({ policy: policy.policy_name, cost: tickCost });
     }
 
-    // Budget is now a derived value (computed by calculateNationalBudget each tick).
     // Policy costs are tracked in active_laws.ongoing_accumulated.
 
     return { totalCost, details };

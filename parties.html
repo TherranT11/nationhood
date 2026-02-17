@@ -2643,12 +2643,11 @@ async function doPatronageNetwork() {
             loyalty: Math.min(100, (targetFaction?.loyalty ?? 50) + 2)
         }).eq('id', targetId);
 
-        // Nation: +1 corruption, -$50k budget
+        // Nation: +1 corruption
         const { data: nat } = await _supabase.from('nations')
-            .select('corruption, budget').eq('id', currentNation.id).single();
+            .select('corruption').eq('id', currentNation.id).single();
         await _supabase.from('nations').update({
-            corruption: Math.min(100, (nat?.corruption ?? 50) + 1),
-            budget: (nat?.budget || 0) - 50000
+            corruption: Math.min(100, (nat?.corruption ?? 50) + 1)
         }).eq('id', currentNation.id);
 
         // If self: all other factions -1 loyalty
