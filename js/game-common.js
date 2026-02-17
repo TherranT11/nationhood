@@ -309,7 +309,7 @@ const POLICY_STANCES = {
     ],
     WELFARE: [
         { key: 'universal_benefits', name: 'Universal Benefits', desc: 'Provide welfare programs for all citizens.',                     poles: ['EQUALITY', 'COLLECTIVISM'] },
-        { key: 'targeted_aid',       name: 'Targeted Aid',       desc: 'Focus welfare on those who need it most.',                       poles: ['LIBERTY', 'EQUALITY'] },
+        { key: 'targeted_aid',       name: 'Targeted Aid',       desc: 'Focus welfare on those who need it most.',                       poles: ['EQUALITY', 'INDIVIDUALISM'] },
         { key: 'self_reliance',      name: 'Self-Reliance',      desc: 'Reduce welfare dependency and promote personal responsibility.', poles: ['INDIVIDUALISM', 'LIBERTY'] },
         { key: 'community_care',     name: 'Community Care',     desc: 'Channel welfare through community and religious organizations.', poles: ['TRADITION', 'COLLECTIVISM'] }
     ],
@@ -435,6 +435,14 @@ const IDEOLOGY_OPPOSITES = {
     'INDIVIDUALISM': 'COLLECTIVISM', 'COLLECTIVISM': 'INDIVIDUALISM'
 };
 
+// Audit: detect stances with opposed poles on the same axis
+for (const [sector, stances] of Object.entries(POLICY_STANCES)) {
+    for (const stance of stances) {
+        if (stance.poles.length === 2 && IDEOLOGY_OPPOSITES[stance.poles[0]] === stance.poles[1]) {
+            console.error(`STANCE CONFLICT: ${sector}.${stance.key} has opposed poles: ${stance.poles.join(' vs ')}`);
+        }
+    }
+}
 
 // ==================== DYNAMIC IDEOLOGY SYSTEM ====================
 
