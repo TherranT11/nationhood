@@ -297,7 +297,7 @@
 let currentNation = null, currentFaction = null, currentSeats = 0;
 let allPartySeats = {}, allParties = [], allPolicies = [];
 let activeLaws = [], committeeBills = [], floorBills = [], frozenBills = [], presidentDeskBills = [], recentBills = [];
-let isAutocracy = false, isHeadFaction = false, headFactionId = null;
+let lawsIsAutocracy = false, isHeadFaction = false, headFactionId = null;
 let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
 let isCaretaker = false;
 let isNoGovernment = false;
@@ -311,7 +311,7 @@ let factionIdeology = null; // Dynamic ideology scores for current player
 
 function _getCompatiblePolicies(sector) {
     const _activePolicyIds = new Set(activeLaws.map(al => al.policy_id));
-    return getCompatiblePolicies(sector, allPolicies, currentFaction, isAutocracy, draftArticles.map(a => a.policy?.id).filter(Boolean), _activePolicyIds);
+    return getCompatiblePolicies(sector, allPolicies, currentFaction, lawsIsAutocracy, draftArticles.map(a => a.policy?.id).filter(Boolean), _activePolicyIds);
 }
 
 initPage('laws', async (state) => {
@@ -323,9 +323,9 @@ initPage('laws', async (state) => {
         document.getElementById('content-area').innerHTML = '<div class="placeholder-panel"><div class="ph-icon">📜</div><h3>No Nation Selected</h3><p>Your party is not assigned to a nation yet.</p></div>';
         return;
     }
-    isAutocracy = isGovernmentAutocracy(nation);
-    isPresidential = isGovernmentPresidential(nation);
-    if (isAutocracy) { termBill = 'Decree'; termBills = 'Decrees'; termDraft = 'Draft Decree'; termPropose = 'Propose Decree'; document.title = 'Decrees | Nationhood Alpha'; }
+    lawsIsAutocracy = (nation.government_type === 'Autocracy');
+    isPresidential = (nation.government_type === 'Presidential');
+    if (lawsIsAutocracy) { termBill = 'Decree'; termBills = 'Decrees'; termDraft = 'Draft Decree'; termPropose = 'Propose Decree'; document.title = 'Decrees | Nationhood Alpha'; }
 
     // Detect president's party
     if (isPresidential) {
@@ -338,7 +338,7 @@ initPage('laws', async (state) => {
     // Check for caretaker government (legislature frozen)
     // Bust coalition cache so caretaker status is never stale
     qCacheBust('coalition_');
-    if (!isAutocracy) {
+    if (!lawsIsAutocracy) {
         const coalition = await fetchActiveCoalition(_supabase, nation.id);
         isCaretaker = coalition?.status === 'caretaker';
         isNoGovernment = !coalition;
@@ -369,7 +369,7 @@ initPage('laws', async (state) => {
         setTimeout(() => { alert('Vote Results:\n\n' + msgs.join('\n')); }, 500);
     }
 
-    if (isAutocracy) {
+    if (lawsIsAutocracy) {
         const hf = await detectHeadFaction(_supabase, currentNation.id, allParties, allPartySeats, currentFaction?.id);
         headFactionId = hf.headFactionId; isHeadFaction = hf.isHeadFaction;
     }
@@ -385,7 +385,7 @@ async function loadLawsData() {
 
         const { data: parties } = await _supabase.from('factions').select('id, faction_name, is_npc, seats, action_points').eq('nation_id', nid).eq('faction_type', 'party');
         allParties = parties || [];
-        const seatData = await loadSeats(_supabase, nid, isAutocracy, allParties, currentFaction?.id);
+        const seatData = await loadSeats(_supabase, nid, lawsIsAutocracy, allParties, currentFaction?.id);
         allPartySeats = seatData.allPartySeats; currentSeats = seatData.currentSeats;
 
         // Refresh current faction AP from fresh DB data
@@ -471,7 +471,7 @@ function renderIdeoTag(ideologyTag) {
 function renderLawsPage() {
     const canDraft = (currentFaction?.action_points || 0) >= GAME_CONFIG.DRAFT_BILL_AP_COST && currentSeats > 0 && !isCaretaker && !isNoGovernment;
 const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and cannot propose bills"' : (isCaretaker ? 'title="Legislature is dissolved — no new bills during caretaker government"' : (isNoGovernment ? 'title="Legislature is suspended until a new government is formed"' : ''));
-    const pageTitle = isAutocracy ? `Decrees of ${currentNation.name}` : `Bills & Laws of ${currentNation.name}`;
+    const pageTitle = lawsIsAutocracy ? `Decrees of ${currentNation.name}` : `Bills & Laws of ${currentNation.name}`;
     const html = `
         <div class="panel-padding">
             ${isCaretaker ? `
@@ -489,7 +489,7 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
                 <div class="section-header" style="margin-bottom:0;border-bottom:none;">${pageTitle}</div>
                 <div class="laws-header-buttons">
                     <button class="all-laws-btn" onclick="toggleAllLaws()">📋 All Laws</button>
-                    <button class="draft-btn ${isAutocracy ? 'autocracy-btn' : ''}" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'} ${noSeatsTitle}>
+                    <button class="draft-btn ${lawsIsAutocracy ? 'autocracy-btn' : ''}" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'} ${noSeatsTitle}>
                         ${termPropose} <span class="ap-cost">${GAME_CONFIG.DRAFT_BILL_AP_COST} AP</span>
                     </button>
                 </div>
@@ -736,14 +736,14 @@ function renderFloorBill(bill, isVetoed) {
             </div>
             ${isVetoed ? `<div class="vetoed-stamp">${isPresidential ? '⛔ VETOED BY PRESIDENT' : '⛔ VETOED BY HEAD FACTION'}</div>` : `
                 <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span></div>
-                ${isAutocracy && isHeadFaction ? `<div class="veto-banner"><div><div class="veto-banner-text">⚠ You may veto this ${termBill.toLowerCase()}</div><div style="font-size:0.75rem;color:#888;">Costs -${GAME_CONFIG.VETO_APPROVAL_COST} Approval</div></div><button class="stance-btn veto" onclick="event.stopPropagation(); vetoDecree('${bill.id}')">VETO</button></div>` : ''}
+                ${lawsIsAutocracy && isHeadFaction ? `<div class="veto-banner"><div><div class="veto-banner-text">⚠ You may veto this ${termBill.toLowerCase()}</div><div style="font-size:0.75rem;color:#888;">Costs -${GAME_CONFIG.VETO_APPROVAL_COST} Approval</div></div><button class="stance-btn veto" onclick="event.stopPropagation(); vetoDecree('${bill.id}')">VETO</button></div>` : ''}
             `}
             ${!isVetoed ? `<div class="click-hint">Click to view full ${termBill.toLowerCase()} & vote →</div>` : ''}
         </div>`;
 }
 
 async function vetoDecree(billId) {
-    if (!isAutocracy || !isHeadFaction) return;
+    if (!lawsIsAutocracy || !isHeadFaction) return;
     if (!confirm(`⛔ VETO this decree?\nYour faction loses -${GAME_CONFIG.VETO_APPROVAL_COST} Approval.\nProceed?`)) return;
     try {
         await _supabase.from('bills').update({ status: 'vetoed' }).eq('id', billId);
@@ -788,7 +788,7 @@ function renderCommitteeBill(bill) {
     const support = calculateBillSupport(bill.bill_support, bill.proposed_by, allPartySeats);
     const isSponsor = bill.proposed_by === currentFaction?.id;
     let decreeActionsHTML = '';
-    if (isAutocracy) {
+    if (lawsIsAutocracy) {
         decreeActionsHTML = `<div class="decree-actions">${isHeadFaction ? `<button class="decree-action-btn enact" onclick="event.stopPropagation(); enactDecree('${bill.id}')">⚡ Enact Decree</button>` : ''}${isSponsor ? `<button class="decree-action-btn retract-decree" onclick="event.stopPropagation(); retractBill('${bill.id}')">Retract</button>` : ''}</div>`;
     }
     return `
@@ -798,10 +798,10 @@ function renderCommitteeBill(bill) {
                     <div class="committee-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : (bill.bill_type === 'foundational' ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>' : '')}</div>
                     <div class="committee-bill-sponsor">Proposed by ${bill.factions?.faction_name || 'Unknown'}</div>
                 </div>
-                ${isAutocracy ? `<div class="committee-support"><div style="font-size:0.85rem;color:#ff4444;font-weight:bold;">DECREE</div><div class="support-label">${isHeadFaction ? 'You can enact this' : 'Awaiting head faction'}</div></div>` :
+                ${lawsIsAutocracy ? `<div class="committee-support"><div style="font-size:0.85rem;color:#ff4444;font-weight:bold;">DECREE</div><div class="support-label">${isHeadFaction ? 'You can enact this' : 'Awaiting head faction'}</div></div>` :
                 `<div class="committee-support"><div class="support-percent ${support.percent >= 51 ? 'enough' : ''}">${support.percent}%</div><div class="support-label">Support</div></div>`}
             </div>
-            ${!isAutocracy ? `<div class="support-bar-track"><div class="threshold-marker"></div><div class="support-bar-fill ${support.percent >= 51 ? 'enough' : ''}" style="width:${support.percent}%"></div></div>` : ''}
+            ${!lawsIsAutocracy ? `<div class="support-bar-track"><div class="threshold-marker"></div><div class="support-bar-fill ${support.percent >= 51 ? 'enough' : ''}" style="width:${support.percent}%"></div></div>` : ''}
             <div class="bill-articles">
                 ${bill.bill_type === 'foundational' ? `<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#9C27B0;">🏛 Electoral Makeup — Proposed: ${bill.proposed_seats || '?'} seats</span><div class="article-desc">Requires 2/3 supermajority to pass. Co-sponsor required.</div></div></div>` :
                 (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">🗑️ Proposes to rescind an active law</span></div></div>' :
@@ -814,12 +814,12 @@ function renderCommitteeBill(bill) {
                 }).join(''))}
             </div>
             ${decreeActionsHTML}
-            ${!isAutocracy ? `<div class="click-hint" style="color:#ff9800;">Click to view full ${termBill.toLowerCase()} & negotiate →</div>` : ''}
+            ${!lawsIsAutocracy ? `<div class="click-hint" style="color:#ff9800;">Click to view full ${termBill.toLowerCase()} & negotiate →</div>` : ''}
         </div>`;
 }
 
 async function enactDecree(billId) {
-    if (!isAutocracy || !isHeadFaction) return;
+    if (!lawsIsAutocracy || !isHeadFaction) return;
     if (!confirm('⚡ ENACT this decree?\nThis sends it directly to the floor for a vote.')) return;
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -885,7 +885,7 @@ async function rescindLaw(activeLawId, policyName) {
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const currentTick = shard?.current_tick || 0;
-        const termBill = isAutocracy ? 'decree' : 'bill';
+        const termBill = lawsIsAutocracy ? 'decree' : 'bill';
         const { data: bill, error: billError } = await _supabase.from('bills').insert({
             nation_id: currentNation.id,
             proposed_by: currentFaction.id,
@@ -914,7 +914,7 @@ async function rescindLaw(activeLawId, policyName) {
 
 function openDraftModal() {
     draftArticles = []; selectedPolicy = null;
-    if (isAutocracy) {
+    if (lawsIsAutocracy) {
         document.getElementById('draft-modal-content').classList.add('autocracy-modal');
         document.getElementById('draft-modal-title').classList.add('autocracy-title');
         document.getElementById('draft-modal-title').textContent = 'Draft New Decree';
@@ -930,7 +930,7 @@ function openDraftModal() {
         document.getElementById('submit-bill-btn').textContent = `Submit to Committee — ${GAME_CONFIG.DRAFT_BILL_AP_COST} AP`;
     }
     document.getElementById('article-preamble').textContent =
-        `This ${isAutocracy ? 'decree' : 'bill'}, put forth in the ${isAutocracy ? 'regime' : 'legislature'} of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to enact the following provisions.`;
+        `This ${lawsIsAutocracy ? 'decree' : 'bill'}, put forth in the ${lawsIsAutocracy ? 'regime' : 'legislature'} of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to enact the following provisions.`;
     populateSectorDropdown('sector-select');
     const ideo1 = currentFaction.ideology_value_1 || '', ideo2 = currentFaction.ideology_value_2 || '';
     document.getElementById('party-ideologies').textContent = (ideo1 || ideo2) ? [ideo1, ideo2].filter(Boolean).join(' + ') : 'None (all policies available)';
@@ -950,7 +950,7 @@ function populateSectorDropdown(selectId) {
         if (policies.length > 0) select.innerHTML += `<option value="${sector.key}">${sector.label}</option>`;
     });
     // Add Foundational section for democracies (only in the main draft modal, not committee add modal)
-    if (!isAutocracy && selectId === 'sector-select') {
+    if (!lawsIsAutocracy && selectId === 'sector-select') {
         select.innerHTML += `<option value="FOUNDATIONAL" style="font-weight:bold;">🏛 Foundational</option>`;
     }
 }
@@ -1232,7 +1232,7 @@ async function submitToCommittee() {
             nation_id: currentNation.id, proposed_by: currentFaction.id, proposed_tick: currentTick, bill_name: billName, status: 'committee',
             preamble: isFoundationalBill
                 ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the number of legislative seats in ${currentNation.name} from ${GAME_CONFIG.TOTAL_SEATS} to ${draftArticles.find(a => a.isFoundational).proposedSeats}. Requires a two-thirds supermajority to pass.`
-                : `This ${isAutocracy ? 'decree' : 'bill'}, put forth in the ${isAutocracy ? 'regime' : 'legislature'} of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to enact the following provisions.`
+                : `This ${lawsIsAutocracy ? 'decree' : 'bill'}, put forth in the ${lawsIsAutocracy ? 'regime' : 'legislature'} of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to enact the following provisions.`
         };
 
         if (isFoundationalBill) {
@@ -1254,7 +1254,7 @@ async function submitToCommittee() {
             await _supabase.from('bill_articles').insert(articles);
         }
 
-        if (!isAutocracy) await _supabase.rpc('process_npc_committee_votes', { p_nation_id: currentNation.id });
+        if (!lawsIsAutocracy) await _supabase.rpc('process_npc_committee_votes', { p_nation_id: currentNation.id });
         closeModal(); await loadLawsData(); renderLawsPage();
         alert(`"${billName}" submitted to committee!${isFoundationalBill ? '\n\nYou need at least one co-sponsor to send it to the floor.' : ''}`);
     } catch (error) { console.error('Error submitting:', error); alert('Error submitting. Please try again.'); } finally { isSubmitting = false; }
@@ -1283,7 +1283,7 @@ async function retractBill(billId) {
 function openCommitteeAddModal(billId) {
     currentCommitteeBillId = billId; committeeSelectedPolicy = null;
     populateSectorDropdown('committee-sector-select');
-    document.getElementById('committee-modal-title').textContent = isAutocracy ? 'Add Article to Decree' : 'Add Article to Bill';
+    document.getElementById('committee-modal-title').textContent = lawsIsAutocracy ? 'Add Article to Decree' : 'Add Article to Bill';
     const ideo1 = currentFaction.ideology_value_1 || '', ideo2 = currentFaction.ideology_value_2 || '';
     document.getElementById('committee-party-ideologies').textContent = (ideo1 || ideo2) ? [ideo1, ideo2].filter(Boolean).join(' + ') : 'None';
     document.getElementById('committee-sector-select').value = '';
