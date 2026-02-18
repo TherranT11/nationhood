@@ -5647,6 +5647,10 @@ async function processCrises(supabase, nation, currentTick) {
 
         for (const effect of effects) {
             const changePT = Number(effect.change_per_tick);
+            if (!Number.isFinite(changePT)) {
+                console.warn(`[processCrises] Skipping effect with non-numeric change_per_tick: "${effect.change_per_tick}" in crisis "${template.name}" for ${nation.name}`);
+                continue;
+            }
             const hasFloor = effect.stat_floor !== null && effect.stat_floor !== undefined;
             const floorVal = hasFloor ? Number(effect.stat_floor) : null;
 
@@ -5720,11 +5724,12 @@ async function processCrises(supabase, nation, currentTick) {
                 if (pmMinistry) {
                     const currentVal = pmMinistry.minister_approval ?? 50;
                     const newVal = clampWithFloor(currentVal, currentVal + changePT);
-                    await supabase.from('ministries')
+                    const { error: pmUpdErr } = await supabase.from('ministries')
                         .update({ minister_approval: newVal })
                         .eq('nation_id', nation.id)
                         .eq('ministry_key', 'prime_minister')
                         .eq('is_active', true);
+                    if (pmUpdErr) console.error(`[processCrises] Failed to update PM approval for ${nation.name}:`, pmUpdErr.message);
 
                     appliedEffects.push({
                         stat: 'minister_approval', change: changePT,
@@ -5757,11 +5762,12 @@ async function processCrises(supabase, nation, currentTick) {
                 if (ministry) {
                     const currentVal = ministry.minister_approval ?? 50;
                     const newVal = clampWithFloor(currentVal, currentVal + changePT);
-                    await supabase.from('ministries')
+                    const { error: minUpdErr } = await supabase.from('ministries')
                         .update({ minister_approval: newVal })
                         .eq('nation_id', nation.id)
                         .eq('ministry_key', effect.minister_key)
                         .eq('is_active', true);
+                    if (minUpdErr) console.error(`[processCrises] Failed to update ${effect.minister_key} approval for ${nation.name}:`, minUpdErr.message);
 
                     appliedEffects.push({
                         stat: 'minister_approval', change: changePT,

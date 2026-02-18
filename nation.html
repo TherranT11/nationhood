@@ -392,13 +392,15 @@ async function loadPreviousTickData(nationId) {
     const previousTick = shard.current_tick - 1;
     if (previousTick < 0) return;
 
-    // Use maybeSingle() — .single() errors on 0 rows, which silently
-    // killed previousTickData when history was missing for the exact tick.
-    const { data: history, error } = await _supabase.from('nations_history')
-        .select('*').eq('nation_id', nationId).eq('tick', previousTick).maybeSingle();
+    // Use .limit(1) instead of .maybeSingle() — maybeSingle sends an Accept header
+    // that causes PostgREST to return HTTP 406 when 0 rows match, which logs a
+    // console error even though supabase-js handles it gracefully.
+    const { data: historyRows, error } = await _supabase.from('nations_history')
+        .select('*').eq('nation_id', nationId).eq('tick', previousTick).limit(1);
     if (error) {
         console.warn('[loadPreviousTickData] Query error for tick ' + previousTick + ':', error.message);
     }
+    const history = (historyRows && historyRows.length > 0) ? historyRows[0] : null;
     if (history) {
         previousTickData = history;
         qCacheSet(cacheKey, history, 5 * 60 * 1000);
