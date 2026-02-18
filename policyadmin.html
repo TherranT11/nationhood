@@ -465,7 +465,7 @@ const STAT_GROUPS = [
     { label: '👥 Demographics', stats: ['population','eligible_voters','population_growth','birth_rate','death_rate','median_age','ethnic_diversity'] },
     { label: '🏥 Healthcare', stats: ['healthcare_quality','healthcare_accessibility','beds_per_100k','lifespan','drug_use'] },
     { label: '📚 Education', stats: ['literacy','higher_education','education_accessibility','academic_immigration'] },
-    { label: '🏗️ Infrastructure', stats: ['digital_infrastructure','rail_network','urbanization','energy_generation','renewable_energy_percentage'] },
+    { label: '🏗️ Infrastructure', stats: ['physical_infrastructure','digital_infrastructure','rail_network','urbanization','energy_generation','renewable_energy_percentage'] },
     { label: '⛏️ Resources', stats: ['arable_land','rare_minerals','oil_and_gas','fuel_prices'] },
     { label: '🌿 Environment', stats: ['pollution','carbon_emissions'] },
     { label: '🏠 Social', stats: ['standard_of_living','happiness','social_mobility','benefits','crime_rate','incarceration_rate'] },
@@ -486,13 +486,19 @@ const STAT_OPTIONS_HTML = buildStatOptions();
 const CANONICAL_STAT_KEYS = new Set(STAT_GROUPS.flatMap(group => group.stats));
 const POLICY_STAT_KEY_ALIASES = {
     intl_reputation: 'international_reputation',
+    diplomatic_standing: 'international_reputation',
     credit_rating: 'credit',
     credit_score: 'credit',
     trade: 'trade_balance',
     trade_volume: 'trade_balance',
     education: 'higher_education',
     education_quality: 'higher_education',
-    military_strength: 'stability'
+    military_strength: 'stability',
+    literacy_rate: 'literacy',
+    hospital_beds: 'beds_per_100k',
+    technology: 'digital_infrastructure',
+    infrastructure: 'physical_infrastructure',
+    tourism: 'international_reputation'
 };
 
 function normalizePolicyStatKey(statKey) {

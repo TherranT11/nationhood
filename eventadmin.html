@@ -212,33 +212,62 @@ var deletedDescIds = [], deletedTriggerIds = [], deletedEffectIds = [];
 var currentMode = 'events'; // 'events' or 'ministry'
 
 // ==================== CONSTANTS ====================
+// Canonical nation stat keys — must match NATION_STAT_COLUMNS in game-common.js
 var NATION_STATS = [
-    { key: 'gdp', label: 'GDP' },{ key: 'debt', label: 'Debt' },
-    { key: 'debt_growth', label: 'Debt Growth' },{ key: 'inflation', label: 'Inflation' },
-    { key: 'unemployment', label: 'Unemployment' },{ key: 'poverty_rate', label: 'Poverty Rate' },
-    { key: 'income_inequality', label: 'Income Inequality' },{ key: 'standard_of_living', label: 'Standard of Living' },
-    { key: 'happiness', label: 'Happiness' },{ key: 'population', label: 'Population' },
+    // Economic
+    { key: 'gdp', label: 'GDP' },{ key: 'gdp_growth', label: 'GDP Growth' },
+    { key: 'debt', label: 'Debt' },{ key: 'debt_growth', label: 'Debt Growth' },
+    { key: 'inflation', label: 'Inflation' },{ key: 'interest_rates', label: 'Interest Rates' },
+    { key: 'trade_balance', label: 'Trade Balance' },{ key: 'currency_strength', label: 'Currency Strength' },
+    { key: 'foreign_investment', label: 'Foreign Investment' },{ key: 'credit', label: 'Credit' },
+    // Taxation
+    { key: 'income_tax', label: 'Income Tax' },{ key: 'corporate_tax', label: 'Corporate Tax' },
+    { key: 'sales_tax', label: 'Sales Tax' },{ key: 'tariffs', label: 'Tariffs' },
+    // Labor & Employment
+    { key: 'unemployment', label: 'Unemployment' },{ key: 'labor_force_participation', label: 'Labor Force Participation' },
+    { key: 'minimum_wage', label: 'Minimum Wage' },{ key: 'union_strength', label: 'Union Strength' },
+    { key: 'poverty_rate', label: 'Poverty Rate' },{ key: 'income_inequality', label: 'Income Inequality' },
+    // Demographics
+    { key: 'population', label: 'Population' },{ key: 'population_growth', label: 'Population Growth' },
     { key: 'birth_rate', label: 'Birth Rate' },{ key: 'death_rate', label: 'Death Rate' },
-    { key: 'lifespan', label: 'Lifespan' },{ key: 'healthcare_quality', label: 'Healthcare Quality' },
-    { key: 'healthcare_accessibility', label: 'Healthcare Accessibility' },{ key: 'hospital_beds', label: 'Hospital Beds' },
-    { key: 'education_quality', label: 'Education Quality' },{ key: 'literacy', label: 'Literacy' },
-    { key: 'technology', label: 'Technology' },{ key: 'infrastructure', label: 'Infrastructure' },
-    { key: 'immigration', label: 'Immigration' },{ key: 'emigration', label: 'Emigration' },
-    { key: 'illegal_immigration', label: 'Illegal Immigration' },{ key: 'crime_rate', label: 'Crime Rate' },
-    { key: 'incarceration_rate', label: 'Incarceration Rate' },{ key: 'drug_use', label: 'Drug Use' },
-    { key: 'corruption', label: 'Corruption' },{ key: 'religious', label: 'Religiosity' },{ key: 'pollution', label: 'Pollution' },
-    { key: 'carbon_emissions', label: 'Carbon Emissions' },{ key: 'fuel_prices', label: 'Fuel Prices' },
-    { key: 'military_strength', label: 'Military Strength' },{ key: 'terrorism', label: 'Terrorism' },
-    { key: 'political_violence', label: 'Political Violence' },{ key: 'civil_unrest', label: 'Civil Unrest' },
-    { key: 'polarization', label: 'Polarization' },{ key: 'sanctions', label: 'Sanctions' },
-    { key: 'trade', label: 'Trade' },{ key: 'tourism', label: 'Tourism' },
-    { key: 'diplomatic_standing', label: 'Diplomatic Standing' },
-    { key: 'freedom_index', label: 'Freedom Index' },
-    { key: 'judicial_independence', label: 'Judicial Independence' },
-    { key: 'legitimacy', label: 'Legitimacy' },
-    { key: 'stability', label: 'Stability' },
+    { key: 'median_age', label: 'Median Age' },{ key: 'eligible_voters', label: 'Eligible Voters' },
+    { key: 'ethnic_diversity', label: 'Ethnic Diversity' },
+    // Healthcare
+    { key: 'healthcare_quality', label: 'Healthcare Quality' },{ key: 'healthcare_accessibility', label: 'Healthcare Accessibility' },
+    { key: 'beds_per_100k', label: 'Hospital Beds per 100k' },{ key: 'lifespan', label: 'Lifespan' },
+    { key: 'drug_use', label: 'Drug Use' },
+    // Education
+    { key: 'literacy', label: 'Literacy' },{ key: 'higher_education', label: 'Higher Education' },
+    { key: 'education_accessibility', label: 'Education Accessibility' },{ key: 'academic_immigration', label: 'Academic Immigration' },
+    // Infrastructure
+    { key: 'physical_infrastructure', label: 'Physical Infrastructure' },{ key: 'digital_infrastructure', label: 'Digital Infrastructure' },{ key: 'rail_network', label: 'Rail Network' },
+    { key: 'urbanization', label: 'Urbanization' },{ key: 'energy_generation', label: 'Energy Generation' },
+    { key: 'renewable_energy_percentage', label: 'Renewable Energy %' },
+    // Resources
+    { key: 'arable_land', label: 'Arable Land' },{ key: 'rare_minerals', label: 'Rare Minerals' },
+    { key: 'oil_and_gas', label: 'Oil & Gas' },{ key: 'fuel_prices', label: 'Fuel Prices' },
+    // Environment
+    { key: 'pollution', label: 'Pollution' },{ key: 'carbon_emissions', label: 'Carbon Emissions' },
+    // Social
+    { key: 'standard_of_living', label: 'Standard of Living' },{ key: 'happiness', label: 'Happiness' },
+    { key: 'social_mobility', label: 'Social Mobility' },{ key: 'benefits', label: 'Benefits' },
+    { key: 'crime_rate', label: 'Crime Rate' },{ key: 'incarceration_rate', label: 'Incarceration Rate' },
+    // Religion
+    { key: 'religious', label: 'Religiosity' },
+    // Governance
+    { key: 'stability', label: 'Stability' },{ key: 'legitimacy', label: 'Legitimacy' },
+    { key: 'efficiency', label: 'Efficiency' },{ key: 'corruption', label: 'Corruption' },
+    { key: 'press_freedom', label: 'Press Freedom' },{ key: 'judicial_independence', label: 'Judicial Independence' },
+    { key: 'freedom_index', label: 'Freedom Index' },{ key: 'polarization', label: 'Polarization' },
+    // Security
+    { key: 'civil_unrest', label: 'Civil Unrest' },{ key: 'terrorism', label: 'Terrorism' },
+    { key: 'political_violence', label: 'Political Violence' },
+    // Immigration
+    { key: 'immigration', label: 'Immigration' },{ key: 'illegal_immigration', label: 'Illegal Immigration' },
+    { key: 'emigration', label: 'Emigration' },
+    // International
     { key: 'international_reputation', label: 'International Reputation' },
-    { key: 'digital_infrastructure', label: 'Digital Infrastructure' }
+    { key: 'trade_agreements', label: 'Trade Agreements' },{ key: 'sanctions', label: 'Sanctions' }
 ];
 
 var FACTION_STATS = [
