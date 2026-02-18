@@ -665,13 +665,14 @@ initPage('government', async (state) => {
     isAutocracy = (nation.government_type === 'Autocracy');
     isPresidential = (nation.government_type === 'Presidential');
 
-    // Backfill head of state if missing
-    if (!nation.head_of_state_first_name || !nation.head_of_state_last_name) {
+    // Backfill head of state if missing/incomplete
+    const hasValidHosAge = Number.isFinite(Number(nation.head_of_state_age)) && Number(nation.head_of_state_age) > 0;
+    if (!nation.head_of_state_first_name || !nation.head_of_state_last_name || !hasValidHosAge) {
         const HOS_FIRST = FIRST_NAMES_POOL;
         const HOS_LAST = LAST_NAMES_POOL;
-        const hosFirst = HOS_FIRST[Math.floor(Math.random() * HOS_FIRST.length)];
-        const hosLast = HOS_LAST[Math.floor(Math.random() * HOS_LAST.length)];
-        const hosAge = 45 + Math.floor(Math.random() * 25);
+        const hosFirst = nation.head_of_state_first_name || HOS_FIRST[Math.floor(Math.random() * HOS_FIRST.length)];
+        const hosLast = nation.head_of_state_last_name || HOS_LAST[Math.floor(Math.random() * HOS_LAST.length)];
+        const hosAge = hasValidHosAge ? Number(nation.head_of_state_age) : (45 + Math.floor(Math.random() * 25));
         const { error } = await _supabase.from('nations').update({
             head_of_state_first_name: hosFirst,
             head_of_state_last_name: hosLast,
