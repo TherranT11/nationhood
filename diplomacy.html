@@ -733,7 +733,7 @@ async function fetchPendingAmbassador(myNationId, targetNationId) {
     if (!myNationId || !targetNationId || myNationId === targetNationId) return null;
 
     try {
-        const { data } = await _supabase
+        const { data: pendingAmbassador } = await _supabase
             .from('ambassadors')
             .select('*')
             .eq('nation_id', myNationId)
@@ -741,7 +741,33 @@ async function fetchPendingAmbassador(myNationId, targetNationId) {
             .eq('is_active', true)
             .eq('status', 'pending_confirmation')
             .maybeSingle();
-        return data;
+
+        if (!pendingAmbassador) return null;
+
+        const activeBillStatuses = ['floor', 'committee'];
+        let billQuery = _supabase
+            .from('bills')
+            .select('id')
+            .eq('bill_type', 'confirmation')
+            .in('status', activeBillStatuses);
+
+        if (pendingAmbassador.confirmation_bill_id) {
+            billQuery = billQuery.eq('id', pendingAmbassador.confirmation_bill_id);
+        } else {
+            billQuery = billQuery.eq('ambassador_id', pendingAmbassador.id);
+        }
+
+        const { data: liveBill } = await billQuery.maybeSingle();
+
+        if (liveBill) return pendingAmbassador;
+
+        await _supabase
+            .from('ambassadors')
+            .update({ status: 'rejected', is_active: false })
+            .eq('id', pendingAmbassador.id);
+
+        console.warn(`Ambassador confirmation desync detected for ${myNationId} → ${targetNationId}. Resetting state.`);
+        return null;
     } catch (e) {
         console.warn('Error fetching pending ambassador:', e);
         return null;
