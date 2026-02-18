@@ -641,40 +641,45 @@
     }
     async function advanceTickAdmin() {
         const status = document.getElementById('tick-status');
-        status.className = 'status info'; status.textContent = 'Acquiring tick lock...'; status.classList.remove('hidden');
+        status.className = 'status info';
+        status.textContent = 'Submitting tick request to Edge Function...';
+        status.classList.remove('hidden');
 
-        let lockAcquired = false;
         try {
-            lockAcquired = await acquireTickLock(_supabase);
-        } catch (e) {
-            status.className = 'status error'; status.textContent = '❌ Error acquiring lock: ' + e.message;
-            return;
-        }
-        if (!lockAcquired) {
-            status.className = 'status error'; status.textContent = '❌ Another tab is already processing a tick. Wait and try again.';
-            return;
-        }
+            const response = await fetch(`${supabaseUrl}/functions/v1/advance-tick`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': supabaseKey,
+                    'Authorization': `Bearer ${supabaseKey}`
+                },
+                body: JSON.stringify({ source: 'admin-ui' })
+            });
 
-        status.textContent = 'Advancing tick (processing effects, costs, ministry actions, elections...)';
-        try {
-            const summary = await advanceTick(_supabase);
-            let msg = `✅ Tick ${summary.tick} complete! (${summary.nations} nations)`;
-            const parts = [];
-            if (summary.effects?.length) parts.push(`${summary.effects.reduce((s,e) => s + e.effects.length, 0)} law effects`);
-            if (summary.ministryActions?.length) parts.push(`${summary.ministryActions.reduce((s,e) => s + e.effects.length, 0)} ministry effects`);
-            if (summary.costs?.length) parts.push(`${summary.costs.length} cost deductions`);
-            if (summary.ministryEvents?.length) {
-                const mEvtCount = summary.ministryEvents.reduce((s,e) => s + e.events.length, 0);
-                parts.push(`${mEvtCount} ministry inbox event(s) fired`);
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.error || payload.message || `HTTP ${response.status}`);
             }
-            if (parts.length) msg += ' — ' + parts.join(', ');
-            status.className = 'status success'; status.textContent = msg;
+
+            const { status: tickStatus, summary, message, current_tick: currentTick, next_tick_at: nextTickAt } = payload;
+            if (tickStatus === 'success' && summary) {
+                status.className = 'status success';
+                status.textContent = `✅ ${JSON.stringify(summary)}`;
+            } else if (tickStatus === 'locked') {
+                status.className = 'status error';
+                status.textContent = `❌ ${message || 'Tick is currently locked by another process.'}`;
+            } else if (tickStatus === 'not_due') {
+                status.className = 'status info';
+                status.textContent = `ℹ️ Tick not due yet (current tick ${currentTick ?? 'unknown'}, next at ${nextTickAt || 'unknown'}).`;
+            } else {
+                status.className = 'status info';
+                status.textContent = `ℹ️ ${JSON.stringify(payload)}`;
+            }
+
             await loadShardInfo(); await loadStats();
         } catch (error) {
             console.error('advanceTick error:', error);
             status.className = 'status error'; status.textContent = '❌ Error: ' + error.message;
-        } finally {
-            try { await releaseTickLock(_supabase); } catch (e) { console.warn('Error releasing tick lock:', e); }
         }
     }
 
