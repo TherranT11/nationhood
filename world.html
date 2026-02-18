@@ -164,6 +164,17 @@ async function renderNationIntel(nation) {
     const flagUrl = flagUrls[nation.name] || null;
     
     const isAutocracy = nation.government_type === 'Autocracy';
+
+    // Merge real seat data from election results (fixes 0 seats for democracies)
+    if (parties && parties.length > 0) {
+        const { allPartySeats } = await loadSeats(_supabase, nation.id, isAutocracy, parties, null);
+        for (const p of parties) {
+            if (allPartySeats[p.id] !== undefined) {
+                p.seats = allPartySeats[p.id];
+            }
+        }
+    }
+
     const partyLabel = isAutocracy ? 'Factions' : 'Parties';
     
     sidebar.innerHTML = `
