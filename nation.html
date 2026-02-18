@@ -603,7 +603,7 @@ async function renderNationPage(nation) {
     h += '<div class="overview-item"><div class="overview-label">Government</div><div class="overview-value">' + (nation.government_type === 'Presidential' ? 'Presidential Republic' : (nation.government_type || '—')) + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">Population</div><div class="overview-value">' + formatPopulation(nation.population) + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">National Approval</div><div class="overview-value gold">' + (nation.national_approval || 50) + '%</div></div>';
-    h += '<div class="overview-item"><div class="overview-label">GDP</div><div class="overview-value gold">' + formatGDP(nation.gdp) + '</div></div>';
+    h += '<div class="overview-item"><div class="overview-label">GDP</div><div class="overview-value gold">' + formatGDP(scaleRawToDollars(nation.gdp)) + '</div></div>';
     h += '</div></div>';
 
     // Revolution banner (above crises)
@@ -617,9 +617,9 @@ async function renderNationPage(nation) {
 
     // ECONOMIC
     h += sectorBlock('💰', 'Economic', [
-        renderStatBox('GDP', 'gdp', nation.gdp, 'Gross domestic product', 'gdp'),
+        renderStatBox('GDP', 'gdp', nation.gdp, 'Gross domestic product', 'gdp', false, scaleRawToDollars(nation.gdp)),
         renderStatBox('GDP Growth', 'gdp_growth', nation.gdp_growth, 'Annual economic growth rate'),
-        renderStatBox('National Debt', 'debt', nation.debt, 'Government debt obligations', 'currency', true),
+        renderStatBox('National Debt', 'debt', nation.debt, 'Government debt obligations', 'currency', true, scaleRawToDollars(nation.debt)),
         renderStatBox('Debt Growth', 'debt_growth', nation.debt_growth, 'Rate of debt accumulation', null, true),
         renderStatBox('Inflation', 'inflation', nation.inflation, 'Rate of price increases', null, true),
         renderStatBox('Interest Rates', 'interest_rates', nation.interest_rates, 'Central bank lending rate'),
@@ -765,7 +765,7 @@ function sectorBlock(icon, title, boxes) {
 /**
  * Render a single stat box with ranking and trend
  */
-function renderStatBox(name, statKey, value, description, format, inverted) {
+function renderStatBox(name, statKey, value, description, format, inverted, displayValue) {
     format = format || null;
     inverted = inverted || false;
     var numValue = parseInt(value) || 0;
@@ -783,10 +783,11 @@ function renderStatBox(name, statKey, value, description, format, inverted) {
         }
     }
 
-    var formattedValue = (value !== null && value !== undefined) ? (typeof value === 'number' ? Math.round(value * 10) / 10 : value) : 'N/A';
-    if (format === 'currency' && typeof value === 'number') formattedValue = formatCurrencyShort(value);
-    else if (format === 'gdp' && typeof value === 'number') formattedValue = formatCurrencyShort(value);
-    else if (format === 'years' && typeof value === 'number') formattedValue = Math.round(value * 10) / 10 + ' yrs';
+    var showValue = (displayValue !== undefined) ? displayValue : value;
+    var formattedValue = (showValue !== null && showValue !== undefined) ? (typeof showValue === 'number' ? Math.round(showValue * 10) / 10 : showValue) : 'N/A';
+    if (format === 'currency' && typeof showValue === 'number') formattedValue = formatCurrencyShort(showValue);
+    else if (format === 'gdp' && typeof showValue === 'number') formattedValue = formatCurrencyShort(showValue);
+    else if (format === 'years' && typeof showValue === 'number') formattedValue = Math.round(showValue * 10) / 10 + ' yrs';
 
     var trendArrow = getTrendArrow(statKey, value, inverted, format);
     var rank = calculateRanking(statKey, value, inverted);
