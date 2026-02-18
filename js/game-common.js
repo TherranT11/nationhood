@@ -112,6 +112,32 @@ async function accumulateAP(supabase, factionId, gain, maxAp = GAME_CONFIG.MAX_A
 function isGovernmentAutocracy(nation) { return nation?.government_type === 'Autocracy'; }
 function isGovernmentPresidential(nation) { return nation?.government_type === 'Presidential'; }
 
+// Canonical government types used by nations and ministry event templates.
+const canonicalNationGovTypes = ['Autocracy', 'Parliamentary Republic', 'Presidential'];
+
+// Temporary aliases to support migration from legacy gov-type strings.
+// TODO(next migration stub): remove aliases and require strict canonical-only values.
+const legacyAliasMap = {
+    Democracy: 'Parliamentary Republic'
+};
+
+function canonicalizeNationGovType(govType) {
+    if (!govType) return null;
+    return legacyAliasMap[govType] || govType;
+}
+
+function templateSupportsNationGovType(templateGovTypes, nationGovTypeRaw) {
+    const nationGovTypeCanonical = canonicalizeNationGovType(nationGovTypeRaw);
+    const templateGovTypesRaw = Array.isArray(templateGovTypes) ? templateGovTypes : [];
+    const templateGovTypesCanonical = [...new Set(templateGovTypesRaw.map(canonicalizeNationGovType).filter(Boolean))];
+    return {
+        matches: !!nationGovTypeCanonical && templateGovTypesCanonical.includes(nationGovTypeCanonical),
+        nationGovTypeCanonical,
+        templateGovTypesRaw,
+        templateGovTypesCanonical
+    };
+}
+
 // ==================== DIPLOMACY CONSTANTS ====================
 
 const DIPLOMACY_CONFIG = {
@@ -1878,6 +1904,34 @@ async function failBill(supabase, bill) {
     }).eq('id', bill.id);
 }
 
+/**
+ * Ensure ambassador rows stay in sync when confirmation bills are failed
+ * through bulk/force-fail paths that bypass resolveExpiredVotes.
+ */
+async function syncAmbassadorsForFailedConfirmationBills(supabase, failedBills) {
+    if (!Array.isArray(failedBills) || failedBills.length === 0) return;
+
+    const ambassadorIds = [...new Set(
+        failedBills
+            .filter(b => b?.bill_type === 'confirmation' && b?.ambassador_id)
+            .map(b => b.ambassador_id)
+    )];
+
+    if (ambassadorIds.length === 0) return;
+
+    const { error } = await supabase
+        .from('ambassadors')
+        .update({
+            status: 'rejected',
+            is_active: false
+        })
+        .in('id', ambassadorIds);
+
+    if (error) {
+        console.warn('[syncAmbassadorsForFailedConfirmationBills] Failed to reject ambassadors:', error.message);
+    }
+}
+
 
 // ==================== ADMINISTRATION LIFECYCLE ====================
 
@@ -3204,7 +3258,9 @@ async function processElections(supabase, nation, currentTick) {
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
             .in('status', ['committee', 'floor'])
-            .select('id');
+            .select('id, bill_type, ambassador_id');
+
+        await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
 
         if (dissolvedBills?.length > 0) {
             console.log(`Dissolved ${dissolvedBills.length} pending bill(s) after election for ${nation.name}`);
@@ -3217,7 +3273,8 @@ async function processElections(supabase, nation, currentTick) {
                 .update({ status: 'failed' })
                 .eq('nation_id', nation.id)
                 .eq('status', 'president_desk')
-                .select('id');
+                .select('id, bill_type, ambassador_id');
+            await syncAmbassadorsForFailedConfirmationBills(supabase, deskBills);
             if (deskBills?.length > 0) {
                 console.log(`Failed ${deskBills.length} bill(s) on president's desk after presidential election for ${nation.name}`);
             }
@@ -3258,10 +3315,13 @@ async function processElections(supabase, nation, currentTick) {
             // Fail all frozen bills (from caretaker period) regardless of whether
             // an existing government row was found — bills may have been frozen by
             // early elections even if the government row was already cleaned up.
-            await supabase.from('bills')
+            const { data: frozenBills } = await supabase.from('bills')
                 .update({ status: 'failed' })
                 .eq('nation_id', nation.id)
-                .eq('status', 'frozen');
+                .eq('status', 'frozen')
+                .select('id, bill_type, ambassador_id');
+
+            await syncAmbassadorsForFailedConfirmationBills(supabase, frozenBills);
 
             if (existingGov) {
                 console.log(`Dissolving ${existingGov.status} government after election for ${nation.name} (source: ${existingGovSource})`);
@@ -6169,10 +6229,13 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
     const govType = MINISTRY_EVENT_GOV_TYPES.includes(nationGovType) ? nationGovType : 'Democracy';
     const eligible = templates.filter(t => (t.gov_types || []).filter(g => MINISTRY_EVENT_GOV_TYPES.includes(g)).includes(govType));
     if (eligible.length === 0) {
-        dbg(`BLOCKED: 0/${templates.length} templates match gov_type "${govType}". Template gov_types: ${templates.map(t => `${t.event_key}=${JSON.stringify(t.gov_types)}`).join(', ')}`);
+        dbg(`BLOCKED: 0/${templates.length} templates match gov_type raw="${govTypeRaw}" canonical="${govTypeCanonical}". Template gov_types: ${templates.map(t => {
+            const matchInfo = templateSupportsNationGovType(t.gov_types, govTypeRaw);
+            return `${t.event_key}=raw:${JSON.stringify(matchInfo.templateGovTypesRaw)} canonical:${JSON.stringify(matchInfo.templateGovTypesCanonical)}`;
+        }).join(', ')}. Canonical source of truth: ${JSON.stringify(canonicalNationGovTypes)}.`);
         return firedEvents;
     }
-    dbg(`${eligible.length}/${templates.length} template(s) match gov_type "${govType}": [${eligible.map(t => t.event_key).join(', ')}]`);
+    dbg(`${eligible.length}/${templates.length} template(s) match gov_type raw="${govTypeRaw}" canonical="${govTypeCanonical}": [${eligible.map(t => t.event_key).join(', ')}]`);
 
     // --- 4. Load active ministries for this nation ---
     const { data: ministries } = await supabase
@@ -6190,7 +6253,7 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
     // For Presidential nations with pending-confirmation ministers, party_id may be null.
     // Fall back to the PM/President's faction so events can still fire.
     let fallbackFactionId = null;
-    if (govType === 'Presidential') {
+    if (govTypeCanonical === 'Presidential') {
         const { data: president } = await supabase
             .from('presidents')
             .select('party_id')
@@ -6316,7 +6379,7 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
         const titles = variants.titles || [tmpl.title];
         const chosenTitle = titles[Math.floor(Math.random() * titles.length)] || tmpl.title;
 
-        const govVariant = variants[govType] || {};
+        const govVariant = variants[govTypeCanonical] || {};
         const bodies = govVariant.bodies || [];
         const chosenBody = bodies.length > 0
             ? bodies[Math.floor(Math.random() * bodies.length)]
