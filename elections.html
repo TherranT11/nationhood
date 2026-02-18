@@ -550,20 +550,49 @@ async function renderElectionResults(election) {
 async function renderElectionBreakdown(election) {
     const container = document.getElementById('election-breakdown-content');
     if (!container) return;
+    const renderElectionId = election?.id || null;
 
     if (!election) {
         container.innerHTML = '<div style="color:#888; padding:16px; font-size:0.85rem;">No completed parliamentary election is available yet.</div>';
         return;
     }
 
-    try {
-        const result = await runElectionPreview(_supabase, currentNation.id);
-        const blocDetails = result.bloc_details || [];
-        const partyNames = result.partyNames || {};
+    const urlParams = new URLSearchParams(window.location.search);
+    const usePreviewFallback = window.DEBUG_ELECTION_BREAKDOWN_PREVIEW === true || urlParams.get('electionBreakdownMode') === 'preview';
 
-        if (blocDetails.length === 0) {
-            container.innerHTML = '<div style="color:#666; padding:16px; font-size:0.85rem;">No voter bloc data available.</div>';
-            return;
+    let blocDetails = election?.results?.bloc_details || [];
+    let partyNames = {};
+
+    if (!Array.isArray(blocDetails)) {
+        blocDetails = [];
+    }
+
+    if (blocDetails.length === 0 && usePreviewFallback) {
+        try {
+            const result = await runElectionPreview(_supabase, election.nation_id);
+            blocDetails = Array.isArray(result?.bloc_details) ? result.bloc_details : [];
+            partyNames = result?.partyNames || {};
+        } catch (err) {
+            console.error('Election breakdown preview fallback error:', err);
+        }
+    }
+
+    if (renderElectionId && currentElectionId && renderElectionId !== currentElectionId) {
+        return;
+    }
+
+    if (blocDetails.length === 0) {
+        container.innerHTML = '<div style="color:#666; padding:16px; font-size:0.85rem;">No historical bloc breakdown stored for this election.</div>';
+        return;
+    }
+
+    try {
+        if (!Object.keys(partyNames).length) {
+            for (const vote of (election?.results?.votes || [])) {
+                if (vote?.party_id && vote?.party_name) {
+                    partyNames[vote.party_id] = vote.party_name;
+                }
+            }
         }
 
         const sorted = [...blocDetails].sort((a, b) => b.voter_count - a.voter_count);
@@ -575,6 +604,10 @@ async function renderElectionBreakdown(election) {
             'GLOBALISM': '#3F51B5'
         };
 
+        if (renderElectionId && currentElectionId && renderElectionId !== currentElectionId) {
+            return;
+        }
+
         container.innerHTML = sorted.map((bloc, idx) => {
             const blocId = 'breakdown-bloc-' + idx;
 
@@ -583,19 +616,34 @@ async function renderElectionBreakdown(election) {
                 ? bloc.tags.map(tag => `<span class="ideology-tag tag-${tag.toLowerCase()}">${tag.toUpperCase()}</span>`).join('')
                 : '<span style="font-size:0.78rem; color:#666; font-style:italic;">Unaligned</span>';
 
-            // Party vote bars
-            const voteEntries = Object.entries(bloc.blocVotes || {})
-                .map(([pid, votes]) => ({ name: partyNames[pid] || pid.slice(0, 8), votes }))
-                .sort((a, b) => b.votes - a.votes);
+            // Party vote bars (normalize modern and legacy payloads)
+            const normalizedPartyVotes = Array.isArray(bloc.party_votes)
+                ? bloc.party_votes.map(entry => ({
+                    partyId: entry?.party_id || null,
+                    name: entry?.party_name || partyNames[entry?.party_id] || (entry?.party_id ? entry.party_id.slice(0, 8) : 'Unknown Party'),
+                    votes: Number(entry?.votes) || 0
+                }))
+                : (bloc?.blocVotes && typeof bloc.blocVotes === 'object'
+                    ? Object.entries(bloc.blocVotes).map(([pid, votes]) => ({
+                        partyId: pid,
+                        name: partyNames[pid] || pid.slice(0, 8),
+                        votes: Number(votes) || 0
+                    }))
+                    : []);
+            const voteEntries = normalizedPartyVotes.sort((a, b) => b.votes - a.votes);
             const maxVotes = voteEntries.length > 0 ? voteEntries[0].votes : 0;
+            const abstentions = Number(bloc?.abstentions) || 0;
+            const blocVoterCount = Number(bloc?.voter_count) || 0;
+            const totalVotesFromEntries = voteEntries.reduce((sum, entry) => sum + entry.votes, 0);
+            const totalVotesFromVoters = Math.max(blocVoterCount - abstentions, 0);
+            const voteTotalForPct = totalVotesFromEntries > 0 ? totalVotesFromEntries : totalVotesFromVoters;
 
             const votesHtml = voteEntries.map(e => {
                 const barWidth = maxVotes > 0 ? (e.votes / maxVotes) * 100 : 0;
                 const isTop = e.votes === maxVotes;
                 const barColor = isTop ? '#ffcc00' : '#555';
                 const topClass = isTop ? ' top-party' : '';
-                const actualVoters = bloc.voter_count - bloc.abstentions;
-                const pct = actualVoters > 0 ? ((e.votes / actualVoters) * 100).toFixed(1) : '0.0';
+                const pct = voteTotalForPct > 0 ? ((e.votes / voteTotalForPct) * 100).toFixed(1) : '0.0';
                 return `<div class="bloc-vote-row">
                     <span class="bloc-vote-name${topClass}">${e.name}</span>
                     <div class="bloc-vote-bar-wrap">
@@ -606,15 +654,15 @@ async function renderElectionBreakdown(election) {
             }).join('');
 
             // Abstentions
-            const abstentionsHtml = bloc.abstentions > 0
-                ? `<div class="bloc-abstentions">Abstained: ${bloc.abstentions.toLocaleString()} voters</div>`
+            const abstentionsHtml = abstentions > 0
+                ? `<div class="bloc-abstentions">Abstained: ${abstentions.toLocaleString()} voters</div>`
                 : '';
 
             return `<div class="bloc-row" id="${blocId}">
                 <div class="bloc-row-header" onclick="document.getElementById('${blocId}').classList.toggle('expanded')">
                     <div class="bloc-row-left">
                         <span class="bloc-row-name">${bloc.bloc_name}</span>
-                        <span class="bloc-row-count">${bloc.voter_count.toLocaleString()} voters</span>
+                        <span class="bloc-row-count">${blocVoterCount.toLocaleString()} voters</span>
                     </div>
                     <div class="bloc-row-arrow">&#9654;</div>
                 </div>
