@@ -3350,7 +3350,7 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         if (trait.effects.on_appoint_stability) {
             const { data: nationRow } = await supabase.from('nations').select('stability').eq('id', nationId).single();
             if (nationRow) {
-                const newStability = Math.min(100, (nationRow.stability || 50) + trait.effects.on_appoint_stability);
+                const newStability = Math.max(0, Math.min(100, (nationRow.stability || 50) + trait.effects.on_appoint_stability));
                 await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
             }
         }
@@ -4172,6 +4172,7 @@ async function advanceTick(supabase) {
     const summary = { tick: newTick, nations: nations.length, effects: [], costs: [], resolutions: [], events: [] };
 
     for (const nation of nations) {
+      try {
         // Set correct seat count for this nation (affects supermajority thresholds, etc.)
         initGameConfigForNation(nation);
 
@@ -4282,6 +4283,11 @@ async function advanceTick(supabase) {
             summary.ministryEvents = summary.ministryEvents || [];
             summary.ministryEvents.push({ nation: nation.name, events: ministryEventResults });
         }
+      } catch (nationErr) {
+        console.error(`[advanceTick] FAILED processing nation ${nation.id} (${nation.name}):`, nationErr);
+        summary.errors = summary.errors || [];
+        summary.errors.push({ nation: nation.name, nationId: nation.id, error: String(nationErr) });
+      }
     }
 
     return summary;
@@ -4818,6 +4824,8 @@ async function processStatEffects(supabase, nation, currentTick) {
 
     if (Object.keys(nationUpdates).length > 0) {
         console.log(`[processStatEffects] Nation stats updated for ${nation.name}:`, JSON.stringify(nationUpdates));
+        // Propagate DB-written values to in-memory nation for downstream tick steps (3b-9)
+        Object.assign(nation, nationUpdates);
     }
 
     for (const id of lawsToAdvance) {
@@ -5284,6 +5292,7 @@ async function processCrises(supabase, nation, currentTick) {
 
     const crisisEvents = [];
     const nationUpdates = {};
+    const statBounds = {}; // { stat_key: { floor: highestFloor, ceiling: lowestCeiling } }
 
     // 3. Check inactive crises for activation
     for (const template of crisisTemplates) {
@@ -5351,58 +5360,21 @@ async function processCrises(supabase, nation, currentTick) {
         console.log(`Crisis activated: "${template.name}" in ${nation.name} (tick ${currentTick})`);
     }
 
-    // 4. Process active crises: check end triggers, apply effects
+    // 4. Process active crises: apply effects first, then check end triggers
+    //    (Applying effects before deactivation check prevents crisis flicker when
+    //     a crisis's own effects push a stat to exactly the deactivation threshold.)
     for (const template of crisisTemplates) {
         const activeRecord = activeMap[template.id];
         if (!activeRecord) continue;
 
-        // 4a. Check end / recovery triggers
-        const endTriggers = template.crisis_end_triggers || [];
-        let allEndConditionsMet = endTriggers.length > 0;
-
-        for (const endTrigger of endTriggers) {
-            const statValue = nation[endTrigger.stat_key];
-            if (statValue === null || statValue === undefined) {
-                allEndConditionsMet = false;
-                break;
-            }
-            const val = Number(statValue);
-            if (endTrigger.operator === 'gte' && val < Number(endTrigger.threshold)) {
-                allEndConditionsMet = false;
-                break;
-            }
-            if (endTrigger.operator === 'lte' && val > Number(endTrigger.threshold)) {
-                allEndConditionsMet = false;
-                break;
-            }
+        // 4a. Idempotency guard: skip if effects already applied for this tick
+        const priorLog = activeRecord.effects_applied_log || [];
+        if (priorLog.some(entry => entry.tick === currentTick)) {
+            console.log(`[processCrises] Skipping "${template.name}" for ${nation.name} — already applied at tick ${currentTick}`);
+            continue;
         }
 
-        if (allEndConditionsMet) {
-            // Deactivate the crisis
-            await supabase.from('active_crises').delete().eq('id', activeRecord.id);
-            delete activeMap[template.id];
-
-            await supabase.from('event_log').insert({
-                nation_id: nation.id,
-                event_name: 'CRISIS_RESOLVED: ' + template.name,
-                description_used: 'The crisis "' + template.name + '" has been resolved.',
-                category: 'crisis',
-                effects_applied: [],
-                fired_at_tick: currentTick
-            });
-
-            crisisEvents.push({
-                type: 'crisis_resolved',
-                crisisName: template.name,
-                duration: currentTick - activeRecord.started_at_tick,
-                tick: currentTick
-            });
-
-            console.log(`Crisis resolved: "${template.name}" in ${nation.name} (tick ${currentTick}, duration: ${currentTick - activeRecord.started_at_tick} ticks)`);
-            continue; // skip effects on the tick the crisis resolves
-        }
-
-        // 4b. Still active — apply effects every tick
+        // 4b. Apply effects every tick
         const effects = template.crisis_effects || [];
         const appliedEffects = [];
 
@@ -5411,9 +5383,7 @@ async function processCrises(supabase, nation, currentTick) {
             const hasFloor = effect.stat_floor !== null && effect.stat_floor !== undefined;
             const floorVal = hasFloor ? Number(effect.stat_floor) : null;
 
-            // Helper: clamp value respecting the per-effect floor/ceiling
-            // If change is negative, stat_floor is a floor (can't go below).
-            // If change is positive, stat_floor is a ceiling (can't go above).
+            // Helper: clamp value respecting the per-effect floor/ceiling (for non-nation targets)
             // Round to 1dp to match processStatEffects and prevent floating-point drift.
             function clampWithFloor(current, raw) {
                 let v = Math.round(Math.max(0, Math.min(100, raw)) * 10) / 10;
@@ -5429,9 +5399,23 @@ async function processCrises(supabase, nation, currentTick) {
                     ? nationUpdates[effect.stat_key]
                     : (nation[effect.stat_key] !== undefined && nation[effect.stat_key] !== null
                         ? Number(nation[effect.stat_key]) : 50);
-                const newVal = clampWithFloor(currentVal, currentVal + changePT);
+
+                // Basic 0-100 clamp + 1dp rounding; floor/ceiling enforcement deferred to final pass
+                let newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 10) / 10;
                 nationUpdates[effect.stat_key] = newVal;
                 nation[effect.stat_key] = newVal;
+
+                // Accumulate most-restrictive floor/ceiling bounds for final enforcement
+                if (hasFloor) {
+                    if (!statBounds[effect.stat_key]) statBounds[effect.stat_key] = {};
+                    if (changePT < 0) {
+                        const prev = statBounds[effect.stat_key].floor;
+                        statBounds[effect.stat_key].floor = (prev !== undefined) ? Math.max(prev, floorVal) : floorVal;
+                    } else if (changePT > 0) {
+                        const prev = statBounds[effect.stat_key].ceiling;
+                        statBounds[effect.stat_key].ceiling = (prev !== undefined) ? Math.min(prev, floorVal) : floorVal;
+                    }
+                }
 
                 appliedEffects.push({
                     stat: effect.stat_key, change: changePT,
@@ -5545,6 +5529,62 @@ async function processCrises(supabase, nation, currentTick) {
                 tick: currentTick
             });
         }
+
+        // 4c. Check end / recovery triggers AFTER effects applied (prevents flicker)
+        const endTriggers = template.crisis_end_triggers || [];
+        let allEndConditionsMet = endTriggers.length > 0;
+
+        for (const endTrigger of endTriggers) {
+            const statValue = nation[endTrigger.stat_key];
+            if (statValue === null || statValue === undefined) {
+                allEndConditionsMet = false;
+                break;
+            }
+            const val = Number(statValue);
+            if (endTrigger.operator === 'gte' && val < Number(endTrigger.threshold)) {
+                allEndConditionsMet = false;
+                break;
+            }
+            if (endTrigger.operator === 'lte' && val > Number(endTrigger.threshold)) {
+                allEndConditionsMet = false;
+                break;
+            }
+        }
+
+        if (allEndConditionsMet) {
+            // Deactivate the crisis (effects already applied this final tick)
+            await supabase.from('active_crises').delete().eq('id', activeRecord.id);
+            delete activeMap[template.id];
+
+            await supabase.from('event_log').insert({
+                nation_id: nation.id,
+                event_name: 'CRISIS_RESOLVED: ' + template.name,
+                description_used: 'The crisis "' + template.name + '" has been resolved.',
+                category: 'crisis',
+                effects_applied: [],
+                fired_at_tick: currentTick
+            });
+
+            crisisEvents.push({
+                type: 'crisis_resolved',
+                crisisName: template.name,
+                duration: currentTick - activeRecord.started_at_tick,
+                tick: currentTick
+            });
+
+            console.log(`Crisis resolved: "${template.name}" in ${nation.name} (tick ${currentTick}, duration: ${currentTick - activeRecord.started_at_tick} ticks)`);
+        }
+    }
+
+    // 4d. Enforce most-restrictive floor/ceiling bounds across all crises
+    for (const [stat, bounds] of Object.entries(statBounds)) {
+        let val = nationUpdates[stat];
+        if (val === undefined) continue;
+        if (bounds.floor !== undefined) val = Math.max(bounds.floor, val);
+        if (bounds.ceiling !== undefined) val = Math.min(bounds.ceiling, val);
+        val = Math.round(val * 10) / 10;
+        nationUpdates[stat] = val;
+        nation[stat] = val;
     }
 
     // 5. Bulk update nation stats
@@ -6320,7 +6360,7 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
                 .single();
 
             if (nation) {
-                const newStability = Math.min(100, (nation.stability || 50) + effects.on_appoint_stability);
+                const newStability = Math.max(0, Math.min(100, (nation.stability || 50) + effects.on_appoint_stability));
                 await supabase
                     .from('nations')
                     .update({ stability: newStability })
@@ -6382,7 +6422,7 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
         for (const [stat, delta] of Object.entries(effects.nation_stat_per_tick)) {
             const currentVal = nation[stat];
             if (currentVal !== undefined && currentVal !== null) {
-                updates[stat] = Math.max(0, Math.min(100, currentVal + delta));
+                updates[stat] = Math.round(Math.max(0, Math.min(100, currentVal + delta)) * 10) / 10;
             }
         }
         if (Object.keys(updates).length > 0) {
