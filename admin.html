@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <title>Nationhood | Admin Panel</title>
     
-    </head>
+        <link rel="stylesheet" href="css/admin.css">
+</head>
 <body>
 
 <!-- Login Section -->
@@ -354,8 +355,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { applyPopulationGrowth } from './js/common.js';
 import { GAME_CONFIG, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processBlocApprovalDecay, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPartyStandingsJitter, processPMTraitEffects, calculateNationalBudget, markFactionActive, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES } from './js/game-common.js';
-import './css/admin.css';
-    const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
+const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
     const _supabase = createClient(supabaseUrl, supabaseKey);
 

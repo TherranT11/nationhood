@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Elections | Nationhood Alpha</title>
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/elections.css">
 </head>
 <body>
 
@@ -20,7 +22,6 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, fetchActiveCoalition, runElectionPreview, getPartyAlignment, distributeVotes, allocateSeatsByVotes } from './js/game-common.js';
-import './css/elections.css';
 (function () {
     'use strict';
 /**

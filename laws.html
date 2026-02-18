@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Bills | Nationhood Alpha</title>
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/laws.css">
 </head>
 <body>
 <div id="top-bar"></div>
@@ -105,7 +107,6 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust } from './js/common.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName } from './js/game-common.js';
-import './css/laws.css';
 (function () {
     'use strict';
 let currentNation = null, currentFaction = null, currentSeats = 0;

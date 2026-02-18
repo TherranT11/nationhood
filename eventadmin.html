@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Event Admin | Nationhood Alpha</title>
+    <link rel="stylesheet" href="css/eventadmin.css">
 </head>
 <body>
 <div class="admin-container" id="content-area">
@@ -12,7 +13,6 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { GAME_CONFIG, MINISTRY_EVENT_GOV_TYPES, MAJOR_SECTORS, NATION_STAT_COLUMNS, formatStatName, normalizeNationStatKey, templateSupportsNationGovType, canonicalNationGovTypes } from './js/game-common.js';
-import './css/eventadmin.css';
 // ==================== STATE ====================
 var allEvents = [];
 var allMinistryTemplates = [];

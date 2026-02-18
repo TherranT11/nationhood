@@ -8,7 +8,9 @@
     
     <!-- Shared Styles -->
 <!-- Page-Specific Styles -->
-    </head>
+        <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/nation.css">
+</head>
 <body>
 
 <!-- ===== TOP BAR ===== -->
@@ -29,7 +31,6 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatNumber, scaleRawToDollars } from './js/common.js';
 import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, INVERTED_STATS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER } from './js/game-common.js';
-import './css/nation.css';
 /**
  * Nation Page - Comprehensive Stats Display
  * With Rankings and Trend Arrows
