@@ -12,6 +12,46 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+let rpcPreflightCheckPromise = null;
+
+async function ensureApRpcAvailability(supabase) {
+    if (!rpcPreflightCheckPromise) {
+        rpcPreflightCheckPromise = (async () => {
+            const probeFactionId = "00000000-0000-0000-0000-000000000000";
+
+            const probes = [
+                {
+                    name: "accumulate_ap",
+                    call: () => supabase.rpc("accumulate_ap", {
+                        p_faction_id: probeFactionId,
+                        p_gain: 0,
+                        p_max_ap: 20,
+                    }),
+                },
+                {
+                    name: "deduct_ap",
+                    call: () => supabase.rpc("deduct_ap", {
+                        p_faction_id: probeFactionId,
+                        p_cost: 0,
+                    }),
+                },
+            ];
+
+            for (const probe of probes) {
+                const { error } = await probe.call();
+                if (error) {
+                    throw new Error(
+                        `Missing or inaccessible required RPC '${probe.name}'. Deploy SQL function/grants before rolling out advance-tick. Detail: ${error.message}`
+                    );
+                }
+            }
+            console.log("[advance-tick] RPC preflight passed for accumulate_ap and deduct_ap.");
+        })();
+    }
+
+    return rpcPreflightCheckPromise;
+}
+
 // ===== GAME LOGIC (from js/game-common.js) =====
 
 /**
@@ -4278,7 +4318,7 @@ async function auditStatKeys(supabase) {
 // ==================== ADVANCE TICK ====================
 
 async function advanceTick(supabase) {
-    // 1. Increment tick and advance game date
+    // 1. Pre-compute next tick metadata (only committed after critical phases succeed)
     const { data: shard } = await supabase
         .from('shard')
         .select('current_tick, tick_interval_hours, current_date, next_tick_at')
@@ -4299,42 +4339,28 @@ async function advanceTick(supabase) {
     }
     const newDate = advanceMonth(shard.current_date || 'January, 2000');
 
-    await supabase.from('shard').update({
-        current_tick: newTick,
-        next_tick_at: nextTickAt.toISOString(),
-        current_date: newDate
-    }).eq('name', 'Alpha Shard');
-
-    // Clear expired coup cooldowns
-    await supabase.from('factions')
-        .update({ action_lockout_until_tick: null })
-        .not('action_lockout_until_tick', 'is', null)
-        .lte('action_lockout_until_tick', newTick);
-
-    // 1b. Startup scan: report any invalid stat keys in effect records (first tick only or periodically)
-    if (newTick % 10 === 1) { // Run every 10 ticks to avoid perf cost every tick
-        try {
-            await auditStatKeys(supabase);
-        } catch (auditErr) {
-            console.error('[advanceTick] auditStatKeys failed (non-fatal):', auditErr);
-        }
-    }
-
-    // 1c. Startup validation: warn if ministry event template gov types are not canonical
-    await validateCanonicalTemplateGovTypes(supabase);
-
     // 2. Load all nations
     const { data: nations } = await supabase.from('nations').select('*');
-    if (!nations || nations.length === 0) return { tick: newTick, nations: 0 };
+    const nationList = nations || [];
 
-    const summary = { tick: newTick, nations: nations.length, effects: [], costs: [], resolutions: [], events: [] };
+    const summary = {
+        tick: newTick,
+        nations: nationList.length,
+        effects: [],
+        costs: [],
+        resolutions: [],
+        events: [],
+        apFailures: []
+    };
+    const failedNationIds = new Set();
+    const failedFactionIds = new Set();
 
     // Accumulate AP for party factions each tick:
     // base 5 AP, +1 if in government, +1 if approval > 60. Capped at MAX_AP.
     // Uses atomic RPC to prevent race conditions with concurrent player deductions.
     let apDistributed = 0;
     let apFailed = 0;
-    for (const nation of nations) {
+    for (const nation of nationList) {
       try {
         const { data: factions } = await supabase
             .from('factions')
@@ -4363,18 +4389,65 @@ async function advanceTick(supabase) {
             } else {
                 console.error(`[advanceTick] AP accumulation FAILED for faction ${faction.id}: ${result.error}`);
                 apFailed++;
+                summary.apFailures.push({
+                    nationId: nation.id,
+                    nation: nation.name,
+                    factionId: faction.id,
+                    error: result.error
+                });
+                failedNationIds.add(nation.id);
+                failedFactionIds.add(faction.id);
             }
         }
       } catch (apErr) {
         console.error(`[advanceTick] AP distribution FAILED for nation ${nation.id} (${nation.name}):`, apErr);
         summary.errors = summary.errors || [];
         summary.errors.push({ nation: nation.name, nationId: nation.id, phase: 'ap_distribution', error: String(apErr) });
+        apFailed++;
+        summary.apFailures.push({
+            nationId: nation.id,
+            nation: nation.name,
+            factionId: null,
+            error: String(apErr)
+        });
+        failedNationIds.add(nation.id);
       }
     }
     summary.apDistributed = apDistributed;
     summary.apFailed = apFailed;
 
-    for (const nation of nations) {
+    if (apFailed > 0) {
+        summary.partial = true;
+        summary.failureReason = 'ap_distribution_failed';
+        summary.failedNationIds = Array.from(failedNationIds);
+        summary.failedFactionIds = Array.from(failedFactionIds);
+        summary.message = 'Tick marked partial: AP distribution failed for one or more factions; shard tick was not advanced.';
+        return summary;
+    }
+
+    // 1c. Commit shard tick/date only after critical AP phase succeeds
+    await supabase.from('shard').update({
+        current_tick: newTick,
+        next_tick_at: nextTickAt.toISOString(),
+        current_date: newDate
+    }).eq('name', 'Alpha Shard');
+
+    // Clear expired coup cooldowns
+    await supabase.from('factions')
+        .update({ action_lockout_until_tick: null })
+        .not('action_lockout_until_tick', 'is', null)
+        .lte('action_lockout_until_tick', newTick);
+
+    // 1d. Startup scan: report any invalid stat keys in effect records (first tick only or periodically)
+    if (newTick % 10 === 1) { // Run every 10 ticks to avoid perf cost every tick
+        try {
+            await auditStatKeys(supabase);
+        } catch (auditErr) {
+            console.error('[advanceTick] auditStatKeys failed (non-fatal):', auditErr);
+        }
+    }
+
+    for (const nation of nationList) {
       try {
         // Set correct seat count for this nation (affects supermajority thresholds, etc.)
         initGameConfigForNation(nation);
@@ -7287,8 +7360,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     try {
-        // 0. Startup integrity check for ministry template gov_types
-        await runMinistryEventTemplateGovTypeIntegrityCheck(supabase);
+        await ensureApRpcAvailability(supabase);
 
         // 1. Check if tick is due
         const { data: shard, error: shardError } = await supabase
@@ -7334,11 +7406,12 @@ Deno.serve(async (req) => {
         // 3. Process the tick
         try {
             const summary = await advanceTick(supabase);
+            const responseStatus = summary.partial ? "partial" : "success";
             console.log(
-                `[advance-tick] Tick ${summary.tick} processed (${summary.nations} nations)`
+                `[advance-tick] Tick ${summary.tick} ${summary.partial ? 'partially processed' : 'processed'} (${summary.nations} nations)`
             );
             return new Response(
-                JSON.stringify({ status: "success", summary }),
+                JSON.stringify({ status: responseStatus, summary }),
                 { headers: corsHeaders }
             );
         } catch (e) {
