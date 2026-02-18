@@ -1872,6 +1872,34 @@ async function failBill(supabase, bill) {
     }).eq('id', bill.id);
 }
 
+/**
+ * Ensure ambassador rows stay in sync when confirmation bills are failed
+ * through bulk/force-fail paths that bypass resolveExpiredVotes.
+ */
+async function syncAmbassadorsForFailedConfirmationBills(supabase, failedBills) {
+    if (!Array.isArray(failedBills) || failedBills.length === 0) return;
+
+    const ambassadorIds = [...new Set(
+        failedBills
+            .filter(b => b?.bill_type === 'confirmation' && b?.ambassador_id)
+            .map(b => b.ambassador_id)
+    )];
+
+    if (ambassadorIds.length === 0) return;
+
+    const { error } = await supabase
+        .from('ambassadors')
+        .update({
+            status: 'rejected',
+            is_active: false
+        })
+        .in('id', ambassadorIds);
+
+    if (error) {
+        console.warn('[syncAmbassadorsForFailedConfirmationBills] Failed to reject ambassadors:', error.message);
+    }
+}
+
 
 // ==================== ADMINISTRATION LIFECYCLE ====================
 
@@ -3198,7 +3226,9 @@ async function processElections(supabase, nation, currentTick) {
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
             .in('status', ['committee', 'floor'])
-            .select('id');
+            .select('id, bill_type, ambassador_id');
+
+        await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
 
         if (dissolvedBills?.length > 0) {
             console.log(`Dissolved ${dissolvedBills.length} pending bill(s) after election for ${nation.name}`);
@@ -3211,7 +3241,8 @@ async function processElections(supabase, nation, currentTick) {
                 .update({ status: 'failed' })
                 .eq('nation_id', nation.id)
                 .eq('status', 'president_desk')
-                .select('id');
+                .select('id, bill_type, ambassador_id');
+            await syncAmbassadorsForFailedConfirmationBills(supabase, deskBills);
             if (deskBills?.length > 0) {
                 console.log(`Failed ${deskBills.length} bill(s) on president's desk after presidential election for ${nation.name}`);
             }
@@ -3252,10 +3283,13 @@ async function processElections(supabase, nation, currentTick) {
             // Fail all frozen bills (from caretaker period) regardless of whether
             // an existing government row was found — bills may have been frozen by
             // early elections even if the government row was already cleaned up.
-            await supabase.from('bills')
+            const { data: frozenBills } = await supabase.from('bills')
                 .update({ status: 'failed' })
                 .eq('nation_id', nation.id)
-                .eq('status', 'frozen');
+                .eq('status', 'frozen')
+                .select('id, bill_type, ambassador_id');
+
+            await syncAmbassadorsForFailedConfirmationBills(supabase, frozenBills);
 
             if (existingGov) {
                 console.log(`Dissolving ${existingGov.status} government after election for ${nation.name} (source: ${existingGovSource})`);
