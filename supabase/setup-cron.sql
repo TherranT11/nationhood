@@ -5,10 +5,16 @@
 -- Run this in the Supabase SQL Editor (Dashboard → SQL Editor).
 --
 -- Prerequisites:
---   1. Deploy the Edge Function:
+--   1. Deploy required DB RPC functions/grants BEFORE tick rollout (mandatory):
+--        supabase db push
+--      or run manually in SQL Editor:
+--        sql/create_deduct_ap.sql
+--        sql/migrate_accumulate_ap_permissions.sql
+--
+--   2. Deploy the Edge Function:
 --        supabase functions deploy advance-tick
 --
---   2. Enable the required extensions (if not already enabled):
+--   3. Enable the required extensions (if not already enabled):
 --        Go to Dashboard → Database → Extensions
 --        Enable: pg_cron, pg_net
 --
