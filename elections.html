@@ -491,7 +491,7 @@ async function renderDemocracyPage() {
             <div id="election-breakdown-section" style="display: ${election ? 'block' : 'none'}; margin-top: 30px;">
                 <div class="section-header">Election Breakdown</div>
                 <div id="election-breakdown-content">
-                    <div class="breakdown-loading">Simulating voter bloc breakdown...</div>
+                    <div class="breakdown-loading">Loading voter bloc breakdown...</div>
                 </div>
             </div>
         </div>
@@ -503,7 +503,7 @@ async function renderDemocracyPage() {
         await renderPresidentialResults(presidentialElection);
     }
     await renderElectionResults(election);
-    if (election) renderElectionBreakdown(); // fire-and-forget
+    if (election) renderElectionBreakdown(election); // fire-and-forget
     if (showFormation) await loadFormationsList();
     await loadElectionInfo();
 }
@@ -547,14 +547,33 @@ async function renderElectionResults(election) {
 // ELECTION BREAKDOWN (per-bloc voter detail)
 // ===================================================================
 
-async function renderElectionBreakdown() {
+async function renderElectionBreakdown(election) {
     const container = document.getElementById('election-breakdown-content');
     if (!container) return;
 
     try {
-        const result = await runElectionPreview(_supabase, currentNation.id);
-        const blocDetails = result.bloc_details || [];
-        const partyNames = result.partyNames || {};
+        let completedElection = election;
+        if (!completedElection) {
+            const { data: latestParliamentaryElection } = await _supabase
+                .from('elections')
+                .select('*')
+                .eq('nation_id', currentNation.id)
+                .eq('status', 'completed')
+                .eq('election_type', 'parliamentary')
+                .order('election_tick', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            completedElection = latestParliamentaryElection;
+        }
+
+        const electionResults = completedElection?.results || {};
+        const blocDetails = electionResults.bloc_details || electionResults.blocDetails || [];
+        const partyNames = electionResults.party_names
+            || electionResults.partyNames
+            || (electionResults.votes || []).reduce((map, row) => {
+                if (row.party_id && row.party_name) map[row.party_id] = row.party_name;
+                return map;
+            }, {});
 
         if (blocDetails.length === 0) {
             container.innerHTML = '<div style="color:#666; padding:16px; font-size:0.85rem;">No voter bloc data available.</div>';
@@ -579,8 +598,8 @@ async function renderElectionBreakdown() {
                 : '<span style="font-size:0.78rem; color:#666; font-style:italic;">Unaligned</span>';
 
             // Party vote bars
-            const voteEntries = Object.entries(bloc.blocVotes || {})
-                .map(([pid, votes]) => ({ name: partyNames[pid] || pid.slice(0, 8), votes }))
+            const voteEntries = Object.entries(bloc.blocVotes || bloc.bloc_votes || {})
+                .map(([pid, votes]) => ({ name: partyNames[pid] || 'Unknown Party', votes }))
                 .sort((a, b) => b.votes - a.votes);
             const maxVotes = voteEntries.length > 0 ? voteEntries[0].votes : 0;
 
@@ -589,7 +608,9 @@ async function renderElectionBreakdown() {
                 const isTop = e.votes === maxVotes;
                 const barColor = isTop ? '#ffcc00' : '#555';
                 const topClass = isTop ? ' top-party' : '';
-                const actualVoters = bloc.voter_count - bloc.abstentions;
+                const blocVoterCount = bloc.voter_count || 0;
+                const abstentions = bloc.abstentions || 0;
+                const actualVoters = blocVoterCount - abstentions;
                 const pct = actualVoters > 0 ? ((e.votes / actualVoters) * 100).toFixed(1) : '0.0';
                 return `<div class="bloc-vote-row">
                     <span class="bloc-vote-name${topClass}">${e.name}</span>
@@ -601,8 +622,9 @@ async function renderElectionBreakdown() {
             }).join('');
 
             // Abstentions
-            const abstentionsHtml = bloc.abstentions > 0
-                ? `<div class="bloc-abstentions">Abstained: ${bloc.abstentions.toLocaleString()} voters</div>`
+            const abstentions = bloc.abstentions || 0;
+            const abstentionsHtml = abstentions > 0
+                ? `<div class="bloc-abstentions">Abstained: ${abstentions.toLocaleString()} voters</div>`
                 : '';
 
             return `<div class="bloc-row" id="${blocId}">
