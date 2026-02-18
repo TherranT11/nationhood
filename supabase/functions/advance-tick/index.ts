@@ -7092,6 +7092,77 @@ async function runElectionPreview(supabase, nationId) {
 
 // ===== END GAME LOGIC =====
 
+
+const CANONICAL_TEMPLATE_GOV_TYPES = ['Democracy', 'Autocracy', 'Presidential'];
+const TEMPLATE_GOV_TYPE_ALIASES = {
+    democracy: 'Democracy',
+    democratic: 'Democracy',
+    parliamentary: 'Democracy',
+    parliamentarian: 'Democracy',
+    'parliamentary democracy': 'Democracy',
+    autocracy: 'Autocracy',
+    authoritarian: 'Autocracy',
+    authoritarianism: 'Autocracy',
+    dictatorship: 'Autocracy',
+    dictatorial: 'Autocracy',
+    'military junta': 'Autocracy',
+    presidential: 'Presidential',
+    'presidential republic': 'Presidential',
+    'executive presidency': 'Presidential'
+};
+
+async function runMinistryEventTemplateGovTypeIntegrityCheck(supabase) {
+    try {
+        const { data: templates, error } = await supabase
+            .from('ministry_event_templates')
+            .select('id, event_key, gov_types, is_active');
+
+        if (error) {
+            console.error('[Integrity][ministry_event_templates] Failed to load template gov types:', error.message);
+            return;
+        }
+
+        const unknownByTemplate = [];
+        const distinctGovTypes = new Set();
+
+        for (const tmpl of (templates || [])) {
+            const values = Array.isArray(tmpl.gov_types) ? tmpl.gov_types : [];
+            const unknown = [];
+            for (const raw of values) {
+                const trimmed = String(raw || '').trim();
+                if (!trimmed) continue;
+                distinctGovTypes.add(trimmed);
+                const isCanonical = CANONICAL_TEMPLATE_GOV_TYPES.includes(trimmed);
+                const isAlias = Object.prototype.hasOwnProperty.call(TEMPLATE_GOV_TYPE_ALIASES, trimmed.toLowerCase());
+                if (!isCanonical && !isAlias) unknown.push(trimmed);
+            }
+            if (unknown.length > 0) {
+                unknownByTemplate.push({
+                    id: tmpl.id,
+                    event_key: tmpl.event_key,
+                    is_active: tmpl.is_active,
+                    unknown_gov_types: [...new Set(unknown)].sort()
+                });
+            }
+        }
+
+        const distinctList = [...distinctGovTypes].sort();
+        console.log('[Integrity][ministry_event_templates] Distinct template gov_types:', JSON.stringify(distinctList));
+        console.log('[Integrity][ministry_event_templates] Canonical gov_types:', JSON.stringify(CANONICAL_TEMPLATE_GOV_TYPES));
+
+        if (unknownByTemplate.length > 0) {
+            console.error(
+                `[Integrity][ministry_event_templates] UNKNOWN gov_types detected in ${unknownByTemplate.length} template(s). ` +
+                `Canonical values: ${CANONICAL_TEMPLATE_GOV_TYPES.join(', ')}. ` +
+                'Offenders:',
+                JSON.stringify(unknownByTemplate)
+            );
+        }
+    } catch (e) {
+        console.error('[Integrity][ministry_event_templates] Integrity check failed unexpectedly:', e?.message || e);
+    }
+}
+
 // ===== EDGE FUNCTION HANDLER =====
 
 Deno.serve(async (req) => {
@@ -7119,6 +7190,9 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     try {
+        // 0. Startup integrity check for ministry template gov_types
+        await runMinistryEventTemplateGovTypeIntegrityCheck(supabase);
+
         // 1. Check if tick is due
         const { data: shard, error: shardError } = await supabase
             .from("shard")
