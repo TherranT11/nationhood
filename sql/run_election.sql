@@ -37,8 +37,13 @@ DECLARE
     v_election_id  UUID;
     v_result_rows  JSONB := '[]'::JSONB;
     v_seat_rows    JSONB := '[]'::JSONB;
+    v_bloc_details JSONB := '[]'::JSONB;
     v_election_type TEXT := LOWER(COALESCE(p_election_type, 'parliamentary'));
     v_bloc_approvals JSONB;
+    v_tally_before JSONB;
+    v_bloc_party_votes JSONB;
+    v_prev_votes BIGINT;
+    v_new_votes BIGINT;
 BEGIN
     IF v_election_type NOT IN ('parliamentary', 'presidential') THEN
         RAISE EXCEPTION 'Invalid election type: % (allowed: parliamentary, presidential)', p_election_type;
@@ -174,9 +179,32 @@ BEGIN
         ) sub;
 
         -- Weighted competition: all parties compete simultaneously
+        v_tally_before := v_tally;
         SELECT r.step, r.abstentions, r.updated_tally
         INTO v_step, v_abstentions, v_tally
         FROM _election_process_bloc(v_parties, v_tags, v_bloc.voter_count, v_tally, v_bloc_approvals, v_saturation, v_avg_saturation) r;
+
+        -- Snapshot bloc-level vote deltas with party identifiers + names for historical durability
+        v_bloc_party_votes := '[]'::JSONB;
+        FOR v_party IN SELECT * FROM jsonb_array_elements(v_parties)
+        LOOP
+            v_prev_votes := COALESCE((v_tally_before->>(v_party.value->>'id'))::BIGINT, 0);
+            v_new_votes := COALESCE((v_tally->>(v_party.value->>'id'))::BIGINT, 0);
+            v_bloc_party_votes := v_bloc_party_votes || jsonb_build_object(
+                'party_id', v_party.value->>'id',
+                'party_name', v_party.value->>'faction_name',
+                'votes', GREATEST(v_new_votes - v_prev_votes, 0)
+            );
+        END LOOP;
+
+        v_bloc_details := v_bloc_details || jsonb_build_object(
+            'bloc_id', v_bloc.id,
+            'bloc_name', v_bloc.bloc_name,
+            'voter_count', v_bloc.voter_count,
+            'tags', to_jsonb(v_tags),
+            'abstentions', COALESCE(v_abstentions, 0),
+            'party_votes', v_bloc_party_votes
+        );
 
         v_total_abstentions := v_total_abstentions + COALESCE(v_abstentions, 0);
     END LOOP;
@@ -223,6 +251,7 @@ BEGIN
     v_results := jsonb_build_object(
         'votes', v_result_rows,
         'seats', v_seat_rows,
+        'bloc_details', v_bloc_details,
         'total_votes_cast', v_total_votes,
         'total_abstentions', v_total_abstentions,
         'turnout_pct', CASE WHEN COALESCE(v_nation.eligible_voters, 0) > 0
