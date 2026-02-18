@@ -197,6 +197,7 @@
 </div>
 
 <script src="js/supabase-client.js"></script>
+<script src="js/game-common.js"></script>
 <script>
 // ==================== STATE ====================
 var allEvents = [];
@@ -210,6 +211,14 @@ var editorTriggers = [];
 var editorEffects = [];
 var deletedDescIds = [], deletedTriggerIds = [], deletedEffectIds = [];
 var currentMode = 'events'; // 'events' or 'ministry'
+var CANONICAL_GOV_TYPES = (typeof MINISTRY_EVENT_GOV_TYPES !== 'undefined' && Array.isArray(MINISTRY_EVENT_GOV_TYPES))
+    ? MINISTRY_EVENT_GOV_TYPES.slice()
+    : ['Democracy', 'Autocracy', 'Presidential'];
+var GOV_TYPE_META = {
+    Democracy: { icon: '🗳️' },
+    Autocracy: { icon: '👑' },
+    Presidential: { icon: '🏛️' }
+};
 
 // ==================== CONSTANTS ====================
 // Canonical nation stat keys — must match NATION_STAT_COLUMNS in game-common.js
@@ -689,8 +698,42 @@ function cancelEditor() { renderModeTabs(); }
 // ======================================================================
 
 // State for ministry editor
-var mEditorVariants = { Democracy: { body: '', options: [] }, Autocracy: { body: '', options: [] } };
+var mEditorVariants = { titles: [''] };
 var mEditorWeightConditions = [];
+
+function getDefaultMinistryVariant() {
+    return { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] }] };
+}
+
+function canonicalGovType(govType) {
+    if (!govType) return null;
+    for (var i = 0; i < CANONICAL_GOV_TYPES.length; i++) {
+        if (CANONICAL_GOV_TYPES[i].toLowerCase() === String(govType).toLowerCase()) return CANONICAL_GOV_TYPES[i];
+    }
+    return null;
+}
+
+function normalizeGovTypeList(list) {
+    var deduped = [];
+    (list || []).forEach(function(g) {
+        var canonical = canonicalGovType(g);
+        if (canonical && deduped.indexOf(canonical) === -1) deduped.push(canonical);
+    });
+    return deduped;
+}
+
+function getSelectedGovTypesFromForm() {
+    var selected = [];
+    document.querySelectorAll('.me-gov-checkbox:checked').forEach(function(el) {
+        selected.push(el.getAttribute('data-gov-type'));
+    });
+    return selected;
+}
+
+function setGovTypeError(msg) {
+    var el = document.getElementById('me-gov-error');
+    if (el) el.textContent = msg || '';
+}
 
 function renderMinistryListView() {
     document.getElementById('mode-content').innerHTML =
@@ -726,8 +769,9 @@ function renderMinistryEventList(events) {
         var govTypes = (ev.gov_types || []).join(', ');
         var optCount = 0;
         if (ev.variants) {
-            if (ev.variants.Democracy) optCount += (ev.variants.Democracy.options || []).length;
-            if (ev.variants.Autocracy) optCount += (ev.variants.Autocracy.options || []).length;
+            CANONICAL_GOV_TYPES.forEach(function(govType) {
+                if (ev.variants[govType]) optCount += (ev.variants[govType].options || []).length;
+            });
         }
         var weightConditions = (ev.variants && ev.variants.weight_conditions) || [];
         if (!weightConditions.length && ev.weight_stat) {
@@ -767,19 +811,18 @@ function applyMinistryFilters() {
 
 function createNewMinistryEvent() {
     isNewMinistry = true;
+    var defaultVariants = { titles: [''] };
+    CANONICAL_GOV_TYPES.forEach(function(govType) {
+        defaultVariants[govType] = getDefaultMinistryVariant();
+    });
     currentMinistryTemplate = {
         event_key: '', ministry_key: 'justice', title: '', sender: '',
         priority: 'routine', deadline_ticks: 3, cooldown_ticks: 6,
-        gov_types: ['Democracy', 'Autocracy', 'Presidential'], is_active: true,
+        gov_types: CANONICAL_GOV_TYPES.slice(), is_active: true,
         weight_stat: '', weight_operator: '>', weight_value: null,
-        variants: {
-            titles: [''],
-            Democracy: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] }] },
-            Autocracy: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] }] },
-            Presidential: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] }] }
-        }
+        variants: defaultVariants
     };
-    mEditorVariants = JSON.parse(JSON.stringify(currentMinistryTemplate.variants));
+    mEditorVariants = JSON.parse(JSON.stringify(defaultVariants));
     mEditorWeightConditions = [];
     renderMinistryEditor();
 }
@@ -790,22 +833,22 @@ function editMinistryEvent(id) {
     isNewMinistry = false;
     currentMinistryTemplate = JSON.parse(JSON.stringify(ev));
     var v = ev.variants || {};
-    // Migrate old format: single body → bodies array, single title → titles array
-    mEditorVariants = {
-        titles: v.titles || (ev.title ? [ev.title] : ['']),
-        Democracy: v.Democracy ? {
-            bodies: v.Democracy.bodies || (v.Democracy.body ? [v.Democracy.body] : ['']),
-            options: v.Democracy.options || []
-        } : { bodies: [''], options: [] },
-        Autocracy: v.Autocracy ? {
-            bodies: v.Autocracy.bodies || (v.Autocracy.body ? [v.Autocracy.body] : ['']),
-            options: v.Autocracy.options || []
-        } : { bodies: [''], options: [] },
-        Presidential: v.Presidential ? {
-            bodies: v.Presidential.bodies || (v.Presidential.body ? [v.Presidential.body] : ['']),
-            options: v.Presidential.options || []
-        } : { bodies: [''], options: [] }
-    };
+    var normalizedGovTypes = normalizeGovTypeList(ev.gov_types || []);
+    if (!normalizedGovTypes.length) normalizedGovTypes = CANONICAL_GOV_TYPES.slice();
+    currentMinistryTemplate.gov_types = normalizedGovTypes;
+
+    // Migrate old format: single body → bodies array, single title → titles array, non-canonical keys → canonical keys
+    mEditorVariants = { titles: v.titles || (ev.title ? [ev.title] : ['']) };
+    CANONICAL_GOV_TYPES.forEach(function(govType) {
+        var direct = v[govType];
+        var legacyKey = Object.keys(v).find(function(k) { return canonicalGovType(k) === govType; });
+        var sourceVariant = direct || (legacyKey ? v[legacyKey] : null);
+        mEditorVariants[govType] = sourceVariant ? {
+            bodies: sourceVariant.bodies || (sourceVariant.body ? [sourceVariant.body] : ['']),
+            options: sourceVariant.options || []
+        } : { bodies: [''], options: [] };
+    });
+
     // Load weight conditions from variants (new format) or migrate from old flat columns
     var wc = v.weight_conditions;
     if (wc && wc.length > 0) {
@@ -822,9 +865,8 @@ function renderMinistryEditor() {
     var c = document.getElementById('mode-content');
     var tmpl = currentMinistryTemplate;
     var title = isNewMinistry ? 'Create Ministry Event' : 'Edit Ministry Event';
-    var govDem = (tmpl.gov_types || []).includes('Democracy');
-    var govAut = (tmpl.gov_types || []).includes('Autocracy');
-    var govPres = (tmpl.gov_types || []).includes('Presidential');
+    var selectedGovTypes = normalizeGovTypeList(tmpl.gov_types || CANONICAL_GOV_TYPES);
+    if (!selectedGovTypes.length) selectedGovTypes = CANONICAL_GOV_TYPES.slice();
 
     c.innerHTML =
         '<button class="btn-back" onclick="cancelMinistryEditor()">← Back to Ministry Events</button>' +
@@ -861,10 +903,13 @@ function renderMinistryEditor() {
                     '<div class="form-group"><label class="form-label">Cooldown (ticks)</label><input type="number" class="form-input" id="me-cooldown" value="' + (tmpl.cooldown_ticks || 6) + '" min="0"></div>' +
                     '<div class="form-group"><label class="form-label">Status</label><div class="toggle-wrapper" style="margin-top:8px;"><label class="toggle"><input type="checkbox" id="me-active" ' + (tmpl.is_active ? 'checked' : '') + '><span class="toggle-slider"></span></label><span class="toggle-label">' + (tmpl.is_active ? 'Active' : 'Inactive') + '</span></div></div>' +
                     '<div class="form-group"><label class="form-label">Government Types</label><div class="checkbox-row" style="margin-top:8px;">' +
-                        '<div class="checkbox-item"><input type="checkbox" id="me-gov-dem" ' + (govDem ? 'checked' : '') + '><label for="me-gov-dem">🗳️ Democracy</label></div>' +
-                        '<div class="checkbox-item"><input type="checkbox" id="me-gov-aut" ' + (govAut ? 'checked' : '') + '><label for="me-gov-aut">👑 Autocracy</label></div>' +
-                        '<div class="checkbox-item"><input type="checkbox" id="me-gov-pres" ' + (govPres ? 'checked' : '') + '><label for="me-gov-pres">🏛️ Presidential</label></div>' +
-                    '</div></div>' +
+                        CANONICAL_GOV_TYPES.map(function(govType) {
+                            var checked = selectedGovTypes.indexOf(govType) !== -1;
+                            var icon = (GOV_TYPE_META[govType] || {}).icon || '🏛️';
+                            var inputId = 'me-gov-' + govType.toLowerCase();
+                            return '<div class="checkbox-item"><input type="checkbox" class="me-gov-checkbox" data-gov-type="' + govType + '" id="' + inputId + '" ' + (checked ? 'checked' : '') + '><label for="' + inputId + '">' + icon + ' ' + govType + '</label></div>';
+                        }).join('') +
+                    '</div><div id="me-gov-error" style="color:#ff6b6b;font-size:0.78rem;margin-top:6px;"></div></div>' +
                 '</div>' +
 
                 // Weight conditions (multiple)
@@ -885,9 +930,7 @@ function renderMinistryEditor() {
                 '</div>' +
 
                 // Variants
-                (govDem ? renderVariantSection('Democracy') : '') +
-                (govAut ? renderVariantSection('Autocracy') : '') +
-                (govPres ? renderVariantSection('Presidential') : '') +
+                selectedGovTypes.map(function(govType) { return renderVariantSection(govType); }).join('') +
 
             '</div>' +
             '<div class="editor-footer"><button class="btn btn-ghost" onclick="cancelMinistryEditor()">Cancel</button><button class="btn btn-primary" onclick="saveMinistryEvent()">💾 Save Ministry Event</button></div>' +
@@ -895,9 +938,9 @@ function renderMinistryEditor() {
 }
 
 function renderVariantSection(govType) {
-    var variant = mEditorVariants[govType] || { body: '', options: [] };
+    var variant = mEditorVariants[govType] || { bodies: [''], options: [] };
     var cssClass = govType.toLowerCase();
-    var icon = govType === 'Democracy' ? '🗳️' : (govType === 'Presidential' ? '🏛️' : '👑');
+    var icon = (GOV_TYPE_META[govType] || {}).icon || '🏛️';
     var optionsHTML = (variant.options || []).map(function(opt, oi) {
         var letter = String.fromCharCode(65 + oi);
 
@@ -1101,14 +1144,10 @@ function syncMinistryBody() {
         if (mEditorVariants.titles[i] !== undefined) mEditorVariants.titles[i] = el.value;
     });
     // Sync body variants per gov type
-    document.querySelectorAll('#me-bodies-Democracy textarea').forEach(function(el, i) {
-        if (mEditorVariants.Democracy && mEditorVariants.Democracy.bodies[i] !== undefined) mEditorVariants.Democracy.bodies[i] = el.value;
-    });
-    document.querySelectorAll('#me-bodies-Autocracy textarea').forEach(function(el, i) {
-        if (mEditorVariants.Autocracy && mEditorVariants.Autocracy.bodies[i] !== undefined) mEditorVariants.Autocracy.bodies[i] = el.value;
-    });
-    document.querySelectorAll('#me-bodies-Presidential textarea').forEach(function(el, i) {
-        if (mEditorVariants.Presidential && mEditorVariants.Presidential.bodies[i] !== undefined) mEditorVariants.Presidential.bodies[i] = el.value;
+    CANONICAL_GOV_TYPES.forEach(function(govType) {
+        document.querySelectorAll('#me-bodies-' + govType + ' textarea').forEach(function(el, i) {
+            if (mEditorVariants[govType] && mEditorVariants[govType].bodies[i] !== undefined) mEditorVariants[govType].bodies[i] = el.value;
+        });
     });
 }
 
@@ -1176,9 +1215,7 @@ async function saveMinistryEvent() {
     var deadline = parseInt(document.getElementById('me-deadline').value) || 3;
     var cooldown = parseInt(document.getElementById('me-cooldown').value) || 6;
     var isActive = document.getElementById('me-active').checked;
-    var govDem = document.getElementById('me-gov-dem').checked;
-    var govAut = document.getElementById('me-gov-aut').checked;
-    var govPres = document.getElementById('me-gov-pres').checked;
+    var selectedGovTypes = getSelectedGovTypesFromForm();
     // Collect weight conditions from editor state
     var validConditions = mEditorWeightConditions.filter(function(c) { return c.stat; });
     // Backward compat: write first condition to old flat columns
@@ -1189,14 +1226,27 @@ async function saveMinistryEvent() {
     if (!eventKey) { alert('Event key is required.'); return; }
     if (!titleVal) { alert('At least one subject line is required.'); return; }
     if (!sender) { alert('Sender is required.'); return; }
-    if (!govDem && !govAut) { alert('Select at least one government type.'); return; }
+
+    if (!selectedGovTypes.length) {
+        setGovTypeError('Select at least one government type.');
+        alert('Select at least one government type.');
+        return;
+    }
+
+    for (var sgi = 0; sgi < selectedGovTypes.length; sgi++) {
+        var maybeGovType = selectedGovTypes[sgi];
+        if (CANONICAL_GOV_TYPES.indexOf(maybeGovType) === -1) {
+            var invalidMsg = 'Government type "' + maybeGovType + '" is not recognized. Valid types: [' + CANONICAL_GOV_TYPES.join(', ') + '].';
+            setGovTypeError(invalidMsg);
+            alert(invalidMsg);
+            return;
+        }
+    }
+    setGovTypeError('');
 
     // Validate outcome chances sum to 100 for each option
-    var govChecks = [];
-    if (govDem) govChecks.push('Democracy');
-    if (govAut) govChecks.push('Autocracy');
-    for (var gi = 0; gi < govChecks.length; gi++) {
-        var gType = govChecks[gi];
+    for (var gi = 0; gi < selectedGovTypes.length; gi++) {
+        var gType = selectedGovTypes[gi];
         var opts = (mEditorVariants[gType] || {}).options || [];
         for (var oii = 0; oii < opts.length; oii++) {
             var outcomes = opts[oii].outcomes || [];
@@ -1211,16 +1261,13 @@ async function saveMinistryEvent() {
         }
     }
 
-    var govTypes = [];
-    if (govDem) govTypes.push('Democracy');
-    if (govAut) govTypes.push('Autocracy');
-    if (govPres) govTypes.push('Presidential');
+    var govTypes = selectedGovTypes.slice();
 
-    // Clean variants — only include enabled gov types, store title variants + weight conditions
+    // Clean variants — only include enabled canonical gov types, store title variants + weight conditions
     var cleanVariants = { titles: validTitles };
-    if (govDem && mEditorVariants.Democracy) cleanVariants.Democracy = mEditorVariants.Democracy;
-    if (govAut && mEditorVariants.Autocracy) cleanVariants.Autocracy = mEditorVariants.Autocracy;
-    if (govPres && mEditorVariants.Presidential) cleanVariants.Presidential = mEditorVariants.Presidential;
+    govTypes.forEach(function(govType) {
+        cleanVariants[govType] = mEditorVariants[govType] || { bodies: [''], options: [] };
+    });
     if (validConditions.length > 0) cleanVariants.weight_conditions = validConditions;
 
     var payload = {

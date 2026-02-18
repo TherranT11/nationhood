@@ -44,6 +44,12 @@ const GAME_CONFIG = {
     MAX_AP: 20  // maximum action points a party can accumulate
 };
 
+// Canonical government types used by nation state + ministry event template variants.
+const MINISTRY_EVENT_GOV_TYPES = Object.freeze(['Democracy', 'Autocracy', 'Presidential']);
+if (typeof window !== 'undefined') {
+    window.MINISTRY_EVENT_GOV_TYPES = MINISTRY_EVENT_GOV_TYPES;
+}
+
 /**
  * Update GAME_CONFIG with nation-specific seat values.
  * Call after loading the nation on each page.
@@ -6159,8 +6165,9 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
     dbg(`Loaded ${templates.length} active template(s): [${templates.map(t => t.event_key).join(', ')}]`);
 
     // --- 3. Filter by government type ---
-    const govType = nation.government_type || 'Democracy';
-    const eligible = templates.filter(t => (t.gov_types || []).includes(govType));
+    const nationGovType = nation.government_type || 'Democracy';
+    const govType = MINISTRY_EVENT_GOV_TYPES.includes(nationGovType) ? nationGovType : 'Democracy';
+    const eligible = templates.filter(t => (t.gov_types || []).filter(g => MINISTRY_EVENT_GOV_TYPES.includes(g)).includes(govType));
     if (eligible.length === 0) {
         dbg(`BLOCKED: 0/${templates.length} templates match gov_type "${govType}". Template gov_types: ${templates.map(t => `${t.event_key}=${JSON.stringify(t.gov_types)}`).join(', ')}`);
         return firedEvents;
