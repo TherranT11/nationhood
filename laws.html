@@ -321,8 +321,8 @@ initPage('laws', async (state) => {
         document.getElementById('content-area').innerHTML = '<div class="placeholder-panel"><div class="ph-icon">📜</div><h3>No Nation Selected</h3><p>Your party is not assigned to a nation yet.</p></div>';
         return;
     }
-    isAutocracy = (nation.government_type === 'Autocracy');
-    isPresidential = (nation.government_type === 'Presidential');
+    isAutocracy = isGovernmentAutocracy(nation);
+    isPresidential = isGovernmentPresidential(nation);
     if (isAutocracy) { termBill = 'Decree'; termBills = 'Decrees'; termDraft = 'Draft Decree'; termPropose = 'Propose Decree'; document.title = 'Decrees | Nationhood Alpha'; }
 
     // Detect president's party

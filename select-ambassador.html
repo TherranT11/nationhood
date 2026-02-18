@@ -323,7 +323,7 @@ initPage('diplomacy', async (state) => {
         return;
     }
 
-    isAutocracy = currentNation.government_type === 'Autocracy';
+    isAutocracy = isGovernmentAutocracy(currentNation);
 
     // Get target nation from URL
     const params = new URLSearchParams(window.location.search);

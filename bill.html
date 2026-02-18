@@ -335,8 +335,8 @@ initPage('laws', async (state) => {
     currentNation = nation;
     currentFaction = faction;
     initGameConfigForNation(nation);
-    isAutocracy = (nation?.government_type === 'Autocracy');
-    isPresidential = (nation?.government_type === 'Presidential');
+    isAutocracy = isGovernmentAutocracy(nation);
+    isPresidential = isGovernmentPresidential(nation);
     if (isPresidential && nation) {
         const { data: activePresident } = await _supabase.from('presidents')
             .select('faction_id').eq('nation_id', nation.id).eq('is_active', true).limit(1).maybeSingle();

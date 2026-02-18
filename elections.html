@@ -281,8 +281,8 @@ initPage('elections', async (state) => {
         return;
     }
 
-    isAutocracy = (nation.government_type === 'Autocracy');
-    isPresidential = (nation.government_type === 'Presidential');
+    isAutocracy = isGovernmentAutocracy(nation);
+    isPresidential = isGovernmentPresidential(nation);
     if (isAutocracy) {
         document.title = 'Internal Affairs | Nationhood Alpha';
         await renderAutocracyPage();

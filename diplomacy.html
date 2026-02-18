@@ -286,7 +286,7 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
     if (!faction || !nation) return roles;
 
     // Head of Government
-    if (nation.government_type === 'Autocracy') {
+    if (isGovernmentAutocracy(nation)) {
         roles.isHoG = nation.ruling_faction_id === faction.id;
     } else {
         const alloc = coalition?.ministry_allocations || {};
