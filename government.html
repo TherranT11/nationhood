@@ -589,6 +589,8 @@
 <script src="js/common.js"></script>
 <script src="js/game-common.js"></script>
 <script>
+(function () {
+    'use strict';
 /**
  * Government Page
  * Displays government structure, administration, cabinet, and parliament.
@@ -2927,6 +2929,25 @@ function renderAdminCard(admin, isCurrent) {
         </div>`;
 }
 
+// Expose handlers used by inline HTML attributes
+window.closeAssignModal = closeAssignModal;
+window.handleConfirmMinister = handleConfirmMinister;
+window.claimPower = claimPower;
+window.resignPMAction = resignPMAction;
+window.resignMinistry = resignMinistry;
+window.purgeMinister = purgeMinister;
+window.openAssignModal = openAssignModal;
+window.denyRequest = denyRequest;
+window.unrequestMinistry = unrequestMinistry;
+window.requestMinistry = requestMinistry;
+window.openNominateModal = openNominateModal;
+window.selectCandidate = selectCandidate;
+window.fileNoConfidence = fileNoConfidence;
+window.callEarlyElections = callEarlyElections;
+window.togglePastAdmins = togglePastAdmins;
+window.toggleStatTable = toggleStatTable;
+window.toggleAdminCard = toggleAdminCard;
+})();
 </script>
 </body>
 </html>

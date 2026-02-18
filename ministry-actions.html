@@ -417,6 +417,8 @@
 <script src="js/common.js"></script>
 <script src="js/game-common.js"></script>
 <script>
+(function () {
+    'use strict';
 // ==================== HELPERS ====================
 function formatMoneyDisplay(m) {
     if (!m || m <= 0) return '';
@@ -1225,6 +1227,16 @@ async function confirmAction() {
 
 // ==================== UTILITIES ====================
 function escapeHtml(t) { var d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
+
+// Expose handlers used by inline HTML attributes
+window.setFilter = setFilter;
+window.closeActionModal = closeActionModal;
+window.confirmAction = confirmAction;
+window.selectMinistry = selectMinistry;
+window.openActionModal = openActionModal;
+window.selectEvent = selectEvent;
+window.respondToEvent = respondToEvent;
+})();
 </script>
 </body>
 </html>

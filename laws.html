@@ -292,6 +292,8 @@
 <script src="js/common.js"></script>
 <script src="js/game-common.js"></script>
 <script>
+(function () {
+    'use strict';
 let currentNation = null, currentFaction = null, currentSeats = 0;
 let allPartySeats = {}, allParties = [], allPolicies = [];
 let activeLaws = [], committeeBills = [], floorBills = [], frozenBills = [], presidentDeskBills = [], recentBills = [];
@@ -1338,6 +1340,25 @@ async function sendToFloor(billId) {
         alert(termBill + ' sent to the floor!');
     } catch (error) { console.error('Error:', error); alert('Error sending to floor.'); }
 }
+
+// Expose handlers used by inline HTML attributes
+window.closeModal = closeModal;
+window.showAddArticleForm = showAddArticleForm;
+window.showTextArticleForm = showTextArticleForm;
+window.hideAddArticleForm = hideAddArticleForm;
+window.addArticle = addArticle;
+window.hideTextArticleForm = hideTextArticleForm;
+window.addTextArticle = addTextArticle;
+window.submitToCommittee = submitToCommittee;
+window.closeCommitteeAddModal = closeCommitteeAddModal;
+window.submitCommitteeArticle = submitCommitteeArticle;
+window.toggleAllLaws = toggleAllLaws;
+window.openDraftModal = openDraftModal;
+window.toggleMajorSector = toggleMajorSector;
+window.toggleMinorSector = toggleMinorSector;
+window.rescindLaw = rescindLaw;
+window.removeArticle = removeArticle;
+})();
 </script>
 </body>
 </html>
