@@ -674,6 +674,7 @@ async function renderNationPage(nation) {
 
     // INFRASTRUCTURE
     h += sectorBlock('🏗️', 'Infrastructure', [
+        renderStatBox('Physical Infrastructure', 'physical_infrastructure', nation.physical_infrastructure, 'Roads, bridges, ports, and public works'),
         renderStatBox('Digital Infrastructure', 'digital_infrastructure', nation.digital_infrastructure, 'Internet and tech networks'),
         renderStatBox('Rail Network', 'rail_network', nation.rail_network, 'Train connectivity'),
         renderStatBox('Urbanization', 'urbanization', nation.urbanization, 'Population in cities'),

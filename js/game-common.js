@@ -1929,7 +1929,8 @@ async function failBill(supabase, bill) {
  *   education_accessibility    Access to schooling
  *   academic_immigration       Scholars attracted to nation
  *   --- Infrastructure ---
- *   digital_infrastructure     Internet and tech networks        (NOT "technology" or "infrastructure")
+ *   physical_infrastructure    Roads, bridges, ports, public works (NOT "infrastructure")
+ *   digital_infrastructure     Internet and tech networks        (NOT "technology")
  *   rail_network               Train connectivity
  *   urbanization               Population in cities
  *   energy_generation          Power production capacity
@@ -1982,7 +1983,7 @@ const NATION_STAT_COLUMNS = [
     'population', 'population_growth', 'birth_rate', 'death_rate', 'median_age', 'eligible_voters', 'ethnic_diversity',
     'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use',
     'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
-    'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage',
+    'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage',
     'arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices',
     'pollution', 'carbon_emissions',
     'standard_of_living', 'happiness', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate',
@@ -2009,7 +2010,7 @@ const STAT_KEY_ALIASES = {
     literacy_rate: 'literacy',
     hospital_beds: 'beds_per_100k',
     technology: 'digital_infrastructure',
-    infrastructure: 'digital_infrastructure',
+    infrastructure: 'physical_infrastructure',
     tourism: 'international_reputation'
 };
 
@@ -2027,7 +2028,7 @@ const STATS_HIGHER_IS_BETTER = [
     'population_growth', 'eligible_voters', 'ethnic_diversity',
     'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan',
     'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
-    'digital_infrastructure', 'rail_network', 'energy_generation', 'renewable_energy_percentage',
+    'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation', 'renewable_energy_percentage',
     'arable_land', 'rare_minerals',
     'standard_of_living', 'happiness', 'social_mobility', 'benefits',
     'stability', 'legitimacy', 'efficiency', 'press_freedom', 'judicial_independence', 'freedom_index',

@@ -7,7 +7,7 @@
 --   literacy_rate        → literacy
 --   hospital_beds        → beds_per_100k
 --   technology           → digital_infrastructure
---   infrastructure       → digital_infrastructure
+--   infrastructure       → physical_infrastructure
 --   tourism              → international_reputation
 --   diplomatic_standing  → international_reputation
 --   military_strength    → stability
@@ -47,7 +47,7 @@ BEGIN
             ('literacy_rate',       'literacy'),
             ('hospital_beds',       'beds_per_100k'),
             ('technology',          'digital_infrastructure'),
-            ('infrastructure',      'digital_infrastructure'),
+            ('infrastructure',      'physical_infrastructure'),
             ('tourism',             'international_reputation'),
             ('diplomatic_standing', 'international_reputation'),
             ('military_strength',   'stability'),
