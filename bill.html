@@ -3,9 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Bill Details | Nationhood Alpha</title>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="css/dashboard.css">
     <style>
         html { overflow-y: scroll !important; height: auto !important; }
@@ -310,10 +307,10 @@
     </div>
 </div>
 
-<script src="js/supabase-client.js"></script>
-<script src="js/common.js"></script>
-<script src="js/game-common.js"></script>
-<script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage, qCache, qCacheSet } from './js/common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES } from './js/game-common.js';
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
@@ -1268,6 +1265,23 @@ function escapeHtml(text) { const d = document.createElement('div'); d.textConte
 document.getElementById('chat-input')?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendComment(); }
 });
+
+// Expose functions for HTML onclick/onchange handlers
+window.castVote = castVote;
+window.sendComment = sendComment;
+window.closeAmendmentModal = closeAmendmentModal;
+window.onAmendmentSectorChange = onAmendmentSectorChange;
+window.closeTextAmendmentModal = closeTextAmendmentModal;
+window.submitAmendment = submitAmendment;
+window.submitTextAmendment = submitTextAmendment;
+window.signBillAction = signBillAction;
+window.vetoBillAction = vetoBillAction;
+window.enactDecree = enactDecree;
+window.retractBill = retractBill;
+window.sendToFloor = sendToFloor;
+window.respondToAmendment = respondToAmendment;
+window.setCommitteeStance = setCommitteeStance;
+window.selectAmendmentPolicy = selectAmendmentPolicy;
 </script>
 </body>
 </html>

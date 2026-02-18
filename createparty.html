@@ -3,9 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Create Your Party | Nationhood Alpha</title>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <style>
         body {
@@ -494,11 +491,9 @@
     <div id="error-message" class="error" style="display: none;"></div>
 </div>
 
-<script>
-    const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
-    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
-    
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+
     let currentUser = null;
     let selectedNation = null;
     let selectedIdeologies = [];
@@ -1011,6 +1006,10 @@
     }
     
     init();
+
+// Expose functions for HTML onclick/onchange handlers
+window.goBack = goBack;
+window.createParty = createParty;
 </script>
 
 </body>

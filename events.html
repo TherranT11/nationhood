@@ -3,9 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Events | Nationhood Alpha</title>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -500,10 +497,10 @@
     <div class="loading-container"><div class="loading-spinner"></div><div>Loading feed...</div></div>
 </div>
 
-<script src="js/supabase-client.js"></script>
-<script src="js/common.js"></script>
-<script src="js/game-common.js"></script>
-<script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage } from './js/common.js';
+import { initGameConfigForNation } from './js/game-common.js';
 // ==================== STATE ====================
 let allLogs = [];
 let filteredLogs = [];
@@ -1021,6 +1018,14 @@ function escapeHtml(text) {
     d.textContent = text || '';
     return d.innerHTML;
 }
+
+// Expose functions for HTML onclick/onchange handlers
+window.setScope = setScope;
+window.setNationFilter = setNationFilter;
+window.setCategory = setCategory;
+window.showMore = showMore;
+window.togglePost = togglePost;
+window.submitComment = submitComment;
 </script>
 </body>
 </html>

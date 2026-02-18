@@ -5,9 +5,6 @@
     <title>World | Nationhood Alpha</title>
     
     <!-- Supabase SDK -->
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <!-- Shared Styles -->
     <link rel="stylesheet" href="css/dashboard.css">
@@ -63,12 +60,12 @@
 </div>
 
 <!-- Shared Scripts -->
-<script src="js/supabase-client.js"></script>
-<script src="js/common.js"></script>
-<script src="js/game-common.js"></script>
 
 <!-- Page-Specific Script -->
-<script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage, formatNumber } from './js/common.js';
+import { isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, loadSeats, CANONICAL_GOVERNMENT_TYPES, GAME_CONFIG } from './js/game-common.js';
 /**
  * World Page
  * Displays the world map and nation intel
@@ -366,6 +363,9 @@ function getNationButton(nation, isFull = false) {
 function joinNation(nationName) {
     window.location.href = `createparty.html?nation=${nationSlug(nationName)}`;
 }
+
+// Expose functions for HTML onclick/onchange handlers
+window.joinNation = joinNation;
 </script>
 
 </body>

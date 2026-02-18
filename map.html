@@ -3,12 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Nationhood Alpha | Melizea Shard</title>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="js/supabase-client.js"></script>
-    <script src="js/common.js"></script>
-    <script src="js/game-common.js"></script>
 
     <style>
         body { margin: 0; padding: 0; background-color: #121212; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -221,7 +215,10 @@
     </aside>
 </div>
 
-<script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage, loadGameState, updateTopBarInfo } from './js/common.js';
+import { initGameConfigForNation } from './js/game-common.js';
     let currentUser = null;
     let currentFaction = null;
     let selectedNation = null; // Track currently selected nation
@@ -406,6 +403,9 @@ if (!faction) {
     });
 
     initSession();
+
+// Expose functions for HTML onclick/onchange handlers
+window.viewNation = viewNation;
 </script>
 
 </body>

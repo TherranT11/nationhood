@@ -3,9 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Event Admin | Nationhood Alpha</title>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="css/dashboard.css">
     <style>
         body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; }
@@ -196,9 +193,9 @@
     <div class="loading-container"><div class="loading-spinner"></div><div>Loading events...</div></div>
 </div>
 
-<script src="js/supabase-client.js"></script>
-<script src="js/game-common.js"></script>
-<script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { GAME_CONFIG, MINISTRY_EVENT_GOV_TYPES, MAJOR_SECTORS, NATION_STAT_COLUMNS, formatStatName, normalizeNationStatKey, templateSupportsNationGovType, canonicalNationGovTypes } from './js/game-common.js';
 // ==================== STATE ====================
 var allEvents = [];
 var allMinistryTemplates = [];
@@ -1312,6 +1309,46 @@ function cancelMinistryEditor() { renderModeTabs(); }
 // ==================== UTILITIES ====================
 function escapeHtml(t) { var d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
 function escapeAttr(t) { return (t || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
+// Expose functions for HTML onclick/onchange handlers
+window.switchMode = switchMode;
+window.viewRecentLog = viewRecentLog;
+window.createNewEvent = createNewEvent;
+window.applyFilters = applyFilters;
+window.editEvent = editEvent;
+window.cancelEditor = cancelEditor;
+window.deleteEvent = deleteEvent;
+window.switchEventType = switchEventType;
+window.addDescription = addDescription;
+window.addTrigger = addTrigger;
+window.addEffect = addEffect;
+window.copyPlaceholder = copyPlaceholder;
+window.removeDescription = removeDescription;
+window.removeTrigger = removeTrigger;
+window.removeEffect = removeEffect;
+window.addWeightCondition = addWeightCondition;
+window.removeWeightCondition = removeWeightCondition;
+window.addMTitle = addMTitle;
+window.removeMTitle = removeMTitle;
+window.addMBody = addMBody;
+window.removeMBody = removeMBody;
+window.saveEvent = saveEvent;
+window.createNewMinistryEvent = createNewMinistryEvent;
+window.applyMinistryFilters = applyMinistryFilters;
+window.editMinistryEvent = editMinistryEvent;
+window.cancelMinistryEditor = cancelMinistryEditor;
+window.deleteMinistryEvent = deleteMinistryEvent;
+window.updateOutcomeEffect = updateOutcomeEffect;
+window.removeOutcomeEffect = removeOutcomeEffect;
+window.updateOutcome = updateOutcome;
+window.removeOutcome = removeOutcome;
+window.addOutcomeEffect = addOutcomeEffect;
+window.toggleCivicEvent = toggleCivicEvent;
+window.updateMOpt = updateMOpt;
+window.addOutcome = addOutcome;
+window.addMOption = addMOption;
+window.removeMOption = removeMOption;
+window.saveMinistryEvent = saveMinistryEvent;
 </script>
 </body>
 </html>

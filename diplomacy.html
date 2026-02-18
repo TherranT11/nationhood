@@ -5,9 +5,6 @@
     <title>Diplomacy | Nationhood Alpha</title>
 
     <!-- Supabase SDK -->
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- Shared Styles -->
     <link rel="stylesheet" href="css/dashboard.css">
@@ -239,12 +236,12 @@
 </div>
 
 <!-- Shared Scripts -->
-<script src="js/supabase-client.js"></script>
-<script src="js/common.js"></script>
-<script src="js/game-common.js"></script>
 
 <!-- Page-Specific Script -->
-<script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage, formatNumber } from './js/common.js';
+import { isGovernmentAutocracy, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG } from './js/game-common.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -1037,6 +1034,12 @@ function jumpToAmbNation(targetNationId) {
         }
     }
 }
+
+// Expose functions for HTML onclick/onchange handlers
+window.jumpToAmbNation = jumpToAmbNation;
+window.recallAmbassador = recallAmbassador;
+window.cancelPendingAmbassador = cancelPendingAmbassador;
+window.sendDiploMessage = sendDiploMessage;
 </script>
 
 </body>

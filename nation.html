@@ -5,9 +5,6 @@
     <title>Nation | Nationhood Alpha</title>
     
     <!-- Supabase SDK -->
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <!-- Shared Styles -->
     <link rel="stylesheet" href="css/dashboard.css">
@@ -341,12 +338,12 @@
 </div>
 
 <!-- Shared Scripts -->
-<script src="js/supabase-client.js"></script>
-<script src="js/common.js"></script>
-<script src="js/game-common.js"></script>
 
 <!-- Page-Specific Script -->
-<script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage, qCache, qCacheSet, formatNumber, scaleRawToDollars } from './js/common.js';
+import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, INVERTED_STATS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER } from './js/game-common.js';
 /**
  * Nation Page - Comprehensive Stats Display
  * With Rankings and Trend Arrows

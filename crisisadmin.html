@@ -3,9 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Crisis Admin | Nationhood Alpha</title>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="css/dashboard.css">
     <style>
         body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; }
@@ -105,8 +102,9 @@
     <div class="loading-container"><div class="loading-spinner"></div><div>Loading crises...</div></div>
 </div>
 
-<script src="js/supabase-client.js"></script>
-<script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { NATION_STAT_COLUMNS, formatStatName } from './js/game-common.js';
 // ==================== STATE ====================
 var allCrises = [];
 var currentCrisis = null;
@@ -594,6 +592,20 @@ async function deleteCrisis(id) {
 // ==================== HELPERS ====================
 function escapeHtml(t) { var d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
 function escapeAttr(t) { return (t || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
+// Expose functions for HTML onclick/onchange handlers
+window.createNewCrisis = createNewCrisis;
+window.applyFilters = applyFilters;
+window.editCrisis = editCrisis;
+window.cancelEditor = cancelEditor;
+window.deleteCrisis = deleteCrisis;
+window.addTrigger = addTrigger;
+window.addEffect = addEffect;
+window.addEndTrigger = addEndTrigger;
+window.saveCrisis = saveCrisis;
+window.removeTrigger = removeTrigger;
+window.removeEffect = removeEffect;
+window.removeEndTrigger = removeEndTrigger;
 </script>
 </body>
 </html>

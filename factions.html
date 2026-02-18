@@ -4,9 +4,6 @@
     <meta charset="UTF-8">
     <title>Factions | Nationhood Alpha</title>
     
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="css/dashboard.css">
     
     <style>
@@ -244,11 +241,10 @@
 </div>
 
 <!-- Shared Scripts -->
-<script src="js/supabase-client.js"></script>
-<script src="js/common.js"></script>
-<script src="js/game-common.js"></script>
 
-<script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage } from './js/common.js';
 /**
  * Factions & Demands Page
  * Shows voter blocs, active demands, and demand history
@@ -580,6 +576,9 @@ setInterval(() => {
         Promise.all([loadActiveDemands(), loadVoterBlocs(), loadHistory()]);
     }
 }, 60000);
+
+// Expose functions for HTML onclick/onchange handlers
+window.showSubTab = showSubTab;
 </script>
 
 </body>

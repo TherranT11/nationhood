@@ -3,9 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Bills | Nationhood Alpha</title>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="css/dashboard.css">
     <style>
         .laws-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; gap:12px; flex-wrap:wrap; }
@@ -288,10 +285,10 @@
     </div>
 </div>
 
-<script src="js/supabase-client.js"></script>
-<script src="js/common.js"></script>
-<script src="js/game-common.js"></script>
-<script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage, qCache, qCacheSet, qCacheBust } from './js/common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName } from './js/game-common.js';
 (function () {
     'use strict';
 let currentNation = null, currentFaction = null, currentSeats = 0;

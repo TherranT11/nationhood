@@ -3,9 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Parties | Nationhood Alpha</title>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="css/dashboard.css">
     <style>
         .parties-section-label {
@@ -559,10 +556,10 @@
         <div>Loading parties...</div>
     </div>
 </div>
-<script src="js/supabase-client.js"></script>
-<script src="js/common.js"></script>
-<script src="js/game-common.js"></script>
-<script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage, qCache, qCacheSet, formatNumber } from './js/common.js';
+import { loadSeats, loadFactionIdeology, IDEOLOGY_TO_AXIS, GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, detectHeadFaction, fetchActiveCoalition, deductAP, getIdeologyLabel, IDEOLOGY_AXES, disbandParty } from './js/game-common.js';
 let currentFaction = null;
 let currentNation = null;
 
@@ -2890,6 +2887,27 @@ async function doDisbandParty() {
         alert('Error: ' + error.message);
     }
 }
+
+// Expose functions for HTML onclick/onchange handlers
+window.toggleIdeologyChip = toggleIdeologyChip;
+window.onPlatformSectorChange = onPlatformSectorChange;
+window.onPlatformStanceChange = onPlatformStanceChange;
+window.doPolicyPlatform = doPolicyPlatform;
+window.openDonorPanel = openDonorPanel;
+window.doRallySupport = doRallySupport;
+window.doUndermine = doUndermine;
+window.doPatronageNetwork = doPatronageNetwork;
+window.doSeizePower = doSeizePower;
+window.doDisbandParty = doDisbandParty;
+window.doCourtDonors = doCourtDonors;
+window.doCourtGrassroots = doCourtGrassroots;
+window.closeDonorPanel = closeDonorPanel;
+window.togglePollSelectAll = togglePollSelectAll;
+window.updatePollCost = updatePollCost;
+window.closePollSelector = closePollSelector;
+window.doGeneratePoll = doGeneratePoll;
+window.openPollSelector = openPollSelector;
+window.toggleDenounceTarget = toggleDenounceTarget;
 </script>
 </body>
 </html>

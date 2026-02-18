@@ -3,9 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Ministry Actions | Nationhood Alpha</title>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="css/dashboard.css">
     <style>
         /* ===== PAGE SCROLL OVERRIDE ===== */
@@ -413,10 +410,10 @@
     </div>
 </div>
 
-<script src="js/supabase-client.js"></script>
-<script src="js/common.js"></script>
-<script src="js/game-common.js"></script>
-<script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage } from './js/common.js';
+import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, GAME_CONFIG, initGameConfigForNation, loadSeats, deductAP } from './js/game-common.js';
 (function () {
     'use strict';
 // ==================== HELPERS ====================
