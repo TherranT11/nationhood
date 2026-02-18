@@ -52,6 +52,7 @@ ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS education_accessibility NUM
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS academic_immigration NUMERIC;
 
 -- Infrastructure
+ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS physical_infrastructure NUMERIC;
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS digital_infrastructure NUMERIC;
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS rail_network NUMERIC;
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS urbanization NUMERIC;

@@ -5485,12 +5485,17 @@ async function processCrises(supabase, nation, currentTick) {
 
         for (const effect of effects) {
             const changePT = Number(effect.change_per_tick);
+            if (isNaN(changePT)) {
+                console.warn(`[processCrises] Skipping effect with NaN change_per_tick in crisis "${template.name}" for ${nation.name}`, effect);
+                continue;
+            }
             const hasFloor = effect.stat_floor !== null && effect.stat_floor !== undefined;
             const floorVal = hasFloor ? Number(effect.stat_floor) : null;
 
             // Helper: clamp value respecting the per-effect floor/ceiling (for non-nation targets)
             // Round to 1dp to match processStatEffects and prevent floating-point drift.
             function clampWithFloor(current, raw) {
+                if (isNaN(raw) || isNaN(current)) return current ?? 50;
                 let v = Math.round(Math.max(0, Math.min(100, raw)) * 10) / 10;
                 if (hasFloor) {
                     if (changePT < 0) v = Math.max(floorVal, v);   // floor
