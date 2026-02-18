@@ -1609,6 +1609,7 @@ async function loadActionLog() {
             const y = a.result?.yield || 0;
             message = `Grassroots Fundraising: +$${y.toLocaleString()}`;
         }
+        else { message = a.action_type.replace(/_/g, ' '); }
         return `<div class="action-log-item"><div class="action-log-time">Tick ${a.tick_performed} • ${date}</div><div class="action-log-message">${message}</div></div>`;
     }).join('');
 }
@@ -1660,14 +1661,14 @@ async function openCoalitionPanel() {
         if (panderCount === 1) { factor = 0.5; dimLabel = 'HALF effect (pandered 1x in last 10 ticks)'; }
         else if (panderCount >= 2) { factor = 0.25; dimLabel = 'QUARTER effect + \u22121 ALL blocs (pandered 2x+)'; }
 
-        const gainRaw = 2 * factor;
+        const gainRaw = Math.trunc(2 * factor);
         const gainWeighted = gainRaw * (popWeight / 100);
 
         let penaltyWeightedTotal = 0;
         const penaltyItemsHTML = opposition.map(opp => {
             const oppBloc = _voterBlocs.find(b => b.bloc_name === opp.bloc);
             const oppWeight = oppBloc ? (parseFloat(oppBloc.population_weight) || 0) : 0;
-            const oppDeltaRaw = opp.delta * factor;
+            const oppDeltaRaw = Math.round(opp.delta * factor);
             const oppWeighted = oppDeltaRaw * (oppWeight / 100);
             penaltyWeightedTotal += oppWeighted;
             return `<div style="color:#ff9966;padding-left:8px;">${oppDeltaRaw % 1 === 0 ? oppDeltaRaw : oppDeltaRaw.toFixed(1)} ${opp.bloc} <span style="color:#777;">(${oppWeighted.toFixed(2)} wtd)</span></div>`;
@@ -1768,7 +1769,7 @@ async function doBuildCoalition(blocId) {
     if (panderCount === 1) factor = 0.5;
     else if (panderCount >= 2) factor = 0.25;
 
-    const gainRaw = Math.round(2 * factor);
+    const gainRaw = Math.trunc(2 * factor);
 
     const effectLabel = panderCount === 0 ? 'full' : panderCount === 1 ? 'HALF' : 'QUARTER';
     const dimWarning = panderCount >= 2
@@ -1789,11 +1790,6 @@ async function doBuildCoalition(blocId) {
     if (!apResult.success) { alert('Not enough AP.'); return; }
     currentFaction.action_points = apResult.newAp;
 
-    // Deduct funds
-    const newFunds = (currentFaction.party_funds || 0) - BUILD_COALITION_MONEY_COST;
-    await _supabase.from('factions').update({ party_funds: newFunds }).eq('id', currentFaction.id);
-    currentFaction.party_funds = newFunds;
-
     try {
         let { data: allBlocApprovals, error: blocErr } = await _supabase
             .from('faction_bloc_approval').select('id, bloc_id, approval')
@@ -1807,6 +1803,11 @@ async function doBuildCoalition(blocId) {
                 return;
             }
         }
+
+        // Deduct funds inside try — keeps state consistent if approval writes fail
+        const newFunds = (currentFaction.party_funds || 0) - BUILD_COALITION_MONEY_COST;
+        await _supabase.from('factions').update({ party_funds: newFunds }).eq('id', currentFaction.id);
+        currentFaction.party_funds = newFunds;
 
         const blocChanges = {};
 
