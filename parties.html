@@ -18,7 +18,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatNumber } from './js/common.js';
-import { loadSeats, loadFactionIdeology, IDEOLOGY_TO_AXIS, GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, detectHeadFaction, fetchActiveCoalition, deductAP, getIdeologyLabel, IDEOLOGY_AXES, disbandParty } from './js/game-common.js';
+import { loadSeats, loadFactionIdeology, IDEOLOGY_TO_AXIS, GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, detectHeadFaction, fetchActiveCoalition, deductAP, getIdeologyLabel, IDEOLOGY_AXES, disbandParty, loadNationIdeologies, adjustBlocApproval, ensureBlocApprovals, getIdeologySummary, markFactionActive, recalcDerivedApproval } from './js/game-common.js';
 let currentFaction = null;
 let currentNation = null;
 
@@ -2415,8 +2415,6 @@ async function doDisbandParty() {
 
 // Expose functions for HTML onclick/onchange handlers
 window.toggleIdeologyChip = toggleIdeologyChip;
-window.onPlatformSectorChange = onPlatformSectorChange;
-window.onPlatformStanceChange = onPlatformStanceChange;
 window.doPolicyPlatform = doPolicyPlatform;
 window.openDonorPanel = openDonorPanel;
 window.doRallySupport = doRallySupport;

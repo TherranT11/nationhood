@@ -46,7 +46,7 @@
 <!-- Page-Specific Script -->
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { initPage, formatNumber } from './js/common.js';
+import { initPage, formatNumber, scaleRawToDollars } from './js/common.js';
 import { isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, loadSeats, CANONICAL_GOVERNMENT_TYPES, GAME_CONFIG } from './js/game-common.js';
 /**
  * World Page
