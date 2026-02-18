@@ -548,20 +548,49 @@ async function renderElectionResults(election) {
 async function renderElectionBreakdown(election) {
     const container = document.getElementById('election-breakdown-content');
     if (!container) return;
+    const renderElectionId = election?.id || null;
 
     if (!election) {
         container.innerHTML = '<div style="color:#888; padding:16px; font-size:0.85rem;">No completed parliamentary election is available yet.</div>';
         return;
     }
 
-    try {
-        const result = await runElectionPreview(_supabase, currentNation.id);
-        const blocDetails = result.bloc_details || [];
-        const partyNames = result.partyNames || {};
+    const urlParams = new URLSearchParams(window.location.search);
+    const usePreviewFallback = window.DEBUG_ELECTION_BREAKDOWN_PREVIEW === true || urlParams.get('electionBreakdownMode') === 'preview';
 
-        if (blocDetails.length === 0) {
-            container.innerHTML = '<div style="color:#666; padding:16px; font-size:0.85rem;">No voter bloc data available.</div>';
-            return;
+    let blocDetails = election?.results?.bloc_details || [];
+    let partyNames = {};
+
+    if (!Array.isArray(blocDetails)) {
+        blocDetails = [];
+    }
+
+    if (blocDetails.length === 0 && usePreviewFallback) {
+        try {
+            const result = await runElectionPreview(_supabase, election.nation_id);
+            blocDetails = Array.isArray(result?.bloc_details) ? result.bloc_details : [];
+            partyNames = result?.partyNames || {};
+        } catch (err) {
+            console.error('Election breakdown preview fallback error:', err);
+        }
+    }
+
+    if (renderElectionId && currentElectionId && renderElectionId !== currentElectionId) {
+        return;
+    }
+
+    if (blocDetails.length === 0) {
+        container.innerHTML = '<div style="color:#666; padding:16px; font-size:0.85rem;">No historical bloc breakdown stored for this election.</div>';
+        return;
+    }
+
+    try {
+        if (!Object.keys(partyNames).length) {
+            for (const vote of (election?.results?.votes || [])) {
+                if (vote?.party_id && vote?.party_name) {
+                    partyNames[vote.party_id] = vote.party_name;
+                }
+            }
         }
 
         const sorted = [...blocDetails].sort((a, b) => b.voter_count - a.voter_count);
@@ -572,6 +601,10 @@ async function renderElectionBreakdown(election) {
             'TRADITION': '#795548', 'PROGRESS': '#00BCD4', 'NATIONALISM': '#FF5722',
             'GLOBALISM': '#3F51B5'
         };
+
+        if (renderElectionId && currentElectionId && renderElectionId !== currentElectionId) {
+            return;
+        }
 
         container.innerHTML = sorted.map((bloc, idx) => {
             const blocId = 'breakdown-bloc-' + idx;
