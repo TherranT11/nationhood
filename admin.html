@@ -665,6 +665,9 @@
             if (tickStatus === 'success' && summary) {
                 status.className = 'status success';
                 status.textContent = `✅ ${JSON.stringify(summary)}`;
+            } else if (tickStatus === 'partial' && summary) {
+                status.className = 'status error';
+                status.textContent = `❌ Partial tick: ${summary.message || JSON.stringify(summary)}`;
             } else if (tickStatus === 'locked') {
                 status.className = 'status error';
                 status.textContent = `❌ ${message || 'Tick is currently locked by another process.'}`;
