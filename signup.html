@@ -4,105 +4,7 @@
     <meta charset="UTF-8">
     <title>Nationhood | Join the Chronicle</title>
     
-    <style>
-        body { background-color: #121212; color: #e0e0e0; font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
-        .signup-card { background: #1e1e1e; padding: 40px; border-radius: 8px; border-top: 4px solid #ffcc00; width: 100%; max-width: 450px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        h2 { color: #ffcc00; margin-top: 0; }
-        .input-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 8px; font-size: 0.9rem; color: #888; }
-        input { width: 100%; padding: 12px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 4px; box-sizing: border-box; }
-        
-        /* Faction Type Cards */
-        .faction-types {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-        
-        .faction-option {
-            padding: 15px;
-            background: #252525;
-            border: 2px solid #444;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.3s;
-            position: relative;
-        }
-        
-        .faction-option.available:hover {
-            border-color: #ffcc00;
-            background: #2a2a2a;
-        }
-        
-        .faction-option.selected {
-            border-color: #ffcc00;
-            background: #2a2a2a;
-        }
-        
-        .faction-option.disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-            background: #1a1a1a;
-        }
-        
-        .faction-title {
-            font-weight: bold;
-            color: #ffcc00;
-            font-size: 1.1rem;
-            margin-bottom: 5px;
-        }
-        
-        .faction-option.disabled .faction-title {
-            color: #666;
-        }
-        
-        .faction-desc {
-            font-size: 0.85rem;
-            color: #888;
-            line-height: 1.4;
-        }
-        
-        .coming-soon {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: #ffcc00;
-            color: #000;
-            padding: 3px 8px;
-            border-radius: 3px;
-            font-size: 0.7rem;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        
-        .btn-join { width: 100%; padding: 15px; background: #ffcc00; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; color: #000; font-size: 1rem; }
-        .btn-join:hover { background: #e6b800; }
-        .btn-join:disabled { background: #666; cursor: not-allowed; }
-        .login-link { text-align: center; margin-top: 15px; font-size: 0.8rem; }
-        .login-link a { color: #ffcc00; text-decoration: none; }
-        .error { color: #ff4444; font-size: 0.9rem; margin-top: 10px; text-align: center; }
-        .info-note {
-            background: #1a2a1a;
-            border-left: 3px solid #4CAF50;
-            padding: 12px;
-            margin-bottom: 20px;
-            font-size: 0.85rem;
-            line-height: 1.5;
-            color: #aaa;
-        }
-        .confirm-box {
-            text-align: center;
-            padding: 20px 0;
-            display: none;
-        }
-        .confirm-box .confirm-icon { font-size: 2.5rem; margin-bottom: 16px; }
-        .confirm-box .confirm-title { color: #ffcc00; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
-        .confirm-box .confirm-desc { color: #888; font-size: 0.9rem; line-height: 1.6; }
-        .confirm-box .confirm-email { color: #ffcc00; font-weight: bold; }
-        .confirm-box .confirm-note { color: #666; font-size: 0.8rem; margin-top: 16px; }
-    </style>
-</head>
+    </head>
 <body>
 
 <div class="signup-card">
@@ -180,6 +82,7 @@
 
 <script type="module">
 import { createClient } from '@supabase/supabase-js';
+import './css/signup.css';
     const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
     const _supabase = createClient(supabaseUrl, supabaseKey);

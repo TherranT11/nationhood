@@ -7,27 +7,6 @@
     <!-- Supabase SDK -->
     
     <!-- Shared Styles -->
-    <link rel="stylesheet" href="css/dashboard.css">
-
-    <style>
-        /* Default nation fill colors (unselected) */
-        #Melizea.land { fill: #eeffaa; }
-        #Avelia.land { fill: #ddafe9; }
-        #Sangreza.land { fill: #5599ff; }
-        #Montequilla.land { fill: #aade87; }
-        #SanEstrella.land { fill: #ffb380; }
-        #Veldaria.land { fill: #87cdde; }
-
-        /* Selected overrides */
-        #Melizea.land.selected-nation { fill: #ccff00; }
-        #Avelia.land.selected-nation { fill: #d070d8; }
-        #Sangreza.land.selected-nation { fill: #2277ff; }
-        #Montequilla.land.selected-nation { fill: #66cc44; }
-        #SanEstrella.land.selected-nation { fill: #ff8833; }
-        #Veldaria.land.selected-nation { fill: #44bbd4; }
-
-
-    </style>
 </head>
 <body>
 
@@ -66,6 +45,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import { isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, loadSeats, CANONICAL_GOVERNMENT_TYPES, GAME_CONFIG } from './js/game-common.js';
+import './css/world.css';
 /**
  * World Page
  * Displays the world map and nation intel

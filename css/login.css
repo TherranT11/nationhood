@@ -1,0 +1,16 @@
+body { background-color: #121212; color: #e0e0e0; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-card { background: #1e1e1e; padding: 40px; border-radius: 8px; border-top: 4px solid #ffcc00; width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        h2 { color: #ffcc00; margin-top: 0; }
+        .input-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-size: 0.9rem; color: #888; }
+        input { width: 100%; padding: 12px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 4px; box-sizing: border-box; }
+        .btn-login { width: 100%; padding: 15px; background: #ffcc00; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; color: #000; }
+        .btn-login:hover { background: #e6b800; }
+        .btn-login:disabled { background: #666; cursor: not-allowed; }
+        .signup-link { text-align: center; margin-top: 15px; font-size: 0.8rem; }
+        .signup-link a { color: #ffcc00; text-decoration: none; }
+        .forgot-link { text-align: right; margin-top: -12px; margin-bottom: 20px; }
+        .forgot-link a { color: #888; text-decoration: none; font-size: 0.8rem; transition: color 0.2s; }
+        .forgot-link a:hover { color: #ffcc00; }
+        .error { color: #ff4444; font-size: 0.9rem; margin-top: 10px; text-align: center; }
+        .success { color: #4CAF50; font-size: 0.9rem; margin-top: 10px; text-align: center; }
