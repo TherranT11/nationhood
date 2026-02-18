@@ -217,6 +217,8 @@
 <script src="js/game-common.js"></script>
 
 <script>
+(function () {
+    'use strict';
 /**
  * Elections / Government Formation Page
  * 
@@ -2053,6 +2055,20 @@ async function loadElectionInfo() {
         if (ticksEl) ticksEl.textContent = '—';
     }
 }
+
+// Expose handlers used by inline HTML attributes
+window.createProposal = createProposal;
+window.openFormation = openFormation;
+window.toggleSupport = toggleSupport;
+window.loadFormationsList = loadFormationsList;
+window.toggleEditCoalition = toggleEditCoalition;
+window.retractProposal = retractProposal;
+window.saveCoalitionEdit = saveCoalitionEdit;
+window.sendChatMessage = sendChatMessage;
+window.formGovernment = formGovernment;
+window.voteShakeup = voteShakeup;
+window.resolveActiveShakeup = resolveActiveShakeup;
+})();
 </script>
 
 </body>
