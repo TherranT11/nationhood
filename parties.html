@@ -2040,7 +2040,7 @@ async function doCourtDonors(blocId) {
         if (config.bonus?.type === 'approval') {
             const donorRow = allBlocApprovals?.find(r => r.bloc_id === blocId);
             if (donorRow) {
-                donorRow.approval = Math.max(0, Math.min(100, donorRow.approval + config.bonus.delta));
+                donorRow.approval = Math.round(Math.max(0, Math.min(100, donorRow.approval + config.bonus.delta)));
                 await _supabase.from('faction_bloc_approval')
                     .update({ approval: donorRow.approval }).eq('id', donorRow.id);
             }
@@ -2052,7 +2052,7 @@ async function doCourtDonors(blocId) {
             if (!targetBloc) continue;
             const targetRow = allBlocApprovals?.find(r => r.bloc_id === targetBloc.id);
             if (!targetRow) continue;
-            const newApproval = Math.max(0, Math.min(100, targetRow.approval + cost.delta));
+            const newApproval = Math.round(Math.max(0, Math.min(100, targetRow.approval + cost.delta)));
             await _supabase.from('faction_bloc_approval')
                 .update({ approval: newApproval }).eq('id', targetRow.id);
             targetRow.approval = newApproval;

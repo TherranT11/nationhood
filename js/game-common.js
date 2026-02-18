@@ -1134,23 +1134,25 @@ async function adjustBlocApproval(supabase, factionId, delta) {
             .single();
         if (!faction) return null;
         const current = faction.approval_rating ?? 50;
-        const updated = Math.max(0, Math.min(100, current + delta));
-        await supabase.from('factions')
+        const updated = Math.round(Math.max(0, Math.min(100, current + delta)));
+        const { error: legacyErr } = await supabase.from('factions')
             .update({ approval_rating: updated })
             .eq('id', factionId);
+        if (legacyErr) console.error(`[adjustBlocApproval] Legacy update failed for faction ${factionId}:`, legacyErr.message);
         return updated;
     }
 
-    // Apply delta to each bloc row, clamped 0-100
+    // Apply delta to each bloc row, clamped 0-100 and rounded to integer
     for (const row of blocRows) {
-        row.approval = Math.max(0, Math.min(100, row.approval + delta));
+        row.approval = Math.round(Math.max(0, Math.min(100, row.approval + delta)));
     }
 
     // Update all rows
     for (const row of blocRows) {
-        await supabase.from('faction_bloc_approval')
+        const { error: updErr } = await supabase.from('faction_bloc_approval')
             .update({ approval: row.approval })
             .eq('id', row.id);
+        if (updErr) console.error(`[adjustBlocApproval] Failed to update bloc ${row.id}:`, updErr.message);
     }
 
     // Recalculate and update derived approval
