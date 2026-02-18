@@ -641,23 +641,34 @@
     }
     async function advanceTickAdmin() {
         const status = document.getElementById('tick-status');
-        status.className = 'status info'; status.textContent = 'Acquiring tick lock...'; status.classList.remove('hidden');
+        status.className = 'status info'; status.textContent = 'Invoking advance-tick Edge Function...'; status.classList.remove('hidden');
 
-        let lockAcquired = false;
         try {
-            lockAcquired = await acquireTickLock(_supabase);
-        } catch (e) {
-            status.className = 'status error'; status.textContent = '❌ Error acquiring lock: ' + e.message;
-            return;
-        }
-        if (!lockAcquired) {
-            status.className = 'status error'; status.textContent = '❌ Another tab is already processing a tick. Wait and try again.';
-            return;
-        }
+            const { data, error } = await _supabase.functions.invoke('advance-tick', {
+                body: { force: true }
+            });
 
-        status.textContent = 'Advancing tick (processing effects, costs, ministry actions, elections...)';
-        try {
-            const summary = await advanceTick(_supabase);
+            if (error) {
+                console.error('Edge Function invoke error:', error);
+                status.className = 'status error';
+                status.textContent = '❌ Edge Function error: ' + (error.message || error);
+                return;
+            }
+
+            if (data.status === 'locked') {
+                status.className = 'status error';
+                status.textContent = '❌ Another process is already processing the tick. Wait and try again.';
+                return;
+            }
+
+            if (data.error) {
+                status.className = 'status error';
+                status.textContent = '❌ Tick error: ' + data.error;
+                return;
+            }
+
+            // Success — display summary
+            const summary = data.summary;
             let msg = `✅ Tick ${summary.tick} complete! (${summary.nations} nations)`;
             const parts = [];
             if (summary.effects?.length) parts.push(`${summary.effects.reduce((s,e) => s + e.effects.length, 0)} law effects`);
@@ -667,14 +678,14 @@
                 const mEvtCount = summary.ministryEvents.reduce((s,e) => s + e.events.length, 0);
                 parts.push(`${mEvtCount} ministry inbox event(s) fired`);
             }
+            if (summary.apDistributed !== undefined) parts.push(`${summary.apDistributed} AP distributed`);
+            if (summary.apFailed > 0) parts.push(`${summary.apFailed} AP failures`);
             if (parts.length) msg += ' — ' + parts.join(', ');
             status.className = 'status success'; status.textContent = msg;
             await loadShardInfo(); await loadStats();
-        } catch (error) {
-            console.error('advanceTick error:', error);
-            status.className = 'status error'; status.textContent = '❌ Error: ' + error.message;
-        } finally {
-            try { await releaseTickLock(_supabase); } catch (e) { console.warn('Error releasing tick lock:', e); }
+        } catch (err) {
+            console.error('advanceTickAdmin error:', err);
+            status.className = 'status error'; status.textContent = '❌ Error: ' + err.message;
         }
     }
 

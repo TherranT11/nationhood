@@ -2,6 +2,7 @@
   "name": "nationhood",
   "private": true,
   "scripts": {
-    "lint:inline-scripts": "node scripts/check-inline-script-globals.js"
+    "lint:inline-scripts": "node scripts/check-inline-script-globals.js",
+    "sync:edge-function": "node scripts/sync-edge-function.js"
   }
 }
