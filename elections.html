@@ -491,7 +491,7 @@ async function renderDemocracyPage() {
             <div id="election-breakdown-section" style="display: block; margin-top: 30px;">
                 <div class="section-header">Election Breakdown</div>
                 <div id="election-breakdown-content">
-                    <div class="breakdown-loading">Simulating voter bloc breakdown...</div>
+                    <div class="breakdown-loading">Loading election breakdown...</div>
                 </div>
             </div>
         </div>
@@ -557,24 +557,11 @@ async function renderElectionBreakdown(election) {
         return;
     }
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const usePreviewFallback = window.DEBUG_ELECTION_BREAKDOWN_PREVIEW === true || urlParams.get('electionBreakdownMode') === 'preview';
-
     let blocDetails = election?.results?.bloc_details || [];
     let partyNames = {};
 
     if (!Array.isArray(blocDetails)) {
         blocDetails = [];
-    }
-
-    if (blocDetails.length === 0 && usePreviewFallback) {
-        try {
-            const result = await runElectionPreview(_supabase, election.nation_id);
-            blocDetails = Array.isArray(result?.bloc_details) ? result.bloc_details : [];
-            partyNames = result?.partyNames || {};
-        } catch (err) {
-            console.error('Election breakdown preview fallback error:', err);
-        }
     }
 
     if (renderElectionId && currentElectionId && renderElectionId !== currentElectionId) {
@@ -587,6 +574,26 @@ async function renderElectionBreakdown(election) {
     }
 
     try {
+        // Compute and display election date
+        const { data: shard } = await _supabase.from('shard').select('current_date, current_tick').eq('name', 'Alpha Shard').single();
+        if (shard && election.election_tick != null) {
+            const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            const currentMonth = shard.current_date.split(', ')[0];
+            const currentYear = parseInt(shard.current_date.split(', ')[1]);
+            const currentMonthIndex = months.indexOf(currentMonth);
+            const tickDiff = shard.current_tick - election.election_tick;
+            let electionMonthIndex = currentMonthIndex - tickDiff;
+            let electionYear = currentYear;
+            while (electionMonthIndex < 0) { electionMonthIndex += 12; electionYear -= 1; }
+            const dateStr = `${months[electionMonthIndex % 12]}, ${electionYear}`;
+            const section = document.getElementById('election-breakdown-section');
+            const existingLabel = section?.querySelector('.breakdown-date-label');
+            if (existingLabel) existingLabel.remove();
+            if (section) {
+                section.querySelector('.section-header')?.insertAdjacentHTML('afterend',
+                    `<div class="breakdown-date-label" style="color:#888; font-size:0.78rem; margin-bottom:6px; padding:0 16px;">Last Election: ${dateStr}</div>`);
+            }
+        }
         if (!Object.keys(partyNames).length) {
             for (const vote of (election?.results?.votes || [])) {
                 if (vote?.party_id && vote?.party_name) {
