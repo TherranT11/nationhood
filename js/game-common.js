@@ -1134,23 +1134,25 @@ async function adjustBlocApproval(supabase, factionId, delta) {
             .single();
         if (!faction) return null;
         const current = faction.approval_rating ?? 50;
-        const updated = Math.max(0, Math.min(100, current + delta));
-        await supabase.from('factions')
+        const updated = Math.round(Math.max(0, Math.min(100, current + delta)));
+        const { error: legacyErr } = await supabase.from('factions')
             .update({ approval_rating: updated })
             .eq('id', factionId);
+        if (legacyErr) console.error(`[adjustBlocApproval] Legacy update failed for faction ${factionId}:`, legacyErr.message);
         return updated;
     }
 
-    // Apply delta to each bloc row, clamped 0-100
+    // Apply delta to each bloc row, clamped 0-100 and rounded to integer
     for (const row of blocRows) {
-        row.approval = Math.max(0, Math.min(100, row.approval + delta));
+        row.approval = Math.round(Math.max(0, Math.min(100, row.approval + delta)));
     }
 
     // Update all rows
     for (const row of blocRows) {
-        await supabase.from('faction_bloc_approval')
+        const { error: updErr } = await supabase.from('faction_bloc_approval')
             .update({ approval: row.approval })
             .eq('id', row.id);
+        if (updErr) console.error(`[adjustBlocApproval] Failed to update bloc ${row.id}:`, updErr.message);
     }
 
     // Recalculate and update derived approval
@@ -5647,8 +5649,8 @@ async function processCrises(supabase, nation, currentTick) {
 
         for (const effect of effects) {
             const changePT = Number(effect.change_per_tick);
-            if (isNaN(changePT)) {
-                console.warn(`[processCrises] Skipping effect with NaN change_per_tick in crisis "${template.name}" for ${nation.name}`, effect);
+            if (!Number.isFinite(changePT)) {
+                console.warn(`[processCrises] Skipping effect with non-numeric change_per_tick: "${effect.change_per_tick}" in crisis "${template.name}" for ${nation.name}`);
                 continue;
             }
             const hasFloor = effect.stat_floor !== null && effect.stat_floor !== undefined;
@@ -5725,11 +5727,12 @@ async function processCrises(supabase, nation, currentTick) {
                 if (pmMinistry) {
                     const currentVal = pmMinistry.minister_approval ?? 50;
                     const newVal = clampWithFloor(currentVal, currentVal + changePT);
-                    await supabase.from('ministries')
+                    const { error: pmUpdErr } = await supabase.from('ministries')
                         .update({ minister_approval: newVal })
                         .eq('nation_id', nation.id)
                         .eq('ministry_key', 'prime_minister')
                         .eq('is_active', true);
+                    if (pmUpdErr) console.error(`[processCrises] Failed to update PM approval for ${nation.name}:`, pmUpdErr.message);
 
                     appliedEffects.push({
                         stat: 'minister_approval', change: changePT,
@@ -5762,11 +5765,12 @@ async function processCrises(supabase, nation, currentTick) {
                 if (ministry) {
                     const currentVal = ministry.minister_approval ?? 50;
                     const newVal = clampWithFloor(currentVal, currentVal + changePT);
-                    await supabase.from('ministries')
+                    const { error: minUpdErr } = await supabase.from('ministries')
                         .update({ minister_approval: newVal })
                         .eq('nation_id', nation.id)
                         .eq('ministry_key', effect.minister_key)
                         .eq('is_active', true);
+                    if (minUpdErr) console.error(`[processCrises] Failed to update ${effect.minister_key} approval for ${nation.name}:`, minUpdErr.message);
 
                     appliedEffects.push({
                         stat: 'minister_approval', change: changePT,
