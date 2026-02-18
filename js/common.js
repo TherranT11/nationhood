@@ -419,6 +419,16 @@ function formatCurrency(n) {
     return '$' + Number(n).toLocaleString();
 }
 
+/**
+ * Convert a raw 0-100 scale stat to dollar amount (× $1 Billion).
+ * Values already at dollar scale (>= 1,000,000) are returned as-is.
+ * Matches the guard in sql/fix_nation_gdp_debt_population_scale.sql.
+ */
+function scaleRawToDollars(val) {
+    if (val == null || val <= 0) return val;
+    return val < 1000000 ? val * 1e9 : val;
+}
+
 function showLoading(containerId = 'content-area') {
     const container = document.getElementById(containerId);
     if (container) {
