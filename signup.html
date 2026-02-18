@@ -5,6 +5,7 @@
     <title>Nationhood | Join the Chronicle</title>
     
         <link rel="stylesheet" href="css/signup.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -82,7 +83,7 @@
 </div>
 
 <script type="module">
-import { createClient } from '@supabase/supabase-js';
+const { createClient } = supabase;
 const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
     const _supabase = createClient(supabaseUrl, supabaseKey);

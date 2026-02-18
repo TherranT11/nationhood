@@ -5,6 +5,7 @@
     <title>Nationhood | Admin Panel</title>
     
         <link rel="stylesheet" href="css/admin.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -352,7 +353,7 @@
 </div>
 
 <script type="module">
-import { createClient } from '@supabase/supabase-js';
+const { createClient } = supabase;
 import { applyPopulationGrowth } from './js/common.js';
 import { GAME_CONFIG, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processBlocApprovalDecay, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPartyStandingsJitter, processPMTraitEffects, calculateNationalBudget, markFactionActive, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES } from './js/game-common.js';
 const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';

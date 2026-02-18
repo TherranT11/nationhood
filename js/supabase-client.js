@@ -3,7 +3,8 @@
  * Shared across all dashboard pages
  */
 
-import { createClient } from '@supabase/supabase-js';
+// Uses the global `supabase` object from CDN <script> tag in each HTML file
+const { createClient } = supabase;
 
 const SUPABASE_URL = 'https://pbumjalxclmegzckhqqr.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
