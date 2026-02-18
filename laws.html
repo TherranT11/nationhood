@@ -1016,6 +1016,9 @@ function onSectorChange() {
     document.getElementById('policy-group').style.display = 'block';
 }
 
+// Keep handlers explicitly on window for inline onchange attributes.
+window.onSectorChange = onSectorChange;
+
 function renderFoundationalOptions() {
     const container = document.getElementById('policy-options');
     const currentSeatsTotal = GAME_CONFIG.TOTAL_SEATS;
@@ -1300,6 +1303,9 @@ function onCommitteeSectorChange() {
     renderPolicyOptions(_getCompatiblePolicies(sector), 'committee-policy-options', 'committee-add-btn');
     document.getElementById('committee-policy-group').style.display = 'block';
 }
+
+// Keep handlers explicitly on window for inline onchange attributes.
+window.onCommitteeSectorChange = onCommitteeSectorChange;
 
 function selectCommitteePolicy(policyId) {
     committeeSelectedPolicy = allPolicies.find(p => p.id === policyId);
