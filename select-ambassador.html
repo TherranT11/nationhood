@@ -285,7 +285,8 @@
 <script src="js/common.js"></script>
 <script src="js/game-common.js"></script>
 <script>
-
+(function () {
+    'use strict';
 const FIRST_NAMES_POOL = [
     'Carlos','Diego','Fernando','Héctor','Marcos','Ramón','José','Luis','Miguel',
     'Antonio','Roberto','Francisco','Eduardo','Pablo','Alejandro','Rafael','Gabriel',
@@ -323,7 +324,7 @@ initPage('diplomacy', async (state) => {
         return;
     }
 
-    isAutocracy = currentNation.government_type === 'Autocracy';
+    isAutocracy = isGovernmentAutocracy(currentNation);
 
     // Get target nation from URL
     const params = new URLSearchParams(window.location.search);
@@ -613,6 +614,11 @@ function renderEmpty(message) {
     `;
 }
 
+// Expose handlers used by inline HTML attributes
+window.selectCandidate = selectCandidate;
+window.regenerate = regenerate;
+window.confirmNomination = confirmNomination;
+})();
 </script>
 </body>
 </html>

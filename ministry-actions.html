@@ -417,6 +417,8 @@
 <script src="js/common.js"></script>
 <script src="js/game-common.js"></script>
 <script>
+(function () {
+    'use strict';
 // ==================== HELPERS ====================
 function formatMoneyDisplay(m) {
     if (!m || m <= 0) return '';
@@ -643,7 +645,7 @@ initPage('ministry-actions', async (state) => {
         return;
     }
 
-    isAutocracy = (nation.government_type === 'Autocracy');
+    isAutocracy = isGovernmentAutocracy(nation);
 
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     currentTick = shard?.current_tick || 0;
@@ -776,7 +778,7 @@ function onMobileMinistrySelect(value) {
 async function renderMinistryHeader(key) {
     const ministry = myMinistries.find(m => m.ministry_key === key);
     const info = MINISTRY_INFO[key] || { icon: '🏛️', name: key };
-    const govType = isAutocracy ? 'Autocracy' : 'Democracy';
+    const govType = isAutocracy ? CANONICAL_GOVERNMENT_TYPES.AUTOCRACY : CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY;
     const actions = (MINISTRY_ACTIONS[key] || {})[govType] || [];
 
     const ministerName = ministry ? (ministry.minister_first_name + ' ' + ministry.minister_last_name) : 'Vacant';
@@ -1119,7 +1121,7 @@ async function respondToEvent(eventId, optionIndex) {
 
 // ==================== MINISTRY ACTIONS (PROACTIVE) ====================
 function openActionModal(actionKey) {
-    const govType = isAutocracy ? 'Autocracy' : 'Democracy';
+    const govType = isAutocracy ? CANONICAL_GOVERNMENT_TYPES.AUTOCRACY : CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY;
     const actions = (MINISTRY_ACTIONS[activeMinistryKey] || {})[govType] || [];
     const action = actions.find(a => a.key === actionKey);
     if (!action) return;
@@ -1173,7 +1175,7 @@ function closeActionModal() {
 
 async function confirmAction() {
     if (isCaretaker) { alert('Ministry actions are restricted during caretaker government.'); return; }
-    const govType = isAutocracy ? 'Autocracy' : 'Democracy';
+    const govType = isAutocracy ? CANONICAL_GOVERNMENT_TYPES.AUTOCRACY : CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY;
     const actions = (MINISTRY_ACTIONS[activeMinistryKey] || {})[govType] || [];
     const action = actions.find(a => a.key === pendingActionKey);
     if (!action) return;
@@ -1225,6 +1227,16 @@ async function confirmAction() {
 
 // ==================== UTILITIES ====================
 function escapeHtml(t) { var d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
+
+// Expose handlers used by inline HTML attributes
+window.setFilter = setFilter;
+window.closeActionModal = closeActionModal;
+window.confirmAction = confirmAction;
+window.selectMinistry = selectMinistry;
+window.openActionModal = openActionModal;
+window.selectEvent = selectEvent;
+window.respondToEvent = respondToEvent;
+})();
 </script>
 </body>
 </html>

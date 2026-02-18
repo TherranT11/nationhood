@@ -344,7 +344,7 @@ initPage('government', async (state) => {
         return;
     }
 
-    if (nation.government_type !== 'Presidential') {
+    if (!isPresidentialRepublic(nation)) {
         renderEmpty('This page is only for Presidential Democracies. <a href="government.html">Back to Government</a>');
         return;
     }

@@ -286,7 +286,7 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
     if (!faction || !nation) return roles;
 
     // Head of Government
-    if (nation.government_type === 'Autocracy') {
+    if (isGovernmentAutocracy(nation)) {
         roles.isHoG = nation.ruling_faction_id === faction.id;
     } else {
         const alloc = coalition?.ministry_allocations || {};
@@ -605,7 +605,9 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador) {
                 <button class="action-btn" style="margin-top:8px;" onclick="recallAmbassador('${ambassador.id}', '${targetNation.name}')">Recall Ambassador</button>`;
         } else if (pendingAmbassador) {
             const pendName = (pendingAmbassador.ambassador_first_name || '') + ' ' + (pendingAmbassador.ambassador_last_name || '');
-            fmButtons = `<button class="action-btn" disabled style="opacity:0.6;">Awaiting Confirmation: ${pendName.trim()}</button>`;
+            fmButtons = `
+                <button class="action-btn" disabled style="opacity:0.6;">Awaiting Confirmation: ${pendName.trim()}</button>
+                <button class="action-btn" style="margin-top:8px;" onclick="cancelPendingAmbassador('${pendingAmbassador.id}', '${targetNation.name}')">Cancel Nomination</button>`;
         } else {
             const adminParams = [getAdminNationOverride() ? 'nation_id=' + getAdminNationOverride() : '', getAdminFactionOverride() ? 'faction_id=' + getAdminFactionOverride() : ''].filter(Boolean).join('&');
             const ambUrl = 'select-ambassador.html?target=' + targetNation.id + (adminParams ? '&' + adminParams : '');
@@ -822,6 +824,53 @@ async function recallAmbassador(ambassadorId, nationName) {
 
     } catch (e) {
         console.error('Error recalling ambassador:', e);
+        alert('Error: ' + e.message);
+    }
+}
+
+async function cancelPendingAmbassador(ambassadorId, nationName) {
+    if (!confirm(`Cancel this ambassador nomination to ${nationName}?\n\nThis cannot be undone.`)) return;
+
+    try {
+        const { data: amb } = await _supabase
+            .from('ambassadors')
+            .select('id, ambassador_first_name, ambassador_last_name')
+            .eq('id', ambassadorId)
+            .maybeSingle();
+
+        if (!amb) { alert('Pending ambassador nomination not found.'); return; }
+
+        await _supabase
+            .from('ambassadors')
+            .update({ status: 'withdrawn', is_active: false })
+            .eq('id', ambassadorId)
+            .eq('status', 'pending_confirmation');
+
+        const { data: confirmationBill } = await _supabase
+            .from('bills')
+            .select('id, status')
+            .eq('ambassador_id', ambassadorId)
+            .in('status', ['committee', 'floor'])
+            .maybeSingle();
+
+        if (confirmationBill) {
+            await _supabase
+                .from('bills')
+                .update({ status: 'failed' })
+                .eq('id', confirmationBill.id);
+        }
+
+        const ambName = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim();
+        alert(`Nomination withdrawn: ${ambName} to ${nationName}.`);
+
+        diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
+        renderRoleBadges(diplomaticRoles);
+
+        const targetPath = document.querySelector('.land.selected-nation');
+        if (targetPath) targetPath.dispatchEvent(new Event('click', { bubbles: true }));
+
+    } catch (e) {
+        console.error('Error canceling pending ambassador:', e);
         alert('Error: ' + e.message);
     }
 }
