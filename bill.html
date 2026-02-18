@@ -1134,7 +1134,10 @@ function onAmendmentSectorChange() {
         const opposedClass = p.isOpposed ? ' opposed' : '';
         const opposedBadge = p.isOpposed ? ' <span style="display:inline-block;background:#ff4444;color:#fff;padding:2px 7px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚠ Opposed</span>' : '';
         const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
-        const ideoHTML = ideos.map(i => '<span class="article-ideology">' + i + '</span>').join(' ');
+        const ideoHTML = ideos.map(i => {
+            const colorClass = getIdeologyChipClass(i);
+            return `<span class="article-ideology ${colorClass}">${i}</span>`;
+        }).join(' ');
         return `<div class="policy-option${opposedClass}" data-policy-id="${p.id}" onclick="selectAmendmentPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name} ${ideoHTML}${opposedBadge}</div><div class="policy-option-desc">${p.description || ''}</div></div>`;
     }).join('');
     document.getElementById('amendment-policy-group').style.display = 'block';
