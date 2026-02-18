@@ -246,6 +246,21 @@ let realtimeChannel = null;
 let chatMessages = [];
 let supportMap = {};
 let totalLegislatureSeats = 0;
+const GENERAL_ELECTION_TYPE = 'parliamentary';
+
+async function fetchLatestCompletedGeneralElection() {
+    const { data: latestElection } = await _supabase
+        .from('elections')
+        .select('*')
+        .eq('nation_id', currentNation.id)
+        .eq('status', 'completed')
+        .eq('election_type', GENERAL_ELECTION_TYPE)
+        .order('election_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    return latestElection;
+}
 
 const MINISTRIES = [
     { key: 'prime_minister', name: 'Prime Minister', description: 'Head of government, sets national agenda and policy priorities.', locked: true },
@@ -310,16 +325,7 @@ async function renderDemocracyPage() {
     let election = null;
     let presidentialElection = null;
     if (isPresidential) {
-        const { data: parlElection } = await _supabase
-            .from('elections')
-            .select('*')
-            .eq('nation_id', currentNation.id)
-            .eq('status', 'completed')
-            .eq('election_type', 'parliamentary')
-            .order('election_tick', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        election = parlElection;
+        election = await fetchLatestCompletedGeneralElection();
 
         const { data: presElection } = await _supabase
             .from('elections')
@@ -332,15 +338,7 @@ async function renderDemocracyPage() {
             .maybeSingle();
         presidentialElection = presElection;
     } else {
-        const { data: latestElection } = await _supabase
-            .from('elections')
-            .select('*')
-            .eq('nation_id', currentNation.id)
-            .eq('status', 'completed')
-            .order('election_tick', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        election = latestElection;
+        election = await fetchLatestCompletedGeneralElection();
     }
 
     currentElectionId = election?.id || null;
@@ -488,7 +486,7 @@ async function renderDemocracyPage() {
             `}
 
             <!-- Election Breakdown (per-bloc voting detail) -->
-            <div id="election-breakdown-section" style="display: ${election ? 'block' : 'none'}; margin-top: 30px;">
+            <div id="election-breakdown-section" style="display: block; margin-top: 30px;">
                 <div class="section-header">Election Breakdown</div>
                 <div id="election-breakdown-content">
                     <div class="breakdown-loading">Simulating voter bloc breakdown...</div>
@@ -503,7 +501,7 @@ async function renderDemocracyPage() {
         await renderPresidentialResults(presidentialElection);
     }
     await renderElectionResults(election);
-    if (election) renderElectionBreakdown(); // fire-and-forget
+    renderElectionBreakdown(election); // fire-and-forget
     if (showFormation) await loadFormationsList();
     await loadElectionInfo();
 }
@@ -547,9 +545,14 @@ async function renderElectionResults(election) {
 // ELECTION BREAKDOWN (per-bloc voter detail)
 // ===================================================================
 
-async function renderElectionBreakdown() {
+async function renderElectionBreakdown(election) {
     const container = document.getElementById('election-breakdown-content');
     if (!container) return;
+
+    if (!election) {
+        container.innerHTML = '<div style="color:#888; padding:16px; font-size:0.85rem;">No completed parliamentary election is available yet.</div>';
+        return;
+    }
 
     try {
         const result = await runElectionPreview(_supabase, currentNation.id);
