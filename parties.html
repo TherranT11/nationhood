@@ -947,7 +947,7 @@ function toggleIdeologyChip(chipEl, factionId) {
 // ===================================================================
 
 async function renderPartiesPage(nation, faction) {
-    const isAutocracy = nation.government_type === 'Autocracy';
+    const isAutocracy = isGovernmentAutocracy(nation);
     const termPlural = isAutocracy ? 'Factions' : 'Parties';
     const termSingular = isAutocracy ? 'Faction' : 'Party';
     const headerText = isAutocracy ? 'Internal Factions' : 'Political Parties';
@@ -2847,7 +2847,7 @@ async function doDisbandParty() {
     if (!currentFaction || !currentNation) return;
 
     // Block autocracy ruling faction
-    if (currentNation.government_type === 'Autocracy' &&
+    if (isGovernmentAutocracy(currentNation) &&
         currentFaction.id === currentNation.ruling_faction_id) {
         alert('The ruling faction cannot disband.');
         return;

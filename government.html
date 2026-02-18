@@ -589,6 +589,8 @@
 <script src="js/common.js"></script>
 <script src="js/game-common.js"></script>
 <script>
+(function () {
+    'use strict';
 /**
  * Government Page
  * Displays government structure, administration, cabinet, and parliament.
@@ -662,16 +664,17 @@ initPage('government', async (state) => {
         return;
     }
 
-    isAutocracy = (nation.government_type === 'Autocracy');
-    isPresidential = (nation.government_type === 'Presidential');
+    isAutocracy = isGovernmentAutocracy(nation);
+    isPresidential = isGovernmentPresidential(nation);
 
-    // Backfill head of state if missing
-    if (!nation.head_of_state_first_name || !nation.head_of_state_last_name) {
+    // Backfill head of state if missing/incomplete
+    const hasValidHosAge = Number.isFinite(Number(nation.head_of_state_age)) && Number(nation.head_of_state_age) > 0;
+    if (!nation.head_of_state_first_name || !nation.head_of_state_last_name || !hasValidHosAge) {
         const HOS_FIRST = FIRST_NAMES_POOL;
         const HOS_LAST = LAST_NAMES_POOL;
-        const hosFirst = HOS_FIRST[Math.floor(Math.random() * HOS_FIRST.length)];
-        const hosLast = HOS_LAST[Math.floor(Math.random() * HOS_LAST.length)];
-        const hosAge = 45 + Math.floor(Math.random() * 25);
+        const hosFirst = nation.head_of_state_first_name || HOS_FIRST[Math.floor(Math.random() * HOS_FIRST.length)];
+        const hosLast = nation.head_of_state_last_name || HOS_LAST[Math.floor(Math.random() * HOS_LAST.length)];
+        const hosAge = hasValidHosAge ? Number(nation.head_of_state_age) : (45 + Math.floor(Math.random() * 25));
         const { error } = await _supabase.from('nations').update({
             head_of_state_first_name: hosFirst,
             head_of_state_last_name: hosLast,
@@ -721,7 +724,7 @@ async function renderRevolutionBannerGov() {
     }
 
     // Active countdown (Autocracy only)
-    if (nation.government_type === 'Autocracy' && nation.revolution_started_tick != null && nation.revolution_duration != null) {
+    if (isGovernmentAutocracy(nation) && nation.revolution_started_tick != null && nation.revolution_duration != null) {
         var elapsed = currentTick - nation.revolution_started_tick;
         var remaining = Math.max(0, nation.revolution_duration - elapsed);
         var h = '<div class="revolution-banner">';
@@ -1840,7 +1843,7 @@ async function claimPower() {
                 pm_party_id: currentFaction.id,
                 coalition_parties: [{ party_id: currentFaction.id, party_name: currentFaction.faction_name, seats: currentFaction.seats || 0 }],
                 total_seats: currentFaction.seats || 0,
-                government_type: 'Autocracy',
+                government_type: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
                 started_at_tick: tick,
                 started_at_date: tickToDate(tick)
             });
@@ -2927,6 +2930,25 @@ function renderAdminCard(admin, isCurrent) {
         </div>`;
 }
 
+// Expose handlers used by inline HTML attributes
+window.closeAssignModal = closeAssignModal;
+window.handleConfirmMinister = handleConfirmMinister;
+window.claimPower = claimPower;
+window.resignPMAction = resignPMAction;
+window.resignMinistry = resignMinistry;
+window.purgeMinister = purgeMinister;
+window.openAssignModal = openAssignModal;
+window.denyRequest = denyRequest;
+window.unrequestMinistry = unrequestMinistry;
+window.requestMinistry = requestMinistry;
+window.openNominateModal = openNominateModal;
+window.selectCandidate = selectCandidate;
+window.fileNoConfidence = fileNoConfidence;
+window.callEarlyElections = callEarlyElections;
+window.togglePastAdmins = togglePastAdmins;
+window.toggleStatTable = toggleStatTable;
+window.toggleAdminCard = toggleAdminCard;
+})();
 </script>
 </body>
 </html>
