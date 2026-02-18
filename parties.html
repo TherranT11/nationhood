@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Parties | Nationhood Alpha</title>
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/parties.css">
 </head>
 <body>
 <div id="top-bar"></div>
@@ -16,7 +18,6 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatNumber } from './js/common.js';
 import { loadSeats, loadFactionIdeology, IDEOLOGY_TO_AXIS, GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, detectHeadFaction, fetchActiveCoalition, deductAP, getIdeologyLabel, IDEOLOGY_AXES, disbandParty } from './js/game-common.js';
-import './css/parties.css';
 let currentFaction = null;
 let currentNation = null;
 

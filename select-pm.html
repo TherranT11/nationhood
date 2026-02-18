@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Select Prime Minister | Nationhood Alpha</title>
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/select-pm.css">
 </head>
 <body>
 
@@ -22,7 +24,6 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { initGameConfigForNation, generatePMCandidates, selectPMCandidate, GAME_CONFIG } from './js/game-common.js';
-import './css/select-pm.css';
 let currentNation = null;
 let currentFaction = null;
 let candidates = [];

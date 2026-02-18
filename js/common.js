@@ -8,7 +8,6 @@
  */
 
 import { _supabase, handleLogout } from './supabase-client.js';
-import '../css/dashboard.css';
 
 // ===== QUERY CACHE =====
 // Generic sessionStorage cache for Supabase query results.

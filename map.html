@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <title>Nationhood Alpha | Melizea Shard</title>
 
-    </head>
+        <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/map.css">
+</head>
 <body>
 
 <!-- Tick Status Bar -->
@@ -65,8 +67,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, loadGameState, updateTopBarInfo } from './js/common.js';
 import { initGameConfigForNation } from './js/game-common.js';
-import './css/map.css';
-    let currentUser = null;
+let currentUser = null;
     let currentFaction = null;
     let selectedNation = null; // Track currently selected nation
 

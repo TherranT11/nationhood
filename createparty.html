@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <title>Create Your Party | Nationhood Alpha</title>
     
-    </head>
+        <link rel="stylesheet" href="css/createparty.css">
+</head>
 <body>
 
 <div class="container" id="main-container">
@@ -149,9 +150,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import './css/createparty.css';
-
-    let currentUser = null;
+let currentUser = null;
     let selectedNation = null;
     let selectedIdeologies = [];
     let isAutocracy = false;
