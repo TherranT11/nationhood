@@ -314,6 +314,8 @@
 <script src="js/common.js"></script>
 <script src="js/game-common.js"></script>
 <script>
+(function () {
+'use strict';
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
@@ -1268,6 +1270,26 @@ function escapeHtml(text) { const d = document.createElement('div'); d.textConte
 document.getElementById('chat-input')?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendComment(); }
 });
+
+// Expose handlers used by inline HTML attributes
+window.castVote = castVote;
+window.sendComment = sendComment;
+window.closeAmendmentModal = closeAmendmentModal;
+window.submitAmendment = submitAmendment;
+window.closeTextAmendmentModal = closeTextAmendmentModal;
+window.submitTextAmendment = submitTextAmendment;
+window.signBillAction = signBillAction;
+window.vetoBillAction = vetoBillAction;
+window.enactDecree = enactDecree;
+window.sendToFloor = sendToFloor;
+window.retractBill = retractBill;
+window.respondToAmendment = respondToAmendment;
+window.openAmendmentModal = openAmendmentModal;
+window.openTextAmendmentModal = openTextAmendmentModal;
+window.setCommitteeStance = setCommitteeStance;
+window.onAmendmentSectorChange = onAmendmentSectorChange;
+window.selectAmendmentPolicy = selectAmendmentPolicy;
+})();
 </script>
 </body>
 </html>
