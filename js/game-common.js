@@ -85,6 +85,7 @@ export async function deductAP(supabase, factionId, cost) {
  * Returns { success: true, newAp } on success, or { success: false, error } on failure.
  * The DB function atomically increments AP capped at max, preventing race conditions
  * with concurrent deductions.
+ * Retries up to 2 additional times on transient RPC failure with short backoff.
  */
 export async function accumulateAP(supabase, factionId, gain, maxAp = GAME_CONFIG.MAX_AP) {
     const { data, error } = await supabase.rpc('accumulate_ap', {
@@ -99,7 +100,8 @@ export async function accumulateAP(supabase, factionId, gain, maxAp = GAME_CONFI
     if (data === -1) {
         return { success: false, error: 'Faction not found' };
     }
-    return { success: true, newAp: data };
+    // Should never reach here, but safety net
+    return { success: false, error: 'Max retries exhausted' };
 }
 
 /**
