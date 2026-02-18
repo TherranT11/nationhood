@@ -569,8 +569,28 @@ async function renderElectionBreakdown(election) {
     }
 
     if (blocDetails.length === 0) {
-        container.innerHTML = '<div style="color:#666; padding:16px; font-size:0.85rem;">No historical bloc breakdown stored for this election.</div>';
-        return;
+        // One-time backfill: generate approximate bloc_details for old elections
+        if (election.id && election.nation_id) {
+            try {
+                container.innerHTML = '<div style="color:#888; padding:16px; font-size:0.85rem;">Generating historical breakdown...</div>';
+                const result = await runElectionPreview(_supabase, election.nation_id);
+                blocDetails = Array.isArray(result?.bloc_details) ? result.bloc_details : [];
+                partyNames = result?.partyNames || {};
+                if (blocDetails.length > 0) {
+                    // Persist to database so this only runs once
+                    const updatedResults = { ...election.results, bloc_details: blocDetails };
+                    await _supabase.from('elections')
+                        .update({ results: updatedResults })
+                        .eq('id', election.id);
+                }
+            } catch (err) {
+                console.error('Election breakdown backfill error:', err);
+            }
+        }
+        if (blocDetails.length === 0) {
+            container.innerHTML = '<div style="color:#666; padding:16px; font-size:0.85rem;">No historical bloc breakdown stored for this election.</div>';
+            return;
+        }
     }
 
     try {
