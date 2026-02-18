@@ -23,6 +23,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
+import { adjustBlocApproval, fetchActiveCoalition, isGovernmentAutocracy, loadSeats, syncVoteTallies } from './js/game-common.js';
 (function () {
     'use strict';
 const FIRST_NAMES_POOL = [

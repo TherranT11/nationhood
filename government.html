@@ -36,8 +36,8 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { initPage } from './js/common.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP } from './js/game-common.js';
+import { initPage, qCacheBust } from './js/common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, adjustBlocApproval, callEarlyElectionsAction, closeAdministration, markFactionActive, nominateMinister, resignPM, rolloverAdministration } from './js/game-common.js';
 (function () {
     'use strict';
 /**
