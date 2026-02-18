@@ -512,55 +512,61 @@ async function confirmNomination() {
             .single();
         const currentTick = shard?.current_tick || 0;
 
-        // Insert ambassador record
-        const { data: newAmb, error: ambError } = await _supabase
-            .from('ambassadors')
-            .insert({
-                nation_id: currentNation.id,
-                target_nation_id: targetNation.id,
-                faction_id: candidate.partyId,
-                ambassador_first_name: candidate.firstName,
-                ambassador_last_name: candidate.lastName,
-                ambassador_age: candidate.age,
-                status: isAutocracy ? 'active' : 'pending_confirmation',
-                is_active: true,
-                appointed_at_tick: currentTick
-            })
-            .select()
-            .single();
+        let confirmationBillId = null;
 
-        if (ambError) throw ambError;
-
-        // +1 approval to the candidate's party
-        await adjustBlocApproval(_supabase, candidate.partyId, 1);
-
-        // Democracy: create confirmation bill
-        if (!isAutocracy) {
-            const billName = `Confirmation of ${candidate.firstName} ${candidate.lastName} as Ambassador to ${targetNation.name}`;
-
-            const { data: bill, error: billError } = await _supabase
-                .from('bills')
+        if (isAutocracy) {
+            // Autocracies appoint immediately and do not file a confirmation bill.
+            const { data: insertedAmbassador, error: ambError } = await _supabase
+                .from('ambassadors')
                 .insert({
                     nation_id: currentNation.id,
-                    proposed_by: currentFaction.id,
-                    proposed_tick: currentTick,
-                    bill_name: billName,
-                    bill_type: 'confirmation',
-                    status: 'floor',
-                    voting_ends_tick: currentTick + 2,
-                    ambassador_id: newAmb.id,
-                    preamble: `This motion, filed by the ${currentFaction.faction_name}, confirms the appointment of ${candidate.firstName} ${candidate.lastName} (${candidate.partyName}) as Ambassador to ${targetNation.name}. A simple majority is required for confirmation.`
+                    target_nation_id: targetNation.id,
+                    faction_id: candidate.partyId,
+                    ambassador_first_name: candidate.firstName,
+                    ambassador_last_name: candidate.lastName,
+                    ambassador_age: candidate.age,
+                    status: 'active',
+                    is_active: true,
+                    appointed_at_tick: currentTick
                 })
                 .select()
                 .single();
 
-            if (billError) throw billError;
+            if (ambError) throw ambError;
+        } else {
+            const billName = `Confirmation of ${candidate.firstName} ${candidate.lastName} as Ambassador to ${targetNation.name}`;
+            const preamble = `This motion, filed by the ${currentFaction.faction_name}, confirms the appointment of ${candidate.firstName} ${candidate.lastName} (${candidate.partyName}) as Ambassador to ${targetNation.name}. A simple majority (51%) is required for confirmation.`;
 
-            // Update ambassador with confirmation_bill_id
-            await _supabase
-                .from('ambassadors')
-                .update({ confirmation_bill_id: bill.id })
-                .eq('id', newAmb.id);
+            const { data: nominationResult, error: nominationError } = await _supabase.rpc('create_ambassador_nomination_with_bill', {
+                p_nation_id: currentNation.id,
+                p_target_nation_id: targetNation.id,
+                p_faction_id: candidate.partyId,
+                p_proposed_by: currentFaction.id,
+                p_first_name: candidate.firstName,
+                p_last_name: candidate.lastName,
+                p_age: candidate.age,
+                p_current_tick: currentTick,
+                p_bill_name: billName,
+                p_preamble: preamble,
+                p_voting_ends_tick: currentTick + 2
+            });
+
+            if (nominationError) throw nominationError;
+
+            const nominationRow = Array.isArray(nominationResult) ? nominationResult[0] : nominationResult;
+            if (!nominationRow?.ambassador_id || !nominationRow?.bill_id) {
+                throw new Error('Ambassador nomination failed: server did not return expected IDs.');
+            }
+
+            confirmationBillId = nominationRow.bill_id;
+        }
+
+        // +1 approval to the candidate's party
+        await adjustBlocApproval(_supabase, candidate.partyId, 1);
+
+        // Democracy: auto-cast FM seats on the confirmation bill created by RPC
+        if (!isAutocracy) {
+            if (!confirmationBillId) throw new Error('Missing confirmation bill ID from nomination RPC.');
 
             // Auto-cast FM party's seats as YES
             const { data: parties } = await _supabase
@@ -572,7 +578,7 @@ async function confirmNomination() {
 
             if (mySeats > 0) {
                 await _supabase.from('bill_support').upsert({
-                    bill_id: bill.id,
+                    bill_id: confirmationBillId,
                     faction_id: currentFaction.id,
                     stance: 'yes',
                     seat_count: mySeats
@@ -580,7 +586,7 @@ async function confirmNomination() {
             }
 
             // Sync vote tallies
-            await syncVoteTallies(_supabase, bill.id);
+            await syncVoteTallies(_supabase, confirmationBillId);
         }
 
         const msg = isAutocracy
