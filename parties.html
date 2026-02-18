@@ -18,7 +18,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatNumber } from './js/common.js';
-import { loadSeats, loadFactionIdeology, IDEOLOGY_TO_AXIS, GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, detectHeadFaction, fetchActiveCoalition, deductAP, getIdeologyLabel, IDEOLOGY_AXES, disbandParty, loadNationIdeologies, adjustBlocApproval, ensureBlocApprovals, getIdeologySummary, markFactionActive, recalcDerivedApproval } from './js/game-common.js';
+import { loadSeats, loadFactionIdeology, IDEOLOGY_TO_AXIS, GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, detectHeadFaction, fetchActiveCoalition, deductAP, getIdeologyLabel, IDEOLOGY_AXES, disbandParty, loadNationIdeologies, adjustBlocApproval, ensureBlocApprovals, getIdeologySummary, markFactionActive, recalcDerivedApproval, BUILD_COALITION_AP_COST, BUILD_COALITION_MONEY_COST, BUILD_COALITION_COOLDOWN_TICKS, BUILD_COALITION_PANDER_HISTORY_TICKS, PANDER_OPPOSITION_MAP } from './js/game-common.js';
 let currentFaction = null;
 let currentNation = null;
 
