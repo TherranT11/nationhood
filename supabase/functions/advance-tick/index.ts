@@ -187,7 +187,7 @@ const PROPOSAL_TYPES = {
         label: 'Visa Agreement',
         description: 'Simplify visa requirements for travel between nations.',
         stat_effects: [
-            { stat_key: 'tourism', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
+            { stat_key: 'international_reputation', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
             { stat_key: 'immigration', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
@@ -202,7 +202,7 @@ const PROPOSAL_TYPES = {
         label: 'Student Exchange',
         description: 'Create student exchange programs to boost education.',
         stat_effects: [
-            { stat_key: 'education_quality', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+            { stat_key: 'higher_education', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
 
@@ -213,7 +213,7 @@ const PROPOSAL_TYPES = {
         description: 'Establish a formal trade agreement affecting GDP and trade volume.',
         stat_effects: [
             { stat_key: 'gdp', direction: 'up', rate: 1, delay_ticks: 1, duration_ticks: 0 },
-            { stat_key: 'trade', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 }
+            { stat_key: 'trade_balance', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
     non_aggression_pact: {
@@ -230,7 +230,7 @@ const PROPOSAL_TYPES = {
         label: 'Military Alliance',
         description: 'Mutual defense pact — if one is attacked, the other must respond.',
         stat_effects: [
-            { stat_key: 'military_strength', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 },
+            { stat_key: 'stability', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 },
             { stat_key: 'international_reputation', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
@@ -239,7 +239,7 @@ const PROPOSAL_TYPES = {
         label: 'Embargo/Sanctions',
         description: 'Economic warfare — tanks target trade stats, also hurts your own.',
         stat_effects: [
-            { stat_key: 'trade', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 },
+            { stat_key: 'trade_balance', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 },
             { stat_key: 'sanctions', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
@@ -259,7 +259,7 @@ const PROPOSAL_TYPES = {
         description: 'Major immigration and security implications — open borders between nations.',
         stat_effects: [
             { stat_key: 'immigration', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 },
-            { stat_key: 'trade', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 0 }
+            { stat_key: 'trade_balance', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
     close_embassy: {
@@ -1829,10 +1829,9 @@ async function failBill(supabase, bill) {
 // ==================== ADMINISTRATION LIFECYCLE ====================
 
 /**
- * Canonical nation stat columns.
- *
- * Used for administration snapshots, policy effect validation,
- * and any other direct nations-table stat mutations.
+ * Canonical nation stat columns — the SINGLE SOURCE OF TRUTH.
+ * See js/game-common.js for the full reference with descriptions.
+ * Every stat key in every effect table MUST match one of these exactly.
  */
 const NATION_STAT_COLUMNS = [
     'gdp', 'gdp_growth', 'debt', 'debt_growth', 'inflation', 'interest_rates',
@@ -1859,13 +1858,19 @@ const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
 
 const STAT_KEY_ALIASES = {
     intl_reputation: 'international_reputation',
+    diplomatic_standing: 'international_reputation',
     credit_rating: 'credit',
     credit_score: 'credit',
     trade: 'trade_balance',
     trade_volume: 'trade_balance',
     education: 'higher_education',
     education_quality: 'higher_education',
-    military_strength: 'stability'
+    military_strength: 'stability',
+    literacy_rate: 'literacy',
+    hospital_beds: 'beds_per_100k',
+    technology: 'digital_infrastructure',
+    infrastructure: 'digital_infrastructure',
+    tourism: 'international_reputation'
 };
 
 function normalizeNationStatKey(statKey) {
@@ -4096,6 +4101,87 @@ async function releaseTickLock(supabase) {
         .eq('name', 'Alpha Shard');
 }
 
+// ==================== STAT KEY AUDIT ====================
+
+/**
+ * Scan all effect records in the database for invalid stat keys.
+ * Logs errors for any stat_key that doesn't match NATION_STAT_COLUMNS
+ * (after alias resolution). Runs periodically as a safety net.
+ */
+async function auditStatKeys(supabase) {
+    const invalid = [];
+
+    // 1. Policy stat_effects
+    const { data: policies } = await supabase.from('policies').select('id, policy_name, stat_effects');
+    for (const p of (policies || [])) {
+        for (const eff of (p.stat_effects || [])) {
+            const resolved = normalizeNationStatKey(eff.stat_key);
+            if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
+                invalid.push({ source: 'policy', name: p.policy_name, id: p.id, bad_key: eff.stat_key });
+            }
+        }
+    }
+
+    // 2. Crisis effects
+    const { data: crisisEffects } = await supabase.from('crisis_effects').select('id, crisis_template_id, stat_key, target');
+    for (const ce of (crisisEffects || [])) {
+        if (ce.target !== 'nation') continue;
+        const resolved = normalizeNationStatKey(ce.stat_key);
+        if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
+            invalid.push({ source: 'crisis_effect', id: ce.id, template_id: ce.crisis_template_id, bad_key: ce.stat_key });
+        }
+    }
+
+    // 3. Crisis triggers
+    const { data: crisisTriggers } = await supabase.from('crisis_triggers').select('id, crisis_template_id, stat_key');
+    for (const ct of (crisisTriggers || [])) {
+        const resolved = normalizeNationStatKey(ct.stat_key);
+        if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
+            invalid.push({ source: 'crisis_trigger', id: ct.id, template_id: ct.crisis_template_id, bad_key: ct.stat_key });
+        }
+    }
+
+    // 4. Crisis end triggers
+    const { data: crisisEndTriggers } = await supabase.from('crisis_end_triggers').select('id, crisis_template_id, stat_key');
+    for (const cet of (crisisEndTriggers || [])) {
+        const resolved = normalizeNationStatKey(cet.stat_key);
+        if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
+            invalid.push({ source: 'crisis_end_trigger', id: cet.id, template_id: cet.crisis_template_id, bad_key: cet.stat_key });
+        }
+    }
+
+    // 5. Event effects
+    const { data: eventEffects } = await supabase.from('event_effects').select('id, event_id, stat_key, target');
+    for (const ee of (eventEffects || [])) {
+        if (ee.target !== 'nation') continue;
+        const resolved = normalizeNationStatKey(ee.stat_key);
+        if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
+            invalid.push({ source: 'event_effect', id: ee.id, event_id: ee.event_id, bad_key: ee.stat_key });
+        }
+    }
+
+    // 6. Event triggers
+    const { data: eventTriggers } = await supabase.from('event_triggers').select('id, event_id, stat_key');
+    for (const et of (eventTriggers || [])) {
+        if (!et.stat_key) continue; // system triggers have no stat_key
+        const resolved = normalizeNationStatKey(et.stat_key);
+        if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
+            invalid.push({ source: 'event_trigger', id: et.id, event_id: et.event_id, bad_key: et.stat_key });
+        }
+    }
+
+    if (invalid.length > 0) {
+        console.error(`[auditStatKeys] Found ${invalid.length} invalid stat key(s) in the database:`);
+        for (const entry of invalid) {
+            console.error(`  - ${entry.source}: "${entry.bad_key}" (id=${entry.id}${entry.name ? ', name=' + entry.name : ''})`);
+        }
+    } else {
+        console.log('[auditStatKeys] All stat keys valid.');
+    }
+
+    return invalid;
+}
+
 // ==================== ADVANCE TICK ====================
 
 async function advanceTick(supabase) {
@@ -4131,6 +4217,11 @@ async function advanceTick(supabase) {
         .update({ action_lockout_until_tick: null })
         .not('action_lockout_until_tick', 'is', null)
         .lte('action_lockout_until_tick', newTick);
+
+    // 1b. Startup scan: report any invalid stat keys in effect records (first tick only or periodically)
+    if (newTick % 10 === 1) { // Run every 10 ticks to avoid perf cost every tick
+        await auditStatKeys(supabase);
+    }
 
     // 2. Load all nations
     const { data: nations } = await supabase.from('nations').select('*');
@@ -4896,8 +4987,13 @@ async function processMinistryActions(supabase, nation, currentTick) {
                 const delay = Number(eff.delay_ticks) || 0;
                 const duration = Number(eff.duration_ticks) || 4;
                 const rate = Number(eff.rate) || 1;
-                const statKey = eff.stat_key;
                 const target = eff.target || 'nation';
+                const rawStatKey = eff.stat_key;
+                const statKey = (target === 'nation') ? normalizeNationStatKey(rawStatKey) : rawStatKey;
+                if (target === 'nation' && (!statKey || !NATION_STAT_COLUMN_SET.has(statKey))) {
+                    console.warn(`[processMinistryActions] Skipping invalid stat_key "${rawStatKey}" for action "${action.action_key}" in ${nation.name}`);
+                    continue;
+                }
 
                 if (ticksSinceAction <= delay + duration) {
                     allEffectsComplete = false;
@@ -5172,15 +5268,22 @@ async function processEvents(supabase, nation, currentTick) {
         const nationUpdates = {};
 
         for (const effect of effects) {
+            const rawEvtStatKey = effect.stat_key;
+            const evtStatKey = (effect.target === 'nation') ? normalizeNationStatKey(rawEvtStatKey) : rawEvtStatKey;
+            if (effect.target === 'nation' && (!evtStatKey || !NATION_STAT_COLUMN_SET.has(evtStatKey))) {
+                console.warn(`[processEvents] Skipping invalid stat_key "${rawEvtStatKey}" in event "${event.name}" for ${nation.name}`);
+                continue;
+            }
+
             if (effect.target === 'nation') {
-                const currentVal = nation[effect.stat_key] !== undefined
-                    ? Number(nation[effect.stat_key]) : 50;
+                const currentVal = nation[evtStatKey] !== undefined
+                    ? Number(nation[evtStatKey]) : 50;
                 const newVal = Math.max(0, Math.min(100, currentVal + effect.change_value));
-                nationUpdates[effect.stat_key] = newVal;
-                nation[effect.stat_key] = newVal;
+                nationUpdates[evtStatKey] = newVal;
+                nation[evtStatKey] = newVal;
 
                 appliedEffects.push({
-                    stat: effect.stat_key, change: effect.change_value,
+                    stat: evtStatKey, change: effect.change_value,
                     target: 'nation', old: currentVal, new: newVal
                 });
 
@@ -5396,31 +5499,38 @@ async function processCrises(supabase, nation, currentTick) {
                 return v;
             }
 
+            const rawStatKey = effect.stat_key;
+            const statKey = (effect.target === 'nation') ? normalizeNationStatKey(rawStatKey) : rawStatKey;
+            if (effect.target === 'nation' && (!statKey || !NATION_STAT_COLUMN_SET.has(statKey))) {
+                console.warn(`[processCrises] Skipping invalid stat_key "${rawStatKey}" in crisis "${template.name}" for ${nation.name}`);
+                continue;
+            }
+
             if (effect.target === 'nation') {
-                const currentVal = nationUpdates[effect.stat_key] !== undefined
-                    ? nationUpdates[effect.stat_key]
-                    : (nation[effect.stat_key] !== undefined && nation[effect.stat_key] !== null
-                        ? Number(nation[effect.stat_key]) : 50);
+                const currentVal = nationUpdates[statKey] !== undefined
+                    ? nationUpdates[statKey]
+                    : (nation[statKey] !== undefined && nation[statKey] !== null
+                        ? Number(nation[statKey]) : 50);
 
                 // Basic 0-100 clamp + 1dp rounding; floor/ceiling enforcement deferred to final pass
                 let newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 10) / 10;
-                nationUpdates[effect.stat_key] = newVal;
-                nation[effect.stat_key] = newVal;
+                nationUpdates[statKey] = newVal;
+                nation[statKey] = newVal;
 
                 // Accumulate most-restrictive floor/ceiling bounds for final enforcement
                 if (hasFloor) {
-                    if (!statBounds[effect.stat_key]) statBounds[effect.stat_key] = {};
+                    if (!statBounds[statKey]) statBounds[statKey] = {};
                     if (changePT < 0) {
-                        const prev = statBounds[effect.stat_key].floor;
-                        statBounds[effect.stat_key].floor = (prev !== undefined) ? Math.max(prev, floorVal) : floorVal;
+                        const prev = statBounds[statKey].floor;
+                        statBounds[statKey].floor = (prev !== undefined) ? Math.max(prev, floorVal) : floorVal;
                     } else if (changePT > 0) {
-                        const prev = statBounds[effect.stat_key].ceiling;
-                        statBounds[effect.stat_key].ceiling = (prev !== undefined) ? Math.min(prev, floorVal) : floorVal;
+                        const prev = statBounds[statKey].ceiling;
+                        statBounds[statKey].ceiling = (prev !== undefined) ? Math.min(prev, floorVal) : floorVal;
                     }
                 }
 
                 appliedEffects.push({
-                    stat: effect.stat_key, change: changePT,
+                    stat: statKey, change: changePT,
                     target: 'nation', old: currentVal, new: newVal
                 });
 
@@ -6421,7 +6531,12 @@ async function processPMTraitEffects(supabase, nation, currentTick) {
 
     if (effects.nation_stat_per_tick) {
         const updates = {};
-        for (const [stat, delta] of Object.entries(effects.nation_stat_per_tick)) {
+        for (const [rawStat, delta] of Object.entries(effects.nation_stat_per_tick)) {
+            const stat = normalizeNationStatKey(rawStat);
+            if (!stat || !NATION_STAT_COLUMN_SET.has(stat)) {
+                console.warn(`[processPMTraitEffects] Skipping invalid stat_key "${rawStat}" in PM trait for ${nation.name}`);
+                continue;
+            }
             const currentVal = nation[stat];
             if (currentVal !== undefined && currentVal !== null) {
                 updates[stat] = Math.round(Math.max(0, Math.min(100, currentVal + delta)) * 10) / 10;

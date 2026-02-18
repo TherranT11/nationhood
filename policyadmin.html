@@ -486,13 +486,19 @@ const STAT_OPTIONS_HTML = buildStatOptions();
 const CANONICAL_STAT_KEYS = new Set(STAT_GROUPS.flatMap(group => group.stats));
 const POLICY_STAT_KEY_ALIASES = {
     intl_reputation: 'international_reputation',
+    diplomatic_standing: 'international_reputation',
     credit_rating: 'credit',
     credit_score: 'credit',
     trade: 'trade_balance',
     trade_volume: 'trade_balance',
     education: 'higher_education',
     education_quality: 'higher_education',
-    military_strength: 'stability'
+    military_strength: 'stability',
+    literacy_rate: 'literacy',
+    hospital_beds: 'beds_per_100k',
+    technology: 'digital_infrastructure',
+    infrastructure: 'digital_infrastructure',
+    tourism: 'international_reputation'
 };
 
 function normalizePolicyStatKey(statKey) {
