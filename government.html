@@ -652,6 +652,7 @@ let lastElectionTick = null;
 let assignMinistryKey = null;
 let selectedCandidate = null;
 let generatedCandidates = [];
+let _coalitionAppointMode = false;
 
 initPage('government', async (state) => {
     const { nation, faction } = state;
@@ -1413,14 +1414,17 @@ function renderCabinet(ministries, coalition) {
     }
 
     const isCaretaker = coalition && coalition.status === 'caretaker';
+    const isPmPlayer = !isCaretaker && currentFaction && coalition?.lead_party_id && currentFaction.id === coalition.lead_party_id;
     const cards = ministries.filter(m => m.ministry_key !== 'prime_minister').map(m => {
         const partyName = m.factions?.faction_name || 'Unknown';
-        const name = m.minister_first_name && m.minister_last_name ? `${m.minister_first_name} ${m.minister_last_name}` : 'Vacant';
+        const isVacant = !m.minister_first_name;
+        const name = !isVacant ? `${m.minister_first_name} ${m.minister_last_name}` : 'Vacant';
         const isMyMinistry = currentFaction && m.party_id === currentFaction.id;
-        const resignBtn = (isMyMinistry && !isCaretaker) ? `<div class="ministry-actions"><button class="ministry-btn purge" onclick="resignMinistry('${m.ministry_key}')">📋 Resign Ministry</button></div>` : '';
+        const resignBtn = (isMyMinistry && !isCaretaker && !isVacant) ? `<div class="ministry-actions"><button class="ministry-btn purge" onclick="resignMinistry('${m.ministry_key}')">📋 Resign Ministry</button></div>` : '';
+        const appointBtn = (isPmPlayer && isVacant) ? `<div class="ministry-actions"><button class="ministry-btn assign" onclick="openAppointModal('${m.ministry_key}')">✦ Appoint</button></div>` : '';
         const appr = m.minister_approval ?? 50;
         const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
-        return `<div class="ministry-card"><div class="ministry-title">${m.ministry_name}</div><div class="minister-name">${name}</div><div class="minister-details">${m.minister_age ? `Age ${m.minister_age} • ` : ''}<span class="minister-party">${partyName}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${appr}%</span></div>${resignBtn}</div>`;
+        return `<div class="ministry-card${isVacant ? ' vacant' : ''}"><div class="ministry-title">${m.ministry_name}</div><div class="minister-name"${isVacant ? ' style="color:var(--text-muted);"' : ''}>${name}</div><div class="minister-details">${m.minister_age ? `Age ${m.minister_age} • ` : ''}<span class="minister-party">${partyName}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${appr}%</span></div>${resignBtn}${appointBtn}</div>`;
     }).join('');
     return `<div class="ministry-grid">${cards}</div>`;
 }
@@ -1570,7 +1574,9 @@ async function confirmPresidentialNomination() {
 // ==================== CONFIRM DISPATCHER ====================
 
 function handleConfirmMinister() {
-    if (isPresidential) {
+    if (_coalitionAppointMode) {
+        confirmAppointment();
+    } else if (isPresidential) {
         confirmPresidentialNomination();
     } else {
         confirmAssign();
@@ -1603,7 +1609,36 @@ function openAssignModal(ministryKey) {
 }
 
 function closeAssignModal() {
+    _coalitionAppointMode = false;
     document.getElementById('assign-modal').classList.remove('active');
+}
+
+function openAppointModal(ministryKey) {
+    _coalitionAppointMode = true;
+    assignMinistryKey = ministryKey;
+    selectedCandidate = null;
+    document.getElementById('assign-confirm-btn').disabled = true;
+    document.getElementById('assign-confirm-btn').textContent = 'Appoint Minister';
+    document.getElementById('assign-modal-title').textContent = 'Appoint — ' + (MINISTRY_NAMES[ministryKey] || ministryKey);
+
+    const coalitionPartyIds = coalitionData?.party_ids || [];
+    const coalitionParties = allParties.filter(p => coalitionPartyIds.includes(p.id));
+
+    generatedCandidates = coalitionParties.map(party => ({
+        partyId: party.id,
+        partyName: party.faction_name,
+        firstName: FIRST_NAMES_POOL[Math.floor(Math.random() * FIRST_NAMES_POOL.length)],
+        lastName: LAST_NAMES_POOL[Math.floor(Math.random() * LAST_NAMES_POOL.length)],
+        age: 30 + Math.floor(Math.random() * 36)
+    }));
+
+    document.getElementById('assign-candidates').innerHTML = generatedCandidates.map((c, i) =>
+        `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})">` +
+        `<div><div class="candidate-name">${c.firstName} ${c.lastName}</div>` +
+        `<div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag other">${c.partyName}</span></div></div></div>`
+    ).join('');
+
+    document.getElementById('assign-modal').classList.add('active');
 }
 
 function selectCandidate(index) {
@@ -1727,6 +1762,37 @@ async function confirmAssign() {
     } catch (e) {
         console.error('Assign error:', e);
         alert('Error: ' + e.message);
+    }
+}
+
+async function confirmAppointment() {
+    if (!selectedCandidate || !assignMinistryKey) return;
+    try {
+        const { data: fresh } = await _supabase.from('ministries')
+            .select('id, minister_first_name')
+            .eq('nation_id', currentNation.id)
+            .eq('ministry_key', assignMinistryKey)
+            .eq('is_active', true)
+            .maybeSingle();
+        if (!fresh) { alert('Ministry slot not found.'); closeAssignModal(); return; }
+        if (fresh.minister_first_name) { alert('This ministry has already been filled.'); closeAssignModal(); await renderGovernmentPage(); return; }
+
+        const { error } = await _supabase.from('ministries').update({
+            party_id: selectedCandidate.partyId,
+            minister_first_name: selectedCandidate.firstName,
+            minister_last_name: selectedCandidate.lastName,
+            minister_age: selectedCandidate.age,
+            minister_approval: 45
+        }).eq('id', fresh.id);
+        if (error) throw error;
+
+        await adjustBlocApproval(_supabase, selectedCandidate.partyId, 3);
+
+        closeAssignModal();
+        await renderGovernmentPage();
+    } catch (e) {
+        console.error('Appoint minister error:', e);
+        alert('Error appointing minister: ' + e.message);
     }
 }
 
