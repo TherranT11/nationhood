@@ -2878,7 +2878,7 @@ async function processPartialElection(supabase, nation, election, currentTick) {
 
     if (!blocs || blocs.length === 0) {
         console.warn('No voter blocs found for partial election');
-        await supabase.from('elections').update({ status: 'completed', results: { partial: true, error: 'no_blocs' } }).eq('id', election.id);
+        await supabase.from('elections').update({ status: 'completed', results: { partial: true, error: 'no_blocs', bloc_details: [] } }).eq('id', election.id);
         return;
     }
 
@@ -2906,7 +2906,7 @@ async function processPartialElection(supabase, nation, election, currentTick) {
 
     if (!factions || factions.length === 0) {
         console.warn('No parties found for partial election');
-        await supabase.from('elections').update({ status: 'completed', results: { partial: true, error: 'no_parties' } }).eq('id', election.id);
+        await supabase.from('elections').update({ status: 'completed', results: { partial: true, error: 'no_parties', bloc_details: [] } }).eq('id', election.id);
         return;
     }
 
@@ -2961,6 +2961,7 @@ async function processPartialElection(supabase, nation, election, currentTick) {
             delta_seats: deltaSeats,
             votes: seatResults,
             seats: seatResults,
+            bloc_details: result.details,
             total_votes_cast: result.totalVotesCast,
             total_abstentions: result.totalAbstentions
         }
@@ -7200,17 +7201,25 @@ function runElectionSimulation(blocs, parties, totalSeats = GAME_CONFIG.TOTAL_SE
 
         // Compute per-party votes from this bloc
         const blocVotes = {};
+        const partyVotes = [];
         for (const p of parties) {
             const gained = tally[p.id] - snapshot[p.id];
             if (gained > 0) blocVotes[p.id] = gained;
+            partyVotes.push({
+                party_id: p.id,
+                party_name: p.faction_name,
+                votes: Math.max(0, gained)
+            });
         }
 
         totalAbstentions += abstentions;
         details.push({
+            bloc_id: bloc.id,
             bloc_name: bloc.bloc_name,
             voter_count: count,
             tags,
             abstentions,
+            party_votes: partyVotes,
             blocVotes
         });
     }
