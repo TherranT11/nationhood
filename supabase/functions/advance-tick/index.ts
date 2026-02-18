@@ -5094,7 +5094,9 @@ async function snapshotNationHistory(supabase, nation, currentTick) {
         onConflict: 'nation_id,tick'
     });
     if (snapError) {
-        console.warn('History snapshot warning:', snapError.message);
+        console.error('[snapshotNationHistory] FAILED for nation', nation.id, 'tick', currentTick, ':', snapError.message);
+    } else {
+        console.log(`[snapshotNationHistory] Stored ${Object.keys(snapshot).length - 2} stats for nation ${nation.id} at tick ${currentTick}`);
     }
 }
 

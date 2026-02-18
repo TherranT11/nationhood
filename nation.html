@@ -391,8 +391,33 @@ async function loadPreviousTickData(nationId) {
     if (!shard) return;
     const previousTick = shard.current_tick - 1;
     if (previousTick < 0) return;
-    const { data: history, error } = await _supabase.from('nations_history').select('*').eq('nation_id', nationId).eq('tick', previousTick).single();
-    if (!error && history) { previousTickData = history; qCacheSet(cacheKey, history, 5 * 60 * 1000); }
+
+    // Use maybeSingle() — .single() errors on 0 rows, which silently
+    // killed previousTickData when history was missing for the exact tick.
+    const { data: history, error } = await _supabase.from('nations_history')
+        .select('*').eq('nation_id', nationId).eq('tick', previousTick).maybeSingle();
+    if (error) {
+        console.warn('[loadPreviousTickData] Query error for tick ' + previousTick + ':', error.message);
+    }
+    if (history) {
+        previousTickData = history;
+        qCacheSet(cacheKey, history, 5 * 60 * 1000);
+        return;
+    }
+
+    // Fallback: grab the most recent history row before the current tick.
+    // Covers gaps where a specific tick's snapshot failed or was skipped.
+    const { data: fallback, error: fbErr } = await _supabase.from('nations_history')
+        .select('*').eq('nation_id', nationId).lt('tick', shard.current_tick)
+        .order('tick', { ascending: false }).limit(1);
+    if (fbErr) {
+        console.warn('[loadPreviousTickData] Fallback query error:', fbErr.message);
+        return;
+    }
+    if (fallback && fallback.length > 0) {
+        previousTickData = fallback[0];
+        qCacheSet(cacheKey, fallback[0], 5 * 60 * 1000);
+    }
 }
 
 function calculateRanking(statKey, value, inverted = false) {
