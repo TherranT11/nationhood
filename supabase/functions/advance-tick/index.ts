@@ -119,8 +119,73 @@ async function accumulateAP(supabase, factionId, gain, maxAp = GAME_CONFIG.MAX_A
  * Government type helpers.
  * Call with a nation object (must have government_type field).
  */
-function isGovernmentAutocracy(nation) { return nation?.government_type === 'Autocracy'; }
-function isGovernmentPresidential(nation) { return nation?.government_type === 'Presidential'; }
+const CANONICAL_GOVERNMENT_TYPES = Object.freeze({
+    PARLIAMENTARY_DEMOCRACY: 'Democracy',
+    AUTOCRACY: 'Autocracy',
+    PRESIDENTIAL_REPUBLIC: 'Presidential'
+});
+
+const GOVERNMENT_TYPE_ALIASES = Object.freeze({
+    democracy: CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
+    democratic: CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
+    parliamentary: CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
+    parliamentarian: CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
+    'parliamentary democracy': CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
+    autocracy: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
+    authoritarian: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
+    authoritarianism: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
+    dictatorship: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
+    dictatorial: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
+    'military junta': CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
+    presidential: CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC,
+    'presidential republic': CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC,
+    'executive presidency': CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC
+});
+
+function normalizeGovernmentType(governmentType, fallbackType = CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY) {
+    if (typeof governmentType !== 'string') return fallbackType;
+    const normalized = governmentType.trim().toLowerCase();
+    return GOVERNMENT_TYPE_ALIASES[normalized] || fallbackType;
+}
+
+function getCanonicalGovernmentType(input, fallbackType = CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY) {
+    const govType = typeof input === 'string' ? input : input?.government_type;
+    return normalizeGovernmentType(govType, fallbackType);
+}
+
+function isAutocracy(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.AUTOCRACY; }
+function isParliamentaryDemocracy(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY; }
+function isPresidentialRepublic(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC; }
+
+function isGovernmentAutocracy(nation) { return isAutocracy(nation); }
+function isGovernmentPresidential(nation) { return isPresidentialRepublic(nation); }
+
+
+async function validateCanonicalTemplateGovTypes(supabase) {
+    const { data: templates, error } = await supabase
+        .from('ministry_event_templates')
+        .select('event_key, gov_types')
+        .eq('is_active', true);
+
+    if (error) {
+        console.warn(`[advanceTick] Unable to validate ministry_event_templates.gov_types: ${error.message}`);
+        return;
+    }
+
+    const invalid = [];
+    for (const template of (templates || [])) {
+        for (const govType of (template.gov_types || [])) {
+            const canonical = normalizeGovernmentType(govType, null);
+            if (!canonical || canonical !== govType) {
+                invalid.push({ eventKey: template.event_key, govType });
+            }
+        }
+    }
+
+    if (invalid.length > 0) {
+        console.warn(`[advanceTick] Non-canonical ministry_event_templates.gov_types detected: ${invalid.map(v => `${v.eventKey}:${v.govType}`).join(', ')}`);
+    }
+}
 
 // Canonical government types used by nations and ministry event templates.
 const canonicalNationGovTypes = ['Autocracy', 'Parliamentary Republic', 'Presidential'];
@@ -770,7 +835,7 @@ async function fetchActiveCoalition(supabase, nationId) {
         .eq('id', nationId)
         .single();
 
-    if (nationRow?.government_type === 'Presidential') {
+    if (isPresidentialRepublic(nationRow)) {
         const { data: president } = await supabase
             .from('presidents')
             .select('id, nation_id, faction_id, first_name, last_name, elected_tick, is_active')
@@ -1567,7 +1632,7 @@ async function resolveExpiredVotes(supabase, nationId) {
             }
         } else if (passed) {
             // Presidential systems: route regular/repeal bills to president's desk
-            if (nation?.government_type === 'Presidential') {
+            if (isPresidentialRepublic(nation)) {
                 await supabase.from('bills').update({
                     status: 'president_desk',
                     passed_tick: currentTick,
@@ -2154,7 +2219,7 @@ async function createAdministration(supabase, nationId, nation, coalition, allPa
                 pm_party_id: leadPartyId,
                 coalition_parties: coalitionParties,
                 total_seats: totalSeats,
-                government_type: nation.government_type || 'Democracy',
+                government_type: getCanonicalGovernmentType(nation),
                 started_at_tick: currentTick,
                 started_at_date: currentDate,
                 stats_at_start: statsAtStart,
@@ -2218,7 +2283,7 @@ async function rolloverAdministration(supabase, nationId, nation, endReason, coa
         pm_party_id: leadPartyId,
         coalition_parties: coalitionParties,
         total_seats: totalSeats,
-        government_type: nation.government_type || 'Democracy',
+        government_type: getCanonicalGovernmentType(nation),
         started_at_tick: currentTick,
         started_at_date: currentDate,
         stats_at_start: statsAtStart,
@@ -2327,7 +2392,7 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
         .single();
 
     // Presidential systems do not have votes of no confidence
-    if (nation?.government_type === 'Presidential') return;
+    if (isPresidentialRepublic(nation)) return;
 
     // Get PM's last name for event text
     const { data: hog } = await supabase
@@ -2441,7 +2506,7 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
 async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coalitionPartyIds) {
     // Presidential systems cannot call early elections
     const { data: nationCheck } = await supabase.from('nations').select('government_type').eq('id', nationId).single();
-    if (nationCheck?.government_type === 'Presidential') return { success: false, error: 'Presidential systems cannot call early elections' };
+    if (isPresidentialRepublic(nationCheck)) return { success: false, error: 'Presidential systems cannot call early elections' };
 
     // 0. Server-side guard: only proceed if coalition is still 'formed' (check both tables)
     let govStatus = null;
@@ -2579,8 +2644,8 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
  */
 async function processGovernmentVacancy(supabase, nation, currentTick) {
     // Only applies to parliamentary democracies
-    if (nation.government_type === 'Autocracy') return null;
-    if (nation.government_type === 'Presidential') return null; // No coalition formation needed
+    if (isAutocracy(nation)) return null;
+    if (isPresidentialRepublic(nation)) return null; // No coalition formation needed
 
     // Check for active coalition
     const coalition = await fetchActiveCoalition(supabase, nation.id);
@@ -2851,8 +2916,8 @@ async function processPartialElection(supabase, nation, election, currentTick) {
 }
 
 async function resolveManualElectionContext(supabase, nation, currentTick, requestedElectionType = null) {
-    const governmentType = nation?.government_type || 'Democracy';
-    if (governmentType !== 'Presidential') {
+    const governmentType = getCanonicalGovernmentType(nation);
+    if (governmentType !== CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC) {
         return {
             governmentType,
             electionType: 'parliamentary',
@@ -2906,7 +2971,7 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
     }
 
     const context = await resolveManualElectionContext(supabase, nation, currentTick, options.electionType);
-    const isPresidential = context.governmentType === 'Presidential';
+    const isPresidential = context.governmentType === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC;
     const normalizedElectionType = context.electionType || 'parliamentary';
 
     // Use candidate-based voting for presidential elections, party-based for parliamentary
@@ -2979,9 +3044,9 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
 }
 
 async function processElections(supabase, nation, currentTick) {
-    if (nation.government_type === 'Autocracy') return [];
+    if (isAutocracy(nation)) return [];
 
-    const isPresidential = nation.government_type === 'Presidential';
+    const isPresidential = isPresidentialRepublic(nation);
     const results = [];
 
     const { data: dueElections } = await supabase
@@ -3409,7 +3474,7 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         president_party_name: faction?.faction_name || '',
         coalition_parties: [{ party_id: factionId, party_name: faction?.faction_name || '', seats: faction?.seats || 0 }],
         total_seats: faction?.seats || 0,
-        government_type: 'Presidential',
+        government_type: CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC,
         started_at_tick: currentTick,
         started_at_date: dateStr,
         stats_at_start: fullNation ? snapshotNationStats(fullNation) : {},
@@ -3599,7 +3664,7 @@ async function selectPresidentCandidate(supabase, candidateId, nationId, faction
 async function nominateMinister(supabase, nationId, presidentFactionId, ministryKey, nominee) {
     // Validate: must be Presidential system
     const { data: nation } = await supabase.from('nations').select('name, government_type').eq('id', nationId).single();
-    if (nation?.government_type !== 'Presidential') throw new Error('Minister nominations only apply to Presidential systems');
+    if (!isPresidentialRepublic(nation)) throw new Error('Minister nominations only apply to Presidential systems');
 
     // Validate: caller must be president's party
     const { data: president } = await supabase.from('presidents')
@@ -3792,7 +3857,7 @@ async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
  * Called during advanceTick().
  */
 async function processPresidentDesk(supabase, nation, currentTick) {
-    if (nation.government_type !== 'Presidential') return [];
+    if (!isPresidentialRepublic(nation)) return [];
 
     const { data: expiredDesks } = await supabase.from('bills')
         .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
@@ -3841,7 +3906,7 @@ async function processPresidentDesk(supabase, nation, currentTick) {
  * Candidates are stored in pm_candidates with candidate_type = 'presidential'.
  */
 async function triggerPresidentialCandidateSelection(supabase, nation, currentTick) {
-    if (nation.government_type !== 'Presidential') return;
+    if (!isPresidentialRepublic(nation)) return;
 
     const leadTicks = GAME_CONFIG.PRESIDENTIAL_CANDIDATE_LEAD_TICKS;
 
@@ -3891,7 +3956,7 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
  * has expired and a new president was already elected (shouldn't happen, but guards).
  */
 async function processPresidentialTermEnd(supabase, nation, currentTick) {
-    if (nation.government_type !== 'Presidential') return;
+    if (!isPresidentialRepublic(nation)) return;
 
     const { data: president } = await supabase
         .from('presidents')
@@ -3980,7 +4045,7 @@ async function autoSelectPresidentialCandidates(supabase, nation, currentTick) {
  * election resolves in processPresidentialElectionResult.
  */
 async function processPresidentCandidateTimeout(supabase, nation, currentTick) {
-    if (nation.government_type !== 'Presidential') return;
+    if (!isPresidentialRepublic(nation)) return;
 
     // Find unselected presidential candidates older than 3 ticks
     const timeoutTicks = 3;
@@ -4019,7 +4084,7 @@ async function processPresidentCandidateTimeout(supabase, nation, currentTick) {
  * Mirrors processPresidentCandidateTimeout but for parliamentary systems.
  */
 async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
-    if (nation.government_type !== 'Democracy') return;
+    if (!isParliamentaryDemocracy(nation)) return;
 
     const timeoutTicks = 3;
     const { data: staleCandidates } = await supabase
@@ -4255,6 +4320,9 @@ async function advanceTick(supabase) {
         }
     }
 
+    // 1c. Startup validation: warn if ministry event template gov types are not canonical
+    await validateCanonicalTemplateGovTypes(supabase);
+
     // 2. Load all nations
     const { data: nations } = await supabase.from('nations').select('*');
     if (!nations || nations.length === 0) return { tick: newTick, nations: 0 };
@@ -4367,7 +4435,7 @@ async function advanceTick(supabase) {
         await processIdeologyShifts(supabase, nation.id, resolutions);
 
         // 7. Process purge approval decay (autocracy scapegoat mechanic)
-        if (nation.government_type === 'Autocracy') {
+        if (isAutocracy(nation)) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
@@ -4378,12 +4446,12 @@ async function advanceTick(supabase) {
         await processPartyStandingsJitter(supabase, nation);
 
         // 8. Process faction loyalty (autocracy)
-        if (nation.government_type === 'Autocracy') {
+        if (isAutocracy(nation)) {
             await processLoyaltyTick(supabase, nation);
         }
 
         // 9. Auto-resolve shakeups that are 1+ ticks old
-        if (nation.government_type === 'Autocracy') {
+        if (isAutocracy(nation)) {
             await autoResolveStaleShakeups(supabase, nation.id, newTick);
         }
 
@@ -4585,7 +4653,7 @@ async function processBlocApprovalDecay(supabase, nation) {
  */
 async function processPartyStandingsJitter(supabase, nation) {
     // Only for democracies
-    if (nation.government_type === 'Autocracy') return;
+    if (isAutocracy(nation)) return;
 
     const { data: factions } = await supabase
         .from('factions')
@@ -4648,7 +4716,7 @@ async function processLoyaltyTick(supabase, nation) {
     const rulingId = nation.ruling_faction_id;
     if (!rulingId) return;
 
-    const isAutocracy = (nation.government_type === 'Autocracy');
+    const isAutocracy = isGovernmentAutocracy(nation);
 
     const { data: factions } = await supabase
         .from('factions')
@@ -5774,7 +5842,7 @@ async function processCrises(supabase, nation, currentTick) {
  */
 async function processRevolution(supabase: any, nation: any, currentTick: number) {
     // Only autocracies can have democratic revolutions
-    if (nation.government_type !== 'Autocracy') {
+    if (!isAutocracy(nation)) {
         if (nation.revolution_started_tick != null) {
             await supabase.from('nations').update({ revolution_started_tick: null, revolution_duration: null }).eq('id', nation.id);
             nation.revolution_started_tick = null;
@@ -5882,8 +5950,8 @@ async function processRevolution(supabase: any, nation: any, currentTick: number
     console.log(`[Revolution] REVOLUTION FIRES for ${nation.name} at tick ${currentTick}`);
 
     // 1. Pick new government type randomly
-    const newGovType = Math.random() < 0.5 ? 'Democracy' : 'Presidential';
-    const govLabel = newGovType === 'Presidential' ? 'Presidential Democracy' : 'Parliamentary Democracy';
+    const newGovType = Math.random() < 0.5 ? CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY : CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC;
+    const govLabel = newGovType === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC ? 'Presidential Democracy' : 'Parliamentary Democracy';
 
     // 2. Close current administration and dissolve government/ministries
     try {
@@ -5955,7 +6023,7 @@ async function processRevolution(supabase: any, nation: any, currentTick: number
     await supabase.from('elections').delete()
         .eq('nation_id', nation.id).eq('status', 'scheduled');
 
-    const electionType = newGovType === 'Presidential' ? 'presidential' : 'parliamentary';
+    const electionType = newGovType === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC ? 'presidential' : 'parliamentary';
     const { error: electionErr } = await supabase.from('elections').insert({
         nation_id: nation.id,
         election_tick: currentTick + 3,
@@ -6043,9 +6111,8 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
     dbg(`Loaded ${templates.length} active template(s): [${templates.map(t => t.event_key).join(', ')}]`);
 
     // --- 3. Filter by government type ---
-    const govTypeRaw = nation.government_type || 'Parliamentary Republic';
-    const govTypeCanonical = canonicalizeNationGovType(govTypeRaw) || 'Parliamentary Republic';
-    const eligible = templates.filter(t => templateSupportsNationGovType(t.gov_types, govTypeRaw).matches);
+    const govType = getCanonicalGovernmentType(nation);
+    const eligible = templates.filter(t => (t.gov_types || []).includes(govType));
     if (eligible.length === 0) {
         dbg(`BLOCKED: 0/${templates.length} templates match gov_type raw="${govTypeRaw}" canonical="${govTypeCanonical}". Template gov_types: ${templates.map(t => {
             const matchInfo = templateSupportsNationGovType(t.gov_types, govTypeRaw);
@@ -6071,7 +6138,7 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
     // For Presidential nations with pending-confirmation ministers, party_id may be null.
     // Fall back to the PM/President's faction so events can still fire.
     let fallbackFactionId = null;
-    if (govTypeCanonical === 'Presidential') {
+    if (govType === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC) {
         const { data: president } = await supabase
             .from('presidents')
             .select('party_id')
@@ -6551,7 +6618,7 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
 async function processPMTraitEffects(supabase, nation, currentTick) {
     let effects, factionId;
 
-    if (nation.government_type === 'Presidential') {
+    if (isPresidentialRepublic(nation)) {
         // For presidential systems, use the active president's trait
         const { data: president } = await supabase
             .from('presidents')

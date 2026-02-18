@@ -662,8 +662,8 @@ initPage('government', async (state) => {
         return;
     }
 
-    isAutocracy = (nation.government_type === 'Autocracy');
-    isPresidential = (nation.government_type === 'Presidential');
+    isAutocracy = isGovernmentAutocracy(nation);
+    isPresidential = isGovernmentPresidential(nation);
 
     // Backfill head of state if missing
     if (!nation.head_of_state_first_name || !nation.head_of_state_last_name) {
@@ -721,7 +721,7 @@ async function renderRevolutionBannerGov() {
     }
 
     // Active countdown (Autocracy only)
-    if (nation.government_type === 'Autocracy' && nation.revolution_started_tick != null && nation.revolution_duration != null) {
+    if (isGovernmentAutocracy(nation) && nation.revolution_started_tick != null && nation.revolution_duration != null) {
         var elapsed = currentTick - nation.revolution_started_tick;
         var remaining = Math.max(0, nation.revolution_duration - elapsed);
         var h = '<div class="revolution-banner">';
@@ -1840,7 +1840,7 @@ async function claimPower() {
                 pm_party_id: currentFaction.id,
                 coalition_parties: [{ party_id: currentFaction.id, party_name: currentFaction.faction_name, seats: currentFaction.seats || 0 }],
                 total_seats: currentFaction.seats || 0,
-                government_type: 'Autocracy',
+                government_type: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
                 started_at_tick: tick,
                 started_at_date: tickToDate(tick)
             });

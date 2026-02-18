@@ -111,7 +111,7 @@ function setupWorldMap() {
 
                 // Fix placeholder government_type values from DB
                 if (!nation.government_type || nation.government_type.toLowerCase().includes('your_gov_here')) {
-                    if (nation.name === 'San Estrella') nation.government_type = 'Presidential';
+                    if (nation.name === 'San Estrella') nation.government_type = CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC;
                 }
 
                 renderNationIntel(nation);
@@ -146,7 +146,7 @@ async function renderNationIntel(nation) {
         .eq('is_npc', false)
         .order('seats', { ascending: false });
     
-    const maxParties = nation.max_parties || (nation.government_type === 'Autocracy' ? 4 : 8);
+    const maxParties = nation.max_parties || (isAutocracy(nation) ? 4 : 8);
     const spotsRemaining = maxParties - (partyCount || 0);
     const isFull = spotsRemaining <= 0;
     
@@ -163,11 +163,11 @@ async function renderNationIntel(nation) {
     };
     const flagUrl = flagUrls[nation.name] || null;
     
-    const isAutocracy = nation.government_type === 'Autocracy';
+    const autocracyGov = isAutocracy(nation);
 
     // Merge real seat data from election results (fixes 0 seats for democracies)
     if (parties && parties.length > 0) {
-        const { allPartySeats } = await loadSeats(_supabase, nation.id, isAutocracy, parties, null);
+        const { allPartySeats } = await loadSeats(_supabase, nation.id, autocracyGov, parties, null);
         for (const p of parties) {
             if (allPartySeats[p.id] !== undefined) {
                 p.seats = allPartySeats[p.id];
@@ -175,7 +175,7 @@ async function renderNationIntel(nation) {
         }
     }
 
-    const partyLabel = isAutocracy ? 'Factions' : 'Parties';
+    const partyLabel = autocracyGov ? 'Factions' : 'Parties';
     
     sidebar.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
@@ -228,7 +228,7 @@ async function renderNationIntel(nation) {
         <!-- Key Stats -->
         <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">
             ${intelRow('Population', formatNumber(nation.population), '#ffcc00')}
-            ${intelRow('Government', nation.government_type === 'Presidential' ? 'Presidential Republic' : (nation.government_type || '—'), '#fff')}
+            ${intelRow('Government', isPresidentialRepublic(nation) ? 'Presidential Republic' : (getCanonicalGovernmentType(nation, nation.government_type || '—')), '#fff')}
         </div>
         
         <!-- Description -->
