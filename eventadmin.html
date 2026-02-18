@@ -3,202 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <title>Event Admin | Nationhood Alpha</title>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <link rel="stylesheet" href="css/dashboard.css">
-    <style>
-        body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; }
-
-        .admin-container { max-width: 1400px; margin: 0 auto; padding: 24px; }
-        .admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 2px solid #ffcc00; padding-bottom: 16px; }
-        .admin-title { font-size: 1.6rem; color: #ffcc00; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; }
-        .admin-subtitle { font-size: 0.85rem; color: #888; margin-top: 4px; }
-        .admin-actions { display: flex; gap: 10px; }
-
-        .btn { padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px; }
-        .btn:hover { transform: translateY(-1px); }
-        .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
-        .btn-primary { background: linear-gradient(135deg, #ffcc00, #e6b800); color: #121212; }
-        .btn-primary:hover { box-shadow: 0 4px 12px rgba(255, 204, 0, 0.3); }
-        .btn-danger { background: #ff4444; color: #fff; }
-        .btn-danger:hover { box-shadow: 0 4px 12px rgba(255, 68, 68, 0.3); }
-        .btn-ghost { background: #252525; color: #aaa; border: 1px solid #444; }
-        .btn-ghost:hover { color: #fff; border-color: #666; }
-        .btn-small { padding: 6px 12px; font-size: 0.75rem; }
-        .btn-icon { padding: 6px 10px; font-size: 0.85rem; background: none; border: 1px solid #444; color: #888; border-radius: 4px; cursor: pointer; }
-        .btn-icon:hover { color: #ff4444; border-color: #ff4444; }
-        .btn-back { background: none; border: none; color: #888; cursor: pointer; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 6px; margin-bottom: 16px; padding: 0; }
-        .btn-back:hover { color: #ffcc00; }
-
-        .filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
-        .filters input, .filters select { padding: 10px 14px; background: #1a1a1a; border: 1px solid #333; border-radius: 5px; color: #e0e0e0; font-size: 0.85rem; }
-        .filters input { flex: 1; min-width: 200px; }
-        .filters input:focus, .filters select:focus { outline: none; border-color: #ffcc00; }
-        .event-count { color: #888; font-size: 0.85rem; margin-left: auto; }
-
-        .event-card { background: #1a1a1a; border-radius: 8px; padding: 16px 20px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.2s; border-left: 4px solid #333; }
-        .event-card:hover { background: #222; transform: translateX(4px); }
-        .event-card.active { border-left-color: #4CAF50; }
-        .event-card.inactive { border-left-color: #666; opacity: 0.6; }
-        .event-card-left { flex: 1; }
-        .event-card-name { font-weight: bold; color: #ffcc00; font-size: 1rem; margin-bottom: 4px; }
-        .event-card-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.78rem; color: #888; align-items: center; }
-        .event-card-right { display: flex; align-items: center; gap: 12px; }
-        .tag { display: inline-block; padding: 3px 10px; border-radius: 3px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-        .tag-category { background: #1a1a2a; color: #bb86fc; border: 1px solid #9b59b6; }
-        .tag-prob { background: #1a2a1a; color: #4CAF50; border: 1px solid #4CAF50; }
-        .tag-cooldown { background: #2a2a1a; color: #ff9800; border: 1px solid #ff9800; }
-        .tag-scope-nation { background: #1a2a2a; color: #2196F3; border: 1px solid #2196F3; }
-        .tag-scope-ruling { background: #2a1a1a; color: #ff4444; border: 1px solid #ff4444; }
-        .tag-scope-faction { background: #2a1a2a; color: #e040fb; border: 1px solid #e040fb; }
-        .tag-active { background: #1a2a1a; color: #4CAF50; }
-        .tag-inactive { background: #2a1a1a; color: #ff4444; }
-        .tag-random { background: #1a2a2a; color: #58a6ff; border: 1px solid #58a6ff; }
-        .tag-system { background: #2a1a2a; color: #ff9800; border: 1px solid #ff9800; }
-        .tag-ministry { background: #1a2a1a; color: #4CAF50; border: 1px solid #4CAF50; }
-        .tag-urgent { background: #2a1a1a; color: #ff4444; border: 1px solid #ff4444; }
-        .tag-routine { background: #2a2a1a; color: #ff9800; border: 1px solid #ff9800; }
-        .tag-opportunity { background: #1a2a1a; color: #4CAF50; border: 1px solid #4CAF50; }
-
-        .editor { background: #141414; border: 2px solid #333; border-radius: 12px; overflow: hidden; }
-        .editor-header { background: #1a1a1a; padding: 20px 24px; border-bottom: 2px solid #ffcc00; display: flex; justify-content: space-between; align-items: center; }
-        .editor-title { font-size: 1.2rem; color: #ffcc00; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
-        .editor-body { padding: 24px; }
-        .editor-footer { padding: 16px 24px; background: #1a1a1a; border-top: 1px solid #333; display: flex; justify-content: flex-end; gap: 10px; }
-
-        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-        .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-        .form-row-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-        .form-group { margin-bottom: 16px; }
-        .form-label { display: block; font-size: 0.78rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; font-weight: bold; }
-        .form-input, .form-select, .form-textarea { width: 100%; padding: 10px 14px; background: #252525; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-size: 0.9rem; font-family: inherit; box-sizing: border-box; }
-        .form-input:focus, .form-select:focus, .form-textarea:focus { outline: none; border-color: #ffcc00; }
-        .form-textarea { min-height: 80px; resize: vertical; }
-        .form-hint { font-size: 0.75rem; color: #666; margin-top: 4px; }
-
-        .editor-section { background: #1a1a1a; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; border: 1px solid #333; }
-        .editor-section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-        .editor-section-title { font-size: 0.85rem; color: #ffcc00; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
-
-        .desc-item { background: #252525; border-radius: 6px; padding: 12px; margin-bottom: 8px; display: flex; gap: 10px; align-items: flex-start; }
-        .desc-item .form-textarea { flex: 1; min-height: 60px; }
-        .trigger-item { display: grid; grid-template-columns: 1fr 100px 100px 36px; gap: 10px; align-items: center; padding: 10px; background: #252525; border-radius: 6px; margin-bottom: 8px; }
-        .effect-item { display: grid; grid-template-columns: 1fr 100px 140px 36px; gap: 10px; align-items: center; padding: 10px; background: #252525; border-radius: 6px; margin-bottom: 8px; }
-
-        .empty-state { text-align: center; color: #666; font-style: italic; padding: 30px 20px; }
-        .empty-state-icon { font-size: 2rem; margin-bottom: 8px; }
-
-        .toggle-wrapper { display: flex; align-items: center; gap: 8px; }
-        .toggle { position: relative; width: 44px; height: 24px; cursor: pointer; }
-        .toggle input { opacity: 0; width: 0; height: 0; }
-        .toggle-slider { position: absolute; inset: 0; background: #444; border-radius: 12px; transition: 0.3s; }
-        .toggle-slider:before { content: ''; position: absolute; width: 18px; height: 18px; left: 3px; bottom: 3px; background: #888; border-radius: 50%; transition: 0.3s; }
-        .toggle input:checked + .toggle-slider { background: #4CAF50; }
-        .toggle input:checked + .toggle-slider:before { transform: translateX(20px); background: #fff; }
-        .toggle-label { font-size: 0.8rem; color: #888; }
-
-        .type-tabs { display: flex; gap: 0; margin-bottom: 16px; border-radius: 6px; overflow: hidden; border: 1px solid #444; }
-        .type-tab { flex: 1; text-align: center; padding: 10px 16px; font-size: 0.85rem; font-weight: 600; cursor: pointer; background: #1a1a1a; color: #888; border: none; transition: all 0.2s; }
-        .type-tab:not(:last-child) { border-right: 1px solid #444; }
-        .type-tab.active { background: #ffcc00; color: #121212; }
-        .type-tab:hover:not(.active) { background: #252525; color: #ccc; }
-
-        .system-trigger-info { background: #1a1a2a; border: 1px solid #3a3a5a; border-radius: 8px; padding: 14px 18px; margin-bottom: 16px; font-size: 0.82rem; color: #aaa; line-height: 1.5; }
-        .system-trigger-info strong { color: #ff9800; }
-
-        .placeholder-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-        .placeholder-tag { display: inline-block; background: #2a2a1a; border: 1px solid #ff9800; color: #ff9800; padding: 3px 10px; border-radius: 4px; font-size: 0.75rem; font-family: 'Courier New', monospace; font-weight: bold; cursor: pointer; transition: all 0.2s; }
-        .placeholder-tag:hover { background: #ff9800; color: #121212; }
-
-        .preview-box { background: #1a2a1a; border: 1px solid #2a4a2a; border-radius: 8px; padding: 14px 18px; margin-top: 12px; }
-        .preview-label { font-size: 0.7rem; color: #4CAF50; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; font-weight: bold; }
-        .preview-text { font-size: 0.88rem; color: #ccc; line-height: 1.5; font-style: italic; }
-
-        .log-entry { background: #1a1a1a; border-radius: 6px; padding: 12px 16px; margin-bottom: 8px; border-left: 3px solid #2196F3; }
-        .log-entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-        .log-entry-name { font-weight: bold; color: #ffcc00; font-size: 0.9rem; }
-        .log-entry-tick { font-size: 0.75rem; color: #888; }
-        .log-entry-desc { font-size: 0.85rem; color: #aaa; font-style: italic; margin-bottom: 6px; }
-        .log-entry-effects { font-size: 0.78rem; color: #888; }
-
-        /* Top-level mode tabs */
-        .mode-tabs { display: flex; gap: 0; margin-bottom: 24px; border-radius: 8px; overflow: hidden; border: 2px solid #ffcc00; }
-        .mode-tab { flex: 1; text-align: center; padding: 14px 20px; font-size: 0.95rem; font-weight: 700; cursor: pointer; background: #1a1a1a; color: #888; border: none; transition: all 0.2s; text-transform: uppercase; letter-spacing: 1px; }
-        .mode-tab:not(:last-child) { border-right: 2px solid #ffcc00; }
-        .mode-tab.active { background: #ffcc00; color: #121212; }
-        .mode-tab:hover:not(.active) { background: #252525; color: #ccc; }
-
-        /* Ministry option card */
-        .ministry-option-card { background: #252525; border: 2px solid #333; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
-        .ministry-option-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .ministry-option-label { font-size: 0.95rem; font-weight: bold; color: #e0e0e0; }
-        .ministry-option-letter { background: #ffcc00; color: #121212; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 0.85rem; }
-        .ministry-effect-row { display: grid; grid-template-columns: 1fr 90px 120px 36px; gap: 8px; align-items: center; padding: 6px 0; }
-        .ministry-effect-row .form-input, .ministry-effect-row .form-select { padding: 8px 10px; font-size: 0.82rem; }
-
-        /* Gov type variant section */
-        .variant-section { background: #1a1a1a; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; border: 2px solid #333; }
-        .variant-section.democracy { border-color: #2196F3; }
-        .variant-section.autocracy { border-color: #ff4444; }
-        .variant-header { font-size: 0.9rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-        .variant-header.democracy { color: #2196F3; }
-        .variant-header.autocracy { color: #ff4444; }
-
-        /* Checkbox row */
-        .checkbox-row { display: flex; gap: 20px; align-items: center; }
-        .checkbox-item { display: flex; align-items: center; gap: 6px; cursor: pointer; }
-        .checkbox-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: #ffcc00; cursor: pointer; }
-        .checkbox-item label { font-size: 0.85rem; color: #ccc; cursor: pointer; }
-
-        /* Outcome card within option */
-        .outcome-card { background: #1e1e1e; border: 1px solid #444; border-radius: 6px; padding: 12px; margin-bottom: 8px; margin-left: 16px; border-left: 3px solid #888; }
-        .outcome-card:first-child { border-left-color: #4CAF50; }
-        .outcome-card:nth-child(2) { border-left-color: #ff9800; }
-        .outcome-card:nth-child(3) { border-left-color: #ff4444; }
-        .outcome-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-        .outcome-chance { display: flex; align-items: center; gap: 4px; }
-        .outcome-chance input { width: 60px; text-align: center; }
-        .outcome-chance-pct { color: #ffcc00; font-weight: bold; font-size: 0.85rem; }
-        .outcome-label-input { flex: 1; }
-        .chance-sum { font-size: 0.78rem; font-weight: bold; padding: 4px 10px; border-radius: 4px; margin-left: 8px; }
-        .chance-sum.valid { background: #1a2a1a; color: #4CAF50; }
-        .chance-sum.invalid { background: #2a1a1a; color: #ff4444; }
-
-        .outcome-message-area { width: 100%; min-height: 50px; margin-top: 6px; margin-bottom: 6px; padding: 8px 10px; background: #252525; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; font-size: 0.82rem; font-family: inherit; resize: vertical; box-sizing: border-box; }
-        .outcome-message-area:focus { outline: none; border-color: #ffcc00; }
-        .civic-event-box { margin-top: 8px; padding: 10px 12px; background: #1a1a2e; border: 1px solid #3a3a5c; border-radius: 5px; border-left: 3px solid #58a6ff; }
-        .civic-event-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.78rem; color: #58a6ff; user-select: none; }
-        .civic-event-toggle input[type="checkbox"] { accent-color: #58a6ff; }
-        .civic-event-fields { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
-        .civic-event-fields .form-label { font-size: 0.72rem; color: #8b929e; margin-bottom: 0; }
-        .civic-event-textarea { width: 100%; min-height: 60px; padding: 8px 10px; background: #0e1117; border: 1px solid #3a3a5c; border-radius: 4px; color: #e2e6eb; font-size: 0.82rem; font-family: inherit; resize: vertical; box-sizing: border-box; }
-        .civic-event-textarea:focus { outline: none; border-color: #58a6ff; }
-        .civic-event-textarea::placeholder { color: #5a6272; }
-        .placeholder-ref { background: #1a1a2a; border: 1px solid #3a3a5a; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
-        .placeholder-ref-title { font-size: 0.78rem; color: #ff9800; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold; margin-bottom: 8px; }
-        .placeholder-ref-grid { display: flex; flex-wrap: wrap; gap: 6px; }
-        .placeholder-ref-item { display: inline-flex; align-items: center; gap: 4px; background: #2a2a1a; border: 1px solid #ff9800; color: #ff9800; padding: 3px 10px; border-radius: 4px; font-size: 0.72rem; font-family: 'Courier New', monospace; font-weight: bold; cursor: pointer; transition: all 0.2s; }
-        .placeholder-ref-item:hover { background: #ff9800; color: #121212; }
-        .placeholder-ref-item .ph-hint { font-family: 'Segoe UI', Tahoma, sans-serif; color: #888; font-weight: normal; font-size: 0.68rem; margin-left: 2px; }
-        .placeholder-ref-item:hover .ph-hint { color: #121212; }
-
-        @media (max-width: 768px) {
-            .form-row, .form-row-3, .form-row-4 { grid-template-columns: 1fr; }
-            .trigger-item, .effect-item { grid-template-columns: 1fr; }
-            .event-card { flex-direction: column; align-items: flex-start; gap: 12px; }
-            .ministry-effect-row { grid-template-columns: 1fr; }
-        }
-    </style>
 </head>
 <body>
 <div class="admin-container" id="content-area">
     <div class="loading-container"><div class="loading-spinner"></div><div>Loading events...</div></div>
 </div>
 
-<script src="js/supabase-client.js"></script>
-<script src="js/game-common.js"></script>
-<script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { GAME_CONFIG, MINISTRY_EVENT_GOV_TYPES, MAJOR_SECTORS, NATION_STAT_COLUMNS, formatStatName, normalizeNationStatKey, templateSupportsNationGovType, canonicalNationGovTypes } from './js/game-common.js';
+import './css/eventadmin.css';
 // ==================== STATE ====================
 var allEvents = [];
 var allMinistryTemplates = [];
@@ -1312,6 +1126,46 @@ function cancelMinistryEditor() { renderModeTabs(); }
 // ==================== UTILITIES ====================
 function escapeHtml(t) { var d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
 function escapeAttr(t) { return (t || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
+// Expose functions for HTML onclick/onchange handlers
+window.switchMode = switchMode;
+window.viewRecentLog = viewRecentLog;
+window.createNewEvent = createNewEvent;
+window.applyFilters = applyFilters;
+window.editEvent = editEvent;
+window.cancelEditor = cancelEditor;
+window.deleteEvent = deleteEvent;
+window.switchEventType = switchEventType;
+window.addDescription = addDescription;
+window.addTrigger = addTrigger;
+window.addEffect = addEffect;
+window.copyPlaceholder = copyPlaceholder;
+window.removeDescription = removeDescription;
+window.removeTrigger = removeTrigger;
+window.removeEffect = removeEffect;
+window.addWeightCondition = addWeightCondition;
+window.removeWeightCondition = removeWeightCondition;
+window.addMTitle = addMTitle;
+window.removeMTitle = removeMTitle;
+window.addMBody = addMBody;
+window.removeMBody = removeMBody;
+window.saveEvent = saveEvent;
+window.createNewMinistryEvent = createNewMinistryEvent;
+window.applyMinistryFilters = applyMinistryFilters;
+window.editMinistryEvent = editMinistryEvent;
+window.cancelMinistryEditor = cancelMinistryEditor;
+window.deleteMinistryEvent = deleteMinistryEvent;
+window.updateOutcomeEffect = updateOutcomeEffect;
+window.removeOutcomeEffect = removeOutcomeEffect;
+window.updateOutcome = updateOutcome;
+window.removeOutcome = removeOutcome;
+window.addOutcomeEffect = addOutcomeEffect;
+window.toggleCivicEvent = toggleCivicEvent;
+window.updateMOpt = updateMOpt;
+window.addOutcome = addOutcome;
+window.addMOption = addMOption;
+window.removeMOption = removeMOption;
+window.saveMinistryEvent = saveMinistryEvent;
 </script>
 </body>
 </html>

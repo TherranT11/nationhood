@@ -1,0 +1,311 @@
+/* Nation Overview Header */
+    .nation-overview {
+        background: var(--topbar-bg);
+        border-bottom: 2px solid var(--border-main);
+        padding: 24px;
+    }
+    .nation-overview h1 {
+        color: var(--accent);
+        font-size: 2rem;
+        text-transform: uppercase;
+        letter-spacing: 3px;
+        margin-bottom: 16px;
+    }
+    .overview-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+    }
+    .overview-item {
+        background: var(--bg-card);
+        padding: 12px 16px;
+        border-radius: 6px;
+        border-left: 3px solid var(--accent);
+    }
+    .overview-label {
+        font-size: 0.7rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 4px;
+    }
+    .overview-value {
+        font-size: 1.1rem;
+        color: var(--text-primary);
+        font-weight: bold;
+    }
+    .overview-value.gold { color: var(--accent); }
+
+    /* Crisis Section */
+    .crisis-section {
+        padding: 24px;
+        background: var(--bg-panel);
+        border-bottom: 1px solid var(--border-main);
+    }
+    .crisis-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+    .crisis-box {
+        background: var(--bg-card);
+        border: 2px dashed var(--border-main);
+        border-radius: 8px;
+        padding: 40px;
+        text-align: center;
+        color: var(--text-dim);
+        font-style: italic;
+    }
+    .crisis-box.active {
+        border: 2px solid var(--red);
+        background: var(--bg-card);
+        color: var(--text-primary);
+        font-style: normal;
+        text-align: left;
+        padding: 20px;
+    }
+    .crisis-box.active .crisis-name {
+        color: var(--red);
+        font-size: 1rem;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 8px;
+    }
+    .crisis-box.active .crisis-desc {
+        color: var(--text-secondary);
+        font-size: 0.78rem;
+        line-height: 1.5;
+        margin-bottom: 12px;
+    }
+    .crisis-box.active .crisis-recovery {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+    }
+    .crisis-box.active .crisis-recovery span {
+        color: var(--orange);
+        font-weight: bold;
+    }
+    .crisis-box.active .crisis-rising {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        margin-bottom: 4px;
+    }
+    .crisis-box.active .crisis-rising span {
+        color: var(--red);
+        font-weight: bold;
+    }
+
+    /* Revolution Banner */
+    .revolution-banner {
+        background: linear-gradient(135deg, #3a0a0a 0%, #1a0000 100%);
+        border: 2px solid #f44336;
+        border-radius: 12px;
+        padding: 24px;
+        margin: 0 24px 16px;
+        text-align: center;
+        animation: revolution-pulse 2s ease-in-out infinite;
+    }
+    @keyframes revolution-pulse {
+        0%, 100% { border-color: #f44336; box-shadow: 0 0 0 rgba(244,67,54,0); }
+        50% { border-color: #ff8a80; box-shadow: 0 0 30px rgba(244,67,54,0.4); }
+    }
+    .revolution-banner .revolution-icon { font-size: 2.5rem; margin-bottom: 8px; }
+    .revolution-banner .revolution-title {
+        font-size: 1.3rem; color: #f44336; font-weight: bold;
+        text-transform: uppercase; letter-spacing: 3px; margin-bottom: 8px;
+    }
+    .revolution-banner .revolution-subtitle {
+        font-size: 0.85rem; color: #cc8888; line-height: 1.5; margin-bottom: 12px;
+    }
+    .revolution-banner .revolution-countdown {
+        display: inline-block; padding: 6px 20px;
+        background: rgba(244,67,54,0.15); border: 1px solid #f44336;
+        border-radius: 6px; font-family: monospace;
+        font-size: 1.1rem; font-weight: bold; color: #f44336;
+    }
+    .revolution-complete-banner {
+        background: linear-gradient(135deg, #0a2a0a 0%, #001a00 100%);
+        border: 2px solid #4CAF50;
+        border-radius: 12px;
+        padding: 24px;
+        margin: 0 24px 16px;
+        text-align: center;
+        animation: revolution-celebrate 3s ease-in-out infinite;
+    }
+    @keyframes revolution-celebrate {
+        0%, 100% { border-color: #4CAF50; box-shadow: 0 0 0 rgba(76,175,80,0); }
+        50% { border-color: #81C784; box-shadow: 0 0 30px rgba(76,175,80,0.3); }
+    }
+    .revolution-complete-banner .revolution-icon { font-size: 2.5rem; margin-bottom: 8px; }
+    .revolution-complete-banner .revolution-title {
+        font-size: 1.3rem; color: #4CAF50; font-weight: bold;
+        text-transform: uppercase; letter-spacing: 3px; margin-bottom: 8px;
+    }
+    .revolution-complete-banner .revolution-subtitle {
+        font-size: 0.85rem; color: #81C784; line-height: 1.5; margin-bottom: 12px;
+    }
+    .revolution-tag {
+        display: inline-block; padding: 4px 12px; margin: 4px;
+        background: rgba(76,175,80,0.1); border: 1px solid rgba(76,175,80,0.25);
+        border-radius: 4px; font-size: 0.75rem; color: #4CAF50;
+    }
+
+    /* Stats Sections */
+    .stats-section {
+        padding: 24px;
+    }
+    .sector-block {
+        margin-bottom: 32px;
+    }
+    .sector-header {
+        color: var(--accent);
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border-main);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .sector-icon {
+        font-size: 1.2rem;
+    }
+    .stat-boxes {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+    }
+    @media (max-width: 900px) {
+        .stat-boxes {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+    @media (max-width: 600px) {
+        .stat-boxes {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /* Individual Stat Box */
+    .stat-box {
+        background: var(--bg-panel);
+        border-radius: 6px;
+        padding: 14px;
+        border-left: 4px solid var(--border-main);
+        transition: border-color 0.3s;
+    }
+    .stat-box.good { border-left-color: var(--green); }
+    .stat-box.medium { border-left-color: var(--orange); }
+    .stat-box.bad { border-left-color: var(--red); }
+
+    .stat-box-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+    }
+    .stat-box-name {
+        font-size: 0.8rem;
+        color: var(--text-primary);
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .stat-box-value {
+        font-size: 1.2rem;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .stat-box-value.good { color: var(--green); }
+    .stat-box-value.medium { color: var(--orange); }
+    .stat-box-value.bad { color: var(--red); }
+
+    .stat-box-desc {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        line-height: 1.4;
+        margin-bottom: 6px;
+    }
+
+    /* Trend Arrows */
+    .trend-arrow {
+        font-size: 0.9rem;
+        font-weight: bold;
+    }
+    .trend-up { color: var(--green); }
+    .trend-down { color: var(--red); }
+    .trend-neutral { color: var(--text-muted); }
+
+    /* For inverted stats, swap colors */
+    .trend-up.inverted { color: var(--red); }
+    .trend-down.inverted { color: var(--green); }
+
+    /* Ranking Badge */
+    .stat-box-footer {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 4px;
+    }
+    .ranking-badge {
+        font-size: 0.65rem;
+        color: var(--text-secondary);
+        background: var(--bg-card);
+        padding: 2px 6px;
+        border-radius: 3px;
+    }
+    .ranking-badge.first {
+        color: var(--accent);
+        background: var(--your-party-bg);
+    }
+
+    /* Voter Demographics Special Section */
+    .voter-axis {
+        background: var(--bg-panel);
+        border-radius: 6px;
+        padding: 14px;
+        margin-bottom: 12px;
+    }
+    .voter-axis-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .voter-axis-left { color: var(--blue); }
+    .voter-axis-right { color: var(--orange); }
+    .voter-bar-container {
+        height: 24px;
+        background: var(--border-main);
+        border-radius: 4px;
+        overflow: hidden;
+        display: flex;
+    }
+    .voter-bar-left {
+        background: linear-gradient(90deg, #2196F3, #64B5F6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 0.75rem;
+        font-weight: bold;
+    }
+    .voter-bar-right {
+        background: linear-gradient(90deg, #FFB74D, #ff9800);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 0.75rem;
+        font-weight: bold;
+        flex: 1;
+    }

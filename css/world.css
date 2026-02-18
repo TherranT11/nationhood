@@ -1,0 +1,15 @@
+/* Default nation fill colors (unselected) */
+        #Melizea.land { fill: #eeffaa; }
+        #Avelia.land { fill: #ddafe9; }
+        #Sangreza.land { fill: #5599ff; }
+        #Montequilla.land { fill: #aade87; }
+        #SanEstrella.land { fill: #ffb380; }
+        #Veldaria.land { fill: #87cdde; }
+
+        /* Selected overrides */
+        #Melizea.land.selected-nation { fill: #ccff00; }
+        #Avelia.land.selected-nation { fill: #d070d8; }
+        #Sangreza.land.selected-nation { fill: #2277ff; }
+        #Montequilla.land.selected-nation { fill: #66cc44; }
+        #SanEstrella.land.selected-nation { fill: #ff8833; }
+        #Veldaria.land.selected-nation { fill: #44bbd4; }
