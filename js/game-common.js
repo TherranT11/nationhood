@@ -4365,17 +4365,26 @@ async function advanceTick(supabase) {
 
     // 1b. Startup scan: report any invalid stat keys in effect records (first tick only or periodically)
     if (newTick % 10 === 1) { // Run every 10 ticks to avoid perf cost every tick
-        await auditStatKeys(supabase);
+        try {
+            await auditStatKeys(supabase);
+        } catch (auditErr) {
+            console.error('[advanceTick] auditStatKeys failed (non-fatal):', auditErr);
+        }
     }
 
     // 2. Load all nations
     const { data: nations } = await supabase.from('nations').select('*');
     if (!nations || nations.length === 0) return { tick: newTick, nations: 0 };
 
+    const summary = { tick: newTick, nations: nations.length, effects: [], costs: [], resolutions: [], events: [] };
+
     // Accumulate AP for party factions each tick:
     // base 5 AP, +1 if in government, +1 if approval > 60. Capped at MAX_AP.
     // Uses atomic RPC to prevent race conditions with concurrent player deductions.
+    let apDistributed = 0;
+    let apFailed = 0;
     for (const nation of nations) {
+      try {
         const { data: factions } = await supabase
             .from('factions')
             .select('id, approval_rating, faction_type')
@@ -4399,13 +4408,20 @@ async function advanceTick(supabase) {
             const result = await accumulateAP(supabase, faction.id, apGain);
             if (result.success) {
                 console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+${apGain})`);
+                apDistributed++;
             } else {
                 console.error(`[advanceTick] AP accumulation FAILED for faction ${faction.id}: ${result.error}`);
+                apFailed++;
             }
         }
+      } catch (apErr) {
+        console.error(`[advanceTick] AP distribution FAILED for nation ${nation.id} (${nation.name}):`, apErr);
+        summary.errors = summary.errors || [];
+        summary.errors.push({ nation: nation.name, nationId: nation.id, phase: 'ap_distribution', error: String(apErr) });
+      }
     }
-
-    const summary = { tick: newTick, nations: nations.length, effects: [], costs: [], resolutions: [], events: [] };
+    summary.apDistributed = apDistributed;
+    summary.apFailed = apFailed;
 
     for (const nation of nations) {
       try {
