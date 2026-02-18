@@ -88,21 +88,36 @@ async function deductAP(supabase, factionId, cost) {
  * Returns { success: true, newAp } on success, or { success: false, error } on failure.
  * The DB function atomically increments AP capped at max, preventing race conditions
  * with concurrent deductions.
+ * Retries up to 2 additional times on transient RPC failure with short backoff.
  */
 async function accumulateAP(supabase, factionId, gain, maxAp = GAME_CONFIG.MAX_AP) {
-    const { data, error } = await supabase.rpc('accumulate_ap', {
-        p_faction_id: factionId,
-        p_gain: gain,
-        p_max_ap: maxAp
-    });
-    if (error) {
-        console.error(`[accumulateAP] RPC failed for faction ${factionId}, gain ${gain}:`, error.message);
-        return { success: false, error: error.message };
+    const MAX_ATTEMPTS = 3;
+    const RETRY_DELAY_MS = 500;  // 500ms, 1000ms backoff
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        const { data, error } = await supabase.rpc('accumulate_ap', {
+            p_faction_id: factionId,
+            p_gain: gain,
+            p_max_ap: maxAp
+        });
+        if (error) {
+            console.error(`[accumulateAP] RPC failed for faction ${factionId}, gain ${gain} (attempt ${attempt}/${MAX_ATTEMPTS}):`, error.message);
+            if (attempt < MAX_ATTEMPTS) {
+                await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * attempt));
+                continue;
+            }
+            return { success: false, error: error.message };
+        }
+        if (data === -1) {
+            return { success: false, error: 'Faction not found' };
+        }
+        if (attempt > 1) {
+            console.log(`[accumulateAP] Succeeded on attempt ${attempt} for faction ${factionId}`);
+        }
+        return { success: true, newAp: data };
     }
-    if (data === -1) {
-        return { success: false, error: 'Faction not found' };
-    }
-    return { success: true, newAp: data };
+    // Should never reach here, but safety net
+    return { success: false, error: 'Max retries exhausted' };
 }
 
 /**
