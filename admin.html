@@ -96,115 +96,103 @@
         .btn-remove:hover { background: #cc0000; }
         .no-players { color: #666; font-style: italic; padding: 20px; text-align: center; }
 
-        /* ===== VOTER IDEOLOGY TOOL ===== */
+        /* ===== NATION IDEOLOGY SLIDERS ===== */
         .axis-slider-row {
-            display: grid;
-            grid-template-columns: 120px 1fr 120px;
-            gap: 12px;
-            align-items: center;
-            padding: 14px 0;
+            display: grid; grid-template-columns: 120px 1fr 120px;
+            gap: 12px; align-items: center; padding: 14px 0;
             border-bottom: 1px solid #1a1a1a;
         }
-        .axis-label-left, .axis-label-right {
-            font-weight: bold;
-            font-size: 0.9rem;
-        }
+        .axis-label-left, .axis-label-right { font-weight: bold; font-size: 0.9rem; }
         .axis-label-left { text-align: right; }
         .axis-label-right { text-align: left; }
         .axis-label-left .axis-pct, .axis-label-right .axis-pct {
-            display: block;
-            font-size: 0.75rem;
-            color: #888;
-            font-weight: normal;
-            margin-top: 2px;
+            display: block; font-size: 0.75rem; color: #888; font-weight: normal; margin-top: 2px;
         }
-        .axis-slider-wrap {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .axis-slider-wrap input[type="range"] {
-            flex: 1;
-            accent-color: #ffcc00;
-            height: 6px;
-        }
+        .axis-slider-wrap { display: flex; align-items: center; gap: 8px; }
+        .axis-slider-wrap input[type="range"] { flex: 1; accent-color: #ffcc00; height: 6px; }
         .axis-value-display {
-            min-width: 45px;
-            text-align: center;
-            font-size: 0.85rem;
-            font-weight: bold;
-            color: #ffcc00;
+            min-width: 45px; text-align: center; font-size: 0.85rem; font-weight: bold; color: #ffcc00;
         }
 
-        /* Combo pills */
-        .combo-pills {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin: 15px 0;
+        /* ===== VOTER BLOC MANAGEMENT ===== */
+        .weight-validator {
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px 16px; margin-bottom: 16px;
+            background: #1a1a1a; border-radius: 6px; border: 1px solid #333;
         }
-        .combo-pill {
-            padding: 10px 18px;
-            background: #252525;
-            border: 2px solid #444;
-            border-radius: 20px;
-            color: #888;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 0.85rem;
-            user-select: none;
-        }
-        .combo-pill:hover { border-color: #9C27B0; color: #e0e0e0; }
-        .combo-pill.active { background: #9C27B0; border-color: #9C27B0; color: white; }
-        .combo-pill.disabled { opacity: 0.3; cursor: not-allowed; border-color: #333; }
-        .combo-pill.disabled:hover { border-color: #333; color: #888; }
+        .weight-validator-label { color: #888; font-size: 0.85rem; font-weight: bold; }
+        .weight-validator-value { color: #ffcc00; font-size: 1.1rem; font-weight: bold; }
+        .weight-validator-status { font-size: 0.8rem; font-weight: bold; }
 
-        .combo-result-box {
-            background: #2a1a2a;
-            border: 1px solid #9C27B0;
-            border-radius: 8px;
-            padding: 24px;
-            text-align: center;
-            margin: 15px 0;
+        /* Bloc cards */
+        .bloc-card {
+            background: #1e1e1e; border: 1px solid #333; border-radius: 8px;
+            margin-bottom: 10px; overflow: hidden; border-left: 3px solid #9C27B0;
         }
-        .combo-result-pct {
-            font-size: 2.5rem;
-            color: #CE93D8;
-            font-weight: bold;
+        .bloc-card-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 14px 16px; cursor: pointer;
         }
-        .combo-result-count {
-            font-size: 1.1rem;
-            color: #ffcc00;
-            margin-top: 6px;
-        }
-        .combo-result-label {
-            color: #888;
-            font-size: 0.85rem;
-            margin-top: 8px;
-        }
-
-        /* Generated blocs list */
-        .bloc-preview-card {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 16px;
-            background: #252525;
-            border-radius: 6px;
-            margin-bottom: 6px;
-            border-left: 3px solid #9C27B0;
-        }
-        .bloc-preview-name { font-weight: bold; color: #CE93D8; font-size: 0.9rem; }
-        .bloc-preview-tags {
-            display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;
-        }
-        .bloc-preview-tag {
+        .bloc-card-header:hover { background: #252525; }
+        .bloc-card-left { flex: 1; }
+        .bloc-card-name { font-weight: bold; color: #CE93D8; font-size: 0.95rem; }
+        .bloc-card-meta { display: flex; gap: 12px; margin-top: 4px; font-size: 0.78rem; color: #888; }
+        .bloc-card-weight { color: #ffcc00; font-weight: bold; }
+        .bloc-card-issues { display: flex; gap: 4px; flex-wrap: wrap; }
+        .bloc-card-issue-tag {
             font-size: 0.65rem; padding: 2px 7px; border-radius: 10px;
-            background: #3a1a3a; color: #CE93D8; border: 1px solid #5a2a5a;
+            background: #1a2a1a; color: #4CAF50; border: 1px solid #2a3a2a;
         }
-        .bloc-preview-count { color: #ffcc00; font-weight: bold; font-size: 0.9rem; white-space: nowrap; margin-left: 12px; }
-        .bloc-preview-pct { color: #888; font-size: 0.75rem; margin-left: 4px; }
+        .bloc-card-actions { display: flex; gap: 6px; }
+        .bloc-card-actions button {
+            padding: 5px 10px; font-size: 0.75rem; border-radius: 4px;
+            border: 1px solid #444; background: #2a2a2a; color: #ccc; cursor: pointer;
+        }
+        .bloc-card-actions button:hover { background: #3a3a3a; border-color: #666; }
+        .bloc-card-actions .btn-del { color: #ff4444; border-color: #442222; }
+        .bloc-card-actions .btn-del:hover { background: #331111; border-color: #ff4444; }
+
+        /* Bloc detail / edit panel */
+        .bloc-detail {
+            padding: 16px; border-top: 1px solid #333; background: #161616;
+        }
+        .bloc-axis-row {
+            display: grid; grid-template-columns: 110px 1fr 110px;
+            gap: 8px; align-items: center; padding: 6px 0;
+        }
+        .bloc-axis-label { font-size: 0.8rem; font-weight: bold; }
+        .bloc-axis-label-left { text-align: right; }
+        .bloc-axis-label-right { text-align: left; }
+        .bloc-axis-slider { width: 100%; accent-color: #9C27B0; height: 5px; }
+        .bloc-axis-value { font-size: 0.75rem; color: #CE93D8; font-weight: bold; text-align: center; min-width: 30px; }
+
+        /* Bloc form */
+        .bloc-form {
+            background: #1a1a1a; border: 2px solid #9C27B0; border-radius: 8px;
+            padding: 20px; margin-bottom: 16px;
+        }
+        .bloc-form h3 { color: #CE93D8; font-size: 1rem; margin-bottom: 16px; }
+        .bloc-form-row { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+        .bloc-form-field { display: flex; flex-direction: column; gap: 4px; }
+        .bloc-form-field label { font-size: 0.75rem; color: #888; text-transform: uppercase; font-weight: bold; }
+        .bloc-form-field input[type="text"],
+        .bloc-form-field input[type="number"],
+        .bloc-form-field textarea {
+            background: #252525; border: 1px solid #444; border-radius: 4px;
+            color: #eee; padding: 8px 10px; font-size: 0.9rem;
+        }
+        .bloc-form-field input:focus, .bloc-form-field textarea:focus {
+            outline: none; border-color: #9C27B0;
+        }
+        .bloc-form-issues { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+        .bloc-form-issue-btn {
+            padding: 6px 12px; font-size: 0.78rem; border-radius: 14px;
+            border: 1px solid #444; background: #252525; color: #888;
+            cursor: pointer; transition: all 0.15s;
+        }
+        .bloc-form-issue-btn:hover { border-color: #4CAF50; color: #ccc; }
+        .bloc-form-issue-btn.active { background: #1a3a1a; border-color: #4CAF50; color: #4CAF50; font-weight: bold; }
+        .bloc-form-btns { display: flex; gap: 10px; margin-top: 16px; }
 
         .eligible-input {
             width: 160px;
@@ -332,6 +320,31 @@
                 <div id="election-preview-content"></div>
                 <div id="election-preview-blocs" style="margin-top:15px;"></div>
             </div>
+
+            <!-- ========== SCHEDULE ELECTION ========== -->
+            <hr style="border-color:#333; margin:20px 0;">
+            <h3>📅 Schedule Election</h3>
+            <div class="info-box"><strong>ℹ️ Schedule elections</strong><br>Insert scheduled election(s) at a future tick. When advanceTick reaches that tick, the election runs automatically and subsequent elections are auto-scheduled.</div>
+            <div class="input-group">
+                <label>Nation</label>
+                <select id="schedule-nation-select" onchange="onScheduleNationChange()">
+                    <option value="__all__">All Nations (Democracies)</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Election Type</label>
+                <select id="schedule-type-select">
+                    <option value="presidential">Presidential (Parliamentary + Presidential)</option>
+                    <option value="parliamentary">Parliamentary / Midterm</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Election Tick</label>
+                <input type="number" id="schedule-tick-input" min="1" placeholder="e.g. 24">
+                <div style="font-size:0.75rem;color:#888;" id="schedule-tick-hint"></div>
+            </div>
+            <button class="btn btn-primary" style="width:100%;" id="schedule-election-btn" onclick="scheduleElection()">📅 SCHEDULE ELECTION</button>
+            <div id="schedule-status" class="status info hidden"></div>
         </div>
 
 
@@ -350,9 +363,9 @@
 
         <!-- ==================== VOTERS TAB ==================== -->
         <div class="tab-content" id="tab-voters">
-            <h2>🗳️ Nation Ideology Breakdown</h2>
+            <h2>🗳️ Voter Bloc Management</h2>
             <p style="color:#888; font-size:0.9rem; margin-bottom:20px;">
-                Adjust ideology axis splits per nation, preview voter combinations, and auto-generate voter blocs.
+                Create and manage named voter blocs per nation. Each bloc has ideology scores, population weight, and priority issues.
             </p>
 
             <!-- Nation Selector -->
@@ -384,64 +397,53 @@
                 <!-- Ideology Axis Sliders -->
                 <div style="margin:24px 0;">
                     <h3 style="color:#ffcc00; font-size:1rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:16px;">
-                        Ideology Axes
+                        Nation Ideology Axes
                     </h3>
                     <p style="color:#888; font-size:0.85rem; margin-bottom:16px;">
-                        Each slider sets the population split. Distance from 50% determines salience (how many people care about that issue).
+                        Each slider sets the national population split for this ideology axis. These values define the electorate's ideological landscape.
                     </p>
                     <div id="ideology-sliders-container"></div>
                 </div>
 
                 <!-- Save Axes -->
                 <div style="display:flex; gap:12px; align-items:center; margin-bottom:30px;">
-                    <button class="btn btn-primary" onclick="saveAxes()">💾 SAVE AXES</button>
-                    <button class="btn btn-secondary" onclick="resetAxesToSaved()">↩ Reset</button>
+                    <button class="btn btn-primary" onclick="saveAxes()">Save Axes & Eligible Voters</button>
+                    <button class="btn btn-secondary" onclick="resetAxesToSaved()">Reset</button>
                     <span id="axes-save-status" style="font-weight:bold;"></span>
                 </div>
 
                 <!-- Divider -->
                 <div style="border-top:2px solid #333; margin:30px 0;"></div>
 
-                <!-- Combination Viewer -->
                 <h3 style="color:#CE93D8; font-size:1rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
-                    🔍 Combination Viewer
+                    Voter Blocs
                 </h3>
                 <p style="color:#888; font-size:0.85rem; margin-bottom:16px;">
-                    Click ideologies to see estimated population overlap. You cannot select both sides of the same axis.
+                    Named demographic groups with ideology scores and population weights. Parties have separate approval ratings with each bloc.
                 </p>
-                <div class="combo-pills" id="combo-pills-container"></div>
-                <div id="combo-result-container"></div>
 
-                <!-- Divider -->
-                <div style="border-top:2px solid #333; margin:30px 0;"></div>
-
-                <!-- Generate Voter Blocs -->
-                <h3 style="color:#4CAF50; font-size:1rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
-                    ⚙️ Generate Voter Blocs
-                </h3>
-                <p style="color:#888; font-size:0.85rem; margin-bottom:16px;">
-                    Auto-generates all ideology combination blocs from the current axis values.
-                    <strong style="color:#ff9800;">This will DELETE all existing voter blocs for this nation.</strong>
-                </p>
-                <button class="btn btn-success btn-full" onclick="generateVoterBlocs()">
-                    🔄 WIPE & GENERATE VOTER BLOCS
-                </button>
-                <div id="generate-status" class="status success hidden" style="margin-top:15px;"></div>
-
-                <!-- Generated blocs preview -->
-                <div id="generated-blocs-preview" class="hidden" style="margin-top:20px;">
-                    <h3 style="color:#CE93D8; font-size:1rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">
-                        📋 Generated Blocs (<span id="bloc-count-display">0</span>)
-                    </h3>
-                    <div id="generated-blocs-list"></div>
+                <!-- Weight Validator -->
+                <div class="weight-validator" id="weight-validator">
+                    <span class="weight-validator-label">Total Population Weight:</span>
+                    <span class="weight-validator-value" id="weight-total">0%</span>
+                    <span class="weight-validator-status" id="weight-status"></span>
                 </div>
 
-                <!-- Existing blocs -->
-                <div style="margin-top:30px;">
-                    <h3 style="color:#888; font-size:0.9rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">
-                        Current Voter Blocs in Database
-                    </h3>
-                    <div id="existing-blocs-display"></div>
+                <!-- Action Buttons -->
+                <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px;">
+                    <button class="btn btn-success" onclick="generateDefaultBlocs()">Generate Default Blocs</button>
+                    <button class="btn btn-primary" onclick="showAddBlocForm()">+ Add Bloc</button>
+                    <button class="btn btn-secondary" onclick="initializeBlocApprovals()">Initialize Party Approvals</button>
+                </div>
+
+                <div id="bloc-action-status" style="margin-bottom:16px;"></div>
+
+                <!-- Add/Edit Bloc Form (hidden by default) -->
+                <div id="bloc-form-container" class="hidden"></div>
+
+                <!-- Existing Blocs List -->
+                <div id="existing-blocs-display">
+                    <div class="no-players">Select a nation to view voter blocs.</div>
                 </div>
             </div>
         </div>
@@ -449,20 +451,37 @@
         <!-- ==================== DANGER ZONE TAB ==================== -->
         <div class="tab-content" id="tab-danger">
             <h2>🔥 Danger Zone</h2>
+
+            <!-- Seed Snapshot Section -->
+            <div style="background:#1a2a1a; border:1px solid #4CAF50; border-radius:8px; padding:16px; margin-bottom:24px;">
+                <strong style="color:#4CAF50;">📸 Seed Snapshot</strong><br>
+                <p style="color:#aaa; font-size:0.85rem; margin:8px 0;">
+                    Saves every nation's current stats as the reset point. When you reset the shard, nation stats will be restored to this snapshot.
+                    Do this once after setting up nations and before starting gameplay.
+                </p>
+                <button class="btn btn-success" onclick="snapshotSeedStats()">Save Current Stats as Seed</button>
+                <span id="seed-status" style="margin-left:12px;"></span>
+                <div id="seed-info" style="margin-top:8px; font-size:0.8rem; color:#888;"></div>
+            </div>
+
+            <!-- Reset Section -->
             <div class="warning">
-                <strong>⚠️ DANGER ZONE</strong><br>
-                Resets the entire Alpha Shard to January 2000.<br><br>
+                <strong>⚠️ FULL SHARD RESET</strong><br><br>
                 This will:<br>
-                • Reset game date to January, 2000<br>
-                • Reset current_tick to 0<br>
-                • Set next tick based on current interval<br>
-                • Reset ALL nation stats to defaults<br>
-                • Kick out ALL players (forces re-selection)<br>
-                • Clear ALL party data<br>
-                • Does NOT delete user accounts
+                • Reset game date to January, 2000 &amp; tick to 0<br>
+                • Restore ALL nation stats from seed snapshot<br>
+                • <strong>DELETE</strong> all political parties (players must recreate)<br>
+                • Clear all bills, laws, elections, administrations<br>
+                • Clear all ministry events, PM candidates, crises<br>
+                • Clear event logs, campaign actions, history<br>
+                • Reset voter bloc approvals<br>
+                • Clear diplomatic messages, proposals, action logs<br>
+                • Does NOT delete user accounts<br>
+                • Does NOT delete voter blocs, policies, or templates
             </div>
             <button class="btn btn-danger btn-full" id="reset-btn" onclick="resetShard()">🔥 RESET ALPHA SHARD 🔥</button>
             <div id="reset-status" class="status info hidden"></div>
+            <div id="reset-log" style="margin-top:12px; font-size:0.8rem; color:#aaa; max-height:300px; overflow-y:auto;"></div>
         </div>
 
         <!-- ==================== INSPECTOR TAB ==================== -->
@@ -576,6 +595,7 @@
         await loadStats();
         await loadNations();
         await loadElectionNations();
+        await updateScheduleTickHint();
         await loadVoterNations();
         await loadInspectorNations();
     }
@@ -643,6 +663,10 @@
             if (summary.effects?.length) parts.push(`${summary.effects.reduce((s,e) => s + e.effects.length, 0)} law effects`);
             if (summary.ministryActions?.length) parts.push(`${summary.ministryActions.reduce((s,e) => s + e.effects.length, 0)} ministry effects`);
             if (summary.costs?.length) parts.push(`${summary.costs.length} cost deductions`);
+            if (summary.ministryEvents?.length) {
+                const mEvtCount = summary.ministryEvents.reduce((s,e) => s + e.events.length, 0);
+                parts.push(`${mEvtCount} ministry inbox event(s) fired`);
+            }
             if (parts.length) msg += ' — ' + parts.join(', ');
             status.className = 'status success'; status.textContent = msg;
             await loadShardInfo(); await loadStats();
@@ -676,6 +700,13 @@
             const select = document.getElementById('election-nation-select');
             select.innerHTML = '<option value="">-- Choose a nation --</option>';
             nations.forEach(n => { select.innerHTML += `<option value="${n.id}">${n.name}</option>`; });
+
+            // Populate schedule-election nation dropdown
+            const schedSelect = document.getElementById('schedule-nation-select');
+            schedSelect.innerHTML = '<option value="__all__">All Nations (Democracies)</option>';
+            nations.filter(n => n.government_type !== 'Autocracy').forEach(n => {
+                schedSelect.innerHTML += `<option value="${n.id}">${n.name} (${n.government_type || 'Democracy'})</option>`;
+            });
         } catch (error) { console.error(error); }
     }
     async function onElectionNationSelect() {
@@ -943,24 +974,134 @@
         btn.disabled = false; btn.textContent = '🔍 PREVIEW ELECTION';
     }
 
-    // ==================== NPCS TAB ====================
-    async function generateAllNPCs() {
-        if (!confirm('Generate NPCs for all nations?')) return;
-        const status = document.getElementById('npc-status');
-        status.className = 'status info'; status.textContent = 'Generating...'; status.classList.remove('hidden');
+    // ==================== SCHEDULE ELECTION ====================
+    async function scheduleElection() {
+        const nationSelect = document.getElementById('schedule-nation-select');
+        const typeSelect = document.getElementById('schedule-type-select');
+        const tickInput = document.getElementById('schedule-tick-input');
+        const status = document.getElementById('schedule-status');
+        const btn = document.getElementById('schedule-election-btn');
+
+        const targetTick = parseInt(tickInput.value);
+        if (!targetTick || targetTick < 1) {
+            status.className = 'status error'; status.textContent = 'Enter a valid tick.'; status.classList.remove('hidden');
+            return;
+        }
+
+        // Validate tick is in the future
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shard?.current_tick || 0;
+        if (targetTick <= currentTick) {
+            status.className = 'status error';
+            status.textContent = `❌ Tick must be in the future. Current tick is ${currentTick}.`;
+            status.classList.remove('hidden');
+            return;
+        }
+
+        const electionType = typeSelect.value; // 'presidential' or 'parliamentary'
+        const nationValue = nationSelect.value;
+
+        // Determine which nations to schedule for
+        let targetNations;
+        if (nationValue === '__all__') {
+            const { data } = await _supabase.from('nations').select('id, name, government_type')
+                .neq('government_type', 'Autocracy');
+            targetNations = data || [];
+        } else {
+            const { data } = await _supabase.from('nations').select('id, name, government_type')
+                .eq('id', nationValue).single();
+            targetNations = data ? [data] : [];
+        }
+
+        if (targetNations.length === 0) {
+            status.className = 'status error'; status.textContent = 'No eligible nations found.'; status.classList.remove('hidden');
+            return;
+        }
+
+        btn.disabled = true;
+        status.className = 'status info'; status.textContent = '⏳ Scheduling...'; status.classList.remove('hidden');
+
         try {
-            const { data: allNations } = await _supabase.from('nations').select('id');
-            for (const nation of allNations) { await _supabase.rpc('generate_npc_parties_for_nation', { p_nation_id: nation.id }); }
-            status.className = 'status success'; status.textContent = '✅ NPCs generated!'; await loadStats();
-        } catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
-    }
-    async function runNPCActions() {
-        const status = document.getElementById('npc-status');
-        status.className = 'status info'; status.textContent = 'Running NPC actions...'; status.classList.remove('hidden');
-        try { await _supabase.rpc('run_all_npc_party_actions'); status.className = 'status success'; status.textContent = '✅ NPC actions complete!'; }
-        catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
+            // Delete any existing scheduled elections for these nations to avoid duplicates
+            for (const nation of targetNations) {
+                const { error: delErr } = await _supabase.from('elections').delete()
+                    .eq('nation_id', nation.id)
+                    .eq('status', 'scheduled');
+                if (delErr) console.warn(`Failed to clear old scheduled elections for ${nation.name}:`, delErr);
+            }
+
+            const rows = [];
+            for (const nation of targetNations) {
+                const isPresidential = nation.government_type === 'Presidential';
+
+                // Always schedule parliamentary
+                rows.push({
+                    nation_id: nation.id,
+                    election_tick: targetTick,
+                    election_type: 'parliamentary',
+                    status: 'scheduled'
+                });
+
+                // For "presidential" type, also add a presidential election
+                // (only for Presidential government nations — standard democracies skip this)
+                if (electionType === 'presidential' && isPresidential) {
+                    rows.push({
+                        nation_id: nation.id,
+                        election_tick: targetTick,
+                        election_type: 'presidential',
+                        status: 'scheduled'
+                    });
+                }
+            }
+
+            // Use .select() to get server confirmation of inserted rows
+            const { data: inserted, error } = await _supabase.from('elections').insert(rows).select();
+
+            if (error) {
+                status.className = 'status error';
+                status.textContent = '❌ Insert error: ' + error.message;
+                console.error('Election schedule insert error:', error);
+            } else {
+                const dbCount = inserted?.length || 0;
+                const typeLabel = electionType === 'presidential'
+                    ? 'Parliamentary + Presidential' : 'Parliamentary / Midterm';
+                status.className = 'status success';
+                status.textContent = `✅ Scheduled ${typeLabel} for ${targetNations.length} nation(s) at tick ${targetTick} — ${dbCount} record(s) confirmed in DB`;
+                console.log('Scheduled elections:', inserted);
+            }
+        } catch (err) {
+            status.className = 'status error';
+            status.textContent = '❌ Unexpected error: ' + err.message;
+            console.error('scheduleElection error:', err);
+        }
+        btn.disabled = false;
+        status.classList.remove('hidden');
     }
 
+    // Populate current tick hint when schedule section is visible
+    async function updateScheduleTickHint() {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const hint = document.getElementById('schedule-tick-hint');
+        if (hint && shard) hint.textContent = `Current shard tick: ${shard.current_tick}. Enter a tick greater than this.`;
+    }
+
+    function onScheduleNationChange() {
+        const nationValue = document.getElementById('schedule-nation-select').value;
+        const typeSelect = document.getElementById('schedule-type-select');
+        const presOption = typeSelect.querySelector('option[value="presidential"]');
+
+        if (nationValue === '__all__') {
+            presOption.disabled = false;
+        } else {
+            const nation = nations.find(n => n.id === nationValue);
+            if (nation && nation.government_type !== 'Presidential') {
+                presOption.disabled = true;
+                typeSelect.value = 'parliamentary';
+            } else {
+                presOption.disabled = false;
+            }
+        }
+    }
 
     // ==================== PLAYERS TAB ====================
     let allPlayersCache = [];
@@ -1002,27 +1143,149 @@
     }
 
     // ==================== DANGER ZONE ====================
-    async function resetShard() {
-        if (!confirm('⚠️ RESET ENTIRE SHARD? This cannot be undone!')) return;
-        const btn = document.getElementById('reset-btn'); const status = document.getElementById('reset-status');
-        btn.disabled = true; status.className = 'status info'; status.textContent = 'Resetting...'; status.classList.remove('hidden');
+
+    /** Save every nation's current stats into seed_stats JSONB column */
+    async function snapshotSeedStats() {
+        const statusEl = document.getElementById('seed-status');
+        const infoEl = document.getElementById('seed-info');
+        statusEl.innerHTML = '<span style="color:#2196F3; font-weight:bold;">Snapshotting...</span>';
+
         try {
-            const nextTick = new Date(); nextTick.setHours(nextTick.getHours() + currentTickInterval);
-            await _supabase.from('shard').update({ current_date: 'January, 2000', current_tick: 0, next_tick_at: nextTick.toISOString() }).eq('name', 'Alpha Shard');
-            await _supabase.from('factions').update({ nation_id: null, faction_type: 'pending' }).not('nation_id', 'is', null);
-            status.className = 'status success'; status.textContent = '✅ Shard reset complete!'; await loadAllData();
-        } catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; }
+            const { data: nations, error } = await _supabase.from('nations').select('*');
+            if (error) throw error;
+            if (!nations || nations.length === 0) { statusEl.innerHTML = '<span style="color:#ff9800;">No nations found.</span>'; return; }
+
+            let count = 0;
+            for (const nation of nations) {
+                const snapshot = {};
+                for (const key of NATION_STAT_COLUMNS) {
+                    if (nation[key] !== undefined && nation[key] !== null) {
+                        snapshot[key] = nation[key];
+                    }
+                }
+                // Also save government-adjacent fields
+                ['total_seats', 'government_type'].forEach(k => {
+                    if (nation[k] !== undefined && nation[k] !== null) snapshot[k] = nation[k];
+                });
+
+                const { error: uErr } = await _supabase.from('nations')
+                    .update({ seed_stats: snapshot })
+                    .eq('id', nation.id);
+                if (uErr) throw uErr;
+                count++;
+            }
+
+            statusEl.innerHTML = `<span style="color:#4CAF50; font-weight:bold;">✅ Saved seed for ${count} nation(s)</span>`;
+            infoEl.textContent = 'Snapshot taken at ' + new Date().toLocaleString();
+        } catch (error) {
+            console.error(error);
+            statusEl.innerHTML = `<span style="color:#ff4444; font-weight:bold;">❌ ${error.message}</span>`;
+        }
+    }
+
+    /** Full shard reset — restores nation stats, deletes all game state */
+    async function resetShard() {
+        if (!confirm('⚠️ FULL SHARD RESET — this will delete ALL parties, laws, elections, and game data. Continue?')) return;
+        if (!confirm('⚠️ SECOND CONFIRMATION — Are you absolutely sure? This cannot be undone!')) return;
+
+        const btn = document.getElementById('reset-btn');
+        const status = document.getElementById('reset-status');
+        const log = document.getElementById('reset-log');
+        btn.disabled = true;
+        status.className = 'status info'; status.textContent = 'Resetting...'; status.classList.remove('hidden');
+        log.innerHTML = '';
+
+        const logMsg = (msg, color = '#aaa') => {
+            log.innerHTML += `<div style="color:${color};">${msg}</div>`;
+            log.scrollTop = log.scrollHeight;
+        };
+
+        try {
+            // 1. Reset shard clock
+            logMsg('Resetting shard clock...');
+            const nextTick = new Date(Date.now() + currentTickInterval * 60 * 60 * 1000);
+            await _supabase.from('shard').update({
+                current_date: 'January, 2000', current_tick: 0,
+                next_tick_at: nextTick.toISOString()
+            }).eq('name', 'Alpha Shard');
+            logMsg('✓ Shard clock reset to January 2000, tick 0', '#4CAF50');
+
+            // 2. Clear all game-state tables via RPC (bypasses RLS, handles FK ordering)
+            logMsg('Clearing game state tables...');
+            const { data: clearResult, error: clearErr } = await _supabase.rpc('admin_reset_tables');
+            if (clearErr) {
+                logMsg('⚠ admin_reset_tables RPC failed: ' + clearErr.message, '#ff9800');
+                logMsg('  (Run sql/create_admin_reset_tables.sql in Supabase first)', '#888');
+            } else {
+                for (const [table, val] of Object.entries(clearResult || {})) {
+                    if (typeof val === 'number') {
+                        logMsg(`  ✓ ${table}: ${val} rows deleted`, '#666');
+                    } else {
+                        logMsg(`  ⚠ ${table}: ${val}`, '#ff9800');
+                    }
+                }
+                logMsg('✓ Game state tables cleared', '#4CAF50');
+            }
+
+            // 3. Delete all factions using admin_delete_party RPC (bypasses RLS)
+            logMsg('Deleting all political parties...');
+            const { data: allFactions } = await _supabase.from('factions').select('id, faction_name');
+            let delOk = 0, delFail = 0;
+            for (const f of (allFactions || [])) {
+                const { error: rpcErr } = await _supabase.rpc('admin_delete_party', { p_faction_id: f.id });
+                if (rpcErr) {
+                    logMsg(`  ⚠ ${f.faction_name}: ${rpcErr.message}`, '#ff9800');
+                    delFail++;
+                } else {
+                    delOk++;
+                }
+            }
+            if (delOk > 0) logMsg(`✓ Deleted ${delOk} political parties`, '#4CAF50');
+            if (delFail > 0) logMsg(`⚠ ${delFail} parties failed to delete`, '#ff9800');
+            if (delOk === 0 && delFail === 0) logMsg('No parties to delete', '#888');
+
+            // 4. Restore nation stats from seed_stats
+            logMsg('Restoring nation stats from seed...');
+            const { data: nations, error: nErr } = await _supabase.from('nations').select('id, name, seed_stats');
+            if (nErr) throw nErr;
+
+            let restored = 0, skipped = 0;
+            for (const nation of (nations || [])) {
+                if (!nation.seed_stats || Object.keys(nation.seed_stats).length === 0) {
+                    logMsg(`  ⚠ ${nation.name}: no seed stats saved, skipping`, '#ff9800');
+                    skipped++;
+                    continue;
+                }
+                // Only restore columns that exist in NATION_STAT_COLUMNS + known extras
+                const update = {};
+                const validKeys = new Set([...NATION_STAT_COLUMNS, 'total_seats', 'government_type']);
+                for (const [k, v] of Object.entries(nation.seed_stats)) {
+                    if (validKeys.has(k)) update[k] = v;
+                }
+                const { error: uErr } = await _supabase.from('nations').update(update).eq('id', nation.id);
+                if (uErr) logMsg(`  ⚠ ${nation.name}: ${uErr.message}`, '#ff9800');
+                else { logMsg(`  ✓ ${nation.name} restored (${Object.keys(update).length} stats)`, '#666'); restored++; }
+            }
+            if (skipped > 0) logMsg(`⚠ ${skipped} nation(s) had no seed — use "Save Current Stats as Seed" first`, '#ff9800');
+            logMsg(`✓ ${restored} nation(s) restored from seed`, '#4CAF50');
+
+            // 5. Done
+            status.className = 'status success';
+            status.textContent = `✅ Shard reset complete! ${restored} nations restored, all game tables cleared.`;
+            await loadAllData();
+        } catch (error) {
+            console.error(error);
+            logMsg('❌ FATAL: ' + error.message, '#ff4444');
+            status.className = 'status error'; status.textContent = '❌ Error: ' + error.message;
+        }
         btn.disabled = false;
     }
 
 
     // ================================================================
-    //                    VOTER IDEOLOGY TOOL
+    //                    NATION IDEOLOGY SLIDERS
     // ================================================================
 
-    // Axis definitions — column is what's stored in the nations table.
-    // The stored value represents the LEFT-side percentage (0-100).
-    // Right side = 100 - stored value.
     const VOTER_AXES = [
         { column: 'liberty_voters',       left: 'Liberty',       right: 'Equality' },
         { column: 'individualism_voters', left: 'Individualism', right: 'Collectivism' },
@@ -1031,48 +1294,174 @@
         { column: 'globalism_voters',     left: 'Globalism',     right: 'Nationalism' }
     ];
 
-    // Opposing ideology map
-    const OPPOSITES = {};
-    VOTER_AXES.forEach(a => { OPPOSITES[a.left] = a.right; OPPOSITES[a.right] = a.left; });
+    let savedAxes = {};
+    let currentAxes = {};
 
-    // All 10 ideology names
-    const ALL_IDEOLOGIES = VOTER_AXES.flatMap(a => [a.left, a.right]);
+    function renderIdeologySliders() {
+        const container = document.getElementById('ideology-sliders-container');
+        container.innerHTML = VOTER_AXES.map((axis, i) => {
+            const val = currentAxes[axis.column] ?? 50;
+            const rightVal = 100 - val;
+            return `
+                <div class="axis-slider-row">
+                    <div class="axis-label-left" style="color:${val >= 50 ? '#CE93D8' : '#888'};">
+                        ${axis.left}
+                        <span class="axis-pct">${val}%</span>
+                    </div>
+                    <div class="axis-slider-wrap">
+                        <input type="range" min="0" max="100" value="${val}"
+                            oninput="onAxisSliderChange(${i}, this.value)">
+                    </div>
+                    <div class="axis-label-right" style="color:${rightVal >= 50 ? '#CE93D8' : '#888'};">
+                        ${axis.right}
+                        <span class="axis-pct">${rightVal}%</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function onAxisSliderChange(axisIndex, value) {
+        const col = VOTER_AXES[axisIndex].column;
+        currentAxes[col] = parseInt(value);
+        renderIdeologySliders();
+    }
+
+    function resetAxesToSaved() {
+        VOTER_AXES.forEach(a => { currentAxes[a.column] = savedAxes[a.column]; });
+        renderIdeologySliders();
+        document.getElementById('axes-save-status').textContent = 'Reset to saved values';
+        document.getElementById('axes-save-status').style.color = '#888';
+    }
+
+    async function saveAxes() {
+        if (!voterNationData) return;
+        const statusEl = document.getElementById('axes-save-status');
+        const updateObj = {};
+        VOTER_AXES.forEach(a => { updateObj[a.column] = currentAxes[a.column]; });
+        updateObj.eligible_voters = parseInt(document.getElementById('voter-eligible-input').value) || 0;
+
+        try {
+            const { error } = await _supabase.from('nations').update(updateObj).eq('id', voterNationData.id);
+            if (error) throw error;
+            VOTER_AXES.forEach(a => { savedAxes[a.column] = currentAxes[a.column]; });
+            voterNationData.eligible_voters = updateObj.eligible_voters;
+            statusEl.textContent = '✅ Saved!';
+            statusEl.style.color = '#4CAF50';
+            setTimeout(() => { statusEl.textContent = ''; }, 3000);
+        } catch (error) {
+            statusEl.textContent = '❌ ' + error.message;
+            statusEl.style.color = '#ff4444';
+        }
+    }
+
+
+    // ================================================================
+    //                    VOTER BLOC MANAGEMENT
+    // ================================================================
+
+    // Ideology axes for voter blocs (matches game-common.js IDEOLOGY_AXES)
+    const BLOC_AXES = [
+        { key: 'axis_liberty_equality',            left: 'Liberty',       right: 'Equality' },
+        { key: 'axis_tradition_progress',          left: 'Tradition',     right: 'Progress' },
+        { key: 'axis_security_freedom',            left: 'Security',      right: 'Freedom' },
+        { key: 'axis_globalism_nationalism',       left: 'Globalism',     right: 'Nationalism' },
+        { key: 'axis_individualism_collectivism',  left: 'Individualism', right: 'Collectivism' }
+    ];
+
+    // Priority issue categories
+    const PRIORITY_ISSUE_CATEGORIES = [
+        'Agriculture', 'Economics', 'Education', 'Governance', 'Healthcare',
+        'Immigration', 'Infrastructure', 'International', 'Labor', 'Military', 'Social'
+    ];
+
+    // Default bloc templates (axes & issues are fixed; weights are computed from nation stats)
+    const DEFAULT_BLOC_TEMPLATES = [
+        { name: 'Rural Traditionalists',     axes: [35, 15, 60, 50, 30], issues: ['Agriculture', 'Social'] },
+        { name: 'Religious Conservatives',   axes: [30, 10, 70, 50, 25], issues: ['Social', 'Governance'] },
+        { name: 'Nationalist Bloc',          axes: [35, 25, 85, 85, 40], issues: ['Military', 'Immigration'] },
+        { name: 'Business Owners',           axes: [20, 50, 45, 50, 15], issues: ['Economics', 'Labor'] },
+        { name: 'Urban Workers',             axes: [75, 55, 50, 50, 65], issues: ['Labor', 'Economics'] },
+        { name: 'Urban Progressives',        axes: [80, 90, 30, 50, 70], issues: ['Social', 'Education'] },
+        { name: 'Academics & Professionals', axes: [60, 85, 35, 50, 55], issues: ['Education', 'International'] },
+        { name: 'Military & Security',       axes: [25, 30, 10, 50, 30], issues: ['Military', 'Governance'] },
+        { name: 'Ethnic Minorities',         axes: [85, 60, 40, 50, 60], issues: ['Social', 'Immigration'] }
+    ];
+
+    /**
+     * Compute voter bloc population weights from nation stats.
+     * Each bloc gets a raw score from primary + secondary stats, then all are
+     * normalized so they sum to 100.  Every bloc has a floor of 3% so no group
+     * completely vanishes.
+     *
+     * Returns array of { name, weight, rawScore, formula } matching template order.
+     */
+    function computeBlocWeights(nation) {
+        const s = (key, fallback = 50) => parseFloat(nation[key]) || fallback;
+        const inv = (v) => 100 - v;
+
+        // GDP per capita (0-100 scale): log-scale normalize, $500 → ~0, $80k → ~100
+        const gdppc = (s('gdp', 1000000000) / Math.max(s('population', 1000000), 1));
+        const gdppcScore = Math.min(100, Math.max(0, (Math.log10(Math.max(gdppc, 500)) - Math.log10(500)) / (Math.log10(80000) - Math.log10(500)) * 100));
+
+        // Raw score formulas: primary stat weighted 70%, secondary 30%
+        // Single-stat blocs use 100% of that stat
+        const formulas = [
+            { // Rural Traditionalists: low urbanization + high arable land
+                primary: 'urbanization (inv)', secondary: 'arable_land',
+                raw: inv(s('urbanization')) * 0.7 + s('arable_land') * 0.3
+            },
+            { // Religious Conservatives: religiosity (1:1)
+                primary: 'religious', secondary: '—',
+                raw: s('religious')
+            },
+            { // Nationalist Bloc: high polarization + low ethnic diversity
+                primary: 'polarization', secondary: 'ethnic_diversity (inv)',
+                raw: s('polarization') * 0.7 + inv(s('ethnic_diversity')) * 0.3
+            },
+            { // Business Owners: GDP per capita + low corporate tax
+                primary: 'GDP per capita', secondary: 'corporate_tax (inv)',
+                raw: gdppcScore * 0.7 + inv(s('corporate_tax')) * 0.3
+            },
+            { // Urban Workers: urbanization + union strength
+                primary: 'urbanization', secondary: 'union_strength',
+                raw: s('urbanization') * 0.7 + s('union_strength') * 0.3
+            },
+            { // Urban Progressives: higher education + urbanization (need both)
+                primary: 'higher_education', secondary: 'urbanization',
+                raw: Math.min(s('higher_education'), s('urbanization')) * 0.6 + Math.max(s('higher_education'), s('urbanization')) * 0.4
+            },
+            { // Academics & Professionals: higher education + academic immigration
+                primary: 'higher_education', secondary: 'academic_immigration',
+                raw: s('higher_education') * 0.7 + s('academic_immigration') * 0.3
+            },
+            { // Military & Security: terrorism threat
+                primary: 'terrorism', secondary: '—',
+                raw: s('terrorism')
+            },
+            { // Ethnic Minorities: ethnic diversity (1:1)
+                primary: 'ethnic_diversity', secondary: '—',
+                raw: s('ethnic_diversity')
+            }
+        ];
+
+        // Apply floor of 3 to every raw score so no bloc vanishes entirely
+        const FLOOR = 3;
+        const rawScores = formulas.map(f => Math.max(FLOOR, f.raw));
+        const totalRaw = rawScores.reduce((a, b) => a + b, 0);
+
+        return DEFAULT_BLOC_TEMPLATES.map((tmpl, i) => ({
+            name: tmpl.name,
+            weight: Math.round(rawScores[i] / totalRaw * 100),
+            rawScore: Math.round(rawScores[i] * 10) / 10,
+            formula: formulas[i].primary + (formulas[i].secondary !== '—' ? ' + ' + formulas[i].secondary : '')
+        }));
+    }
 
     // State
     let voterNationData = null;
-    let savedAxes = {};        // snapshot of saved values for "Reset"
-    let currentAxes = {};      // current slider values
-    let comboPills = new Set(); // selected ideologies in combo viewer
-
-    // ---- Salience formula ----
-    // Distance from 50 determines how many people define themselves on this axis.
-    // At 50: 15% care. At 100: 100% care. Linear interpolation.
-    function calcSalience(value) {
-        const dist = Math.abs(value - 50) / 50; // 0 to 1
-        return 0.15 + 0.85 * dist;
-    }
-
-    // ---- Probability that a random person holds a specific ideology ----
-    // e.g. P(Liberty) = salience * (liberty_voters / 100)
-    function ideologyProbability(ideology) {
-        for (const axis of VOTER_AXES) {
-            if (ideology === axis.left) {
-                const val = currentAxes[axis.column] ?? 50;
-                return calcSalience(val) * (val / 100);
-            }
-            if (ideology === axis.right) {
-                const val = currentAxes[axis.column] ?? 50;
-                return calcSalience(val) * ((100 - val) / 100);
-            }
-        }
-        return 0;
-    }
-
-    // ---- P(apathetic on axis) = 1 - salience ----
-    function axisSalience(axisIndex) {
-        const col = VOTER_AXES[axisIndex].column;
-        return calcSalience(currentAxes[col] ?? 50);
-    }
+    let voterBlocsCache = [];
+    let editingBlocId = null;
 
     // ---- Load voter nations dropdown ----
     async function loadVoterNations() {
@@ -1105,22 +1494,17 @@
             currentAxes[a.column] = val;
         });
 
-        // Reset combo viewer
-        comboPills = new Set();
-
-        // Populate UI
         document.getElementById('voter-pop-display').textContent = (nation.population || 0).toLocaleString();
         document.getElementById('voter-eligible-input').value = nation.eligible_voters || 0;
         document.getElementById('voter-eligible-input').max = nation.population || 0;
         updateEligiblePct();
 
         renderIdeologySliders();
-        renderComboPills();
-        document.getElementById('combo-result-container').innerHTML = '';
-        document.getElementById('generated-blocs-preview').classList.add('hidden');
+
+        document.getElementById('bloc-form-container').classList.add('hidden');
+        editingBlocId = null;
 
         await loadExistingBlocsDisplay(nationId);
-
         infoDiv.classList.remove('hidden');
     }
 
@@ -1131,284 +1515,410 @@
         document.getElementById('voter-eligible-pct').textContent = `(${pct}% of population)`;
     }
 
-    // Listen for eligible voter changes
     document.getElementById('voter-eligible-input').addEventListener('input', updateEligiblePct);
 
-    // ---- Render ideology sliders ----
-    function renderIdeologySliders() {
-        const container = document.getElementById('ideology-sliders-container');
-        container.innerHTML = VOTER_AXES.map((axis, i) => {
-            const val = currentAxes[axis.column] ?? 50;
-            const rightVal = 100 - val;
-            const salience = calcSalience(val);
-            const salPct = (salience * 100).toFixed(0);
-
-            return `
-                <div class="axis-slider-row">
-                    <div class="axis-label-left" style="color:${val >= 50 ? '#CE93D8' : '#888'};">
-                        ${axis.left}
-                        <span class="axis-pct">${val}%</span>
-                    </div>
-                    <div class="axis-slider-wrap">
-                        <input type="range" min="0" max="100" value="${val}"
-                            oninput="onAxisSliderChange(${i}, this.value)">
-                        <div class="axis-value-display" title="Salience: ${salPct}% of people care about this axis">
-                            ⚡${salPct}%
-                        </div>
-                    </div>
-                    <div class="axis-label-right" style="color:${rightVal >= 50 ? '#CE93D8' : '#888'};">
-                        ${axis.right}
-                        <span class="axis-pct">${rightVal}%</span>
-                    </div>
-                </div>
-            `;
-        }).join('');
+    // ---- Weight validator ----
+    function updateWeightValidator() {
+        const total = voterBlocsCache.reduce((s, b) => s + parseFloat(b.population_weight || 0), 0);
+        const totalRounded = Math.round(total * 100) / 100;
+        document.getElementById('weight-total').textContent = totalRounded + '%';
+        const statusEl = document.getElementById('weight-status');
+        if (Math.abs(totalRounded - 100) < 0.01) {
+            statusEl.textContent = '✅ Valid';
+            statusEl.style.color = '#4CAF50';
+        } else if (totalRounded > 100) {
+            statusEl.textContent = '⚠️ Over 100%';
+            statusEl.style.color = '#ff4444';
+        } else {
+            statusEl.textContent = '⚠️ Under 100% (' + (100 - totalRounded).toFixed(2) + '% remaining)';
+            statusEl.style.color = '#ff9800';
+        }
     }
 
-    function onAxisSliderChange(axisIndex, value) {
-        const col = VOTER_AXES[axisIndex].column;
-        currentAxes[col] = parseInt(value);
-        renderIdeologySliders();
-        // Update combo result if pills are selected
-        if (comboPills.size > 0) updateComboResult();
-    }
-
-    function resetAxesToSaved() {
-        VOTER_AXES.forEach(a => { currentAxes[a.column] = savedAxes[a.column]; });
-        renderIdeologySliders();
-        if (comboPills.size > 0) updateComboResult();
-        document.getElementById('axes-save-status').textContent = '↩ Reset to saved values';
-        document.getElementById('axes-save-status').style.color = '#888';
-    }
-
-    async function saveAxes() {
-        if (!voterNationData) return;
-        const statusEl = document.getElementById('axes-save-status');
-
-        const updateObj = {};
-        VOTER_AXES.forEach(a => { updateObj[a.column] = currentAxes[a.column]; });
-
-        // Also save eligible voters
-        updateObj.eligible_voters = parseInt(document.getElementById('voter-eligible-input').value) || 0;
-
+    // ---- Load & render blocs ----
+    async function loadExistingBlocsDisplay(nationId) {
+        const container = document.getElementById('existing-blocs-display');
         try {
-            const { error } = await _supabase.from('nations').update(updateObj).eq('id', voterNationData.id);
+            const { data, error } = await _supabase.from('voter_blocs').select('*')
+                .eq('nation_id', nationId).order('population_weight', { ascending: false });
             if (error) throw error;
 
-            // Update snapshots
-            VOTER_AXES.forEach(a => { savedAxes[a.column] = currentAxes[a.column]; });
-            voterNationData.eligible_voters = updateObj.eligible_voters;
+            voterBlocsCache = data || [];
+            updateWeightValidator();
 
-            statusEl.textContent = '✅ Saved!';
-            statusEl.style.color = '#4CAF50';
-            setTimeout(() => { statusEl.textContent = ''; }, 3000);
+            if (voterBlocsCache.length === 0) {
+                container.innerHTML = '<div class="no-players">No voter blocs for this nation. Click "Generate Default Blocs" to create the standard set.</div>';
+                return;
+            }
+
+            container.innerHTML = voterBlocsCache.map(bloc => renderBlocCard(bloc)).join('');
         } catch (error) {
-            statusEl.textContent = '❌ ' + error.message;
-            statusEl.style.color = '#ff4444';
+            console.error(error);
+            container.innerHTML = '<div class="no-players" style="color:#ff4444;">Error loading blocs: ' + error.message + '</div>';
         }
     }
 
-    // ---- Combination Viewer ----
-    function renderComboPills() {
-        const container = document.getElementById('combo-pills-container');
+    function renderBlocCard(bloc) {
+        const issues = (bloc.priority_issues || []);
+        const issueTags = issues.map(i => `<span class="bloc-card-issue-tag">${i}</span>`).join('');
 
-        // Figure out which pills should be disabled (opposite of a selected one)
-        const disabledSet = new Set();
-        comboPills.forEach(ideo => {
-            if (OPPOSITES[ideo]) disabledSet.add(OPPOSITES[ideo]);
-        });
+        // Build compact axis summary
+        const axisSummary = BLOC_AXES.map(a => {
+            const val = bloc[a.key] ?? 50;
+            if (val < 35) return `<span style="color:#3b82f6;font-size:0.7rem;">${a.left}</span>`;
+            if (val > 65) return `<span style="color:#ef4444;font-size:0.7rem;">${a.right}</span>`;
+            return '';
+        }).filter(Boolean).join(' ');
 
-        container.innerHTML = ALL_IDEOLOGIES.map(ideo => {
-            const isActive = comboPills.has(ideo);
-            const isDisabled = disabledSet.has(ideo) && !isActive;
-            const cls = isActive ? 'active' : (isDisabled ? 'disabled' : '');
-            return `<div class="combo-pill ${cls}" onclick="${isDisabled ? '' : `toggleComboPill('${ideo}')`}">${ideo}</div>`;
-        }).join('');
-    }
-
-    function toggleComboPill(ideology) {
-        if (comboPills.has(ideology)) {
-            comboPills.delete(ideology);
-        } else {
-            // Don't allow selecting opposite of already-selected
-            if (OPPOSITES[ideology] && comboPills.has(OPPOSITES[ideology])) return;
-            comboPills.add(ideology);
-        }
-        renderComboPills();
-        updateComboResult();
-    }
-
-    function updateComboResult() {
-        const container = document.getElementById('combo-result-container');
-
-        if (comboPills.size === 0) {
-            container.innerHTML = '';
-            return;
-        }
-
-        const pop = voterNationData?.population || 0;
-        const selected = Array.from(comboPills);
-
-        // Inclusive probability: product of each selected ideology's probability
-        let prob = 1;
-        selected.forEach(ideo => { prob *= ideologyProbability(ideo); });
-
-        const estimated = Math.round(pop * prob);
-        const pct = (prob * 100).toFixed(1);
-
-        container.innerHTML = `
-            <div class="combo-result-box">
-                <div style="color:#888; font-size:0.8rem; margin-bottom:8px;">
-                    ${selected.join(' + ')} voters (inclusive — may hold additional views)
+        return `
+            <div class="bloc-card" id="bloc-card-${bloc.id}">
+                <div class="bloc-card-header" onclick="toggleBlocDetail('${bloc.id}')">
+                    <div class="bloc-card-left">
+                        <div class="bloc-card-name">${bloc.bloc_name}</div>
+                        <div class="bloc-card-meta">
+                            <span class="bloc-card-weight">${parseFloat(bloc.population_weight || 0).toFixed(1)}%</span>
+                            <span>${axisSummary || '<span style="color:#666;">Centrist</span>'}</span>
+                        </div>
+                        <div class="bloc-card-issues" style="margin-top:4px;">${issueTags || ''}</div>
+                    </div>
+                    <div class="bloc-card-actions">
+                        <button onclick="event.stopPropagation(); editBloc('${bloc.id}')">Edit</button>
+                        <button class="btn-del" onclick="event.stopPropagation(); deleteVoterBloc('${bloc.id}', '${bloc.bloc_name.replace(/'/g, "\\'")}')">Delete</button>
+                    </div>
                 </div>
-                <div class="combo-result-pct">${pct}%</div>
-                <div class="combo-result-count">${estimated.toLocaleString()} people</div>
-                <div class="combo-result-label">of ${pop.toLocaleString()} total population</div>
+                <div class="bloc-detail hidden" id="bloc-detail-${bloc.id}">
+                    ${BLOC_AXES.map(a => {
+                        const val = bloc[a.key] ?? 50;
+                        return `<div class="bloc-axis-row">
+                            <div class="bloc-axis-label bloc-axis-label-left" style="color:${val < 50 ? '#CE93D8' : '#666'}">${a.left}</div>
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <input type="range" class="bloc-axis-slider" min="0" max="100" value="${val}" disabled>
+                                <span class="bloc-axis-value">${val}</span>
+                            </div>
+                            <div class="bloc-axis-label bloc-axis-label-right" style="color:${val > 50 ? '#CE93D8' : '#666'}">${a.right}</div>
+                        </div>`;
+                    }).join('')}
+                    ${bloc.description ? `<div style="margin-top:8px;font-size:0.8rem;color:#888;font-style:italic;">${bloc.description}</div>` : ''}
+                </div>
             </div>
         `;
     }
 
-    // ---- Generate Voter Blocs ----
-    async function generateVoterBlocs() {
-        if (!voterNationData) return;
-        if (!confirm('This will DELETE all existing voter blocs for ' + voterNationData.name + ' and generate new ones from the current axis values.\n\nProceed?')) return;
+    function toggleBlocDetail(blocId) {
+        const detail = document.getElementById('bloc-detail-' + blocId);
+        if (detail) detail.classList.toggle('hidden');
+    }
 
-        const statusEl = document.getElementById('generate-status');
-        statusEl.className = 'status info'; statusEl.textContent = 'Generating blocs...'; statusEl.classList.remove('hidden');
+    // ---- Add / Edit Bloc Form ----
+    function showAddBlocForm() {
+        editingBlocId = null;
+        renderBlocForm({
+            bloc_name: '', description: '', population_weight: 0,
+            axis_liberty_equality: 50, axis_tradition_progress: 50,
+            axis_security_freedom: 50, axis_globalism_nationalism: 50,
+            axis_individualism_collectivism: 50,
+            priority_issues: []
+        });
+    }
+
+    function editBloc(blocId) {
+        const bloc = voterBlocsCache.find(b => b.id === blocId);
+        if (!bloc) return;
+        editingBlocId = blocId;
+        renderBlocForm(bloc);
+    }
+
+    function renderBlocForm(bloc) {
+        const container = document.getElementById('bloc-form-container');
+        const title = editingBlocId ? 'Edit Voter Bloc' : 'Add New Voter Bloc';
+        const issues = bloc.priority_issues || [];
+
+        container.innerHTML = `
+            <div class="bloc-form">
+                <h3>${title}</h3>
+                <div class="bloc-form-row">
+                    <div class="bloc-form-field" style="flex:2;">
+                        <label>Bloc Name</label>
+                        <input type="text" id="bloc-form-name" value="${bloc.bloc_name || ''}" placeholder="e.g. Rural Traditionalists">
+                    </div>
+                    <div class="bloc-form-field" style="flex:1;">
+                        <label>Population Weight (%)</label>
+                        <input type="number" id="bloc-form-weight" value="${parseFloat(bloc.population_weight || 0)}" min="0" max="100" step="0.5">
+                    </div>
+                </div>
+                <div class="bloc-form-field" style="margin-bottom:12px;">
+                    <label>Description</label>
+                    <input type="text" id="bloc-form-desc" value="${bloc.description || ''}" placeholder="Brief description of this voter demographic">
+                </div>
+
+                <label style="font-size:0.75rem;color:#888;text-transform:uppercase;font-weight:bold;margin-bottom:8px;display:block;">Ideology Axes (0 = Left Pole, 100 = Right Pole)</label>
+                ${BLOC_AXES.map(a => {
+                    const val = bloc[a.key] ?? 50;
+                    return `<div class="bloc-axis-row">
+                        <div class="bloc-axis-label bloc-axis-label-left">${a.left}</div>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="range" class="bloc-axis-slider" min="0" max="100" value="${val}"
+                                id="bloc-form-${a.key}"
+                                oninput="document.getElementById('bloc-form-${a.key}-val').textContent=this.value">
+                            <span class="bloc-axis-value" id="bloc-form-${a.key}-val">${val}</span>
+                        </div>
+                        <div class="bloc-axis-label bloc-axis-label-right">${a.right}</div>
+                    </div>`;
+                }).join('')}
+
+                <label style="font-size:0.75rem;color:#888;text-transform:uppercase;font-weight:bold;margin-top:12px;margin-bottom:6px;display:block;">Priority Issues (select 1-2)</label>
+                <div class="bloc-form-issues" id="bloc-form-issues">
+                    ${PRIORITY_ISSUE_CATEGORIES.map(cat => {
+                        const active = issues.includes(cat) ? 'active' : '';
+                        return `<button type="button" class="bloc-form-issue-btn ${active}" onclick="toggleIssue(this, '${cat}')">${cat}</button>`;
+                    }).join('')}
+                </div>
+
+                <div class="bloc-form-btns">
+                    <button class="btn btn-success" onclick="saveBlocForm()">Save Bloc</button>
+                    <button class="btn btn-secondary" onclick="cancelBlocForm()">Cancel</button>
+                </div>
+            </div>
+        `;
+        container.classList.remove('hidden');
+        document.getElementById('bloc-form-name').focus();
+    }
+
+    function toggleIssue(btn, category) {
+        btn.classList.toggle('active');
+    }
+
+    function getFormIssues() {
+        const buttons = document.querySelectorAll('#bloc-form-issues .bloc-form-issue-btn.active');
+        return Array.from(buttons).map(b => b.textContent.trim());
+    }
+
+    function cancelBlocForm() {
+        document.getElementById('bloc-form-container').classList.add('hidden');
+        editingBlocId = null;
+    }
+
+    async function saveBlocForm() {
+        if (!voterNationData) return;
+        const name = document.getElementById('bloc-form-name').value.trim();
+        if (!name) { alert('Bloc name is required.'); return; }
+
+        const weight = parseFloat(document.getElementById('bloc-form-weight').value) || 0;
+        const desc = document.getElementById('bloc-form-desc').value.trim();
+        const issues = getFormIssues();
+
+        const blocData = {
+            bloc_name: name,
+            description: desc,
+            population_weight: weight,
+            priority_issues: issues,
+            is_active: true
+        };
+
+        // Gather axis values
+        BLOC_AXES.forEach(a => {
+            blocData[a.key] = parseInt(document.getElementById('bloc-form-' + a.key).value) || 50;
+        });
+
+        // Also compute voter_count from population_weight for backwards compatibility
+        const eligible = voterNationData.eligible_voters || voterNationData.population || 0;
+        blocData.voter_count = Math.round(eligible * weight / 100);
+
+        // Generate ideology_1..5 tags from axis values for backwards compatibility
+        const tags = [];
+        BLOC_AXES.forEach(a => {
+            const val = blocData[a.key];
+            if (val < 35) tags.push(a.left);
+            else if (val > 65) tags.push(a.right);
+        });
+        for (let i = 0; i < 5; i++) {
+            blocData['ideology_' + (i + 1)] = tags[i] || null;
+        }
+
+        const statusEl = document.getElementById('bloc-action-status');
 
         try {
-            // 1. Save axes first
-            const updateObj = {};
-            VOTER_AXES.forEach(a => { updateObj[a.column] = currentAxes[a.column]; });
-            updateObj.eligible_voters = parseInt(document.getElementById('voter-eligible-input').value) || 0;
-            await _supabase.from('nations').update(updateObj).eq('id', voterNationData.id);
-            VOTER_AXES.forEach(a => { savedAxes[a.column] = currentAxes[a.column]; });
-            voterNationData.eligible_voters = updateObj.eligible_voters;
-
-            // 2. Delete existing blocs
-            await _supabase.from('voter_blocs').delete().eq('nation_id', voterNationData.id);
-
-            // 3. Generate all 3^5 = 243 combinations
-            const pop = voterNationData.population || 0;
-            const blocs = [];
-            const states = ['left', 'right', 'none']; // for each axis
-
-            // Recursive combo builder
-            function buildCombos(axisIdx, currentCombo, currentProb) {
-                if (axisIdx === VOTER_AXES.length) {
-                    const ideologies = [];
-                    currentCombo.forEach((state, i) => {
-                        if (state === 'left') ideologies.push(VOTER_AXES[i].left);
-                        else if (state === 'right') ideologies.push(VOTER_AXES[i].right);
-                    });
-                    const count = Math.round(pop * currentProb);
-                    if (count >= 1) {
-                        blocs.push({ ideologies, probability: currentProb, count });
-                    }
-                    return;
-                }
-
-                const val = currentAxes[VOTER_AXES[axisIdx].column] ?? 50;
-                const sal = calcSalience(val);
-                const pLeft = sal * (val / 100);
-                const pRight = sal * ((100 - val) / 100);
-                const pNone = 1 - sal;
-
-                for (const state of states) {
-                    const p = state === 'left' ? pLeft : state === 'right' ? pRight : pNone;
-                    if (currentProb * p * pop < 0.5) continue; // prune tiny branches
-                    currentCombo.push(state);
-                    buildCombos(axisIdx + 1, currentCombo, currentProb * p);
-                    currentCombo.pop();
-                }
-            }
-
-            buildCombos(0, [], 1);
-
-            // Sort by count descending
-            blocs.sort((a, b) => b.count - a.count);
-
-            // 4. Insert blocs into database
-            const inserts = blocs.map(b => ({
-                nation_id: voterNationData.id,
-                bloc_name: b.ideologies.length > 0 ? b.ideologies.join(' + ') + ' Bloc' : 'Unaligned Bloc',
-                description: b.ideologies.length > 0
-                    ? 'Voters who identify with ' + b.ideologies.join(', ')
-                    : 'Voters with no strong ideological alignment',
-                voter_count: b.count,
-                ideology_1: b.ideologies[0] || null,
-                ideology_2: b.ideologies[1] || null,
-                ideology_3: b.ideologies[2] || null,
-                ideology_4: b.ideologies[3] || null,
-                ideology_5: b.ideologies[4] || null,
-                is_active: true
-            }));
-
-            // Batch insert (supabase handles arrays)
-            if (inserts.length > 0) {
-                const { error } = await _supabase.from('voter_blocs').insert(inserts);
+            if (editingBlocId) {
+                const { error } = await _supabase.from('voter_blocs').update(blocData).eq('id', editingBlocId);
                 if (error) throw error;
+                statusEl.innerHTML = '<span style="color:#4CAF50;font-weight:bold;">✅ Bloc updated!</span>';
+            } else {
+                blocData.nation_id = voterNationData.id;
+                const { error } = await _supabase.from('voter_blocs').insert(blocData);
+                if (error) throw error;
+                statusEl.innerHTML = '<span style="color:#4CAF50;font-weight:bold;">✅ Bloc created!</span>';
             }
-
-            // 5. Show preview
-            statusEl.className = 'status success';
-            statusEl.textContent = `✅ Generated ${blocs.length} voter blocs for ${voterNationData.name}!`;
-
-            document.getElementById('bloc-count-display').textContent = blocs.length;
-            document.getElementById('generated-blocs-list').innerHTML = blocs.map(b => {
-                const pct = ((b.count / pop) * 100).toFixed(1);
-                const name = b.ideologies.length > 0 ? b.ideologies.join(' + ') : 'Unaligned';
-                const tags = b.ideologies.map(i => `<span class="bloc-preview-tag">${i}</span>`).join('');
-                return `
-                    <div class="bloc-preview-card">
-                        <div>
-                            <div class="bloc-preview-name">${name}</div>
-                            <div class="bloc-preview-tags">${tags || '<span style="color:#666; font-size:0.75rem;">No ideology</span>'}</div>
-                        </div>
-                        <div style="text-align:right;">
-                            <span class="bloc-preview-count">${b.count.toLocaleString()}</span>
-                            <span class="bloc-preview-pct">(${pct}%)</span>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-            document.getElementById('generated-blocs-preview').classList.remove('hidden');
-
+            setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
+            cancelBlocForm();
             await loadExistingBlocsDisplay(voterNationData.id);
-
+            // Auto-initialize faction_bloc_approval rows for the new bloc
+            await initializeBlocApprovals();
         } catch (error) {
-            console.error(error);
-            statusEl.className = 'status error';
-            statusEl.textContent = '❌ Error: ' + error.message;
+            statusEl.innerHTML = '<span style="color:#ff4444;font-weight:bold;">❌ Error: ' + error.message + '</span>';
         }
     }
 
-    // ---- Show existing blocs from DB ----
-    async function loadExistingBlocsDisplay(nationId) {
-        const container = document.getElementById('existing-blocs-display');
+    // ---- Delete bloc ----
+    async function deleteVoterBloc(blocId, blocName) {
+        if (!confirm('Delete voter bloc "' + blocName + '"? This will also remove any party approval data for this bloc.')) return;
+        const statusEl = document.getElementById('bloc-action-status');
         try {
-            const { data, error } = await _supabase.from('voter_blocs').select('*').eq('nation_id', nationId).order('voter_count', { ascending: false });
+            const { error } = await _supabase.from('voter_blocs').delete().eq('id', blocId);
             if (error) throw error;
-            if (!data || data.length === 0) {
-                container.innerHTML = '<div class="no-players">No voter blocs in database for this nation.</div>';
-                return;
+            statusEl.innerHTML = '<span style="color:#4CAF50;font-weight:bold;">✅ Bloc deleted.</span>';
+            setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
+            await loadExistingBlocsDisplay(voterNationData.id);
+        } catch (error) {
+            statusEl.innerHTML = '<span style="color:#ff4444;font-weight:bold;">❌ Error: ' + error.message + '</span>';
+        }
+    }
+
+    // ---- Generate default blocs ----
+    async function generateDefaultBlocs() {
+        if (!voterNationData) return;
+        if (voterBlocsCache.length > 0) {
+            if (!confirm('This will DELETE all existing voter blocs for ' + voterNationData.name + ' and create the 9 default demographic blocs seeded from nation stats.\n\nProceed?')) return;
+        }
+
+        const statusEl = document.getElementById('bloc-action-status');
+        statusEl.innerHTML = '<span style="color:#2196F3;font-weight:bold;">Generating stat-seeded blocs...</span>';
+
+        try {
+            // Delete existing blocs (and cascade deletes faction_bloc_approval rows)
+            await _supabase.from('voter_blocs').delete().eq('nation_id', voterNationData.id);
+
+            const eligible = voterNationData.eligible_voters || voterNationData.population || 0;
+
+            // Compute weights from nation stats
+            const computed = computeBlocWeights(voterNationData);
+
+            // Normalize so weights sum exactly to 100
+            let weightSum = computed.reduce((a, b) => a + b.weight, 0);
+            if (weightSum !== 100 && weightSum > 0) {
+                // Distribute rounding remainder to the largest bloc
+                const diff = 100 - weightSum;
+                const largest = computed.reduce((best, c, i) => c.weight > computed[best].weight ? i : best, 0);
+                computed[largest].weight += diff;
             }
-            const totalPop = voterNationData?.population || 1;
-            const totalBloc = data.reduce((s, b) => s + (b.voter_count || 0), 0);
-            container.innerHTML = `
-                <div style="color:#888; font-size:0.85rem; margin-bottom:12px;">
-                    ${data.length} blocs — ${totalBloc.toLocaleString()} total people
-                    (${((totalBloc / totalPop) * 100).toFixed(1)}% of population)
-                </div>
-                ${data.map(b => {
-                    const ideos = [b.ideology_1, b.ideology_2, b.ideology_3, b.ideology_4, b.ideology_5].filter(Boolean);
-                    const pct = ((b.voter_count / totalPop) * 100).toFixed(1);
-                    return `<div class="bloc-preview-card"><div><div class="bloc-preview-name">${b.bloc_name}</div><div class="bloc-preview-tags">${ideos.map(i => `<span class="bloc-preview-tag">${i}</span>`).join('') || '<span style="color:#666; font-size:0.75rem;">Unaligned</span>'}</div></div><div style="text-align:right;"><span class="bloc-preview-count">${(b.voter_count||0).toLocaleString()}</span><span class="bloc-preview-pct">(${pct}%)</span></div></div>`;
-                }).join('')}
-            `;
+
+            const inserts = DEFAULT_BLOC_TEMPLATES.map((def, idx) => {
+                const tags = [];
+                BLOC_AXES.forEach((a, i) => {
+                    const val = def.axes[i];
+                    if (val < 35) tags.push(a.left);
+                    else if (val > 65) tags.push(a.right);
+                });
+
+                const w = computed[idx].weight;
+                return {
+                    nation_id: voterNationData.id,
+                    bloc_name: def.name,
+                    description: 'Default demographic voter bloc',
+                    population_weight: w,
+                    voter_count: Math.round(eligible * w / 100),
+                    axis_liberty_equality: def.axes[0],
+                    axis_tradition_progress: def.axes[1],
+                    axis_security_freedom: def.axes[2],
+                    axis_globalism_nationalism: def.axes[3],
+                    axis_individualism_collectivism: def.axes[4],
+                    priority_issues: def.issues,
+                    ideology_1: tags[0] || null,
+                    ideology_2: tags[1] || null,
+                    ideology_3: tags[2] || null,
+                    ideology_4: tags[3] || null,
+                    ideology_5: tags[4] || null,
+                    is_active: true
+                };
+            });
+
+            const { error } = await _supabase.from('voter_blocs').insert(inserts);
+            if (error) throw error;
+
+            // Reload blocs cache so initializeBlocApprovals sees them
+            await loadExistingBlocsDisplay(voterNationData.id);
+
+            // Auto-initialize faction_bloc_approval rows for all parties × blocs
+            await initializeBlocApprovals();
+
+            // Show stat breakdown
+            showBlocSeedBreakdown(computed);
         } catch (error) {
             console.error(error);
-            container.innerHTML = '<div class="no-players" style="color:#ff4444;">Error loading blocs</div>';
+            statusEl.innerHTML = '<span style="color:#ff4444;font-weight:bold;">❌ Error: ' + error.message + '</span>';
+        }
+    }
+
+    /** Show a breakdown of how nation stats seeded each bloc's weight */
+    function showBlocSeedBreakdown(computed) {
+        const statusEl = document.getElementById('bloc-action-status');
+        let html = '<div style="background:#1a2a1a; border:1px solid #4CAF50; border-radius:8px; padding:12px; margin-top:8px;">';
+        html += '<div style="color:#4CAF50; font-weight:bold; margin-bottom:8px;">✅ Generated ' + computed.length + ' blocs from nation stats</div>';
+        html += '<table style="width:100%; font-size:0.82rem; border-collapse:collapse;">';
+        html += '<tr style="color:#aaa; border-bottom:1px solid #333;"><th style="text-align:left; padding:4px;">Bloc</th><th style="text-align:right; padding:4px;">Weight</th><th style="text-align:left; padding:4px 4px 4px 12px;">Seeded From</th><th style="text-align:right; padding:4px;">Raw</th></tr>';
+        for (const c of computed) {
+            html += `<tr style="border-bottom:1px solid #222;">`;
+            html += `<td style="padding:4px; color:#e0e0e0;">${c.name}</td>`;
+            html += `<td style="padding:4px; text-align:right; color:#fff; font-weight:bold;">${c.weight}%</td>`;
+            html += `<td style="padding:4px 4px 4px 12px; color:#888;">${c.formula}</td>`;
+            html += `<td style="padding:4px; text-align:right; color:#666;">${c.rawScore}</td>`;
+            html += `</tr>`;
+        }
+        html += '</table></div>';
+        statusEl.innerHTML = html;
+    }
+
+    // ---- Initialize party approvals for all blocs ----
+    async function initializeBlocApprovals() {
+        if (!voterNationData) return;
+        if (voterBlocsCache.length === 0) {
+            alert('No voter blocs exist. Generate or add blocs first.');
+            return;
+        }
+
+        const statusEl = document.getElementById('bloc-action-status');
+        statusEl.innerHTML = '<span style="color:#2196F3;font-weight:bold;">Initializing approvals...</span>';
+
+        try {
+            // Get all parties for this nation
+            const { data: parties, error: pErr } = await _supabase.from('factions')
+                .select('id, faction_name')
+                .eq('nation_id', voterNationData.id)
+                .eq('faction_type', 'party');
+            if (pErr) throw pErr;
+            if (!parties || parties.length === 0) {
+                statusEl.innerHTML = '<span style="color:#ff9800;font-weight:bold;">No parties found for this nation.</span>';
+                return;
+            }
+
+            // Build upsert rows: one per party x bloc combination
+            // Randomize initial approval ±10 around baseline 40 so the first election isn't a flat tie
+            const rows = [];
+            for (const party of parties) {
+                for (const bloc of voterBlocsCache) {
+                    const jitter = Math.floor(Math.random() * 21) - 10; // -10 to +10
+                    rows.push({
+                        faction_id: party.id,
+                        bloc_id: bloc.id,
+                        approval: Math.max(0, Math.min(100, 40 + jitter))
+                    });
+                }
+            }
+
+            const { error } = await _supabase.from('faction_bloc_approval')
+                .upsert(rows, { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true });
+            if (error) throw error;
+
+            // Recalculate derived approval_rating for each party from the randomized per-bloc values
+            for (const party of parties) {
+                const partyRows = rows.filter(r => r.faction_id === party.id);
+                await recalcDerivedApproval(_supabase, party.id, partyRows.map(r => ({ bloc_id: r.bloc_id, approval: r.approval })));
+            }
+
+            statusEl.innerHTML = `<span style="color:#4CAF50;font-weight:bold;">✅ Initialized approval for ${parties.length} parties × ${voterBlocsCache.length} blocs (${rows.length} records, randomized 30–50%)</span>`;
+            setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+        } catch (error) {
+            console.error(error);
+            statusEl.innerHTML = '<span style="color:#ff4444;font-weight:bold;">❌ Error: ' + error.message + '</span>';
         }
     }
 

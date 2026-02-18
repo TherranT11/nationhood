@@ -558,15 +558,26 @@
         // Check if user already has a party
         const { data: existingParty } = await _supabase
             .from('factions')
-            .select('*')
+            .select('*, needs_rebuild')
             .eq('id', currentUser.id)
             .eq('faction_type', 'party')
             .single();
 
         if (existingParty && existingParty.nation_id) {
-            showError('You already have a party in ' + existingParty.nation + '. You can only have one party.');
-            document.getElementById('confirm-btn').disabled = true;
-            return;
+            if (existingParty.needs_rebuild) {
+                // Party survived a revolution — show rebuild banner, allow editing
+                const rebuildBanner = document.createElement('div');
+                rebuildBanner.style.cssText = 'background:linear-gradient(135deg,#2a1a00,#1a1200);border:2px solid #ff9800;border-radius:12px;padding:20px;margin-bottom:24px;text-align:center;';
+                rebuildBanner.innerHTML = '<div style="font-size:1.8rem;margin-bottom:8px;">&#x1F3DB;</div>'
+                    + '<div style="font-size:1.1rem;color:#ff9800;font-weight:bold;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Rebuild Your Party</div>'
+                    + '<div style="font-size:0.85rem;color:var(--text-secondary);line-height:1.5;">Your party survived the revolution! Update your party name, ideology, and platform for the new democratic era.</div>';
+                const form = document.querySelector('.main-container') || document.querySelector('form') || document.body;
+                form.insertBefore(rebuildBanner, form.firstChild);
+            } else {
+                showError('You already have a party in ' + existingParty.nation + '. You can only have one party.');
+                document.getElementById('confirm-btn').disabled = true;
+                return;
+            }
         }
         
         if (!nationParam) {
@@ -826,7 +837,45 @@
             console.log('Ideology initialized via client-side fallback');
         }
     }
-    
+
+    // Seed faction_bloc_approval rows for a new faction — all active blocs get default 40% approval
+    async function seedBlocApprovalsForFaction(factionId, nationId) {
+        try {
+            const { data: blocs, error: blocErr } = await _supabase
+                .from('voter_blocs')
+                .select('id')
+                .eq('nation_id', nationId)
+                .eq('is_active', true);
+
+            if (blocErr) {
+                console.warn('Failed to fetch voter blocs for approval seeding:', blocErr.message);
+                return;
+            }
+            if (!blocs || blocs.length === 0) {
+                console.log('No active voter blocs found — skipping approval seeding.');
+                return;
+            }
+
+            const rows = blocs.map(bloc => ({
+                faction_id: factionId,
+                bloc_id: bloc.id,
+                approval: 40
+            }));
+
+            const { error: upsertErr } = await _supabase
+                .from('faction_bloc_approval')
+                .upsert(rows, { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true });
+
+            if (upsertErr) {
+                console.warn('Failed to seed bloc approvals:', upsertErr.message);
+            } else {
+                console.log(`Seeded ${rows.length} bloc approval rows for faction ${factionId}`);
+            }
+        } catch (e) {
+            console.warn('Bloc approval seeding non-blocking error:', e);
+        }
+    }
+
     async function createParty() {
         const confirmBtn = document.getElementById('confirm-btn');
         confirmBtn.disabled = true;
@@ -856,7 +905,8 @@
                         nation: selectedNation,
                         abbreviation: partyAbbr,
                         ideology_value_1: null,
-                        ideology_value_2: null
+                        ideology_value_2: null,
+                        needs_rebuild: false
                     });
                 
                 if (updateError) {
@@ -883,6 +933,22 @@
                 }
                 
                 const seatsAssigned = joinResult?.seats_assigned || 0;
+
+                // Initialize faction_ideology row with neutral scores for autocracy factions
+                try {
+                    await _supabase.from('faction_ideology').upsert({
+                        faction_id: currentUser.id,
+                        liberty_equality: 0,
+                        tradition_progress: 0,
+                        security_freedom: 0,
+                        globalism_nationalism: 0,
+                        individualism_collectivism: 0
+                    }, { onConflict: 'faction_id' });
+                } catch (e) { console.warn('Ideology init (autocracy) non-blocking:', e); }
+
+                // Seed bloc approval rows for the new faction
+                await seedBlocApprovalsForFaction(currentUser.id, nation.id);
+
                 alert(`🏛️ ${partyName} has joined the regime in ${selectedNation}!\n\nYou have been assigned ${seatsAssigned} seats.\n${factionNumber === 1 ? '\nAs the first faction, you serve under the Strongman.' : ''}`);
                 window.location.href = 'nation.html';
                 
@@ -901,7 +967,9 @@
                         nation: selectedNation,
                         ideology_value_1: selectedIdeologies[0],
                         ideology_value_2: selectedIdeologies[1],
-                        abbreviation: partyAbbr
+                        abbreviation: partyAbbr,
+                        seats: 0,
+                        needs_rebuild: false
                     });
                 
                 if (updateError) throw updateError;
@@ -917,16 +985,9 @@
                     await initializeIdeologyFallback(currentUser.id, selectedIdeologies[0], selectedIdeologies[1]);
                 }
 
-                // Check if NPCs should be removed (2+ player parties)
-                const { data: npcResult, error: npcError } = await _supabase
-                    .rpc('remove_npcs_and_redistribute_seats', { p_nation_id: nation.id });
+                // Seed bloc approval rows for the new faction
+                await seedBlocApprovalsForFaction(currentUser.id, nation.id);
 
-                if (npcError) {
-                    console.warn('NPC removal check failed (non-blocking):', npcError);
-                } else if (npcResult?.action === 'npcs_removed') {
-                    console.log(`Removed ${npcResult.npcs_deleted} NPC parties, redistributed ${npcResult.seats_redistributed} seats.`);
-                }
-                
                 alert(`🎉 ${partyName} has been created! Welcome to the ${selectedNation} political scene.`);
                 window.location.href = 'nation.html';
             }

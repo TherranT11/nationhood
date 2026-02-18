@@ -157,6 +157,55 @@
         }
         .btn-submit:disabled { background: var(--border-main); color: var(--text-muted); cursor: not-allowed; }
 
+        /* ===== REVOLUTION BANNER ===== */
+        .revolution-banner {
+            background: linear-gradient(135deg, #3a0a0a 0%, #1a0000 100%);
+            border: 2px solid #f44336; border-radius: 12px;
+            padding: 24px; margin-bottom: 24px; text-align: center;
+            animation: revolution-pulse 2s ease-in-out infinite;
+        }
+        @keyframes revolution-pulse {
+            0%, 100% { border-color: #f44336; box-shadow: 0 0 0 rgba(244,67,54,0); }
+            50% { border-color: #ff8a80; box-shadow: 0 0 30px rgba(244,67,54,0.4); }
+        }
+        .revolution-banner .revolution-icon { font-size: 2.5rem; margin-bottom: 8px; }
+        .revolution-banner .revolution-title {
+            font-size: 1.3rem; color: #f44336; font-weight: bold;
+            text-transform: uppercase; letter-spacing: 3px; margin-bottom: 8px;
+        }
+        .revolution-banner .revolution-subtitle {
+            font-size: 0.85rem; color: #cc8888; line-height: 1.5; margin-bottom: 12px;
+        }
+        .revolution-banner .revolution-countdown {
+            display: inline-block; padding: 6px 20px;
+            background: rgba(244,67,54,0.15); border: 1px solid #f44336;
+            border-radius: 6px; font-family: monospace;
+            font-size: 1.1rem; font-weight: bold; color: #f44336;
+        }
+        .revolution-complete-banner {
+            background: linear-gradient(135deg, #0a2a0a 0%, #001a00 100%);
+            border: 2px solid #4CAF50; border-radius: 12px;
+            padding: 24px; margin-bottom: 24px; text-align: center;
+            animation: revolution-celebrate 3s ease-in-out infinite;
+        }
+        @keyframes revolution-celebrate {
+            0%, 100% { border-color: #4CAF50; box-shadow: 0 0 0 rgba(76,175,80,0); }
+            50% { border-color: #81C784; box-shadow: 0 0 30px rgba(76,175,80,0.3); }
+        }
+        .revolution-complete-banner .revolution-icon { font-size: 2.5rem; margin-bottom: 8px; }
+        .revolution-complete-banner .revolution-title {
+            font-size: 1.3rem; color: #4CAF50; font-weight: bold;
+            text-transform: uppercase; letter-spacing: 3px; margin-bottom: 8px;
+        }
+        .revolution-complete-banner .revolution-subtitle {
+            font-size: 0.85rem; color: #81C784; line-height: 1.5; margin-bottom: 12px;
+        }
+        .revolution-tag {
+            display: inline-block; padding: 4px 12px; margin: 4px;
+            background: rgba(76,175,80,0.1); border: 1px solid rgba(76,175,80,0.25);
+            border-radius: 4px; font-size: 0.75rem; color: #4CAF50;
+        }
+
         /* ===== NO GOVERNMENT — FORMATION IN PROGRESS ===== */
         .formation-box {
             background: linear-gradient(135deg, #1a1000 0%, #1a0800 100%);
@@ -642,6 +691,51 @@ initPage('government', async (state) => {
     await renderGovernmentPage();
 });
 
+async function renderRevolutionBannerGov() {
+    var nation = currentNation;
+    if (!nation) return '';
+
+    // Get current tick
+    var shardRes = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    var currentTick = shardRes.data?.current_tick || 0;
+
+    // Check for post-revolution celebration banner
+    var revRes = await _supabase.from('event_log')
+        .select('fired_at_tick, description_used')
+        .eq('nation_id', nation.id).eq('event_name', 'DEMOCRATIC_REVOLUTION')
+        .order('fired_at_tick', { ascending: false }).limit(1).maybeSingle();
+    if (revRes.data && (currentTick - revRes.data.fired_at_tick) <= 5) {
+        var electionTick = revRes.data.fired_at_tick + 3;
+        var ticksUntilElection = Math.max(0, electionTick - currentTick);
+        var h = '<div class="revolution-complete-banner">';
+        h += '<div class="revolution-icon">&#x1F3DB;</div>';
+        h += '<div class="revolution-title">Revolution in the Streets!</div>';
+        h += '<div class="revolution-subtitle">' + revRes.data.description_used + '</div>';
+        if (ticksUntilElection > 0) {
+            h += '<div><span class="revolution-tag">Emergency Elections in ' + ticksUntilElection + ' tick' + (ticksUntilElection !== 1 ? 's' : '') + '</span><span class="revolution-tag">Democracy Established</span></div>';
+        } else {
+            h += '<div><span class="revolution-tag">Democracy Established</span><span class="revolution-tag">Elections Complete</span></div>';
+        }
+        h += '</div>';
+        return h;
+    }
+
+    // Active countdown (Autocracy only)
+    if (nation.government_type === 'Autocracy' && nation.revolution_started_tick != null && nation.revolution_duration != null) {
+        var elapsed = currentTick - nation.revolution_started_tick;
+        var remaining = Math.max(0, nation.revolution_duration - elapsed);
+        var h = '<div class="revolution-banner">';
+        h += '<div class="revolution-icon">&#x1F525;</div>';
+        h += '<div class="revolution-title">Democratic Revolution</div>';
+        h += '<div class="revolution-subtitle">The people demand democracy. Pro-democracy protests grow stronger each day.</div>';
+        h += '<div class="revolution-countdown">' + remaining + ' tick' + (remaining !== 1 ? 's' : '') + ' until revolution</div>';
+        h += '</div>';
+        return h;
+    }
+
+    return '';
+}
+
 async function renderGovernmentPage() {
     document.getElementById('content-area').innerHTML = '<div class="panel-padding"><div class="loading-container" style="height:200px;"><div class="loading-spinner"></div><div>Loading government data...</div></div></div>';
 
@@ -703,7 +797,7 @@ async function renderGovernmentPage() {
 
         // Check if coalition formation is in progress for the latest election
         let coalitionFormationInProgress = false;
-        if (!isAutocracy && electionData?.id) {
+        if (!isAutocracy && !isPresidential && electionData?.id && !coalition) {
             const { data: formedGov } = await _supabase
                 .from('government_formations')
                 .select('id')
@@ -763,14 +857,8 @@ async function renderGovernmentPage() {
             }
         }
 
-        // Government approval
-        let governmentApproval = null;
-        if (coalition && coalition.party_ids) {
-            governmentApproval = await calculateGovernmentApproval(coalition.party_ids);
-        } else if (ministries && ministries.length > 0) {
-            const uniquePartyIds = [...new Set(ministries.map(m => m.party_id).filter(Boolean))];
-            if (uniquePartyIds.length > 0) governmentApproval = await calculateGovernmentApproval(uniquePartyIds);
-        }
+        // Government approval (average of all minister approvals)
+        let governmentApproval = await calculateGovernmentApproval();
 
         // Check for pending PM or President candidates (player needs to select)
         const primeMinister = ministries?.find(m => m.ministry_key === 'prime_minister');
@@ -785,6 +873,24 @@ async function renderGovernmentPage() {
                 .eq('selected', false);
             hasPendingPMSelection = (count || 0) > 0;
         }
+
+        // Auto-recover orphaned PM state: coalition exists, PM has null names, no candidates
+        if (!hasPendingPMSelection && !isPresidential && coalition && !activeHOG) {
+            const pmPartyId = coalition.ministry_assignments?.prime_minister || coalition.lead_party_id;
+            const pmHasNullNames = primeMinister && (!primeMinister.minister_first_name || !primeMinister.minister_last_name);
+            if (pmPartyId && pmHasNullNames && currentFaction?.id === pmPartyId) {
+                try {
+                    const { data: shard } = await _supabase.from('shard')
+                        .select('current_tick').eq('name', 'Alpha Shard').single();
+                    await generatePMCandidates(_supabase, currentNation.id, pmPartyId, shard?.current_tick || 0);
+                    hasPendingPMSelection = true;
+                    console.log('Auto-recovered orphaned PM state: generated PM candidates');
+                } catch (recoverErr) {
+                    console.error('PM auto-recovery failed:', recoverErr);
+                }
+            }
+        }
+
         if (currentFaction && isPresidential) {
             const { count } = await _supabase
                 .from('pm_candidates')
@@ -796,8 +902,11 @@ async function renderGovernmentPage() {
             hasPendingPresidentSelection = (count || 0) > 0;
         }
 
+        const revolutionBannerHtml = await renderRevolutionBannerGov();
+
         document.getElementById('content-area').innerHTML = `
             <div class="panel-padding">
+                ${revolutionBannerHtml}
                 ${hasPendingPMSelection ? `
     <div style="background:linear-gradient(135deg,#2a2200,#1a1a00);border:2px solid var(--accent);border-radius:12px;padding:20px;margin-bottom:24px;text-align:center;cursor:pointer;" onclick="window.location.href='select-pm.html'">
         <div style="font-size:1.8rem;margin-bottom:8px;">👑</div>
@@ -814,7 +923,7 @@ async function renderGovernmentPage() {
         <div style="margin-top:12px;display:inline-block;padding:8px 24px;background:var(--accent);color:#121212;border-radius:6px;font-weight:bold;font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;">Nominate Now →</div>
     </div>
 ` : ''}
-                ${renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress)}
+                ${renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress, allPartySeats)}
 
                 <div class="section-header">Government Structure</div>
                 <div class="info-block">
@@ -828,7 +937,7 @@ async function renderGovernmentPage() {
 
                 <div class="section-header">Current Parliamentary Makeup</div>
                 <div class="parliament-wrap">
-                    <svg id="parliament-svg" width="520" height="280" viewBox="0 0 520 280"></svg>
+                    <svg id="parliament-svg" viewBox="0 0 520 280"></svg>
                 </div>
                 <div class="parliament-legend" id="parliament-legend"></div>
 
@@ -852,6 +961,7 @@ async function renderGovernmentPage() {
 async function fetchLatestElection() {
     const { data } = await _supabase.from('elections').select('*')
         .eq('nation_id', currentNation.id).eq('status', 'completed')
+        .eq('election_type', 'parliamentary')
         .order('election_tick', { ascending: false }).order('created_at', { ascending: false }).limit(1).maybeSingle();
     return data;
 }
@@ -862,11 +972,15 @@ async function fetchMinistries() {
     return data || [];
 }
 
-async function calculateGovernmentApproval(partyIds) {
-    const { data: parties } = await _supabase.from('factions').select('approval_rating').in('id', partyIds);
-    if (!parties || parties.length === 0) return null;
-    const total = parties.reduce((sum, p) => sum + (p.approval_rating || 0), 0);
-    return Math.round(total / parties.length);
+async function calculateGovernmentApproval() {
+    const { data: ministers } = await _supabase
+        .from('ministries')
+        .select('minister_approval')
+        .eq('nation_id', currentNation.id)
+        .eq('is_active', true);
+    if (!ministers || ministers.length === 0) return null;
+    const total = ministers.reduce((sum, m) => sum + (m.minister_approval ?? 50), 0);
+    return Math.round(total / ministers.length);
 }
 
 function getPartyNameById(partyId) {
@@ -883,10 +997,17 @@ function tickToDate(tick) {
 
 // ==================== ADMINISTRATION BOX ====================
 
-function renderAdministrationBox(coalition, parties, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress) {
+function renderAdministrationBox(coalition, parties, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress, allPartySeats) {
+    allPartySeats = allPartySeats || {};
     const hosFirst = currentNation.head_of_state_first_name || 'Unknown';
     const hosLast = currentNation.head_of_state_last_name || 'Unknown';
     const hosAge = currentNation.head_of_state_age || '—';
+
+    // Safe PM name: prevents "null null" when ministry row exists but names are SQL NULL
+    function safePmName(pm) {
+        if (!pm || !pm.minister_first_name || !pm.minister_last_name) return '—';
+        return `${pm.minister_first_name} ${pm.minister_last_name}`;
+    }
 
     // Administration name uses Head of Government (PM), falling back to Head of State
     const adminLast = activeHOG?.last_name || primeMinister?.minister_last_name || hosLast;
@@ -906,10 +1027,38 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
             </div>`;
     }
 
+    // === AUTOCRACY: No ruling faction yet — show Seize Power prompt ===
+    if (isAutocracy && !rulingFactionId) {
+        return `
+            <div class="administration-box" style="border-color: #ff4444;">
+                <div class="administration-header" style="border-bottom-color: #3a1a1a;">
+                    <div style="font-size: 2.5rem; margin-bottom: 8px;">&#9876;</div>
+                    <div class="administration-title" style="color: #ff4444;">Power Vacuum</div>
+                    <div class="administration-subtitle">No faction controls the government</div>
+                </div>
+                <div class="administration-content" style="display:block; text-align:center; padding: 24px;">
+                    <div style="font-size:0.9rem; color:var(--text-secondary); margin-bottom: 20px;">
+                        The nation has no ruling faction. The Head of State, <strong style="color:var(--text-primary);">${hosFirst} ${hosLast}</strong>, awaits a faction bold enough to seize the reins of government.
+                    </div>
+                    <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom: 20px;">
+                        Claiming power will make your faction the ruling faction, granting control over all ministries and the Prime Minister's office.
+                    </div>
+                    <button id="claim-power-btn"
+                        style="padding: 14px 36px; background: linear-gradient(135deg, #ff4444, #cc0000); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; cursor: pointer; transition: all 0.2s;"
+                        onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 20px rgba(255,68,68,0.4)';"
+                        onmouseout="this.style.transform='none'; this.style.boxShadow='none';"
+                        onclick="claimPower()">
+                        Seize Power
+                    </button>
+                    <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 10px;">Cost: 0 AP &mdash; Uncontested</div>
+                </div>
+            </div>`;
+    }
+
     if (isAutocracy) {
         const rulingParty = allParties.find(p => p.id === rulingFactionId);
         const rulingPartyName = rulingParty?.faction_name || '—';
-        const pmName = primeMinister ? `${primeMinister.minister_first_name} ${primeMinister.minister_last_name}` : '—';
+        const pmName = safePmName(primeMinister);
         const pmAge = primeMinister?.minister_age || '—';
         const pmPartyName = primeMinister?.factions?.faction_name || '—';
         let approvalClass = '';
@@ -969,7 +1118,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
 
         const presParty = allParties.find(p => p.id === presidentFactionId);
         const presPartyName = presParty?.faction_name || '—';
-        const presPartySeats = presParty?.seats || 0;
+        const presPartySeats = allPartySeats[presidentFactionId] || presParty?.seats || 0;
         const majoritySeats = GAME_CONFIG.MAJORITY_SEATS || 61;
         const hasMajority = presPartySeats >= majoritySeats;
         const govStatus = hasMajority ? 'Unified Government' : 'Divided Government';
@@ -1006,7 +1155,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                 </div>
                 <div class="administration-content">
                     <div class="admin-section">
-                        <div class="admin-section-title">Head of State</div>
+                        <div class="admin-section-title">Vice President</div>
                         <div class="admin-person-name">${hosFirst} ${hosLast}</div>
                         <div class="admin-person-details">Age ${hosAge}</div>
                     </div>
@@ -1043,7 +1192,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                     <div class="administration-header"><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">Single Party Government</div></div>
                     <div class="administration-content">
                         <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${hosFirst} ${hosLast}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${majorityParty.party_name}</span></div></div>
-                        <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${primeMinister ? `${primeMinister.minister_first_name} ${primeMinister.minister_last_name}` : '—'}</div><div class="admin-person-details">${primeMinister ? `Age ${primeMinister.minister_age} • ` : ''}<span class="admin-person-party">${majorityParty.party_name}</span></div></div>
+                        <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${safePmName(primeMinister)}</div><div class="admin-person-details">${primeMinister?.minister_age ? `Age ${primeMinister.minister_age} • ` : ''}<span class="admin-person-party">${majorityParty.party_name}</span></div></div>
                         <div class="admin-section admin-approval"><div class="admin-section-title">Government Approval</div><div class="admin-approval-value">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div></div>
                     </div>
                     <div class="coalition-parties"><div class="coalition-party-tag">${majorityParty.party_name}<span class="seats">${majorityParty.seats} Seats</span></div></div>
@@ -1061,12 +1210,12 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
     if (coalition) {
         const leadParty = parties.find(p => p.party_id === coalition.lead_party_id);
         const leadPartyName = leadParty ? leadParty.party_name : 'Unknown';
-        const pmName = primeMinister ? `${primeMinister.minister_first_name} ${primeMinister.minister_last_name}` : '—';
+        const pmName = safePmName(primeMinister);
         const pmAge = primeMinister?.minister_age || '—';
         const pmParty = primeMinister ? (primeMinister.factions?.faction_name || getPartyNameById(primeMinister.party_id)) : '—';
         let approvalClass = '';
         if (governmentApproval !== null) { if (governmentApproval < 35) approvalClass = 'low'; else if (governmentApproval < 50) approvalClass = 'medium'; }
-        const coalitionParties = coalition.party_ids.map(id => { const p = parties.find(x => x.party_id === id); return p || { party_name: 'Unknown', seats: 0 }; }).sort((a,b) => b.seats - a.seats);
+        const coalitionParties = coalition.party_ids.map(id => { const p = parties.find(x => x.party_id === id); const fallbackName = allParties.find(f => f.id === id)?.faction_name || 'Unknown'; return p ? { ...p, seats: allPartySeats[id] || p.seats || 0 } : { party_name: fallbackName, seats: allPartySeats[id] || 0 }; }).sort((a,b) => b.seats - a.seats);
         return `
             <div class="administration-box">
                 <div class="administration-header"><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">${coalition.status === 'caretaker' ? 'Caretaker Government' : 'Coalition Government'}</div></div>
@@ -1088,7 +1237,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                             ` : ''}
                         ` : ''}
                     </div>
-                    <div class="admin-section admin-approval"><div class="admin-section-title">Government Approval</div><div class="admin-approval-value ${approvalClass}">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div><div class="admin-approval-label">Coalition Median</div></div>
+                    <div class="admin-section admin-approval"><div class="admin-section-title">Government Approval</div><div class="admin-approval-value ${approvalClass}">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div><div class="admin-approval-label">Minister Average</div></div>
                 </div>
                 <div class="coalition-parties">
                     ${coalitionParties.map((p, i) => `${i > 0 ? '<span class="coalition-divider">|</span>' : ''}<div class="coalition-party-tag">${p.party_name}<span class="seats">${p.seats} Seats</span></div>`).join('')}
@@ -1207,6 +1356,12 @@ function renderFormationInProgress(parties) {
 
 function renderCabinet(ministries, coalition) {
     if (!ministries || ministries.length === 0) {
+        // Presidential systems always use their own rendering (with Nominate buttons)
+        if (isPresidential) {
+            const presKeys = MINISTRY_KEYS_CABINET.filter(k => k !== 'prime_minister');
+            const cards = presKeys.map(key => renderPresidentialMinistryCard(key, null)).join('');
+            return `<div class="ministry-grid">${cards}</div>`;
+        }
         if (coalition && coalition.ministry_allocations) {
             const cards = Object.entries(coalition.ministry_allocations)
                 .filter(([key]) => key !== 'prime_minister')
@@ -1221,12 +1376,6 @@ function renderCabinet(ministries, coalition) {
                 const requests = ministryRequests.filter(r => r.ministry_key === key);
                 return `<div class="ministry-card vacant"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests, null)}</div>`;
             }).join('');
-            return `<div class="ministry-grid">${cards}</div>`;
-        }
-        if (isPresidential && presidentFactionId) {
-            // Presidential system with active president but no ministry rows yet — show all slots as vacant
-            const presKeys = MINISTRY_KEYS_CABINET.filter(k => k !== 'prime_minister');
-            const cards = presKeys.map(key => renderPresidentialMinistryCard(key, null)).join('');
             return `<div class="ministry-grid">${cards}</div>`;
         }
         return '<div class="info-block" style="text-align:center;color:var(--text-secondary);padding:30px;">No cabinet has been formed yet.</div>';
@@ -1578,14 +1727,160 @@ async function confirmAssign() {
     }
 }
 
+// ==================== CLAIM POWER (Autocracy — No Ruler) ====================
+
+async function claimPower() {
+    if (!currentFaction || !currentNation) return;
+    if (!isAutocracy) return;
+
+    // Race condition guard: re-check that no one claimed power in the meantime
+    const { data: freshNation } = await _supabase
+        .from('nations')
+        .select('ruling_faction_id')
+        .eq('id', currentNation.id)
+        .single();
+
+    if (freshNation?.ruling_faction_id) {
+        alert('Another faction has already claimed power. Refreshing...');
+        await renderGovernmentPage();
+        return;
+    }
+
+    if (!confirm(
+        'SEIZE POWER?\n\n' +
+        'As the first faction to act, you will claim uncontested control of the government.\n\n' +
+        'You will become the Ruling Faction and receive:\n' +
+        '- Control of the Head of State\n' +
+        '- A Prime Minister from your faction\n' +
+        '- All cabinet ministries staffed with your appointees\n' +
+        '- Loyalty set to 80\n\n' +
+        'Cost: 0 AP\n\nProceed?'
+    )) return;
+
+    const btn = document.getElementById('claim-power-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'SEIZING POWER...'; }
+
+    try {
+        const { data: shard } = await _supabase
+            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shard?.current_tick || 0;
+
+        // 1. Set this faction as the ruling faction
+        await _supabase.from('nations')
+            .update({ ruling_faction_id: currentFaction.id })
+            .eq('id', currentNation.id);
+
+        // 2. Set faction loyalty to 80
+        await _supabase.from('factions')
+            .update({ loyalty: 80 })
+            .eq('id', currentFaction.id);
+
+        // 3. Generate and insert ministry rows for all positions
+        const ministryInserts = MINISTRY_KEYS_CABINET.map(key => ({
+            nation_id: currentNation.id,
+            ministry_key: key,
+            ministry_name: MINISTRY_NAMES[key] || key,
+            party_id: currentFaction.id,
+            minister_first_name: FIRST_NAMES_POOL[Math.floor(Math.random() * FIRST_NAMES_POOL.length)],
+            minister_last_name: LAST_NAMES_POOL[Math.floor(Math.random() * LAST_NAMES_POOL.length)],
+            minister_age: 35 + Math.floor(Math.random() * 31),
+            is_active: true
+        }));
+
+        const { error: ministryError } = await _supabase
+            .from('ministries').insert(ministryInserts);
+        if (ministryError) throw ministryError;
+
+        // 4. Create head_of_government record for the PM
+        const pmInsert = ministryInserts.find(m => m.ministry_key === 'prime_minister');
+        if (pmInsert) {
+            await _supabase.from('head_of_government')
+                .update({ active: false })
+                .eq('nation_id', currentNation.id)
+                .eq('active', true);
+
+            await _supabase.from('head_of_government').upsert({
+                nation_id: currentNation.id,
+                faction_id: currentFaction.id,
+                first_name: pmInsert.minister_first_name,
+                last_name: pmInsert.minister_last_name,
+                age: pmInsert.minister_age,
+                active: true
+            }, { onConflict: 'nation_id' });
+        }
+
+        // 5. Log to campaign_actions
+        await _supabase.from('campaign_actions').insert({
+            party_id: currentFaction.id,
+            nation_id: currentNation.id,
+            action_type: 'claim_power',
+            tick_performed: tick,
+            result: {
+                faction_name: currentFaction.faction_name,
+                ministries_assigned: MINISTRY_KEYS_CABINET.length,
+                pm_name: pmInsert ? `${pmInsert.minister_first_name} ${pmInsert.minister_last_name}` : null
+            }
+        });
+
+        // 6. Create initial administration record (non-blocking)
+        try {
+            const hosName = (currentNation.head_of_state_first_name && currentNation.head_of_state_last_name)
+                ? `${currentNation.head_of_state_first_name} ${currentNation.head_of_state_last_name}`
+                : null;
+            const adminName = pmInsert
+                ? `${pmInsert.minister_last_name} Administration`
+                : `${currentNation.head_of_state_last_name || currentFaction.faction_name} Administration`;
+
+            await _supabase.from('administrations').insert({
+                nation_id: currentNation.id,
+                admin_name: adminName,
+                head_of_state: hosName,
+                prime_minister: pmInsert ? `${pmInsert.minister_first_name} ${pmInsert.minister_last_name}` : null,
+                pm_party_name: currentFaction.faction_name,
+                pm_party_id: currentFaction.id,
+                coalition_parties: [{ party_id: currentFaction.id, party_name: currentFaction.faction_name, seats: currentFaction.seats || 0 }],
+                total_seats: currentFaction.seats || 0,
+                government_type: 'Autocracy',
+                started_at_tick: tick,
+                started_at_date: tickToDate(tick)
+            });
+        } catch (adminErr) {
+            console.warn('Administration record creation failed (non-blocking):', adminErr);
+        }
+
+        // 7. Update local state
+        currentFaction.loyalty = 80;
+        currentNation.ruling_faction_id = currentFaction.id;
+        rulingFactionId = currentFaction.id;
+        isRulingFaction = true;
+
+        // 8. Clear cache and re-render
+        sessionStorage.removeItem('nationhood_state');
+        qCacheBust('coalition_');
+
+        alert(
+            'POWER SEIZED!\n\n' +
+            `${currentFaction.faction_name} now controls the government.\n\n` +
+            `Prime Minister: ${pmInsert?.minister_first_name} ${pmInsert?.minister_last_name}\n` +
+            `All ${MINISTRY_KEYS_CABINET.length} cabinet positions filled.`
+        );
+
+        await renderGovernmentPage();
+
+    } catch (error) {
+        console.error('Claim power error:', error);
+        alert('Error claiming power: ' + error.message);
+        if (btn) { btn.disabled = false; btn.textContent = 'Seize Power'; }
+    }
+}
+
 // ==================== PURGE MINISTER ====================
 
 async function purgeMinister(ministryKey) {
     const ministry = ministryData.find(m => m.ministry_key === ministryKey);
     if (!ministry) return;
 
-    const ap = currentFaction?.action_points || 0;
-    if (ap < 1) { alert('Not enough AP (need 1).'); return; }
+    if ((currentFaction?.action_points || 0) < 1) { alert('Not enough AP (need 1).'); return; }
 
     const partyName = ministry.factions?.faction_name || 'Unknown';
     const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
@@ -1599,6 +1894,11 @@ async function purgeMinister(ministryKey) {
         '• Nation: +1 Corruption, Stability shifts ±1–2\n\n' +
         'Proceed?'
     )) return;
+
+    const apResult = await deductAP(_supabase, currentFaction.id, 1);
+    if (!apResult.success) { alert('Not enough AP (need 1).'); return; }
+    currentFaction.action_points = apResult.newAp;
+    sessionStorage.removeItem('nationhood_state');
 
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -1653,10 +1953,8 @@ async function purgeMinister(ministryKey) {
         const rulerApproval = currentFaction.approval_rating ?? 50;
         const newRulerApproval = Math.min(100, rulerApproval + approvalBoost);
         await _supabase.from('factions').update({
-            action_points: Math.max(0, ap - 1),
             approval_rating: newRulerApproval
         }).eq('id', currentFaction.id);
-        currentFaction.action_points = Math.max(0, ap - 1);
         currentFaction.approval_rating = newRulerApproval;
 
         if (ministry.party_id && ministry.party_id !== rulingFactionId) {
@@ -1735,6 +2033,11 @@ async function requestMinistry(ministryKey) {
     if (myCount >= 2) { alert('You can only have 2 active ministry requests.'); return; }
     if ((currentFaction.action_points || 0) < 1) { alert('Not enough AP (need 1).'); return; }
 
+    const apResult = await deductAP(_supabase, currentFaction.id, 1);
+    if (!apResult.success) { alert('Not enough AP (need 1).'); return; }
+    currentFaction.action_points = apResult.newAp;
+    sessionStorage.removeItem('nationhood_state');
+
     try {
         const { error } = await _supabase.from('ministry_requests').insert({
             nation_id: currentNation.id,
@@ -1742,11 +2045,6 @@ async function requestMinistry(ministryKey) {
             ministry_key: ministryKey
         });
         if (error) throw error;
-
-        await _supabase.from('factions').update({
-            action_points: Math.max(0, currentFaction.action_points - 1)
-        }).eq('id', currentFaction.id);
-        currentFaction.action_points = Math.max(0, currentFaction.action_points - 1);
 
         await markFactionActive(_supabase, currentFaction.id);
         await renderGovernmentPage();
@@ -1779,6 +2077,18 @@ function renderNoConfidenceButton(coalition) {
     const isInCoalition = coalition.party_ids.includes(currentFaction.id);
     if (isInCoalition) return '';
 
+    // Parties with no seats cannot file no-confidence
+    const mySeats = allPartySeats[currentFaction.id] || currentFaction.seats || 0;
+    if (mySeats < 1) {
+        return `
+            <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
+                <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" disabled>
+                    ⚡ Vote of No Confidence
+                </button>
+                <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">Need at least 1 seat in the legislature.</div>
+            </div>`;
+    }
+
     return `
         <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
             <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="fileNoConfidence()" id="no-confidence-btn">
@@ -1791,9 +2101,21 @@ function renderNoConfidenceButton(coalition) {
 async function fileNoConfidence() {
     if (!currentFaction || !currentNation || !coalitionData) return;
 
-    const ap = currentFaction.action_points || 0;
-    if (ap < GAME_CONFIG.NO_CONFIDENCE_AP_COST) {
-        alert(`Not enough AP. You need ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP (you have ${ap}).`);
+    // Must have at least 1 seat
+    const mySeatsCheck = allPartySeats[currentFaction.id] || currentFaction.seats || 0;
+    if (mySeatsCheck < 1) {
+        alert('Need at least 1 seat in the legislature to file a vote of no confidence.');
+        return;
+    }
+
+    // Cannot file no-confidence against a caretaker government
+    if (coalitionData.status === 'caretaker') {
+        alert('Cannot file a vote of no confidence against a caretaker government. Elections are already scheduled.');
+        return;
+    }
+
+    if ((currentFaction.action_points || 0) < GAME_CONFIG.NO_CONFIDENCE_AP_COST) {
+        alert(`Not enough AP. You need ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP (you have ${currentFaction.action_points || 0}).`);
         return;
     }
 
@@ -1818,11 +2140,12 @@ async function fileNoConfidence() {
         return;
     }
 
-    // Check: 6-tick cooldown since last failed no-confidence
+    // Check: 6-tick cooldown since last failed no-confidence (per-party)
     const { data: lastFailed } = await _supabase
         .from('campaign_actions')
         .select('tick_performed')
         .eq('nation_id', currentNation.id)
+        .eq('party_id', currentFaction.id)
         .eq('action_type', 'no_confidence_failed')
         .order('tick_performed', { ascending: false })
         .limit(1)
@@ -1885,11 +2208,23 @@ async function fileNoConfidence() {
 
         if (billError) throw billError;
 
-        // Deduct AP
-        await _supabase.from('factions').update({
-            action_points: Math.max(0, ap - GAME_CONFIG.NO_CONFIDENCE_AP_COST)
-        }).eq('id', currentFaction.id);
-        currentFaction.action_points = Math.max(0, ap - GAME_CONFIG.NO_CONFIDENCE_AP_COST);
+        // Post-insert guard: verify no duplicate no-confidence motions were created concurrently
+        const { count: ncCount } = await _supabase.from('bills')
+            .select('id', { count: 'exact', head: true })
+            .eq('nation_id', currentNation.id)
+            .eq('bill_type', 'no_confidence')
+            .in('status', ['committee', 'floor']);
+        if (ncCount > 1) {
+            // Another motion was filed at the same time — delete ours
+            await _supabase.from('bills').delete().eq('id', bill.id);
+            alert('Another motion of no confidence was just filed. Please refresh.');
+            return;
+        }
+
+        // Deduct AP only after bill creation succeeds
+        const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.NO_CONFIDENCE_AP_COST);
+        if (!apResult.success) { alert(`Not enough AP. You need ${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP.`); return; }
+        currentFaction.action_points = apResult.newAp;
 
         // Auto-cast the filer's own vote as YES
         const seatData = await loadSeats(_supabase, currentNation.id, false, allParties, currentFaction.id);
@@ -1900,9 +2235,6 @@ async function fileNoConfidence() {
             stance: 'yes',
             seat_count: mySeats
         }, { onConflict: 'bill_id,faction_id' });
-
-        // Trigger NPC floor votes for the no-confidence motion
-        await triggerNPCNoConfidenceVotes(bill.id, currentNation.id, coalitionData.party_ids);
 
         await markFactionActive(_supabase, currentFaction.id);
 
@@ -1936,14 +2268,19 @@ function renderCaretakerBanner() {
     // Calculate ticks until election
     const scheduledElectionTick = coalitionData?._earlyElectionTick || null;
     const ticksUntil = scheduledElectionTick ? Math.max(0, scheduledElectionTick - currentTick) : '?';
+    const isOverdue = scheduledElectionTick != null && scheduledElectionTick <= currentTick;
     const electionDate = scheduledElectionTick ? tickToDate(scheduledElectionTick) : 'TBD';
+
+    const statusText = isOverdue
+        ? 'Elections overdue — will be processed next tick.'
+        : `Elections in <strong>${ticksUntil}</strong> tick${ticksUntil !== 1 ? 's' : ''} (${electionDate}).`;
 
     return `
         <div class="caretaker-banner">
             <div class="caretaker-icon">⚡</div>
             <div class="caretaker-title">Caretaker Government</div>
             <div class="caretaker-subtitle">
-                Legislature dissolved. Elections in <strong>${ticksUntil}</strong> tick${ticksUntil !== 1 ? 's' : ''} (${electionDate}).
+                Legislature dissolved. ${statusText}
             </div>
             <div class="caretaker-restrictions">
                 <span class="caretaker-restriction-tag">No Legislation</span>
@@ -2014,90 +2351,132 @@ async function callEarlyElections() {
     }
 }
 
-/**
- * NPC parties vote on a no-confidence motion based on:
- * - Coalition members vote NO (defending the government)
- * - Opposition NPCs lean YES, weighted by loyalty + approval
- */
-async function triggerNPCNoConfidenceVotes(billId, nationId, coalitionPartyIds) {
-    const { data: npcParties } = await _supabase
-        .from('factions')
-        .select('id, faction_name, is_npc, seats, loyalty, approval_rating')
-        .eq('nation_id', nationId)
-        .eq('faction_type', 'party')
-        .eq('is_npc', true);
-
-    if (!npcParties || npcParties.length === 0) return;
-
-    const seatData = await loadSeats(_supabase, nationId, false, npcParties, null);
-
-    for (const npc of npcParties) {
-        const seats = seatData.allPartySeats[npc.id] || npc.seats || 0;
-        if (seats === 0) continue;
-
-        const isCoalitionMember = coalitionPartyIds.includes(npc.id);
-        let stance;
-
-        if (isCoalitionMember) {
-            // Coalition NPCs almost always vote NO (defend government)
-            // Very low loyalty might flip them
-            const loyalty = npc.loyalty ?? 50;
-            stance = loyalty < 20 ? 'yes' : 'no';
-        } else {
-            // Opposition NPCs lean YES (topple government)
-            // Higher approval of government = more likely to abstain/vote no
-            const approval = npc.approval_rating ?? 50;
-            const loyalty = npc.loyalty ?? 50;
-            const yesChance = 0.7 - (loyalty / 200) - (approval / 400);
-            const roll = Math.random();
-            if (roll < yesChance) stance = 'yes';
-            else if (roll < yesChance + 0.15) stance = 'abstain';
-            else stance = 'no';
-        }
-
-        await _supabase.from('bill_support').upsert({
-            bill_id: billId,
-            faction_id: npc.id,
-            stance: stance,
-            seat_count: seats
-        }, { onConflict: 'bill_id,faction_id' });
-    }
-
-    // Sync vote tallies
-    await syncVoteTallies(_supabase, billId);
-}
-
 // ==================== PARLIAMENT VISUALIZATION ====================
 
-function drawParliament(parties) {
-    const colors = ['#E91E63','#2196F3','#4CAF50','#FF9800','#9C27B0','#00BCD4','#F44336','#8BC34A','#FFC107','#673AB7'];
-    const fmt = parties.map((p, i) => ({ name: p.party_name, seats: p.seats, color: colors[i % colors.length] }));
+function drawParliament(parties, options = {}) {
+    const { showLegend = true, showMajorityLine = true, majoritySeats = GAME_CONFIG.MAJORITY_SEATS } = options;
+    const PALETTE = ['#E91E63','#2196F3','#4CAF50','#FF9800','#9C27B0','#00BCD4','#F44336','#8BC34A','#FFC107','#673AB7'];
+    const fmt = parties.map((p, i) => ({ name: p.party_name, seats: p.seats, color: p.color || PALETTE[i % PALETTE.length] }));
     const total = fmt.reduce((s, p) => s + p.seats, 0);
+    if (total === 0) return;
+
     const svg = document.getElementById('parliament-svg');
     if (!svg) return;
-    const w = 520, h = 280, cx = w/2, cy = h-20, sp = 7;
-    const rows = calcRows(total, cy, sp);
-    const seats = [];
-    fmt.forEach(p => { for (let i = 0; i < p.seats; i++) seats.push(p.color); });
-    const dots = genDots(seats.length, rows, cx, cy);
+
+    const cx = 260, cy = 265, outerR = 230, minInnerR = 80;
+    const rows = _calcParliamentRows(total, outerR, minInnerR);
+    const dots = _genParliamentDots(rows, cx, cy);
+
+    // Sort dots by angle (left-to-right), then inner-to-outer within same angle.
+    // This makes party colors fill as radial wedges from center outward.
+    dots.forEach(d => { d.angle = Math.atan2(cy - d.y, d.x - cx); d.radius = Math.hypot(d.x - cx, cy - d.y); });
+    dots.sort((a, b) => b.angle - a.angle || a.radius - b.radius);
+
+    // Build seat color + name arrays (party order)
+    const seatColors = [], seatNames = [];
+    fmt.forEach(p => { for (let i = 0; i < p.seats; i++) { seatColors.push(p.color); seatNames.push(p.name); } });
+
+    // Dynamic dot radius: fit within rows without overlap, capped [2.5, 6]
+    const maxDotR = Math.min(6, ...rows.map(r => r.seats > 1 ? (Math.PI * r.radius) / (r.seats * 2.8) : 6));
+    const dotR = Math.max(2.5, maxDotR);
+
     let c = '';
-    dots.forEach((d, i) => { if (i < seats.length) c += `<circle cx="${d.x}" cy="${d.y}" r="2.5" fill="${seats[i]}" stroke="var(--bg-body)" stroke-width="0.5"/>`; });
-    c += `<text x="${cx}" y="${cy-12}" text-anchor="middle" fill="var(--accent)" font-size="24" font-weight="bold">${total}</text>`;
-    c += `<text x="${cx}" y="${cy+6}" text-anchor="middle" fill="var(--text-muted)" font-size="11">TOTAL SEATS</text>`;
+
+    // Draw seat dots
+    dots.forEach((d, i) => {
+        if (i < seatColors.length) {
+            c += `<circle cx="${d.x.toFixed(1)}" cy="${d.y.toFixed(1)}" r="${dotR.toFixed(1)}" fill="${seatColors[i]}" stroke="var(--bg-panel)" stroke-width="0.8"><title>${seatNames[i]}</title></circle>`;
+        }
+    });
+
+    // Majority threshold line
+    if (showMajorityLine && majoritySeats && majoritySeats < total) {
+        const fraction = majoritySeats / total;
+        const majAngle = Math.PI * (1 - fraction);
+        const innerR = rows[0].radius;
+        const outerRActual = rows[rows.length - 1].radius;
+
+        const x1 = cx + (innerR - 12) * Math.cos(majAngle);
+        const y1 = cy - (innerR - 12) * Math.sin(majAngle);
+        const x2 = cx + (outerRActual + 12) * Math.cos(majAngle);
+        const y2 = cy - (outerRActual + 12) * Math.sin(majAngle);
+
+        c += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="var(--text-muted)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>`;
+
+        // Label at outer tip
+        const lblX = cx + (outerRActual + 22) * Math.cos(majAngle);
+        const lblY = cy - (outerRActual + 22) * Math.sin(majAngle);
+        c += `<text x="${lblX.toFixed(1)}" y="${lblY.toFixed(1)}" text-anchor="middle" fill="var(--text-muted)" font-size="8" font-weight="600">${majoritySeats}</text>`;
+    }
+
+    // Center text
+    c += `<text x="${cx}" y="${cy - 14}" text-anchor="middle" fill="var(--accent)" font-size="26" font-weight="bold">${total}</text>`;
+    c += `<text x="${cx}" y="${cy + 4}" text-anchor="middle" fill="var(--text-muted)" font-size="10" letter-spacing="1.5">TOTAL SEATS</text>`;
+
     svg.innerHTML = c;
-    document.getElementById('parliament-legend').innerHTML = fmt.map(p => `<div class="legend-item"><div class="legend-swatch" style="background:${p.color};"></div>${p.name} (${p.seats})</div>`).join('');
+
+    // Legend
+    if (showLegend) {
+        const legendEl = document.getElementById('parliament-legend');
+        if (legendEl) {
+            legendEl.innerHTML = fmt.map(p =>
+                `<div class="legend-item"><span class="legend-swatch" style="background:${p.color};"></span><span class="legend-name">${p.name}</span><span class="legend-seats">${p.seats}</span></div>`
+            ).join('');
+        }
+    }
 }
 
-function calcRows(total, maxR, sp) {
-    const rows = []; let r = maxR - 60, placed = 0;
-    while (placed < total && r > 40) { const n = Math.floor(Math.PI * r / sp); rows.push({ radius: r, dots: Math.min(n, total - placed) }); placed += n; r -= sp; }
+function _calcParliamentRows(totalSeats, outerR, minInnerR) {
+    let numRows = Math.round(Math.sqrt(totalSeats / 3));
+    numRows = Math.max(3, Math.min(10, numRows));
+
+    const innerR = Math.max(minInnerR, outerR - numRows * 30);
+    const rowSpacing = numRows > 1 ? (outerR - innerR) / (numRows - 1) : 0;
+
+    const radii = [];
+    for (let i = 0; i < numRows; i++) radii.push(innerR + i * rowSpacing);
+
+    // Distribute seats proportionally by arc circumference
+    const totalArc = radii.reduce((sum, r) => sum + Math.PI * r, 0);
+    const rows = [];
+    let allocated = 0;
+
+    for (let i = 0; i < numRows; i++) {
+        const seatsInRow = Math.round(totalSeats * (Math.PI * radii[i]) / totalArc);
+        rows.push({ radius: radii[i], seats: seatsInRow });
+        allocated += seatsInRow;
+    }
+
+    // Correct rounding on outermost row
+    rows[rows.length - 1].seats += (totalSeats - allocated);
     return rows;
 }
 
-function genDots(total, rows, cx, cy) {
-    const pos = []; let idx = 0;
-    for (const row of rows) { const n = Math.min(row.dots, total - idx); const step = Math.PI / (n - 1); for (let i = 0; i < n; i++) { const a = Math.PI - i * step; pos.push({ x: cx + row.radius * Math.cos(a), y: cy - row.radius * Math.sin(a) }); idx++; if (idx >= total) return pos; } }
-    return pos;
+function _genParliamentDots(rows, cx, cy) {
+    const positions = [];
+    const padAngle = 0.08;
+
+    for (const row of rows) {
+        const n = row.seats;
+        const r = row.radius;
+        if (n <= 0) continue;
+
+        if (n === 1) {
+            positions.push({ x: cx + r * Math.cos(Math.PI / 2), y: cy - r * Math.sin(Math.PI / 2) });
+            continue;
+        }
+
+        const startAngle = Math.PI - padAngle;
+        const endAngle = padAngle;
+        const step = (startAngle - endAngle) / (n - 1);
+
+        for (let i = 0; i < n; i++) {
+            const angle = startAngle - i * step;
+            positions.push({ x: cx + r * Math.cos(angle), y: cy - r * Math.sin(angle) });
+        }
+    }
+
+    return positions;
 }
 
 // ==================== RESIGN PM ====================
@@ -2161,6 +2540,12 @@ async function resignPMAction() {
     async function resignMinistry(ministryKey) {
     const ministry = ministryData.find(m => m.ministry_key === ministryKey);
     if (!ministry) return;
+
+    // Cannot resign ministry during caretaker government
+    if (coalitionData?.status === 'caretaker') {
+        alert('Cannot resign ministries during a caretaker government.');
+        return;
+    }
 
     const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
     if (!confirm('📋 Resign ' + ministerName + ' from ' + (ministry.ministry_name || ministryKey) + '?\n\nThis vacates the position. Your coalition leader may reassign it.')) return;

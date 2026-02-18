@@ -8,6 +8,10 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="css/dashboard.css">
     <style>
+        /* ===== PAGE SCROLL OVERRIDE ===== */
+        body { overflow-y: auto !important; height: auto !important; }
+        #top-bar { position: sticky; top: 0; z-index: 100; }
+
         /* ===== MINISTRY HEADER ===== */
         .ministry-header {
             background: linear-gradient(180deg, #1a1a1a 0%, #121212 100%);
@@ -162,7 +166,7 @@
         /* ===== LEFT: INBOX LIST ===== */
         .inbox-panel {
             border-right: 1px solid #222; background: #111;
-            display: flex; flex-direction: column;
+            display: flex; flex-direction: column; overflow: hidden;
         }
         .inbox-header {
             padding: 14px 18px; border-bottom: 1px solid #222;
@@ -244,8 +248,9 @@
         .email-deadline-bar.critical { background: #1a1010; border-color: #ff4444; color: #ff4444; }
         .deadline-timer { font-family: monospace; font-weight: 700; }
 
-        .email-body { flex: 1; padding: 24px 28px; overflow-y: auto; }
+        .email-body { padding: 24px 28px; }
         .email-body-text { font-size: 0.92rem; line-height: 1.7; color: #bbb; max-width: 680px; white-space: pre-line; }
+        .email-scroll-area { flex: 1; }
 
         /* ===== RESOLVED BANNER ===== */
         .resolved-banner {
@@ -260,13 +265,13 @@
 
         /* ===== RESPONSE OPTIONS ===== */
         .response-section {
-            padding: 20px 28px 28px; border-top: 1px solid #222; background: #111;
+            padding: 12px 28px 16px; border-top: 1px solid #222; background: #111;
         }
         .response-label {
             font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.5px;
-            color: #666; font-weight: 600; margin-bottom: 14px;
+            color: #666; font-weight: 600; margin-bottom: 8px;
         }
-        .response-options { display: flex; flex-direction: column; gap: 10px; }
+        .response-options { display: flex; flex-direction: column; gap: 6px; }
         .response-option {
             display: flex; align-items: stretch; background: #1a1a1a;
             border: 1px solid #2a2a2a; border-radius: 8px; cursor: pointer;
@@ -276,41 +281,18 @@
         .response-option.disabled { opacity: 0.4; cursor: not-allowed; }
         .response-option.disabled:hover { border-color: #2a2a2a; background: #1a1a1a; transform: none; }
         .response-option-letter {
-            width: 44px; display: flex; align-items: center; justify-content: center;
-            font-weight: 700; font-size: 0.85rem; color: #000; flex-shrink: 0;
+            width: 36px; display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 0.78rem; color: #000; flex-shrink: 0;
         }
         .response-option-letter.opt-a { background: #4CAF50; }
         .response-option-letter.opt-b { background: #2196F3; }
         .response-option-letter.opt-c { background: #ff9800; }
-        .response-option-content { flex: 1; padding: 12px 16px; }
-        .response-option-title { font-size: 0.88rem; font-weight: 600; color: #e0e0e0; margin-bottom: 4px; }
-        .response-option-outcomes { margin-top: 8px; }
-        .outcome-row {
-            display: flex; align-items: center; gap: 8px; padding: 4px 0;
-            font-size: 0.78rem; color: #888;
-        }
-        .outcome-chance-badge {
-            font-family: monospace; font-size: 0.7rem; font-weight: 700;
-            padding: 2px 6px; border-radius: 3px; min-width: 36px; text-align: center;
-        }
-        .outcome-chance-badge.high { background: #1a2a1a; color: #4CAF50; }
-        .outcome-chance-badge.mid { background: #2a2a1a; color: #ff9800; }
-        .outcome-chance-badge.low { background: #2a1a1a; color: #ff4444; }
-        .outcome-label { flex: 1; color: #aaa; }
-        .outcome-effects-inline {
-            display: flex; flex-wrap: wrap; gap: 4px;
-        }
-        .fx-tag {
-            font-family: monospace; font-size: 0.65rem; padding: 1px 6px;
-            border-radius: 3px; font-weight: 600;
-        }
-        .fx-tag.pos { background: #1a2a1a; color: #4CAF50; }
-        .fx-tag.neg { background: #2a1a1a; color: #ff4444; }
-        .fx-tag.neutral { background: #1a1a2a; color: #64B5F6; }
+        .response-option-content { flex: 1; padding: 8px 14px; }
+        .response-option-title { font-size: 0.88rem; font-weight: 600; color: #e0e0e0; }
 
         .response-option-costs {
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            gap: 4px; padding: 12px 16px; border-left: 1px solid #252525;
+            gap: 4px; padding: 8px 14px; border-left: 1px solid #252525;
             min-width: 80px; flex-shrink: 0;
         }
         .cost-tag {
@@ -364,7 +346,7 @@
 
         @media (max-width: 900px) {
             .inbox-layout { grid-template-columns: 1fr; }
-            .inbox-panel { max-height: 300px; }
+            .inbox-panel { max-height: 50vh; }
             .email-header { padding: 16px; }
             .email-body { padding: 16px; }
             .response-section { padding: 16px; }
@@ -435,6 +417,14 @@
 <script src="js/common.js"></script>
 <script src="js/game-common.js"></script>
 <script>
+// ==================== HELPERS ====================
+function formatMoneyDisplay(m) {
+    if (!m || m <= 0) return '';
+    const dollars = m * 1000000;
+    if (dollars >= 1000000) return '$' + (dollars / 1000000) + 'M';
+    return '$' + Math.round(dollars).toLocaleString();
+}
+
 // ==================== CONSTANTS ====================
 const MINISTRY_INFO = {
     prime_minister: { icon: '🏛️', name: 'Prime Minister\'s Office' },
@@ -640,6 +630,7 @@ let currentTick = 0;
 let actionCooldowns = {};
 let pendingActionKey = null;
 let pendingTargetFactionId = null;
+let isCaretaker = false;
 
 // ==================== INIT ====================
 initPage('ministry-actions', async (state) => {
@@ -668,6 +659,10 @@ initPage('ministry-actions', async (state) => {
         currentFaction.faction_name = fresh.faction_name;
         currentFaction.approval_rating = fresh.approval_rating;
     }
+
+    // Check caretaker status
+    const coalition = await fetchActiveCoalition(_supabase, nation.id);
+    isCaretaker = (coalition?.status === 'caretaker');
 
     const { data: ministries } = await _supabase.from('ministries')
         .select('*').eq('nation_id', nation.id).eq('is_active', true).eq('party_id', faction.id);
@@ -802,7 +797,7 @@ async function renderMinistryHeader(key) {
 
         let costHtml = '<span class="ap">' + a.ap + ' AP</span>';
         if (a.moneyFormula) costHtml += ' <span class="money">+ $</span>';
-        else if (a.money) costHtml += ' <span class="money">$' + a.money + 'M</span>';
+        else if (a.money) costHtml += ' <span class="money">' + formatMoneyDisplay(a.money) + '</span>';
 
         return '<button class="ministry-action-btn" ' + (disabled ? 'disabled' : 'onclick="openActionModal(\'' + a.key + '\')"') + '>' +
             '<span>' + a.icon + '</span>' + a.label +
@@ -935,35 +930,14 @@ function renderEmailDetail() {
             const letterClasses = ['opt-a', 'opt-b', 'opt-c'];
             const canAfford = ap >= (opt.ap || 0);
 
-            const outcomesHtml = (opt.outcomes || []).map(oc => {
-                const chance = oc.chance || 0;
-                let chanceClass = 'high';
-                if (chance < 30) chanceClass = 'low';
-                else if (chance < 60) chanceClass = 'mid';
-
-                const effectTags = (oc.effects || []).map(eff => {
-                    const change = eff.change || 0;
-                    const cls = change > 0 ? 'pos' : (change < 0 ? 'neg' : 'neutral');
-                    const statLabel = eff.stat_key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                    return '<span class="fx-tag ' + cls + '">' + statLabel + ' ' + (change > 0 ? '+' : '') + change + '</span>';
-                }).join('');
-
-                return '<div class="outcome-row">' +
-                    '<span class="outcome-chance-badge ' + chanceClass + '">' + chance + '%</span>' +
-                    '<span class="outcome-label">' + escapeHtml(oc.label || 'Result') + '</span>' +
-                    '<div class="outcome-effects-inline">' + effectTags + '</div>' +
-                '</div>';
-            }).join('');
-
             let costHtml = '<span class="cost-tag ap">' + (opt.ap || 0) + ' AP</span>';
-            if (opt.money && opt.money > 0) costHtml += '<span class="cost-tag money">$' + opt.money + 'M</span>';
+            if (opt.money && opt.money > 0) costHtml += '<span class="cost-tag money">' + formatMoneyDisplay(opt.money) + '</span>';
 
             return '<div class="response-option' + (!canAfford ? ' disabled' : '') + '" ' +
                 (canAfford ? 'onclick="respondToEvent(\'' + ev.id + '\',' + i + ')"' : '') + '>' +
                 '<div class="response-option-letter ' + (letterClasses[i] || 'opt-a') + '">' + letter + '</div>' +
                 '<div class="response-option-content">' +
                     '<div class="response-option-title">' + escapeHtml(opt.label || 'Option ' + letter) + '</div>' +
-                    '<div class="response-option-outcomes">' + outcomesHtml + '</div>' +
                 '</div>' +
                 '<div class="response-option-costs">' + costHtml + '</div>' +
             '</div>';
@@ -978,6 +952,7 @@ function renderEmailDetail() {
         const chosen = options[ev.chosen_option];
         const resolved = ev.resolved_effects || {};
         const outcomeLabel = resolved.outcome_label || chosen?.label || 'Action taken';
+        const outcomeMessage = resolved.outcome_message || '';
         const effects = resolved.effects || (Array.isArray(ev.resolved_effects) ? ev.resolved_effects : []);
         const effectsStr = effects.map(e =>
             e.stat_key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ': ' + (e.change > 0 ? '+' : '') + e.change
@@ -987,6 +962,7 @@ function renderEmailDetail() {
             '<div class="resolved-banner success">' +
                 '<div class="resolved-title success">✓ ' + escapeHtml(chosen?.label || 'Responded') + '</div>' +
                 '<div style="font-size:0.8rem;color:#aaa;margin-bottom:4px;">Outcome: <strong style="color:var(--accent);">' + escapeHtml(outcomeLabel) + '</strong></div>' +
+                (outcomeMessage ? '<div style="font-size:0.82rem;color:#ccc;margin-bottom:6px;font-style:italic;line-height:1.4;">' + escapeHtml(outcomeMessage) + '</div>' : '') +
                 (effectsStr ? '<div class="resolved-effects">Effects: ' + effectsStr + '</div>' : '') +
             '</div>';
     } else if (ev.status === 'expired') {
@@ -1004,7 +980,7 @@ function renderEmailDetail() {
     }
 
     document.getElementById('email-panel').innerHTML =
-        '<div style="flex:1;display:flex;flex-direction:column;">' +
+        '<div style="flex:1;display:flex;flex-direction:column;min-height:0;">' +
             '<div class="email-header">' +
                 '<div class="email-priority-row">' +
                     '<span class="inbox-item-priority priority-' + ev.priority + '">' + ev.priority.toUpperCase() + '</span>' +
@@ -1017,24 +993,46 @@ function renderEmailDetail() {
                 '</div>' +
                 (ev.status === 'active' && ticksLeft !== null ? '<div class="email-deadline-bar' + (isCritical ? ' critical' : '') + '">⏱ <span class="deadline-timer">' + ticksLeft + ' tick' + (ticksLeft !== 1 ? 's' : '') + '</span> remaining to respond</div>' : '') +
             '</div>' +
-            '<div class="email-body"><div class="email-body-text">' + escapeHtml(ev.body) + '</div></div>' +
-            bottomSection +
+            '<div class="email-scroll-area">' +
+                '<div class="email-body"><div class="email-body-text">' + escapeHtml(ev.body) + '</div></div>' +
+                bottomSection +
+            '</div>' +
         '</div>';
+}
+
+// ==================== PLACEHOLDER RESOLUTION ====================
+function resolveOutcomePlaceholders(message, context) {
+    if (!message) return '';
+    return message
+        .replace(/\{nation\}/g, context.nation || '')
+        .replace(/\{minister\}/g, context.minister || '')
+        .replace(/\{party\}/g, context.party || '')
+        .replace(/\{sender\}/g, context.sender || '')
+        .replace(/\{outcome\}/g, context.outcome || '')
+        .replace(/\{cost\}/g, context.cost || '');
 }
 
 // ==================== RESPOND TO EVENT ====================
 async function respondToEvent(eventId, optionIndex) {
+    if (isCaretaker) { alert('Ministry actions are restricted during caretaker government.'); return; }
     const ev = inboxEvents.find(e => e.id === eventId);
     if (!ev || ev.status !== 'active') return;
 
     const option = ev.options[optionIndex];
     if (!option) return;
 
-    const ap = currentFaction?.action_points || 0;
-    if (ap < (option.ap || 0)) { alert('Not enough AP.'); return; }
+    const apCost = option.ap || 0;
+    if ((currentFaction?.action_points || 0) < apCost) { alert('Not enough AP.'); return; }
 
     const letter = String.fromCharCode(65 + optionIndex);
-    if (!confirm('Choose Option ' + letter + ': ' + (option.label || '') + '?\n\nCost: ' + (option.ap || 0) + ' AP' + (option.money ? ' + $' + option.money + 'M' : ''))) return;
+    if (!confirm('Choose Option ' + letter + ': ' + (option.label || '') + '?\n\nCost: ' + apCost + ' AP' + (option.money ? ' + ' + formatMoneyDisplay(option.money) : ''))) return;
+
+    if (apCost > 0) {
+        const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+        if (!apResult.success) { alert('Not enough AP.'); return; }
+        currentFaction.action_points = apResult.newAp;
+        sessionStorage.removeItem('nationhood_state');
+    }
 
     try {
         const outcomes = option.outcomes || [{ chance: 100, label: 'Result', effects: [] }];
@@ -1062,31 +1060,51 @@ async function respondToEvent(eventId, optionIndex) {
                     await _supabase.from('ministries').update({ minister_approval: Math.max(0, Math.min(100, current + change)) }).eq('id', ministry.id);
                 }
             } else if (eff.target === 'faction') {
-                const current = currentFaction.approval_rating || 50;
-                await _supabase.from('factions').update({ approval_rating: Math.max(0, Math.min(100, current + change)) }).eq('id', currentFaction.id);
+                await adjustBlocApproval(_supabase, currentFaction.id, change);
             }
             appliedEffects.push({ stat_key: eff.stat_key, change: change, target: eff.target || 'nation' });
         }
 
-        await _supabase.from('factions').update({
-            action_points: Math.max(0, ap - (option.ap || 0))
-        }).eq('id', currentFaction.id);
-        currentFaction.action_points = Math.max(0, ap - (option.ap || 0));
+        // Resolve outcome message placeholders
+        const placeholderCtx = {
+            nation: currentNation?.name || '',
+            minister: currentFaction?.name || '',
+            party: currentFaction?.name || '',
+            sender: ev.sender || '',
+            outcome: chosenOutcome.label || 'Result',
+            cost: option.money ? formatMoneyDisplay(option.money) : '$0'
+        };
+        const resolvedMessage = resolveOutcomePlaceholders(chosenOutcome.message || '', placeholderCtx);
 
         await _supabase.from('ministry_events').update({
             chosen_option: optionIndex,
-            resolved_effects: { outcome_label: chosenOutcome.label || 'Result', effects: appliedEffects },
+            resolved_effects: { outcome_label: chosenOutcome.label || 'Result', outcome_message: resolvedMessage || null, effects: appliedEffects },
             status: 'resolved',
             resolved_at_tick: currentTick
         }).eq('id', eventId);
 
         await markFactionActive(_supabase, currentFaction.id);
 
+        // If outcome has a civic event, insert into event_log for the CIVIC feed
+        if (chosenOutcome.civic_event_text) {
+            const civicText = resolveOutcomePlaceholders(chosenOutcome.civic_event_text, placeholderCtx);
+            const civicName = resolveOutcomePlaceholders(chosenOutcome.civic_event_name || chosenOutcome.label || 'Ministry Event', placeholderCtx);
+            const civicCategory = chosenOutcome.civic_event_category || 'General';
+            await _supabase.from('event_log').insert({
+                nation_id: currentNation.id,
+                event_name: civicName,
+                description_used: civicText,
+                effects_applied: appliedEffects,
+                category: civicCategory,
+                fired_at_tick: currentTick
+            });
+        }
+
         const effectsStr = appliedEffects.map(e =>
             e.stat_key.replace(/_/g, ' ') + ': ' + (e.change > 0 ? '+' : '') + e.change
         ).join('\n');
 
-        alert('📋 ' + chosenOutcome.label + '\n\n' + effectsStr);
+        alert('📋 ' + chosenOutcome.label + (resolvedMessage ? '\n\n' + resolvedMessage : '') + (effectsStr ? '\n\n' + effectsStr : ''));
 
         await loadInboxEvents(activeMinistryKey);
         selectEvent(eventId);
@@ -1115,7 +1133,7 @@ function openActionModal(actionKey) {
     bodyHtml += '<div class="modal-cost-row">' +
         '<span class="cost-tag ap">' + action.ap + ' AP</span>' +
         (action.moneyFormula ? '<span class="cost-tag money">$1M × ' + action.moneyFormula.replace(/_/g, ' ') + '</span>' : '') +
-        (action.money ? '<span class="cost-tag money">$' + action.money + 'M</span>' : '') +
+        (action.money ? '<span class="cost-tag money">' + formatMoneyDisplay(action.money) + '</span>' : '') +
     '</div>';
 
     if (action.stat_effects && action.stat_effects.length > 0) {
@@ -1154,6 +1172,7 @@ function closeActionModal() {
 }
 
 async function confirmAction() {
+    if (isCaretaker) { alert('Ministry actions are restricted during caretaker government.'); return; }
     const govType = isAutocracy ? 'Autocracy' : 'Democracy';
     const actions = (MINISTRY_ACTIONS[activeMinistryKey] || {})[govType] || [];
     const action = actions.find(a => a.key === pendingActionKey);
@@ -1163,15 +1182,14 @@ async function confirmAction() {
         alert('Select a target faction.'); return;
     }
 
-    const ap = currentFaction?.action_points || 0;
-    if (ap < action.ap) { alert('Not enough AP.'); return; }
+    if ((currentFaction?.action_points || 0) < action.ap) { alert('Not enough AP.'); return; }
+
+    const apResult = await deductAP(_supabase, currentFaction.id, action.ap);
+    if (!apResult.success) { alert('Not enough AP.'); return; }
+    currentFaction.action_points = apResult.newAp;
+    sessionStorage.removeItem('nationhood_state');
 
     try {
-        await _supabase.from('factions').update({
-            action_points: Math.max(0, ap - action.ap)
-        }).eq('id', currentFaction.id);
-        currentFaction.action_points = Math.max(0, ap - action.ap);
-
         const cooldownUntil = action.cooldownTicks ? currentTick + action.cooldownTicks : null;
         const hasEffects = action.stat_effects && action.stat_effects.length > 0;
         await _supabase.from('ministry_action_log').insert({
@@ -1187,7 +1205,7 @@ async function confirmAction() {
             processed: !hasEffects,
             cooldown_until_tick: cooldownUntil,
             stat_effects: hasEffects ? action.stat_effects : null,
-            effects_applied_through_tick: hasEffects ? currentTick : null
+            effects_applied_through_tick: hasEffects ? currentTick - 1 : null
         });
 
         if (cooldownUntil) {

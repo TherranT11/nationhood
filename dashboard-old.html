@@ -1137,14 +1137,15 @@ function setupWorldMap() {
                 if (!nation) { sidebar.innerHTML = '<p style="color:#f44;">Nation not found.</p>'; return; }
                 const fmt = n => (n == null) ? 'N/A' : Number(n).toLocaleString();
                 const fmtCur = v => { if (v == null) return 'N/A'; v = Number(v); if (v >= 1e12) return '$'+(v/1e12).toFixed(1)+' Trillion'; if (v >= 1e9) return '$'+(v/1e9).toFixed(1)+' Billion'; if (v >= 1e6) return '$'+(v/1e6).toFixed(1)+' Million'; return '$'+v.toLocaleString(); };
+                const scaleDollars = v => (v != null && v > 0 && v < 1000000) ? v * 1e9 : v;
                 sidebar.innerHTML =
                     '<h3 style="color:#ffcc00;font-size:1.1rem;margin-bottom:6px;">' + nation.name + '</h3>' +
                     '<p style="color:#888;font-size:0.78rem;margin-bottom:14px;">Capital: ' + (nation.capital||'—') + '</p>' +
                     '<div style="display:flex;flex-direction:column;gap:8px;">' +
                         sRow('Population', fmt(nation.population), '#ffcc00') +
                         sRow('Government', nation.government_type||'—', '#fff') +
-                        sRow('GDP',        fmtCur(nation.GDP), '#4CAF50') +
-                        sRow('Debt',       fmtCur(nation.debt), '#ff9800') +
+                        sRow('GDP',        fmtCur(scaleDollars(nation.gdp)), '#4CAF50') +
+                        sRow('Debt',       fmtCur(scaleDollars(nation.debt)), '#ff9800') +
                     '</div>';
             } catch(e) { sidebar.innerHTML = '<p style="color:#f44;">Error loading data.</p>'; }
         });
@@ -1164,10 +1165,11 @@ function populateNationTab() {
     document.getElementById('nation-hero-capital').textContent = 'Capital: ' + (n.capital || '—');
     const fmt = v => (v == null) ? 'N/A' : Number(v).toLocaleString();
     const fmtCur = v => { if (v == null) return 'N/A'; v = Number(v); if (v >= 1e12) return '$'+(v/1e12).toFixed(1)+' Trillion'; if (v >= 1e9) return '$'+(v/1e9).toFixed(1)+' Billion'; if (v >= 1e6) return '$'+(v/1e6).toFixed(1)+' Million'; return '$'+v.toLocaleString(); };
+    const scaleDollars = v => (v != null && v > 0 && v < 1000000) ? v * 1e9 : v;
     const stats = [
         { label:'Population',   value: fmt(n.population) },
-        { label:'GDP',          value: fmtCur(n.GDP) },
-        { label:'Nat\'l Debt',  value: fmtCur(n.debt) },
+        { label:'GDP',          value: fmtCur(scaleDollars(n.GDP)) },
+        { label:'Nat\'l Debt',  value: fmtCur(scaleDollars(n.debt)) },
         { label:'Stability',    value: n.stability != null ? String(n.stability) : 'N/A' },
         { label:'Civil Unrest', value: n.civil_unrest != null ? String(n.civil_unrest) : 'N/A' },
         { label:'Gov. Type',    value: n.government_type || '—' },
@@ -2079,7 +2081,7 @@ const activeCoalition = null;
         
         const coalitionPartyIds = activeCoalition?.party_ids || [];
         const totalSeats = currentNation?.total_seats || 120;
-        const majorityThreshold = Math.ceil(totalSeats * 0.51);
+        const majorityThreshold = Math.floor(totalSeats / 2) + 1;
         
         // Build party cards
         const partiesHTML = parties.map(party => {

@@ -1,13 +1,16 @@
 -- ============================================================
 -- run_election(p_nation_id UUID, p_election_type TEXT DEFAULT 'parliamentary')
 --
--- Voter-bloc-based election simulation.
+-- Voter-bloc-based election simulation (Weighted Competition Model).
 --
 -- 1. Loads voter blocs + party ideology axes
--- 2. For each bloc, runs a 4-step cascade to find eligible parties
--- 3. Distributes votes using approval × alignment weighting
--- 4. Allocates 120 seats via Largest Remainder (Hare Quota)
--- 5. Writes results to elections table + syncs factions.seats
+-- 2. For each bloc, loads per-bloc approval from faction_bloc_approval
+-- 3. ALL parties compete simultaneously for each bloc's voters:
+--      weight = bloc_approval × ideology_multiplier
+--      ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
+-- 4. Votes distributed proportionally by weight (Largest Remainder)
+-- 5. Allocates seats via Largest Remainder (Hare Quota)
+-- 6. Writes results to elections table + syncs factions.seats
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION run_election(
@@ -20,15 +23,12 @@ AS $$
 DECLARE
     v_nation       RECORD;
     v_total_seats  INT;
-    v_blocs        JSONB;
     v_parties      JSONB;
     v_tally        JSONB := '{}'::JSONB;  -- { party_id: vote_count }
     v_bloc         RECORD;
     v_party        RECORD;
     v_tags         TEXT[];
     v_step         INT;
-    v_eligible_ids TEXT[];
-    v_alignments   JSONB;  -- { party_id: [alignment_per_tag] }
     v_total_abstentions BIGINT := 0;
     v_abstentions  BIGINT;
     v_total_votes  BIGINT;
@@ -38,6 +38,7 @@ DECLARE
     v_result_rows  JSONB := '[]'::JSONB;
     v_seat_rows    JSONB := '[]'::JSONB;
     v_election_type TEXT := LOWER(COALESCE(p_election_type, 'parliamentary'));
+    v_bloc_approvals JSONB;
 BEGIN
     IF v_election_type NOT IN ('parliamentary', 'presidential') THEN
         RAISE EXCEPTION 'Invalid election type: % (allowed: parliamentary, presidential)', p_election_type;
@@ -56,15 +57,12 @@ BEGIN
     v_total_seats := COALESCE(v_nation.total_seats, 120);
 
     -- ---- Load parties with ideology axes ----
-    -- Build a JSON array of party objects
     SELECT COALESCE(jsonb_agg(row_to_json(t)::JSONB), '[]'::JSONB)
     INTO v_parties
     FROM (
         SELECT
             f.id,
             f.faction_name,
-            COALESCE(f.approval_rating, 0) AS approval_rating,
-            COALESCE(f.ideology_modifiers, '{}'::JSONB) AS ideology_modifiers,
             COALESCE(fi.liberty_equality, 0)           AS liberty_equality,
             COALESCE(fi.tradition_progress, 0)         AS tradition_progress,
             COALESCE(fi.security_freedom, 0)           AS security_freedom,
@@ -86,8 +84,36 @@ BEGIN
         v_tally := v_tally || jsonb_build_object(v_party.value->>'id', 0);
     END LOOP;
 
+    -- ---- Compute ideology saturation ----
+    -- Count how many parties positively align with each ideology tag.
+    -- Over-served ideologies get higher abstention (voter complacency);
+    -- under-served get lower abstention (underdog motivation).
+    DECLARE
+        v_saturation     JSONB := '{}'::JSONB;
+        v_avg_saturation NUMERIC := 1;
+        v_sat_count      INT;
+        v_sat_total      NUMERIC := 0;
+        v_sat_active     INT := 0;
+        v_all_tags       TEXT[] := ARRAY['LIBERTY','EQUALITY','TRADITION','PROGRESS','SECURITY',
+                                         'FREEDOM','GLOBALISM','NATIONALISM','INDIVIDUALISM','COLLECTIVISM'];
+        v_stag           TEXT;
+    BEGIN
+        FOREACH v_stag IN ARRAY v_all_tags LOOP
+            v_sat_count := 0;
+            FOR v_party IN SELECT * FROM jsonb_array_elements(v_parties) LOOP
+                IF _election_get_alignment(v_party.value, v_stag) > 0 THEN
+                    v_sat_count := v_sat_count + 1;
+                END IF;
+            END LOOP;
+            v_saturation := v_saturation || jsonb_build_object(v_stag, v_sat_count);
+            IF v_sat_count > 0 THEN
+                v_sat_total := v_sat_total + v_sat_count;
+                v_sat_active := v_sat_active + 1;
+            END IF;
+        END LOOP;
+        IF v_sat_active > 0 THEN v_avg_saturation := v_sat_total / v_sat_active; END IF;
+
     -- ---- Compute voter bloc scale factor ----
-    -- Blocs are generated from population, but elections use eligible_voters
     DECLARE
         v_total_bloc_voters BIGINT;
         v_eligible          BIGINT := COALESCE(v_nation.eligible_voters, 0);
@@ -131,14 +157,31 @@ BEGIN
             v_tags := v_tags || UPPER(v_bloc.ideology_5);
         END IF;
 
-        -- Run cascade + distribute (single call)
+        -- Build per-bloc approval map: { party_id: approval }
+        SELECT COALESCE(
+            jsonb_object_agg(sub.party_id, sub.approval),
+            '{}'::JSONB
+        )
+        INTO v_bloc_approvals
+        FROM (
+            SELECT
+                (p.value->>'id') AS party_id,
+                COALESCE(fba.approval, 40) AS approval
+            FROM jsonb_array_elements(v_parties) AS p(value)
+            LEFT JOIN faction_bloc_approval fba
+                ON fba.faction_id = (p.value->>'id')::UUID
+                AND fba.bloc_id = v_bloc.id
+        ) sub;
+
+        -- Weighted competition: all parties compete simultaneously
         SELECT r.step, r.abstentions, r.updated_tally
         INTO v_step, v_abstentions, v_tally
-        FROM _election_process_bloc(v_parties, v_tags, v_bloc.voter_count, v_tally) r;
+        FROM _election_process_bloc(v_parties, v_tags, v_bloc.voter_count, v_tally, v_bloc_approvals, v_saturation, v_avg_saturation) r;
 
         v_total_abstentions := v_total_abstentions + COALESCE(v_abstentions, 0);
     END LOOP;
     END; -- close DECLARE block for v_bloc_scale
+    END; -- close DECLARE block for v_saturation
 
     -- ---- Calculate total votes ----
     v_total_votes := 0;
@@ -212,7 +255,7 @@ $$;
 
 
 -- ============================================================
--- _election_get_alignment(party JSONB, tag TEXT) → INT
+-- _election_get_alignment(party JSONB, tag TEXT) -> INT
 --
 -- Returns party's alignment score toward a specific ideology tag.
 -- Positive = supports, negative = opposes.
@@ -228,7 +271,7 @@ DECLARE
     v_dir    INT;
     v_value  INT;
 BEGIN
-    -- Map tag → axis key + direction
+    -- Map tag -> axis key + direction
     CASE v_tag
         WHEN 'LIBERTY'        THEN v_axis := 'liberty_equality';           v_dir := -1;
         WHEN 'EQUALITY'       THEN v_axis := 'liberty_equality';           v_dir :=  1;
@@ -250,236 +293,61 @@ $$;
 
 
 -- ============================================================
--- _election_process_bloc(parties JSONB, tags TEXT[], bloc_count INT, tally JSONB)
--- → TABLE(step INT, abstentions BIGINT, updated_tally JSONB)
+-- _election_process_bloc — Weighted Competition Model
 --
--- Runs the 4-step cascade for one voter bloc and distributes votes.
+-- ALL parties compete simultaneously for each voter bloc.
+-- weight = bloc_approval × ideology_multiplier
+-- ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
+--
+-- No cascade steps. No leakage. One simple formula.
 -- ============================================================
 
+-- Drop all previous overloads
+DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB);
+DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], BIGINT, JSONB);
+DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB, JSONB);
+DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB, JSONB, NUMERIC);
+DROP FUNCTION IF EXISTS _election_process_bloc(JSONB, TEXT[], INT, JSONB, JSONB, JSONB, NUMERIC);
+
 CREATE OR REPLACE FUNCTION _election_process_bloc(
-    p_parties    JSONB,
-    p_tags       TEXT[],
-    p_bloc_count INT,
-    p_tally      JSONB
+    p_parties          JSONB,
+    p_tags             TEXT[],
+    p_bloc_count       INT,
+    p_tally            JSONB,
+    p_bloc_approvals   JSONB,
+    p_saturation       JSONB DEFAULT '{}'::JSONB,
+    p_avg_saturation   NUMERIC DEFAULT 1
 )
 RETURNS TABLE(step INT, abstentions BIGINT, updated_tally JSONB)
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_eligible_ids TEXT[] := ARRAY[]::TEXT[];
     v_party        RECORD;
-    v_aligns       INT[];
-    v_positive     INT;
     v_tag_count    INT := array_length(p_tags, 1);
-    v_step         INT := 0;
-    v_alignment    INT;
-    v_i            INT;
     v_tally        JSONB := p_tally;
     v_abstain      BIGINT := 0;
     v_voters       INT;
     v_abstain_rate NUMERIC;
-BEGIN
-    -- Handle Unaligned bloc (no tags)
-    IF v_tag_count IS NULL OR v_tag_count = 0 THEN
-        -- Step 0: 35% base abstention for unaligned blocs
-        v_abstain := FLOOR(p_bloc_count * 0.35);
-        v_voters := p_bloc_count - v_abstain;
-        IF v_voters > 0 THEN
-            v_tally := _election_distribute_votes_approval_only(p_parties, v_voters, v_tally);
-        END IF;
-        RETURN QUERY SELECT 0, v_abstain, v_tally;
-        RETURN;
-    END IF;
-
-    -- Pre-compute alignments per party
-    -- Try each cascade step
-
-    -- ==== STEP 1: Full Ideology Match ====
-    v_eligible_ids := ARRAY[]::TEXT[];
-    FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
-    LOOP
-        v_positive := 0;
-        FOR v_i IN 1..v_tag_count LOOP
-            v_alignment := _election_get_alignment(v_party.value, p_tags[v_i]);
-            IF v_alignment > 0 THEN v_positive := v_positive + 1; END IF;
-        END LOOP;
-
-        IF v_tag_count <= 2 AND v_positive >= v_tag_count THEN
-            v_eligible_ids := v_eligible_ids || (v_party.value->>'id');
-        ELSIF v_tag_count >= 3 AND v_positive >= 2 THEN
-            v_eligible_ids := v_eligible_ids || (v_party.value->>'id');
-        END IF;
-    END LOOP;
-
-    IF array_length(v_eligible_ids, 1) > 0 THEN
-        -- Step 1: 20% base abstention — most motivated voters
-        v_abstain := FLOOR(p_bloc_count * 0.20);
-        v_voters := p_bloc_count - v_abstain;
-        IF v_voters > 0 THEN
-            v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, v_voters, v_tally);
-        END IF;
-        RETURN QUERY SELECT 1, v_abstain, v_tally;
-        RETURN;
-    END IF;
-
-    -- ==== STEP 2: Partial Match ====
-    v_eligible_ids := ARRAY[]::TEXT[];
-    FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
-    LOOP
-        FOR v_i IN 1..v_tag_count LOOP
-            v_alignment := _election_get_alignment(v_party.value, p_tags[v_i]);
-            IF v_alignment > 0 THEN
-                v_eligible_ids := v_eligible_ids || (v_party.value->>'id');
-                EXIT; -- one match is enough
-            END IF;
-        END LOOP;
-    END LOOP;
-
-    IF array_length(v_eligible_ids, 1) > 0 THEN
-        -- Step 2: 28% base abstention — moderate motivation
-        v_abstain := FLOOR(p_bloc_count * 0.28);
-        v_voters := p_bloc_count - v_abstain;
-        IF v_voters > 0 THEN
-            v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, v_voters, v_tally);
-        END IF;
-        RETURN QUERY SELECT 2, v_abstain, v_tally;
-        RETURN;
-    END IF;
-
-    -- ==== STEP 3: No Active Opposition (alignment > -20) ====
-    v_eligible_ids := ARRAY[]::TEXT[];
-    FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
-    LOOP
-        DECLARE
-            v_ok BOOLEAN := TRUE;
-        BEGIN
-            FOR v_i IN 1..v_tag_count LOOP
-                v_alignment := _election_get_alignment(v_party.value, p_tags[v_i]);
-                IF v_alignment <= -20 THEN
-                    v_ok := FALSE;
-                    EXIT;
-                END IF;
-            END LOOP;
-            IF v_ok THEN
-                v_eligible_ids := v_eligible_ids || (v_party.value->>'id');
-            END IF;
-        END;
-    END LOOP;
-
-    IF array_length(v_eligible_ids, 1) > 0 THEN
-        -- Step 3: 33% base abstention — lukewarm support
-        v_abstain := FLOOR(p_bloc_count * 0.33);
-        v_voters := p_bloc_count - v_abstain;
-        IF v_voters > 0 THEN
-            v_tally := _election_distribute_votes(p_parties, v_eligible_ids, p_tags, v_voters, v_tally);
-        END IF;
-        RETURN QUERY SELECT 3, v_abstain, v_tally;
-        RETURN;
-    END IF;
-
-    -- ==== STEP 4: Forced choice / abstention ====
-    -- Step 4: 75% abstain — deeply disaffected
-    v_abstain := FLOOR(p_bloc_count * 0.75);
-    DECLARE
-        v_forced INT := p_bloc_count - v_abstain;
-        v_best_id TEXT;
-        v_best_approval INT := -1;
-        v_cur_approval INT;
-    BEGIN
-        IF v_forced > 0 THEN
-            FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
-            LOOP
-                v_cur_approval := _election_effective_approval(v_party.value, p_tags)::INT;
-                IF v_cur_approval > v_best_approval THEN
-                    v_best_approval := v_cur_approval;
-                    v_best_id := v_party.value->>'id';
-                END IF;
-            END LOOP;
-
-            v_tally := jsonb_set(
-                v_tally,
-                ARRAY[v_best_id],
-                to_jsonb(COALESCE((v_tally->>v_best_id)::BIGINT, 0) + v_forced)
-            );
-        END IF;
-    END;
-
-    RETURN QUERY SELECT 4, v_abstain, v_tally;
-    RETURN;
-END;
-$$;
-
-
--- ============================================================
--- _election_effective_approval(party JSONB, tags TEXT[])
--- → NUMERIC
---
--- Returns effective approval = base_approval + avg(matched tag modifiers).
--- For unaligned blocs (empty tags), returns base approval unchanged.
--- Clamped to [0, 100].
--- ============================================================
-
-CREATE OR REPLACE FUNCTION _election_effective_approval(
-    p_party JSONB,
-    p_tags  TEXT[]
-)
-RETURNS NUMERIC
-LANGUAGE plpgsql IMMUTABLE
-AS $$
-DECLARE
-    v_base       NUMERIC := COALESCE((p_party->>'approval_rating')::NUMERIC, 0);
-    v_mods       JSONB   := COALESCE(p_party->'ideology_modifiers', '{}'::JSONB);
-    v_tag_count  INT     := COALESCE(array_length(p_tags, 1), 0);
-    v_sum        NUMERIC := 0;
-    v_i          INT;
-    v_tag        TEXT;
-    v_mod_val    NUMERIC;
-BEGIN
-    IF v_tag_count = 0 THEN
-        RETURN v_base;
-    END IF;
-
-    FOR v_i IN 1..v_tag_count LOOP
-        v_tag := UPPER(p_tags[v_i]);
-        v_mod_val := COALESCE((v_mods->>v_tag)::NUMERIC, 0);
-        v_sum := v_sum + v_mod_val;
-    END LOOP;
-
-    RETURN GREATEST(0, LEAST(100, v_base + (v_sum / v_tag_count)));
-END;
-$$;
-
-
--- ============================================================
--- _election_distribute_votes(parties, eligible_ids, tags, bloc_count, tally)
--- → JSONB (updated tally)
---
--- Distributes votes using approval × alignment weighting.
--- ============================================================
-
-CREATE OR REPLACE FUNCTION _election_distribute_votes(
-    p_parties      JSONB,
-    p_eligible_ids TEXT[],
-    p_tags         TEXT[],
-    p_bloc_count   INT,
-    p_tally        JSONB
-)
-RETURNS JSONB
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    v_tally        JSONB := p_tally;
-    v_party        RECORD;
-    v_tag_count    INT := array_length(p_tags, 1);
-    v_weights      JSONB := '{}'::JSONB;
-    v_total_weight NUMERIC := 0;
-    v_alignment    INT;
-    v_clamped      INT;
-    v_align_sum    NUMERIC;
-    v_align_score  NUMERIC;
-    v_weight       NUMERIC;
-    v_pid          TEXT;
     v_i            INT;
+    -- Saturation variables
+    c_SAT_RATE     CONSTANT NUMERIC := 0.04;
+    c_SAT_CAP      CONSTANT NUMERIC := 0.12;
+    v_sat_sum      NUMERIC := 0;
+    v_bloc_sat     NUMERIC := 0;
+    v_sat_mod      NUMERIC := 0;
+    -- Weighted competition variables
+    c_IDEOLOGY_RATE  CONSTANT NUMERIC := 0.02;  -- multiplier per alignment unit
+    c_MULT_MIN       CONSTANT NUMERIC := 0.2;   -- min ideology multiplier
+    c_MULT_MAX       CONSTANT NUMERIC := 2.0;   -- max ideology multiplier
+    v_pid          TEXT;
+    v_approval     NUMERIC;
+    v_alignment    INT;
+    v_align_sum    NUMERIC;
+    v_align_avg    NUMERIC;
+    v_multiplier   NUMERIC;
+    v_weight       NUMERIC;
+    v_total_weight NUMERIC := 0;
+    v_weights      JSONB := '{}'::JSONB;
     v_allocated    INT := 0;
     v_exact        NUMERIC;
     v_floored      INT;
@@ -487,52 +355,76 @@ DECLARE
     v_remainder    INT;
     v_frac         RECORD;
 BEGIN
-    -- Calculate weights for eligible parties
+    -- ---- Pre-compute saturation modifier for this bloc's tags ----
+    IF v_tag_count IS NOT NULL AND v_tag_count > 0 AND p_saturation != '{}'::JSONB THEN
+        FOR v_i IN 1..v_tag_count LOOP
+            v_sat_sum := v_sat_sum + COALESCE((p_saturation->>UPPER(p_tags[v_i]))::NUMERIC, 0);
+        END LOOP;
+        v_bloc_sat := v_sat_sum / v_tag_count;
+        v_sat_mod := (v_bloc_sat - p_avg_saturation) * c_SAT_RATE;
+        v_sat_mod := GREATEST(-c_SAT_CAP, LEAST(c_SAT_CAP, v_sat_mod));
+    END IF;
+
+    -- ---- Handle Unaligned bloc (no tags) — distribute purely by approval ----
+    IF v_tag_count IS NULL OR v_tag_count = 0 THEN
+        v_abstain := FLOOR(p_bloc_count * 0.35);
+        v_voters := p_bloc_count - v_abstain;
+        IF v_voters > 0 THEN
+            v_tally := _election_distribute_votes_approval_only(p_parties, v_voters, v_tally, p_bloc_approvals);
+        END IF;
+        RETURN QUERY SELECT 0, v_abstain, v_tally;
+        RETURN;
+    END IF;
+
+    -- ---- Abstention: 22% base + saturation modifier ----
+    v_abstain_rate := GREATEST(0.05, LEAST(0.85, 0.22 + v_sat_mod));
+    v_abstain := FLOOR(p_bloc_count * v_abstain_rate);
+    v_voters := p_bloc_count - v_abstain;
+
+    IF v_voters <= 0 THEN
+        RETURN QUERY SELECT 1, p_bloc_count::BIGINT, v_tally;
+        RETURN;
+    END IF;
+
+    -- ---- Weighted Competition: ALL parties compete simultaneously ----
+    -- weight = bloc_approval × ideology_multiplier
+    -- ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
     FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
     LOOP
         v_pid := v_party.value->>'id';
-        IF NOT (v_pid = ANY(p_eligible_ids)) THEN CONTINUE; END IF;
+        v_approval := COALESCE((p_bloc_approvals->>v_pid)::NUMERIC, 40);
 
+        -- Compute average alignment across bloc tags
         v_align_sum := 0;
-        IF v_tag_count IS NOT NULL AND v_tag_count > 0 THEN
-            FOR v_i IN 1..v_tag_count LOOP
-                v_alignment := _election_get_alignment(v_party.value, p_tags[v_i]);
-                v_clamped := GREATEST(v_alignment, 1);
-                v_align_sum := v_align_sum + v_clamped;
-            END LOOP;
-            v_align_score := v_align_sum / v_tag_count;
-        ELSE
-            v_align_score := 1;
-        END IF;
+        FOR v_i IN 1..v_tag_count LOOP
+            v_alignment := _election_get_alignment(v_party.value, p_tags[v_i]);
+            v_align_sum := v_align_sum + v_alignment;
+        END LOOP;
+        v_align_avg := v_align_sum / v_tag_count;
 
-        v_weight := _election_effective_approval(v_party.value, p_tags) * v_align_score;
+        -- ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
+        v_multiplier := GREATEST(c_MULT_MIN, LEAST(c_MULT_MAX, 1.0 + v_align_avg * c_IDEOLOGY_RATE));
+
+        v_weight := v_approval * v_multiplier;
+        IF v_weight < 0 THEN v_weight := 0; END IF;
+
         v_weights := v_weights || jsonb_build_object(v_pid, v_weight);
         v_total_weight := v_total_weight + v_weight;
     END LOOP;
 
-    -- Edge case: all weights 0
+    -- Edge case: all weights are 0 — fall back to approval-only
     IF v_total_weight = 0 THEN
-        DECLARE
-            v_count INT := array_length(p_eligible_ids, 1);
-            v_even  INT := FLOOR(p_bloc_count::NUMERIC / v_count);
-            v_rem   INT := p_bloc_count - v_even * v_count;
-        BEGIN
-            FOREACH v_pid IN ARRAY p_eligible_ids LOOP
-                v_tally := jsonb_set(v_tally, ARRAY[v_pid],
-                    to_jsonb(COALESCE((v_tally->>v_pid)::BIGINT, 0) + v_even));
-            END LOOP;
-            IF v_rem > 0 THEN
-                v_tally := jsonb_set(v_tally, ARRAY[p_eligible_ids[1]],
-                    to_jsonb(COALESCE((v_tally->>p_eligible_ids[1])::BIGINT, 0) + v_rem));
-            END IF;
-            RETURN v_tally;
-        END;
+        v_tally := _election_distribute_votes_approval_only(p_parties, v_voters, v_tally, p_bloc_approvals);
+        RETURN QUERY SELECT 1, v_abstain, v_tally;
+        RETURN;
     END IF;
 
-    -- Distribute proportionally with largest remainder
-    FOREACH v_pid IN ARRAY p_eligible_ids LOOP
+    -- ---- Distribute votes proportionally with Largest Remainder ----
+    FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
+    LOOP
+        v_pid := v_party.value->>'id';
         v_weight := COALESCE((v_weights->>v_pid)::NUMERIC, 0);
-        v_exact := (p_bloc_count::NUMERIC * v_weight) / v_total_weight;
+        v_exact := (v_voters::NUMERIC * v_weight) / v_total_weight;
         v_floored := FLOOR(v_exact);
 
         v_tally := jsonb_set(v_tally, ARRAY[v_pid],
@@ -545,9 +437,8 @@ BEGIN
         );
     END LOOP;
 
-    v_remainder := p_bloc_count - v_allocated;
+    v_remainder := v_voters - v_allocated;
 
-    -- Sort fractionals descending by frac and award remainder seats
     IF v_remainder > 0 THEN
         FOR v_frac IN
             SELECT value->>'id' AS pid, (value->>'frac')::NUMERIC AS frac
@@ -560,22 +451,39 @@ BEGIN
         END LOOP;
     END IF;
 
-    RETURN v_tally;
+    RETURN QUERY SELECT 1, v_abstain, v_tally;
+    RETURN;
 END;
 $$;
 
 
 -- ============================================================
--- _election_distribute_votes_approval_only(parties, bloc_count, tally)
--- → JSONB (updated tally)
+-- Drop old functions no longer used in the weighted competition model
+-- ============================================================
+DROP FUNCTION IF EXISTS _election_effective_approval(JSONB, TEXT[]);
+DROP FUNCTION IF EXISTS _election_distribute_votes(JSONB, TEXT[], TEXT[], INT, JSONB);
+DROP FUNCTION IF EXISTS _election_distribute_votes(JSONB, TEXT[], TEXT[], BIGINT, JSONB);
+DROP FUNCTION IF EXISTS _election_distribute_votes(JSONB, TEXT[], TEXT[], INT, JSONB, JSONB);
+DROP FUNCTION IF EXISTS _election_distribute_votes(JSONB, TEXT[], TEXT[], BIGINT, JSONB, JSONB);
+
+
+-- ============================================================
+-- _election_distribute_votes_approval_only(parties, bloc_count, tally, bloc_approvals)
+-- -> JSONB (updated tally)
 --
--- For Unaligned blocs: distribute purely by approval rating.
+-- For Unaligned blocs: distribute purely by per-bloc approval rating.
 -- ============================================================
 
+DROP FUNCTION IF EXISTS _election_distribute_votes_approval_only(JSONB, INT, JSONB);
+DROP FUNCTION IF EXISTS _election_distribute_votes_approval_only(JSONB, BIGINT, JSONB);
+DROP FUNCTION IF EXISTS _election_distribute_votes_approval_only(JSONB, INT, JSONB, JSONB);
+DROP FUNCTION IF EXISTS _election_distribute_votes_approval_only(JSONB, BIGINT, JSONB, JSONB);
+
 CREATE OR REPLACE FUNCTION _election_distribute_votes_approval_only(
-    p_parties    JSONB,
-    p_bloc_count INT,
-    p_tally      JSONB
+    p_parties        JSONB,
+    p_bloc_count     INT,
+    p_tally          JSONB,
+    p_bloc_approvals JSONB
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -594,10 +502,10 @@ DECLARE
     v_frac           RECORD;
     v_count          INT := 0;
 BEGIN
-    -- Sum all approvals
+    -- Sum all per-bloc approvals
     FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
     LOOP
-        v_total_approval := v_total_approval + COALESCE((v_party.value->>'approval_rating')::NUMERIC, 0);
+        v_total_approval := v_total_approval + COALESCE((p_bloc_approvals->>(v_party.value->>'id'))::NUMERIC, 40);
         v_count := v_count + 1;
     END LOOP;
 
@@ -623,11 +531,11 @@ BEGIN
         END;
     END IF;
 
-    -- Distribute proportionally by approval
+    -- Distribute proportionally by per-bloc approval
     FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
     LOOP
         v_pid := v_party.value->>'id';
-        v_approval := COALESCE((v_party.value->>'approval_rating')::NUMERIC, 0);
+        v_approval := COALESCE((p_bloc_approvals->>v_pid)::NUMERIC, 40);
         v_exact := (p_bloc_count::NUMERIC * v_approval) / v_total_approval;
         v_floored := FLOOR(v_exact);
 
@@ -662,10 +570,13 @@ $$;
 
 -- ============================================================
 -- _election_allocate_seats(tally JSONB, total_votes BIGINT, total_seats INT)
--- → JSONB { party_id: seats }
+-- -> JSONB { party_id: seats }
 --
 -- Largest Remainder / Hare Quota seat allocation.
 -- ============================================================
+
+DROP FUNCTION IF EXISTS _election_allocate_seats(JSONB, BIGINT, INT);
+DROP FUNCTION IF EXISTS _election_allocate_seats(JSONB, BIGINT, BIGINT);
 
 CREATE OR REPLACE FUNCTION _election_allocate_seats(
     p_tally       JSONB,

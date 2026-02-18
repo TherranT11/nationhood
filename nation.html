@@ -112,6 +112,61 @@
         font-weight: bold;
     }
 
+    /* Revolution Banner */
+    .revolution-banner {
+        background: linear-gradient(135deg, #3a0a0a 0%, #1a0000 100%);
+        border: 2px solid #f44336;
+        border-radius: 12px;
+        padding: 24px;
+        margin: 0 24px 16px;
+        text-align: center;
+        animation: revolution-pulse 2s ease-in-out infinite;
+    }
+    @keyframes revolution-pulse {
+        0%, 100% { border-color: #f44336; box-shadow: 0 0 0 rgba(244,67,54,0); }
+        50% { border-color: #ff8a80; box-shadow: 0 0 30px rgba(244,67,54,0.4); }
+    }
+    .revolution-banner .revolution-icon { font-size: 2.5rem; margin-bottom: 8px; }
+    .revolution-banner .revolution-title {
+        font-size: 1.3rem; color: #f44336; font-weight: bold;
+        text-transform: uppercase; letter-spacing: 3px; margin-bottom: 8px;
+    }
+    .revolution-banner .revolution-subtitle {
+        font-size: 0.85rem; color: #cc8888; line-height: 1.5; margin-bottom: 12px;
+    }
+    .revolution-banner .revolution-countdown {
+        display: inline-block; padding: 6px 20px;
+        background: rgba(244,67,54,0.15); border: 1px solid #f44336;
+        border-radius: 6px; font-family: monospace;
+        font-size: 1.1rem; font-weight: bold; color: #f44336;
+    }
+    .revolution-complete-banner {
+        background: linear-gradient(135deg, #0a2a0a 0%, #001a00 100%);
+        border: 2px solid #4CAF50;
+        border-radius: 12px;
+        padding: 24px;
+        margin: 0 24px 16px;
+        text-align: center;
+        animation: revolution-celebrate 3s ease-in-out infinite;
+    }
+    @keyframes revolution-celebrate {
+        0%, 100% { border-color: #4CAF50; box-shadow: 0 0 0 rgba(76,175,80,0); }
+        50% { border-color: #81C784; box-shadow: 0 0 30px rgba(76,175,80,0.3); }
+    }
+    .revolution-complete-banner .revolution-icon { font-size: 2.5rem; margin-bottom: 8px; }
+    .revolution-complete-banner .revolution-title {
+        font-size: 1.3rem; color: #4CAF50; font-weight: bold;
+        text-transform: uppercase; letter-spacing: 3px; margin-bottom: 8px;
+    }
+    .revolution-complete-banner .revolution-subtitle {
+        font-size: 0.85rem; color: #81C784; line-height: 1.5; margin-bottom: 12px;
+    }
+    .revolution-tag {
+        display: inline-block; padding: 4px 12px; margin: 4px;
+        background: rgba(76,175,80,0.1); border: 1px solid rgba(76,175,80,0.25);
+        border-radius: 4px; font-size: 0.75rem; color: #4CAF50;
+    }
+
     /* Stats Sections */
     .stats-section {
         padding: 24px;
@@ -336,8 +391,35 @@ async function loadPreviousTickData(nationId) {
     if (!shard) return;
     const previousTick = shard.current_tick - 1;
     if (previousTick < 0) return;
-    const { data: history, error } = await _supabase.from('nations_history').select('*').eq('nation_id', nationId).eq('tick', previousTick).single();
-    if (!error && history) { previousTickData = history; qCacheSet(cacheKey, history, 5 * 60 * 1000); }
+
+    // Use .limit(1) instead of .maybeSingle() — maybeSingle sends an Accept header
+    // that causes PostgREST to return HTTP 406 when 0 rows match, which logs a
+    // console error even though supabase-js handles it gracefully.
+    const { data: historyRows, error } = await _supabase.from('nations_history')
+        .select('*').eq('nation_id', nationId).eq('tick', previousTick).limit(1);
+    if (error) {
+        console.warn('[loadPreviousTickData] Query error for tick ' + previousTick + ':', error.message);
+    }
+    const history = (historyRows && historyRows.length > 0) ? historyRows[0] : null;
+    if (history) {
+        previousTickData = history;
+        qCacheSet(cacheKey, history, 5 * 60 * 1000);
+        return;
+    }
+
+    // Fallback: grab the most recent history row before the current tick.
+    // Covers gaps where a specific tick's snapshot failed or was skipped.
+    const { data: fallback, error: fbErr } = await _supabase.from('nations_history')
+        .select('*').eq('nation_id', nationId).lt('tick', shard.current_tick)
+        .order('tick', { ascending: false }).limit(1);
+    if (fbErr) {
+        console.warn('[loadPreviousTickData] Fallback query error:', fbErr.message);
+        return;
+    }
+    if (fallback && fallback.length > 0) {
+        previousTickData = fallback[0];
+        qCacheSet(cacheKey, fallback[0], 5 * 60 * 1000);
+    }
 }
 
 function calculateRanking(statKey, value, inverted = false) {
@@ -364,10 +446,10 @@ function getTrendArrow(statKey, currentValue, inverted, format) {
     var delta = currentValue - previousValue;
     var invertedClass = inverted ? ' inverted' : '';
     if (delta > 0) {
-        var formatted = (format === 'currency') ? '+' + formatCurrencyShort(delta) : '+' + roundDelta(delta);
+        var formatted = (format === 'currency') ? '+' + formatCurrencyShort(delta) : (format === 'gdp') ? '+' + formatCurrencyShort(delta) : '+' + roundDelta(delta);
         return '<span class="trend-arrow trend-up' + invertedClass + '">▲ ' + formatted + '</span>';
     } else if (delta < 0) {
-        var formatted = (format === 'currency') ? formatCurrencyShort(delta) : roundDelta(delta);
+        var formatted = (format === 'currency') ? formatCurrencyShort(delta) : (format === 'gdp') ? formatCurrencyShort(delta) : roundDelta(delta);
         return '<span class="trend-arrow trend-down' + invertedClass + '">▼ ' + formatted + '</span>';
     }
     return '<span class="trend-arrow trend-neutral">―</span>';
@@ -377,7 +459,62 @@ function prettyStatName(key) {
     return key.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
 }
 
-async function renderCrisisSection(nationId) {
+async function getShardTick() {
+    var cached = qCache('shard_current_tick');
+    if (cached) return cached;
+    var res = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    if (res.data) { qCacheSet('shard_current_tick', res.data.current_tick, 30 * 1000); return res.data.current_tick; }
+    return 0;
+}
+
+async function renderRevolutionBanner(nation) {
+    // Check for post-revolution celebration banner (query event_log for recent DEMOCRATIC_REVOLUTION)
+    var currentTick = await getShardTick();
+    var revRes = await _supabase
+        .from('event_log')
+        .select('fired_at_tick, description_used')
+        .eq('nation_id', nation.id)
+        .eq('event_name', 'DEMOCRATIC_REVOLUTION')
+        .order('fired_at_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (revRes.data && (currentTick - revRes.data.fired_at_tick) <= 5) {
+        var ticksAgo = currentTick - revRes.data.fired_at_tick;
+        var electionTick = revRes.data.fired_at_tick + 3;
+        var ticksUntilElection = Math.max(0, electionTick - currentTick);
+        var h = '<div class="revolution-complete-banner">';
+        h += '<div class="revolution-icon">&#x1F3DB;</div>';
+        h += '<div class="revolution-title">Revolution in the Streets!</div>';
+        h += '<div class="revolution-subtitle">' + revRes.data.description_used + '</div>';
+        if (ticksUntilElection > 0) {
+            h += '<div style="margin-top:12px;">';
+            h += '<span class="revolution-tag">Emergency Elections in ' + ticksUntilElection + ' tick' + (ticksUntilElection !== 1 ? 's' : '') + '</span>';
+            h += '<span class="revolution-tag">Democracy Established</span>';
+            h += '</div>';
+        } else {
+            h += '<div style="margin-top:12px;"><span class="revolution-tag">Democracy Established</span><span class="revolution-tag">Elections Complete</span></div>';
+        }
+        h += '</div>';
+        return h;
+    }
+
+    // Check for active revolution countdown (Autocracy only)
+    if (nation.government_type === 'Autocracy' && nation.revolution_started_tick != null && nation.revolution_duration != null) {
+        var elapsed = currentTick - nation.revolution_started_tick;
+        var remaining = Math.max(0, nation.revolution_duration - elapsed);
+        var h = '<div class="revolution-banner">';
+        h += '<div class="revolution-icon">&#x1F525;</div>';
+        h += '<div class="revolution-title">Democratic Revolution</div>';
+        h += '<div class="revolution-subtitle">The people demand democracy. Pro-democracy protests grow stronger each day. The regime must act to restore order — or fall.</div>';
+        h += '<div class="revolution-countdown">' + remaining + ' tick' + (remaining !== 1 ? 's' : '') + ' until revolution</div>';
+        h += '</div>';
+        return h;
+    }
+
+    return '';
+}
+
+async function renderCrisisSection(nationId, nation) {
     var h = '<div class="crisis-section"><div class="section-header">Ongoing Crises</div><div class="crisis-grid">';
 
     var crises = [];
@@ -396,7 +533,21 @@ async function renderCrisisSection(nationId) {
         }
     }
 
-    if (crises.length === 0) {
+    // Add revolution crisis box if active
+    var hasRevolution = nation && nation.government_type === 'Autocracy' && nation.revolution_started_tick != null && nation.revolution_duration != null;
+    if (hasRevolution) {
+        var currentTick = await getShardTick();
+        var elapsed = currentTick - nation.revolution_started_tick;
+        var remaining = Math.max(0, nation.revolution_duration - elapsed);
+        h += '<div class="crisis-box active">';
+        h += '<div class="crisis-name">Democratic Revolution</div>';
+        h += '<div class="crisis-desc">The people demand democracy. Revolution grows stronger each day. ' + remaining + ' tick' + (remaining !== 1 ? 's' : '') + ' remain.</div>';
+        h += '<div class="crisis-rising">Worsening: <span>Stability</span>, <span>Civil Unrest</span>, <span>Intl. Reputation</span></div>';
+        h += '<div class="crisis-recovery">Avert: <span>Stability &ge; 15</span> or <span>Freedom &le; 50</span> or <span>Unrest &le; 70</span></div>';
+        h += '</div>';
+    }
+
+    if (crises.length === 0 && !hasRevolution) {
         h += '<div class="crisis-box">No active crises</div>';
         h += '<div class="crisis-box">No active crises</div>';
     } else {
@@ -427,6 +578,11 @@ async function renderCrisisSection(nationId) {
             }
             h += '</div>';
         }
+        // Fill empty slot if odd number of crises
+        var totalBoxes = crises.length + (hasRevolution ? 1 : 0);
+        if (totalBoxes % 2 !== 0) {
+            h += '<div class="crisis-box">No additional crises</div>';
+        }
     }
 
     h += '</div></div>';
@@ -447,22 +603,24 @@ async function renderNationPage(nation) {
     h += '<div class="overview-item"><div class="overview-label">Government</div><div class="overview-value">' + (nation.government_type === 'Presidential' ? 'Presidential Republic' : (nation.government_type || '—')) + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">Population</div><div class="overview-value">' + formatPopulation(nation.population) + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">National Approval</div><div class="overview-value gold">' + (nation.national_approval || 50) + '%</div></div>';
-    h += '<div class="overview-item"><div class="overview-label">GDP</div><div class="overview-value gold">' + formatGDP(nation.GDP) + '</div></div>';
+    h += '<div class="overview-item"><div class="overview-label">GDP</div><div class="overview-value gold">' + formatGDP(scaleRawToDollars(nation.gdp)) + '</div></div>';
     h += '</div></div>';
 
+    // Revolution banner (above crises)
+    h += await renderRevolutionBanner(nation);
+
     // Crises
-    h += await renderCrisisSection(nation.id);
+    h += await renderCrisisSection(nation.id, nation);
 
     // Stats
     h += '<div class="stats-section">';
 
     // ECONOMIC
     h += sectorBlock('💰', 'Economic', [
-        renderStatBox('GDP', 'GDP', nation.GDP, 'Gross domestic product in billions', 'currency'),
+        renderStatBox('GDP', 'gdp', nation.gdp, 'Gross domestic product', 'gdp', false, scaleRawToDollars(nation.gdp)),
         renderStatBox('GDP Growth', 'gdp_growth', nation.gdp_growth, 'Annual economic growth rate'),
-        renderStatBox('National Debt', 'debt', nation.debt, 'Government debt obligations', 'currency', true),
+        renderStatBox('National Debt', 'debt', nation.debt, 'Government debt obligations', 'currency', true, scaleRawToDollars(nation.debt)),
         renderStatBox('Debt Growth', 'debt_growth', nation.debt_growth, 'Rate of debt accumulation', null, true),
-        renderStatBox('Budget', 'budget', nation.budget, 'Government budget surplus/deficit'),
         renderStatBox('Inflation', 'inflation', nation.inflation, 'Rate of price increases', null, true),
         renderStatBox('Interest Rates', 'interest_rates', nation.interest_rates, 'Central bank lending rate'),
         renderStatBox('Trade Balance', 'trade_balance', nation.trade_balance, 'Exports minus imports'),
@@ -518,6 +676,7 @@ async function renderNationPage(nation) {
 
     // INFRASTRUCTURE
     h += sectorBlock('🏗️', 'Infrastructure', [
+        renderStatBox('Physical Infrastructure', 'physical_infrastructure', nation.physical_infrastructure, 'Roads, bridges, ports, and public works'),
         renderStatBox('Digital Infrastructure', 'digital_infrastructure', nation.digital_infrastructure, 'Internet and tech networks'),
         renderStatBox('Rail Network', 'rail_network', nation.rail_network, 'Train connectivity'),
         renderStatBox('Urbanization', 'urbanization', nation.urbanization, 'Population in cities'),
@@ -606,7 +765,7 @@ function sectorBlock(icon, title, boxes) {
 /**
  * Render a single stat box with ranking and trend
  */
-function renderStatBox(name, statKey, value, description, format, inverted) {
+function renderStatBox(name, statKey, value, description, format, inverted, displayValue) {
     format = format || null;
     inverted = inverted || false;
     var numValue = parseInt(value) || 0;
@@ -624,9 +783,11 @@ function renderStatBox(name, statKey, value, description, format, inverted) {
         }
     }
 
-    var formattedValue = (value !== null && value !== undefined) ? value : 'N/A';
-    if (format === 'currency' && typeof value === 'number') formattedValue = formatCurrencyShort(value);
-    else if (format === 'years' && typeof value === 'number') formattedValue = value + ' yrs';
+    var showValue = (displayValue !== undefined) ? displayValue : value;
+    var formattedValue = (showValue !== null && showValue !== undefined) ? (typeof showValue === 'number' ? Math.round(showValue * 10) / 10 : showValue) : 'N/A';
+    if (format === 'currency' && typeof showValue === 'number') formattedValue = formatCurrencyShort(showValue);
+    else if (format === 'gdp' && typeof showValue === 'number') formattedValue = formatCurrencyShort(showValue);
+    else if (format === 'years' && typeof showValue === 'number') formattedValue = Math.round(showValue * 10) / 10 + ' yrs';
 
     var trendArrow = getTrendArrow(statKey, value, inverted, format);
     var rank = calculateRanking(statKey, value, inverted);
@@ -643,8 +804,8 @@ function renderStatBox(name, statKey, value, description, format, inverted) {
 }
 
 function renderVoterAxis(leftLabel, leftValue, rightLabel) {
-    var leftPct = (leftValue !== null && leftValue !== undefined) ? leftValue : 50;
-    var rightPct = 100 - leftPct;
+    var leftPct = (leftValue !== null && leftValue !== undefined) ? Math.round(leftValue * 10) / 10 : 50;
+    var rightPct = Math.round((100 - leftPct) * 10) / 10;
     return '<div class="voter-axis">' +
         '<div class="voter-axis-header"><span class="voter-axis-left">' + leftLabel + '</span><span class="voter-axis-right">' + rightLabel + '</span></div>' +
         '<div class="voter-bar-container">' +
@@ -661,10 +822,12 @@ function formatPopulation(pop) {
 function formatCurrencyShort(val) {
     if (val == null) return 'N/A';
     val = Number(val);
-    if (val >= 1e12) return '$' + (val / 1e12).toFixed(1) + ' Trillion';
-    if (val >= 1e9) return '$' + (val / 1e9).toFixed(1) + ' Billion';
-    if (val >= 1e6) return '$' + (val / 1e6).toFixed(1) + ' Million';
-    return '$' + val.toLocaleString();
+    var sign = val < 0 ? '-' : '';
+    var abs = Math.abs(val);
+    if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(1) + ' Trillion';
+    if (abs >= 1e9)  return sign + '$' + (abs / 1e9).toFixed(1) + ' Billion';
+    if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(1) + ' Million';
+    return sign + '$' + abs.toLocaleString();
 }
 
 function formatGDP(gdp) {

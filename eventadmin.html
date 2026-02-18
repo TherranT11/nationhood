@@ -165,6 +165,24 @@
         .chance-sum.valid { background: #1a2a1a; color: #4CAF50; }
         .chance-sum.invalid { background: #2a1a1a; color: #ff4444; }
 
+        .outcome-message-area { width: 100%; min-height: 50px; margin-top: 6px; margin-bottom: 6px; padding: 8px 10px; background: #252525; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; font-size: 0.82rem; font-family: inherit; resize: vertical; box-sizing: border-box; }
+        .outcome-message-area:focus { outline: none; border-color: #ffcc00; }
+        .civic-event-box { margin-top: 8px; padding: 10px 12px; background: #1a1a2e; border: 1px solid #3a3a5c; border-radius: 5px; border-left: 3px solid #58a6ff; }
+        .civic-event-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.78rem; color: #58a6ff; user-select: none; }
+        .civic-event-toggle input[type="checkbox"] { accent-color: #58a6ff; }
+        .civic-event-fields { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+        .civic-event-fields .form-label { font-size: 0.72rem; color: #8b929e; margin-bottom: 0; }
+        .civic-event-textarea { width: 100%; min-height: 60px; padding: 8px 10px; background: #0e1117; border: 1px solid #3a3a5c; border-radius: 4px; color: #e2e6eb; font-size: 0.82rem; font-family: inherit; resize: vertical; box-sizing: border-box; }
+        .civic-event-textarea:focus { outline: none; border-color: #58a6ff; }
+        .civic-event-textarea::placeholder { color: #5a6272; }
+        .placeholder-ref { background: #1a1a2a; border: 1px solid #3a3a5a; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+        .placeholder-ref-title { font-size: 0.78rem; color: #ff9800; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold; margin-bottom: 8px; }
+        .placeholder-ref-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+        .placeholder-ref-item { display: inline-flex; align-items: center; gap: 4px; background: #2a2a1a; border: 1px solid #ff9800; color: #ff9800; padding: 3px 10px; border-radius: 4px; font-size: 0.72rem; font-family: 'Courier New', monospace; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+        .placeholder-ref-item:hover { background: #ff9800; color: #121212; }
+        .placeholder-ref-item .ph-hint { font-family: 'Segoe UI', Tahoma, sans-serif; color: #888; font-weight: normal; font-size: 0.68rem; margin-left: 2px; }
+        .placeholder-ref-item:hover .ph-hint { color: #121212; }
+
         @media (max-width: 768px) {
             .form-row, .form-row-3, .form-row-4 { grid-template-columns: 1fr; }
             .trigger-item, .effect-item { grid-template-columns: 1fr; }
@@ -194,33 +212,62 @@ var deletedDescIds = [], deletedTriggerIds = [], deletedEffectIds = [];
 var currentMode = 'events'; // 'events' or 'ministry'
 
 // ==================== CONSTANTS ====================
+// Canonical nation stat keys — must match NATION_STAT_COLUMNS in game-common.js
 var NATION_STATS = [
-    { key: 'gdp', label: 'GDP' },{ key: 'budget', label: 'Budget' },{ key: 'debt', label: 'Debt' },
-    { key: 'debt_growth', label: 'Debt Growth' },{ key: 'inflation', label: 'Inflation' },
-    { key: 'unemployment', label: 'Unemployment' },{ key: 'poverty_rate', label: 'Poverty Rate' },
-    { key: 'income_inequality', label: 'Income Inequality' },{ key: 'standard_of_living', label: 'Standard of Living' },
-    { key: 'happiness', label: 'Happiness' },{ key: 'population', label: 'Population' },
+    // Economic
+    { key: 'gdp', label: 'GDP' },{ key: 'gdp_growth', label: 'GDP Growth' },
+    { key: 'debt', label: 'Debt' },{ key: 'debt_growth', label: 'Debt Growth' },
+    { key: 'inflation', label: 'Inflation' },{ key: 'interest_rates', label: 'Interest Rates' },
+    { key: 'trade_balance', label: 'Trade Balance' },{ key: 'currency_strength', label: 'Currency Strength' },
+    { key: 'foreign_investment', label: 'Foreign Investment' },{ key: 'credit', label: 'Credit' },
+    // Taxation
+    { key: 'income_tax', label: 'Income Tax' },{ key: 'corporate_tax', label: 'Corporate Tax' },
+    { key: 'sales_tax', label: 'Sales Tax' },{ key: 'tariffs', label: 'Tariffs' },
+    // Labor & Employment
+    { key: 'unemployment', label: 'Unemployment' },{ key: 'labor_force_participation', label: 'Labor Force Participation' },
+    { key: 'minimum_wage', label: 'Minimum Wage' },{ key: 'union_strength', label: 'Union Strength' },
+    { key: 'poverty_rate', label: 'Poverty Rate' },{ key: 'income_inequality', label: 'Income Inequality' },
+    // Demographics
+    { key: 'population', label: 'Population' },{ key: 'population_growth', label: 'Population Growth' },
     { key: 'birth_rate', label: 'Birth Rate' },{ key: 'death_rate', label: 'Death Rate' },
-    { key: 'lifespan', label: 'Lifespan' },{ key: 'healthcare_quality', label: 'Healthcare Quality' },
-    { key: 'healthcare_accessibility', label: 'Healthcare Accessibility' },{ key: 'hospital_beds', label: 'Hospital Beds' },
-    { key: 'education_quality', label: 'Education Quality' },{ key: 'literacy', label: 'Literacy' },
-    { key: 'technology', label: 'Technology' },{ key: 'infrastructure', label: 'Infrastructure' },
-    { key: 'immigration', label: 'Immigration' },{ key: 'emigration', label: 'Emigration' },
-    { key: 'illegal_immigration', label: 'Illegal Immigration' },{ key: 'crime_rate', label: 'Crime Rate' },
-    { key: 'incarceration_rate', label: 'Incarceration Rate' },{ key: 'drug_use', label: 'Drug Use' },
-    { key: 'corruption', label: 'Corruption' },{ key: 'religious', label: 'Religiosity' },{ key: 'pollution', label: 'Pollution' },
-    { key: 'carbon_emissions', label: 'Carbon Emissions' },{ key: 'fuel_prices', label: 'Fuel Prices' },
-    { key: 'military_strength', label: 'Military Strength' },{ key: 'terrorism', label: 'Terrorism' },
-    { key: 'political_violence', label: 'Political Violence' },{ key: 'civil_unrest', label: 'Civil Unrest' },
-    { key: 'polarization', label: 'Polarization' },{ key: 'sanctions', label: 'Sanctions' },
-    { key: 'trade', label: 'Trade' },{ key: 'tourism', label: 'Tourism' },
-    { key: 'diplomatic_standing', label: 'Diplomatic Standing' },
-    { key: 'freedom_index', label: 'Freedom Index' },
-    { key: 'judicial_independence', label: 'Judicial Independence' },
-    { key: 'legitimacy', label: 'Legitimacy' },
-    { key: 'stability', label: 'Stability' },
+    { key: 'median_age', label: 'Median Age' },{ key: 'eligible_voters', label: 'Eligible Voters' },
+    { key: 'ethnic_diversity', label: 'Ethnic Diversity' },
+    // Healthcare
+    { key: 'healthcare_quality', label: 'Healthcare Quality' },{ key: 'healthcare_accessibility', label: 'Healthcare Accessibility' },
+    { key: 'beds_per_100k', label: 'Hospital Beds per 100k' },{ key: 'lifespan', label: 'Lifespan' },
+    { key: 'drug_use', label: 'Drug Use' },
+    // Education
+    { key: 'literacy', label: 'Literacy' },{ key: 'higher_education', label: 'Higher Education' },
+    { key: 'education_accessibility', label: 'Education Accessibility' },{ key: 'academic_immigration', label: 'Academic Immigration' },
+    // Infrastructure
+    { key: 'physical_infrastructure', label: 'Physical Infrastructure' },{ key: 'digital_infrastructure', label: 'Digital Infrastructure' },{ key: 'rail_network', label: 'Rail Network' },
+    { key: 'urbanization', label: 'Urbanization' },{ key: 'energy_generation', label: 'Energy Generation' },
+    { key: 'renewable_energy_percentage', label: 'Renewable Energy %' },
+    // Resources
+    { key: 'arable_land', label: 'Arable Land' },{ key: 'rare_minerals', label: 'Rare Minerals' },
+    { key: 'oil_and_gas', label: 'Oil & Gas' },{ key: 'fuel_prices', label: 'Fuel Prices' },
+    // Environment
+    { key: 'pollution', label: 'Pollution' },{ key: 'carbon_emissions', label: 'Carbon Emissions' },
+    // Social
+    { key: 'standard_of_living', label: 'Standard of Living' },{ key: 'happiness', label: 'Happiness' },
+    { key: 'social_mobility', label: 'Social Mobility' },{ key: 'benefits', label: 'Benefits' },
+    { key: 'crime_rate', label: 'Crime Rate' },{ key: 'incarceration_rate', label: 'Incarceration Rate' },
+    // Religion
+    { key: 'religious', label: 'Religiosity' },
+    // Governance
+    { key: 'stability', label: 'Stability' },{ key: 'legitimacy', label: 'Legitimacy' },
+    { key: 'efficiency', label: 'Efficiency' },{ key: 'corruption', label: 'Corruption' },
+    { key: 'press_freedom', label: 'Press Freedom' },{ key: 'judicial_independence', label: 'Judicial Independence' },
+    { key: 'freedom_index', label: 'Freedom Index' },{ key: 'polarization', label: 'Polarization' },
+    // Security
+    { key: 'civil_unrest', label: 'Civil Unrest' },{ key: 'terrorism', label: 'Terrorism' },
+    { key: 'political_violence', label: 'Political Violence' },
+    // Immigration
+    { key: 'immigration', label: 'Immigration' },{ key: 'illegal_immigration', label: 'Illegal Immigration' },
+    { key: 'emigration', label: 'Emigration' },
+    // International
     { key: 'international_reputation', label: 'International Reputation' },
-    { key: 'digital_infrastructure', label: 'Digital Infrastructure' }
+    { key: 'trade_agreements', label: 'Trade Agreements' },{ key: 'sanctions', label: 'Sanctions' }
 ];
 
 var FACTION_STATS = [
@@ -250,6 +297,15 @@ var PRIORITIES = [
     { key: 'urgent', label: '🔴 Urgent', color: '#ff4444' },
     { key: 'routine', label: '🟡 Routine', color: '#ff9800' },
     { key: 'opportunity', label: '🟢 Opportunity', color: '#4CAF50' }
+];
+
+var MINISTRY_PLACEHOLDERS = [
+    { tag: '{nation}', hint: 'Nation name' },
+    { tag: '{minister}', hint: 'Minister name' },
+    { tag: '{party}', hint: 'Controlling faction' },
+    { tag: '{sender}', hint: 'Event sender' },
+    { tag: '{outcome}', hint: 'Outcome label' },
+    { tag: '{cost}', hint: 'Money cost' }
 ];
 
 var SYSTEM_TRIGGERS = [
@@ -714,12 +770,13 @@ function createNewMinistryEvent() {
     currentMinistryTemplate = {
         event_key: '', ministry_key: 'justice', title: '', sender: '',
         priority: 'routine', deadline_ticks: 3, cooldown_ticks: 6,
-        gov_types: ['Democracy', 'Autocracy'], is_active: true,
+        gov_types: ['Democracy', 'Autocracy', 'Presidential'], is_active: true,
         weight_stat: '', weight_operator: '>', weight_value: null,
         variants: {
             titles: [''],
             Democracy: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] }] },
-            Autocracy: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] }] }
+            Autocracy: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] }] },
+            Presidential: { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] }] }
         }
     };
     mEditorVariants = JSON.parse(JSON.stringify(currentMinistryTemplate.variants));
@@ -743,6 +800,10 @@ function editMinistryEvent(id) {
         Autocracy: v.Autocracy ? {
             bodies: v.Autocracy.bodies || (v.Autocracy.body ? [v.Autocracy.body] : ['']),
             options: v.Autocracy.options || []
+        } : { bodies: [''], options: [] },
+        Presidential: v.Presidential ? {
+            bodies: v.Presidential.bodies || (v.Presidential.body ? [v.Presidential.body] : ['']),
+            options: v.Presidential.options || []
         } : { bodies: [''], options: [] }
     };
     // Load weight conditions from variants (new format) or migrate from old flat columns
@@ -763,6 +824,7 @@ function renderMinistryEditor() {
     var title = isNewMinistry ? 'Create Ministry Event' : 'Edit Ministry Event';
     var govDem = (tmpl.gov_types || []).includes('Democracy');
     var govAut = (tmpl.gov_types || []).includes('Autocracy');
+    var govPres = (tmpl.gov_types || []).includes('Presidential');
 
     c.innerHTML =
         '<button class="btn-back" onclick="cancelMinistryEditor()">← Back to Ministry Events</button>' +
@@ -801,6 +863,7 @@ function renderMinistryEditor() {
                     '<div class="form-group"><label class="form-label">Government Types</label><div class="checkbox-row" style="margin-top:8px;">' +
                         '<div class="checkbox-item"><input type="checkbox" id="me-gov-dem" ' + (govDem ? 'checked' : '') + '><label for="me-gov-dem">🗳️ Democracy</label></div>' +
                         '<div class="checkbox-item"><input type="checkbox" id="me-gov-aut" ' + (govAut ? 'checked' : '') + '><label for="me-gov-aut">👑 Autocracy</label></div>' +
+                        '<div class="checkbox-item"><input type="checkbox" id="me-gov-pres" ' + (govPres ? 'checked' : '') + '><label for="me-gov-pres">🏛️ Presidential</label></div>' +
                     '</div></div>' +
                 '</div>' +
 
@@ -810,9 +873,21 @@ function renderMinistryEditor() {
                     '<div id="weight-conditions-list">' + renderWeightConditions() + '</div>' +
                 '</div>' +
 
+                // Placeholder reference
+                '<div class="placeholder-ref">' +
+                    '<div class="placeholder-ref-title">Available Placeholders — click to copy</div>' +
+                    '<div class="placeholder-ref-grid">' +
+                        MINISTRY_PLACEHOLDERS.map(function(p) {
+                            return '<span class="placeholder-ref-item" onclick="copyPlaceholder(\'' + p.tag + '\')" title="Click to copy">' + p.tag + '<span class="ph-hint">' + p.hint + '</span></span>';
+                        }).join('') +
+                    '</div>' +
+                    '<div class="form-hint" style="margin-top:8px;">Use these in email bodies and outcome messages. Resolved at runtime with actual game data.</div>' +
+                '</div>' +
+
                 // Variants
                 (govDem ? renderVariantSection('Democracy') : '') +
                 (govAut ? renderVariantSection('Autocracy') : '') +
+                (govPres ? renderVariantSection('Presidential') : '') +
 
             '</div>' +
             '<div class="editor-footer"><button class="btn btn-ghost" onclick="cancelMinistryEditor()">Cancel</button><button class="btn btn-primary" onclick="saveMinistryEvent()">💾 Save Ministry Event</button></div>' +
@@ -822,7 +897,7 @@ function renderMinistryEditor() {
 function renderVariantSection(govType) {
     var variant = mEditorVariants[govType] || { body: '', options: [] };
     var cssClass = govType.toLowerCase();
-    var icon = govType === 'Democracy' ? '🗳️' : '👑';
+    var icon = govType === 'Democracy' ? '🗳️' : (govType === 'Presidential' ? '🏛️' : '👑');
     var optionsHTML = (variant.options || []).map(function(opt, oi) {
         var letter = String.fromCharCode(65 + oi);
 
@@ -861,8 +936,28 @@ function renderVariantSection(govType) {
                     '<input type="text" class="form-input outcome-label-input" value="' + escapeAttr(outcome.label || '') + '" placeholder="Outcome label (e.g., Order Restored)" onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'label\',this.value)">' +
                     (opt.outcomes.length > 1 ? '<button class="btn-icon" onclick="removeOutcome(\'' + govType + '\',' + oi + ',' + ri + ')">✕</button>' : '') +
                 '</div>' +
+                '<textarea class="outcome-message-area" placeholder="Outcome message — describe what happens (supports placeholders)..." onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'message\',this.value)">' + escapeHtml(outcome.message || '') + '</textarea>' +
                 effectsHTML +
                 '<button class="btn btn-ghost btn-small" onclick="addOutcomeEffect(\'' + govType + '\',' + oi + ',' + ri + ')" style="margin-top:4px;">+ Add Effect</button>' +
+                // Civic Event Field — optional public news story generated from this outcome
+                '<div class="civic-event-box">' +
+                    '<label class="civic-event-toggle">' +
+                        '<input type="checkbox" ' + (outcome.civic_event_text ? 'checked' : '') + ' onchange="toggleCivicEvent(\'' + govType + '\',' + oi + ',' + ri + ',this.checked)">' +
+                        '📰 Generate CIVIC News Event' +
+                    '</label>' +
+                    (outcome.civic_event_text || outcome.civic_event_text === '' ? (
+                        '<div class="civic-event-fields">' +
+                            '<label class="form-label">Category</label>' +
+                            '<select class="form-select" style="background:#0e1117;border-color:#3a3a5c;color:#e2e6eb;" onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'civic_event_category\',this.value)">' +
+                                EVENT_CATEGORIES.map(function(c) { return '<option value="' + c + '"' + ((outcome.civic_event_category || 'General') === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') +
+                            '</select>' +
+                            '<label class="form-label">News Headline / Event Name</label>' +
+                            '<input type="text" class="form-input" style="background:#0e1117;border-color:#3a3a5c;color:#e2e6eb;" value="' + escapeAttr(outcome.civic_event_name || '') + '" placeholder="e.g., Prison Break Quelled in {nation}" onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'civic_event_name\',this.value)">' +
+                            '<label class="form-label">News Story (appears in CIVIC feed — supports placeholders)</label>' +
+                            '<textarea class="civic-event-textarea" placeholder="e.g., A prison break was successfully put down in {nation} when the Minister of Justice {minister} ordered soldiers to..." onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'civic_event_text\',this.value)">' + escapeHtml(outcome.civic_event_text || '') + '</textarea>' +
+                        '</div>'
+                    ) : '') +
+                '</div>' +
             '</div>';
         }).join('');
 
@@ -902,6 +997,22 @@ function renderVariantSection(govType) {
 
 // Ministry variant helpers
 function updateMOpt(govType, oi, field, value) { mEditorVariants[govType].options[oi][field] = value; }
+
+// Civic event toggle — enables/disables the civic news fields on an outcome
+function toggleCivicEvent(govType, oi, ri, checked) {
+    var outcome = mEditorVariants[govType].options[oi].outcomes[ri];
+    if (checked) {
+        outcome.civic_event_text = outcome.civic_event_text || '';
+        outcome.civic_event_name = outcome.civic_event_name || '';
+        outcome.civic_event_category = outcome.civic_event_category || 'General';
+    } else {
+        delete outcome.civic_event_text;
+        delete outcome.civic_event_name;
+        delete outcome.civic_event_category;
+    }
+    syncMinistryBody();
+    renderMinistryEditor();
+}
 
 // Outcome helpers
 function updateOutcome(govType, oi, ri, field, value) {
@@ -996,6 +1107,9 @@ function syncMinistryBody() {
     document.querySelectorAll('#me-bodies-Autocracy textarea').forEach(function(el, i) {
         if (mEditorVariants.Autocracy && mEditorVariants.Autocracy.bodies[i] !== undefined) mEditorVariants.Autocracy.bodies[i] = el.value;
     });
+    document.querySelectorAll('#me-bodies-Presidential textarea').forEach(function(el, i) {
+        if (mEditorVariants.Presidential && mEditorVariants.Presidential.bodies[i] !== undefined) mEditorVariants.Presidential.bodies[i] = el.value;
+    });
 }
 
 // Title variant helpers
@@ -1064,6 +1178,7 @@ async function saveMinistryEvent() {
     var isActive = document.getElementById('me-active').checked;
     var govDem = document.getElementById('me-gov-dem').checked;
     var govAut = document.getElementById('me-gov-aut').checked;
+    var govPres = document.getElementById('me-gov-pres').checked;
     // Collect weight conditions from editor state
     var validConditions = mEditorWeightConditions.filter(function(c) { return c.stat; });
     // Backward compat: write first condition to old flat columns
@@ -1099,11 +1214,13 @@ async function saveMinistryEvent() {
     var govTypes = [];
     if (govDem) govTypes.push('Democracy');
     if (govAut) govTypes.push('Autocracy');
+    if (govPres) govTypes.push('Presidential');
 
     // Clean variants — only include enabled gov types, store title variants + weight conditions
     var cleanVariants = { titles: validTitles };
     if (govDem && mEditorVariants.Democracy) cleanVariants.Democracy = mEditorVariants.Democracy;
     if (govAut && mEditorVariants.Autocracy) cleanVariants.Autocracy = mEditorVariants.Autocracy;
+    if (govPres && mEditorVariants.Presidential) cleanVariants.Presidential = mEditorVariants.Presidential;
     if (validConditions.length > 0) cleanVariants.weight_conditions = validConditions;
 
     var payload = {

@@ -464,7 +464,7 @@
         document.getElementById('population').textContent = formatNumber(nation.population);
         document.getElementById('stability').textContent = nation.stability || 'N/A';
         document.getElementById('civil-unrest').textContent = nation.civil_unrest || 'N/A';
-        document.getElementById('gdp').textContent = nation.GDP ? formatCurrency(nation.GDP) : 'N/A';
+        document.getElementById('gdp').textContent = nation.gdp ? formatCurrency(nation.gdp) : 'N/A';
         
         // Display interest groups
         const groupsContainer = document.getElementById('interest-groups');

@@ -530,7 +530,7 @@ function renderBill() {
         ? '<div style="color:#4fc3f7;font-size:0.78rem;margin-top:10px;text-align:center;">🏛️ Legislature is suspended until a new government is formed.</div>'
         : (canSendToFloor ? '' : isFoundational
         ? '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ Foundational laws require at least one co-sponsor to advance.</div>'
-        : '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or 51% of seats to send this to the floor.</div>');
+        : '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or a simple majority of seats to send this to the floor.</div>');
 
     el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">Send to Floor</button><button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>` + reason;
 }
@@ -565,7 +565,15 @@ function renderArticles() {
     // Foundational bills show a special notice instead of articles
     if (bill.bill_type === 'foundational') {
         const currentSeatsDisplay = GAME_CONFIG.TOTAL_SEATS;
-        const proposedSeats = bill.proposed_seats || currentSeatsDisplay;
+        let proposedSeats = bill.proposed_seats;
+        if (!proposedSeats && bill.preamble) {
+            const match = bill.preamble.match(/from\s+\d+\s+to\s+(\d+)/i);
+            if (match) proposedSeats = parseInt(match[1], 10);
+        }
+        if (!proposedSeats) {
+            console.warn('[bill.html] proposed_seats is null for foundational bill', bill.id);
+            proposedSeats = currentSeatsDisplay;
+        }
         const change = proposedSeats - currentSeatsDisplay;
         const changeText = change > 0 ? `+${change}` : `${change}`;
         document.getElementById('bill-articles').innerHTML =
@@ -641,7 +649,7 @@ function renderArticles() {
                 '<div class="repeal-notice-icon">🏛</div>' +
                 '<div class="repeal-notice-text">Presidential Cabinet Nomination</div>' +
                 '<div class="repeal-notice-sub" style="color:#aaa;line-height:1.6;">' +
-                    'Requires <strong style="color:#4CAF50;">simple majority</strong> (51% of seats) to confirm.<br>' +
+                    'Requires <strong style="color:#4CAF50;">simple majority</strong> (' + GAME_CONFIG.MAJORITY_SEATS + ' of ' + GAME_CONFIG.TOTAL_SEATS + ' seats) to confirm.<br>' +
                     'If confirmed: nominee takes office as minister.<br>' +
                     'If rejected: President must nominate from a different party.' +
                 '</div>' +
@@ -959,7 +967,7 @@ function renderSidebar() {
             : isFoundationalBill
                 ? Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD)
                 : GAME_CONFIG.MAJORITY_SEATS;
-        const thresholdLabel = isNoConfidenceBill ? 'Simple Majority' : isFoundationalBill ? '2/3 Supermajority' : '51% Majority';
+        const thresholdLabel = isNoConfidenceBill ? 'Simple Majority' : isFoundationalBill ? '2/3 Supermajority' : 'Simple Majority';
 
         html = `<div class="vote-tally"><div class="vote-tally-header"><div class="vote-tally-title">Current Tally</div></div><div class="vote-tally-content">
             <div class="vote-tally-row"><span class="vote-tally-label">For</span><span class="vote-tally-value for">${f} seats</span></div>
@@ -1058,12 +1066,8 @@ async function enactDecree() {
         if (sponsorIdeology) {
             const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, currentBill.bill_articles || []);
             if (dynamicPenalty < 0) {
-                const { data: faction } = await _supabase.from('factions').select('approval_rating').eq('id', currentBill.proposed_by).single();
-                if (faction) {
-                    const newApproval = Math.max(0, Math.min(100, (faction.approval_rating ?? 50) + dynamicPenalty));
-                    await _supabase.from('factions').update({ approval_rating: newApproval }).eq('id', currentBill.proposed_by);
-                    console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
-                }
+                await adjustBlocApproval(_supabase, currentBill.proposed_by, dynamicPenalty);
+                console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
             }
         }
 
@@ -1085,12 +1089,8 @@ async function sendToFloor() {
         if (factionIdeology) {
             const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, currentBill.bill_articles || []);
             if (dynamicPenalty < 0) {
-                const { data: faction } = await _supabase.from('factions').select('approval_rating').eq('id', currentBill.proposed_by).single();
-                if (faction) {
-                    const newApproval = Math.max(0, Math.min(100, (faction.approval_rating ?? 50) + dynamicPenalty));
-                    await _supabase.from('factions').update({ approval_rating: newApproval }).eq('id', currentBill.proposed_by);
-                    penaltyMsg = `\n\n⚠ Ideology penalty: ${dynamicPenalty.toFixed(1)} approval (bill conflicts with your values)`;
-                }
+                await adjustBlocApproval(_supabase, currentBill.proposed_by, dynamicPenalty);
+                penaltyMsg = `\n\n⚠ Ideology penalty: ${dynamicPenalty.toFixed(1)} approval (bill conflicts with your values)`;
             }
         }
 
@@ -1134,7 +1134,10 @@ function onAmendmentSectorChange() {
         const opposedClass = p.isOpposed ? ' opposed' : '';
         const opposedBadge = p.isOpposed ? ' <span style="display:inline-block;background:#ff4444;color:#fff;padding:2px 7px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚠ Opposed</span>' : '';
         const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
-        const ideoHTML = ideos.map(i => '<span class="article-ideology">' + i + '</span>').join(' ');
+        const ideoHTML = ideos.map(i => {
+            const colorClass = getIdeologyChipClass(i);
+            return `<span class="article-ideology ${colorClass}">${i}</span>`;
+        }).join(' ');
         return `<div class="policy-option${opposedClass}" data-policy-id="${p.id}" onclick="selectAmendmentPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name} ${ideoHTML}${opposedBadge}</div><div class="policy-option-desc">${p.description || ''}</div></div>`;
     }).join('');
     document.getElementById('amendment-policy-group').style.display = 'block';

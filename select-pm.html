@@ -367,7 +367,7 @@ initPage('government', async (state) => {
             .from('government_formations')
             .select('ministry_assignments')
             .eq('nation_id', nation.id)
-            .eq('status', 'formed')
+            .in('status', ['formed', 'caretaker'])
             .order('formed_at', { ascending: false })
             .limit(1)
             .maybeSingle();
@@ -457,7 +457,7 @@ function renderCandidates() {
                 <div class="pm-card-ideology">
                     <div class="pm-ideology-label">Ideology</div>
                     <div class="pm-ideology-tag ${ideoClass}">${c.ideology}</div>
-                    <div class="pm-ideology-shift">+5 shift toward ${c.ideology.charAt(0) + c.ideology.slice(1).toLowerCase()}</div>
+                    <div class="pm-ideology-shift">+15 shift toward ${c.ideology.charAt(0) + c.ideology.slice(1).toLowerCase()}</div>
                 </div>
 
                 <div class="pm-card-trait">

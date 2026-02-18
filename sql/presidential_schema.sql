@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS presidents (
 
     -- Term
     elected_tick        INT NOT NULL,
-    term_ends_tick      INT NOT NULL,   -- elected_tick + PRESIDENTIAL_TERM_TICKS (24)
+    term_ends_tick      INT NOT NULL,   -- elected_tick + PRESIDENTIAL_TERM_TICKS (48)
     is_active           BOOLEAN DEFAULT true,
 
     -- Approval
@@ -43,6 +43,7 @@ ALTER TABLE bills ADD COLUMN IF NOT EXISTS president_action_tick INT;     -- tic
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS president_desk_deadline INT;   -- tick when auto-sign triggers
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS original_bill_id UUID;        -- for veto_override bills, links to the vetoed bill
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS is_veto_override BOOLEAN DEFAULT false;
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS ministry_key TEXT;             -- for minister_confirmation bills, links to ministry slot
 
 -- ==================== ELECTIONS TABLE — ELECTION TYPE ====================
 -- Distinguishes parliamentary vs presidential elections for staggered scheduling.
@@ -66,6 +67,8 @@ ALTER TABLE ministries ADD COLUMN IF NOT EXISTS pending_last_name TEXT;
 ALTER TABLE ministries ADD COLUMN IF NOT EXISTS pending_age INT;
 ALTER TABLE ministries ADD COLUMN IF NOT EXISTS confirmation_status TEXT;          -- 'pending', 'confirmed', 'rejected'
 ALTER TABLE ministries ADD COLUMN IF NOT EXISTS rejected_party_ids JSONB DEFAULT '[]'::JSONB;
+ALTER TABLE ministries ADD COLUMN IF NOT EXISTS pending_minister JSONB;                       -- JSONB blob for pending nominee
+ALTER TABLE ministries ADD COLUMN IF NOT EXISTS rejected_parties JSONB DEFAULT '[]'::JSONB;   -- tracks rejected party IDs per slot
 
 -- ==================== PM_CANDIDATES TABLE — CANDIDATE TYPE ====================
 -- Distinguishes PM candidates from presidential nominees.

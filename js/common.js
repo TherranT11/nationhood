@@ -330,9 +330,11 @@ function updateCountdown() {
     const diff = nextTickAt - Date.now();
 
     if (diff <= 0) {
-        el.textContent = 'Processing…';
+        el.textContent = 'Tick due — awaiting server…';
         clearInterval(tickInterval);
-        triggerOrPollTick();
+        // Don't auto-advance from the browser. The server-side Edge Function
+        // (or admin panel) will process the tick. Poll for the update.
+        pollForNewTick();
         return;
     }
 
@@ -340,75 +342,6 @@ function updateCountdown() {
     const m = Math.floor((diff % 3600000) / 60000);
     const s = Math.floor((diff % 60000) / 1000);
     el.textContent = h + 'h ' + m + 'm ' + s + 's';
-}
-
-/**
- * When the countdown expires, attempt to run the full advanceTick()
- * if game-common.js is loaded. Uses a database lock to prevent
- * concurrent processing from multiple tabs. Falls back to passive
- * polling if the lock can't be acquired or game-common.js isn't loaded.
- */
-async function triggerOrPollTick() {
-    // If game-common.js is not loaded, this page cannot process the tick
-    if (typeof advanceTick !== 'function' || typeof acquireTickLock !== 'function') {
-        console.log('game-common.js not loaded on this page; falling back to poll');
-        pollForNewTick();
-        return;
-    }
-
-    // Attempt to acquire the database lock
-    let lockAcquired = false;
-    try {
-        lockAcquired = await acquireTickLock(_supabase);
-    } catch (e) {
-        console.warn('Error acquiring tick lock:', e);
-    }
-
-    if (!lockAcquired) {
-        console.log('Another tab is processing the tick; polling for completion');
-        pollForNewTick();
-        return;
-    }
-
-    // We have the lock — process the full tick
-    console.log('Tick lock acquired, processing full tick...');
-    const el = document.getElementById('tick-countdown');
-    if (el) el.textContent = 'Processing tick…';
-
-    try {
-        const summary = await advanceTick(_supabase);
-        console.log('Tick ' + summary.tick + ' processed successfully (' + summary.nations + ' nations)');
-    } catch (e) {
-        console.error('Tick processing failed:', e);
-    } finally {
-        try { await releaseTickLock(_supabase); } catch (e) { console.warn('Error releasing tick lock:', e); }
-    }
-
-    // Refresh shard data and restart countdown
-    try {
-        const { data: shard } = await _supabase
-            .from('shard')
-            .select('next_tick_at, current_tick, current_date')
-            .eq('name', 'Alpha Shard')
-            .single();
-
-        if (shard?.next_tick_at) {
-            nextTickAt = new Date(shard.next_tick_at);
-
-            const tickEl = document.getElementById('tick-number');
-            if (tickEl) tickEl.textContent = shard.current_tick || '—';
-            const dateEl = document.getElementById('game-date');
-            if (dateEl) dateEl.textContent = shard.current_date || '—';
-
-            sessionStorage.removeItem(STATE_KEY);
-            qCacheBust('');
-
-            startTickCountdown();
-        }
-    } catch (e) {
-        console.warn('Error refreshing shard data after tick:', e);
-        setTimeout(() => window.location.reload(), 3000);
-    }
 }
 
 /**
@@ -484,6 +417,16 @@ function formatNumber(n) {
 function formatCurrency(n) {
     if (n == null) return 'N/A';
     return '$' + Number(n).toLocaleString();
+}
+
+/**
+ * Convert a raw 0-100 scale stat to dollar amount (× $1 Billion).
+ * Values already at dollar scale (>= 1,000,000) are returned as-is.
+ * Matches the guard in sql/fix_nation_gdp_debt_population_scale.sql.
+ */
+function scaleRawToDollars(val) {
+    if (val == null || val <= 0) return val;
+    return val < 1000000 ? val * 1e9 : val;
 }
 
 function showLoading(containerId = 'content-area') {

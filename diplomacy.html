@@ -427,7 +427,7 @@ async function renderDiplomacySidebar(targetNation) {
         'Avelia': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Avelia1.png',
         'Sangreza': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/sangreza.png',
         'Montequilla': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Montequilla.png',
-        'San Estrella': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/SanEstrella.png',
+        'San Estrella': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/sanestrella.png',
         'Veldaria': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Veldaria.png'
     };
     const flagUrl = flagUrls[targetNation.name] || null;
@@ -781,12 +781,7 @@ async function recallAmbassador(ambassadorId, nationName) {
 
         // 1d3 approval loss
         const loss = Math.floor(Math.random() * 3) + 1;
-        const currentApproval = amb.factions?.approval_rating ?? 50;
-        const newApproval = Math.max(0, currentApproval - loss);
-        await _supabase
-            .from('factions')
-            .update({ approval_rating: newApproval })
-            .eq('id', amb.faction_id);
+        await adjustBlocApproval(_supabase, amb.faction_id, -loss);
 
         const ambName = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim();
         alert(`Ambassador ${ambName} recalled from ${nationName}.\n-${loss} Approval to their party.`);

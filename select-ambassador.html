@@ -562,15 +562,7 @@ async function confirmNomination() {
         }
 
         // +1 approval to the candidate's party
-        const { data: partyData } = await _supabase
-            .from('factions')
-            .select('approval_rating')
-            .eq('id', candidate.partyId)
-            .single();
-        await _supabase
-            .from('factions')
-            .update({ approval_rating: Math.min(100, (partyData?.approval_rating ?? 50) + 1) })
-            .eq('id', candidate.partyId);
+        await adjustBlocApproval(_supabase, candidate.partyId, 1);
 
         // Democracy: auto-cast FM seats on the confirmation bill created by RPC
         if (!isAutocracy) {
