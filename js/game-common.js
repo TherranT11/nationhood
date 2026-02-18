@@ -435,8 +435,23 @@ const POLICY_STANCES = {
     ]
 };
 
-const POLICY_PLATFORM_AP_COST = 3;
-const POLICY_PLATFORM_COOLDOWN_TICKS = 2;
+const BUILD_COALITION_AP_COST = 3;
+const BUILD_COALITION_MONEY_COST = 200000;
+const BUILD_COALITION_COOLDOWN_TICKS = 2;
+const BUILD_COALITION_PANDER_HISTORY_TICKS = 10;
+
+// Opposition map: pandering to each bloc causes these approval penalties
+const PANDER_OPPOSITION_MAP = {
+    'Rural Traditionalists':     [{ bloc: 'Urban Progressives', delta: -2 }, { bloc: 'Academics & Professionals', delta: -1 }, { bloc: 'Urban Workers', delta: -1 }],
+    'Urban Workers':             [{ bloc: 'Business Owners', delta: -1 }, { bloc: 'Rural Traditionalists', delta: -1 }, { bloc: 'Nationalist Bloc', delta: -1 }, { bloc: 'Religious Conservatives', delta: -1 }, { bloc: 'Urban Progressives', delta: -1 }],
+    'Religious Conservatives':   [{ bloc: 'Urban Progressives', delta: -2 }, { bloc: 'Academics & Professionals', delta: -1 }, { bloc: 'Ethnic Minorities', delta: -1 }],
+    'Nationalist Bloc':          [{ bloc: 'Ethnic Minorities', delta: -2 }, { bloc: 'Academics & Professionals', delta: -1 }, { bloc: 'Urban Progressives', delta: -1 }],
+    'Urban Progressives':        [{ bloc: 'Religious Conservatives', delta: -1 }, { bloc: 'Military & Security', delta: -1 }, { bloc: 'Rural Traditionalists', delta: -1 }, { bloc: 'Nationalist Bloc', delta: -1 }, { bloc: 'Urban Workers', delta: -1 }],
+    'Business Owners':           [{ bloc: 'Urban Workers', delta: -2 }, { bloc: 'Urban Progressives', delta: -1 }, { bloc: 'Ethnic Minorities', delta: -1 }],
+    'Academics & Professionals': [{ bloc: 'Religious Conservatives', delta: -1 }, { bloc: 'Nationalist Bloc', delta: -1 }, { bloc: 'Rural Traditionalists', delta: -1 }, { bloc: 'Military & Security', delta: -1 }],
+    'Military & Security':       [{ bloc: 'Urban Progressives', delta: -2 }, { bloc: 'Academics & Professionals', delta: -1 }, { bloc: 'Ethnic Minorities', delta: -1 }],
+    'Ethnic Minorities':         [{ bloc: 'Nationalist Bloc', delta: -2 }, { bloc: 'Religious Conservatives', delta: -1 }, { bloc: 'Rural Traditionalists', delta: -1 }],
+};
 
 // Stats where LOWER is better (inverted approval logic)
 const INVERTED_STATS = [
