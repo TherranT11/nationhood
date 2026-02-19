@@ -2376,6 +2376,62 @@ const STATS_LOWER_IS_BETTER = [
     'illegal_immigration', 'emigration', 'sanctions'
 ];
 
+// ==================== THREE-PILLAR VOTING SYSTEM MAPPINGS ====================
+
+const STAT_TO_MINISTRY = {
+    gdp: 'finance', gdp_growth: 'finance', debt: 'finance', debt_growth: 'finance',
+    inflation: 'finance', interest_rates: 'finance', trade_balance: 'finance',
+    currency_strength: 'finance', foreign_investment: 'finance', credit: 'finance',
+    income_tax: 'finance', corporate_tax: 'finance', sales_tax: 'finance', tariffs: 'finance',
+    healthcare_quality: 'healthcare', healthcare_accessibility: 'healthcare',
+    beds_per_100k: 'healthcare', lifespan: 'healthcare', drug_use: 'healthcare',
+    death_rate: 'healthcare',
+    literacy: 'education', higher_education: 'education',
+    education_accessibility: 'education', academic_immigration: 'education',
+    unemployment: 'labor', labor_force_participation: 'labor',
+    minimum_wage: 'labor', union_strength: 'labor',
+    poverty_rate: 'labor', income_inequality: 'labor',
+    stability: 'interior', civil_unrest: 'interior',
+    crime_rate: 'interior', incarceration_rate: 'interior',
+    immigration: 'interior', illegal_immigration: 'interior',
+    corruption: 'justice', judicial_independence: 'justice',
+    press_freedom: 'justice', freedom_index: 'justice',
+    physical_infrastructure: 'transportation', digital_infrastructure: 'transportation',
+    rail_network: 'transportation', urbanization: 'transportation',
+    energy_generation: 'transportation', renewable_energy_percentage: 'transportation',
+    pollution: 'transportation', carbon_emissions: 'transportation',
+    terrorism: 'defense', political_violence: 'defense',
+    international_reputation: 'foreign', trade_agreements: 'foreign',
+    sanctions: 'foreign', emigration: 'foreign',
+    legitimacy: 'prime_minister', efficiency: 'prime_minister', polarization: 'prime_minister',
+    happiness: 'prime_minister', standard_of_living: 'prime_minister',
+    social_mobility: 'prime_minister', benefits: 'prime_minister',
+    fuel_prices: 'prime_minister'
+};
+
+const ISSUE_CATEGORY_STATS = {
+    Agriculture:     ['arable_land', 'fuel_prices', 'trade_balance', 'poverty_rate'],
+    Economics:       ['gdp', 'gdp_growth', 'inflation', 'unemployment', 'currency_strength', 'trade_balance', 'debt'],
+    Education:       ['literacy', 'higher_education', 'education_accessibility', 'academic_immigration'],
+    Governance:      ['stability', 'legitimacy', 'efficiency', 'corruption', 'freedom_index'],
+    Healthcare:      ['healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use'],
+    Immigration:     ['immigration', 'illegal_immigration', 'emigration', 'ethnic_diversity'],
+    Infrastructure:  ['physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation', 'renewable_energy_percentage'],
+    International:   ['international_reputation', 'trade_agreements', 'sanctions', 'foreign_investment'],
+    Labor:           ['unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength', 'poverty_rate', 'income_inequality'],
+    Military:        ['terrorism', 'political_violence', 'civil_unrest', 'stability'],
+    Social:          ['standard_of_living', 'happiness', 'social_mobility', 'crime_rate', 'pollution', 'benefits']
+};
+
+const _HIGHER_IS_BETTER_SET = new Set(STATS_HIGHER_IS_BETTER);
+const _LOWER_IS_BETTER_SET  = new Set(STATS_LOWER_IS_BETTER);
+
+function statDirectionSign(statKey) {
+    if (_HIGHER_IS_BETTER_SET.has(statKey)) return 1;
+    if (_LOWER_IS_BETTER_SET.has(statKey)) return -1;
+    return 0;
+}
+
 /**
  * Snapshot all nation stats into a flat JSONB object.
  */
@@ -5209,11 +5265,10 @@ async function advanceTick(supabase) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
-        // 7b. Process bloc approval decay toward ideology-based targets
-        await processBlocApprovalDecay(supabase, nation);
-
-        // 7d. Apply random ±1D3% jitter to party standings (democracies only)
-        await processPartyStandingsJitter(supabase, nation);
+        // 7b. Three-pillar preference engine (replaces bloc approval decay + jitter)
+        //     Calculates ideology alignment, performance perception, momentum,
+        //     preference_score, softmax vote share, and national vote share.
+        await calculateThreePillarPreferences(supabase, nation, newTick);
 
         // 8. Process faction loyalty (autocracy)
         if (isAutocracy(nation)) {
@@ -5488,6 +5543,251 @@ async function processPartyStandingsJitter(supabase, nation) {
     }
 
     console.log(`[Standings Jitter] Applied random ±1-3% jitter to ${Object.keys(factionGroups).length} parties, ${updates.length} rows updated`);
+}
+
+
+// ==================== THREE-PILLAR PREFERENCE ENGINE ====================
+
+async function calculateThreePillarPreferences(supabase, nation, currentTick) {
+    if (isGovernmentAutocracy(nation)) return;
+
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+    if (!factions || factions.length === 0) return;
+    const factionIds = factions.map(f => f.id);
+
+    const { data: allBlocRows } = await supabase
+        .from('faction_bloc_approval')
+        .select('id, faction_id, bloc_id, approval, ideology_alignment, performance_perception, momentum, preference_score')
+        .in('faction_id', factionIds);
+    if (!allBlocRows || allBlocRows.length === 0) return;
+
+    const { data: voterBlocs } = await supabase
+        .from('voter_blocs')
+        .select('id, population_weight, k_value, priority_issues, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
+        .eq('nation_id', nation.id)
+        .eq('is_active', true);
+    if (!voterBlocs || voterBlocs.length === 0) return;
+
+    const blocMap = {};
+    for (const b of voterBlocs) blocMap[b.id] = b;
+
+    const { data: ideologies } = await supabase
+        .from('faction_ideology')
+        .select('faction_id, declared_axis_1, declared_direction_1, declared_axis_2, declared_direction_2')
+        .in('faction_id', factionIds);
+
+    const ideoMap = {};
+    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
+
+    const { data: ministries } = await supabase
+        .from('ministries')
+        .select('ministry_key, party_id')
+        .eq('nation_id', nation.id)
+        .eq('is_active', true);
+
+    const ministryHolder = {};
+    for (const m of (ministries || [])) {
+        if (m.party_id) ministryHolder[m.ministry_key] = m.party_id;
+    }
+
+    let prevStats = null;
+    if (currentTick > 0) {
+        const { data: histRow } = await supabase
+            .from('nations_history')
+            .select('*')
+            .eq('nation_id', nation.id)
+            .eq('tick', currentTick - 1)
+            .single();
+        prevStats = histRow;
+    }
+
+    const { data: freshNation } = await supabase
+        .from('nations')
+        .select('*')
+        .eq('id', nation.id)
+        .single();
+    const curStats = freshNation || nation;
+
+    const statImprovements = {};
+    if (prevStats) {
+        for (const statKey of NATION_STAT_COLUMNS) {
+            const cur = Number(curStats[statKey] ?? 0);
+            const prev = Number(prevStats[statKey] ?? 0);
+            const rawDelta = cur - prev;
+            if (rawDelta === 0) continue;
+            const sign = statDirectionSign(statKey);
+            if (sign === 0) continue;
+            const ministryKey = STAT_TO_MINISTRY[statKey];
+            if (!ministryKey) continue;
+            const holderId = ministryHolder[ministryKey];
+            statImprovements[statKey] = {
+                improvement: rawDelta * sign,
+                ministryKey,
+                holderId: holderId || null
+            };
+        }
+    }
+
+    const updates = [];
+
+    for (const row of allBlocRows) {
+        const bloc = blocMap[row.bloc_id];
+        if (!bloc) continue;
+        const ideo = ideoMap[row.faction_id];
+
+        // PILLAR 1: Ideology Alignment
+        let ideoScore = 50;
+        if (ideo) {
+            const axisPairs = [
+                [ideo.declared_axis_1, ideo.declared_direction_1],
+                [ideo.declared_axis_2, ideo.declared_direction_2]
+            ];
+            let totalAlignment = 0;
+            let axisCount = 0;
+            for (const [axis, dir] of axisPairs) {
+                if (!axis || dir === null || dir === undefined) continue;
+                const blocVal = bloc['axis_' + axis] ?? 50;
+                const alignment = dir === -1
+                    ? (100 - blocVal) / 100
+                    : blocVal / 100;
+                totalAlignment += alignment;
+                axisCount++;
+            }
+            if (axisCount > 0) ideoScore = (totalAlignment / axisCount) * 100;
+        }
+
+        // PILLAR 2: Performance Perception
+        let perfDelta = 0;
+        const priorities = Array.isArray(bloc.priority_issues) ? bloc.priority_issues : [];
+        if (prevStats && priorities.length > 0) {
+            const relevantStats = new Set();
+            for (const issue of priorities) {
+                const stats = ISSUE_CATEGORY_STATS[issue];
+                if (stats) stats.forEach(s => relevantStats.add(s));
+            }
+            let creditSum = 0;
+            let statCount = 0;
+            for (const statKey of relevantStats) {
+                const info = statImprovements[statKey];
+                if (!info) continue;
+                statCount++;
+                if (info.holderId === row.faction_id) {
+                    creditSum += info.improvement;
+                }
+            }
+            const PERF_SENSITIVITY = 3;
+            if (statCount > 0) perfDelta = (creditSum / statCount) * PERF_SENSITIVITY;
+        }
+
+        const oldPerf = Number(row.performance_perception ?? 50);
+        const PERF_DECAY = 0.05;
+        let newPerf = oldPerf * (1 - PERF_DECAY) + 50 * PERF_DECAY + perfDelta;
+        newPerf = Math.round(Math.max(0, Math.min(100, newPerf)) * 100) / 100;
+
+        // PILLAR 3: Momentum
+        const oldMomentum = Number(row.momentum ?? 0);
+        const MOMENTUM_DECAY = 0.80;
+        let newMomentum = Math.round(oldMomentum * MOMENTUM_DECAY * 100) / 100;
+
+        // COMBINE
+        const clampedMomentum = Math.max(0, Math.min(100, 50 + newMomentum));
+        const prefScore = Math.round(
+            (ideoScore * 0.40 + newPerf * 0.40 + clampedMomentum * 0.20) * 100
+        ) / 100;
+
+        updates.push({
+            id: row.id,
+            faction_id: row.faction_id,
+            bloc_id: row.bloc_id,
+            ideology_alignment: Math.round(ideoScore * 100) / 100,
+            performance_perception: newPerf,
+            momentum: newMomentum,
+            preference_score: prefScore
+        });
+    }
+
+    // Softmax vote share per bloc
+    const byBloc = {};
+    for (const u of updates) {
+        if (!byBloc[u.bloc_id]) byBloc[u.bloc_id] = [];
+        byBloc[u.bloc_id].push(u);
+    }
+
+    for (const blocId of Object.keys(byBloc)) {
+        const bloc = blocMap[blocId];
+        const k = Number(bloc?.k_value ?? 10);
+        const entries = byBloc[blocId];
+        const maxPref = Math.max(...entries.map(e => e.preference_score));
+        const exps = entries.map(e => Math.exp((e.preference_score - maxPref) / k));
+        const sumExp = exps.reduce((a, b) => a + b, 0);
+        for (let i = 0; i < entries.length; i++) {
+            entries[i].vote_share = sumExp > 0
+                ? Math.round((exps[i] / sumExp) * 1000000) / 1000000
+                : 1 / entries.length;
+        }
+    }
+
+    // Batch update
+    for (const u of updates) {
+        await supabase.from('faction_bloc_approval')
+            .update({
+                ideology_alignment: u.ideology_alignment,
+                performance_perception: u.performance_perception,
+                momentum: u.momentum,
+                preference_score: u.preference_score,
+                vote_share: u.vote_share
+            })
+            .eq('id', u.id);
+    }
+
+    // National vote share
+    const factionNationalShare = {};
+    let totalWeight = 0;
+    for (const blocId of Object.keys(byBloc)) {
+        const bloc = blocMap[blocId];
+        const weight = Number(bloc?.population_weight ?? 0);
+        totalWeight += weight;
+        for (const entry of byBloc[blocId]) {
+            if (!factionNationalShare[entry.faction_id]) factionNationalShare[entry.faction_id] = 0;
+            factionNationalShare[entry.faction_id] += (entry.vote_share * weight);
+        }
+    }
+    for (const factionId of factionIds) {
+        const rawShare = factionNationalShare[factionId] || 0;
+        const pct = totalWeight > 0
+            ? Math.round((rawShare / totalWeight) * 10000) / 100
+            : 0;
+        await supabase.from('factions')
+            .update({ national_vote_share: pct })
+            .eq('id', factionId);
+    }
+
+    // Backward-compat: recalc derived approval
+    for (const fId of factionIds) {
+        const factionBlocRows = allBlocRows.filter(r => r.faction_id === fId);
+        await recalcDerivedApproval(supabase, fId, factionBlocRows);
+    }
+
+    console.log(`[Three-Pillar] Recalculated preferences for ${factionIds.length} parties × ${voterBlocs.length} blocs in ${nation.name}`);
+}
+
+async function adjustMomentum(supabase, factionId, delta) {
+    const { data: rows } = await supabase
+        .from('faction_bloc_approval')
+        .select('id, momentum')
+        .eq('faction_id', factionId);
+    if (!rows || rows.length === 0) return;
+    for (const row of rows) {
+        const newMomentum = Math.round(((Number(row.momentum ?? 0)) + delta) * 100) / 100;
+        await supabase.from('faction_bloc_approval')
+            .update({ momentum: newMomentum })
+            .eq('id', row.id);
+    }
+    console.log(`[Momentum] Adjusted momentum by ${delta} for faction ${factionId} (${rows.length} bloc rows)`);
 }
 
 
