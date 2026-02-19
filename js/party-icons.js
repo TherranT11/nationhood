@@ -100,7 +100,8 @@ function getPartyIconSVG(iconKey, size = 24, color = null) {
  * @returns {string} Hex color code
  */
 function getDefaultPartyColor(index) {
-    return PARTY_COLOR_PALETTE[index % PARTY_COLOR_PALETTE.length].hex;
+    const i = (typeof index === 'number' && index >= 0) ? index % PARTY_COLOR_PALETTE.length : 0;
+    return PARTY_COLOR_PALETTE[i].hex;
 }
 
 /**

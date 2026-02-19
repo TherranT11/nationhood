@@ -260,7 +260,7 @@ function getStrongestIdeologyTags(party) {
 // ===================================================================
 
 function buildPartyIdentitySection(faction, nation, allParties) {
-    const currentColor = faction.party_color || getDefaultPartyColor(allParties.indexOf(faction));
+    const currentColor = faction.party_color || getDefaultPartyColor(allParties.findIndex(p => p.id === faction.id));
     const currentLogo = faction.party_logo || DEFAULT_PARTY_ICON;
     const currentDesc = faction.party_description || '';
 
