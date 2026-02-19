@@ -3578,7 +3578,7 @@ export async function processPresidentialElectionResult(supabase, nation, comple
  * Used by both processPresidentialElectionResult (auto-inauguration) and
  * selectPresidentCandidate (manual/legacy selection).
  */
-export async function inauguratePresident(supabase, candidate, nationId, factionId, currentTick) {
+export async function inauguratePresident(supabase, candidate, nationId, factionId, currentTick, outgoingPresident = null) {
     // Deactivate any previous president
     await supabase.from('presidents')
         .update({ is_active: false })
@@ -3587,6 +3587,16 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
 
     // Look up trait data for trait_upside / trait_downside
     const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', candidate.trait_key).maybeSingle();
+
+    // Determine terms_served: if re-elected (same person), increment; otherwise start at 1
+    let termsServed = 1;
+    if (outgoingPresident &&
+        outgoingPresident.first_name === candidate.first_name &&
+        outgoingPresident.last_name === candidate.last_name &&
+        outgoingPresident.faction_id === factionId) {
+        termsServed = (outgoingPresident.terms_served || 1) + 1;
+        console.log(`President re-elected: ${candidate.first_name} ${candidate.last_name} — term ${termsServed}`);
+    }
 
     // Insert president record (with trait_upside / trait_downside populated)
     const { error: presErr } = await supabase.from('presidents').insert({
@@ -3601,7 +3611,8 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         trait_downside: trait?.downside || null,
         elected_tick: currentTick,
         term_ends_tick: currentTick + GAME_CONFIG.PRESIDENTIAL_TERM_TICKS,
-        is_active: true
+        is_active: true,
+        terms_served: termsServed
     });
     if (presErr) throw presErr;
 
