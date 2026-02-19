@@ -539,3 +539,194 @@
             margin-top: 8px;
             font-style: italic;
         }
+
+        /* ===== PARTY IDENTITY EDITOR ===== */
+        .pi-editor {
+            background: var(--bg-panel, #1a1a2e);
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .pi-preview {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .pi-preview-logo { display: flex; align-items: center; }
+        .pi-preview-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        .pi-preview-abbr {
+            color: var(--text-muted, #888);
+            font-size: 0.8rem;
+            margin-left: 4px;
+        }
+        .pi-field {
+            margin-bottom: 18px;
+        }
+        .pi-label {
+            display: block;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted, #aaa);
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        .pi-hint {
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: 0;
+            color: #666;
+        }
+        .pi-textarea {
+            width: 100%;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: var(--text-primary, #e0e0e0);
+            padding: 10px 12px;
+            font-size: 0.85rem;
+            font-family: inherit;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        .pi-textarea:focus {
+            outline: none;
+            border-color: var(--accent, #ffcc00);
+        }
+        .pi-color-palette {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .pi-color-swatch {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: border-color 0.15s, transform 0.15s;
+        }
+        .pi-color-swatch:hover {
+            transform: scale(1.15);
+            border-color: rgba(255,255,255,0.3);
+        }
+        .pi-color-swatch.active {
+            border-color: #fff;
+            box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
+        }
+        .pi-custom-color {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 6px;
+        }
+        .pi-hex-input {
+            width: 90px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: var(--text-primary, #e0e0e0);
+            padding: 6px 8px;
+            font-size: 0.8rem;
+            font-family: monospace;
+        }
+        .pi-hex-input:focus {
+            outline: none;
+            border-color: var(--accent, #ffcc00);
+        }
+        .pi-color-preview {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            border: 1px solid #555;
+        }
+        .pi-color-warning {
+            color: #ff9800;
+            font-size: 0.78rem;
+            margin-top: 6px;
+            padding: 6px 10px;
+            background: rgba(255,152,0,0.1);
+            border-radius: 4px;
+        }
+        .pi-logo-browser {
+            max-height: 260px;
+            overflow-y: auto;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 10px;
+            background: rgba(0,0,0,0.2);
+        }
+        .pi-icon-category {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            margin: 8px 0 6px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #333;
+        }
+        .pi-icon-category:first-child { margin-top: 0; }
+        .pi-icon-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+        .pi-icon-option {
+            width: 38px;
+            height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            background: rgba(255,255,255,0.03);
+            color: var(--text-primary, #ccc);
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .pi-icon-option:hover {
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(255,255,255,0.2);
+        }
+        .pi-icon-option.active {
+            border-color: var(--accent, #ffcc00);
+            background: rgba(255,204,0,0.1);
+        }
+        .pi-save-btn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin-top: 16px;
+            border: none;
+            border-radius: 6px;
+            background: var(--accent, #ffcc00);
+            color: #000;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+        .pi-save-btn:hover { opacity: 0.9; }
+        .pi-save-btn:disabled { opacity: 0.5; cursor: default; }
+        .pi-save-status {
+            text-align: center;
+            font-size: 0.8rem;
+            margin-top: 8px;
+            min-height: 1.2em;
+        }
+
+        /* Party logo icon in display cards */
+        .party-logo-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }

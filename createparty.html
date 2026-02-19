@@ -138,8 +138,28 @@
             <input type="text" id="party-abbr" placeholder="e.g., PWA" maxlength="3" style="text-transform: uppercase;">
             <div class="char-counter"><span id="abbr-counter">0</span>/3</div>
         </div>
+
+        <div class="input-group" id="color-group">
+            <label class="input-label">Party Color</label>
+            <div id="cp-color-palette" class="cp-color-palette"></div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+                <span style="color:#888;font-size:0.8rem;">Custom:</span>
+                <input type="text" id="cp-custom-hex" class="cp-hex-input" maxlength="7" placeholder="#E63946" oninput="onCpHexInput(this)">
+                <div id="cp-color-preview" class="cp-color-preview"></div>
+            </div>
+        </div>
+
+        <div class="input-group" id="logo-group">
+            <label class="input-label">Party Logo</label>
+            <div id="cp-logo-grid" class="cp-logo-grid"></div>
+        </div>
+
+        <div class="input-group" id="desc-group">
+            <label class="input-label">Party Description <span style="color:#666;font-weight:400;">(optional, max 200 chars)</span></label>
+            <textarea id="party-desc" maxlength="200" rows="2" placeholder="A brief description of your party's identity and platform..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid #444;border-radius:6px;color:#e0e0e0;padding:10px 12px;font-size:0.85rem;font-family:inherit;resize:vertical;box-sizing:border-box;"></textarea>
+        </div>
     </div>
-    
+
     <!-- Action Buttons -->
     <div class="action-buttons">
         <button class="btn btn-back" onclick="goBack()">← BACK</button>
@@ -151,7 +171,10 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
+import { PARTY_ICONS, PARTY_COLOR_PALETTE, DEFAULT_PARTY_ICON, getPartyIconSVG, getDefaultPartyColor, colorDistance } from './js/party-icons.js';
 let currentUser = null;
+let _cpSelectedColor = null;
+let _cpSelectedLogo = DEFAULT_PARTY_ICON;
     let selectedNation = null;
     let selectedIdeologies = [];
     let isAutocracy = false;
@@ -360,8 +383,9 @@ let currentUser = null;
         document.getElementById('naming-title').textContent = 'Your Faction';
         
         document.getElementById('confirm-btn').textContent = 'JOIN THE REGIME';
+        setupPartyIdentityPicker();
     }
-    
+
     function validateAutocracyForm() {
         const name = document.getElementById('party-name').value;
         document.getElementById('confirm-btn').disabled = !name;
@@ -373,6 +397,7 @@ let currentUser = null;
     function setupDemocracyMode() {
         setupIdeologySelection();
         setupInputValidation();
+        setupPartyIdentityPicker();
     }
     
     function setupIdeologySelection() {
@@ -547,6 +572,7 @@ let currentUser = null;
                 if (!partyName) { showError('Please select a faction name.'); confirmBtn.disabled = false; confirmBtn.textContent = 'JOIN THE REGIME'; return; }
                 
                 // Update faction record
+                const cpDesc = document.getElementById('party-desc')?.value?.trim() || null;
                 const { error: updateError } = await _supabase
                     .from('factions')
                     .upsert({
@@ -558,7 +584,10 @@ let currentUser = null;
                         abbreviation: partyAbbr,
                         ideology_value_1: null,
                         ideology_value_2: null,
-                        needs_rebuild: false
+                        needs_rebuild: false,
+                        party_color: _cpSelectedColor || getDefaultPartyColor(factionNumber - 1),
+                        party_logo: _cpSelectedLogo || DEFAULT_PARTY_ICON,
+                        party_description: cpDesc
                     });
                 
                 if (updateError) {
@@ -609,6 +638,7 @@ let currentUser = null;
                 const partyName = document.getElementById('party-name').value.trim();
                 const partyAbbr = document.getElementById('party-abbr').value.trim();
                 
+                const demoDesc = document.getElementById('party-desc')?.value?.trim() || null;
                 const { error: updateError } = await _supabase
                     .from('factions')
                     .upsert({
@@ -621,7 +651,10 @@ let currentUser = null;
                         ideology_value_2: selectedIdeologies[1],
                         abbreviation: partyAbbr,
                         seats: 0,
-                        needs_rebuild: false
+                        needs_rebuild: false,
+                        party_color: _cpSelectedColor || getDefaultPartyColor(factionNumber - 1),
+                        party_logo: _cpSelectedLogo || DEFAULT_PARTY_ICON,
+                        party_description: demoDesc
                     });
                 
                 if (updateError) throw updateError;
@@ -661,12 +694,85 @@ let currentUser = null;
     function goBack() {
         window.location.href = 'world.html';
     }
-    
+
+    function setupPartyIdentityPicker() {
+        // Populate color palette
+        const paletteEl = document.getElementById('cp-color-palette');
+        if (paletteEl) {
+            // Determine default color based on existing party count
+            const defaultIdx = factionNumber - 1;
+            const defaultColor = getDefaultPartyColor(defaultIdx);
+            _cpSelectedColor = defaultColor;
+            paletteEl.innerHTML = PARTY_COLOR_PALETTE.map(c => {
+                const isActive = c.hex === defaultColor;
+                return `<div class="cp-swatch ${isActive ? 'active' : ''}" data-hex="${c.hex}" style="background:${c.hex};" title="${c.label}" onclick="onCpSelectColor('${c.hex}')"></div>`;
+            }).join('');
+            const hexInput = document.getElementById('cp-custom-hex');
+            if (hexInput) hexInput.value = defaultColor;
+            const preview = document.getElementById('cp-color-preview');
+            if (preview) preview.style.background = defaultColor;
+        }
+
+        // Populate logo grid
+        const logoEl = document.getElementById('cp-logo-grid');
+        if (logoEl) {
+            let html = '';
+            const categories = {};
+            for (const [key, icon] of Object.entries(PARTY_ICONS)) {
+                if (!categories[icon.category]) categories[icon.category] = [];
+                categories[icon.category].push({ key, ...icon });
+            }
+            for (const [cat, icons] of Object.entries(categories)) {
+                html += `<div class="cp-icon-cat">${cat}</div><div class="cp-icon-row">`;
+                html += icons.map(ic => {
+                    const isActive = ic.key === DEFAULT_PARTY_ICON;
+                    return `<div class="cp-icon-opt ${isActive ? 'active' : ''}" data-icon="${ic.key}" title="${ic.label}" onclick="onCpSelectLogo('${ic.key}')">${getPartyIconSVG(ic.key, 22)}</div>`;
+                }).join('');
+                html += `</div>`;
+            }
+            logoEl.innerHTML = html;
+        }
+    }
+
+    function onCpSelectColor(hex) {
+        _cpSelectedColor = hex;
+        document.querySelectorAll('.cp-swatch').forEach(el => {
+            el.classList.toggle('active', el.dataset.hex === hex);
+        });
+        const hexInput = document.getElementById('cp-custom-hex');
+        if (hexInput) hexInput.value = hex;
+        const preview = document.getElementById('cp-color-preview');
+        if (preview) preview.style.background = hex;
+    }
+
+    function onCpHexInput(input) {
+        let val = input.value.trim();
+        if (!val.startsWith('#')) val = '#' + val;
+        if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+            _cpSelectedColor = val;
+            document.querySelectorAll('.cp-swatch').forEach(el => {
+                el.classList.toggle('active', el.dataset.hex.toUpperCase() === val.toUpperCase());
+            });
+            const preview = document.getElementById('cp-color-preview');
+            if (preview) preview.style.background = val;
+        }
+    }
+
+    function onCpSelectLogo(key) {
+        _cpSelectedLogo = key;
+        document.querySelectorAll('.cp-icon-opt').forEach(el => {
+            el.classList.toggle('active', el.dataset.icon === key);
+        });
+    }
+
     init();
 
 // Expose functions for HTML onclick/onchange handlers
 window.goBack = goBack;
 window.createParty = createParty;
+window.onCpSelectColor = onCpSelectColor;
+window.onCpHexInput = onCpHexInput;
+window.onCpSelectLogo = onCpSelectLogo;
 </script>
 
 </body>

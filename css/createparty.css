@@ -340,3 +340,76 @@ body {
             color: #ffcc00;
             margin-bottom: 20px;
         }
+
+        /* ===== PARTY IDENTITY PICKER (CREATE FLOW) ===== */
+        .cp-color-palette {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .cp-swatch {
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: border-color 0.15s, transform 0.15s;
+        }
+        .cp-swatch:hover { transform: scale(1.15); border-color: rgba(255,255,255,0.3); }
+        .cp-swatch.active { border-color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,0.3); }
+        .cp-hex-input {
+            width: 80px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: #e0e0e0;
+            padding: 5px 8px;
+            font-size: 0.8rem;
+            font-family: monospace;
+        }
+        .cp-hex-input:focus { outline: none; border-color: #ffcc00; }
+        .cp-color-preview {
+            width: 22px;
+            height: 22px;
+            border-radius: 4px;
+            border: 1px solid #555;
+        }
+        .cp-logo-grid {
+            max-height: 220px;
+            overflow-y: auto;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 8px;
+            background: rgba(0,0,0,0.2);
+        }
+        .cp-icon-cat {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            margin: 6px 0 4px;
+            padding-bottom: 3px;
+            border-bottom: 1px solid #333;
+        }
+        .cp-icon-cat:first-child { margin-top: 0; }
+        .cp-icon-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 4px;
+        }
+        .cp-icon-opt {
+            width: 34px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 5px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            background: rgba(255,255,255,0.03);
+            color: #ccc;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .cp-icon-opt:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2); }
+        .cp-icon-opt.active { border-color: #ffcc00; background: rgba(255,204,0,0.1); }
