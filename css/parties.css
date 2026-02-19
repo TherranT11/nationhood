@@ -9,8 +9,8 @@
     border: 1px solid var(--border-main, #333);
     border-left: 4px solid var(--accent);
     border-radius: 8px;
-    padding: 18px 22px;
-    max-width: 440px;
+    padding: 20px 24px;
+    max-width: 520px;
 }
 
 /* ---- Top row: logo + identity ---- */
@@ -102,10 +102,18 @@ body.light-mode .role-badge-none {
     border-color: rgba(0, 0, 0, 0.1);
 }
 
+/* ---- Ideology tags row (below role badge) ---- */
+.my-party-ideology-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
 /* ---- Stats row ---- */
 .my-party-stats {
     display: flex;
-    gap: 20px;
+    gap: 28px;
     padding-top: 14px;
     border-top: 1px solid var(--border-main, #333);
 }
@@ -113,7 +121,7 @@ body.light-mode .role-badge-none {
 .my-party-stat {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 3px;
     min-width: 0;
 }
 
