@@ -1,0 +1,121 @@
+/**
+ * Party Logo Icon Library
+ * Inline SVG icons for political party logos.
+ * Each icon is a function returning SVG markup at the requested size.
+ */
+
+const PARTY_ICONS = {
+    // ===== ANIMALS =====
+    eagle: { category: 'Animals', label: 'Eagle', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1 3 4 6 7 6-1 4-3 6-7 10-4-4-6-6-7-10 3 0 6-3 7-6z"/><path d="M12 12v6"/><path d="M9 18h6"/></svg>` },
+    lion: { category: 'Animals', label: 'Lion', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="10" r="5"/><path d="M12 15v5"/><path d="M8 6c-2-2-4-1-5 0"/><path d="M16 6c2-2 4-1 5 0"/><path d="M7 8c-3 0-4-2-4-3"/><path d="M17 8c3 0 4-2 4-3"/><path d="M10 9h1"/><path d="M13 9h1"/><path d="M11 12h2"/></svg>` },
+    bear: { category: 'Animals', label: 'Bear', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5" r="2"/><circle cx="16" cy="5" r="2"/><path d="M6 9a6 6 0 0 0 12 0c0 6-3 11-6 11S6 15 6 9z"/><path d="M10 13h1"/><path d="M13 13h1"/><path d="M11 16h2"/></svg>` },
+    dove: { category: 'Animals', label: 'Dove', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7c0-3 4-5 7-3-1 2-1 4 0 6l-4 1-3-4z"/><path d="M12 7c0-3-4-5-7-3 1 2 1 4 0 6l4 1 3-4z"/><path d="M12 11v9"/><path d="M8 17l4-3 4 3"/></svg>` },
+    wolf: { category: 'Animals', label: 'Wolf', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3l3 7h10l3-7"/><path d="M7 10c-2 4 0 8 5 10 5-2 7-6 5-10"/><path d="M9 13h1.5"/><path d="M13.5 13H15"/><path d="M10 17l2 1 2-1"/></svg>` },
+    hawk: { category: 'Animals', label: 'Hawk', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5c4-1 8 1 9 5l-6 8"/><path d="M21 5c-4-1-8 1-9 5l6 8"/><path d="M12 10v3"/><path d="M12 18v3"/><path d="M10 13h4"/></svg>` },
+    bull: { category: 'Animals', label: 'Bull', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5c-2-1-3 1-3 2l3 2"/><path d="M19 5c2-1 3 1 3 2l-3 2"/><ellipse cx="12" cy="12" rx="6" ry="5"/><path d="M10 11h1"/><path d="M13 11h1"/><circle cx="12" cy="14" r="1.5"/><path d="M12 17v3"/></svg>` },
+    serpent: { category: 'Animals', label: 'Serpent', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8c0-3 3-5 6-5s5 2 5 4c0 3-3 4-5 4s-5 1-5 4c0 3 3 5 6 5"/><circle cx="9" cy="5.5" r="0.5" fill="currentColor"/></svg>` },
+
+    // ===== SYMBOLS =====
+    star: { category: 'Symbols', label: 'Star', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>` },
+    fist: { category: 'Symbols', label: 'Fist', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 12V6a1 1 0 0 1 2 0v4"/><path d="M9 8V4a1 1 0 0 1 2 0v6"/><path d="M11 6V3a1 1 0 0 1 2 0v7"/><path d="M13 7V5a1 1 0 0 1 2 0v5"/><path d="M7 12c0 0-2 1-2 4 0 4 3 5 7 5s7-2 7-5c0-2-1-3-1-3"/></svg>` },
+    torch: { category: 'Symbols', label: 'Torch', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c-2 3-4 4-4 7a4 4 0 0 0 8 0c0-3-2-4-4-7z"/><rect x="10" y="13" width="4" height="9" rx="1"/></svg>` },
+    shield: { category: 'Symbols', label: 'Shield', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>` },
+    scales: { category: 'Symbols', label: 'Scales', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M5 7l7-4 7 4"/><path d="M3 13l2-6 2 6a3 3 0 0 1-4 0z"/><path d="M17 13l2-6 2 6a3 3 0 0 1-4 0z"/></svg>` },
+    gear: { category: 'Symbols', label: 'Gear', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>` },
+    hammer: { category: 'Symbols', label: 'Hammer', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v4"/><path d="M3 15v4a2 2 0 0 0 2 2h4"/><path d="M15 3L3 15"/><rect x="13" y="11" width="8" height="4" rx="1" transform="rotate(45 17 13)"/></svg>` },
+    anchor: { category: 'Symbols', label: 'Anchor', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="21"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></svg>` },
+    sword: { category: 'Symbols', label: 'Sword', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"/><path d="M13 19l6-6"/><path d="M16 16l4 4"/><path d="M19 21l2-2"/></svg>` },
+    crown: { category: 'Symbols', label: 'Crown', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 17l3-11 4 5 3-7 3 7 4-5 3 11z"/><path d="M2 17h20v3H2z"/></svg>` },
+
+    // ===== NATURE =====
+    tree: { category: 'Nature', label: 'Tree', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-7"/><path d="M8 22h8"/><path d="M12 2L6 10h4l-3 5h10l-3-5h4z"/></svg>` },
+    mountain: { category: 'Nature', label: 'Mountain', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3l4 8 5-5 5 14H2z"/></svg>` },
+    sun: { category: 'Nature', label: 'Sun', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>` },
+    moon: { category: 'Nature', label: 'Moon', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>` },
+    wheat: { category: 'Nature', label: 'Wheat', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V8"/><path d="M8 6c0 2 2 4 4 4s4-2 4-4c0-2-2-4-4-4S8 4 8 6z"/><path d="M6 12c0 2 3 3 6 3s6-1 6-3-3-3-6-3-6 1-6 3z"/><path d="M7 17c0 1.5 2.5 3 5 3s5-1.5 5-3-2.5-3-5-3-5 1.5-5 3z"/></svg>` },
+    leaf: { category: 'Nature', label: 'Leaf', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 4 13c0-7 7-11 13-11 0 6-4 13-11 13z"/><path d="M4 20l7-7"/></svg>` },
+    rose: { category: 'Nature', label: 'Rose', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c-1.5 2-3 3-3 5a3 3 0 0 0 6 0c0-2-1.5-3-3-5z"/><circle cx="12" cy="11" r="4"/><path d="M12 15v7"/><path d="M8 19c2-1 3-2 4-2s2 1 4 2"/></svg>` },
+    oak: { category: 'Nature', label: 'Oak', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-6"/><path d="M9 22h6"/><circle cx="12" cy="10" r="7"/><path d="M12 3v2"/><path d="M9 7l3 3 3-3"/></svg>` },
+
+    // ===== OBJECTS =====
+    book: { category: 'Objects', label: 'Book', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>` },
+    flag: { category: 'Objects', label: 'Flag', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>` },
+    bell: { category: 'Objects', label: 'Bell', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>` },
+    key: { category: 'Objects', label: 'Key', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>` },
+    compass: { category: 'Objects', label: 'Compass', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>` },
+    lighthouse: { category: 'Objects', label: 'Lighthouse', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 22h4"/><path d="M9 18h6l1-10H8z"/><path d="M10 8h4V5l-2-3-2 3z"/><path d="M3 6l5 2"/><path d="M21 6l-5 2"/></svg>` },
+    bridge: { category: 'Objects', label: 'Bridge', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18h20"/><path d="M4 18v-6c0-4 4-8 8-8s8 4 8 8v6"/><path d="M8 18v-4"/><path d="M12 18v-6"/><path d="M16 18v-4"/></svg>` },
+
+    // ===== GEOMETRIC =====
+    circle_geo: { category: 'Geometric', label: 'Circle', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>` },
+    triangle: { category: 'Geometric', label: 'Triangle', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3L2 21h20z"/></svg>` },
+    diamond: { category: 'Geometric', label: 'Diamond', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l10 10-10 10L2 12z"/></svg>` },
+    arrow_up: { category: 'Geometric', label: 'Arrow', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>` },
+    cross: { category: 'Geometric', label: 'Cross', svg: (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>` },
+};
+
+// Default icon for parties without a selection
+const DEFAULT_PARTY_ICON = 'flag';
+
+// Preset color palette for party colors
+const PARTY_COLOR_PALETTE = [
+    { hex: '#E63946', label: 'Red' },
+    { hex: '#1D3557', label: 'Navy' },
+    { hex: '#2A9D8F', label: 'Teal' },
+    { hex: '#E9C46A', label: 'Gold' },
+    { hex: '#F4A261', label: 'Orange' },
+    { hex: '#6A0DAD', label: 'Purple' },
+    { hex: '#2D6A4F', label: 'Green' },
+    { hex: '#264653', label: 'Dark Teal' },
+    { hex: '#E76F51', label: 'Burnt Orange' },
+    { hex: '#457B9D', label: 'Blue' },
+    { hex: '#8B0000', label: 'Maroon' },
+    { hex: '#556B2F', label: 'Olive' },
+    { hex: '#BC6C25', label: 'Brown' },
+    { hex: '#6C757D', label: 'Grey' },
+    { hex: '#C77DFF', label: 'Lavender' },
+    { hex: '#023E8A', label: 'Royal Blue' },
+];
+
+/**
+ * Get SVG markup for a party icon at a given size.
+ * @param {string} iconKey - The icon identifier (e.g., 'eagle', 'fist')
+ * @param {number} size - Size in pixels (default 24)
+ * @param {string} color - Optional CSS color override
+ * @returns {string} SVG HTML string
+ */
+function getPartyIconSVG(iconKey, size = 24, color = null) {
+    const icon = PARTY_ICONS[iconKey] || PARTY_ICONS[DEFAULT_PARTY_ICON];
+    const svg = icon.svg(size);
+    if (color) {
+        return svg.replace('stroke="currentColor"', `stroke="${color}"`);
+    }
+    return svg;
+}
+
+/**
+ * Get the default color for a party based on its creation index within the nation.
+ * Ensures no two parties in the same nation start with the same color.
+ * @param {number} index - Party creation index (0-based)
+ * @returns {string} Hex color code
+ */
+function getDefaultPartyColor(index) {
+    return PARTY_COLOR_PALETTE[index % PARTY_COLOR_PALETTE.length].hex;
+}
+
+/**
+ * Calculate hex distance between two colors (simple RGB Euclidean distance).
+ * Used to warn if two parties have very similar colors.
+ * @returns {number} Distance (0 = identical, ~441 = max)
+ */
+function colorDistance(hex1, hex2) {
+    const r1 = parseInt(hex1.slice(1, 3), 16);
+    const g1 = parseInt(hex1.slice(3, 5), 16);
+    const b1 = parseInt(hex1.slice(5, 7), 16);
+    const r2 = parseInt(hex2.slice(1, 3), 16);
+    const g2 = parseInt(hex2.slice(3, 5), 16);
+    const b2 = parseInt(hex2.slice(5, 7), 16);
+    return Math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2);
+}
+
+export { PARTY_ICONS, PARTY_COLOR_PALETTE, DEFAULT_PARTY_ICON, getPartyIconSVG, getDefaultPartyColor, colorDistance };

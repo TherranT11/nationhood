@@ -23,6 +23,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, fetchActiveCoalition, runElectionPreview, getPartyAlignment, distributeVotes, allocateSeatsByVotes, dissolveCoalition, generatePMCandidates, rolloverAdministration } from './js/game-common.js';
+import { getPartyIconSVG } from './js/party-icons.js';
 (function () {
     'use strict';
 /**
@@ -55,6 +56,16 @@ let chatMessages = [];
 let supportMap = {};
 let totalLegislatureSeats = 0;
 const GENERAL_ELECTION_TYPE = 'parliamentary';
+const FALLBACK_COLORS = ['#E91E63','#2196F3','#4CAF50','#FF9800','#9C27B0','#00BCD4','#F44336','#8BC34A','#FFC107','#673AB7'];
+
+function getPartyColor(partyId, fallbackIndex) {
+    const p = allParties.find(x => x.id === partyId);
+    return p?.party_color || FALLBACK_COLORS[fallbackIndex % FALLBACK_COLORS.length];
+}
+function getPartyLogo(partyId) {
+    const p = allParties.find(x => x.id === partyId);
+    return p?.party_logo || null;
+}
 
 async function fetchLatestCompletedGeneralElection() {
     const { data: latestElection } = await _supabase
@@ -122,7 +133,7 @@ initPage('elections', async (state) => {
 async function renderDemocracyPage() {
     const { data: parties } = await _supabase
         .from('factions')
-        .select('id, faction_name, seats, approval_rating, abbreviation, ideology_value_1, ideology_value_2')
+        .select('id, faction_name, seats, approval_rating, abbreviation, ideology_value_1, ideology_value_2, party_color, party_logo')
         .eq('nation_id', currentNation.id)
         .eq('faction_type', 'party')
         .eq('is_npc', false)
@@ -338,14 +349,18 @@ async function renderElectionResults(election) {
 
     const results = election.results.votes || [];
 
-    document.getElementById('election-results-list').innerHTML = results.map(r => `
-        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid #222; align-items: center;">
-            <span style="font-size: 0.9rem; color: #ffcc00; font-weight: bold;">${r.party_name}</span>
+    document.getElementById('election-results-list').innerHTML = results.map((r, idx) => {
+        const pColor = getPartyColor(r.party_id, idx);
+        const pLogo = getPartyLogo(r.party_id);
+        const logoHtml = pLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:6px;">${getPartyIconSVG(pLogo, 18, pColor)}</span>` : '';
+        return `
+        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid #222; align-items: center; border-left: 3px solid ${pColor}; padding-left: 10px;">
+            <span style="font-size: 0.9rem; color: ${pColor}; font-weight: bold;">${logoHtml}${r.party_name}</span>
             <span style="font-size: 0.85rem; color: #aaa; text-align: right;">${(r.votes || 0).toLocaleString()} Votes</span>
             <span style="font-size: 0.85rem; color: #aaa; text-align: right;">${r.vote_percentage || 0}%</span>
             <span style="font-size: 0.85rem; font-weight: bold; color: #4CAF50; text-align: right;">${r.seats || 0} Seats</span>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 }
 
 
@@ -471,14 +486,15 @@ async function renderElectionBreakdown(election) {
             const totalVotesFromVoters = Math.max(blocVoterCount - abstentions, 0);
             const voteTotalForPct = totalVotesFromEntries > 0 ? totalVotesFromEntries : totalVotesFromVoters;
 
-            const votesHtml = voteEntries.map(e => {
+            const votesHtml = voteEntries.map((e, eIdx) => {
                 const barWidth = maxVotes > 0 ? (e.votes / maxVotes) * 100 : 0;
                 const isTop = e.votes === maxVotes;
-                const barColor = isTop ? '#ffcc00' : '#555';
+                const pColor = e.partyId ? getPartyColor(e.partyId, eIdx) : (isTop ? '#ffcc00' : '#555');
+                const barColor = pColor;
                 const topClass = isTop ? ' top-party' : '';
                 const pct = voteTotalForPct > 0 ? ((e.votes / voteTotalForPct) * 100).toFixed(1) : '0.0';
                 return `<div class="bloc-vote-row">
-                    <span class="bloc-vote-name${topClass}">${e.name}</span>
+                    <span class="bloc-vote-name${topClass}" style="color:${pColor}">${e.name}</span>
                     <div class="bloc-vote-bar-wrap">
                         <div class="bloc-vote-bar" style="width:${barWidth}%; background:${barColor};"></div>
                     </div>
@@ -554,12 +570,15 @@ async function renderPresidentialResults(election) {
     // Winner banner
     const winnerIdeology = (winner.ideology || '').toUpperCase();
     const winnerColor = ideologyColors[winnerIdeology] || '#888';
+    const winnerPartyColor = getPartyColor(winner.party_id, 0);
+    const winnerLogo = getPartyLogo(winner.party_id);
+    const winnerLogoHtml = winnerLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:8px;">${getPartyIconSVG(winnerLogo, 22, winnerPartyColor)}</span>` : '';
     let html = `
-        <div style="background:linear-gradient(135deg,#1a2a1a,#0a1a0a);border:2px solid #4CAF50;border-radius:8px;padding:16px;margin-bottom:16px;">
+        <div style="background:linear-gradient(135deg,#1a2a1a,#0a1a0a);border:2px solid #4CAF50;border-radius:8px;padding:16px;margin-bottom:16px;border-left:4px solid ${winnerPartyColor};">
             <div style="font-size:0.75rem;color:#4CAF50;text-transform:uppercase;letter-spacing:1px;font-weight:bold;margin-bottom:6px;">Presidential Election Winner</div>
             <div style="font-size:1.1rem;color:#fff;font-weight:bold;">${winner.candidate_name}</div>
             <div style="font-size:0.85rem;color:#aaa;margin-top:4px;">
-                ${winner.party_name}
+                ${winnerLogoHtml}${winner.party_name}
                 <span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;color:#fff;background:${winnerColor};margin-left:8px;vertical-align:middle;">${winner.ideology}</span>
             </div>
             <div style="font-size:0.82rem;color:#aaa;margin-top:4px;">${(winner.votes || 0).toLocaleString()} votes (${winner.vote_percentage || 0}%)</div>
@@ -575,17 +594,20 @@ async function renderPresidentialResults(election) {
         </div>`;
 
     // Candidate rows
-    html += sorted.map(c => {
+    html += sorted.map((c, cIdx) => {
         const ideo = (c.ideology || '').toUpperCase();
         const color = ideologyColors[ideo] || '#888';
         const isWinner = c.winner || c.candidate_id === winner.candidate_id;
+        const cPartyColor = getPartyColor(c.party_id, cIdx);
+        const cLogo = getPartyLogo(c.party_id);
+        const cLogoHtml = cLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(cLogo, 16, cPartyColor)}</span>` : '';
         return `
-            <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 0.8fr;gap:12px;padding:12px 0;border-bottom:1px solid #222;align-items:center;">
+            <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 0.8fr;gap:12px;padding:12px 0;border-bottom:1px solid #222;align-items:center;border-left:3px solid ${cPartyColor};padding-left:10px;">
                 <span style="font-size:0.9rem;color:${isWinner ? '#4CAF50' : '#e0e0e0'};font-weight:bold;">
                     ${isWinner ? '&#x2713; ' : ''}${c.candidate_name}
                     <span style="display:inline-block;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;color:#fff;background:${color};margin-left:6px;vertical-align:middle;">${c.ideology}</span>
                 </span>
-                <span style="font-size:0.85rem;color:#aaa;">${c.party_name}</span>
+                <span style="font-size:0.85rem;color:#aaa;">${cLogoHtml}${c.party_name}</span>
                 <span style="font-size:0.85rem;color:#aaa;text-align:right;">${(c.votes || 0).toLocaleString()}</span>
                 <span style="font-size:0.85rem;color:#aaa;text-align:right;">${c.vote_percentage || 0}%</span>
             </div>`;
@@ -694,15 +716,19 @@ async function loadFormationsList() {
                 <div class="no-propose-note">You have already submitted a proposal for this election.</div>
             ` : `
                 <div class="party-checkbox-grid" id="party-checkbox-grid">
-                    ${allParties.map(p => {
+                    ${allParties.map((p, pIdx) => {
                         const isYou = p.id === currentFaction.id;
                         const seats = getPartySeats(p.id);
+                        const pColor = p.party_color || FALLBACK_COLORS[pIdx % FALLBACK_COLORS.length];
+                        const pLogo = p.party_logo;
+                        const logoHtml = pLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(pLogo, 16, pColor)}</span>` : '';
                         return `
-                            <div class="party-checkbox-item ${isYou ? 'checked disabled' : ''}" 
+                            <div class="party-checkbox-item ${isYou ? 'checked disabled' : ''}"
                                  data-party-id="${p.id}" data-seats="${seats}"
+                                 style="border-left:3px solid ${pColor};"
                                  onclick="${isYou ? '' : `toggleProposalParty(this, '${p.id}')`}">
                                 <div class="party-check-box">${isYou ? '✓' : ''}</div>
-                                <span class="party-check-label">${p.faction_name}</span>
+                                <span class="party-check-label">${logoHtml}${p.faction_name}</span>
                                 <span class="party-check-seats">${seats} seats</span>
                             </div>`;
                     }).join('')}
@@ -728,10 +754,11 @@ async function loadFormationsList() {
                     const coalitionPct = getCoalitionSeatPct(partyIds);
                     const meetsThreshold = coalitionPct >= 51;
                     const ideologies = getCoalitionIdeologies(partyIds);
-                    const partyChips = partyIds.map(pid => {
+                    const partyChips = partyIds.map((pid, pIdx) => {
                         const p = allParties.find(x => x.id === pid);
                         const seats = getPartySeats(pid);
-                        return `<span class="proposal-mini-chip">${p?.faction_name || '?'} · ${seats}</span>`;
+                        const chipColor = p?.party_color || FALLBACK_COLORS[pIdx % FALLBACK_COLORS.length];
+                        return `<span class="proposal-mini-chip" style="border-left:3px solid ${chipColor};">${p?.faction_name || '?'} · ${seats}</span>`;
                     }).join('');
                     let yourStatus = '';
                     if (f.iAmSupporting) yourStatus = `<span class="proposal-your-status supporting">✓ SUPPORTING</span>`;
@@ -892,10 +919,13 @@ function renderFormationDetail(formation) {
     const ideologies = getCoalitionIdeologies(partyIds);
     const iAmInCoalition = partyIds.includes(currentFaction.id);
 
-    const partyChipsHTML = partyIds.map(pid => {
+    const partyChipsHTML = partyIds.map((pid, pIdx) => {
         const p = allParties.find(x => x.id === pid);
         const seats = getPartySeats(pid);
-        return `<div class="formation-party-chip">${p?.faction_name || '?'}<span class="chip-seats">${seats} seats</span></div>`;
+        const chipColor = p?.party_color || FALLBACK_COLORS[pIdx % FALLBACK_COLORS.length];
+        const chipLogo = p?.party_logo;
+        const chipLogoHtml = chipLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(chipLogo, 16, chipColor)}</span>` : '';
+        return `<div class="formation-party-chip" style="border-left:3px solid ${chipColor};">${chipLogoHtml}${p?.faction_name || '?'}<span class="chip-seats">${seats} seats</span></div>`;
     }).join('');
 
     const optionsHTML = partyIds.map(pid => {
@@ -977,13 +1007,15 @@ function renderFormationDetail(formation) {
     const isProposer = formation.proposed_by === currentFaction.id;
 
     // Build edit-coalition party grid (only for proposer)
-    const editPartiesHTML = isProposer ? allParties.map(p => {
+    const editPartiesHTML = isProposer ? allParties.map((p, pIdx) => {
         const isYou = p.id === currentFaction.id;
         const inCoalition = partyIds.includes(p.id);
         const seats = getPartySeats(p.id);
+        const epColor = p.party_color || FALLBACK_COLORS[pIdx % FALLBACK_COLORS.length];
         return `
             <div class="party-checkbox-item ${inCoalition ? 'checked' : ''} ${isYou ? 'disabled' : ''}"
                  data-party-id="${p.id}" data-seats="${seats}"
+                 style="border-left:3px solid ${epColor};"
                  onclick="${isYou ? '' : `toggleEditParty(this, '${p.id}')`}">
                 <div class="party-check-box">${inCoalition ? '✓' : ''}</div>
                 <span class="party-check-label">${p.faction_name}</span>

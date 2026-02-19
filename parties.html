@@ -19,6 +19,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatNumber } from './js/common.js';
 import { loadSeats, loadFactionIdeology, IDEOLOGY_TO_AXIS, GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, detectHeadFaction, fetchActiveCoalition, deductAP, getIdeologyLabel, IDEOLOGY_AXES, disbandParty, loadNationIdeologies, adjustBlocApproval, ensureBlocApprovals, getIdeologySummary, markFactionActive, recalcDerivedApproval, BUILD_COALITION_AP_COST, BUILD_COALITION_MONEY_COST, BUILD_COALITION_COOLDOWN_TICKS, BUILD_COALITION_PANDER_HISTORY_TICKS, PANDER_OPPOSITION_MAP } from './js/game-common.js';
+import { PARTY_ICONS, PARTY_COLOR_PALETTE, DEFAULT_PARTY_ICON, getPartyIconSVG, getDefaultPartyColor, colorDistance } from './js/party-icons.js';
 let currentFaction = null;
 let currentNation = null;
 
@@ -28,8 +29,8 @@ let ideologyDataMap = {};       // factionId -> faction_ideology row
 let allPartiesCache = [];       // all parties for this nation
 let selectedChipIds = new Set(); // currently selected party IDs in comparison chart
 
-// Faction colors for chart dots
-const FACTION_COLORS = [
+// Faction colors — sourced from DB party_color field, falling back to palette
+const FACTION_COLORS_FALLBACK = [
     '#ffcc00', '#4CAF50', '#2196F3', '#ff4444', '#ff9800',
     '#9C27B0', '#00BCD4', '#E91E63', '#8BC34A', '#FF5722'
 ];
@@ -255,6 +256,75 @@ function getStrongestIdeologyTags(party) {
 
 
 // ===================================================================
+// PARTY IDENTITY EDITOR
+// ===================================================================
+
+function buildPartyIdentitySection(faction, nation, allParties) {
+    const currentColor = faction.party_color || getDefaultPartyColor(allParties.indexOf(faction));
+    const currentLogo = faction.party_logo || DEFAULT_PARTY_ICON;
+    const currentDesc = faction.party_description || '';
+
+    const colorSwatches = PARTY_COLOR_PALETTE.map(c => {
+        const isActive = currentColor.toUpperCase() === c.hex.toUpperCase();
+        return `<div class="pi-color-swatch ${isActive ? 'active' : ''}" data-hex="${c.hex}" style="background:${c.hex};" title="${c.label}" onclick="selectPartyColor('${c.hex}')"></div>`;
+    }).join('');
+
+    const categories = {};
+    for (const [key, icon] of Object.entries(PARTY_ICONS)) {
+        if (!categories[icon.category]) categories[icon.category] = [];
+        categories[icon.category].push({ key, ...icon });
+    }
+
+    let logoGridHTML = '';
+    for (const [cat, icons] of Object.entries(categories)) {
+        logoGridHTML += `<div class="pi-icon-category">${cat}</div><div class="pi-icon-grid">`;
+        logoGridHTML += icons.map(ic => {
+            const isActive = currentLogo === ic.key;
+            return `<div class="pi-icon-option ${isActive ? 'active' : ''}" data-icon="${ic.key}" title="${ic.label}" onclick="selectPartyLogo('${ic.key}')">${getPartyIconSVG(ic.key, 24)}</div>`;
+        }).join('');
+        logoGridHTML += `</div>`;
+    }
+
+    // Check for similar colors warning
+    let colorWarning = '';
+    const otherColors = allParties.filter(p => p.id !== faction.id && p.party_color).map(p => p.party_color);
+
+    return `
+        <div class="section-header" style="margin-top: 30px;">Party Identity</div>
+        <div class="pi-editor" id="party-identity-editor">
+            <div class="pi-preview" id="pi-preview">
+                <span class="pi-preview-logo" id="pi-preview-logo" style="color:${currentColor};">${getPartyIconSVG(currentLogo, 32, currentColor)}</span>
+                <span class="pi-preview-name" style="color:${currentColor};">${faction.faction_name}</span>
+                <span class="pi-preview-abbr">${faction.abbreviation || ''}</span>
+            </div>
+
+            <div class="pi-field">
+                <label class="pi-label">Description <span class="pi-hint">(${currentDesc.length}/200)</span></label>
+                <textarea class="pi-textarea" id="pi-description" maxlength="200" rows="2" placeholder="A political faction of ${nation.name}." oninput="onDescriptionInput(this)">${currentDesc}</textarea>
+            </div>
+
+            <div class="pi-field">
+                <label class="pi-label">Party Color</label>
+                <div class="pi-color-palette">${colorSwatches}</div>
+                <div class="pi-custom-color">
+                    <label class="pi-hint">Custom hex:</label>
+                    <input type="text" class="pi-hex-input" id="pi-custom-hex" value="${currentColor}" maxlength="7" placeholder="#E63946" oninput="onCustomHexInput(this)">
+                    <div class="pi-color-preview" id="pi-color-preview" style="background:${currentColor};"></div>
+                </div>
+                <div class="pi-color-warning" id="pi-color-warning" style="display:none;"></div>
+            </div>
+
+            <div class="pi-field">
+                <label class="pi-label">Party Logo</label>
+                <div class="pi-logo-browser">${logoGridHTML}</div>
+            </div>
+
+            <button class="pi-save-btn" id="pi-save-btn" onclick="savePartyIdentity()">Save Changes</button>
+            <div class="pi-save-status" id="pi-save-status"></div>
+        </div>`;
+}
+
+// ===================================================================
 // IDEOLOGY COMPARISON CHART (Design Guide Section 8)
 // ===================================================================
 
@@ -264,7 +334,7 @@ function getStrongestIdeologyTags(party) {
 function buildIdeologySection(parties, faction) {
     factionColorMap = {};
     parties.forEach((p, i) => {
-        factionColorMap[p.id] = FACTION_COLORS[i % FACTION_COLORS.length];
+        factionColorMap[p.id] = p.party_color || FACTION_COLORS_FALLBACK[i % FACTION_COLORS_FALLBACK.length];
     });
 
     // Pre-select the player's party
@@ -573,16 +643,23 @@ async function renderPartiesPage(nation, faction) {
                 ? ideoTags.map(t => `<span class="ideology-tag ${t.tagClass}">${t.label}</span>`).join('')
                 : (isAutocracy ? '<span style="color:#666;font-style:italic;">Regime Faction</span>' : '');
 
+            const partyColor = party.party_color || FACTION_COLORS_FALLBACK[parties.indexOf(party) % FACTION_COLORS_FALLBACK.length];
+            const partyLogo = party.party_logo || DEFAULT_PARTY_ICON;
+            const partyDesc = party.party_description || '';
+
             return `
-                <div class="party-display-card ${isYourParty ? 'your-party' : ''}">
+                <div class="party-display-card ${isYourParty ? 'your-party' : ''}" style="border-left: 4px solid ${partyColor};" title="${partyDesc ? partyDesc.replace(/"/g, '&quot;') : `A political faction of ${nation.name}.`}">
                     <div class="party-card-header">
-                        <div class="party-card-name">
-                            <div class="party-display-name">
-                                ${party.faction_name}
-                                ${party.is_npc ? '<span class="party-npc-badge">AI</span>' : ''}
-                                ${isYourParty ? `<span style="color:#ffcc00;font-size:0.75rem;margin-left:8px;">★ YOUR ${termSingular.toUpperCase()}</span>` : ''}
+                        <div class="party-card-name" style="display:flex;align-items:center;gap:8px;">
+                            <span class="party-logo-icon" style="color:${partyColor};flex-shrink:0;">${getPartyIconSVG(partyLogo, 28, partyColor)}</span>
+                            <div>
+                                <div class="party-display-name">
+                                    ${party.faction_name}
+                                    ${party.is_npc ? '<span class="party-npc-badge">AI</span>' : ''}
+                                    ${isYourParty ? `<span style="color:#ffcc00;font-size:0.75rem;margin-left:8px;">★ YOUR ${termSingular.toUpperCase()}</span>` : ''}
+                                </div>
+                                <div class="party-display-abbr">${party.abbreviation || '—'}</div>
                             </div>
-                            <div class="party-display-abbr">${party.abbreviation || '—'}</div>
                         </div>
                         <div class="party-status-badge status-${status}">${statusText}</div>
                     </div>
@@ -869,7 +946,7 @@ async function renderPartiesPage(nation, faction) {
                 const approval = p._derivedApproval ?? p.approval_rating ?? 0;
                 const isYours = p.id === faction?.id;
                 const origIdx = parties.indexOf(p);
-                const color = FACTION_COLORS[origIdx % FACTION_COLORS.length];
+                const color = p.party_color || FACTION_COLORS_FALLBACK[origIdx % FACTION_COLORS_FALLBACK.length];
                 const barColor = approval >= 50 ? '#4CAF50' : approval >= 35 ? '#ff9800' : '#ff4444';
                 return `<div class="standings-row${isYours ? ' standings-yours' : ''}">
                     <span class="standings-rank">${i + 1}</span>
@@ -917,6 +994,9 @@ async function renderPartiesPage(nation, faction) {
 
                 <!-- Single Ideology Comparison Section -->
                 ${ideologySectionHTML}
+
+                <!-- Party Identity Editor (your party only) -->
+                ${faction ? buildPartyIdentitySection(faction, nation, parties) : ''}
 
                 <!-- Campaign / Faction Actions -->
                 ${campaignActionsHTML}
@@ -2430,6 +2510,131 @@ window.closePollSelector = closePollSelector;
 window.doGeneratePoll = doGeneratePoll;
 window.openPollSelector = openPollSelector;
 window.toggleDenounceTarget = toggleDenounceTarget;
+
+// Party Identity Editor handlers
+let _piSelectedColor = null;
+let _piSelectedLogo = null;
+
+function selectPartyColor(hex) {
+    _piSelectedColor = hex;
+    // Update swatch active states
+    document.querySelectorAll('.pi-color-swatch').forEach(el => {
+        el.classList.toggle('active', el.dataset.hex.toUpperCase() === hex.toUpperCase());
+    });
+    // Update custom hex input
+    const hexInput = document.getElementById('pi-custom-hex');
+    if (hexInput) hexInput.value = hex;
+    // Update preview
+    const previewEl = document.getElementById('pi-color-preview');
+    if (previewEl) previewEl.style.background = hex;
+    updatePartyPreview();
+    checkColorSimilarity(hex);
+}
+
+function onCustomHexInput(input) {
+    let val = input.value.trim();
+    if (!val.startsWith('#')) val = '#' + val;
+    if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+        _piSelectedColor = val;
+        // Deselect palette swatches
+        document.querySelectorAll('.pi-color-swatch').forEach(el => {
+            el.classList.toggle('active', el.dataset.hex.toUpperCase() === val.toUpperCase());
+        });
+        const previewEl = document.getElementById('pi-color-preview');
+        if (previewEl) previewEl.style.background = val;
+        updatePartyPreview();
+        checkColorSimilarity(val);
+    }
+}
+
+function selectPartyLogo(iconKey) {
+    _piSelectedLogo = iconKey;
+    document.querySelectorAll('.pi-icon-option').forEach(el => {
+        el.classList.toggle('active', el.dataset.icon === iconKey);
+    });
+    updatePartyPreview();
+}
+
+function onDescriptionInput(textarea) {
+    const hint = textarea.parentElement.querySelector('.pi-hint');
+    if (hint) hint.textContent = `(${textarea.value.length}/200)`;
+}
+
+function updatePartyPreview() {
+    const logo = _piSelectedLogo || currentFaction?.party_logo || DEFAULT_PARTY_ICON;
+    const color = _piSelectedColor || currentFaction?.party_color || '#ffcc00';
+    const logoEl = document.getElementById('pi-preview-logo');
+    const nameEl = document.querySelector('.pi-preview-name');
+    if (logoEl) {
+        logoEl.innerHTML = getPartyIconSVG(logo, 32, color);
+        logoEl.style.color = color;
+    }
+    if (nameEl) nameEl.style.color = color;
+}
+
+function checkColorSimilarity(hex) {
+    const warningEl = document.getElementById('pi-color-warning');
+    if (!warningEl) return;
+    const otherParties = allPartiesCache.filter(p => p.id !== currentFaction?.id && p.party_color);
+    const similar = otherParties.find(p => colorDistance(hex, p.party_color) < 30);
+    if (similar) {
+        warningEl.textContent = `Another party (${similar.faction_name}) is using a very similar color. This may cause confusion in charts and maps.`;
+        warningEl.style.display = 'block';
+    } else {
+        warningEl.style.display = 'none';
+    }
+}
+
+async function savePartyIdentity() {
+    if (!currentFaction) return;
+    const btn = document.getElementById('pi-save-btn');
+    const statusEl = document.getElementById('pi-save-status');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    try {
+        const desc = document.getElementById('pi-description')?.value?.trim() || '';
+        if (desc.length > 200) throw new Error('Description must be 200 characters or less.');
+
+        const color = _piSelectedColor || currentFaction.party_color || getDefaultPartyColor(0);
+        if (!/^#[0-9A-Fa-f]{6}$/.test(color)) throw new Error('Invalid color format. Use hex like #E63946.');
+
+        const logo = _piSelectedLogo || currentFaction.party_logo || DEFAULT_PARTY_ICON;
+
+        const { error } = await _supabase
+            .from('factions')
+            .update({
+                party_color: color,
+                party_logo: logo,
+                party_description: desc || null
+            })
+            .eq('id', currentFaction.id);
+
+        if (error) throw error;
+
+        // Update local state
+        currentFaction.party_color = color;
+        currentFaction.party_logo = logo;
+        currentFaction.party_description = desc || null;
+
+        statusEl.textContent = 'Saved!';
+        statusEl.style.color = '#4CAF50';
+        setTimeout(() => { statusEl.textContent = ''; }, 3000);
+    } catch (err) {
+        console.error('Save party identity error:', err);
+        statusEl.textContent = 'Error: ' + err.message;
+        statusEl.style.color = '#ff4444';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save Changes';
+    }
+}
+
+window.selectPartyColor = selectPartyColor;
+window.onCustomHexInput = onCustomHexInput;
+window.selectPartyLogo = selectPartyLogo;
+window.onDescriptionInput = onDescriptionInput;
+window.savePartyIdentity = savePartyIdentity;
 </script>
 </body>
 </html>
