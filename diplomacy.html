@@ -5,185 +5,11 @@
     <title>Diplomacy | Nationhood Alpha</title>
 
     <!-- Supabase SDK -->
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- Shared Styles -->
     <link rel="stylesheet" href="css/dashboard.css">
-
-    <style>
-        /* ===== DIPLOMACY LAYOUT ===== */
-        #diplomacy-content { display: flex; height: calc(100vh - 88px); }
-
-        /* Map: 2/3 width */
-        #diplo-map-container {
-            flex: 2; background: var(--ocean-bg); display: flex; flex-direction: column;
-            align-items: center; overflow: auto; position: relative;
-        }
-        #diplo-map-container svg { width: 100%; max-width: 1280px; height: auto; display: block; margin: auto; }
-
-        /* Sidebar: 1/3 width */
-        #diplo-sidebar {
-            flex: 1; max-width: 380px; min-width: 300px; flex-shrink: 0;
-            background: var(--sidebar-bg); border-left: 2px solid var(--sidebar-border);
-            padding: 20px; overflow-y: auto;
-        }
-        #diplo-sidebar h3 {
-            color: var(--accent); font-size: 0.88rem; text-transform: uppercase;
-            letter-spacing: 1px; margin-bottom: 12px;
-        }
-        #diplo-intel p { color: var(--text-muted); font-style: italic; font-size: 0.85rem; }
-
-        /* ===== TOOLBAR ===== */
-        #diplo-toolbar {
-            width: 100%; padding: 10px 16px; display: flex; align-items: center;
-            gap: 10px; background: var(--bg-panel); border-bottom: 1px solid var(--border-light);
-            flex-shrink: 0; flex-wrap: wrap;
-        }
-        #diplo-toolbar label {
-            font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase;
-            letter-spacing: 0.8px;
-        }
-        .diplo-filter {
-            padding: 6px 10px; background: var(--bg-card); border: 1px solid var(--party-badge-border);
-            border-radius: 4px; color: var(--text-primary); font-size: 0.8rem; cursor: pointer;
-        }
-        .diplo-filter:hover { border-color: var(--accent); }
-
-        /* ===== ROLE BADGE ===== */
-        .diplo-role-badge {
-            display: inline-block; padding: 3px 10px; border-radius: 4px;
-            font-size: 0.65rem; font-weight: bold; text-transform: uppercase;
-            letter-spacing: 0.8px; margin-right: 6px;
-        }
-        .role-hog  { background: #8B0000; color: #fff; }
-        .role-fm   { background: #1a5276; color: #fff; }
-        .role-amb  { background: #2e7d32; color: #fff; }
-        .role-none { background: var(--bg-hover); color: var(--text-muted); }
-
-        /* ===== RELATION BADGE ===== */
-        .relation-badge {
-            display: inline-block; padding: 3px 10px; border-radius: 4px;
-            font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;
-        }
-        .rel-allied    { background: #2e7d32; color: #a5d6a7; }
-        .rel-friendly  { background: #1b5e20; color: #81c784; }
-        .rel-warm      { background: #558b2f; color: #c5e1a5; }
-        .rel-neutral   { background: #555; color: #ccc; }
-        .rel-cool      { background: #f9a825; color: #fff8e1; }
-        .rel-tense     { background: #e65100; color: #ffcc80; }
-        .rel-hostile   { background: #b71c1c; color: #ef9a9a; }
-        .rel-war       { background: #ff0000; color: #fff; }
-        .rel-ceasefire { background: #6a1b9a; color: #ce93d8; }
-
-        /* ===== NATION FILL COLORS (reused from world) ===== */
-        #Melizea.land { fill: #eeffaa; }
-        #Avelia.land { fill: #ddafe9; }
-        #Sangreza.land { fill: #5599ff; }
-        #Montequilla.land { fill: #aade87; }
-        #SanEstrella.land { fill: #ffb380; }
-        #Veldaria.land { fill: #87cdde; }
-        #Melizea.land.selected-nation { fill: #ccff00; }
-        #Avelia.land.selected-nation { fill: #d070d8; }
-        #Sangreza.land.selected-nation { fill: #2277ff; }
-        #Montequilla.land.selected-nation { fill: #66cc44; }
-        #SanEstrella.land.selected-nation { fill: #ff8833; }
-        #Veldaria.land.selected-nation { fill: #44bbd4; }
-
-
-        /* ===== SECTION DIVIDERS ===== */
-        .diplo-section-title {
-            font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase;
-            letter-spacing: 1px; margin: 16px 0 8px 0; padding-bottom: 4px;
-            border-bottom: 1px solid var(--border-light);
-        }
-
-        /* ===== DIPLOMATIC CHAT ===== */
-        .diplo-chat-box {
-            max-height: 300px;
-            overflow-y: auto;
-            background: var(--bg-body);
-            border: 1px solid var(--border-main);
-            border-radius: 6px;
-            padding: 8px;
-            margin-bottom: 8px;
-        }
-        .diplo-msg {
-            margin-bottom: 8px;
-            padding: 6px 10px;
-            border-radius: 6px;
-            max-width: 90%;
-        }
-        .diplo-msg.mine {
-            background: #1a2a3a;
-            border: 1px solid #2a4a6a;
-            margin-left: auto;
-        }
-        .diplo-msg.theirs {
-            background: var(--bg-card);
-            border: 1px solid var(--border-main);
-        }
-        .diplo-msg-sender {
-            font-size: 0.68rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 2px;
-        }
-        .diplo-msg-sender .role-badge {
-            font-size: 0.6rem;
-            padding: 1px 5px;
-            border-radius: 3px;
-            margin-left: 4px;
-        }
-        .diplo-msg-text {
-            font-size: 0.82rem;
-            color: var(--text-primary);
-            line-height: 1.4;
-        }
-        .diplo-msg-tick {
-            font-size: 0.62rem;
-            color: var(--text-dim);
-            margin-top: 2px;
-            text-align: right;
-        }
-        .diplo-chat-input {
-            display: flex;
-            gap: 6px;
-        }
-        .diplo-chat-input input {
-            flex: 1;
-            padding: 8px 10px;
-            background: var(--bg-card);
-            border: 1px solid var(--border-main);
-            border-radius: 4px;
-            color: var(--text-primary);
-            font-size: 0.82rem;
-        }
-        .diplo-chat-input input:focus {
-            border-color: var(--accent);
-            outline: none;
-        }
-        .diplo-chat-input button {
-            padding: 8px 14px;
-            background: var(--accent);
-            border: none;
-            border-radius: 4px;
-            color: #121212;
-            font-weight: bold;
-            font-size: 0.78rem;
-            cursor: pointer;
-        }
-        .diplo-chat-input button:hover { opacity: 0.9; }
-        .diplo-chat-empty {
-            text-align: center;
-            padding: 20px;
-            color: var(--text-dim);
-            font-size: 0.82rem;
-            font-style: italic;
-        }
-    </style>
+    <link rel="stylesheet" href="css/diplomacy.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -239,12 +65,12 @@
 </div>
 
 <!-- Shared Scripts -->
-<script src="js/supabase-client.js"></script>
-<script src="js/common.js"></script>
-<script src="js/game-common.js"></script>
 
 <!-- Page-Specific Script -->
-<script>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage, formatNumber } from './js/common.js';
+import { isGovernmentAutocracy, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustBlocApproval } from './js/game-common.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -1037,6 +863,12 @@ function jumpToAmbNation(targetNationId) {
         }
     }
 }
+
+// Expose functions for HTML onclick/onchange handlers
+window.jumpToAmbNation = jumpToAmbNation;
+window.recallAmbassador = recallAmbassador;
+window.cancelPendingAmbassador = cancelPendingAmbassador;
+window.sendDiploMessage = sendDiploMessage;
 </script>
 
 </body>

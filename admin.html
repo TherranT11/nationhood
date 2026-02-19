@@ -3,210 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <title>Nationhood | Admin Panel</title>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="js/game-common.js"></script>
     
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
-            color: #e0e0e0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .admin-container { max-width: 1400px; margin: 0 auto; }
-        .login-box {
-            background: #1e1e1e; padding: 40px; border-radius: 8px;
-            border-top: 4px solid #ff4444; max-width: 600px; margin: 100px auto;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
-        }
-        h1 { color: #ff4444; font-size: 2rem; text-align: center; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px; }
-        h2 { color: #ffcc00; font-size: 1.5rem; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #333; text-transform: uppercase; letter-spacing: 1px; }
-        .warning { background: #2a1a1a; border-left: 4px solid #ff4444; padding: 15px; margin: 20px 0; font-size: 0.9rem; line-height: 1.6; }
-        .info-box { background: #1a2a1a; border-left: 4px solid #4CAF50; padding: 15px; margin: 20px 0; font-size: 0.9rem; line-height: 1.6; }
-        .input-group { margin-bottom: 25px; }
-        label { display: block; margin-bottom: 8px; font-size: 0.9rem; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-        input[type="password"], select { width: 100%; padding: 12px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 4px; font-size: 1rem; }
-        input[type="password"]:focus, select:focus { outline: none; border-color: #ff4444; }
-        .btn { padding: 15px 30px; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; font-size: 0.9rem; transition: 0.3s; text-transform: uppercase; letter-spacing: 1px; margin-right: 10px; margin-bottom: 10px; }
-        .btn-full { width: 100%; margin-right: 0; }
-        .btn-danger { background: #ff4444; color: white; }
-        .btn-danger:hover { background: #cc0000; }
-        .btn-warning { background: #ff9800; color: white; }
-        .btn-warning:hover { background: #f57c00; }
-        .btn-primary { background: #ffcc00; color: #121212; }
-        .btn-primary:hover { background: #e6b800; }
-        .btn-success { background: #4CAF50; color: white; }
-        .btn-success:hover { background: #388E3C; }
-        .btn-secondary { background: #444; color: white; }
-        .btn-secondary:hover { background: #555; }
-        .btn:disabled { background: #666; cursor: not-allowed; opacity: 0.5; }
-        .status { margin-top: 20px; padding: 15px; border-radius: 4px; font-weight: bold; }
-        .status.error { background: #2a1a1a; color: #ff4444; border: 1px solid #ff4444; }
-        .status.success { background: #1a2a1a; color: #4CAF50; border: 1px solid #4CAF50; }
-        .status.info { background: #1a1a2a; color: #2196F3; border: 1px solid #2196F3; }
-        .hidden { display: none; }
-        .shard-info { background: #252525; padding: 20px; border-radius: 6px; margin: 20px 0; }
-        .info-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.9rem; align-items: center; }
-        .info-label { color: #888; }
-        .info-value { color: #ffcc00; font-weight: bold; }
-        .back-link { text-align: center; margin-top: 20px; }
-        .back-link a { color: #2196F3; text-decoration: none; }
-        .back-link a:hover { text-decoration: underline; }
-        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
-        .stat-card { background: #1a1a1a; border-radius: 6px; padding: 20px; text-align: center; border-top: 3px solid #ffcc00; }
-        .stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-        .stat-value { font-size: 2rem; color: #ffcc00; font-weight: bold; }
-        .logout-btn { position: fixed; top: 20px; right: 20px; background: #ff4444; border: none; border-radius: 4px; color: white; padding: 10px 20px; cursor: pointer; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; font-size: 0.8rem; z-index: 1000; }
-        .logout-btn:hover { background: #cc0000; }
-
-        /* Tabs */
-        .tabs { display: flex; gap: 4px; margin-bottom: 0; margin-top: 30px; flex-wrap: wrap; }
-        .tab { padding: 15px 30px; background: #252525; border: none; border-radius: 8px 8px 0 0; color: #888; font-size: 0.9rem; font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; transition: all 0.2s; }
-        .tab:hover { background: #333; color: #e0e0e0; }
-        .tab.active { background: #1e1e1e; color: #ffcc00; }
-        .tab-content { display: none; background: #1e1e1e; border-radius: 0 8px 8px 8px; padding: 30px; }
-        .tab-content.active { display: block; }
-
-        /* Election Results */
-        .election-results { background: #252525; border-radius: 6px; padding: 20px; margin-top: 20px; max-height: 400px; overflow-y: auto; }
-        .result-party { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #1a1a1a; border-radius: 4px; margin-bottom: 8px; }
-        .result-party-name { font-weight: bold; color: #e0e0e0; }
-        .result-party-seats { color: #ffcc00; font-weight: bold; font-size: 1.2rem; }
-        .result-bar { height: 4px; background: #333; border-radius: 2px; margin-top: 8px; overflow: hidden; }
-        .result-bar-fill { height: 100%; background: #ffcc00; }
-
-        /* Tick Interval */
-        .tick-interval-box { background: #1a2a2a; border: 1px solid #2196F3; border-radius: 6px; padding: 20px; margin: 20px 0; }
-        .tick-interval-box h3 { color: #2196F3; font-size: 1rem; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; }
-        .interval-selector { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
-        .interval-btn { padding: 12px 20px; background: #252525; border: 2px solid #444; border-radius: 4px; color: #888; font-weight: bold; cursor: pointer; transition: all 0.2s; }
-        .interval-btn:hover { border-color: #2196F3; color: #e0e0e0; }
-        .interval-btn.active { background: #2196F3; border-color: #2196F3; color: white; }
-
-        /* Player items */
-        .player-item { background: #1a1a1a; padding: 12px; margin-bottom: 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #4CAF50; }
-        .player-info { flex: 1; margin-right: 10px; }
-        .player-party { color: #ffcc00; font-size: 0.85rem; font-weight: bold; margin-bottom: 4px; }
-        .player-id { color: #666; font-size: 0.75rem; }
-        .btn-remove { background: #ff4444; border: none; border-radius: 4px; color: white; padding: 8px 16px; cursor: pointer; font-size: 0.8rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0; }
-        .btn-remove:hover { background: #cc0000; }
-        .no-players { color: #666; font-style: italic; padding: 20px; text-align: center; }
-
-        /* ===== NATION IDEOLOGY SLIDERS ===== */
-        .axis-slider-row {
-            display: grid; grid-template-columns: 120px 1fr 120px;
-            gap: 12px; align-items: center; padding: 14px 0;
-            border-bottom: 1px solid #1a1a1a;
-        }
-        .axis-label-left, .axis-label-right { font-weight: bold; font-size: 0.9rem; }
-        .axis-label-left { text-align: right; }
-        .axis-label-right { text-align: left; }
-        .axis-label-left .axis-pct, .axis-label-right .axis-pct {
-            display: block; font-size: 0.75rem; color: #888; font-weight: normal; margin-top: 2px;
-        }
-        .axis-slider-wrap { display: flex; align-items: center; gap: 8px; }
-        .axis-slider-wrap input[type="range"] { flex: 1; accent-color: #ffcc00; height: 6px; }
-        .axis-value-display {
-            min-width: 45px; text-align: center; font-size: 0.85rem; font-weight: bold; color: #ffcc00;
-        }
-
-        /* ===== VOTER BLOC MANAGEMENT ===== */
-        .weight-validator {
-            display: flex; align-items: center; gap: 12px;
-            padding: 12px 16px; margin-bottom: 16px;
-            background: #1a1a1a; border-radius: 6px; border: 1px solid #333;
-        }
-        .weight-validator-label { color: #888; font-size: 0.85rem; font-weight: bold; }
-        .weight-validator-value { color: #ffcc00; font-size: 1.1rem; font-weight: bold; }
-        .weight-validator-status { font-size: 0.8rem; font-weight: bold; }
-
-        /* Bloc cards */
-        .bloc-card {
-            background: #1e1e1e; border: 1px solid #333; border-radius: 8px;
-            margin-bottom: 10px; overflow: hidden; border-left: 3px solid #9C27B0;
-        }
-        .bloc-card-header {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 14px 16px; cursor: pointer;
-        }
-        .bloc-card-header:hover { background: #252525; }
-        .bloc-card-left { flex: 1; }
-        .bloc-card-name { font-weight: bold; color: #CE93D8; font-size: 0.95rem; }
-        .bloc-card-meta { display: flex; gap: 12px; margin-top: 4px; font-size: 0.78rem; color: #888; }
-        .bloc-card-weight { color: #ffcc00; font-weight: bold; }
-        .bloc-card-issues { display: flex; gap: 4px; flex-wrap: wrap; }
-        .bloc-card-issue-tag {
-            font-size: 0.65rem; padding: 2px 7px; border-radius: 10px;
-            background: #1a2a1a; color: #4CAF50; border: 1px solid #2a3a2a;
-        }
-        .bloc-card-actions { display: flex; gap: 6px; }
-        .bloc-card-actions button {
-            padding: 5px 10px; font-size: 0.75rem; border-radius: 4px;
-            border: 1px solid #444; background: #2a2a2a; color: #ccc; cursor: pointer;
-        }
-        .bloc-card-actions button:hover { background: #3a3a3a; border-color: #666; }
-        .bloc-card-actions .btn-del { color: #ff4444; border-color: #442222; }
-        .bloc-card-actions .btn-del:hover { background: #331111; border-color: #ff4444; }
-
-        /* Bloc detail / edit panel */
-        .bloc-detail {
-            padding: 16px; border-top: 1px solid #333; background: #161616;
-        }
-        .bloc-axis-row {
-            display: grid; grid-template-columns: 110px 1fr 110px;
-            gap: 8px; align-items: center; padding: 6px 0;
-        }
-        .bloc-axis-label { font-size: 0.8rem; font-weight: bold; }
-        .bloc-axis-label-left { text-align: right; }
-        .bloc-axis-label-right { text-align: left; }
-        .bloc-axis-slider { width: 100%; accent-color: #9C27B0; height: 5px; }
-        .bloc-axis-value { font-size: 0.75rem; color: #CE93D8; font-weight: bold; text-align: center; min-width: 30px; }
-
-        /* Bloc form */
-        .bloc-form {
-            background: #1a1a1a; border: 2px solid #9C27B0; border-radius: 8px;
-            padding: 20px; margin-bottom: 16px;
-        }
-        .bloc-form h3 { color: #CE93D8; font-size: 1rem; margin-bottom: 16px; }
-        .bloc-form-row { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
-        .bloc-form-field { display: flex; flex-direction: column; gap: 4px; }
-        .bloc-form-field label { font-size: 0.75rem; color: #888; text-transform: uppercase; font-weight: bold; }
-        .bloc-form-field input[type="text"],
-        .bloc-form-field input[type="number"],
-        .bloc-form-field textarea {
-            background: #252525; border: 1px solid #444; border-radius: 4px;
-            color: #eee; padding: 8px 10px; font-size: 0.9rem;
-        }
-        .bloc-form-field input:focus, .bloc-form-field textarea:focus {
-            outline: none; border-color: #9C27B0;
-        }
-        .bloc-form-issues { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
-        .bloc-form-issue-btn {
-            padding: 6px 12px; font-size: 0.78rem; border-radius: 14px;
-            border: 1px solid #444; background: #252525; color: #888;
-            cursor: pointer; transition: all 0.15s;
-        }
-        .bloc-form-issue-btn:hover { border-color: #4CAF50; color: #ccc; }
-        .bloc-form-issue-btn.active { background: #1a3a1a; border-color: #4CAF50; color: #4CAF50; font-weight: bold; }
-        .bloc-form-btns { display: flex; gap: 10px; margin-top: 16px; }
-
-        .eligible-input {
-            width: 160px;
-            padding: 8px 12px;
-            background: #2a2a2a;
-            border: 1px solid #444;
-            color: #ffcc00;
-            border-radius: 4px;
-            font-size: 0.95rem;
-            font-weight: bold;
-            text-align: right;
-        }
-        .eligible-input:focus { outline: none; border-color: #ffcc00; }
-    </style>
+        <link rel="stylesheet" href="css/admin.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -553,10 +352,13 @@
     </div>
 </div>
 
-<script>
-    const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
+<script type="module">
+const { createClient } = supabase;
+import { applyPopulationGrowth } from './js/common.js';
+import { GAME_CONFIG, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processBlocApprovalDecay, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPartyStandingsJitter, processPMTraitEffects, calculateNationalBudget, markFactionActive, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runManualElectionByGovernmentType } from './js/game-common.js';
+const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
-    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+    const _supabase = createClient(supabaseUrl, supabaseKey);
 
     const ADMIN_PASSWORD = 'nationhood2000';
     let isAuthenticated = false;
@@ -2034,6 +1836,36 @@
     function resizeInspector(height) {
         document.getElementById('inspector-frame').style.height = height;
     }
+
+// Expose functions for HTML onclick/onchange handlers
+window.authenticate = authenticate;
+window.logout = logout;
+window.showTab = showTab;
+window.setTickInterval = setTickInterval;
+window.advanceTickAdmin = advanceTickAdmin;
+window.onElectionNationSelect = onElectionNationSelect;
+window.runElection = runElection;
+window.previewElection = previewElection;
+window.scheduleElection = scheduleElection;
+window.filterPlayers = filterPlayers;
+window.onVoterNationSelect = onVoterNationSelect;
+window.saveAxes = saveAxes;
+window.resetAxesToSaved = resetAxesToSaved;
+window.generateDefaultBlocs = generateDefaultBlocs;
+window.showAddBlocForm = showAddBlocForm;
+window.initializeBlocApprovals = initializeBlocApprovals;
+window.loadInspector = loadInspector;
+window.openInspectorNewTab = openInspectorNewTab;
+window.reloadInspector = reloadInspector;
+window.resizeInspector = resizeInspector;
+window.loadInspectorFactions = loadInspectorFactions;
+window.resetShard = resetShard;
+window.toggleBlocDetail = toggleBlocDetail;
+window.editBloc = editBloc;
+window.deleteVoterBloc = deleteVoterBloc;
+window.toggleIssue = toggleIssue;
+window.saveBlocForm = saveBlocForm;
+window.cancelBlocForm = cancelBlocForm;
 </script>
 </body>
 </html>

@@ -3,269 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <title>Avelia | Nationhood Alpha</title>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
-            color: #e0e0e0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        
-        .nation-container {
-            background: #1e1e1e;
-            padding: 40px;
-            border-radius: 8px;
-            border-top: 4px solid #ff9999;
-            width: 90%;
-            max-width: 900px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
-        }
-        
-        h1 {
-            color: #ff9999;
-            margin: 0 0 30px 0;
-            font-size: 2.5rem;
-            text-align: center;
-            text-transform: uppercase;
-            letter-spacing: 3px;
-        }
-        
-        .stats-section {
-            background: #252525;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-            border-left: 4px solid #ff9999;
-        }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-        }
-        
-        .stat-item {
-            background: #1a1a1a;
-            padding: 15px;
-            border-radius: 4px;
-            text-align: center;
-        }
-        
-        .stat-label {
-            font-size: 0.75rem;
-            color: #888;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 8px;
-        }
-        
-        .stat-value {
-            font-size: 1.3rem;
-            color: #ff9999;
-            font-weight: bold;
-        }
-        
-        h2 {
-            color: #ff9999;
-            font-size: 1.3rem;
-            margin: 30px 0 15px 0;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            border-bottom: 2px solid #333;
-            padding-bottom: 10px;
-        }
-        
-        .interest-groups {
-            display: grid;
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .interest-group-card {
-            background: #252525;
-            padding: 20px;
-            border-radius: 8px;
-            border-left: 4px solid #4CAF50;
-        }
-        
-        .interest-group-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-        }
-        
-        .interest-group-name {
-            font-size: 1.2rem;
-            color: #4CAF50;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        
-        .interest-group-pop {
-            font-size: 0.9rem;
-            color: #888;
-            font-weight: normal;
-        }
-        
-        .interest-group-ideologies {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-bottom: 12px;
-        }
-        
-        .ideology-tag {
-            padding: 5px 12px;
-            border-radius: 4px;
-            font-size: 0.85rem;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        
-        /* Ideology colors */
-        .ideology-liberty { background: #9C27B0; color: white; }
-        .ideology-equality { background: #E91E63; color: white; }
-        .ideology-freedom { background: #2196F3; color: white; }
-        .ideology-security { background: #FF9800; color: white; }
-        .ideology-cooperation { background: #4CAF50; color: white; }
-        .ideology-competition { background: #F44336; color: white; }
-        .ideology-tradition { background: #795548; color: white; }
-        .ideology-progress { background: #00BCD4; color: white; }
-        .ideology-nationalism { background: #FF5722; color: white; }
-        .ideology-globalism { background: #3F51B5; color: white; }
-        
-        .interest-group-desc {
-            font-size: 0.9rem;
-            color: #aaa;
-            line-height: 1.6;
-            font-style: italic;
-        }
-        
-        .government-section {
-            background: #252525;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-            border-left: 4px solid #2196F3;
-        }
-        
-        .head-of-government {
-            background: #1a1a1a;
-            padding: 15px;
-            border-radius: 4px;
-            margin-bottom: 20px;
-            border-left: 3px solid #ff9999;
-        }
-        
-        .head-label {
-            font-size: 0.75rem;
-            color: #888;
-            text-transform: uppercase;
-            margin-bottom: 5px;
-        }
-        
-        .head-value {
-            font-size: 1.2rem;
-            color: #ff9999;
-            font-weight: bold;
-        }
-        
-        .parties-list {
-            display: grid;
-            gap: 10px;
-        }
-        
-        .party-item {
-            background: #1a1a1a;
-            padding: 12px 15px;
-            border-radius: 4px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-left: 3px solid #2196F3;
-        }
-        
-        .party-name {
-            font-size: 1rem;
-            color: #e0e0e0;
-            font-weight: 500;
-        }
-        
-        .party-seats {
-            font-size: 1rem;
-            color: #2196F3;
-            font-weight: bold;
-        }
-        
-        .action-buttons {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-top: 30px;
-        }
-        
-        .btn {
-            padding: 15px;
-            border: none;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 4px;
-            font-size: 1rem;
-            transition: 0.3s;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        .btn-back {
-            background: #444;
-            color: white;
-        }
-        
-        .btn-back:hover {
-            background: #555;
-        }
-        
-        .btn-continue {
-            background: #ff9999;
-            color: #000;
-        }
-        
-        .btn-continue:hover {
-            background: #ff7777;
-        }
-        
-        .btn:disabled {
-            background: #666;
-            cursor: not-allowed;
-            opacity: 0.5;
-        }
-        
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #888;
-        }
-        
-        .error {
-            background: #2a1a1a;
-            border: 1px solid #ff4444;
-            color: #ff4444;
-            padding: 15px;
-            border-radius: 4px;
-            margin: 20px 0;
-        }
-    </style>
+        <link rel="stylesheet" href="css/avelia.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -334,10 +74,11 @@
     </div>
 </div>
 
-<script>
-    const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
+<script type="module">
+const { createClient } = supabase;
+const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
-    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+    const _supabase = createClient(supabaseUrl, supabaseKey);
     
     const NATION_NAME = 'Avelia';
     let nationData = null;
@@ -566,6 +307,10 @@
     
     // Load data on page load
     loadNationData();
+
+// Expose functions for HTML onclick/onchange handlers
+window.goBack = goBack;
+window.continueToPartyCreation = continueToPartyCreation;
 </script>
 
 </body>

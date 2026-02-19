@@ -3,167 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <title>Nationhood Alpha | Melizea Shard</title>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://pbumjalxclmegzckhqqr.supabase.co" crossorigin>
+
+        <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/map.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="js/supabase-client.js"></script>
-    <script src="js/common.js"></script>
-    <script src="js/game-common.js"></script>
-
-    <style>
-        body { margin: 0; padding: 0; background-color: #121212; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        
-        /* Tick Status Bar */
-        #tick-status-bar {
-            background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
-            border-bottom: 3px solid #ffcc00;
-            padding: 12px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-        
-        .tick-info {
-            display: flex;
-            gap: 40px;
-            align-items: center;
-        }
-        
-        .tick-item {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .tick-label {
-            font-size: 0.7rem;
-            color: #888;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 3px;
-        }
-        
-        .tick-value {
-            font-size: 1.1rem;
-            color: #ffcc00;
-            font-weight: bold;
-        }
-        
-        .tick-countdown {
-            font-size: 1.3rem;
-            color: #4CAF50;
-            font-weight: bold;
-            font-family: 'Courier New', monospace;
-        }
-        
-        /* Map Container and Ocean */
-        #map-container { flex: 3; overflow: auto; background-color: #002b4d; position: relative; }
-        svg { width: 100%; height: auto; display: block; }
-        
-        /* Interactive Nations */
-        .land { 
-            cursor: pointer; 
-            transition: fill 0.3s ease, filter 0.3s ease;
-            fill: #ffffff; 
-            stroke: #000000;
-            stroke-width: 1;
-            pointer-events: all;
-        }
-
-        .land:hover { 
-            fill: #fff5cc; 
-            filter: drop-shadow(0 0 10px rgba(255, 245, 204, 0.5));
-        }
-        
-        /* Default nation fills */
-        #Melizea { fill: #eeffaa; }
-        #Avelia { fill: #ddafe9; }
-        #Sangreza { fill: #5599ff; }
-        #Montequilla { fill: #aade87; }
-        #SanEstrella { fill: #ffb380; }
-        #Veldaria { fill: #87cdde; }
-
-        /* Hover colors */
-        #Melizea:hover { fill: #f5ffcc; filter: drop-shadow(0 0 10px rgba(238,255,170,0.5)); }
-        #Avelia:hover { fill: #eeccf2; filter: drop-shadow(0 0 10px rgba(221,175,233,0.5)); }
-        #Sangreza:hover { fill: #77bbff; filter: drop-shadow(0 0 10px rgba(85,153,255,0.5)); }
-        #Montequilla:hover { fill: #bbee99; filter: drop-shadow(0 0 10px rgba(170,222,135,0.5)); }
-        #SanEstrella:hover { fill: #ffc499; filter: drop-shadow(0 0 10px rgba(255,179,128,0.5)); }
-        #Veldaria:hover { fill: #a0dde9; filter: drop-shadow(0 0 10px rgba(135,205,222,0.5)); }
-
-        .selected-nation {
-            filter: drop-shadow(0 0 15px rgba(255, 204, 0, 0.8)) !important;
-            transform: none !important;
-        }
-        
-        /* Selected states */
-        #Melizea.selected-nation { fill: #ccff00 !important; filter: drop-shadow(0 0 15px rgba(204,255,0,0.8)) !important; }
-        #Avelia.selected-nation { fill: #d070d8 !important; filter: drop-shadow(0 0 15px rgba(208,112,216,0.8)) !important; }
-        #Sangreza.selected-nation { fill: #2277ff !important; filter: drop-shadow(0 0 15px rgba(34,119,255,0.8)) !important; }
-        #Montequilla.selected-nation { fill: #66cc44 !important; filter: drop-shadow(0 0 15px rgba(102,204,68,0.8)) !important; }
-        #SanEstrella.selected-nation { fill: #ff8833 !important; filter: drop-shadow(0 0 15px rgba(255,136,51,0.8)) !important; }
-        #Veldaria.selected-nation { fill: #44bbd4 !important; filter: drop-shadow(0 0 15px rgba(68,187,212,0.8)) !important; }
-        
-        /* Capital markers */
-        .capital-dot {
-            fill: #1a1a1a;
-            pointer-events: none;
-        }
-        
-        .capital-name {
-            fill: #1a1a1a;
-            font-size: 4px;
-            font-family: sans-serif;
-            font-weight: bold;
-            pointer-events: none;
-        }
-
-        /* Sidebar & UI */
-        #sidebar { 
-            flex: 1; 
-            background-color: #1a1a1a; 
-            padding: 20px; 
-            border-left: 3px solid #ffcc00;
-            min-width: 320px;
-            box-shadow: -10px 0 20px rgba(0,0,0,0.5);
-            overflow-y: auto;
-        }
-
-        .logout-btn { background: transparent; border: 1px solid #ff4444; color: #ff4444; padding: 6px 12px; cursor: pointer; border-radius: 4px; transition: 0.3s; margin-top: 10px; font-size: 0.75rem; width: 100%; }
-        .logout-btn:hover { background: #ff4444; color: white; }
-        
-        #details { background: #222; padding: 15px; border-radius: 4px; line-height: 1.6; border-left: 2px solid #444; }
-        hr { border: 0; border-top: 1px solid #333; margin: 20px 0; }
-        h3 { color: #ffcc00; margin-top: 0; font-size: 1rem; text-transform: uppercase; letter-spacing: 1px; }
-        
-        /* View Nation Button */
-        .view-nation-btn {
-            width: 100%;
-            padding: 15px;
-            background: #ffcc00;
-            border: none;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 4px;
-            font-size: 1rem;
-            color: #000;
-            transition: 0.3s;
-            margin-top: 15px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        .view-nation-btn:hover {
-            background: #e6b800;
-        }
-        
-        .hidden {
-            display: none;
-        }
-    </style>
 </head>
 <body>
 
@@ -221,8 +64,11 @@
     </aside>
 </div>
 
-<script>
-    let currentUser = null;
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage, loadGameState, updateTopBarInfo, scaleRawToDollars } from './js/common.js';
+import { initGameConfigForNation } from './js/game-common.js';
+let currentUser = null;
     let currentFaction = null;
     let selectedNation = null; // Track currently selected nation
 
@@ -406,6 +252,9 @@ if (!faction) {
     });
 
     initSession();
+
+// Expose functions for HTML onclick/onchange handlers
+window.viewNation = viewNation;
 </script>
 
 </body>

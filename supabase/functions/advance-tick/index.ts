@@ -492,9 +492,6 @@ const POLICY_STANCES = {
     ]
 };
 
-const POLICY_PLATFORM_AP_COST = 3;
-const POLICY_PLATFORM_COOLDOWN_TICKS = 2;
-
 // Stats where LOWER is better (inverted approval logic)
 const INVERTED_STATS = [
     'unemployment', 'poverty_rate', 'income_inequality', 'death_rate',

@@ -7,13 +7,15 @@
  * - Population growth calculations
  */
 
+import { _supabase, handleLogout } from './supabase-client.js';
+
 // ===== QUERY CACHE =====
 // Generic sessionStorage cache for Supabase query results.
 // Eliminates redundant fetches when navigating between pages.
 
 const _CACHE_PREFIX = 'nh_q_';
 
-function qCache(key) {
+export function qCache(key) {
     try {
         const raw = sessionStorage.getItem(_CACHE_PREFIX + key);
         if (!raw) return null;
@@ -23,13 +25,13 @@ function qCache(key) {
     } catch { return null; }
 }
 
-function qCacheSet(key, data, ttlMs) {
+export function qCacheSet(key, data, ttlMs) {
     try {
         sessionStorage.setItem(_CACHE_PREFIX + key, JSON.stringify({ d: data, ex: Date.now() + ttlMs }));
     } catch { /* storage full — silently skip */ }
 }
 
-function qCacheBust(keyPrefix) {
+export function qCacheBust(keyPrefix) {
     try {
         const keys = [];
         for (let i = 0; i < sessionStorage.length; i++) {
@@ -41,7 +43,7 @@ function qCacheBust(keyPrefix) {
 }
 
 /** Fetch with cache: returns cached data or runs queryFn and caches the result. */
-async function cachedQuery(cacheKey, ttlMs, queryFn) {
+export async function cachedQuery(cacheKey, ttlMs, queryFn) {
     const hit = qCache(cacheKey);
     if (hit) return hit;
     const result = await queryFn();
@@ -89,7 +91,7 @@ function getAdminFactionOverride() {
     } catch (e) {}
 })();
 
-function getCachedState() {
+export function getCachedState() {
     // Skip cache entirely when admin override is active — always fetch fresh
     if (getAdminNationOverride() || getAdminFactionOverride()) return null;
     try {
@@ -102,14 +104,14 @@ function getCachedState() {
     } catch (e) { console.error('Error reading cached state:', e); return null; }
 }
 
-function setCachedState(user, faction, nation, shard) {
+export function setCachedState(user, faction, nation, shard) {
     // Don't cache admin-overridden states (would pollute normal sessions)
     if (getAdminNationOverride() || getAdminFactionOverride()) return;
     const state = { user, faction, nation, shard, timestamp: Date.now() };
     sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
 }
 
-async function loadGameState(requireFaction = true) {
+export async function loadGameState(requireFaction = true) {
     const cached = getCachedState();
     if (cached) { console.log('Using cached state'); return cached; }
     console.log('Fetching fresh state from Supabase');
@@ -187,7 +189,7 @@ async function loadGameState(requireFaction = true) {
     return { user, faction, nation, shard };
 }
 
-async function refreshGameState() {
+export async function refreshGameState() {
     sessionStorage.removeItem(STATE_KEY);
     return await loadGameState();
 }
@@ -195,7 +197,7 @@ async function refreshGameState() {
 
 // ===== TOP BAR =====
 
-function renderTopBar(activeTab) {
+export function renderTopBar(activeTab) {
     const topBarHTML = `
         <div class="top-bar-row1">
             <div class="top-bar-left">
@@ -231,7 +233,7 @@ function renderTopBar(activeTab) {
     document.getElementById('top-bar').innerHTML = topBarHTML;
 }
 
-function renderNavTabs(activeTab) {
+export function renderNavTabs(activeTab) {
     const tabs = [
         { id: 'world', label: 'World', href: 'world.html' },
         { id: 'nation', label: 'Nation', href: 'nation.html' },
@@ -275,7 +277,7 @@ let tickInterval = null;
 let nextTickAt = null;
 let tickPoller = null;
 
-function updateTopBarInfo(faction, shard, nation) {
+export function updateTopBarInfo(faction, shard, nation) {
     const badge = document.getElementById('party-badge');
     if (badge && faction) {
         badge.textContent = faction.faction_name + ' [' + (faction.abbreviation || '—') + ']';
@@ -409,12 +411,12 @@ function pollForNewTick() {
 
 // ===== UTILITY FUNCTIONS =====
 
-function formatNumber(n) {
+export function formatNumber(n) {
     if (n == null) return 'N/A';
     return Number(n).toLocaleString();
 }
 
-function formatCurrency(n) {
+export function formatCurrency(n) {
     if (n == null) return 'N/A';
     return '$' + Number(n).toLocaleString();
 }
@@ -424,12 +426,12 @@ function formatCurrency(n) {
  * Values already at dollar scale (>= 1,000,000) are returned as-is.
  * Matches the guard in sql/fix_nation_gdp_debt_population_scale.sql.
  */
-function scaleRawToDollars(val) {
+export function scaleRawToDollars(val) {
     if (val == null || val <= 0) return val;
     return val < 1000000 ? val * 1e9 : val;
 }
 
-function showLoading(containerId = 'content-area') {
+export function showLoading(containerId = 'content-area') {
     const container = document.getElementById(containerId);
     if (container) {
         container.innerHTML = `
@@ -444,7 +446,7 @@ function showLoading(containerId = 'content-area') {
 
 // ===== POPULATION GROWTH CALCULATION =====
 
-function calculatePopulationGrowth(nation) {
+export function calculatePopulationGrowth(nation) {
     const factors = [
         { key: 'birth_rate', weight: 3.0, invert: false },
         { key: 'immigration', weight: 2.0, invert: false },
@@ -473,12 +475,12 @@ function calculatePopulationGrowth(nation) {
     return Math.round(totalScore / totalWeight);
 }
 
-function calculatePopulationChange(population, growthScore, maxRate = 0.01) {
+export function calculatePopulationChange(population, growthScore, maxRate = 0.01) {
     const monthlyRate = ((growthScore - 50) / 50) * maxRate;
     return Math.round(population * monthlyRate);
 }
 
-function applyPopulationGrowth(nation) {
+export function applyPopulationGrowth(nation) {
     const growthScore = calculatePopulationGrowth(nation);
     const popChange = calculatePopulationChange(nation.population, growthScore);
     const newPopulation = nation.population + popChange;
@@ -521,13 +523,13 @@ function applyPopulationGrowth(nation) {
 
 // ===== THEME (LIGHT / DARK) =====
 
-function toggleTheme() {
+export function toggleTheme() {
     const isLight = document.body.classList.toggle('light-mode');
     localStorage.setItem('nationhood_theme', isLight ? 'light' : 'dark');
     updateThemeButton();
 }
 
-function updateThemeButton() {
+export function updateThemeButton() {
     const btn = document.getElementById('theme-toggle');
     if (!btn) return;
     const isLight = document.body.classList.contains('light-mode');
@@ -544,7 +546,7 @@ function updateThemeButton() {
 
 // ===== PAGE INITIALIZATION =====
 
-async function initPage(activeTab, onReady, requireFaction = true) {
+export async function initPage(activeTab, onReady, requireFaction = true) {
     renderTopBar(activeTab);
     updateThemeButton();
     const state = await loadGameState(requireFaction);
@@ -554,3 +556,7 @@ async function initPage(activeTab, onReady, requireFaction = true) {
         await onReady(state);
     }
 }
+
+// Expose onclick handlers used by renderTopBar() HTML templates
+window.handleLogout = handleLogout;
+window.toggleTheme = toggleTheme;
