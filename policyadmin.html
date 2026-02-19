@@ -442,7 +442,7 @@ async function deletePolicy(id, name) {
         // Cascade: delete child rows that hold a foreign key to this policy
         await _supabase.from('bill_articles').delete().eq('policy_id', id);
         await _supabase.from('active_laws').delete().eq('policy_id', id);
-        await _supabase.from('nation_policies').delete().eq('policy_id', id).catch(() => {});
+        try { await _supabase.from('nation_policies').delete().eq('policy_id', id); } catch {}
 
         // Clean up opposed_policy_ids references in other policies
         const refs = allPolicies.filter(p => (p.opposed_policy_ids || []).includes(id));
