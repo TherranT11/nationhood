@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS presidents (
     -- Approval
     approval_modifier   INT DEFAULT 0,  -- president-specific approval delta
 
+    -- Incumbency tracking
+    terms_served        INT DEFAULT 1,  -- number of terms this person has served (increments on re-election)
+
     -- Metadata
     created_at          TIMESTAMPTZ DEFAULT now()
 );
@@ -76,3 +79,8 @@ ALTER TABLE ministries ADD COLUMN IF NOT EXISTS rejected_parties JSONB DEFAULT '
 
 ALTER TABLE pm_candidates ADD COLUMN IF NOT EXISTS candidate_type TEXT DEFAULT 'pm';
 -- Values: 'pm', 'presidential'
+
+-- ==================== PRESIDENTS TABLE — INCUMBENCY TRACKING ====================
+-- Tracks how many terms a president has served (incremented on re-election).
+
+ALTER TABLE presidents ADD COLUMN IF NOT EXISTS terms_served INT DEFAULT 1;
