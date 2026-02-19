@@ -1049,11 +1049,6 @@ function toRoman(num) {
     return result;
 }
 
-function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
 function openInitiativeForm() {
     const target = selectedTargetNation;
     const theirAmb = selectedTheirAmbassador;
