@@ -1,3 +1,8 @@
+/* ===== PAGE WRAPPER ===== */
+.parties-page {
+    padding: 24px;
+}
+
 /* ===== MY PARTY CARD ===== */
 .my-party-card {
     background: var(--bg-panel, #1a1a1a);

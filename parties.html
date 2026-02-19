@@ -101,6 +101,7 @@ async function renderParties() {
     const abbr = f.abbreviation ? `<span class="my-party-abbr">(${f.abbreviation})</span>` : '';
 
     el.innerHTML = `
+        <div class="parties-page">
         <div class="my-party-card" style="border-left-color:${partyColor}">
             <div class="my-party-top-row">
                 <div class="my-party-logo" style="color:${partyColor}">
@@ -132,6 +133,7 @@ async function renderParties() {
                     <div class="stat-val stat-money">${treasury}</div>
                 </div>
             </div>
+        </div>
         </div>
     `;
 }
