@@ -153,29 +153,35 @@ const FLAG_URLS = {
 // ==================== INIT ====================
 
 initPage('diplomacy', async (state) => {
-    currentFaction = state.faction;
-    currentNation  = state.nation;
+    try {
+        currentFaction = state.faction;
+        currentNation  = state.nation;
 
-    // Load shard tick for term calculations
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    shardTick = shard?.current_tick || 0;
+        // Load shard tick for term calculations
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        shardTick = shard?.current_tick || 0;
 
-    // Load coalition for role detection
-    if (currentNation) {
-        currentCoalition = await fetchActiveCoalition(_supabase, currentNation.id);
+        // Load coalition for role detection
+        if (currentNation) {
+            currentCoalition = await fetchActiveCoalition(_supabase, currentNation.id);
+        }
+
+        // Detect roles
+        diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
+
+        // Render header panel with roles + stats
+        await renderDiploHeader();
+
+        // Setup map
+        setupDiplomacyMap();
+
+        // Default to Relations tab
+        await renderRelationsTab();
+    } catch (e) {
+        console.error('Diplomacy init error:', e);
+        const panel = document.getElementById('tab-relations');
+        if (panel) panel.innerHTML = '<p style="color:#f44;text-align:center;padding:20px;">Error initializing diplomacy page: ' + (e.message || e) + '</p>';
     }
-
-    // Detect roles
-    diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
-
-    // Render header panel with roles + stats
-    await renderDiploHeader();
-
-    // Setup map
-    setupDiplomacyMap();
-
-    // Default to Relations tab
-    await renderRelationsTab();
 });
 
 // ==================== ROLE DETECTION ====================
@@ -217,18 +223,30 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
 
     // Ambassadors: query ambassadors table for active ambassadors belonging to this faction
     try {
-        const { data: ambassadors } = await _supabase
+        const { data: ambassadors, error: ambErr } = await _supabase
             .from('ambassadors')
-            .select('target_nation_id, appointed_at_tick, term_length, ambassador_first_name, ambassador_last_name, nations!ambassadors_target_nation_id_fkey(name)')
+            .select('*')
             .eq('faction_id', faction.id)
             .eq('nation_id', nation.id)
             .eq('is_active', true)
             .eq('status', 'active');
 
-        if (ambassadors && ambassadors.length > 0) {
+        if (ambErr) {
+            console.warn('Ambassador query error:', ambErr);
+        } else if (ambassadors && ambassadors.length > 0) {
+            // Look up target nation names separately (avoids FK join issues)
+            const targetIds = ambassadors.map(a => a.target_nation_id);
+            const { data: targetNations } = await _supabase
+                .from('nations')
+                .select('id, name')
+                .in('id', targetIds);
+            const nationNameMap = {};
+            (targetNations || []).forEach(n => { nationNameMap[n.id] = n.name; });
+
             roles.ambassadorTo = ambassadors.map(a => ({
+                id: a.id,
                 target_nation_id: a.target_nation_id,
-                target_nation_name: a.nations?.name || 'Unknown',
+                target_nation_name: nationNameMap[a.target_nation_id] || 'Unknown',
                 appointed_at_tick: a.appointed_at_tick,
                 term_length: a.term_length || 36,
                 ambassador_first_name: a.ambassador_first_name,
@@ -316,7 +334,8 @@ function showDiploTab(tabName) {
     document.querySelectorAll('.diplo-tab-panel').forEach(panel => {
         panel.style.display = panel.id === 'tab-' + tabName ? '' : 'none';
     });
-    // Lazy-load tab content
+    // Lazy-load / refresh tab content
+    if (tabName === 'relations') renderRelationsTab();
     if (tabName === 'agreements') renderAgreementsTab();
     if (tabName === 'initiative') renderInitiativeWizard();
     if (tabName === 'inbox') renderInboxTab();
@@ -335,28 +354,37 @@ async function renderRelationsTab() {
     }
 
     try {
-        // Parallel fetch: all nations, relations, ambassadors, active agreements
-        const [nationsRes, relationsRes, ambassadorsRes, agreementsRes] = await Promise.all([
-            _supabase.from('nations').select('id, name, population, stability, civil_unrest, military_strength, capital').order('name'),
+        // Parallel fetch: all nations, relations, ambassadors (ours + theirs), active agreements
+        const [nationsRes, relationsRes, ambassadorsRes, theirAmbassadorsRes, agreementsRes] = await Promise.all([
+            _supabase.from('nations').select('*').order('name'),
             _supabase.from('diplomatic_relations').select('*')
                 .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id),
-            _supabase.from('ambassadors').select('target_nation_id, ambassador_first_name, ambassador_last_name, appointed_at_tick, term_length')
+            _supabase.from('ambassadors').select('*')
                 .eq('nation_id', currentNation.id).eq('is_active', true).eq('status', 'active'),
+            _supabase.from('ambassadors').select('*')
+                .eq('target_nation_id', currentNation.id).eq('is_active', true).eq('status', 'active'),
             _supabase.from('diplomatic_proposals').select('proposing_nation_id, target_nation_id')
                 .eq('status', 'active')
                 .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id)
         ]);
 
+        if (nationsRes.error) {
+            console.error('Nations query error:', nationsRes.error);
+            panel.innerHTML = '<p style="color:#f44;text-align:center;padding:20px;">Error loading nations: ' + nationsRes.error.message + '</p>';
+            return;
+        }
+
         const allNations = nationsRes.data || [];
         const allRelations = relationsRes.data || [];
         const ourAmbassadors = ambassadorsRes.data || [];
+        const theirAmbassadors = theirAmbassadorsRes.data || [];
         const activeAgreements = agreementsRes.data || [];
 
         // Filter out own nation
         const otherNations = allNations.filter(n => n.id !== currentNation.id);
 
         if (otherNations.length === 0) {
-            panel.innerHTML = '<p class="diplo-tab-placeholder">No other nations found.</p>';
+            panel.innerHTML = '<p class="diplo-tab-placeholder">No other nations found. (' + allNations.length + ' total in database)</p>';
             return;
         }
 
@@ -375,10 +403,28 @@ async function renderRelationsTab() {
             const score = relation?.relation_score ?? 35;
             const tier = getRelationTier(score, hasCeasefire);
 
+            // Embassy status
+            let embassyStatus = 'none';
+            if (relation) {
+                if (currentNation.id === relation.nation_a_id) {
+                    embassyStatus = relation.embassy_status_a || 'open';
+                } else {
+                    embassyStatus = relation.embassy_status_b || 'open';
+                }
+            }
+            const embassyColor = embassyStatus === 'open' ? '#4CAF50' : embassyStatus === 'closed' ? '#f44' : '#888';
+
             // Find our ambassador to this nation
             const ambassador = ourAmbassadors.find(a => a.target_nation_id === nation.id);
             const ambName = ambassador
                 ? ((ambassador.ambassador_first_name || '') + ' ' + (ambassador.ambassador_last_name || '')).trim()
+                : null;
+            const isMyAmbassadorship = ambassador && ambassador.faction_id === currentFaction?.id;
+
+            // Find their ambassador to us
+            const theirAmb = theirAmbassadors.find(a => a.nation_id === nation.id);
+            const theirAmbName = theirAmb
+                ? ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim()
                 : null;
 
             // Count agreements with this nation
@@ -399,8 +445,12 @@ async function renderRelationsTab() {
                             <div class="nation-card-name">${escapeHtml(nation.name)}</div>
                             <div class="nation-card-meta">
                                 <span class="relation-badge ${tier.cssClass}">${tier.label}</span>
-                                ${ambName ? '<span class="nation-card-amb">Amb: ' + escapeHtml(ambName) + '</span>' : ''}
+                                <span class="nation-card-embassy" style="color:${embassyColor};">${embassyStatus === 'open' ? 'Embassy Open' : embassyStatus === 'closed' ? 'Embassy Closed' : 'No Embassy'}</span>
                                 ${agreementCount > 0 ? '<span class="nation-card-agreements">' + agreementCount + ' agreement' + (agreementCount > 1 ? 's' : '') + '</span>' : ''}
+                            </div>
+                            <div class="nation-card-ambassadors">
+                                <span class="nation-card-amb">${ambName ? 'Our Amb: ' + escapeHtml(ambName) + (isMyAmbassadorship ? ' <em>(you)</em>' : '') : '<span style="color:#666;">No Ambassador</span>'}</span>
+                                <span class="nation-card-amb">${theirAmbName ? 'Their Amb: ' + escapeHtml(theirAmbName) : '<span style="color:#666;">No Counterpart</span>'}</span>
                             </div>
                             <div class="relations-bar">
                                 <div class="relations-bar-fill" style="width:${barWidth}%;background:${barColor};"></div>
@@ -1525,7 +1575,10 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
                 <button class="action-btn" disabled style="opacity:0.6;">Awaiting Confirmation: ${pendName.trim()}</button>
                 <button class="action-btn" style="margin-top:8px;" onclick="cancelPendingAmbassador('${pendingAmbassador.id}', '${targetNation.name}')">Cancel Nomination</button>`;
         } else {
-            const adminParams = [getAdminNationOverride() ? 'nation_id=' + getAdminNationOverride() : '', getAdminFactionOverride() ? 'faction_id=' + getAdminFactionOverride() : ''].filter(Boolean).join('&');
+            const urlParams = new URLSearchParams(window.location.search);
+            const adminNation = urlParams.get('nation_id') || sessionStorage.getItem('_admin_nation') || '';
+            const adminFaction = urlParams.get('faction_id') || sessionStorage.getItem('_admin_faction') || '';
+            const adminParams = [adminNation ? 'nation_id=' + adminNation : '', adminFaction ? 'faction_id=' + adminFaction : ''].filter(Boolean).join('&');
             const ambUrl = 'select-ambassador.html?target=' + targetNation.id + (adminParams ? '&' + adminParams : '');
             fmButtons = `<button class="action-btn" onclick="window.location.href='${ambUrl}'">Appoint Ambassador</button>`;
         }
@@ -1571,6 +1624,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
                 <button class="action-btn" ${initiativeDisabled} onclick="openInitiativeForm()">Diplomatic Initiative</button>
                 ${initiativeHint}
                 <button class="action-btn" style="margin-top:8px;" disabled>Gather Intel (Coming Soon)</button>
+                <button class="action-btn" style="margin-top:8px;background:#5a1a1a;border-color:#8b3030;" onclick="resignAmbassador('${myAmb?.id}', '${escapeHtml(targetNation.name)}')">Resign as Ambassador</button>
             </div>
             <div id="initiative-form-container"></div>
         `;
@@ -1715,6 +1769,64 @@ async function fetchPendingAmbassador(myNationId, targetNationId) {
     } catch (e) {
         console.warn('Error fetching pending ambassador:', e);
         return null;
+    }
+}
+
+// ==================== RESIGN AMBASSADOR ====================
+
+async function resignAmbassador(ambassadorId, nationName) {
+    if (!ambassadorId) { alert('No ambassador found.'); return; }
+
+    // Authorization: must actually be this ambassador (faction owns it)
+    const isMyAmb = diplomaticRoles?.ambassadorTo?.some(a => a.id === ambassadorId);
+    if (!isMyAmb) {
+        alert('You are not this ambassador.');
+        return;
+    }
+
+    if (!confirm(
+        `Resign as Ambassador to ${nationName}?\n\n` +
+        `Your party will lose 1 Approval.\n` +
+        `Any pending negotiations will be affected.`
+    )) return;
+
+    try {
+        const { data: shard } = await _supabase
+            .from('shard')
+            .select('current_tick')
+            .eq('name', 'Alpha Shard')
+            .single();
+        const tick = shard?.current_tick || 0;
+
+        // Get ambassador details
+        const { data: amb } = await _supabase
+            .from('ambassadors')
+            .select('faction_id, ambassador_first_name, ambassador_last_name')
+            .eq('id', ambassadorId)
+            .single();
+
+        if (!amb) { alert('Ambassador not found.'); return; }
+
+        // Deactivate ambassador
+        await _supabase
+            .from('ambassadors')
+            .update({ status: 'resigned', is_active: false, recalled_at_tick: tick })
+            .eq('id', ambassadorId);
+
+        // 1 approval loss for resigning
+        await adjustBlocApproval(_supabase, amb.faction_id, -1);
+
+        const ambName = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim();
+        alert(`Ambassador ${ambName} has resigned from ${nationName}.\n-1 Approval to your party.`);
+
+        // Refresh roles, header, and re-render
+        diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
+        await renderDiploHeader();
+        await renderRelationsTab();
+
+    } catch (e) {
+        console.error('Error resigning ambassador:', e);
+        alert('Error: ' + e.message);
     }
 }
 
@@ -3089,6 +3201,7 @@ window.showDiploTab = showDiploTab;
 window.toggleNationCard = toggleNationCard;
 window.highlightNationCard = highlightNationCard;
 window.jumpToAmbNation = jumpToAmbNation;
+window.resignAmbassador = resignAmbassador;
 window.recallAmbassador = recallAmbassador;
 window.cancelPendingAmbassador = cancelPendingAmbassador;
 window.sendDiploMessage = sendDiploMessage;
