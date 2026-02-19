@@ -1413,10 +1413,22 @@ function renderCabinet(ministries, coalition) {
     }
 
     const isCaretaker = coalition && coalition.status === 'caretaker';
+    const pmMinistry = ministries.find(m => m.ministry_key === 'prime_minister');
+    const pmFilled = pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name;
+    const isPMParty = currentFaction && coalition && currentFaction.id === coalition.lead_party_id;
+    const canAppoint = isPMParty && pmFilled && !isCaretaker;
+
     const cards = ministries.filter(m => m.ministry_key !== 'prime_minister').map(m => {
+        const isVacant = !m.minister_first_name || !m.minister_last_name;
         const partyName = m.factions?.faction_name || 'Unknown';
-        const name = m.minister_first_name && m.minister_last_name ? `${m.minister_first_name} ${m.minister_last_name}` : 'Vacant';
+        const name = isVacant ? 'Vacant' : `${m.minister_first_name} ${m.minister_last_name}`;
         const isMyMinistry = currentFaction && m.party_id === currentFaction.id;
+
+        if (isVacant) {
+            const appointBtn = canAppoint ? `<div class="ministry-actions"><button class="ministry-btn assign" onclick="openAssignModal('${m.ministry_key}')">✦ Appoint</button></div>` : '';
+            return `<div class="ministry-card vacant"><div class="ministry-title">${m.ministry_name}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${appointBtn}</div>`;
+        }
+
         const resignBtn = (isMyMinistry && !isCaretaker) ? `<div class="ministry-actions"><button class="ministry-btn purge" onclick="resignMinistry('${m.ministry_key}')">📋 Resign Ministry</button></div>` : '';
         const appr = m.minister_approval ?? 50;
         const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
@@ -1586,7 +1598,12 @@ function openAssignModal(ministryKey) {
     document.getElementById('assign-confirm-btn').textContent = 'Appoint Minister';
     document.getElementById('assign-modal-title').textContent = 'Assign — ' + (MINISTRY_NAMES[ministryKey] || ministryKey);
 
-    generatedCandidates = allParties.map(party => ({
+    // For democracies, only show coalition parties; for autocracies, show all
+    const eligibleParties = (!isAutocracy && !isPresidential && coalitionData?.party_ids)
+        ? allParties.filter(p => coalitionData.party_ids.includes(p.id))
+        : allParties;
+
+    generatedCandidates = eligibleParties.map(party => ({
         partyId: party.id,
         partyName: party.faction_name,
         firstName: FIRST_NAMES_POOL[Math.floor(Math.random() * FIRST_NAMES_POOL.length)],
@@ -1595,8 +1612,9 @@ function openAssignModal(ministryKey) {
     }));
 
     document.getElementById('assign-candidates').innerHTML = generatedCandidates.map((c, i) => {
-        const isRuling = c.partyId === rulingFactionId;
-        return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})"><div><div class="candidate-name">${c.firstName} ${c.lastName}</div><div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag ${isRuling ? 'ruling' : 'other'}">${c.partyName}</span></div></div>${isRuling ? '<span class="ruling-label">RULING</span>' : ''}</div>`;
+        const isPMOrRuling = c.partyId === (coalitionData?.lead_party_id || rulingFactionId);
+        const rulingLabel = isAutocracy ? 'RULING' : 'PM PARTY';
+        return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})"><div><div class="candidate-name">${c.firstName} ${c.lastName}</div><div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag ${isPMOrRuling ? 'ruling' : 'other'}">${c.partyName}</span></div></div>${isPMOrRuling ? `<span class="ruling-label">${rulingLabel}</span>` : ''}</div>`;
     }).join('');
 
     document.getElementById('assign-modal').classList.add('active');
@@ -1616,6 +1634,18 @@ function selectCandidate(index) {
 async function confirmAssign() {
     if (!selectedCandidate || !assignMinistryKey) return;
     try {
+        // Validate vacancy before executing (prevents double-click / race condition)
+        const { data: freshMinistry } = await _supabase.from('ministries')
+            .select('minister_first_name')
+            .eq('nation_id', currentNation.id).eq('ministry_key', assignMinistryKey)
+            .maybeSingle();
+        if (freshMinistry && freshMinistry.minister_first_name) {
+            alert('This ministry has already been filled.');
+            closeAssignModal();
+            await renderGovernmentPage();
+            return;
+        }
+
         const existing = ministryData.find(m => m.ministry_key === assignMinistryKey);
 
         if (existing) {
@@ -1624,6 +1654,7 @@ async function confirmAssign() {
                 minister_first_name: selectedCandidate.firstName,
                 minister_last_name: selectedCandidate.lastName,
                 minister_age: selectedCandidate.age,
+                minister_approval: 45,
                 is_active: true
             }).eq('id', existing.id);
             if (error) throw error;
@@ -1636,9 +1667,18 @@ async function confirmAssign() {
                 minister_first_name: selectedCandidate.firstName,
                 minister_last_name: selectedCandidate.lastName,
                 minister_age: selectedCandidate.age,
+                minister_approval: 45,
                 is_active: true
             });
             if (error) throw error;
+        }
+
+        // +3% approval to the receiving party
+        const receivingParty = allParties.find(p => p.id === selectedCandidate.partyId);
+        if (receivingParty) {
+            const newApproval = Math.min(100, (receivingParty.approval_rating || 50) + 3);
+            await _supabase.from('factions').update({ approval_rating: newApproval })
+                .eq('id', selectedCandidate.partyId);
         }
 
         await _supabase.from('ministry_requests').delete()

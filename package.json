@@ -4,5 +4,8 @@
   "scripts": {
     "lint:inline-scripts": "node scripts/check-inline-script-globals.js",
     "sync:edge-function": "node scripts/sync-edge-function.js"
+  },
+  "devDependencies": {
+    "vite": "^7.3.1"
   }
 }
