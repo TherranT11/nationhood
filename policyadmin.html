@@ -103,7 +103,10 @@
                             <select id="b-law-category-select" onchange="onLawCategorySelect()">
                                 <option value="">-- Select sector first --</option>
                             </select>
-                            <input type="text" id="b-law-category-new" placeholder="e.g. Secondary Education" style="display:none;margin-top:8px;" oninput="onSectorOrLawChange()">
+                            <div id="new-category-wrapper" style="display:none;margin-top:8px;">
+                                <label style="display:block;font-size:0.72rem;color:#ffcc00;margin-bottom:4px;">NEW CATEGORY NAME</label>
+                                <input type="text" id="b-law-category-new" placeholder="e.g. Secondary Education" oninput="onSectorOrLawChange()">
+                            </div>
                         </div>
                     </div>
                     <div class="form-row">
@@ -500,15 +503,16 @@ function loadPolicyIntoBuilder(p) {
     populateLawCategories();
     const lawCatVal = p.law_category || p.minor_sector || '';
     const select = document.getElementById('b-law-category-select');
+    const wrapper = document.getElementById('new-category-wrapper');
     const newInput = document.getElementById('b-law-category-new');
     // Check if the value exists in the dropdown
     const optionExists = [...select.options].some(o => o.value === lawCatVal);
     if (optionExists) {
         select.value = lawCatVal;
-        newInput.style.display = 'none';
+        wrapper.style.display = 'none';
     } else if (lawCatVal) {
         select.value = '__new__';
-        newInput.style.display = 'block';
+        wrapper.style.display = 'block';
         newInput.value = lawCatVal;
     }
 
@@ -701,8 +705,8 @@ function renderStatEffects() {
                 <div class="form-field">
                     <label>Dir</label>
                     <div class="dir-toggle">
-                        <button class="dir-btn ${(normalizeEffectDirection(e.direction) || 'up') === 'up' ? 'sel-up' : ''}" onclick="updateEffect(${idx},'direction','up')">▲</button>
-                        <button class="dir-btn ${(normalizeEffectDirection(e.direction) || 'up') === 'down' ? 'sel-down' : ''}" onclick="updateEffect(${idx},'direction','down')">▼</button>
+                        <button type="button" class="dir-btn ${(normalizeEffectDirection(e.direction) || 'up') === 'up' ? 'sel-up' : ''}" onclick="updateEffect(${idx},'direction','up')">▲</button>
+                        <button type="button" class="dir-btn ${(normalizeEffectDirection(e.direction) || 'up') === 'down' ? 'sel-down' : ''}" onclick="updateEffect(${idx},'direction','down')">▼</button>
                     </div>
                 </div>
                 <div class="form-field">
@@ -819,8 +823,9 @@ function renderOpposedSlots() {
 function populateLawCategories() {
     const sector = document.getElementById('b-sector').value;
     const select = document.getElementById('b-law-category-select');
+    const wrapper = document.getElementById('new-category-wrapper');
     const newInput = document.getElementById('b-law-category-new');
-    newInput.style.display = 'none';
+    wrapper.style.display = 'none';
     newInput.value = '';
 
     if (!sector) {
@@ -836,19 +841,26 @@ function populateLawCategories() {
             .filter(Boolean)
     )].sort();
 
-    select.innerHTML = '<option value="">-- Select --</option>';
-    cats.forEach(c => { select.innerHTML += '<option value="' + c + '">' + c + '</option>'; });
-    select.innerHTML += '<option value="__new__">+ Create New Category</option>';
+    // Build full HTML in one shot; put "+ Create New" at top so it's always visible
+    const esc = s => s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    let html = '<option value="">-- Select --</option>';
+    html += '<option value="__new__">＋ Create New Category</option>';
+    if (cats.length > 0) {
+        html += '<option disabled>──────────────</option>';
+        cats.forEach(c => { html += '<option value="' + esc(c) + '">' + esc(c) + '</option>'; });
+    }
+    select.innerHTML = html;
 }
 
 function onLawCategorySelect() {
     const select = document.getElementById('b-law-category-select');
+    const wrapper = document.getElementById('new-category-wrapper');
     const newInput = document.getElementById('b-law-category-new');
     if (select.value === '__new__') {
-        newInput.style.display = 'block';
+        wrapper.style.display = 'block';
         newInput.focus();
     } else {
-        newInput.style.display = 'none';
+        wrapper.style.display = 'none';
         newInput.value = '';
     }
     onSectorOrLawChange();
@@ -1060,7 +1072,7 @@ function resetBuilder() {
     document.getElementById('b-sector').value = '';
     document.getElementById('b-law-category-select').innerHTML = '<option value="">-- Select sector first --</option>';
     document.getElementById('b-law-category-new').value = '';
-    document.getElementById('b-law-category-new').style.display = 'none';
+    document.getElementById('new-category-wrapper').style.display = 'none';
     selectedIdeologies = new Set();
     isAgnostic = false;
     renderIdeologyChips();
