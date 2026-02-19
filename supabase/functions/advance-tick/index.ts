@@ -506,6 +506,7 @@ const INVERTED_STATS = [
 // Stats stored as raw numbers (not 0-100 indices).
 const RAW_SCALING_DIVISORS = {
     population: 1_000_000,
+    gdp: 1_000_000_000,
     debt: 1_000_000_000
 };
 
@@ -5718,6 +5719,8 @@ async function processStatEffects(supabase, nation, currentTick) {
                     duration_ticks: policy.duration_months || 12
                 });
             }
+        } else if (!isReversal) {
+            console.warn(`[processStatEffects] Active law ${law.id} (bill=${law.bill_id}) has NULL policy (policy_id=${law.policy_id}) — no stat effects will be applied`);
         }
 
         if (effects.length === 0) {
@@ -6323,7 +6326,8 @@ async function processCrises(supabase, nation, currentTick) {
 
         let allTriggersMet = true;
         for (const trigger of triggers) {
-            const statValue = nation[trigger.stat_key];
+            const resolvedKey = normalizeNationStatKey(trigger.stat_key) || trigger.stat_key;
+            const statValue = nation[resolvedKey];
             if (statValue === null || statValue === undefined) {
                 allTriggersMet = false;
                 break;
@@ -6570,7 +6574,8 @@ async function processCrises(supabase, nation, currentTick) {
         let allEndConditionsMet = endTriggers.length > 0;
 
         for (const endTrigger of endTriggers) {
-            const statValue = nation[endTrigger.stat_key];
+            const resolvedEndKey = normalizeNationStatKey(endTrigger.stat_key) || endTrigger.stat_key;
+            const statValue = nation[resolvedEndKey];
             if (statValue === null || statValue === undefined) {
                 allEndConditionsMet = false;
                 break;
@@ -6624,7 +6629,12 @@ async function processCrises(supabase, nation, currentTick) {
 
     // 5. Bulk update nation stats
     if (Object.keys(nationUpdates).length > 0) {
-        await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+        const { error: crisisUpdateErr } = await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+        if (crisisUpdateErr) {
+            console.error(`[processCrises] Nation stat update FAILED for ${nation.name}:`, crisisUpdateErr.message, JSON.stringify(nationUpdates));
+        } else {
+            console.log(`[processCrises] Nation stats updated for ${nation.name}:`, JSON.stringify(nationUpdates));
+        }
     }
 
     return crisisEvents;
