@@ -1,24 +1,23 @@
 /* ===== DIPLOMACY LAYOUT ===== */
         #diplomacy-content { display: flex; height: calc(100vh - 88px); }
 
-        /* Map: 2/3 width */
+        /* Map: 60% width */
         #diplo-map-container {
-            flex: 2; background: var(--ocean-bg); display: flex; flex-direction: column;
+            width: 60%; flex: none; background: var(--ocean-bg); display: flex; flex-direction: column;
             align-items: center; overflow: auto; position: relative;
         }
         #diplo-map-container svg { width: 100%; max-width: 1280px; height: auto; display: block; margin: auto; }
 
-        /* Sidebar: 1/3 width */
+        /* Sidebar: 40% width */
         #diplo-sidebar {
-            flex: 1; max-width: 380px; min-width: 300px; flex-shrink: 0;
+            width: 40%; flex: none;
             background: var(--sidebar-bg); border-left: 2px solid var(--sidebar-border);
-            padding: 20px; overflow-y: auto;
+            display: flex; flex-direction: column; overflow: hidden;
         }
         #diplo-sidebar h3 {
             color: var(--accent); font-size: 0.88rem; text-transform: uppercase;
             letter-spacing: 1px; margin-bottom: 12px;
         }
-        #diplo-intel p { color: var(--text-muted); font-style: italic; font-size: 0.85rem; }
 
         /* ===== TOOLBAR ===== */
         #diplo-toolbar {
@@ -52,15 +51,14 @@
             display: inline-block; padding: 3px 10px; border-radius: 4px;
             font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;
         }
-        .rel-allied    { background: #2e7d32; color: #a5d6a7; }
-        .rel-friendly  { background: #1b5e20; color: #81c784; }
-        .rel-warm      { background: #558b2f; color: #c5e1a5; }
-        .rel-neutral   { background: #555; color: #ccc; }
-        .rel-cool      { background: #f9a825; color: #fff8e1; }
-        .rel-tense     { background: #e65100; color: #ffcc80; }
-        .rel-hostile   { background: #b71c1c; color: #ef9a9a; }
-        .rel-war       { background: #ff0000; color: #fff; }
-        .rel-ceasefire { background: #6a1b9a; color: #ce93d8; }
+        .rel-allied      { background: #1b5e20; color: #a5d6a7; }
+        .rel-friendly    { background: #2e7d32; color: #81c784; }
+        .rel-warm        { background: #558b2f; color: #c5e1a5; }
+        .rel-neutral     { background: #827717; color: #f0f4c3; }
+        .rel-cold        { background: #e65100; color: #ffcc80; }
+        .rel-hostile     { background: #b71c1c; color: #ef9a9a; }
+        .rel-adversarial { background: #4a0000; color: #ef9a9a; }
+        .rel-ceasefire   { background: #6a1b9a; color: #ce93d8; }
 
         /* ===== NATION FILL COLORS (reused from world) ===== */
         #Melizea.land { fill: #eeffaa; }
@@ -493,4 +491,174 @@
             color: var(--text-dim);
             font-style: italic;
             margin-top: 4px;
+        }
+
+        /* ===== HEADER PANEL ===== */
+        #diplo-header {
+            padding: 14px 20px;
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border-light);
+            flex-shrink: 0;
+        }
+        .diplo-header-roles {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+        .diplo-header-stats {
+            display: flex;
+            gap: 14px;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+        .diplo-header-stat {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* ===== TAB BAR ===== */
+        .diplo-tab-bar {
+            display: flex;
+            background: var(--bg-panel);
+            border-bottom: 2px solid var(--border-light);
+            flex-shrink: 0;
+            overflow-x: auto;
+        }
+        .diplo-tab {
+            flex: 1;
+            padding: 10px 8px;
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            color: var(--text-muted);
+            font-size: 0.72rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .diplo-tab:hover {
+            color: var(--text-primary);
+        }
+        .diplo-tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+        .diplo-tab-badge {
+            display: inline-block;
+            background: #e65100;
+            color: #fff;
+            font-size: 0.58rem;
+            padding: 1px 5px;
+            border-radius: 8px;
+            margin-left: 4px;
+            min-width: 14px;
+            text-align: center;
+        }
+        .diplo-tab-badge:empty { display: none; }
+
+        /* ===== TAB PANELS ===== */
+        .diplo-tab-panel {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 20px;
+        }
+        .diplo-tab-placeholder {
+            color: var(--text-dim);
+            font-style: italic;
+            font-size: 0.82rem;
+            text-align: center;
+            padding: 40px 0;
+        }
+
+        /* ===== NATION CARDS ===== */
+        .nation-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-main);
+            border-radius: 6px;
+            margin-bottom: 8px;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .nation-card:hover {
+            border-color: var(--border-light);
+        }
+        .nation-card.expanded {
+            border-color: var(--accent);
+        }
+        .nation-card.highlighted {
+            border-color: var(--accent);
+            box-shadow: 0 0 8px rgba(255, 204, 0, 0.25);
+        }
+        .nation-card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            cursor: pointer;
+        }
+        .nation-card-flag {
+            width: 36px;
+            height: auto;
+            border: 1px solid #444;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+        .nation-card-flag-placeholder {
+            width: 36px;
+            height: 24px;
+            background: var(--bg-hover);
+            border: 1px solid #444;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+        .nation-card-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .nation-card-name {
+            font-size: 0.9rem;
+            font-weight: bold;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+        .nation-card-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-bottom: 6px;
+        }
+        .nation-card-amb {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+        }
+        .nation-card-agreements {
+            font-size: 0.62rem;
+            color: var(--text-muted);
+            background: var(--bg-hover);
+            padding: 1px 6px;
+            border-radius: 3px;
+        }
+        .nation-card-body {
+            border-top: 1px solid var(--border-light);
+            padding: 14px 12px;
+        }
+
+        /* ===== RELATIONS BAR ===== */
+        .relations-bar {
+            width: 100%;
+            height: 4px;
+            background: var(--bg-hover);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .relations-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.3s ease;
         }

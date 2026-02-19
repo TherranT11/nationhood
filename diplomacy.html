@@ -19,7 +19,7 @@
 <!-- ===== CONTENT AREA ===== -->
 <div id="content-area">
     <div id="diplomacy-content">
-        <!-- ===== MAP PANEL (2/3) ===== -->
+        <!-- ===== MAP PANEL (60%) ===== -->
         <div id="diplo-map-container">
             <!-- Toolbar -->
             <div id="diplo-toolbar">
@@ -38,7 +38,6 @@
                         <option value="">Select...</option>
                     </select>
                 </div>
-                <div id="diplo-role-display" style="margin-left:auto;"></div>
             </div>
 
             <!-- SVG Map (reused from world.html) -->
@@ -56,10 +55,24 @@
             </svg>
         </div>
 
-        <!-- ===== SIDEBAR (1/3) ===== -->
+        <!-- ===== SIDEBAR (40%) ===== -->
         <div id="diplo-sidebar">
-            <h3>Diplomatic Intel</h3>
-            <div id="diplo-intel"><p>Select a nation on the map to view diplomatic details.</p></div>
+            <!-- Header Panel -->
+            <div id="diplo-header"></div>
+
+            <!-- Tab Bar -->
+            <div class="diplo-tab-bar">
+                <button class="diplo-tab active" data-tab="relations" onclick="showDiploTab('relations')">Relations</button>
+                <button class="diplo-tab" data-tab="agreements" onclick="showDiploTab('agreements')">Agreements</button>
+                <button class="diplo-tab" data-tab="initiative" onclick="showDiploTab('initiative')">Initiative</button>
+                <button class="diplo-tab" data-tab="inbox" onclick="showDiploTab('inbox')">Inbox</button>
+            </div>
+
+            <!-- Tab Panels -->
+            <div id="tab-relations" class="diplo-tab-panel active"></div>
+            <div id="tab-agreements" class="diplo-tab-panel" style="display:none;"><p class="diplo-tab-placeholder">Coming in Phase 2...</p></div>
+            <div id="tab-initiative" class="diplo-tab-panel" style="display:none;"><p class="diplo-tab-placeholder">Coming in Phase 2...</p></div>
+            <div id="tab-inbox" class="diplo-tab-panel" style="display:none;"><p class="diplo-tab-placeholder">Coming in Phase 2...</p></div>
         </div>
     </div>
 </div>
@@ -91,28 +104,42 @@ let usedArticleTypes = new Set(); // types already in active/pending proposals b
 const INITIATIVE_TYPES = {
     visa_agreement: {
         label: 'Visa Agreement',
+        classification: 'MAJOR',
         description: 'Streamlined travel between nations. Citizens can cross borders with reduced paperwork.',
         relations: 6,
         money: 12000000
     },
     cultural_exchange: {
         label: 'Cultural Exchange',
+        classification: 'MAJOR',
         description: 'Nations agree to fund museums, art exhibitions, film festivals, and media sharing between their countries.',
         relations: 4,
         money: -35000000
     },
     student_exchange: {
         label: 'Student Exchange Program',
+        classification: 'MINOR',
         description: 'Universities in both nations accept exchange students, share research, and collaborate on academic programs.',
         relations: 3,
         money: -6000000
     },
     joint_statement: {
         label: 'Joint Statement',
+        classification: 'MINOR',
         description: 'A coordinated public declaration on a shared concern. Purely cosmetic — no mechanical effect.',
         relations: 0,
         money: 0
     }
+};
+
+// Flag URLs (shared across all rendering functions)
+const FLAG_URLS = {
+    'Melizea': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Melizea.png',
+    'Avelia': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Avelia1.png',
+    'Sangreza': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/sangreza.png',
+    'Montequilla': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Montequilla.png',
+    'San Estrella': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/sanestrella.png',
+    'Veldaria': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Veldaria.png'
 };
 
 // ==================== INIT ====================
@@ -132,10 +159,15 @@ initPage('diplomacy', async (state) => {
 
     // Detect roles
     diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
-    renderRoleBadges(diplomaticRoles);
+
+    // Render header panel with roles + stats
+    await renderDiploHeader();
 
     // Setup map
     setupDiplomacyMap();
+
+    // Default to Relations tab
+    await renderRelationsTab();
 });
 
 // ==================== ROLE DETECTION ====================
@@ -202,38 +234,326 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
     return roles;
 }
 
-// ==================== ROLE BADGES ====================
+// ==================== HEADER PANEL ====================
 
-function renderRoleBadges(roles) {
-    const container = document.getElementById('diplo-role-display');
-    if (!container) return;
+async function renderDiploHeader() {
+    const header = document.getElementById('diplo-header');
+    if (!header) return;
 
-    const badges = [];
-    if (roles.isHoG) badges.push('<span class="diplo-role-badge role-hog">Head of Gov</span>');
-    if (roles.isFM)  badges.push('<span class="diplo-role-badge role-fm">Foreign Minister</span>');
-    if (roles.ambassadorTo.length > 0) {
-        roles.ambassadorTo.forEach(a => {
-            badges.push('<span class="diplo-role-badge role-amb">Amb. to ' + a.target_nation_name + '</span>');
-        });
+    // Count active agreements and pending proposals for our nation
+    let activeCount = 0;
+    let pendingCount = 0;
+    try {
+        const { count: ac } = await _supabase
+            .from('diplomatic_proposals')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'active')
+            .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id);
+        activeCount = ac || 0;
+
+        const { count: pc } = await _supabase
+            .from('diplomatic_proposals')
+            .select('*', { count: 'exact', head: true })
+            .in('status', ['proposed', 'revised'])
+            .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id);
+        pendingCount = pc || 0;
+    } catch (e) { console.warn('Error fetching header counts:', e); }
+
+    const roleBadges = [];
+    if (diplomaticRoles.isHoG) roleBadges.push('<span class="diplo-role-badge role-hog">Head of Gov</span>');
+    if (diplomaticRoles.isFM)  roleBadges.push('<span class="diplo-role-badge role-fm">Foreign Minister</span>');
+    diplomaticRoles.ambassadorTo.forEach(a => {
+        roleBadges.push('<span class="diplo-role-badge role-amb">Amb. to ' + escapeHtml(a.target_nation_name) + '</span>');
+    });
+    if (roleBadges.length === 0) {
+        roleBadges.push('<span class="diplo-role-badge role-none">No Diplomatic Role</span>');
     }
-    if (badges.length === 0) {
-        badges.push('<span class="diplo-role-badge role-none">No Diplomatic Role</span>');
-    }
 
-    container.innerHTML = badges.join('');
+    header.innerHTML = `
+        <div class="diplo-header-roles">${roleBadges.join('')}</div>
+        <div class="diplo-header-stats">
+            <span class="diplo-header-stat">${activeCount} Active Agreement${activeCount !== 1 ? 's' : ''}</span>
+            <span class="diplo-header-stat">${pendingCount} Pending</span>
+        </div>
+    `;
 
-    // Populate ambassador dropdown
+    // Populate ambassador dropdown in toolbar
     const dropdown = document.getElementById('diplo-amb-dropdown');
     const select = document.getElementById('amb-select');
-    if (roles.ambassadorTo.length > 0) {
+    if (diplomaticRoles.ambassadorTo.length > 0) {
         dropdown.style.display = '';
         select.innerHTML = '<option value="">Select...</option>' +
-            roles.ambassadorTo.map(a =>
+            diplomaticRoles.ambassadorTo.map(a =>
                 '<option value="' + a.target_nation_id + '">' + a.target_nation_name + '</option>'
             ).join('');
     } else {
         dropdown.style.display = 'none';
     }
+}
+
+// ==================== TAB SWITCHING ====================
+
+function showDiploTab(tabName) {
+    // Update tab buttons
+    document.querySelectorAll('.diplo-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
+    // Update tab panels
+    document.querySelectorAll('.diplo-tab-panel').forEach(panel => {
+        panel.style.display = panel.id === 'tab-' + tabName ? '' : 'none';
+    });
+}
+
+// ==================== RELATIONS TAB ====================
+
+async function renderRelationsTab() {
+    const panel = document.getElementById('tab-relations');
+    if (!panel) return;
+    panel.innerHTML = '<p style="color:#888;font-style:italic;text-align:center;padding:20px;">Loading nations...</p>';
+
+    if (!currentNation) {
+        panel.innerHTML = '<p class="diplo-tab-placeholder">No nation data available.</p>';
+        return;
+    }
+
+    try {
+        // Parallel fetch: all nations, relations, ambassadors, active agreements
+        const [nationsRes, relationsRes, ambassadorsRes, agreementsRes] = await Promise.all([
+            _supabase.from('nations').select('id, name, population, stability, civil_unrest, military_strength, capital').order('name'),
+            _supabase.from('diplomatic_relations').select('*')
+                .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id),
+            _supabase.from('ambassadors').select('target_nation_id, ambassador_first_name, ambassador_last_name, appointed_at_tick, term_length')
+                .eq('nation_id', currentNation.id).eq('is_active', true).eq('status', 'active'),
+            _supabase.from('diplomatic_proposals').select('proposing_nation_id, target_nation_id')
+                .eq('status', 'active')
+                .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id)
+        ]);
+
+        const allNations = nationsRes.data || [];
+        const allRelations = relationsRes.data || [];
+        const ourAmbassadors = ambassadorsRes.data || [];
+        const activeAgreements = agreementsRes.data || [];
+
+        // Filter out own nation
+        const otherNations = allNations.filter(n => n.id !== currentNation.id);
+
+        if (otherNations.length === 0) {
+            panel.innerHTML = '<p class="diplo-tab-placeholder">No other nations found.</p>';
+            return;
+        }
+
+        let cardsHTML = '';
+        for (const nation of otherNations) {
+            // Find relation for this pair
+            const relation = allRelations.find(r =>
+                (r.nation_a_id === currentNation.id && r.nation_b_id === nation.id) ||
+                (r.nation_a_id === nation.id && r.nation_b_id === currentNation.id)
+            );
+
+            // Check for ceasefire among active agreements
+            // (Simple heuristic: not available from this query, default false)
+            const hasCeasefire = false;
+
+            const score = relation?.relation_score ?? 35;
+            const tier = getRelationTier(score, hasCeasefire);
+
+            // Find our ambassador to this nation
+            const ambassador = ourAmbassadors.find(a => a.target_nation_id === nation.id);
+            const ambName = ambassador
+                ? ((ambassador.ambassador_first_name || '') + ' ' + (ambassador.ambassador_last_name || '')).trim()
+                : null;
+
+            // Count agreements with this nation
+            const agreementCount = activeAgreements.filter(a =>
+                (a.proposing_nation_id === currentNation.id && a.target_nation_id === nation.id) ||
+                (a.proposing_nation_id === nation.id && a.target_nation_id === currentNation.id)
+            ).length;
+
+            const flagUrl = FLAG_URLS[nation.name] || null;
+            const barWidth = Math.max(0, Math.min(100, score));
+            const barColor = getRelationBarColor(score);
+
+            cardsHTML += `
+                <div class="nation-card" data-nation-name="${escapeHtml(nation.name)}" data-nation-id="${nation.id}" id="nation-card-${nation.id}">
+                    <div class="nation-card-header" onclick="toggleNationCard('${nation.id}')">
+                        ${flagUrl ? '<img src="' + flagUrl + '" class="nation-card-flag" />' : '<div class="nation-card-flag-placeholder"></div>'}
+                        <div class="nation-card-info">
+                            <div class="nation-card-name">${escapeHtml(nation.name)}</div>
+                            <div class="nation-card-meta">
+                                <span class="relation-badge ${tier.cssClass}">${tier.label}</span>
+                                ${ambName ? '<span class="nation-card-amb">Amb: ' + escapeHtml(ambName) + '</span>' : ''}
+                                ${agreementCount > 0 ? '<span class="nation-card-agreements">' + agreementCount + ' agreement' + (agreementCount > 1 ? 's' : '') + '</span>' : ''}
+                            </div>
+                            <div class="relations-bar">
+                                <div class="relations-bar-fill" style="width:${barWidth}%;background:${barColor};"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="nation-card-body" id="nation-card-body-${nation.id}" style="display:none;"></div>
+                </div>
+            `;
+        }
+
+        panel.innerHTML = cardsHTML;
+    } catch (err) {
+        console.error('Error rendering relations tab:', err);
+        panel.innerHTML = '<p style="color:#f44;text-align:center;padding:20px;">Error loading nations.</p>';
+    }
+}
+
+// ==================== NATION CARD TOGGLE ====================
+
+async function toggleNationCard(nationId) {
+    const body = document.getElementById('nation-card-body-' + nationId);
+    if (!body) return;
+
+    const card = body.closest('.nation-card');
+    const isExpanded = body.style.display !== 'none';
+
+    // Collapse all cards and clear their content
+    document.querySelectorAll('.nation-card-body').forEach(b => {
+        b.style.display = 'none';
+        b.innerHTML = '';
+    });
+    document.querySelectorAll('.nation-card').forEach(c => {
+        c.classList.remove('expanded');
+        c.classList.remove('highlighted');
+    });
+
+    if (!isExpanded) {
+        body.style.display = '';
+        body.innerHTML = '<p style="color:#888;font-style:italic;font-size:0.82rem;padding:8px 0;">Loading details...</p>';
+        card.classList.add('expanded');
+        await renderNationCardBody(nationId);
+    }
+}
+
+// ==================== NATION CARD BODY (expanded detail) ====================
+
+async function renderNationCardBody(nationId) {
+    const body = document.getElementById('nation-card-body-' + nationId);
+    if (!body) return;
+
+    try {
+        // Fetch the full nation
+        const { data: targetNation, error: natErr } = await _supabase
+            .from('nations').select('*').eq('id', nationId).single();
+        if (natErr || !targetNation) {
+            body.innerHTML = '<p style="color:#f44;">Nation not found.</p>';
+            return;
+        }
+
+        // Set module state for initiative form
+        selectedTargetNation = targetNation;
+
+        // Parallel data fetch
+        const [relation, proposals, ambassador, pendingAmbassador, theirAmbassador, pendingDiploProposals] = await Promise.all([
+            fetchDiplomaticRelation(currentNation?.id, targetNation.id),
+            fetchActiveProposals(currentNation?.id, targetNation.id),
+            fetchAmbassador(currentNation?.id, targetNation.id),
+            fetchPendingAmbassador(currentNation?.id, targetNation.id),
+            fetchAmbassador(targetNation.id, currentNation?.id),
+            fetchPendingDiploProposals(currentNation?.id, targetNation.id)
+        ]);
+        selectedTheirAmbassador = theirAmbassador;
+
+        const flagUrl = FLAG_URLS[targetNation.name] || null;
+        const hasCeasefire = proposals.some(p => p.proposal_type === 'ceasefire');
+        const score = relation?.relation_score ?? 35;
+        const tier = getRelationTier(score, hasCeasefire);
+
+        // Embassy status
+        let embassyStatus = 'N/A';
+        if (relation) {
+            if (currentNation && currentNation.id === relation.nation_a_id) {
+                embassyStatus = relation.embassy_status_a || 'open';
+            } else {
+                embassyStatus = relation.embassy_status_b || 'open';
+            }
+        }
+
+        // Build body HTML
+        let html = '';
+
+        // Key stats
+        html += `
+            <div class="info-block">
+                <div class="info-row">
+                    <span class="info-label">Population</span>
+                    <span class="info-value gold">${formatNumber(targetNation.population)}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Stability</span>
+                    <span class="info-value" style="color:${getStatColor(targetNation.stability)}">${targetNation.stability ?? '—'}%</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Civil Unrest</span>
+                    <span class="info-value" style="color:${getStatColor(100 - (targetNation.civil_unrest || 0))}">${targetNation.civil_unrest ?? '—'}%</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Military Strength</span>
+                    <span class="info-value">${targetNation.military_strength ?? '—'}</span>
+                </div>
+            </div>
+        `;
+
+        // Relation section
+        html += renderRelationSection(tier.label, tier.cssClass, embassyStatus, ambassador);
+
+        // Active proposals
+        if (proposals.length > 0) {
+            html += renderActiveProposals(proposals);
+        }
+
+        // Pending diplomatic proposals
+        if (pendingDiploProposals.length > 0) {
+            html += renderPendingProposals(pendingDiploProposals, targetNation);
+        }
+
+        // Action panel
+        html += renderActionPanel(targetNation, diplomaticRoles, ambassador, pendingAmbassador, theirAmbassador);
+
+        body.innerHTML = html;
+
+        // Render chat section (async, appended after)
+        const chatHTML = await renderChatSection(targetNation, diplomaticRoles, ambassador, theirAmbassador);
+        body.innerHTML += chatHTML;
+
+        // Scroll chat to bottom if present
+        const chatBox = body.querySelector('#diplo-chat-box');
+        if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
+
+    } catch (err) {
+        console.error('Error loading nation card details:', err);
+        body.innerHTML = '<p style="color:#f44;">Error loading details.</p>';
+    }
+}
+
+// ==================== MAP → CARD HIGHLIGHT ====================
+
+async function highlightNationCard(nationName) {
+    // Find the card with matching nation name
+    const card = document.querySelector('.nation-card[data-nation-name="' + nationName + '"]');
+    if (!card) return;
+
+    const nationId = card.dataset.nationId;
+
+    // Remove previous highlights
+    document.querySelectorAll('.nation-card').forEach(c => c.classList.remove('highlighted'));
+
+    // Expand the card (this also collapses others)
+    const body = document.getElementById('nation-card-body-' + nationId);
+    const isAlreadyExpanded = body && body.style.display !== 'none';
+
+    if (!isAlreadyExpanded) {
+        await toggleNationCard(nationId);
+    }
+
+    // Add highlight class
+    card.classList.add('highlighted');
+
+    // Scroll card into view
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ==================== MAP SETUP ====================
@@ -243,145 +563,42 @@ function setupDiplomacyMap() {
         path.addEventListener('click', async (e) => {
             e.stopPropagation();
 
-            // Toggle selection
+            // Toggle map selection highlight
             document.querySelectorAll('.land').forEach(l => l.classList.remove('selected-nation'));
             e.target.classList.add('selected-nation');
 
             const name = e.target.getAttribute('data-nation-name');
-            const sidebar = document.getElementById('diplo-intel');
-            sidebar.innerHTML = '<p style="color:#888;font-style:italic;">Loading ' + name + '...</p>';
 
-            try {
-                const { data: nation, error } = await _supabase
-                    .from('nations')
-                    .select('*')
-                    .eq('name', name)
-                    .single();
-
-                if (error || !nation) {
-                    sidebar.innerHTML = '<p style="color:#f44;">Nation not found.</p>';
-                    return;
-                }
-
-                await renderDiplomacySidebar(nation);
-            } catch (err) {
-                console.error('Error loading nation:', err);
-                sidebar.innerHTML = '<p style="color:#f44;">Error loading data.</p>';
-            }
+            // Switch to Relations tab and highlight/expand matching card
+            showDiploTab('relations');
+            await highlightNationCard(name);
         });
     });
 }
 
-// ==================== SIDEBAR RENDERING ====================
-
-async function renderDiplomacySidebar(targetNation) {
-    const sidebar = document.getElementById('diplo-intel');
-
-    // Is this the player's own nation?
-    const isOwnNation = currentNation && currentNation.id === targetNation.id;
-
-    // Track target for initiative form
-    selectedTargetNation = targetNation;
-
-    // Parallel fetch: relation, active proposals, our ambassador, pending ambassador, their ambassador, pending diplomatic proposals
-    const [relation, proposals, ambassador, pendingAmbassador, theirAmbassador, pendingDiploProposals] = await Promise.all([
-        fetchDiplomaticRelation(currentNation?.id, targetNation.id),
-        fetchActiveProposals(currentNation?.id, targetNation.id),
-        fetchAmbassador(currentNation?.id, targetNation.id),
-        fetchPendingAmbassador(currentNation?.id, targetNation.id),
-        fetchAmbassador(targetNation.id, currentNation?.id),
-        fetchPendingDiploProposals(currentNation?.id, targetNation.id)
-    ]);
-    selectedTheirAmbassador = theirAmbassador;
-
-    // Flag URLs (same as world.html)
-    const flagUrls = {
-        'Melizea': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Melizea.png',
-        'Avelia': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Avelia1.png',
-        'Sangreza': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/sangreza.png',
-        'Montequilla': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Montequilla.png',
-        'San Estrella': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/sanestrella.png',
-        'Veldaria': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Veldaria.png'
-    };
-    const flagUrl = flagUrls[targetNation.name] || null;
-
-    // Relation tier (score-driven, number never shown)
-    const hasCeasefire = proposals.some(p => p.proposal_type === 'ceasefire');
-    const score = relation?.relation_score ?? 30;
-    const tier = getRelationTier(score, hasCeasefire);
-    const relType = tier.label;
-    const relClass = tier.cssClass;
-
-    // Embassy status (depends on which side we are)
-    let embassyStatus = 'N/A';
-    if (relation) {
-        if (currentNation && currentNation.id === relation.nation_a_id) {
-            embassyStatus = relation.embassy_status_a || 'open';
-        } else {
-            embassyStatus = relation.embassy_status_b || 'open';
-        }
-    }
-
-    sidebar.innerHTML = `
-        <!-- Nation Header -->
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
-            <div>
-                <h3 style="color:#ffcc00;font-size:1.2rem;margin-bottom:4px;">${targetNation.name}</h3>
-                <p style="color:#888;font-size:0.78rem;margin:0;font-style:italic;">${targetNation.capital || 'Unknown Capital'}</p>
-            </div>
-            ${flagUrl ? '<img src="' + flagUrl + '" alt="' + targetNation.name + ' flag" style="width:56px;height:auto;border:1px solid #444;border-radius:3px;" />' : ''}
-        </div>
-
-        ${isOwnNation ? '<div style="background:#1a2a1a;border:1px solid #4CAF50;border-radius:6px;padding:10px;margin-bottom:14px;text-align:center;font-size:0.8rem;color:#4CAF50;font-weight:bold;">YOUR NATION</div>' : ''}
-
-        <!-- Key Stats -->
-        <div class="info-block">
-            <div class="info-row">
-                <span class="info-label">Population</span>
-                <span class="info-value gold">${formatNumber(targetNation.population)}</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Stability</span>
-                <span class="info-value" style="color:${getStatColor(targetNation.stability)}">${targetNation.stability ?? '—'}%</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Civil Unrest</span>
-                <span class="info-value" style="color:${getStatColor(100 - (targetNation.civil_unrest || 0))}">${targetNation.civil_unrest ?? '—'}%</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Military Strength</span>
-                <span class="info-value">${targetNation.military_strength ?? '—'}</span>
-            </div>
-        </div>
-
-        ${!isOwnNation ? renderRelationSection(relType, relClass, embassyStatus, ambassador) : ''}
-
-        ${!isOwnNation && proposals.length > 0 ? renderActiveProposals(proposals) : ''}
-
-        ${!isOwnNation && pendingDiploProposals.length > 0 ? renderPendingProposals(pendingDiploProposals, targetNation) : ''}
-
-        ${!isOwnNation ? renderActionPanel(targetNation, diplomaticRoles, ambassador, pendingAmbassador, theirAmbassador) : ''}
-    `;
-
-    // Render chat section after the main sidebar HTML is set
-    if (!isOwnNation) {
-        const chatHTML = await renderChatSection(targetNation, diplomaticRoles, ambassador, theirAmbassador);
-        sidebar.innerHTML += chatHTML;
-    }
-}
+// ==================== (renderDiplomacySidebar replaced by renderNationCardBody in Phase 1) ====================
 
 // ==================== RELATION TIER (score-driven) ====================
 
 function getRelationTier(score, hasCeasefire) {
-    if (hasCeasefire)  return { label: 'Ceasefire', cssClass: 'rel-ceasefire' };
-    if (score <= -50)  return { label: 'War',       cssClass: 'rel-war' };
-    if (score <= -20)  return { label: 'Hostile',   cssClass: 'rel-hostile' };
-    if (score <= 0)    return { label: 'Tense',     cssClass: 'rel-tense' };
-    if (score <= 19)   return { label: 'Cool',      cssClass: 'rel-cool' };
-    if (score <= 39)   return { label: 'Neutral',   cssClass: 'rel-neutral' };
-    if (score <= 59)   return { label: 'Warm',      cssClass: 'rel-warm' };
-    if (score <= 79)   return { label: 'Friendly',  cssClass: 'rel-friendly' };
-    return                     { label: 'Allied',    cssClass: 'rel-allied' };
+    if (hasCeasefire)  return { label: 'Ceasefire',     cssClass: 'rel-ceasefire' };
+    if (score >= 90)   return { label: 'Allied',        cssClass: 'rel-allied' };
+    if (score >= 70)   return { label: 'Friendly',      cssClass: 'rel-friendly' };
+    if (score >= 50)   return { label: 'Warm',          cssClass: 'rel-warm' };
+    if (score >= 35)   return { label: 'Neutral',       cssClass: 'rel-neutral' };
+    if (score >= 20)   return { label: 'Cold',          cssClass: 'rel-cold' };
+    if (score >= 5)    return { label: 'Hostile',       cssClass: 'rel-hostile' };
+    return                     { label: 'Adversarial',   cssClass: 'rel-adversarial' };
+}
+
+function getRelationBarColor(score) {
+    if (score >= 90) return '#1b5e20';
+    if (score >= 70) return '#2e7d32';
+    if (score >= 50) return '#558b2f';
+    if (score >= 35) return '#827717';
+    if (score >= 20) return '#e65100';
+    if (score >= 5)  return '#b71c1c';
+    return '#4a0000';
 }
 
 // ==================== RELATION SECTION ====================
@@ -758,13 +975,10 @@ async function recallAmbassador(ambassadorId, nationName) {
         const ambName = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim();
         alert(`Ambassador ${ambName} recalled from ${nationName}.\n-${loss} Approval to their party.`);
 
-        // Refresh roles and re-render
+        // Refresh roles, header, and re-render expanded card
         diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
-        renderRoleBadges(diplomaticRoles);
-
-        // Re-select the nation to refresh sidebar
-        const targetPath = document.querySelector('.land.selected-nation');
-        if (targetPath) targetPath.dispatchEvent(new Event('click', { bubbles: true }));
+        await renderDiploHeader();
+        await renderRelationsTab();
 
     } catch (e) {
         console.error('Error recalling ambassador:', e);
@@ -808,10 +1022,8 @@ async function cancelPendingAmbassador(ambassadorId, nationName) {
         alert(`Nomination withdrawn: ${ambName} to ${nationName}.`);
 
         diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
-        renderRoleBadges(diplomaticRoles);
-
-        const targetPath = document.querySelector('.land.selected-nation');
-        if (targetPath) targetPath.dispatchEvent(new Event('click', { bubbles: true }));
+        await renderDiploHeader();
+        await renderRelationsTab();
 
     } catch (e) {
         console.error('Error canceling pending ambassador:', e);
@@ -1399,9 +1611,8 @@ async function submitInitiative() {
     alert('Diplomatic Initiative "' + name + '" proposed to ' + target.name + '!');
     closeInitiativeForm();
 
-    // Re-render sidebar
-    const targetPath = document.querySelector('.land.selected-nation');
-    if (targetPath) targetPath.dispatchEvent(new Event('click', { bubbles: true }));
+    // Refresh the expanded card
+    if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
 }
 
 async function acceptProposal(proposalId) {
@@ -1493,9 +1704,8 @@ async function acceptProposal(proposalId) {
 
     alert('"' + (pd.name || 'Initiative') + '" has been accepted and is now active!');
 
-    // Re-render sidebar
-    const targetPath = document.querySelector('.land.selected-nation');
-    if (targetPath) targetPath.dispatchEvent(new Event('click', { bubbles: true }));
+    // Refresh the expanded card
+    if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
 }
 
 async function rejectProposal(proposalId) {
@@ -1509,8 +1719,7 @@ async function rejectProposal(proposalId) {
     if (error) { alert('Error rejecting proposal: ' + error.message); return; }
 
     alert('Proposal rejected.');
-    const targetPath = document.querySelector('.land.selected-nation');
-    if (targetPath) targetPath.dispatchEvent(new Event('click', { bubbles: true }));
+    if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
 }
 
 async function strikeArticles(proposalId) {
@@ -1553,11 +1762,13 @@ async function strikeArticles(proposalId) {
     if (error) { alert('Error sending revision: ' + error.message); return; }
 
     alert('Revised agreement sent back with ' + struckIndices.length + ' article(s) struck.');
-    const targetPath = document.querySelector('.land.selected-nation');
-    if (targetPath) targetPath.dispatchEvent(new Event('click', { bubbles: true }));
+    if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
 }
 
 // Expose functions for HTML onclick/onchange handlers
+window.showDiploTab = showDiploTab;
+window.toggleNationCard = toggleNationCard;
+window.highlightNationCard = highlightNationCard;
 window.jumpToAmbNation = jumpToAmbNation;
 window.recallAmbassador = recallAmbassador;
 window.cancelPendingAmbassador = cancelPendingAmbassador;
