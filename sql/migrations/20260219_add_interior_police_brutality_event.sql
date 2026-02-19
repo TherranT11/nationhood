@@ -29,7 +29,7 @@ INSERT INTO ministry_event_templates (
     'freedom_index',
     '>',
     30,
-    '{
+    $${
         "titles": [
             "Video of Police Beating Goes Viral — Internal Review Requested",
             "Urgent: Use-of-Force Incident Generating National Attention"
@@ -196,5 +196,5 @@ INSERT INTO ministry_event_templates (
                 }
             ]
         }
-    }'::jsonb
+    }$$::jsonb
 );
