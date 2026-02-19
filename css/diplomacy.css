@@ -168,3 +168,329 @@
             font-size: 0.82rem;
             font-style: italic;
         }
+
+        /* ===== DIPLOMATIC INITIATIVE FORM ===== */
+        .initiative-form {
+            background: var(--bg-card);
+            border: 1px solid var(--border-main);
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+        .initiative-form-title {
+            font-size: 0.95rem;
+            font-weight: bold;
+            color: var(--accent);
+            margin-bottom: 4px;
+        }
+        .initiative-form-subtitle {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 14px;
+            line-height: 1.4;
+        }
+        .initiative-field {
+            margin-bottom: 12px;
+        }
+        .initiative-field label {
+            display: block;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 4px;
+        }
+        .initiative-field input,
+        .initiative-field select {
+            width: 100%;
+            padding: 7px 10px;
+            background: var(--bg-body);
+            border: 1px solid var(--border-main);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 0.82rem;
+            box-sizing: border-box;
+        }
+        .initiative-field input:focus,
+        .initiative-field select:focus {
+            border-color: var(--accent);
+            outline: none;
+        }
+
+        /* Article list */
+        .initiative-articles-list {
+            margin-bottom: 12px;
+        }
+        .initiative-article-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            background: var(--bg-body);
+            border: 1px solid var(--border-light);
+            border-radius: 4px;
+            margin-bottom: 4px;
+            font-size: 0.8rem;
+        }
+        .initiative-article-num {
+            color: var(--accent);
+            font-weight: bold;
+            white-space: nowrap;
+            font-size: 0.75rem;
+        }
+        .initiative-article-label {
+            flex: 1;
+            color: var(--text-primary);
+        }
+        .initiative-article-effects {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+        .initiative-article-remove {
+            background: transparent;
+            border: 1px solid #b71c1c;
+            color: #ef5350;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.68rem;
+            padding: 2px 6px;
+            font-weight: bold;
+        }
+        .initiative-article-remove:hover {
+            background: #b71c1c;
+            color: #fff;
+        }
+
+        /* Preview */
+        .initiative-preview {
+            background: var(--bg-body);
+            border: 1px solid var(--border-light);
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 10px;
+            font-size: 0.8rem;
+            line-height: 1.5;
+            color: var(--text-secondary);
+        }
+        .preview-title {
+            font-size: 0.9rem;
+            font-weight: bold;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+        .preview-subtitle {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            font-style: italic;
+        }
+        .preview-label {
+            font-size: 0.68rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 4px;
+        }
+        .preview-article {
+            margin-bottom: 4px;
+            padding-left: 8px;
+            border-left: 2px solid var(--border-light);
+        }
+        .preview-article-num {
+            font-weight: bold;
+            color: var(--accent);
+        }
+        .preview-duration {
+            margin-top: 8px;
+            font-style: italic;
+            color: var(--text-muted);
+            font-size: 0.78rem;
+        }
+
+        /* Effects summary */
+        .initiative-effects {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .effect-tag {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: bold;
+        }
+        .effect-rel {
+            background: #1b5e20;
+            color: #a5d6a7;
+        }
+        .effect-money {
+            background: #1a5276;
+            color: #85c1e9;
+        }
+
+        /* Submit/Exit row */
+        .initiative-btn-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* ===== PENDING PROPOSAL CARDS ===== */
+        .pending-proposal-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-main);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 10px;
+        }
+        .pending-proposal-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        .pending-proposal-name {
+            font-size: 0.88rem;
+            font-weight: bold;
+            color: var(--text-primary);
+            flex: 1;
+        }
+        .pending-proposal-meta {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+        .pending-proposal-effects {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* Article rows in proposals */
+        .proposal-articles-list {
+            margin-bottom: 8px;
+        }
+        .proposal-article-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 8px;
+            background: var(--bg-body);
+            border: 1px solid var(--border-light);
+            border-radius: 4px;
+            margin-bottom: 3px;
+            font-size: 0.78rem;
+        }
+        .proposal-article-row.proposal-article-struck {
+            opacity: 0.5;
+            text-decoration: line-through;
+        }
+        .proposal-article-content {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .proposal-article-num {
+            font-weight: bold;
+            color: var(--accent);
+            font-size: 0.75rem;
+        }
+        .proposal-article-label {
+            color: var(--text-primary);
+        }
+        .proposal-article-effects {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+        }
+        .struck-label {
+            background: #b71c1c;
+            color: #fff;
+            font-size: 0.6rem;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-decoration: none;
+        }
+
+        /* Strike checkboxes */
+        .strike-checkbox {
+            accent-color: var(--accent);
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        /* Proposal action buttons */
+        .proposal-btn-row {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .proposal-accept-btn,
+        .proposal-reject-btn,
+        .proposal-strike-btn {
+            padding: 6px 14px;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .proposal-accept-btn {
+            background: #2e7d32;
+            color: #a5d6a7;
+        }
+        .proposal-accept-btn:hover { background: #388e3c; }
+        .proposal-accept-btn:disabled {
+            background: #1b3a1b;
+            color: #555;
+            cursor: not-allowed;
+        }
+        .proposal-reject-btn {
+            background: #b71c1c;
+            color: #ef9a9a;
+        }
+        .proposal-reject-btn:hover { background: #c62828; }
+        .proposal-strike-btn {
+            background: #e65100;
+            color: #ffcc80;
+        }
+        .proposal-strike-btn:hover { background: #ef6c00; }
+
+        /* Status badges */
+        .proposal-status-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.62rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+        .badge-action {
+            background: #e65100;
+            color: #ffcc80;
+        }
+        .badge-waiting {
+            background: #555;
+            color: #ccc;
+        }
+
+        /* Action hint text */
+        .action-hint {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            font-style: italic;
+            margin-top: 4px;
+        }

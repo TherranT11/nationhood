@@ -338,7 +338,7 @@ const PROPOSAL_TYPES = {
         label: 'Trade Agreement',
         description: 'Establish a formal trade agreement affecting GDP and trade volume.',
         stat_effects: [
-            { stat_key: 'gdp', direction: 'up', rate: 1, delay_ticks: 1, duration_ticks: 0 },
+            { stat_key: 'gdp_growth', direction: 'up', rate: 2, delay_ticks: 1, duration_ticks: 0 },
             { stat_key: 'trade_balance', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
@@ -504,7 +504,6 @@ const INVERTED_STATS = [
 // Stats stored as raw numbers (not 0-100 indices).
 const RAW_SCALING_DIVISORS = {
     population: 1_000_000,
-    gdp: 1_000_000_000,
     debt: 1_000_000_000
 };
 
@@ -551,14 +550,15 @@ function calculateNationalBudget(nation) {
     return { grossRevenue, debtService, availableBudget, collectionRate };
 }
 
-// Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -5% to +5% per tick
+// Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -1% to +1% per month
+// Formula: monthlyChange% = (gdp_growth - 50) / 50  →  0=-1%, 50=0%, 100=+1%
 async function applyGdpGrowth(supabase, nation) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
     const currentGdp = Number(nation.gdp ?? 0);
     if (currentGdp <= 0) return;
 
-    const gdpRate = (gdpGrowth - 50) / 1000;
-    const newGdp = Math.max(0, currentGdp * (1 + gdpRate));
+    const monthlyChangePercent = (gdpGrowth - 50) / 50;
+    const newGdp = Math.max(0, currentGdp * (1 + monthlyChangePercent / 100));
     nation.gdp = newGdp;
 
     await supabase.from('nations').update({ gdp: newGdp }).eq('id', nation.id);
@@ -5229,6 +5229,9 @@ async function processStatEffects(supabase, nation, currentTick) {
                 const rawStatKey = eff.stat_key;
                 const statKey = normalizeNationStatKey(rawStatKey);
 
+                // GDP only changes via gdp_growth → applyGdpGrowth(); block direct GDP modifications
+                if (statKey === 'gdp') continue;
+
                 if (!statKey || !NATION_STAT_COLUMN_SET.has(statKey)) {
                     if (tick === lastApplied + 1) {
                         console.warn(
@@ -5393,6 +5396,8 @@ async function processMinistryActions(supabase, nation, currentTick) {
                     console.warn(`[processMinistryActions] Skipping invalid stat_key "${rawStatKey}" for action "${action.action_key}" in ${nation.name}`);
                     continue;
                 }
+                // GDP only changes via gdp_growth → applyGdpGrowth(); block direct GDP modifications
+                if (target === 'nation' && statKey === 'gdp') continue;
 
                 if (ticksSinceAction <= delay + duration) {
                     allEffectsComplete = false;
