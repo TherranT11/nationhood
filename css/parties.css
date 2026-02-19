@@ -1,1 +1,60 @@
-/* Parties page styles — redesign in progress */
+/* ===== MY PARTY CARD ===== */
+.my-party-card {
+    background: var(--bg-panel, #1a1a2e);
+    border: 1px solid var(--border-main, #333);
+    border-radius: 8px;
+    padding: 16px 20px;
+    max-width: 420px;
+}
+
+.my-party-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.my-party-logo {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.my-party-name {
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.my-party-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.my-party-detail {
+    font-size: 0.82rem;
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.detail-label {
+    color: var(--text-muted, #888);
+}
+
+.detail-value {
+    color: var(--text-primary, #e0e0e0);
+    font-weight: 600;
+}
+
+.detail-sep {
+    color: var(--text-muted, #555);
+    margin: 0 2px;
+}
+
+/* Role colors */
+.role-gov { color: #4CAF50; }
+.role-opp { color: #ff4444; }
+.role-none { color: var(--text-muted, #888); font-style: italic; }
