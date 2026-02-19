@@ -242,6 +242,7 @@ export function renderNavTabs(activeTab) {
         { id: 'parties', label: 'Parties', href: 'parties.html' },
         { id: 'elections', label: 'Elections', href: 'elections.html' },
         { id: 'laws', label: 'Bills', href: 'laws.html' },
+        { id: 'forum', label: 'Forum', href: 'forum.html' },
         { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
         { id: 'economy', label: 'Economy', href: 'economy.html' },
         { id: 'events', label: 'Events', href: 'events.html' },
