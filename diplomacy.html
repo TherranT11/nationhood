@@ -70,8 +70,8 @@
 
             <!-- Tab Panels -->
             <div id="tab-relations" class="diplo-tab-panel active"></div>
-            <div id="tab-agreements" class="diplo-tab-panel" style="display:none;"><p class="diplo-tab-placeholder">Coming in Phase 2...</p></div>
-            <div id="tab-initiative" class="diplo-tab-panel" style="display:none;"><p class="diplo-tab-placeholder">Coming in Phase 2...</p></div>
+            <div id="tab-agreements" class="diplo-tab-panel" style="display:none;"></div>
+            <div id="tab-initiative" class="diplo-tab-panel" style="display:none;"></div>
             <div id="tab-inbox" class="diplo-tab-panel" style="display:none;"><p class="diplo-tab-placeholder">Coming in Phase 2...</p></div>
         </div>
     </div>
@@ -100,6 +100,14 @@ let selectedTargetNation = null;
 let selectedTheirAmbassador = null;
 let initiativeArticles = [];
 let usedArticleTypes = new Set(); // types already in active/pending proposals between these nations
+
+// Wizard state
+let wizardStep = 1;
+let wizardTargetNation = null;
+let wizardAgreementType = null;
+let wizardArticles = [];  // [{text: "..."}]
+let wizardName = '';
+let wizardDuration = 1;
 
 const INITIATIVE_TYPES = {
     visa_agreement: {
@@ -302,6 +310,9 @@ function showDiploTab(tabName) {
     document.querySelectorAll('.diplo-tab-panel').forEach(panel => {
         panel.style.display = panel.id === 'tab-' + tabName ? '' : 'none';
     });
+    // Lazy-load tab content
+    if (tabName === 'agreements') renderAgreementsTab();
+    if (tabName === 'initiative') renderInitiativeWizard();
 }
 
 // ==================== RELATIONS TAB ====================
@@ -399,6 +410,201 @@ async function renderRelationsTab() {
         console.error('Error rendering relations tab:', err);
         panel.innerHTML = '<p style="color:#f44;text-align:center;padding:20px;">Error loading nations.</p>';
     }
+}
+
+// ==================== AGREEMENTS TAB ====================
+
+async function renderAgreementsTab() {
+    const panel = document.getElementById('tab-agreements');
+    if (!panel) return;
+    panel.innerHTML = '<p style="color:#888;font-style:italic;text-align:center;padding:20px;">Loading agreements...</p>';
+
+    if (!currentNation) {
+        panel.innerHTML = '<p class="diplo-tab-placeholder">No nation data available.</p>';
+        return;
+    }
+
+    try {
+        const { data: agreements } = await _supabase
+            .from('diplomatic_proposals')
+            .select('*')
+            .eq('status', 'active')
+            .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id)
+            .order('activated_at_tick', { ascending: false });
+
+        if (!agreements || agreements.length === 0) {
+            panel.innerHTML = '<p class="diplo-tab-placeholder">No active agreements.</p>';
+            return;
+        }
+
+        let html = '';
+        for (const ag of agreements) {
+            const pd = ag.proposal_data || {};
+            const articles = pd.articles || [];
+            const struckIndices = new Set(pd.struck_articles || []);
+
+            // Determine classification from proposal data or infer from articles
+            let classification = pd.classification || null;
+            if (!classification && articles.length > 0) {
+                // Check if any article is MAJOR
+                const hasMajor = articles.some((art, i) => {
+                    if (struckIndices.has(i)) return false;
+                    const typeInfo = INITIATIVE_TYPES[art.type];
+                    return typeInfo && typeInfo.classification === 'MAJOR';
+                });
+                classification = hasMajor ? 'MAJOR' : 'MINOR';
+            }
+
+            // Parties
+            const proposerName = pd.proposer_nation_name || 'Unknown';
+            const targetName = pd.target_nation_name || 'Unknown';
+
+            // Dates
+            const signedTick = ag.activated_at_tick;
+            const durationYears = pd.duration_years || 0;
+            const expiresTick = signedTick != null && durationYears > 0
+                ? signedTick + (durationYears * GAME_CONFIG.TICKS_PER_YEAR)
+                : null;
+
+            // Active articles and effects
+            let totalRel = 0, totalMoney = 0;
+            const termsHTML = articles.map((art, i) => {
+                const isStruck = struckIndices.has(i);
+                if (!isStruck) {
+                    totalRel += art.relations || 0;
+                    totalMoney += art.money || 0;
+                }
+                // Backwards-compatible: old proposals may have art.type, new ones have art.text
+                const artLabel = art.text || art.label || art.type || 'Unknown';
+                return '<div class="agreement-card-term' + (isStruck ? ' term-struck' : '') + '">' +
+                    '<span class="proposal-article-num">Art. ' + toRoman(i + 1) + '</span> ' +
+                    '<span class="proposal-article-label">' + escapeHtml(artLabel) + '</span>' +
+                    (isStruck ? ' <span class="struck-label">STRUCK</span>' : '') +
+                '</div>';
+            }).join('');
+
+            // Effects tags
+            const relStr = totalRel > 0 ? '+' + totalRel + ' Relations' : totalRel < 0 ? totalRel + ' Relations' : '';
+            const moneyStr = totalMoney > 0 ? '+$' + (totalMoney / 1e6).toFixed(0) + 'M' : totalMoney < 0 ? '-$' + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M' : '';
+            let effectsHTML = '';
+            if (relStr) effectsHTML += '<span class="effect-tag effect-rel">' + relStr + '</span>';
+            if (moneyStr) effectsHTML += '<span class="effect-tag effect-money">' + moneyStr + '</span>';
+
+            // Withdraw button — only FM or HoG can withdraw
+            let withdrawHTML = '';
+            if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
+                const penalty = totalRel * 2;
+                const penaltyStr = penalty > 0 ? '-' + penalty + ' Relations penalty' : '';
+                withdrawHTML = '<button class="agreement-withdraw-btn" onclick="withdrawAgreement(\'' + ag.id + '\')" title="' + escapeHtml(penaltyStr) + '">Withdraw</button>';
+            }
+
+            // Classification badge
+            const classBadge = classification
+                ? '<span class="classification-badge classification-' + classification.toLowerCase() + '">' + classification + '</span>'
+                : '';
+
+            // Agreement type badge (from ag.proposal_data.agreement_type or inferred)
+            const agreementType = pd.agreement_type || ag.proposal_type || 'diplomatic_initiative';
+            const typeLabel = INITIATIVE_TYPES[agreementType]?.label || '';
+
+            html += `
+                <div class="agreement-card">
+                    <div class="agreement-card-header">
+                        <div class="agreement-card-name">${escapeHtml(pd.name || 'Unnamed Agreement')}</div>
+                        <div class="agreement-card-badges">
+                            ${classBadge}
+                            ${withdrawHTML}
+                        </div>
+                    </div>
+                    <div class="agreement-card-meta">
+                        ${escapeHtml(proposerName)} &amp; ${escapeHtml(targetName)}
+                        ${typeLabel ? ' &middot; ' + escapeHtml(typeLabel) : ''}
+                        ${durationYears ? ' &middot; ' + durationYears + ' year' + (durationYears !== 1 ? 's' : '') : ''}
+                    </div>
+                    ${termsHTML ? '<div class="agreement-card-terms">' + termsHTML + '</div>' : ''}
+                    ${effectsHTML ? '<div class="agreement-card-effects">' + effectsHTML + '</div>' : ''}
+                    <div class="agreement-card-dates">
+                        <span>Signed: ${signedTick != null ? tickToDate(signedTick) : '—'}</span>
+                        <span>Expires: ${expiresTick != null ? tickToDate(expiresTick) : '—'}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        panel.innerHTML = html;
+    } catch (err) {
+        console.error('Error rendering agreements tab:', err);
+        panel.innerHTML = '<p style="color:#f44;text-align:center;padding:20px;">Error loading agreements.</p>';
+    }
+}
+
+async function withdrawAgreement(agreementId) {
+    // Fetch the agreement
+    const { data: ag, error: fetchErr } = await _supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('id', agreementId)
+        .single();
+
+    if (fetchErr || !ag) { alert('Could not load agreement.'); return; }
+
+    const pd = ag.proposal_data || {};
+    const articles = pd.articles || [];
+    const struckIndices = new Set(pd.struck_articles || []);
+
+    // Calculate relations penalty (2x the bonus)
+    let totalRel = 0;
+    articles.forEach((art, i) => {
+        if (!struckIndices.has(i)) totalRel += art.relations || 0;
+    });
+    const penalty = totalRel * 2;
+
+    if (!confirm(
+        'Withdraw from "' + (pd.name || 'Agreement') + '"?\n\n' +
+        (penalty > 0 ? 'This will cost -' + penalty + ' Relations (2x the bonus).\n' : '') +
+        'This action cannot be undone.'
+    )) return;
+
+    // Get current tick
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Set agreement to withdrawn
+    const { error: updateErr } = await _supabase
+        .from('diplomatic_proposals')
+        .update({ status: 'withdrawn', withdrawn_at_tick: currentTick })
+        .eq('id', agreementId);
+
+    if (updateErr) { alert('Error withdrawing: ' + updateErr.message); return; }
+
+    // Apply relations penalty
+    if (penalty > 0) {
+        const nationA = ag.proposing_nation_id < ag.target_nation_id ? ag.proposing_nation_id : ag.target_nation_id;
+        const nationB = ag.proposing_nation_id < ag.target_nation_id ? ag.target_nation_id : ag.proposing_nation_id;
+
+        const { data: rel } = await _supabase
+            .from('diplomatic_relations')
+            .select('id, relation_score, active_treaties')
+            .eq('nation_a_id', nationA)
+            .eq('nation_b_id', nationB)
+            .maybeSingle();
+
+        if (rel) {
+            const newScore = Math.max(0, Math.min(100, (rel.relation_score || 35) - penalty));
+            const treaties = Array.isArray(rel.active_treaties)
+                ? rel.active_treaties.filter(t => t !== agreementId)
+                : [];
+            await _supabase.from('diplomatic_relations')
+                .update({ relation_score: newScore, active_treaties: treaties })
+                .eq('id', rel.id);
+        }
+    }
+
+    alert('"' + (pd.name || 'Agreement') + '" withdrawn.');
+
+    // Refresh
+    await renderAgreementsTab();
+    await renderDiploHeader();
 }
 
 // ==================== NATION CARD TOGGLE ====================
@@ -1194,7 +1400,476 @@ function jumpToAmbNation(targetNationId) {
     }
 }
 
-// ==================== DIPLOMATIC INITIATIVE ====================
+// ==================== INITIATIVE WIZARD (Phase 2) ====================
+
+async function renderInitiativeWizard() {
+    const panel = document.getElementById('tab-initiative');
+    if (!panel) return;
+
+    // Reset wizard state
+    wizardStep = 1;
+    wizardTargetNation = null;
+    wizardAgreementType = null;
+    wizardArticles = [];
+    wizardName = '';
+    wizardDuration = 1;
+
+    // Check if player has any diplomatic role that can propose
+    const canPropose = diplomaticRoles && (diplomaticRoles.isFM || diplomaticRoles.ambassadorTo.length > 0);
+    if (!canPropose) {
+        panel.innerHTML = '<p class="diplo-tab-placeholder">You need to be a Foreign Minister or Ambassador to propose initiatives.</p>';
+        return;
+    }
+
+    panel.innerHTML = buildWizardShell();
+    await renderWizardStep1();
+}
+
+function buildWizardShell() {
+    return `
+        <div class="wizard-steps">
+            <div class="wizard-step active" id="wizard-step-ind-1">
+                <span class="wizard-step-num">1</span> Select Nation
+            </div>
+            <div class="wizard-step" id="wizard-step-ind-2">
+                <span class="wizard-step-num">2</span> Agreement Type
+            </div>
+            <div class="wizard-step" id="wizard-step-ind-3">
+                <span class="wizard-step-num">3</span> Draft Articles
+            </div>
+        </div>
+        <div id="wizard-panel-1" class="wizard-panel active"></div>
+        <div id="wizard-panel-2" class="wizard-panel"></div>
+        <div id="wizard-panel-3" class="wizard-panel"></div>
+    `;
+}
+
+function updateWizardStepIndicators(step) {
+    for (let i = 1; i <= 3; i++) {
+        const el = document.getElementById('wizard-step-ind-' + i);
+        if (!el) continue;
+        el.classList.remove('active', 'completed');
+        if (i < step) el.classList.add('completed');
+        if (i === step) el.classList.add('active');
+    }
+    for (let i = 1; i <= 3; i++) {
+        const p = document.getElementById('wizard-panel-' + i);
+        if (!p) continue;
+        p.classList.toggle('active', i === step);
+    }
+}
+
+async function renderWizardStep1() {
+    const panel = document.getElementById('wizard-panel-1');
+    if (!panel) return;
+
+    panel.innerHTML = '<p style="color:#888;font-style:italic;font-size:0.82rem;">Loading nations...</p>';
+
+    // Fetch nations we have ambassadors to (with active counterpart ambassadors)
+    const ambNationIds = diplomaticRoles.ambassadorTo.map(a => a.target_nation_id);
+
+    if (ambNationIds.length === 0) {
+        panel.innerHTML = '<p class="diplo-tab-placeholder">You have no ambassador postings. An ambassador must be active to propose initiatives.</p>';
+        return;
+    }
+
+    // Fetch nations + check if they have ambassadors back to us
+    const [nationsRes, theirAmbRes] = await Promise.all([
+        _supabase.from('nations').select('id, name').in('id', ambNationIds),
+        _supabase.from('ambassadors').select('nation_id, target_nation_id, status, is_active')
+            .eq('target_nation_id', currentNation.id)
+            .eq('is_active', true)
+            .eq('status', 'active')
+            .in('nation_id', ambNationIds)
+    ]);
+
+    const nations = nationsRes.data || [];
+    const theirAmbs = theirAmbRes.data || [];
+    const nationsWithCounterAmb = new Set(theirAmbs.map(a => a.nation_id));
+
+    let html = '<p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;">Select a nation to negotiate with. Both nations must have active ambassadors.</p>';
+
+    for (const nation of nations) {
+        const hasCounter = nationsWithCounterAmb.has(nation.id);
+        const flagUrl = FLAG_URLS[nation.name] || null;
+        const ambInfo = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === nation.id);
+        const ambName = ambInfo ? ((ambInfo.ambassador_first_name || '') + ' ' + (ambInfo.ambassador_last_name || '')).trim() : '';
+
+        html += `
+            <div class="wizard-nation-item ${hasCounter ? '' : 'disabled'}" data-nation-id="${nation.id}" onclick="wizardSelectNation('${nation.id}')">
+                ${flagUrl ? '<img src="' + flagUrl + '" class="nation-card-flag" />' : '<div class="nation-card-flag-placeholder"></div>'}
+                <div>
+                    <div class="wizard-nation-name">${escapeHtml(nation.name)}</div>
+                    <div class="wizard-nation-detail">
+                        Your Amb: ${ambName ? escapeHtml(ambName) : 'None'}
+                        ${!hasCounter ? ' &middot; <span style="color:#ff9800;">No counterpart ambassador</span>' : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    html += '<div class="wizard-nav"><button class="wizard-next-btn" id="wizard-next-1" disabled onclick="wizardGoToStep2()">Next</button></div>';
+    panel.innerHTML = html;
+}
+
+function wizardSelectNation(nationId) {
+    // Toggle selection
+    document.querySelectorAll('.wizard-nation-item').forEach(el => el.classList.remove('selected'));
+    const item = document.querySelector('.wizard-nation-item[data-nation-id="' + nationId + '"]');
+    if (item && !item.classList.contains('disabled')) {
+        item.classList.add('selected');
+        wizardTargetNation = nationId;
+        const btn = document.getElementById('wizard-next-1');
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function wizardGoToStep2() {
+    if (!wizardTargetNation) return;
+    wizardStep = 2;
+    updateWizardStepIndicators(2);
+    await renderWizardStep2();
+}
+
+async function renderWizardStep2() {
+    const panel = document.getElementById('wizard-panel-2');
+    if (!panel) return;
+
+    panel.innerHTML = '<p style="color:#888;font-style:italic;font-size:0.82rem;">Loading agreement types...</p>';
+
+    // Fetch existing active/pending agreements between these nations to disable used types
+    const usedTypes = new Set();
+    try {
+        const { data: existing } = await _supabase
+            .from('diplomatic_proposals')
+            .select('proposal_data, status')
+            .eq('proposal_type', 'diplomatic_initiative')
+            .in('status', ['proposed', 'revised', 'active'])
+            .or(
+                'and(proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + wizardTargetNation + '),' +
+                'and(proposing_nation_id.eq.' + wizardTargetNation + ',target_nation_id.eq.' + currentNation.id + ')'
+            );
+        if (existing) {
+            for (const prop of existing) {
+                const agType = prop.proposal_data?.agreement_type;
+                if (agType) usedTypes.add(agType);
+                // Also check old-style articles for type
+                const arts = prop.proposal_data?.articles || [];
+                const struck = new Set(prop.proposal_data?.struck_articles || []);
+                arts.forEach((art, i) => {
+                    if (prop.status === 'active' && struck.has(i)) return;
+                    if (art.type) usedTypes.add(art.type);
+                });
+            }
+        }
+    } catch (e) { console.warn('Error checking existing agreements:', e); }
+
+    let html = '<p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;">Choose the type of agreement to propose.</p>';
+    html += '<div class="type-card-grid">';
+
+    for (const [key, info] of Object.entries(INITIATIVE_TYPES)) {
+        const isUsed = usedTypes.has(key);
+        const classBadge = '<span class="classification-badge classification-' + info.classification.toLowerCase() + '">' + info.classification + '</span>';
+        const relStr = info.relations > 0 ? '+' + info.relations + ' Rel' : info.relations < 0 ? info.relations + ' Rel' : '';
+        const moneyStr = info.money > 0 ? '+$' + (info.money / 1e6).toFixed(0) + 'M' : info.money < 0 ? '-$' + (Math.abs(info.money) / 1e6).toFixed(0) + 'M' : '';
+
+        html += `
+            <div class="type-card ${isUsed ? 'disabled' : ''}" data-type-key="${key}" onclick="wizardSelectType('${key}')">
+                <div class="type-card-title">${escapeHtml(info.label)} ${classBadge}</div>
+                <div class="type-card-desc">${escapeHtml(info.description)}</div>
+                <div class="type-card-effects">
+                    ${relStr ? '<span class="effect-tag effect-rel">' + relStr + '</span>' : ''}
+                    ${moneyStr ? '<span class="effect-tag effect-money">' + moneyStr + '</span>' : ''}
+                    ${!relStr && !moneyStr ? '<span class="effect-tag" style="background:var(--bg-hover);color:var(--text-muted);">No effects</span>' : ''}
+                </div>
+                ${isUsed ? '<div class="type-card-already">Already active or pending</div>' : ''}
+            </div>
+        `;
+    }
+
+    html += '</div>';
+    html += `<div class="wizard-nav">
+        <button class="wizard-back-btn" onclick="wizardBackToStep1()">Back</button>
+        <button class="wizard-next-btn" id="wizard-next-2" disabled onclick="wizardGoToStep3()">Next</button>
+    </div>`;
+
+    panel.innerHTML = html;
+}
+
+function wizardSelectType(typeKey) {
+    document.querySelectorAll('.type-card').forEach(el => el.classList.remove('selected'));
+    const card = document.querySelector('.type-card[data-type-key="' + typeKey + '"]');
+    if (card && !card.classList.contains('disabled')) {
+        card.classList.add('selected');
+        wizardAgreementType = typeKey;
+        const btn = document.getElementById('wizard-next-2');
+        if (btn) btn.disabled = false;
+    }
+}
+
+function wizardBackToStep1() {
+    wizardStep = 1;
+    wizardAgreementType = null;
+    updateWizardStepIndicators(1);
+}
+
+async function wizardGoToStep3() {
+    if (!wizardAgreementType) return;
+    wizardStep = 3;
+    wizardArticles = [];
+    wizardName = '';
+    wizardDuration = 1;
+    updateWizardStepIndicators(3);
+    await renderWizardStep3();
+}
+
+async function renderWizardStep3() {
+    const panel = document.getElementById('wizard-panel-3');
+    if (!panel) return;
+
+    const typeInfo = INITIATIVE_TYPES[wizardAgreementType];
+    if (!typeInfo) return;
+
+    // Fetch target nation name and ambassador info
+    const { data: targetNation } = await _supabase.from('nations').select('id, name').eq('id', wizardTargetNation).single();
+    const targetName = targetNation?.name || 'Unknown';
+
+    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
+    const ourAmbName = ourAmb ? ((ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '')).trim() : '?';
+
+    // Get their ambassador
+    const { data: theirAmb } = await _supabase
+        .from('ambassadors')
+        .select('ambassador_first_name, ambassador_last_name')
+        .eq('nation_id', wizardTargetNation)
+        .eq('target_nation_id', currentNation.id)
+        .eq('is_active', true)
+        .eq('status', 'active')
+        .maybeSingle();
+    const theirAmbName = theirAmb ? ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim() : '?';
+
+    const classBadge = '<span class="classification-badge classification-' + typeInfo.classification.toLowerCase() + '">' + typeInfo.classification + '</span>';
+
+    const durationOptions = [1,2,3,4,5,6,7].map(y =>
+        '<option value="' + y + '">' + y + ' Year' + (y > 1 ? 's' : '') + '</option>'
+    ).join('');
+
+    // Auto-generate preamble
+    const preamble = 'Ambassador ' + escapeHtml(ourAmbName) + ' of ' + escapeHtml(currentNation.name) +
+        ', in collaboration with Ambassador ' + escapeHtml(theirAmbName) + ' of ' + escapeHtml(targetName) +
+        ', hereby propose the following ' + escapeHtml(typeInfo.label) + ':';
+
+    // Effects summary
+    const relStr = typeInfo.relations > 0 ? '+' + typeInfo.relations + ' Relations' : typeInfo.relations < 0 ? typeInfo.relations + ' Relations' : '';
+    const moneyStr = typeInfo.money > 0 ? '+$' + (typeInfo.money / 1e6).toFixed(0) + 'M FM Fund' : typeInfo.money < 0 ? '-$' + (Math.abs(typeInfo.money) / 1e6).toFixed(0) + 'M FM Fund' : '';
+
+    let html = `
+        <div style="margin-bottom:12px;">
+            <span style="font-size:0.82rem;font-weight:bold;color:var(--text-primary);">${escapeHtml(typeInfo.label)}</span>
+            ${classBadge}
+        </div>
+
+        <div class="initiative-field">
+            <label>Name of Agreement</label>
+            <input type="text" id="wizard-name" placeholder="e.g. The Concordia Accord" maxlength="120" oninput="wizardUpdatePreview()" />
+        </div>
+
+        <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;line-height:1.5;padding:8px 10px;background:var(--bg-body);border-radius:4px;border:1px solid var(--border-light);">
+            ${preamble}
+        </div>
+
+        <div class="initiative-field">
+            <label>Articles <button class="action-btn" style="font-size:0.68rem;padding:3px 10px;margin-left:8px;" onclick="wizardAddArticle()">+ Add Article</button></label>
+        </div>
+        <div id="wizard-articles-list">
+            <div style="color:#666;font-size:0.78rem;font-style:italic;padding:4px 0;">No articles added yet. Add at least one article.</div>
+        </div>
+
+        <div class="initiative-field">
+            <label>Duration</label>
+            <select id="wizard-duration" onchange="wizardUpdatePreview()">${durationOptions}</select>
+        </div>
+
+        <div id="wizard-preview" class="initiative-preview" style="display:none;"></div>
+        <div id="wizard-effects" class="initiative-effects">
+            ${relStr ? '<span class="effect-tag effect-rel">' + relStr + '</span>' : ''}
+            ${moneyStr ? '<span class="effect-tag effect-money">' + moneyStr + '</span>' : ''}
+            ${!relStr && !moneyStr ? '<span class="effect-tag" style="background:var(--bg-hover);color:var(--text-muted);">No mechanical effects</span>' : ''}
+        </div>
+
+        <div class="wizard-nav">
+            <button class="wizard-back-btn" onclick="wizardBackToStep2()">Back</button>
+            <button class="wizard-next-btn" id="wizard-submit-btn" disabled onclick="wizardSubmit()">Submit Proposal</button>
+        </div>
+    `;
+
+    panel.innerHTML = html;
+}
+
+function wizardBackToStep2() {
+    wizardStep = 2;
+    wizardArticles = [];
+    updateWizardStepIndicators(2);
+}
+
+function wizardAddArticle() {
+    wizardArticles.push({ text: '' });
+    wizardRenderArticles();
+    wizardUpdatePreview();
+}
+
+function wizardRemoveArticle(index) {
+    wizardArticles.splice(index, 1);
+    wizardRenderArticles();
+    wizardUpdatePreview();
+}
+
+function wizardUpdateArticleText(index, text) {
+    if (wizardArticles[index]) {
+        wizardArticles[index].text = text;
+    }
+    wizardUpdatePreview();
+}
+
+function wizardRenderArticles() {
+    const list = document.getElementById('wizard-articles-list');
+    if (!list) return;
+
+    if (wizardArticles.length === 0) {
+        list.innerHTML = '<div style="color:#666;font-size:0.78rem;font-style:italic;padding:4px 0;">No articles added yet. Add at least one article.</div>';
+        return;
+    }
+
+    list.innerHTML = wizardArticles.map((art, i) => `
+        <div class="freeform-article">
+            <div class="freeform-article-header">
+                <span class="initiative-article-num">Article ${toRoman(i + 1)}</span>
+                <button class="initiative-article-remove" onclick="wizardRemoveArticle(${i})">X</button>
+            </div>
+            <textarea placeholder="Describe this article's terms..." oninput="wizardUpdateArticleText(${i}, this.value)">${escapeHtml(art.text)}</textarea>
+        </div>
+    `).join('');
+}
+
+function wizardUpdatePreview() {
+    const nameInput = document.getElementById('wizard-name');
+    const durationSelect = document.getElementById('wizard-duration');
+    const previewEl = document.getElementById('wizard-preview');
+    const submitBtn = document.getElementById('wizard-submit-btn');
+    if (!previewEl) return;
+
+    wizardName = nameInput?.value?.trim() || '';
+    wizardDuration = parseInt(durationSelect?.value || '1');
+
+    const hasArticles = wizardArticles.length > 0 && wizardArticles.some(a => a.text.trim());
+    const canSubmit = wizardName && hasArticles;
+    if (submitBtn) submitBtn.disabled = !canSubmit;
+
+    if (!canSubmit) {
+        previewEl.style.display = 'none';
+        return;
+    }
+
+    const typeInfo = INITIATIVE_TYPES[wizardAgreementType];
+    const articlesHtml = wizardArticles
+        .filter(a => a.text.trim())
+        .map((art, i) =>
+            '<div class="preview-article"><span class="preview-article-num">Article ' + toRoman(i + 1) + '.</span> ' +
+            escapeHtml(art.text) + '</div>'
+        ).join('');
+
+    previewEl.style.display = 'block';
+    previewEl.innerHTML =
+        '<div class="preview-title">' + escapeHtml(wizardName) + '</div>' +
+        '<div class="preview-subtitle">' + escapeHtml(typeInfo?.label || '') + '</div>' +
+        '<div class="preview-label">Proposes:</div>' +
+        articlesHtml +
+        '<div class="preview-duration">To last a sum of ' + wizardDuration + ' year' + (wizardDuration !== 1 ? 's' : '') + '.</div>';
+}
+
+async function wizardSubmit() {
+    if (!wizardName) { alert('Please enter a name for the agreement.'); return; }
+    const filledArticles = wizardArticles.filter(a => a.text.trim());
+    if (filledArticles.length === 0) { alert('Please add at least one article with content.'); return; }
+    if (!wizardTargetNation || !wizardAgreementType) { alert('Missing target nation or agreement type.'); return; }
+
+    const typeInfo = INITIATIVE_TYPES[wizardAgreementType];
+    if (!typeInfo) { alert('Invalid agreement type.'); return; }
+
+    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
+    if (!ourAmb) { alert('You are not ambassador to this nation.'); return; }
+
+    // Get their ambassador
+    const { data: theirAmb } = await _supabase
+        .from('ambassadors')
+        .select('ambassador_first_name, ambassador_last_name')
+        .eq('nation_id', wizardTargetNation)
+        .eq('target_nation_id', currentNation.id)
+        .eq('is_active', true)
+        .eq('status', 'active')
+        .maybeSingle();
+
+    if (!theirAmb) { alert('Target nation has no active ambassador to negotiate with.'); return; }
+
+    const { data: targetNation } = await _supabase.from('nations').select('name').eq('id', wizardTargetNation).single();
+
+    const ourAmbName = ((ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '')).trim();
+    const theirAmbName = ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim();
+
+    // Get current tick
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Determine proposal tier based on classification
+    const proposalTier = typeInfo.classification === 'MAJOR' ? 3 : 1;
+
+    const proposalData = {
+        name: wizardName,
+        agreement_type: wizardAgreementType,
+        classification: typeInfo.classification,
+        duration_years: wizardDuration,
+        articles: filledArticles.map(a => ({
+            text: a.text.trim(),
+            type: wizardAgreementType,
+            label: typeInfo.label,
+            description: typeInfo.description,
+            relations: typeInfo.relations,
+            money: typeInfo.money
+        })),
+        proposer_ambassador_name: ourAmbName,
+        target_ambassador_name: theirAmbName,
+        proposer_nation_name: currentNation.name,
+        target_nation_name: targetNation?.name || 'Unknown'
+    };
+
+    const { error } = await _supabase.from('diplomatic_proposals').insert({
+        proposing_nation_id: currentNation.id,
+        target_nation_id: wizardTargetNation,
+        proposed_by_faction_id: currentFaction.id,
+        proposal_type: 'diplomatic_initiative',
+        proposal_tier: proposalTier,
+        status: 'proposed',
+        proposal_data: proposalData,
+        proposed_at_tick: currentTick
+    });
+
+    if (error) {
+        console.error('Error submitting initiative:', error);
+        alert('Error submitting initiative: ' + error.message);
+        return;
+    }
+
+    alert('Diplomatic Initiative "' + wizardName + '" proposed!\n\n' +
+        (typeInfo.classification === 'MINOR' ? 'As a MINOR agreement, it can be accepted directly by the target ambassador.' :
+        'As a MAJOR agreement, it will require escalation through the legislative pipeline after ambassador acceptance.'));
+
+    // Reset and re-render wizard
+    await renderInitiativeWizard();
+    await renderDiploHeader();
+}
+
+// ==================== LEGACY DIPLOMATIC INITIATIVE ====================
 
 async function fetchPendingDiploProposals(myNationId, targetNationId) {
     if (!myNationId || !targetNationId || myNationId === targetNationId) return [];
@@ -1242,7 +1917,7 @@ function renderPendingProposals(proposals, targetNation) {
                     '<input type="checkbox" class="strike-checkbox" data-proposal-id="' + p.id + '" data-article-index="' + i + '" />' +
                     '<div class="proposal-article-content">' +
                         '<span class="proposal-article-num">Article ' + toRoman(i + 1) + '.</span> ' +
-                        '<span class="proposal-article-label">' + escapeHtml(art.label) + '</span>' +
+                        '<span class="proposal-article-label">' + escapeHtml(art.text || art.label) + '</span>' +
                         (effectParts ? '<span class="proposal-article-effects">' + effectParts + '</span>' : '') +
                     '</div>' +
                 '</div>';
@@ -1260,7 +1935,7 @@ function renderPendingProposals(proposals, targetNation) {
             const articleRows = articles.map((art, i) =>
                 '<div class="proposal-article-row"><div class="proposal-article-content">' +
                     '<span class="proposal-article-num">Article ' + toRoman(i + 1) + '.</span> ' +
-                    '<span class="proposal-article-label">' + escapeHtml(art.label) + '</span>' +
+                    '<span class="proposal-article-label">' + escapeHtml(art.text || art.label) + '</span>' +
                 '</div></div>'
             ).join('');
             actionButtons = '<div class="proposal-articles-list">' + articleRows + '</div>';
@@ -1276,7 +1951,7 @@ function renderPendingProposals(proposals, targetNation) {
                     '<div class="proposal-article-content">' +
                         (isStruck ? '<span class="struck-label">STRUCK</span> ' : '') +
                         '<span class="proposal-article-num">Article ' + toRoman(i + 1) + '.</span> ' +
-                        '<span class="proposal-article-label">' + escapeHtml(art.label) + '</span>' +
+                        '<span class="proposal-article-label">' + escapeHtml(art.text || art.label) + '</span>' +
                         (!isStruck && effectParts ? '<span class="proposal-article-effects">' + effectParts + '</span>' : '') +
                     '</div>' +
                 '</div>';
@@ -1296,7 +1971,7 @@ function renderPendingProposals(proposals, targetNation) {
                     '<div class="proposal-article-content">' +
                         (isStruck ? '<span class="struck-label">STRUCK</span> ' : '') +
                         '<span class="proposal-article-num">Article ' + toRoman(i + 1) + '.</span> ' +
-                        '<span class="proposal-article-label">' + escapeHtml(art.label) + '</span>' +
+                        '<span class="proposal-article-label">' + escapeHtml(art.text || art.label) + '</span>' +
                     '</div>' +
                 '</div>';
             }).join('');
@@ -1581,8 +2256,17 @@ async function submitInitiative() {
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
 
+    // Determine classification: MAJOR if any article is MAJOR type
+    const hasMajorArticle = initiativeArticles.some(a => {
+        const typeInfo = INITIATIVE_TYPES[a.type];
+        return typeInfo && typeInfo.classification === 'MAJOR';
+    });
+    const classification = hasMajorArticle ? 'MAJOR' : 'MINOR';
+    const proposalTier = hasMajorArticle ? 3 : 1;
+
     const proposalData = {
         name: name,
+        classification: classification,
         duration_years: duration,
         articles: initiativeArticles.map(a => ({ type: a.type, label: a.label, description: a.description, relations: a.relations, money: a.money })),
         proposer_ambassador_name: ourAmbName,
@@ -1596,7 +2280,7 @@ async function submitInitiative() {
         target_nation_id: target.id,
         proposed_by_faction_id: currentFaction.id,
         proposal_type: 'diplomatic_initiative',
-        proposal_tier: 1,
+        proposal_tier: proposalTier,
         status: 'proposed',
         proposal_data: proposalData,
         proposed_at_tick: currentTick
@@ -1783,6 +2467,19 @@ window.submitInitiative = submitInitiative;
 window.acceptProposal = acceptProposal;
 window.rejectProposal = rejectProposal;
 window.strikeArticles = strikeArticles;
+// Phase 2 exports
+window.withdrawAgreement = withdrawAgreement;
+window.wizardSelectNation = wizardSelectNation;
+window.wizardGoToStep2 = wizardGoToStep2;
+window.wizardSelectType = wizardSelectType;
+window.wizardBackToStep1 = wizardBackToStep1;
+window.wizardGoToStep3 = wizardGoToStep3;
+window.wizardBackToStep2 = wizardBackToStep2;
+window.wizardAddArticle = wizardAddArticle;
+window.wizardRemoveArticle = wizardRemoveArticle;
+window.wizardUpdateArticleText = wizardUpdateArticleText;
+window.wizardUpdatePreview = wizardUpdatePreview;
+window.wizardSubmit = wizardSubmit;
 </script>
 
 </body>
