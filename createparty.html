@@ -172,6 +172,14 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { PARTY_ICONS, PARTY_COLOR_PALETTE, DEFAULT_PARTY_ICON, getPartyIconSVG, getDefaultPartyColor, colorDistance } from './js/party-icons.js';
+import { PM_FIRST_NAMES, PM_LAST_NAMES } from './js/game-common.js';
+
+function generateLeader() {
+    const first = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)];
+    const last = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)];
+    const age = 35 + Math.floor(Math.random() * 20); // 35-54
+    return { first, last, age };
+}
 let currentUser = null;
 let _cpSelectedColor = null;
 let _cpSelectedLogo = DEFAULT_PARTY_ICON;
@@ -573,6 +581,7 @@ let _cpSelectedLogo = DEFAULT_PARTY_ICON;
                 
                 // Update faction record
                 const cpDesc = document.getElementById('party-desc')?.value?.trim() || null;
+                const leader = generateLeader();
                 const { error: updateError } = await _supabase
                     .from('factions')
                     .upsert({
@@ -587,7 +596,10 @@ let _cpSelectedLogo = DEFAULT_PARTY_ICON;
                         needs_rebuild: false,
                         party_color: _cpSelectedColor || getDefaultPartyColor(factionNumber - 1),
                         party_logo: _cpSelectedLogo || DEFAULT_PARTY_ICON,
-                        party_description: cpDesc
+                        party_description: cpDesc,
+                        leader_first_name: leader.first,
+                        leader_last_name: leader.last,
+                        leader_age: leader.age
                     });
                 
                 if (updateError) {
@@ -639,6 +651,7 @@ let _cpSelectedLogo = DEFAULT_PARTY_ICON;
                 const partyAbbr = document.getElementById('party-abbr').value.trim();
                 
                 const demoDesc = document.getElementById('party-desc')?.value?.trim() || null;
+                const demoLeader = generateLeader();
                 const { error: updateError } = await _supabase
                     .from('factions')
                     .upsert({
@@ -654,7 +667,10 @@ let _cpSelectedLogo = DEFAULT_PARTY_ICON;
                         needs_rebuild: false,
                         party_color: _cpSelectedColor || getDefaultPartyColor(factionNumber - 1),
                         party_logo: _cpSelectedLogo || DEFAULT_PARTY_ICON,
-                        party_description: demoDesc
+                        party_description: demoDesc,
+                        leader_first_name: demoLeader.first,
+                        leader_last_name: demoLeader.last,
+                        leader_age: demoLeader.age
                     });
                 
                 if (updateError) throw updateError;
