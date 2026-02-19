@@ -85,6 +85,7 @@ let diplomaticRoles = null;
 let selectedTargetNation = null;
 let selectedTheirAmbassador = null;
 let initiativeArticles = [];
+let usedArticleTypes = new Set(); // types already in active/pending proposals between these nations
 
 const INITIATIVE_TYPES = {
     visa_agreement: {
@@ -1049,7 +1050,7 @@ function toRoman(num) {
     return result;
 }
 
-function openInitiativeForm() {
+async function openInitiativeForm() {
     const target = selectedTargetNation;
     const theirAmb = selectedTheirAmbassador;
     if (!target || !theirAmb) return;
@@ -1063,11 +1064,39 @@ function openInitiativeForm() {
 
     initiativeArticles = [];
 
+    // Fetch article types already used in active or pending proposals between these nations
+    usedArticleTypes = new Set();
+    try {
+        const { data: existing } = await _supabase
+            .from('diplomatic_proposals')
+            .select('proposal_data, status')
+            .eq('proposal_type', 'diplomatic_initiative')
+            .in('status', ['proposed', 'revised', 'active'])
+            .or(
+                'and(proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + target.id + '),' +
+                'and(proposing_nation_id.eq.' + target.id + ',target_nation_id.eq.' + currentNation.id + ')'
+            );
+        if (existing) {
+            for (const prop of existing) {
+                const arts = prop.proposal_data?.articles || [];
+                const struck = new Set(prop.proposal_data?.struck_articles || []);
+                arts.forEach((art, i) => {
+                    // For active: skip struck articles. For proposed/revised: all articles count.
+                    if (prop.status === 'active' && struck.has(i)) return;
+                    if (art.type) usedArticleTypes.add(art.type);
+                });
+            }
+        }
+    } catch (e) {
+        console.warn('Error fetching existing proposals for type check:', e);
+    }
+
     const container = document.getElementById('initiative-form-container');
     if (!container) return;
 
     const typeOptions = Object.entries(INITIATIVE_TYPES).map(([key, t]) =>
-        '<option value="' + key + '">' + t.label + '</option>'
+        '<option value="' + key + '"' + (usedArticleTypes.has(key) ? ' disabled' : '') + '>' +
+        t.label + (usedArticleTypes.has(key) ? ' (Already Active)' : '') + '</option>'
     ).join('');
 
     const durationOptions = [1,2,3,4,5,6,7].map(y =>
@@ -1120,6 +1149,18 @@ function addInitiativeArticle() {
     const typeInfo = INITIATIVE_TYPES[key];
     if (!typeInfo) return;
 
+    // Block if already used in an active/pending proposal between these nations
+    if (usedArticleTypes.has(key)) {
+        alert(typeInfo.label + ' is already part of an active or pending agreement with this nation.');
+        return;
+    }
+
+    // Block duplicates within the same proposal
+    if (initiativeArticles.some(a => a.type === key)) {
+        alert(typeInfo.label + ' is already included in this initiative.');
+        return;
+    }
+
     initiativeArticles.push({
         type: key,
         label: typeInfo.label,
@@ -1129,12 +1170,29 @@ function addInitiativeArticle() {
     });
     renderInitiativeArticles();
     updateInitiativePreview();
+    refreshInitiativeDropdown();
+}
+
+function refreshInitiativeDropdown() {
+    const sel = document.getElementById('initiative-type-select');
+    if (!sel) return;
+    const currentInProposal = new Set(initiativeArticles.map(a => a.type));
+    Array.from(sel.options).forEach(opt => {
+        const blocked = usedArticleTypes.has(opt.value) || currentInProposal.has(opt.value);
+        opt.disabled = blocked;
+        const base = INITIATIVE_TYPES[opt.value]?.label || opt.value;
+        opt.textContent = base + (usedArticleTypes.has(opt.value) ? ' (Already Active)' : currentInProposal.has(opt.value) ? ' (Added)' : '');
+    });
+    // Auto-select first available option
+    const firstAvail = Array.from(sel.options).find(o => !o.disabled);
+    if (firstAvail) sel.value = firstAvail.value;
 }
 
 function removeInitiativeArticle(index) {
     initiativeArticles.splice(index, 1);
     renderInitiativeArticles();
     updateInitiativePreview();
+    refreshInitiativeDropdown();
 }
 
 function renderInitiativeArticles() {
@@ -1434,6 +1492,7 @@ window.sendDiploMessage = sendDiploMessage;
 window.openInitiativeForm = openInitiativeForm;
 window.addInitiativeArticle = addInitiativeArticle;
 window.removeInitiativeArticle = removeInitiativeArticle;
+window.refreshInitiativeDropdown = refreshInitiativeDropdown;
 window.updateInitiativePreview = updateInitiativePreview;
 window.closeInitiativeForm = closeInitiativeForm;
 window.submitInitiative = submitInitiative;
