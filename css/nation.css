@@ -309,3 +309,116 @@
         font-weight: bold;
         flex: 1;
     }
+
+    /* ===== Affected-By Panel ===== */
+    .stat-box[data-stat-key] {
+        cursor: pointer;
+        transition: border-color 0.3s, box-shadow 0.2s;
+    }
+    .stat-box[data-stat-key]:hover {
+        box-shadow: 0 0 0 1px var(--border-main);
+    }
+    .stat-box.stat-box-expanded {
+        box-shadow: 0 0 0 1px var(--accent);
+    }
+
+    /* Effect dot indicator */
+    .stat-effect-dot {
+        width: 6px; height: 6px; border-radius: 50%;
+        background: var(--accent); display: inline-block;
+        margin-right: 4px; vertical-align: middle;
+        opacity: 0.7;
+    }
+
+    /* Panel (collapsed by default) */
+    .affected-by-panel {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease, opacity 0.3s ease, margin-top 0.2s ease;
+        opacity: 0;
+        margin-top: 0;
+    }
+    .stat-box-expanded .affected-by-panel {
+        max-height: 300px;
+        opacity: 1;
+        margin-top: 10px;
+        border-top: 1px solid var(--border-main);
+        padding-top: 8px;
+        overflow-y: auto;
+    }
+
+    /* Panel title */
+    .affected-by-title {
+        font-size: 0.65rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 6px;
+    }
+
+    /* Effect row */
+    .affected-by-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        font-size: 0.75rem;
+    }
+    .affected-by-row + .affected-by-row {
+        border-top: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    /* Source name */
+    .ab-name {
+        color: var(--text-primary);
+        flex: 1;
+        font-weight: 500;
+    }
+
+    /* Direction arrow */
+    .ab-arrow {
+        font-size: 0.7rem;
+        width: 16px;
+        text-align: center;
+    }
+    .ab-arrow-up { color: var(--green); }
+    .ab-arrow-down { color: var(--red); }
+
+    /* Type badge */
+    .ab-type {
+        font-size: 0.6rem;
+        padding: 2px 6px;
+        border-radius: 3px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+        font-weight: bold;
+    }
+    .ab-type-policy {
+        background: rgba(33, 150, 243, 0.15);
+        color: var(--blue);
+    }
+    .ab-type-crisis {
+        background: rgba(244, 67, 54, 0.15);
+        color: var(--red);
+    }
+    .ab-type-ministry-action {
+        background: rgba(76, 175, 80, 0.15);
+        color: var(--green);
+    }
+    .ab-type-diplomatic-action {
+        background: rgba(255, 152, 0, 0.15);
+        color: var(--orange);
+    }
+    .ab-type-leader-trait {
+        background: rgba(255, 204, 0, 0.15);
+        color: var(--accent);
+    }
+
+    /* Empty state */
+    .affected-by-empty {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        font-style: italic;
+        padding: 4px 0;
+    }
