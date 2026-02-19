@@ -1412,20 +1412,20 @@ async function processIdeologyShifts(supabase, nationId, resolutions) {
             const mapping = IDEOLOGY_TO_AXIS[tag];
             if (!mapping) continue;
 
-            // +2 for proposing (sponsor only)
+            // +1 for proposing (sponsor only)
             if (bill.proposed_by) {
-                addShift(bill.proposed_by, mapping.axisKey, 2 * mapping.direction);
+                addShift(bill.proposed_by, mapping.axisKey, 1 * mapping.direction);
             }
 
-            // +3 for voting YES (all YES voters including sponsor)
+            // +2 for voting YES (all YES voters including sponsor)
             for (const factionId of yesVoters) {
-                addShift(factionId, mapping.axisKey, 3 * mapping.direction);
+                addShift(factionId, mapping.axisKey, 2 * mapping.direction);
             }
 
-            // +1 if bill passed (YES voters only)
+            // +2 if bill passed (YES voters only)
             if (isPassed) {
                 for (const factionId of yesVoters) {
-                    addShift(factionId, mapping.axisKey, 1 * mapping.direction);
+                    addShift(factionId, mapping.axisKey, 2 * mapping.direction);
                 }
             }
         }
@@ -1433,8 +1433,13 @@ async function processIdeologyShifts(supabase, nationId, resolutions) {
 
     // Apply accumulated shifts to faction_ideology
     for (const [factionId, axisShifts] of Object.entries(factionShifts)) {
-        const ideologyRow = await loadFactionIdeology(supabase, factionId);
-        if (!ideologyRow) continue;
+        let ideologyRow = await loadFactionIdeology(supabase, factionId);
+        if (!ideologyRow) {
+            const newRow = { faction_id: factionId, liberty_equality: 0, tradition_progress: 0, security_freedom: 0, globalism_nationalism: 0, individualism_collectivism: 0 };
+            await supabase.from('faction_ideology').upsert(newRow, { onConflict: 'faction_id' });
+            ideologyRow = newRow;
+            console.warn(`Created missing faction_ideology row for faction ${factionId}`);
+        }
 
         const currentScores = extractAxisScores(ideologyRow);
         const updateObj = {};
