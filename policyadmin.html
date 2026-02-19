@@ -294,6 +294,7 @@ let editingPolicyId = null;
 
 // Builder state
 let selectedIdeologies = new Set();
+let isAgnostic = false; // no ideology requirement
 let statEffects = []; // array of { stat_key, direction, rate, delay_ticks, duration_ticks }
 let opposedSlots = []; // array of policy UUIDs or ''
 let startingNations = new Set(); // nation IDs
@@ -347,14 +348,19 @@ function switchView(view) {
 function populateFilterDropdowns() {
     const sectors = [...new Set(allPolicies.map(p => p.major_sector).filter(Boolean))].sort();
     const ideologies = new Set();
+    let hasAgnostic = false;
     allPolicies.forEach(p => {
-        if (p.ideologies && Array.isArray(p.ideologies)) p.ideologies.forEach(i => ideologies.add(i));
-        else if (p.ideology) ideologies.add(p.ideology);
+        if (p.ideologies && Array.isArray(p.ideologies)) {
+            if (p.ideologies.length === 0) hasAgnostic = true;
+            else p.ideologies.forEach(i => ideologies.add(i));
+        } else if (p.ideology) ideologies.add(p.ideology);
+        else hasAgnostic = true;
     });
 
     document.getElementById('filter-sector').innerHTML = '<option value="">All Sectors</option>' +
         sectors.map(s => `<option value="${s}">${s}</option>`).join('');
     document.getElementById('filter-ideology').innerHTML = '<option value="">All Ideologies</option>' +
+        (hasAgnostic ? '<option value="__agnostic__">Agnostic</option>' : '') +
         [...ideologies].sort().map(i => `<option value="${i}">${i}</option>`).join('');
 }
 
@@ -368,7 +374,9 @@ function filterPolicies() {
         if (sector && p.major_sector !== sector) return false;
         if (ideology) {
             const pIdeos = p.ideologies || (p.ideology ? [p.ideology] : []);
-            if (!pIdeos.includes(ideology)) return false;
+            if (ideology === '__agnostic__') {
+                if (pIdeos.length > 0) return false;
+            } else if (!pIdeos.includes(ideology)) return false;
         }
         return true;
     });
@@ -387,7 +395,9 @@ function renderPolicyTable() {
     tbody.innerHTML = filteredPolicies.map(p => {
         // Ideologies
         const ideos = p.ideologies || (p.ideology ? [p.ideology] : []);
-        const ideoHTML = ideos.map(i => `<span class="tag tag-ideology">${i}</span>`).join(' ') || '—';
+        const ideoHTML = ideos.length > 0
+            ? ideos.map(i => `<span class="tag tag-ideology">${i}</span>`).join(' ')
+            : '<span class="tag tag-agnostic">Agnostic</span>';
 
         // Stat effects
         let effectsHTML = '—';
@@ -503,7 +513,9 @@ function loadPolicyIntoBuilder(p) {
     }
 
     // Ideologies
-    selectedIdeologies = new Set(p.ideologies || (p.ideology ? [p.ideology] : []));
+    const loadedIdeos = p.ideologies || (p.ideology ? [p.ideology] : []);
+    isAgnostic = Array.isArray(loadedIdeos) && loadedIdeos.length === 0 && !p.ideology;
+    selectedIdeologies = new Set(loadedIdeos);
     renderIdeologyChips();
 
     // Starting nations (we'll need to look up nation_policies or active_laws — for now just clear)
@@ -555,20 +567,34 @@ function renderIdeologyChips() {
     const disabledSet = new Set();
     selectedIdeologies.forEach(ideo => { if (OPPOSITES[ideo]) disabledSet.add(OPPOSITES[ideo]); });
 
-    container.innerHTML = ALL_IDEOLOGIES.map(ideo => {
+    // Agnostic chip first
+    const agnosticCls = isAgnostic ? 'selected agnostic' : '';
+    let html = `<div class="ideology-chip ideology-chip-agnostic ${agnosticCls}" onclick="toggleAgnostic()">Agnostic</div>`;
+    html += '<span class="ideology-divider">|</span>';
+
+    html += ALL_IDEOLOGIES.map(ideo => {
         const sel = selectedIdeologies.has(ideo);
-        const dis = disabledSet.has(ideo) && !sel;
+        const dis = isAgnostic || (disabledSet.has(ideo) && !sel);
         const full = !sel && selectedIdeologies.size >= 3;
         const cls = sel ? 'selected' : (dis || full) ? 'disabled' : '';
         const click = (dis || full) && !sel ? '' : `toggleIdeology('${ideo}')`;
         return `<div class="ideology-chip ${cls}" onclick="${click}">${ideo}</div>`;
     }).join('');
 
-    document.getElementById('ideo-count').textContent = selectedIdeologies.size;
-    document.getElementById('ideo-list').textContent = selectedIdeologies.size > 0 ? [...selectedIdeologies].join(', ') : 'None';
+    container.innerHTML = html;
+
+    document.getElementById('ideo-count').textContent = isAgnostic ? '—' : selectedIdeologies.size;
+    document.getElementById('ideo-list').textContent = isAgnostic ? 'Agnostic (no requirement)' : (selectedIdeologies.size > 0 ? [...selectedIdeologies].join(', ') : 'None');
+}
+
+function toggleAgnostic() {
+    isAgnostic = !isAgnostic;
+    if (isAgnostic) selectedIdeologies = new Set();
+    renderIdeologyChips();
 }
 
 function toggleIdeology(ideo) {
+    if (isAgnostic) return; // can't select ideologies while agnostic
     if (selectedIdeologies.has(ideo)) {
         selectedIdeologies.delete(ideo);
     } else {
@@ -896,7 +922,7 @@ async function savePolicy() {
     const lawCategory = getLawCategoryValue();
     if (!lawCategory) { alert('Select or create a law category.'); return; }
 
-    if (selectedIdeologies.size === 0) { alert('Select at least 1 ideology.'); return; }
+    if (!isAgnostic && selectedIdeologies.size === 0) { alert('Select at least 1 ideology, or choose Agnostic.'); return; }
 
     const validEffects = statEffects.filter(e => e.stat_key);
     if (validEffects.length === 0) { alert('Add at least 1 stat effect.'); return; }
@@ -913,7 +939,7 @@ async function savePolicy() {
         return;
     }
 
-    const ideologiesArr = [...selectedIdeologies];
+    const ideologiesArr = isAgnostic ? [] : [...selectedIdeologies];
     const opposedIds = opposedSlots.filter(Boolean);
 
     const policyData = {
@@ -924,7 +950,7 @@ async function savePolicy() {
         major_sector: sector,
         minor_sector: lawCategory, // keep for backward compat
         law_category: lawCategory,
-        ideology: ideologiesArr[0], // keep for backward compat
+        ideology: ideologiesArr[0] || null, // keep for backward compat
         ideologies: ideologiesArr,
         upfront_cost: parseFloat(document.getElementById('b-upfront').value) || 0,
         upfront_scaling_stat: document.getElementById('b-upfront-scaling').value || null,
@@ -1025,6 +1051,7 @@ function resetBuilder() {
     document.getElementById('b-law-category-new').value = '';
     document.getElementById('b-law-category-new').style.display = 'none';
     selectedIdeologies = new Set();
+    isAgnostic = false;
     renderIdeologyChips();
     startingNations = new Set();
     renderNationChecks();
@@ -1080,6 +1107,9 @@ window.deletePolicy = deletePolicy;
 window.toggleStartingNation = toggleStartingNation;
 window.removeStatEffect = removeStatEffect;
 window.removeOpposedSlot = removeOpposedSlot;
+window.toggleIdeology = toggleIdeology;
+window.toggleAgnostic = toggleAgnostic;
+window.togglePrereq = togglePrereq;
 </script>
 </body>
 </html>
