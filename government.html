@@ -882,7 +882,7 @@ function renderCabinet(ministries, coalition) {
         const resignBtn = (isMyMinistry && !isCaretaker) ? `<div class="ministry-actions"><button class="ministry-btn purge" onclick="resignMinistry('${m.ministry_key}')">📋 Resign Ministry</button></div>` : '';
         const appr = m.minister_approval ?? 50;
         const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
-        return `<div class="ministry-card${isVacant ? ' vacant' : ''}"><div class="ministry-title">${m.ministry_name}</div><div class="minister-name"${isVacant ? ' style="color:var(--text-muted);"' : ''}>${name}</div><div class="minister-details">${m.minister_age ? `Age ${m.minister_age} • ` : ''}<span class="minister-party">${partyName}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${appr}%</span></div>${resignBtn}${appointBtn}</div>`;
+        return `<div class="ministry-card${isVacant ? ' vacant' : ''}"><div class="ministry-title">${m.ministry_name}</div><div class="minister-name"${isVacant ? ' style="color:var(--text-muted);"' : ''}>${name}</div><div class="minister-details">${m.minister_age ? `Age ${m.minister_age} • ` : ''}<span class="minister-party">${partyName}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${appr}%</span></div>${resignBtn}</div>`;
     }).join('');
     return `<div class="ministry-grid">${cards}</div>`;
 }
