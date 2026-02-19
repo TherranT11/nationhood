@@ -41,7 +41,8 @@ export const GAME_CONFIG = {
     PRESIDENT_DESK_TICKS: 2,
     MINISTER_CONFIRMATION_VOTING_TICKS: 2,
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
-    MAX_AP: 20  // maximum action points a party can accumulate
+    MAX_AP: 20,  // maximum action points a party can accumulate
+    TICKS_PER_YEAR: 12
 };
 
 // Canonical government types used by nation state + ministry event template variants.
