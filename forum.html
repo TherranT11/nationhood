@@ -287,7 +287,7 @@ async function renderThreadList(subcategoryId) {
     // Get threads with faction info
     const { data: threads } = await _supabase
         .from('forum_threads')
-        .select('*, factions(id, faction_name, nation_id, color, nations(name))')
+        .select('*, factions(id, faction_name, nation_id, color, nations!nation_id(name))')
         .eq('subcategory_id', subcategoryId)
         .order('is_pinned', { ascending: false })
         .order('last_activity_tick', { ascending: false });
@@ -356,7 +356,7 @@ async function renderThreadView(threadId, page) {
     // Get thread with faction info + subcategory nation_id for internal checks
     const { data: thread, error } = await _supabase
         .from('forum_threads')
-        .select('*, factions(id, faction_name, nation_id, color, seats, nations(name)), forum_subcategories(id, nation_id, nations(name))')
+        .select('*, factions(id, faction_name, nation_id, color, seats, nations!nation_id(name)), forum_subcategories(id, nation_id, nations!nation_id(name))')
         .eq('id', threadId)
         .single();
 
@@ -384,7 +384,7 @@ async function renderThreadView(threadId, page) {
     const offset = (page - 1) * REPLIES_PER_PAGE;
     const { data: replies } = await _supabase
         .from('forum_replies')
-        .select('*, factions(id, faction_name, nation_id, color, seats, nations(name))')
+        .select('*, factions(id, faction_name, nation_id, color, seats, nations!nation_id(name))')
         .eq('thread_id', threadId)
         .order('created_at', { ascending: true })
         .range(offset, offset + REPLIES_PER_PAGE - 1);
