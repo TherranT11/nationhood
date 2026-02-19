@@ -228,10 +228,11 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
             .from('ambassadors')
             .select('*')
             .eq('nation_id', nation.id)
+            .eq('is_active', true)
             .eq('status', 'active');
 
         if (ambErr) {
-            console.warn('Ambassador query error:', ambErr);
+            console.warn('Ambassador query error:', JSON.stringify(ambErr));
         } else if (allNationAmbassadors && allNationAmbassadors.length > 0) {
             // Filter to ambassadors belonging to this faction
             const myAmbassadors = allNationAmbassadors.filter(a => a.faction_id === faction.id);
