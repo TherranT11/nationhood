@@ -242,6 +242,12 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
     return roles;
 }
 
+// Re-fetch roles fresh from DB before critical actions (prevents stale cache exploits)
+async function refreshRoles() {
+    diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
+    return diplomaticRoles;
+}
+
 // ==================== HEADER PANEL ====================
 
 async function renderDiploHeader() {
@@ -540,6 +546,13 @@ async function renderAgreementsTab() {
 }
 
 async function withdrawAgreement(agreementId) {
+    // Authorization: must be FM or HoG
+    await refreshRoles();
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('Only the Foreign Minister or Head of Government can withdraw agreements.');
+        return;
+    }
+
     // Fetch the agreement
     const { data: ag, error: fetchErr } = await _supabase
         .from('diplomatic_proposals')
@@ -920,6 +933,13 @@ function renderPipelineTracker(proposal) {
 // ==================== FM ACTION FUNCTIONS ====================
 
 async function fmApprove(proposalId) {
+    // Authorization: must be FM or HoG
+    await refreshRoles();
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('Only the Foreign Minister or Head of Government can approve proposals.');
+        return;
+    }
+
     const { data: proposal, error: fetchErr } = await _supabase
         .from('diplomatic_proposals')
         .select('*')
@@ -927,6 +947,12 @@ async function fmApprove(proposalId) {
         .single();
 
     if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
+
+    // Status check: must be in fm_review
+    if (proposal.status !== 'fm_review') {
+        alert('This proposal is not currently in FM review status.');
+        return;
+    }
 
     const pd = proposal.proposal_data || {};
     const classification = pd.classification || 'MINOR';
@@ -971,6 +997,13 @@ async function fmApprove(proposalId) {
 }
 
 async function fmEscalate(proposalId) {
+    // Authorization: must be FM or HoG
+    await refreshRoles();
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('Only the Foreign Minister or Head of Government can escalate proposals.');
+        return;
+    }
+
     const { data: proposal, error: fetchErr } = await _supabase
         .from('diplomatic_proposals')
         .select('*')
@@ -978,6 +1011,12 @@ async function fmEscalate(proposalId) {
         .single();
 
     if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
+
+    // Status check: must be in fm_review
+    if (proposal.status !== 'fm_review') {
+        alert('This proposal is not currently in FM review status.');
+        return;
+    }
 
     const pd = proposal.proposal_data || {};
 
@@ -1036,6 +1075,13 @@ async function fmEscalate(proposalId) {
 }
 
 async function fmReject(proposalId) {
+    // Authorization: must be FM or HoG
+    await refreshRoles();
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('Only the Foreign Minister or Head of Government can reject proposals.');
+        return;
+    }
+
     const { data: proposal, error: fetchErr } = await _supabase
         .from('diplomatic_proposals')
         .select('*')
@@ -1043,6 +1089,12 @@ async function fmReject(proposalId) {
         .single();
 
     if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
+
+    // Status check: must be in fm_review or ratification_failed
+    if (!['fm_review', 'ratification_failed'].includes(proposal.status)) {
+        alert('This proposal cannot be rejected at this stage.');
+        return;
+    }
 
     const pd = proposal.proposal_data || {};
     const action = proposal.status === 'ratification_failed' ? 'abandon' : 'reject';
@@ -1669,6 +1721,13 @@ async function fetchPendingAmbassador(myNationId, targetNationId) {
 // ==================== RECALL AMBASSADOR ====================
 
 async function recallAmbassador(ambassadorId, nationName) {
+    // Authorization: must be FM or HoG
+    await refreshRoles();
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('Only the Foreign Minister or Head of Government can recall ambassadors.');
+        return;
+    }
+
     if (!confirm(
         `Recall your Ambassador from ${nationName}?\n\n` +
         `The ambassador's party will lose 1-3 Approval.`
@@ -1716,6 +1775,13 @@ async function recallAmbassador(ambassadorId, nationName) {
 }
 
 async function cancelPendingAmbassador(ambassadorId, nationName) {
+    // Authorization: must be FM or HoG
+    await refreshRoles();
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('Only the Foreign Minister or Head of Government can cancel ambassador nominations.');
+        return;
+    }
+
     if (!confirm(`Cancel this ambassador nomination to ${nationName}?\n\nThis cannot be undone.`)) return;
 
     try {
@@ -1845,6 +1911,13 @@ async function sendDiploMessage(targetNationId, targetNationName) {
     if (!input) return;
     const text = input.value.trim();
     if (!text) return;
+
+    // Authorization: must have an active ambassador to the target nation, or be FM/HoG
+    const isAmbToTarget = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === targetNationId);
+    if (!isAmbToTarget && !diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('You must have an active ambassador to send diplomatic messages.');
+        return;
+    }
 
     try {
         // Get current tick
@@ -2832,6 +2905,15 @@ async function acceptProposal(proposalId) {
 
     if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
 
+    // Authorization: caller must be target nation's ambassador to proposer, or FM/HoG
+    await refreshRoles();
+    const isTargetNation = proposal.target_nation_id === currentNation.id;
+    const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
+    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG)) {
+        alert('You are not authorized to accept this proposal.');
+        return;
+    }
+
     const pd = proposal.proposal_data || {};
     const articles = pd.articles || [];
     const struckIndices = new Set(pd.struck_articles || []);
@@ -2919,6 +3001,24 @@ async function acceptProposal(proposalId) {
 }
 
 async function rejectProposal(proposalId) {
+    // Fetch proposal for authorization check
+    const { data: proposal } = await _supabase
+        .from('diplomatic_proposals')
+        .select('proposing_nation_id, target_nation_id')
+        .eq('id', proposalId)
+        .single();
+
+    if (!proposal) { alert('Could not load proposal.'); return; }
+
+    // Authorization: caller must be target nation's ambassador to proposer, or FM/HoG
+    await refreshRoles();
+    const isTargetNation = proposal.target_nation_id === currentNation.id;
+    const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
+    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG)) {
+        alert('You are not authorized to reject this proposal.');
+        return;
+    }
+
     if (!confirm('Reject this diplomatic initiative?')) return;
 
     const { error } = await _supabase
@@ -2942,11 +3042,20 @@ async function strikeArticles(proposalId) {
     // Fetch proposal to get current data
     const { data: proposal } = await _supabase
         .from('diplomatic_proposals')
-        .select('proposal_data')
+        .select('*')
         .eq('id', proposalId)
         .single();
 
     if (!proposal) { alert('Could not load proposal.'); return; }
+
+    // Authorization: caller must be target nation's ambassador to proposer, or FM/HoG
+    await refreshRoles();
+    const isTargetNation = proposal.target_nation_id === currentNation.id;
+    const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
+    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG)) {
+        alert('You are not authorized to revise this proposal.');
+        return;
+    }
 
     const pd = proposal.proposal_data || {};
     const totalArticles = (pd.articles || []).length;
