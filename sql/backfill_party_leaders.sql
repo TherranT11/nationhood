@@ -24,3 +24,9 @@ UPDATE factions
 SET created_at = now()
 WHERE faction_type = 'party'
   AND created_at IS NULL;
+
+-- 3. Backfill founded_tick from the shard's current tick for any party missing it
+UPDATE factions
+SET founded_tick = (SELECT current_tick FROM shard WHERE name = 'Alpha Shard')
+WHERE faction_type = 'party'
+  AND founded_tick IS NULL;

@@ -23,6 +23,14 @@ import { getPartyIconSVG } from './js/party-icons.js';
 
 let currentFaction = null;
 let currentNation = null;
+let currentShard = null;
+
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function tickToDate(tick) {
+    if (tick == null) return '—';
+    const y = 2000 + Math.floor(tick / 12);
+    return `${MONTHS[tick % 12]}, ${y}`;
+}
 
 function getPartyRole(factionId, seats, coalition) {
     if (!seats || seats === 0) return 'No Seats';
@@ -38,12 +46,6 @@ function getRoleBadgeClass(role) {
     if (role.includes('Governing')) return 'role-badge-gov';
     if (role === 'Opposition') return 'role-badge-opp';
     return 'role-badge-none';
-}
-
-function formatFounded(dateStr) {
-    if (!dateStr) return '—';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
 function buildIdeologyTags(f) {
@@ -83,8 +85,8 @@ async function renderParties() {
         .eq('nation_id', n.id)
         .eq('faction_type', 'party');
 
-    const allPartySeats = await loadSeats(_supabase, n.id, false, allParties || [], f.id);
-    const mySeats = allPartySeats[f.id] || 0;
+    const seatData = await loadSeats(_supabase, n.id, false, allParties || [], f.id);
+    const mySeats = seatData.currentSeats || 0;
 
     const coalition = await fetchActiveCoalition(_supabase, n.id);
     const role = getPartyRole(f.id, mySeats, coalition);
@@ -93,7 +95,7 @@ async function renderParties() {
     const partyColor = f.party_color || '#ffcc00';
     const logoSvg = getPartyIconSVG(f.party_logo, 44, partyColor);
     const treasury = formatCurrency(f.party_funds || 0);
-    const founded = formatFounded(f.created_at);
+    const founded = tickToDate(f.founded_tick);
     const leaderName = f.leader_first_name && f.leader_last_name
         ? f.leader_first_name + ' ' + f.leader_last_name + (f.leader_age ? ', ' + f.leader_age : '')
         : '—';
@@ -143,9 +145,10 @@ async function renderParties() {
 }
 
 initPage('parties', async (state) => {
-    const { nation, faction } = state;
+    const { nation, faction, shard } = state;
     currentFaction = faction;
     currentNation = nation;
+    currentShard = shard;
     initGameConfigForNation(nation);
     await renderParties();
 });
