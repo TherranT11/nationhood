@@ -80,6 +80,7 @@ let currentFaction = null;
 let currentNation  = null;
 let currentCoalition = null;
 let diplomaticRoles = null;
+let shardTick = 0;
 
 // Track the currently-selected target nation for initiative form
 let selectedTargetNation = null;
@@ -119,6 +120,10 @@ const INITIATIVE_TYPES = {
 initPage('diplomacy', async (state) => {
     currentFaction = state.faction;
     currentNation  = state.nation;
+
+    // Load shard tick for term calculations
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    shardTick = shard?.current_tick || 0;
 
     // Load coalition for role detection
     if (currentNation) {
@@ -174,7 +179,7 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
     try {
         const { data: ambassadors } = await _supabase
             .from('ambassadors')
-            .select('target_nation_id, nations!ambassadors_target_nation_id_fkey(name)')
+            .select('target_nation_id, appointed_at_tick, term_length, ambassador_first_name, ambassador_last_name, nations!ambassadors_target_nation_id_fkey(name)')
             .eq('faction_id', faction.id)
             .eq('nation_id', nation.id)
             .eq('is_active', true)
@@ -183,7 +188,11 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
         if (ambassadors && ambassadors.length > 0) {
             roles.ambassadorTo = ambassadors.map(a => ({
                 target_nation_id: a.target_nation_id,
-                target_nation_name: a.nations?.name || 'Unknown'
+                target_nation_name: a.nations?.name || 'Unknown',
+                appointed_at_tick: a.appointed_at_tick,
+                term_length: a.term_length || 36,
+                ambassador_first_name: a.ambassador_first_name,
+                ambassador_last_name: a.ambassador_last_name
             }));
         }
     } catch (e) {
@@ -383,6 +392,47 @@ function renderRelationSection(relType, relClass, embassyStatus, ambassador) {
         ? (ambassador.ambassador_first_name || '') + ' ' + (ambassador.ambassador_last_name || '')
         : null;
 
+    // Ambassador term info
+    let termHTML = '';
+    if (ambassador && ambassador.appointed_at_tick != null) {
+        const termLength = ambassador.term_length || 36;
+        const ticksServed = shardTick - ambassador.appointed_at_tick;
+        const ticksRemaining = Math.max(0, termLength - ticksServed);
+        const expiryTick = ambassador.appointed_at_tick + termLength;
+        const remainingYears = Math.floor(ticksRemaining / 12);
+        const remainingMonths = ticksRemaining % 12;
+        const remainingStr = remainingYears > 0
+            ? remainingYears + 'y ' + remainingMonths + 'mo'
+            : remainingMonths + ' month' + (remainingMonths !== 1 ? 's' : '');
+
+        termHTML = `
+            <div class="info-row">
+                <span class="info-label">Appointed</span>
+                <span class="info-value" style="font-size:0.78rem;">${tickToDate(ambassador.appointed_at_tick)}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Term Expires</span>
+                <span class="info-value" style="font-size:0.78rem;">${tickToDate(expiryTick)}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Remaining</span>
+                <span class="info-value" style="font-size:0.78rem;color:${ticksRemaining <= 3 ? '#f44' : ticksRemaining <= 6 ? '#ff9800' : '#4CAF50'};">${remainingStr}</span>
+            </div>`;
+    }
+
+    // Retirement warning
+    let warningHTML = '';
+    if (ambassador && ambassador.appointed_at_tick != null) {
+        const termLength = ambassador.term_length || 36;
+        const ticksRemaining = Math.max(0, termLength - (shardTick - ambassador.appointed_at_tick));
+        if (ticksRemaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && ticksRemaining > 0) {
+            warningHTML = `
+                <div style="background:#3a2a00;border:1px solid #ff9800;border-radius:6px;padding:8px 10px;margin-top:8px;font-size:0.78rem;color:#ff9800;">
+                    &#9888; Ambassador ${ambName ? ambName.trim() : ''} will retire in ${ticksRemaining} tick${ticksRemaining !== 1 ? 's' : ''}. Conclude any active negotiations.
+                </div>`;
+        }
+    }
+
     return `
         <div class="diplo-section-title">Diplomatic Relations</div>
         <div class="info-block">
@@ -398,7 +448,9 @@ function renderRelationSection(relType, relClass, embassyStatus, ambassador) {
                 <span class="info-label">Ambassador</span>
                 <span class="info-value" style="font-size:0.85rem;">${ambName ? ambName.trim() : '<span style="color:#666;">None assigned</span>'}</span>
             </div>
+            ${termHTML}
         </div>
+        ${warningHTML}
     `;
 }
 
@@ -498,12 +550,26 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
         const hasTargetAmb = theirAmbassador && theirAmbassador.status === 'active';
         const initiativeDisabled = !hasTargetAmb ? 'disabled style="opacity:0.6;"' : '';
         const initiativeHint = !hasTargetAmb ? '<p class="action-hint">Target nation has no ambassador to negotiate with.</p>' : '';
+
+        // Retirement warning for the player's own ambassador
+        let ambWarningHTML = '';
+        const myAmb = roles.ambassadorTo.find(a => a.target_nation_id === targetNation.id);
+        if (myAmb && myAmb.appointed_at_tick != null) {
+            const tl = myAmb.term_length || 36;
+            const remaining = Math.max(0, tl - (shardTick - myAmb.appointed_at_tick));
+            if (remaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && remaining > 0) {
+                const ambFullName = ((myAmb.ambassador_first_name || '') + ' ' + (myAmb.ambassador_last_name || '')).trim();
+                ambWarningHTML = `<div style="background:#3a2a00;border:1px solid #ff9800;border-radius:6px;padding:8px 10px;margin-top:8px;font-size:0.78rem;color:#ff9800;">&#9888; Ambassador ${ambFullName} will retire in ${remaining} tick${remaining !== 1 ? 's' : ''}. Conclude any active negotiations.</div>`;
+            }
+        }
+
         actions += `
             <div class="action-card" style="margin-bottom:10px;">
                 <div class="action-header">
                     <span class="action-title">Ambassador Actions</span>
                 </div>
                 <p class="action-desc">As Ambassador to ${targetNation.name}, you can negotiate directly.</p>
+                ${ambWarningHTML}
                 <button class="action-btn" ${initiativeDisabled} onclick="openInitiativeForm()">Diplomatic Initiative</button>
                 ${initiativeHint}
                 <button class="action-btn" style="margin-top:8px;" disabled>Gather Intel (Coming Soon)</button>
@@ -592,6 +658,13 @@ async function fetchAmbassador(myNationId, targetNationId) {
 }
 
 // ==================== HELPERS ====================
+
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function tickToDate(tick) {
+    if (tick == null) return '—';
+    const y = 2000 + Math.floor(tick / 12);
+    return MONTHS[tick % 12] + ' ' + y;
+}
 
 function getStatColor(value) {
     if (value == null) return '#888';
