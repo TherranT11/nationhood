@@ -34,16 +34,29 @@ function getPartyRole(factionId, seats, coalition) {
     return 'Opposition';
 }
 
-function getRoleCSSClass(role) {
-    if (role.includes('Governing')) return 'role-gov';
-    if (role === 'Opposition') return 'role-opp';
-    return 'role-none';
+function getRoleBadgeClass(role) {
+    if (role.includes('Governing')) return 'role-badge-gov';
+    if (role === 'Opposition') return 'role-badge-opp';
+    return 'role-badge-none';
 }
 
 function formatFounded(dateStr) {
     if (!dateStr) return '—';
     const d = new Date(dateStr);
     return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function buildIdeologyTags(f) {
+    let html = '';
+    if (f.ideology_value_1) {
+        const cls = 'tag-' + f.ideology_value_1.toLowerCase();
+        html += `<span class="ideology-tag ${cls}">${f.ideology_value_1}</span>`;
+    }
+    if (f.ideology_value_2) {
+        const cls = 'tag-' + f.ideology_value_2.toLowerCase();
+        html += `<span class="ideology-tag ${cls}">${f.ideology_value_2}</span>`;
+    }
+    return html;
 }
 
 async function renderParties() {
@@ -56,6 +69,13 @@ async function renderParties() {
         return;
     }
 
+    const isAutocracy = isGovernmentAutocracy(n);
+
+    if (isAutocracy) {
+        el.innerHTML = '<p style="color:var(--text-muted);text-align:center;margin-top:40px;">Autocracy view coming soon.</p>';
+        return;
+    }
+
     // Fetch all parties for seat data
     const { data: allParties } = await _supabase
         .from('factions')
@@ -63,44 +83,53 @@ async function renderParties() {
         .eq('nation_id', n.id)
         .eq('faction_type', 'party');
 
-    const isAutocracy = isGovernmentAutocracy(n);
-    const allPartySeats = await loadSeats(_supabase, n.id, isAutocracy, allParties || [], f.id);
+    const allPartySeats = await loadSeats(_supabase, n.id, false, allParties || [], f.id);
     const mySeats = allPartySeats[f.id] || 0;
 
     const coalition = await fetchActiveCoalition(_supabase, n.id);
     const role = getPartyRole(f.id, mySeats, coalition);
-    const roleClass = getRoleCSSClass(role);
+    const badgeClass = getRoleBadgeClass(role);
 
-    const logoSvg = getPartyIconSVG(f.party_logo, 38, f.party_color || '#ffcc00');
     const partyColor = f.party_color || '#ffcc00';
+    const logoSvg = getPartyIconSVG(f.party_logo, 44, partyColor);
     const treasury = formatCurrency(f.party_funds || 0);
     const founded = formatFounded(f.created_at);
+    const leaderName = f.leader_first_name && f.leader_last_name
+        ? f.leader_first_name + ' ' + f.leader_last_name + (f.leader_age ? ', ' + f.leader_age : '')
+        : '—';
+    const ideologyTags = buildIdeologyTags(f);
+    const abbr = f.abbreviation ? `<span class="my-party-abbr">(${f.abbreviation})</span>` : '';
 
     el.innerHTML = `
-        <div class="my-party-card">
-            <div class="my-party-header">
+        <div class="my-party-card" style="border-left-color:${partyColor}">
+            <div class="my-party-top-row">
                 <div class="my-party-logo" style="color:${partyColor}">
                     ${logoSvg}
                 </div>
-                <div class="my-party-name" style="color:${partyColor}">
-                    ${f.faction_name}
+                <div class="my-party-identity">
+                    <div class="my-party-name-row">
+                        <span class="my-party-name" style="color:${partyColor}">${f.faction_name}</span>
+                        ${abbr}
+                    </div>
+                    <div class="my-party-role-row">
+                        <span class="role-badge ${badgeClass}">${role}</span>
+                        ${ideologyTags}
+                    </div>
                 </div>
             </div>
-            <div class="my-party-details">
-                <div class="my-party-detail">
-                    <span class="detail-label">Party Leader:</span>
-                    <span class="detail-value">${f.leader_first_name && f.leader_last_name ? f.leader_first_name + ' ' + f.leader_last_name + (f.leader_age ? ', ' + f.leader_age : '') : '—'}</span>
+
+            <div class="my-party-stats">
+                <div class="my-party-stat">
+                    <div class="stat-label">Party Leader</div>
+                    <div class="stat-val">${leaderName}</div>
                 </div>
-                <div class="my-party-detail">
-                    <span class="detail-label">Founded:</span>
-                    <span class="detail-value">${founded}</span>
-                    <span class="detail-sep">|</span>
-                    <span class="detail-label">Treasury:</span>
-                    <span class="detail-value">${treasury}</span>
+                <div class="my-party-stat">
+                    <div class="stat-label">Founded</div>
+                    <div class="stat-val">${founded}</div>
                 </div>
-                <div class="my-party-detail">
-                    <span class="detail-label">Role:</span>
-                    <span class="detail-value ${roleClass}">${role}</span>
+                <div class="my-party-stat">
+                    <div class="stat-label">Treasury</div>
+                    <div class="stat-val stat-money">${treasury}</div>
                 </div>
             </div>
         </div>
