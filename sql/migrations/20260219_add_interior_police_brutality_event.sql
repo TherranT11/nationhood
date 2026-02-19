@@ -1,5 +1,5 @@
 -- Migration: Add "Police Brutality Scandal" ministry event template
--- Ministry: Interior | Gov Type: Democracy | Priority: Critical
+-- Ministry: Interior | Gov Type: Democracy | Priority: Urgent
 -- Event Key: interior_dem_police_brutality
 
 INSERT INTO ministry_event_templates (
@@ -21,7 +21,7 @@ INSERT INTO ministry_event_templates (
     'Video of Police Beating Goes Viral — Internal Review Requested',
     'Office of Internal Oversight',
     'interior',
-    'critical',
+    'urgent',
     2,
     8,
     true,
