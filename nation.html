@@ -75,9 +75,9 @@ async function loadPreviousTickData(nationId) {
     const cached = qCache(cacheKey);
     if (cached) { previousTickData = cached; return; }
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    if (!shard) return;
+    if (!shard) { console.warn('[loadPreviousTickData] Shard not found — stat deltas unavailable'); return; }
     const previousTick = shard.current_tick - 1;
-    if (previousTick < 0) return;
+    if (previousTick < 0) { console.warn('[loadPreviousTickData] current_tick is', shard.current_tick, '— no previous tick yet'); return; }
 
     // Use .limit(1) instead of .maybeSingle() — maybeSingle sends an Accept header
     // that causes PostgREST to return HTTP 406 when 0 rows match, which logs a
@@ -106,6 +106,14 @@ async function loadPreviousTickData(nationId) {
     if (fallback && fallback.length > 0) {
         previousTickData = fallback[0];
         qCacheSet(cacheKey, fallback[0], 5 * 60 * 1000);
+    }
+    if (!previousTickData) {
+        console.warn('[loadPreviousTickData] No history rows found for nation', nationId,
+            'at tick', previousTick, 'or earlier.',
+            'Stat change indicators (▲/▼) will not display.',
+            'Ensure: (1) nations_history table has UNIQUE(nation_id, tick) constraint,',
+            '(2) RLS SELECT policy exists on nations_history,',
+            '(3) advance-tick edge function has run at least 2 ticks.');
     }
 }
 

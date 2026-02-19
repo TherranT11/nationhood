@@ -101,8 +101,7 @@ export async function accumulateAP(supabase, factionId, gain, maxAp = GAME_CONFI
     if (data === -1) {
         return { success: false, error: 'Faction not found' };
     }
-    // Should never reach here, but safety net
-    return { success: false, error: 'Max retries exhausted' };
+    return { success: true, newAp: data };
 }
 
 /**

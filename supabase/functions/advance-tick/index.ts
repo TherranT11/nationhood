@@ -5033,27 +5033,6 @@ async function advanceTick(supabase) {
     }
     const newDate = advanceMonth(shard.current_date || 'January, 2000');
 
-    await supabase.from('shard').update({
-        current_tick: newTick,
-        next_tick_at: nextTickAt.toISOString(),
-        current_date: newDate
-    }).eq('name', 'Alpha Shard');
-
-    // Clear expired coup cooldowns
-    await supabase.from('factions')
-        .update({ action_lockout_until_tick: null })
-        .not('action_lockout_until_tick', 'is', null)
-        .lte('action_lockout_until_tick', newTick);
-
-    // 1b. Startup scan: report any invalid stat keys in effect records (first tick only or periodically)
-    if (newTick % 10 === 1) { // Run every 10 ticks to avoid perf cost every tick
-        try {
-            await auditStatKeys(supabase);
-        } catch (auditErr) {
-            console.error('[advanceTick] auditStatKeys failed (non-fatal):', auditErr);
-        }
-    }
-
     // 2. Load all nations
     const { data: nations } = await supabase.from('nations').select('*');
     const nationList = nations || [];
@@ -5246,12 +5225,10 @@ async function advanceTick(supabase) {
             await autoResolveStaleShakeups(supabase, nation.id, newTick);
         }
 
-        // 10. Re-fetch nation with post-effect values, then snapshot to history
-        //     Also update in-memory nation so downstream steps (crises, revolution, events)
-        //     see post-processStatEffects values for trigger checks.
+        // 10. Re-fetch nation with post-effect values so downstream steps
+        //     (crises, revolution, events) see current values for trigger checks.
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (freshNation) Object.assign(nation, freshNation);
-        await snapshotNationHistory(supabase, freshNation || nation, newTick);
 
         // 11b. Process crises (persistent negative events that apply effects every tick)
         const crisisResults = await processCrises(supabase, nation, newTick);
@@ -5284,6 +5261,12 @@ async function advanceTick(supabase) {
             summary.ambassadorRetirements = summary.ambassadorRetirements || [];
             summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
         }
+
+        // 15. Snapshot to history AFTER all stat-modifying steps (stat effects,
+        //     crises, events, ministry inbox) so the delta the UI computes
+        //     reflects the full tick's changes, not a mid-tick partial state.
+        const { data: finalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+        await snapshotNationHistory(supabase, finalNation || nation, newTick);
       } catch (nationErr) {
         console.error(`[advanceTick] FAILED processing nation ${nation.id} (${nation.name}):`, nationErr);
         summary.errors = summary.errors || [];
