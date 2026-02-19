@@ -31,7 +31,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatNumber, scaleRawToDollars } from './js/common.js';
-import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, INVERTED_STATS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER } from './js/game-common.js';
+import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, INVERTED_STATS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, normalizeNationStatKey } from './js/game-common.js';
 /**
  * Nation Page - Comprehensive Stats Display
  * With Rankings and Trend Arrows
@@ -41,6 +41,7 @@ import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCan
 let allNations = [];
 let totalNations = 0;
 let previousTickData = null;
+var statEffectsByKey = {};
 
 // Initialize page
 initPage('nation', async (state) => {
@@ -58,6 +59,7 @@ initPage('nation', async (state) => {
 
     await loadAllNations();
     await loadPreviousTickData(nation.id);
+    await loadStatEffectSources(nation.id, nation);
     await renderNationPage(nation);
 });
 
@@ -106,6 +108,161 @@ async function loadPreviousTickData(nationId) {
         qCacheSet(cacheKey, fallback[0], 5 * 60 * 1000);
     }
 }
+
+// ===== Affected-By: Data Fetching =====
+
+async function loadStatEffectSources(nationId, nation) {
+    var cacheKey = 'stat_effects_' + nationId;
+    var cached = qCache(cacheKey);
+    if (cached) { statEffectsByKey = cached; return; }
+
+    var results = await Promise.all([
+        _supabase.from('active_laws')
+            .select('is_reversal, policies(policy_name, stat_effects)')
+            .eq('nation_id', nationId),
+        _supabase.from('active_crises')
+            .select('crisis_id, crisis_templates(name, crisis_effects(stat_key, change_per_tick, target))')
+            .eq('nation_id', nationId),
+        _supabase.from('ministry_action_log')
+            .select('action_key, stat_effects')
+            .eq('nation_id', nationId)
+            .eq('processed', false),
+        _supabase.from('diplomatic_action_log')
+            .select('action_type, stat_effects')
+            .eq('nation_id', nationId)
+            .eq('processed', false),
+        loadLeaderTraitEffects(nationId, nation)
+    ]);
+
+    var map = {};
+    parsePolicyEffects(results[0].data || [], map);
+    parseCrisisEffects(results[1].data || [], map);
+    parseMinistryEffects(results[2].data || [], map);
+    parseDiplomaticEffects(results[3].data || [], map);
+    parseLeaderTraitEffects(results[4], map);
+
+    statEffectsByKey = map;
+    qCacheSet(cacheKey, map, 2 * 60 * 1000);
+}
+
+async function loadLeaderTraitEffects(nationId, nation) {
+    try {
+        if (isPresidentialRepublic(nation)) {
+            var res = await _supabase.from('presidents')
+                .select('trait, first_name, last_name')
+                .eq('nation_id', nationId)
+                .eq('is_active', true)
+                .limit(1);
+            if (!res.data || res.data.length === 0 || !res.data[0].trait) return null;
+            var president = res.data[0];
+            var traitRes = await _supabase.from('leader_traits')
+                .select('trait_key, effects')
+                .eq('trait_key', president.trait)
+                .limit(1);
+            if (!traitRes.data || traitRes.data.length === 0) return null;
+            return { name: president.first_name + ' ' + president.last_name, traitKey: traitRes.data[0].trait_key, effects: traitRes.data[0].effects };
+        } else {
+            var res = await _supabase.from('head_of_government')
+                .select('first_name, last_name, trait_key, leader_traits(trait_key, effects)')
+                .eq('nation_id', nationId)
+                .eq('active', true)
+                .limit(1);
+            if (!res.data || res.data.length === 0) return null;
+            var hog = res.data[0];
+            if (!hog.leader_traits || !hog.leader_traits.effects) return null;
+            return { name: hog.first_name + ' ' + hog.last_name, traitKey: hog.leader_traits.trait_key, effects: hog.leader_traits.effects };
+        }
+    } catch (e) {
+        console.warn('[loadLeaderTraitEffects] Error:', e);
+        return null;
+    }
+}
+
+function addEffectToMap(map, statKey, name, direction, type) {
+    var key = normalizeNationStatKey(statKey);
+    if (!key) return;
+    if (!map[key]) map[key] = [];
+    // Deduplicate
+    for (var i = 0; i < map[key].length; i++) {
+        if (map[key][i].name === name && map[key][i].direction === direction && map[key][i].type === type) return;
+    }
+    map[key].push({ name: name, direction: direction, type: type });
+}
+
+function parsePolicyEffects(laws, map) {
+    for (var i = 0; i < laws.length; i++) {
+        var law = laws[i];
+        if (law.is_reversal) continue;
+        var policy = law.policies;
+        if (!policy) continue;
+        var effects = policy.stat_effects;
+        if (!effects || !Array.isArray(effects)) continue;
+        for (var j = 0; j < effects.length; j++) {
+            var eff = effects[j];
+            if (!eff.stat_key) continue;
+            var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
+            addEffectToMap(map, eff.stat_key, policy.policy_name, dir, 'Policy');
+        }
+    }
+}
+
+function parseCrisisEffects(crises, map) {
+    for (var i = 0; i < crises.length; i++) {
+        var c = crises[i];
+        var t = c.crisis_templates;
+        if (!t) continue;
+        var effects = t.crisis_effects || [];
+        for (var j = 0; j < effects.length; j++) {
+            var eff = effects[j];
+            if (eff.target !== 'nation' || !eff.stat_key) continue;
+            var dir = eff.change_per_tick > 0 ? 'up' : 'down';
+            addEffectToMap(map, eff.stat_key, t.name, dir, 'Crisis');
+        }
+    }
+}
+
+function parseMinistryEffects(actions, map) {
+    for (var i = 0; i < actions.length; i++) {
+        var action = actions[i];
+        var effects = action.stat_effects;
+        if (!effects || !Array.isArray(effects)) continue;
+        for (var j = 0; j < effects.length; j++) {
+            var eff = effects[j];
+            if (eff.target && eff.target !== 'nation') continue;
+            if (!eff.stat_key) continue;
+            var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
+            addEffectToMap(map, eff.stat_key, prettyStatName(action.action_key), dir, 'Ministry Action');
+        }
+    }
+}
+
+function parseDiplomaticEffects(actions, map) {
+    for (var i = 0; i < actions.length; i++) {
+        var action = actions[i];
+        var effects = action.stat_effects;
+        if (!effects || !Array.isArray(effects)) continue;
+        for (var j = 0; j < effects.length; j++) {
+            var eff = effects[j];
+            if (!eff.stat_key) continue;
+            var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
+            addEffectToMap(map, eff.stat_key, prettyStatName(action.action_type), dir, 'Diplomatic Action');
+        }
+    }
+}
+
+function parseLeaderTraitEffects(traitData, map) {
+    if (!traitData || !traitData.effects || !traitData.effects.nation_stat_per_tick) return;
+    var perTick = traitData.effects.nation_stat_per_tick;
+    var traitLabel = prettyStatName(traitData.traitKey);
+    for (var rawStat in perTick) {
+        if (!perTick.hasOwnProperty(rawStat)) continue;
+        var delta = perTick[rawStat];
+        if (delta === 0) continue;
+        addEffectToMap(map, rawStat, traitLabel, delta > 0 ? 'up' : 'down', 'Leader Trait');
+    }
+}
+
+// ===== End Affected-By Data Fetching =====
 
 function calculateRanking(statKey, value, inverted = false) {
     if (value === null || value === undefined) return null;
@@ -438,7 +595,64 @@ async function renderNationPage(nation) {
     h += '</div>'; // end stats-section
 
     document.getElementById('content-area').innerHTML = h;
+    attachStatBoxClickHandlers();
 }
+
+// ===== Affected-By: Click Handlers =====
+
+function attachStatBoxClickHandlers() {
+    var statBoxes = document.querySelectorAll('.stat-box[data-stat-key]');
+    for (var i = 0; i < statBoxes.length; i++) {
+        statBoxes[i].addEventListener('click', handleStatBoxClick);
+    }
+}
+
+function handleStatBoxClick(e) {
+    var box = this;
+    var statKey = box.getAttribute('data-stat-key');
+    var panel = document.getElementById('abp-' + statKey);
+    if (!panel) return;
+
+    var isOpen = box.classList.contains('stat-box-expanded');
+
+    // Accordion: close all open panels
+    var allExpanded = document.querySelectorAll('.stat-box-expanded');
+    for (var i = 0; i < allExpanded.length; i++) {
+        allExpanded[i].classList.remove('stat-box-expanded');
+        var otherPanel = allExpanded[i].querySelector('.affected-by-panel');
+        if (otherPanel) otherPanel.innerHTML = '';
+    }
+
+    // If was already open, just close (done above)
+    if (isOpen) return;
+
+    // Populate and open
+    box.classList.add('stat-box-expanded');
+    panel.innerHTML = buildAffectedByContent(statKey);
+}
+
+function buildAffectedByContent(statKey) {
+    var effects = statEffectsByKey[statKey] || [];
+    if (effects.length === 0) {
+        return '<div class="affected-by-empty">No active effects</div>';
+    }
+
+    var h = '<div class="affected-by-title">Affected By</div>';
+    for (var i = 0; i < effects.length; i++) {
+        var eff = effects[i];
+        var arrow = eff.direction === 'up' ? '&#9650;' : '&#9660;';
+        var arrowClass = eff.direction === 'up' ? 'ab-arrow-up' : 'ab-arrow-down';
+        var typeClass = 'ab-type-' + eff.type.toLowerCase().replace(/ /g, '-');
+        h += '<div class="affected-by-row">';
+        h += '<span class="ab-name">' + eff.name + '</span>';
+        h += '<span class="ab-arrow ' + arrowClass + '">' + arrow + '</span>';
+        h += '<span class="ab-type ' + typeClass + '">' + eff.type + '</span>';
+        h += '</div>';
+    }
+    return h;
+}
+
+// ===== End Affected-By Click Handlers =====
 
 /**
  * Helper: wrap stat boxes in a sector block
@@ -478,13 +692,17 @@ function renderStatBox(name, statKey, value, description, format, inverted, disp
     var rank = calculateRanking(statKey, value, inverted);
     var rankHTML = rank ? '<div class="stat-box-footer"><span class="ranking-badge' + (rank === 1 ? ' first' : '') + '">#' + rank + ' of ' + totalNations + '</span></div>' : '';
 
-    return '<div class="stat-box ' + colorClass + '">' +
+    var effectCount = (statEffectsByKey[statKey] || []).length;
+    var effectHint = effectCount > 0 ? '<span class="stat-effect-dot" title="' + effectCount + ' active effect' + (effectCount !== 1 ? 's' : '') + '"></span>' : '';
+
+    return '<div class="stat-box ' + colorClass + '" data-stat-key="' + statKey + '">' +
         '<div class="stat-box-header">' +
-            '<span class="stat-box-name">' + name + '</span>' +
+            '<span class="stat-box-name">' + effectHint + name + '</span>' +
             '<span class="stat-box-value ' + colorClass + '">' + formattedValue + ' ' + trendArrow + '</span>' +
         '</div>' +
         '<div class="stat-box-desc">' + description + '</div>' +
         rankHTML +
+        '<div class="affected-by-panel" id="abp-' + statKey + '"></div>' +
     '</div>';
 }
 
