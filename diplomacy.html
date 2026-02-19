@@ -72,7 +72,7 @@
             <div id="tab-relations" class="diplo-tab-panel active"></div>
             <div id="tab-agreements" class="diplo-tab-panel" style="display:none;"></div>
             <div id="tab-initiative" class="diplo-tab-panel" style="display:none;"></div>
-            <div id="tab-inbox" class="diplo-tab-panel" style="display:none;"><p class="diplo-tab-placeholder">Coming in Phase 2...</p></div>
+            <div id="tab-inbox" class="diplo-tab-panel" style="display:none;"></div>
         </div>
     </div>
 </div>
@@ -313,6 +313,7 @@ function showDiploTab(tabName) {
     // Lazy-load tab content
     if (tabName === 'agreements') renderAgreementsTab();
     if (tabName === 'initiative') renderInitiativeWizard();
+    if (tabName === 'inbox') renderInboxTab();
 }
 
 // ==================== RELATIONS TAB ====================
@@ -605,6 +606,528 @@ async function withdrawAgreement(agreementId) {
     // Refresh
     await renderAgreementsTab();
     await renderDiploHeader();
+}
+
+// ==================== INBOX TAB ====================
+
+let inboxFilter = 'all'; // all, action, pending, fm_review, ratification
+
+async function renderInboxTab(filter) {
+    const panel = document.getElementById('tab-inbox');
+    if (!panel) return;
+
+    if (filter) inboxFilter = filter;
+
+    panel.innerHTML = '<p style="color:#888;font-style:italic;text-align:center;padding:20px;">Loading inbox...</p>';
+
+    if (!currentNation) {
+        panel.innerHTML = '<p class="diplo-tab-placeholder">No nation data available.</p>';
+        return;
+    }
+
+    try {
+        // Fetch all non-active, non-rejected proposals involving our nation
+        const { data: proposals } = await _supabase
+            .from('diplomatic_proposals')
+            .select('*')
+            .in('status', ['proposed', 'revised', 'fm_review', 'ratification', 'ratification_failed'])
+            .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id)
+            .order('proposed_at_tick', { ascending: false });
+
+        const allProposals = proposals || [];
+
+        // Count by category for filter badges
+        const counts = { all: allProposals.length, action: 0, pending: 0, fm_review: 0, ratification: 0 };
+        allProposals.forEach(p => {
+            const isIncoming = p.target_nation_id === currentNation.id;
+            const isRevised = p.status === 'revised';
+            const revisedByThem = isRevised && p.target_nation_id === currentNation.id;
+            const needsOurAction = (p.status === 'proposed' && isIncoming) || (isRevised && !revisedByThem);
+            const isFmReview = p.status === 'fm_review';
+            const isRatification = p.status === 'ratification' || p.status === 'ratification_failed';
+
+            if (needsOurAction) counts.action++;
+            else if (isFmReview) counts.fm_review++;
+            else if (isRatification) counts.ratification++;
+            else counts.pending++;
+        });
+
+        // Build filter bar
+        let filterHTML = '<div class="inbox-filters">';
+        const filters = [
+            { key: 'all', label: 'All', count: counts.all },
+            { key: 'action', label: 'Action Needed', count: counts.action },
+            { key: 'pending', label: 'Pending', count: counts.pending },
+            { key: 'fm_review', label: 'FM Review', count: counts.fm_review },
+            { key: 'ratification', label: 'Ratification', count: counts.ratification }
+        ];
+        filters.forEach(f => {
+            const countBadge = f.count > 0 ? '<span class="inbox-filter-count">' + f.count + '</span>' : '';
+            filterHTML += '<button class="inbox-filter-btn ' + (inboxFilter === f.key ? 'active' : '') + '" onclick="filterInbox(\'' + f.key + '\')">' + f.label + countBadge + '</button>';
+        });
+        filterHTML += '</div>';
+
+        // Filter proposals
+        const filtered = allProposals.filter(p => {
+            if (inboxFilter === 'all') return true;
+            const isIncoming = p.target_nation_id === currentNation.id;
+            const isRevised = p.status === 'revised';
+            const revisedByThem = isRevised && p.target_nation_id === currentNation.id;
+            const needsOurAction = (p.status === 'proposed' && isIncoming) || (isRevised && !revisedByThem);
+
+            if (inboxFilter === 'action') return needsOurAction;
+            if (inboxFilter === 'fm_review') return p.status === 'fm_review';
+            if (inboxFilter === 'ratification') return p.status === 'ratification' || p.status === 'ratification_failed';
+            if (inboxFilter === 'pending') return !needsOurAction && p.status !== 'fm_review' && p.status !== 'ratification' && p.status !== 'ratification_failed';
+            return true;
+        });
+
+        if (filtered.length === 0) {
+            panel.innerHTML = filterHTML + '<p class="diplo-tab-placeholder">No proposals in this category.</p>';
+            return;
+        }
+
+        let cardsHTML = '';
+        for (const p of filtered) {
+            cardsHTML += renderInboxCard(p);
+        }
+
+        panel.innerHTML = filterHTML + cardsHTML;
+    } catch (err) {
+        console.error('Error rendering inbox tab:', err);
+        panel.innerHTML = '<p style="color:#f44;text-align:center;padding:20px;">Error loading inbox.</p>';
+    }
+}
+
+function filterInbox(filter) {
+    inboxFilter = filter;
+    renderInboxTab(filter);
+}
+
+function renderInboxCard(p) {
+    const pd = p.proposal_data || {};
+    const articles = pd.articles || [];
+    const struckIndices = new Set(pd.struck_articles || []);
+    const isIncoming = p.target_nation_id === currentNation.id;
+    const isRevised = p.status === 'revised';
+    const revisedByUs = isRevised && p.target_nation_id !== currentNation.id;
+    const revisedByThem = isRevised && p.target_nation_id === currentNation.id;
+    const needsOurAction = (p.status === 'proposed' && isIncoming) || (isRevised && !revisedByUs);
+
+    // Classification
+    const classification = pd.classification || null;
+    const classBadge = classification
+        ? '<span class="classification-badge classification-' + classification.toLowerCase() + '">' + classification + '</span>'
+        : '';
+
+    // Status badge
+    let statusBadge = '';
+    if (p.status === 'proposed' && isIncoming) {
+        statusBadge = '<span class="proposal-status-badge badge-action">Awaiting Your Response</span>';
+    } else if (p.status === 'proposed' && !isIncoming) {
+        statusBadge = '<span class="proposal-status-badge badge-waiting">Awaiting Response</span>';
+    } else if (isRevised && !revisedByUs) {
+        statusBadge = '<span class="proposal-status-badge badge-action">Revised — Your Turn</span>';
+    } else if (isRevised && revisedByUs) {
+        statusBadge = '<span class="proposal-status-badge badge-waiting">Revision Sent</span>';
+    } else if (p.status === 'fm_review') {
+        statusBadge = '<span class="proposal-status-badge" style="background:#1a5276;color:#85c1e9;">FM Review</span>';
+    } else if (p.status === 'ratification') {
+        statusBadge = '<span class="proposal-status-badge" style="background:#6a1b9a;color:#ce93d8;">Parliament</span>';
+    } else if (p.status === 'ratification_failed') {
+        statusBadge = '<span class="proposal-status-badge" style="background:#b71c1c;color:#ef9a9a;">Ratification Failed</span>';
+    }
+
+    // Pipeline tracker for MAJOR proposals
+    let pipelineHTML = '';
+    if (classification === 'MAJOR') {
+        pipelineHTML = renderPipelineTracker(p);
+    }
+
+    // Articles display
+    let articlesHTML = '';
+    if (articles.length > 0) {
+        articlesHTML = '<div class="agreement-card-terms">';
+        articles.forEach((art, i) => {
+            const isStruck = struckIndices.has(i);
+            const artLabel = art.text || art.label || art.type || 'Unknown';
+            articlesHTML += '<div class="agreement-card-term' + (isStruck ? ' term-struck' : '') + '">' +
+                '<span class="proposal-article-num">Art. ' + toRoman(i + 1) + '</span> ' +
+                '<span class="proposal-article-label">' + escapeHtml(artLabel) + '</span>' +
+                (isStruck ? ' <span class="struck-label">STRUCK</span>' : '') +
+            '</div>';
+        });
+        articlesHTML += '</div>';
+    }
+
+    // Effects
+    let totalRel = 0, totalMoney = 0;
+    articles.forEach((art, i) => {
+        if (!struckIndices.has(i)) {
+            totalRel += art.relations || 0;
+            totalMoney += art.money || 0;
+        }
+    });
+    const relStr = totalRel > 0 ? '+' + totalRel + ' Relations' : totalRel < 0 ? totalRel + ' Relations' : '';
+    const moneyStr = totalMoney > 0 ? '+$' + (totalMoney / 1e6).toFixed(0) + 'M' : totalMoney < 0 ? '-$' + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M' : '';
+    let effectsHTML = '';
+    if (relStr || moneyStr) {
+        effectsHTML = '<div class="agreement-card-effects">';
+        if (relStr) effectsHTML += '<span class="effect-tag effect-rel">' + relStr + '</span>';
+        if (moneyStr) effectsHTML += '<span class="effect-tag effect-money">' + moneyStr + '</span>';
+        effectsHTML += '</div>';
+    }
+
+    // Action buttons based on status and role
+    let actionsHTML = '';
+    if (needsOurAction) {
+        // Ambassador can accept/reject/strike
+        actionsHTML = '<div class="inbox-card-actions">' +
+            '<button class="proposal-accept-btn" onclick="acceptProposal(\'' + p.id + '\')">Accept</button>' +
+            '<button class="proposal-strike-btn" onclick="inboxStrikeArticles(\'' + p.id + '\')">Strike Articles</button>' +
+            '<button class="proposal-reject-btn" onclick="rejectProposal(\'' + p.id + '\')">Reject</button>' +
+        '</div>';
+    } else if (p.status === 'fm_review' && diplomaticRoles.isFM) {
+        // FM can approve (MINOR → activate, MAJOR → escalate to parliament)
+        actionsHTML = '<div class="inbox-card-actions">' +
+            '<button class="fm-approve-btn" onclick="fmApprove(\'' + p.id + '\')">Approve</button>' +
+            '<button class="fm-escalate-btn" onclick="fmEscalate(\'' + p.id + '\')">Escalate to Parliament</button>' +
+            '<button class="fm-reject-btn" onclick="fmReject(\'' + p.id + '\')">Reject</button>' +
+        '</div>';
+    } else if (p.status === 'ratification_failed' && (diplomaticRoles.isFM || diplomaticRoles.isHoG)) {
+        actionsHTML = '<div class="inbox-card-actions">' +
+            '<button class="fm-escalate-btn" onclick="fmEscalate(\'' + p.id + '\')">Resubmit to Parliament</button>' +
+            '<button class="fm-reject-btn" onclick="fmReject(\'' + p.id + '\')">Abandon</button>' +
+        '</div>';
+    }
+
+    // Strike checkboxes for action-needed proposals
+    let strikeArticlesHTML = '';
+    if (needsOurAction && articles.length > 0) {
+        strikeArticlesHTML = '<div class="proposal-articles-list" id="inbox-articles-' + p.id + '" style="display:none;">';
+        articles.forEach((art, i) => {
+            const artLabel = art.text || art.label || art.type || 'Unknown';
+            strikeArticlesHTML += '<div class="proposal-article-row">' +
+                '<input type="checkbox" class="strike-checkbox" data-proposal-id="' + p.id + '" data-article-index="' + i + '" />' +
+                '<div class="proposal-article-content">' +
+                    '<span class="proposal-article-num">Art. ' + toRoman(i + 1) + '.</span> ' +
+                    '<span class="proposal-article-label">' + escapeHtml(artLabel) + '</span>' +
+                '</div>' +
+            '</div>';
+        });
+        strikeArticlesHTML += '<div class="proposal-btn-row" style="margin-top:6px;">' +
+            '<button class="proposal-strike-btn" onclick="strikeArticles(\'' + p.id + '\'); renderInboxTab();">Confirm Strike</button>' +
+        '</div></div>';
+    }
+
+    return `
+        <div class="inbox-card ${needsOurAction ? 'requires-action' : ''}">
+            <div class="inbox-card-header">
+                <div class="inbox-card-name">${escapeHtml(pd.name || 'Unnamed Proposal')}</div>
+                <div class="inbox-card-badges">
+                    ${classBadge}
+                    ${statusBadge}
+                </div>
+            </div>
+            <div class="inbox-card-meta">
+                ${escapeHtml(pd.proposer_nation_name || 'Unknown')} &amp; ${escapeHtml(pd.target_nation_name || 'Unknown')}
+                &middot; ${pd.duration_years || '?'} year${(pd.duration_years || 0) !== 1 ? 's' : ''}
+                &middot; Proposed ${p.proposed_at_tick != null ? tickToDate(p.proposed_at_tick) : '—'}
+            </div>
+            ${pipelineHTML}
+            ${articlesHTML}
+            ${effectsHTML}
+            ${strikeArticlesHTML}
+            ${actionsHTML}
+        </div>
+    `;
+}
+
+function inboxStrikeArticles(proposalId) {
+    // Toggle visibility of the strike checkboxes section
+    const section = document.getElementById('inbox-articles-' + proposalId);
+    if (section) {
+        section.style.display = section.style.display === 'none' ? '' : 'none';
+    }
+}
+
+// ==================== PIPELINE TRACKER ====================
+
+function renderPipelineTracker(proposal) {
+    const pd = proposal.proposal_data || {};
+    const pipeline = pd.pipeline || {};
+    const status = proposal.status;
+
+    // Pipeline stages for MAJOR: Ambassador Accepted → FM Review → Parliament Ratification → Active
+    const stages = [
+        { key: 'ambassador', label: 'Ambassador' },
+        { key: 'fm_review', label: 'FM Review' },
+        { key: 'parliament', label: 'Parliament' },
+        { key: 'active', label: 'Active' }
+    ];
+
+    // Determine which stages are completed/active
+    const stageStates = {};
+
+    if (status === 'proposed' || status === 'revised') {
+        stageStates.ambassador = 'active';
+    } else if (status === 'fm_review') {
+        stageStates.ambassador = 'completed';
+        stageStates.fm_review = 'active';
+    } else if (status === 'ratification') {
+        stageStates.ambassador = 'completed';
+        stageStates.fm_review = 'completed';
+        stageStates.parliament = 'active';
+    } else if (status === 'ratification_failed') {
+        stageStates.ambassador = 'completed';
+        stageStates.fm_review = 'completed';
+        stageStates.parliament = 'rejected';
+    } else if (status === 'active') {
+        stageStates.ambassador = 'completed';
+        stageStates.fm_review = 'completed';
+        stageStates.parliament = 'completed';
+        stageStates.active = 'completed';
+    } else if (status === 'rejected') {
+        // Find where it was rejected
+        if (pipeline.rejected_at === 'fm') {
+            stageStates.ambassador = 'completed';
+            stageStates.fm_review = 'rejected';
+        } else if (pipeline.rejected_at === 'parliament') {
+            stageStates.ambassador = 'completed';
+            stageStates.fm_review = 'completed';
+            stageStates.parliament = 'rejected';
+        } else {
+            stageStates.ambassador = 'rejected';
+        }
+    }
+
+    let html = '<div class="pipeline-tracker">';
+    stages.forEach((stage, i) => {
+        const state = stageStates[stage.key] || '';
+        if (i > 0) {
+            const prevCompleted = stageStates[stages[i - 1].key] === 'completed';
+            html += '<div class="pipeline-connector ' + (prevCompleted ? 'completed' : '') + '"></div>';
+        }
+        html += '<div class="pipeline-stage ' + state + '">' +
+            '<div class="pipeline-stage-dot"></div><br>' +
+            stage.label +
+        '</div>';
+    });
+    html += '</div>';
+    return html;
+}
+
+// ==================== FM ACTION FUNCTIONS ====================
+
+async function fmApprove(proposalId) {
+    const { data: proposal, error: fetchErr } = await _supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('id', proposalId)
+        .single();
+
+    if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
+
+    const pd = proposal.proposal_data || {};
+    const classification = pd.classification || 'MINOR';
+
+    if (classification === 'MAJOR') {
+        // MAJOR agreements must go through parliament — use escalate instead
+        alert('MAJOR agreements cannot be directly approved. Use "Escalate to Parliament" instead.');
+        return;
+    }
+
+    // MINOR: FM can directly activate
+    if (!confirm(
+        'Approve "' + (pd.name || 'Agreement') + '" as Foreign Minister?\n\n' +
+        'This MINOR agreement will become active immediately.'
+    )) return;
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Activate the proposal
+    const updatedPipeline = { ...(pd.pipeline || {}), fm_approved_at: currentTick, fm_approved_by: currentFaction.id };
+    pd.pipeline = updatedPipeline;
+
+    const { error: updateErr } = await _supabase
+        .from('diplomatic_proposals')
+        .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
+        .eq('id', proposalId);
+
+    if (updateErr) { alert('Error approving: ' + updateErr.message); return; }
+
+    // Apply relation effects
+    await applyProposalEffects(proposal, currentTick);
+
+    // Fire CIVIC news event
+    await fireProposalEvent(pd, currentTick, 'approved',
+        'Foreign Minister approved "' + (pd.name || 'Agreement') + '" between ' +
+        pd.proposer_nation_name + ' and ' + pd.target_nation_name + '. The agreement is now active.');
+
+    alert('"' + (pd.name || 'Agreement') + '" approved and is now active!');
+    await renderInboxTab();
+    await renderDiploHeader();
+}
+
+async function fmEscalate(proposalId) {
+    const { data: proposal, error: fetchErr } = await _supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('id', proposalId)
+        .single();
+
+    if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
+
+    const pd = proposal.proposal_data || {};
+
+    if (!confirm(
+        'Escalate "' + (pd.name || 'Agreement') + '" to Parliament for ratification?\n\n' +
+        'A ratification bill will be submitted to the legislature.'
+    )) return;
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Create a ratification bill
+    const billTitle = 'Ratify: ' + (pd.name || 'Diplomatic Agreement');
+    const billDescription = 'Ratification of the ' + (pd.classification || '') + ' diplomatic agreement "' +
+        (pd.name || 'Agreement') + '" between ' + (pd.proposer_nation_name || 'Unknown') + ' and ' +
+        (pd.target_nation_name || 'Unknown') + '. Duration: ' + (pd.duration_years || '?') + ' year(s).';
+
+    const { data: bill, error: billErr } = await _supabase
+        .from('bills')
+        .insert({
+            nation_id: currentNation.id,
+            bill_type: 'ratification',
+            title: billTitle,
+            description: billDescription,
+            introduced_by_faction_id: currentFaction.id,
+            proposal_id: proposalId,
+            status: 'committee',
+            introduced_at_tick: currentTick
+        })
+        .select('id')
+        .single();
+
+    if (billErr) {
+        console.error('Error creating ratification bill:', billErr);
+        alert('Error submitting to parliament: ' + billErr.message);
+        return;
+    }
+
+    // Update proposal status
+    const updatedPipeline = { ...(pd.pipeline || {}), escalated_at: currentTick, escalated_by: currentFaction.id, ratification_bill_id: bill?.id };
+    pd.pipeline = updatedPipeline;
+
+    await _supabase
+        .from('diplomatic_proposals')
+        .update({ status: 'ratification', proposal_data: pd })
+        .eq('id', proposalId);
+
+    // Fire CIVIC news event
+    await fireProposalEvent(pd, currentTick, 'escalated',
+        'The diplomatic agreement "' + (pd.name || 'Agreement') + '" has been escalated to Parliament for ratification. ' +
+        'A ratification bill has been introduced in committee.');
+
+    alert('"' + (pd.name || 'Agreement') + '" escalated to Parliament. Ratification bill submitted.');
+    await renderInboxTab();
+    await renderDiploHeader();
+}
+
+async function fmReject(proposalId) {
+    const { data: proposal, error: fetchErr } = await _supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('id', proposalId)
+        .single();
+
+    if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
+
+    const pd = proposal.proposal_data || {};
+    const action = proposal.status === 'ratification_failed' ? 'abandon' : 'reject';
+
+    if (!confirm(
+        (action === 'abandon' ? 'Abandon' : 'Reject') + ' "' + (pd.name || 'Agreement') + '" as Foreign Minister?\n\n' +
+        'This cannot be undone.'
+    )) return;
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    const updatedPipeline = { ...(pd.pipeline || {}), rejected_at: 'fm', rejected_at_tick: currentTick };
+    pd.pipeline = updatedPipeline;
+
+    await _supabase
+        .from('diplomatic_proposals')
+        .update({ status: 'rejected', proposal_data: pd })
+        .eq('id', proposalId);
+
+    // Fire CIVIC news event
+    await fireProposalEvent(pd, currentTick, 'rejected',
+        'The Foreign Minister has ' + action + 'ed the diplomatic agreement "' + (pd.name || 'Agreement') +
+        '" between ' + pd.proposer_nation_name + ' and ' + pd.target_nation_name + '.');
+
+    alert('"' + (pd.name || 'Agreement') + '" ' + action + 'ed.');
+    await renderInboxTab();
+    await renderDiploHeader();
+}
+
+// ==================== PROPOSAL EFFECT HELPERS ====================
+
+async function applyProposalEffects(proposal, currentTick) {
+    const pd = proposal.proposal_data || {};
+    const articles = pd.articles || [];
+    const struckIndices = new Set(pd.struck_articles || []);
+
+    let totalRel = 0, totalMoney = 0;
+    const activeArticles = [];
+    articles.forEach((art, i) => {
+        if (!struckIndices.has(i)) {
+            totalRel += art.relations || 0;
+            totalMoney += art.money || 0;
+            activeArticles.push(art);
+        }
+    });
+
+    // Update relations score
+    if (totalRel !== 0) {
+        const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+        const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+
+        const { data: rel } = await _supabase
+            .from('diplomatic_relations')
+            .select('id, relation_score, active_treaties')
+            .eq('nation_a_id', nationA)
+            .eq('nation_b_id', nationB)
+            .maybeSingle();
+
+        if (rel) {
+            const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
+            const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposal.id] : [proposal.id];
+            await _supabase.from('diplomatic_relations')
+                .update({ relation_score: newScore, active_treaties: treaties })
+                .eq('id', rel.id);
+        }
+    }
+}
+
+async function fireProposalEvent(pd, currentTick, stage, description) {
+    try {
+        const { data: allNations } = await _supabase.from('nations').select('id');
+        if (allNations && allNations.length > 0) {
+            const eventRows = allNations.map(n => ({
+                nation_id: n.id,
+                event_name: (pd.name || 'Diplomatic Agreement') + ' — ' + stage.charAt(0).toUpperCase() + stage.slice(1),
+                category: 'Diplomatic',
+                description_chosen: description,
+                fired_at_tick: currentTick
+            }));
+            await _supabase.from('event_log').insert(eventRows);
+        }
+    } catch (e) {
+        console.warn('Error firing proposal event:', e);
+    }
 }
 
 // ==================== NATION CARD TOGGLE ====================
@@ -2312,6 +2835,7 @@ async function acceptProposal(proposalId) {
     const pd = proposal.proposal_data || {};
     const articles = pd.articles || [];
     const struckIndices = new Set(pd.struck_articles || []);
+    const classification = pd.classification || 'MINOR';
 
     // Calculate totals from active (non-struck) articles
     let totalRel = 0, totalMoney = 0;
@@ -2329,67 +2853,69 @@ async function acceptProposal(proposalId) {
         (totalRel && totalMoney ? ', ' : '') +
         (totalMoney ? (totalMoney > 0 ? '+' : '-') + '$' + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M FM Fund' : '');
 
-    if (!confirm(
-        'Accept "' + (pd.name || 'Initiative') + '"?\n\n' +
-        articleCount + ' article(s) will take effect.\n' +
-        (effectSummary || 'No mechanical effects.') + '\n\n' +
-        'Duration: ' + (pd.duration_years || '?') + ' year(s)'
-    )) return;
+    // MAJOR agreements go to FM review after ambassador acceptance
+    const isMajor = classification === 'MAJOR';
+    const confirmMsg = isMajor
+        ? 'Accept "' + (pd.name || 'Initiative') + '"?\n\n' +
+          articleCount + ' article(s).\n' +
+          (effectSummary || 'No mechanical effects.') + '\n\n' +
+          'Duration: ' + (pd.duration_years || '?') + ' year(s)\n\n' +
+          'Note: As a MAJOR agreement, this will be sent to the Foreign Minister for review before taking effect.'
+        : 'Accept "' + (pd.name || 'Initiative') + '"?\n\n' +
+          articleCount + ' article(s) will take effect.\n' +
+          (effectSummary || 'No mechanical effects.') + '\n\n' +
+          'Duration: ' + (pd.duration_years || '?') + ' year(s)';
+
+    if (!confirm(confirmMsg)) return;
 
     // Get current tick
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
 
-    // Update proposal status
-    const { error: updateErr } = await _supabase
-        .from('diplomatic_proposals')
-        .update({ status: 'active', activated_at_tick: currentTick })
-        .eq('id', proposalId);
+    if (isMajor) {
+        // MAJOR pipeline: Ambassador accepted → FM review
+        const updatedPipeline = { ...(pd.pipeline || {}), ambassador_accepted_at: currentTick };
+        pd.pipeline = updatedPipeline;
 
-    if (updateErr) { alert('Error accepting proposal: ' + updateErr.message); return; }
+        const { error: updateErr } = await _supabase
+            .from('diplomatic_proposals')
+            .update({ status: 'fm_review', proposal_data: pd })
+            .eq('id', proposalId);
 
-    // Update relations score
-    if (totalRel !== 0) {
-        const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
-        const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+        if (updateErr) { alert('Error accepting proposal: ' + updateErr.message); return; }
 
-        const { data: rel } = await _supabase
-            .from('diplomatic_relations')
-            .select('id, relation_score, active_treaties')
-            .eq('nation_a_id', nationA)
-            .eq('nation_b_id', nationB)
-            .maybeSingle();
+        // Fire CIVIC news event for FM review stage
+        await fireProposalEvent(pd, currentTick, 'ambassador_accepted',
+            'Ambassadors have agreed on "' + (pd.name || 'Agreement') + '" between ' +
+            pd.proposer_nation_name + ' and ' + pd.target_nation_name +
+            '. The MAJOR agreement now awaits Foreign Minister review.');
 
-        if (rel) {
-            const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
-            const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposalId] : [proposalId];
-            await _supabase.from('diplomatic_relations')
-                .update({ relation_score: newScore, active_treaties: treaties })
-                .eq('id', rel.id);
-        }
+        alert('"' + (pd.name || 'Initiative') + '" accepted by ambassadors.\n\nAs a MAJOR agreement, it has been forwarded to the Foreign Minister for review.');
+    } else {
+        // MINOR: activate immediately (original flow)
+        const { error: updateErr } = await _supabase
+            .from('diplomatic_proposals')
+            .update({ status: 'active', activated_at_tick: currentTick })
+            .eq('id', proposalId);
+
+        if (updateErr) { alert('Error accepting proposal: ' + updateErr.message); return; }
+
+        // Apply effects
+        await applyProposalEffects(proposal, currentTick);
+
+        // Fire event for ALL nations
+        const articleNames = activeArticles.map(a => a.label || a.text || '').join(', ');
+        await fireProposalEvent(pd, currentTick, 'activated',
+            pd.proposer_nation_name + ' and ' + pd.target_nation_name +
+            ' have signed "' + (pd.name || 'Diplomatic Initiative') + '". ' +
+            'The ' + articleCount + '-article agreement (' + articleNames + ') is effective for ' + (pd.duration_years || '?') + ' year(s).');
+
+        alert('"' + (pd.name || 'Initiative') + '" has been accepted and is now active!');
     }
 
-    // Fire event for ALL nations
-    const { data: allNations } = await _supabase.from('nations').select('id');
-    if (allNations && allNations.length > 0) {
-        const articleNames = activeArticles.map(a => a.label).join(', ');
-        const eventRows = allNations.map(n => ({
-            nation_id: n.id,
-            event_name: pd.name || 'Diplomatic Initiative',
-            category: 'Diplomatic',
-            description_chosen: pd.proposer_nation_name + ' and ' + pd.target_nation_name +
-                ' have signed "' + (pd.name || 'Diplomatic Initiative') + '". ' +
-                'Ambassador ' + (pd.proposer_ambassador_name || '?') + ' and Ambassador ' + (pd.target_ambassador_name || '?') +
-                ' formalized the ' + articleCount + '-article agreement (' + articleNames + '), effective for ' + (pd.duration_years || '?') + ' year(s).',
-            fired_at_tick: currentTick
-        }));
-        await _supabase.from('event_log').insert(eventRows);
-    }
-
-    alert('"' + (pd.name || 'Initiative') + '" has been accepted and is now active!');
-
-    // Refresh the expanded card
+    // Refresh the expanded card + inbox
     if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
+    await renderDiploHeader();
 }
 
 async function rejectProposal(proposalId) {
@@ -2480,6 +3006,13 @@ window.wizardRemoveArticle = wizardRemoveArticle;
 window.wizardUpdateArticleText = wizardUpdateArticleText;
 window.wizardUpdatePreview = wizardUpdatePreview;
 window.wizardSubmit = wizardSubmit;
+// Phase 3 exports
+window.renderInboxTab = renderInboxTab;
+window.filterInbox = filterInbox;
+window.inboxStrikeArticles = inboxStrikeArticles;
+window.fmApprove = fmApprove;
+window.fmEscalate = fmEscalate;
+window.fmReject = fmReject;
 </script>
 
 </body>
