@@ -1111,8 +1111,10 @@ async function saveMinistryEvent() {
 }
 
 async function deleteMinistryEvent(id) {
-    if (!confirm('Delete this ministry event? This cannot be undone.')) return;
+    if (!confirm('Delete this ministry event and all fired instances? This cannot be undone.')) return;
     try {
+        // Cascade: delete child rows in ministry_events that reference this template
+        await _supabase.from('ministry_events').delete().eq('template_id', id);
         var r = await _supabase.from('ministry_event_templates').delete().eq('id', id);
         if (r.error) throw r.error;
         alert('Ministry event deleted.');
