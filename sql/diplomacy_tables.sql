@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS ambassadors (
     appointed_at_tick       INT,
     recalled_at_tick        INT,
 
+    -- Term limits
+    term_length             INT NOT NULL DEFAULT 36,            -- term duration in ticks (default 36 = 3 years)
+    retirement_warning_shown BOOLEAN NOT NULL DEFAULT false,    -- prevents repeated 3-tick warnings
+
     -- Metadata
     created_at              TIMESTAMPTZ DEFAULT now(),
     updated_at              TIMESTAMPTZ DEFAULT now()
