@@ -18,7 +18,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -123,6 +123,10 @@ async function renderParties() {
                 <div class="my-party-stat">
                     <div class="stat-label">Party Leader</div>
                     <div class="stat-val">${leaderName}</div>
+                </div>
+                <div class="my-party-stat">
+                    <div class="stat-label">Seats</div>
+                    <div class="stat-val">${mySeats} / ${GAME_CONFIG.TOTAL_SEATS}</div>
                 </div>
                 <div class="my-party-stat">
                     <div class="stat-label">Founded</div>
