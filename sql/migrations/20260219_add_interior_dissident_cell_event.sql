@@ -25,7 +25,7 @@ INSERT INTO ministry_event_templates (
     3,
     60,
     true,
-    '["Autocracy"]'::jsonb,
+    ARRAY['Autocracy'],
     'freedom_index',
     '<',
     40,
