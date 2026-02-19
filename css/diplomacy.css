@@ -633,9 +633,23 @@
             flex-wrap: wrap;
             margin-bottom: 6px;
         }
+        .nation-card-embassy {
+            font-size: 0.65rem;
+            font-weight: 500;
+        }
+        .nation-card-ambassadors {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 5px;
+        }
         .nation-card-amb {
             font-size: 0.68rem;
             color: var(--text-muted);
+        }
+        .nation-card-amb em {
+            color: var(--accent);
+            font-style: normal;
+            font-size: 0.62rem;
         }
         .nation-card-agreements {
             font-size: 0.62rem;
