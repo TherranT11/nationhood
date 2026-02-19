@@ -21,7 +21,7 @@ INSERT INTO ministry_event_templates (
     'Provincial Governor Refuses to Implement Decree',
     'Office of Provincial Administration',
     'interior',
-    'critical',
+    'urgent',
     3,
     14,
     true,

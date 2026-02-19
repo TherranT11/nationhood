@@ -21,7 +21,7 @@ INSERT INTO ministry_event_templates (
     'Armed Group Consolidating Control in Border Region',
     'Provincial Military Command',
     'interior',
-    'critical',
+    'urgent',
     4,
     20,
     true,

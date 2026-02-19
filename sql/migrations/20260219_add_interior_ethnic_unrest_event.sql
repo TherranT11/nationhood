@@ -21,7 +21,7 @@ INSERT INTO ministry_event_templates (
     'Ethnic Tensions Escalating in Northern Territories',
     'Provincial Security Command',
     'interior',
-    'critical',
+    'urgent',
     3,
     16,
     true,

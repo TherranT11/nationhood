@@ -21,7 +21,7 @@ INSERT INTO ministry_event_templates (
     'Catastrophic Flooding in the River Delta — Immediate Response Needed',
     'National Emergency Management Agency',
     'interior',
-    'critical',
+    'urgent',
     2,
     14,
     true,
