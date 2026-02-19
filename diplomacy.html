@@ -19,7 +19,7 @@
 <!-- ===== CONTENT AREA ===== -->
 <div id="content-area">
     <div id="diplomacy-content">
-        <!-- ===== MAP PANEL (2/3) ===== -->
+        <!-- ===== MAP PANEL (60%) ===== -->
         <div id="diplo-map-container">
             <!-- Toolbar -->
             <div id="diplo-toolbar">
@@ -38,7 +38,6 @@
                         <option value="">Select...</option>
                     </select>
                 </div>
-                <div id="diplo-role-display" style="margin-left:auto;"></div>
             </div>
 
             <!-- SVG Map (reused from world.html) -->
@@ -56,10 +55,24 @@
             </svg>
         </div>
 
-        <!-- ===== SIDEBAR (1/3) ===== -->
+        <!-- ===== SIDEBAR (40%) ===== -->
         <div id="diplo-sidebar">
-            <h3>Diplomatic Intel</h3>
-            <div id="diplo-intel"><p>Select a nation on the map to view diplomatic details.</p></div>
+            <!-- Header Panel -->
+            <div id="diplo-header"></div>
+
+            <!-- Tab Bar -->
+            <div class="diplo-tab-bar">
+                <button class="diplo-tab active" data-tab="relations" onclick="showDiploTab('relations')">Relations</button>
+                <button class="diplo-tab" data-tab="agreements" onclick="showDiploTab('agreements')">Agreements</button>
+                <button class="diplo-tab" data-tab="initiative" onclick="showDiploTab('initiative')">Initiative</button>
+                <button class="diplo-tab" data-tab="inbox" onclick="showDiploTab('inbox')">Inbox</button>
+            </div>
+
+            <!-- Tab Panels -->
+            <div id="tab-relations" class="diplo-tab-panel active"></div>
+            <div id="tab-agreements" class="diplo-tab-panel" style="display:none;"></div>
+            <div id="tab-initiative" class="diplo-tab-panel" style="display:none;"></div>
+            <div id="tab-inbox" class="diplo-tab-panel" style="display:none;"></div>
         </div>
     </div>
 </div>
@@ -80,6 +93,7 @@ let currentFaction = null;
 let currentNation  = null;
 let currentCoalition = null;
 let diplomaticRoles = null;
+let shardTick = 0;
 
 // Track the currently-selected target nation for initiative form
 let selectedTargetNation = null;
@@ -87,50 +101,87 @@ let selectedTheirAmbassador = null;
 let initiativeArticles = [];
 let usedArticleTypes = new Set(); // types already in active/pending proposals between these nations
 
+// Wizard state
+let wizardStep = 1;
+let wizardTargetNation = null;
+let wizardAgreementType = null;
+let wizardArticles = [];  // [{text: "..."}]
+let wizardName = '';
+let wizardDuration = 1;
+
 const INITIATIVE_TYPES = {
     visa_agreement: {
         label: 'Visa Agreement',
+        classification: 'MAJOR',
         description: 'Streamlined travel between nations. Citizens can cross borders with reduced paperwork.',
         relations: 6,
         money: 12000000
     },
     cultural_exchange: {
         label: 'Cultural Exchange',
+        classification: 'MAJOR',
         description: 'Nations agree to fund museums, art exhibitions, film festivals, and media sharing between their countries.',
         relations: 4,
         money: -35000000
     },
     student_exchange: {
         label: 'Student Exchange Program',
+        classification: 'MINOR',
         description: 'Universities in both nations accept exchange students, share research, and collaborate on academic programs.',
         relations: 3,
         money: -6000000
     },
     joint_statement: {
         label: 'Joint Statement',
+        classification: 'MINOR',
         description: 'A coordinated public declaration on a shared concern. Purely cosmetic — no mechanical effect.',
         relations: 0,
         money: 0
     }
 };
 
+// Flag URLs (shared across all rendering functions)
+const FLAG_URLS = {
+    'Melizea': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Melizea.png',
+    'Avelia': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Avelia1.png',
+    'Sangreza': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/sangreza.png',
+    'Montequilla': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Montequilla.png',
+    'San Estrella': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/sanestrella.png',
+    'Veldaria': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Veldaria.png'
+};
+
 // ==================== INIT ====================
 
 initPage('diplomacy', async (state) => {
-    currentFaction = state.faction;
-    currentNation  = state.nation;
+    try {
+        currentFaction = state.faction;
+        currentNation  = state.nation;
 
-    // Load coalition for role detection
-    if (currentNation) {
-        currentCoalition = await fetchActiveCoalition(_supabase, currentNation.id);
+        // Load shard tick for term calculations
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        shardTick = shard?.current_tick || 0;
+
+        // Load coalition for role detection
+        if (currentNation) {
+            currentCoalition = await fetchActiveCoalition(_supabase, currentNation.id);
+        }
+
+        // Detect roles
+        diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
+
+        // Render header panel with roles + stats
+        await renderDiploHeader();
+
+        // Setup map
+        setupDiplomacyMap();
+
+        // Default to Relations tab
+        await renderRelationsTab();
+    } catch (e) {
+        console.error('Diplomacy init error:', e);
+        const panel = document.getElementById('tab-relations');
+        if (panel) panel.innerHTML = '<p style="color:#f44;text-align:center;padding:20px;">Error initializing diplomacy page: ' + (e.message || e) + '</p>';
     }
-
-    // Detect roles
-    diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
-    renderRoleBadges(diplomaticRoles);
-
-    // Setup map
-    setupDiplomacyMap();
 });
 
 // ==================== ROLE DETECTION ====================
@@ -170,21 +221,46 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
         }
     }
 
-    // Ambassadors: query ambassadors table for active ambassadors belonging to this faction
+    // Ambassadors: fetch ALL active ambassadors from this nation, then filter by faction in JS
+    // (avoids compound .eq() filter issues with RLS policies)
     try {
-        const { data: ambassadors } = await _supabase
+        const { data: allNationAmbassadors, error: ambErr } = await _supabase
             .from('ambassadors')
-            .select('target_nation_id, nations!ambassadors_target_nation_id_fkey(name)')
-            .eq('faction_id', faction.id)
+            .select('*')
             .eq('nation_id', nation.id)
             .eq('is_active', true)
             .eq('status', 'active');
 
-        if (ambassadors && ambassadors.length > 0) {
-            roles.ambassadorTo = ambassadors.map(a => ({
-                target_nation_id: a.target_nation_id,
-                target_nation_name: a.nations?.name || 'Unknown'
-            }));
+        if (ambErr) {
+            console.warn('Ambassador query error:', JSON.stringify(ambErr));
+        } else if (allNationAmbassadors && allNationAmbassadors.length > 0) {
+            // Filter to ambassadors belonging to this faction
+            const myAmbassadors = allNationAmbassadors.filter(a => a.faction_id === faction.id);
+
+            console.log('[Diplo] Active ambassadors from nation:', allNationAmbassadors.length,
+                '| Matched to faction ' + faction.id + ':', myAmbassadors.length,
+                '| Faction IDs in DB:', allNationAmbassadors.map(a => a.faction_id));
+
+            if (myAmbassadors.length > 0) {
+                // Look up target nation names separately (avoids FK join issues)
+                const targetIds = myAmbassadors.map(a => a.target_nation_id);
+                const { data: targetNations } = await _supabase
+                    .from('nations')
+                    .select('id, name')
+                    .in('id', targetIds);
+                const nationNameMap = {};
+                (targetNations || []).forEach(n => { nationNameMap[n.id] = n.name; });
+
+                roles.ambassadorTo = myAmbassadors.map(a => ({
+                    id: a.id,
+                    target_nation_id: a.target_nation_id,
+                    target_nation_name: nationNameMap[a.target_nation_id] || 'Unknown',
+                    appointed_at_tick: a.appointed_at_tick,
+                    term_length: a.term_length || 36,
+                    ambassador_first_name: a.ambassador_first_name,
+                    ambassador_last_name: a.ambassador_last_name
+                }));
+            }
         }
     } catch (e) {
         console.warn('Could not load ambassadors:', e);
@@ -193,38 +269,1131 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
     return roles;
 }
 
-// ==================== ROLE BADGES ====================
+// Re-fetch roles fresh from DB before critical actions (prevents stale cache exploits)
+async function refreshRoles() {
+    diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
+    return diplomaticRoles;
+}
 
-function renderRoleBadges(roles) {
-    const container = document.getElementById('diplo-role-display');
-    if (!container) return;
+// ==================== HEADER PANEL ====================
 
-    const badges = [];
-    if (roles.isHoG) badges.push('<span class="diplo-role-badge role-hog">Head of Gov</span>');
-    if (roles.isFM)  badges.push('<span class="diplo-role-badge role-fm">Foreign Minister</span>');
-    if (roles.ambassadorTo.length > 0) {
-        roles.ambassadorTo.forEach(a => {
-            badges.push('<span class="diplo-role-badge role-amb">Amb. to ' + a.target_nation_name + '</span>');
-        });
+async function renderDiploHeader() {
+    const header = document.getElementById('diplo-header');
+    if (!header) return;
+
+    // Count active agreements and pending proposals for our nation
+    let activeCount = 0;
+    let pendingCount = 0;
+    try {
+        const { count: ac } = await _supabase
+            .from('diplomatic_proposals')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'active')
+            .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id);
+        activeCount = ac || 0;
+
+        const { count: pc } = await _supabase
+            .from('diplomatic_proposals')
+            .select('*', { count: 'exact', head: true })
+            .in('status', ['proposed', 'revised'])
+            .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id);
+        pendingCount = pc || 0;
+    } catch (e) { console.warn('Error fetching header counts:', e); }
+
+    const roleBadges = [];
+    if (diplomaticRoles.isHoG) roleBadges.push('<span class="diplo-role-badge role-hog">Head of Gov</span>');
+    if (diplomaticRoles.isFM)  roleBadges.push('<span class="diplo-role-badge role-fm">Foreign Minister</span>');
+    diplomaticRoles.ambassadorTo.forEach(a => {
+        roleBadges.push('<span class="diplo-role-badge role-amb">Amb. to ' + escapeHtml(a.target_nation_name) + '</span>');
+    });
+    if (roleBadges.length === 0) {
+        roleBadges.push('<span class="diplo-role-badge role-none">No Diplomatic Role</span>');
     }
-    if (badges.length === 0) {
-        badges.push('<span class="diplo-role-badge role-none">No Diplomatic Role</span>');
-    }
 
-    container.innerHTML = badges.join('');
+    header.innerHTML = `
+        <div class="diplo-header-roles">${roleBadges.join('')}</div>
+        <div class="diplo-header-stats">
+            <span class="diplo-header-stat">${activeCount} Active Agreement${activeCount !== 1 ? 's' : ''}</span>
+            <span class="diplo-header-stat">${pendingCount} Pending</span>
+        </div>
+    `;
 
-    // Populate ambassador dropdown
+    // Populate ambassador dropdown in toolbar
     const dropdown = document.getElementById('diplo-amb-dropdown');
     const select = document.getElementById('amb-select');
-    if (roles.ambassadorTo.length > 0) {
+    if (diplomaticRoles.ambassadorTo.length > 0) {
         dropdown.style.display = '';
         select.innerHTML = '<option value="">Select...</option>' +
-            roles.ambassadorTo.map(a =>
+            diplomaticRoles.ambassadorTo.map(a =>
                 '<option value="' + a.target_nation_id + '">' + a.target_nation_name + '</option>'
             ).join('');
     } else {
         dropdown.style.display = 'none';
     }
+}
+
+// ==================== TAB SWITCHING ====================
+
+function showDiploTab(tabName) {
+    // Update tab buttons
+    document.querySelectorAll('.diplo-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
+    // Update tab panels
+    document.querySelectorAll('.diplo-tab-panel').forEach(panel => {
+        panel.style.display = panel.id === 'tab-' + tabName ? '' : 'none';
+    });
+    // Lazy-load / refresh tab content
+    if (tabName === 'relations') renderRelationsTab();
+    if (tabName === 'agreements') renderAgreementsTab();
+    if (tabName === 'initiative') renderInitiativeWizard();
+    if (tabName === 'inbox') renderInboxTab();
+}
+
+// ==================== RELATIONS TAB ====================
+
+async function renderRelationsTab() {
+    const panel = document.getElementById('tab-relations');
+    if (!panel) return;
+    panel.innerHTML = '<p style="color:#888;font-style:italic;text-align:center;padding:20px;">Loading nations...</p>';
+
+    if (!currentNation) {
+        panel.innerHTML = '<p class="diplo-tab-placeholder">No nation data available.</p>';
+        return;
+    }
+
+    try {
+        // Parallel fetch: all nations, relations, ambassadors (ours + theirs), active agreements
+        const [nationsRes, relationsRes, ambassadorsRes, theirAmbassadorsRes, agreementsRes] = await Promise.all([
+            _supabase.from('nations').select('*').order('name'),
+            _supabase.from('diplomatic_relations').select('*')
+                .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id),
+            _supabase.from('ambassadors').select('*')
+                .eq('nation_id', currentNation.id).eq('is_active', true).eq('status', 'active'),
+            _supabase.from('ambassadors').select('*')
+                .eq('target_nation_id', currentNation.id).eq('is_active', true).eq('status', 'active'),
+            _supabase.from('diplomatic_proposals').select('proposing_nation_id, target_nation_id')
+                .eq('status', 'active')
+                .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id)
+        ]);
+
+        if (nationsRes.error) {
+            console.error('Nations query error:', nationsRes.error);
+            panel.innerHTML = '<p style="color:#f44;text-align:center;padding:20px;">Error loading nations: ' + nationsRes.error.message + '</p>';
+            return;
+        }
+
+        const allNations = nationsRes.data || [];
+        const allRelations = relationsRes.data || [];
+        const ourAmbassadors = ambassadorsRes.data || [];
+        const theirAmbassadors = theirAmbassadorsRes.data || [];
+        const activeAgreements = agreementsRes.data || [];
+
+        // Filter out own nation
+        const otherNations = allNations.filter(n => n.id !== currentNation.id);
+
+        if (otherNations.length === 0) {
+            panel.innerHTML = '<p class="diplo-tab-placeholder">No other nations found. (' + allNations.length + ' total in database)</p>';
+            return;
+        }
+
+        let cardsHTML = '';
+        for (const nation of otherNations) {
+            // Find relation for this pair
+            const relation = allRelations.find(r =>
+                (r.nation_a_id === currentNation.id && r.nation_b_id === nation.id) ||
+                (r.nation_a_id === nation.id && r.nation_b_id === currentNation.id)
+            );
+
+            // Check for ceasefire among active agreements
+            // (Simple heuristic: not available from this query, default false)
+            const hasCeasefire = false;
+
+            const score = relation?.relation_score ?? 35;
+            const tier = getRelationTier(score, hasCeasefire);
+
+            // Embassy status
+            let embassyStatus = 'none';
+            if (relation) {
+                if (currentNation.id === relation.nation_a_id) {
+                    embassyStatus = relation.embassy_status_a || 'open';
+                } else {
+                    embassyStatus = relation.embassy_status_b || 'open';
+                }
+            }
+            const embassyColor = embassyStatus === 'open' ? '#4CAF50' : embassyStatus === 'closed' ? '#f44' : '#888';
+
+            // Find our ambassador to this nation
+            const ambassador = ourAmbassadors.find(a => a.target_nation_id === nation.id);
+            const ambName = ambassador
+                ? ((ambassador.ambassador_first_name || '') + ' ' + (ambassador.ambassador_last_name || '')).trim()
+                : null;
+            const isMyAmbassadorship = ambassador && ambassador.faction_id === currentFaction?.id;
+
+            // Find their ambassador to us
+            const theirAmb = theirAmbassadors.find(a => a.nation_id === nation.id);
+            const theirAmbName = theirAmb
+                ? ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim()
+                : null;
+
+            // Count agreements with this nation
+            const agreementCount = activeAgreements.filter(a =>
+                (a.proposing_nation_id === currentNation.id && a.target_nation_id === nation.id) ||
+                (a.proposing_nation_id === nation.id && a.target_nation_id === currentNation.id)
+            ).length;
+
+            const flagUrl = FLAG_URLS[nation.name] || null;
+            const barWidth = Math.max(0, Math.min(100, score));
+            const barColor = getRelationBarColor(score);
+
+            cardsHTML += `
+                <div class="nation-card" data-nation-name="${escapeHtml(nation.name)}" data-nation-id="${nation.id}" id="nation-card-${nation.id}">
+                    <div class="nation-card-header" onclick="toggleNationCard('${nation.id}')">
+                        ${flagUrl ? '<img src="' + flagUrl + '" class="nation-card-flag" />' : '<div class="nation-card-flag-placeholder"></div>'}
+                        <div class="nation-card-info">
+                            <div class="nation-card-name">${escapeHtml(nation.name)}</div>
+                            <div class="nation-card-meta">
+                                <span class="relation-badge ${tier.cssClass}">${tier.label}</span>
+                                <span class="nation-card-embassy" style="color:${embassyColor};">${embassyStatus === 'open' ? 'Embassy Open' : embassyStatus === 'closed' ? 'Embassy Closed' : 'No Embassy'}</span>
+                                ${agreementCount > 0 ? '<span class="nation-card-agreements">' + agreementCount + ' agreement' + (agreementCount > 1 ? 's' : '') + '</span>' : ''}
+                            </div>
+                            <div class="nation-card-ambassadors">
+                                <span class="nation-card-amb">${ambName ? 'Our Amb: ' + escapeHtml(ambName) + (isMyAmbassadorship ? ' <em>(you)</em>' : '') : '<span style="color:#666;">No Ambassador</span>'}</span>
+                                <span class="nation-card-amb">${theirAmbName ? 'Their Amb: ' + escapeHtml(theirAmbName) : '<span style="color:#666;">No Counterpart</span>'}</span>
+                            </div>
+                            <div class="relations-bar">
+                                <div class="relations-bar-fill" style="width:${barWidth}%;background:${barColor};"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="nation-card-body" id="nation-card-body-${nation.id}" style="display:none;"></div>
+                </div>
+            `;
+        }
+
+        panel.innerHTML = cardsHTML;
+    } catch (err) {
+        console.error('Error rendering relations tab:', err);
+        panel.innerHTML = '<p style="color:#f44;text-align:center;padding:20px;">Error loading nations.</p>';
+    }
+}
+
+// ==================== AGREEMENTS TAB ====================
+
+async function renderAgreementsTab() {
+    const panel = document.getElementById('tab-agreements');
+    if (!panel) return;
+    panel.innerHTML = '<p style="color:#888;font-style:italic;text-align:center;padding:20px;">Loading agreements...</p>';
+
+    if (!currentNation) {
+        panel.innerHTML = '<p class="diplo-tab-placeholder">No nation data available.</p>';
+        return;
+    }
+
+    try {
+        const { data: agreements } = await _supabase
+            .from('diplomatic_proposals')
+            .select('*')
+            .eq('status', 'active')
+            .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id)
+            .order('activated_at_tick', { ascending: false });
+
+        if (!agreements || agreements.length === 0) {
+            panel.innerHTML = '<p class="diplo-tab-placeholder">No active agreements.</p>';
+            return;
+        }
+
+        let html = '';
+        for (const ag of agreements) {
+            const pd = ag.proposal_data || {};
+            const articles = pd.articles || [];
+            const struckIndices = new Set(pd.struck_articles || []);
+
+            // Determine classification from proposal data or infer from articles
+            let classification = pd.classification || null;
+            if (!classification && articles.length > 0) {
+                // Check if any article is MAJOR
+                const hasMajor = articles.some((art, i) => {
+                    if (struckIndices.has(i)) return false;
+                    const typeInfo = INITIATIVE_TYPES[art.type];
+                    return typeInfo && typeInfo.classification === 'MAJOR';
+                });
+                classification = hasMajor ? 'MAJOR' : 'MINOR';
+            }
+
+            // Parties
+            const proposerName = pd.proposer_nation_name || 'Unknown';
+            const targetName = pd.target_nation_name || 'Unknown';
+
+            // Dates
+            const signedTick = ag.activated_at_tick;
+            const durationYears = pd.duration_years || 0;
+            const expiresTick = signedTick != null && durationYears > 0
+                ? signedTick + (durationYears * GAME_CONFIG.TICKS_PER_YEAR)
+                : null;
+
+            // Active articles and effects
+            let totalRel = 0, totalMoney = 0;
+            const termsHTML = articles.map((art, i) => {
+                const isStruck = struckIndices.has(i);
+                if (!isStruck) {
+                    totalRel += art.relations || 0;
+                    totalMoney += art.money || 0;
+                }
+                // Backwards-compatible: old proposals may have art.type, new ones have art.text
+                const artLabel = art.text || art.label || art.type || 'Unknown';
+                return '<div class="agreement-card-term' + (isStruck ? ' term-struck' : '') + '">' +
+                    '<span class="proposal-article-num">Art. ' + toRoman(i + 1) + '</span> ' +
+                    '<span class="proposal-article-label">' + escapeHtml(artLabel) + '</span>' +
+                    (isStruck ? ' <span class="struck-label">STRUCK</span>' : '') +
+                '</div>';
+            }).join('');
+
+            // Effects tags
+            const relStr = totalRel > 0 ? '+' + totalRel + ' Relations' : totalRel < 0 ? totalRel + ' Relations' : '';
+            const moneyStr = totalMoney > 0 ? '+$' + (totalMoney / 1e6).toFixed(0) + 'M' : totalMoney < 0 ? '-$' + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M' : '';
+            let effectsHTML = '';
+            if (relStr) effectsHTML += '<span class="effect-tag effect-rel">' + relStr + '</span>';
+            if (moneyStr) effectsHTML += '<span class="effect-tag effect-money">' + moneyStr + '</span>';
+
+            // Withdraw button — only FM or HoG can withdraw
+            let withdrawHTML = '';
+            if (diplomaticRoles.isFM || diplomaticRoles.isHoG) {
+                const penalty = totalRel * 2;
+                const penaltyStr = penalty > 0 ? '-' + penalty + ' Relations penalty' : '';
+                withdrawHTML = '<button class="agreement-withdraw-btn" onclick="withdrawAgreement(\'' + ag.id + '\')" title="' + escapeHtml(penaltyStr) + '">Withdraw</button>';
+            }
+
+            // Classification badge
+            const classBadge = classification
+                ? '<span class="classification-badge classification-' + classification.toLowerCase() + '">' + classification + '</span>'
+                : '';
+
+            // Agreement type badge (from ag.proposal_data.agreement_type or inferred)
+            const agreementType = pd.agreement_type || ag.proposal_type || 'diplomatic_initiative';
+            const typeLabel = INITIATIVE_TYPES[agreementType]?.label || '';
+
+            html += `
+                <div class="agreement-card">
+                    <div class="agreement-card-header">
+                        <div class="agreement-card-name">${escapeHtml(pd.name || 'Unnamed Agreement')}</div>
+                        <div class="agreement-card-badges">
+                            ${classBadge}
+                            ${withdrawHTML}
+                        </div>
+                    </div>
+                    <div class="agreement-card-meta">
+                        ${escapeHtml(proposerName)} &amp; ${escapeHtml(targetName)}
+                        ${typeLabel ? ' &middot; ' + escapeHtml(typeLabel) : ''}
+                        ${durationYears ? ' &middot; ' + durationYears + ' year' + (durationYears !== 1 ? 's' : '') : ''}
+                    </div>
+                    ${termsHTML ? '<div class="agreement-card-terms">' + termsHTML + '</div>' : ''}
+                    ${effectsHTML ? '<div class="agreement-card-effects">' + effectsHTML + '</div>' : ''}
+                    <div class="agreement-card-dates">
+                        <span>Signed: ${signedTick != null ? tickToDate(signedTick) : '—'}</span>
+                        <span>Expires: ${expiresTick != null ? tickToDate(expiresTick) : '—'}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        panel.innerHTML = html;
+    } catch (err) {
+        console.error('Error rendering agreements tab:', err);
+        panel.innerHTML = '<p style="color:#f44;text-align:center;padding:20px;">Error loading agreements.</p>';
+    }
+}
+
+async function withdrawAgreement(agreementId) {
+    // Authorization: must be FM or HoG
+    await refreshRoles();
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('Only the Foreign Minister or Head of Government can withdraw agreements.');
+        return;
+    }
+
+    // Fetch the agreement
+    const { data: ag, error: fetchErr } = await _supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('id', agreementId)
+        .single();
+
+    if (fetchErr || !ag) { alert('Could not load agreement.'); return; }
+
+    const pd = ag.proposal_data || {};
+    const articles = pd.articles || [];
+    const struckIndices = new Set(pd.struck_articles || []);
+
+    // Calculate relations penalty (2x the bonus)
+    let totalRel = 0;
+    articles.forEach((art, i) => {
+        if (!struckIndices.has(i)) totalRel += art.relations || 0;
+    });
+    const penalty = totalRel * 2;
+
+    if (!confirm(
+        'Withdraw from "' + (pd.name || 'Agreement') + '"?\n\n' +
+        (penalty > 0 ? 'This will cost -' + penalty + ' Relations (2x the bonus).\n' : '') +
+        'This action cannot be undone.'
+    )) return;
+
+    // Get current tick
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Set agreement to withdrawn
+    const { error: updateErr } = await _supabase
+        .from('diplomatic_proposals')
+        .update({ status: 'withdrawn', withdrawn_at_tick: currentTick })
+        .eq('id', agreementId);
+
+    if (updateErr) { alert('Error withdrawing: ' + updateErr.message); return; }
+
+    // Apply relations penalty
+    if (penalty > 0) {
+        const nationA = ag.proposing_nation_id < ag.target_nation_id ? ag.proposing_nation_id : ag.target_nation_id;
+        const nationB = ag.proposing_nation_id < ag.target_nation_id ? ag.target_nation_id : ag.proposing_nation_id;
+
+        const { data: rel } = await _supabase
+            .from('diplomatic_relations')
+            .select('id, relation_score, active_treaties')
+            .eq('nation_a_id', nationA)
+            .eq('nation_b_id', nationB)
+            .maybeSingle();
+
+        if (rel) {
+            const newScore = Math.max(0, Math.min(100, (rel.relation_score || 35) - penalty));
+            const treaties = Array.isArray(rel.active_treaties)
+                ? rel.active_treaties.filter(t => t !== agreementId)
+                : [];
+            await _supabase.from('diplomatic_relations')
+                .update({ relation_score: newScore, active_treaties: treaties })
+                .eq('id', rel.id);
+        }
+    }
+
+    alert('"' + (pd.name || 'Agreement') + '" withdrawn.');
+
+    // Refresh
+    await renderAgreementsTab();
+    await renderDiploHeader();
+}
+
+// ==================== INBOX TAB ====================
+
+let inboxFilter = 'all'; // all, action, pending, fm_review, ratification
+
+async function renderInboxTab(filter) {
+    const panel = document.getElementById('tab-inbox');
+    if (!panel) return;
+
+    if (filter) inboxFilter = filter;
+
+    panel.innerHTML = '<p style="color:#888;font-style:italic;text-align:center;padding:20px;">Loading inbox...</p>';
+
+    if (!currentNation) {
+        panel.innerHTML = '<p class="diplo-tab-placeholder">No nation data available.</p>';
+        return;
+    }
+
+    try {
+        // Fetch all non-active, non-rejected proposals involving our nation
+        const { data: proposals } = await _supabase
+            .from('diplomatic_proposals')
+            .select('*')
+            .in('status', ['proposed', 'revised', 'fm_review', 'ratification', 'ratification_failed'])
+            .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id)
+            .order('proposed_at_tick', { ascending: false });
+
+        const allProposals = proposals || [];
+
+        // Count by category for filter badges
+        const counts = { all: allProposals.length, action: 0, pending: 0, fm_review: 0, ratification: 0 };
+        allProposals.forEach(p => {
+            const isIncoming = p.target_nation_id === currentNation.id;
+            const isRevised = p.status === 'revised';
+            const revisedByThem = isRevised && p.target_nation_id === currentNation.id;
+            const needsOurAction = (p.status === 'proposed' && isIncoming) || (isRevised && !revisedByThem);
+            const isFmReview = p.status === 'fm_review';
+            const isRatification = p.status === 'ratification' || p.status === 'ratification_failed';
+
+            if (needsOurAction) counts.action++;
+            else if (isFmReview) counts.fm_review++;
+            else if (isRatification) counts.ratification++;
+            else counts.pending++;
+        });
+
+        // Build filter bar
+        let filterHTML = '<div class="inbox-filters">';
+        const filters = [
+            { key: 'all', label: 'All', count: counts.all },
+            { key: 'action', label: 'Action Needed', count: counts.action },
+            { key: 'pending', label: 'Pending', count: counts.pending },
+            { key: 'fm_review', label: 'FM Review', count: counts.fm_review },
+            { key: 'ratification', label: 'Ratification', count: counts.ratification }
+        ];
+        filters.forEach(f => {
+            const countBadge = f.count > 0 ? '<span class="inbox-filter-count">' + f.count + '</span>' : '';
+            filterHTML += '<button class="inbox-filter-btn ' + (inboxFilter === f.key ? 'active' : '') + '" onclick="filterInbox(\'' + f.key + '\')">' + f.label + countBadge + '</button>';
+        });
+        filterHTML += '</div>';
+
+        // Filter proposals
+        const filtered = allProposals.filter(p => {
+            if (inboxFilter === 'all') return true;
+            const isIncoming = p.target_nation_id === currentNation.id;
+            const isRevised = p.status === 'revised';
+            const revisedByThem = isRevised && p.target_nation_id === currentNation.id;
+            const needsOurAction = (p.status === 'proposed' && isIncoming) || (isRevised && !revisedByThem);
+
+            if (inboxFilter === 'action') return needsOurAction;
+            if (inboxFilter === 'fm_review') return p.status === 'fm_review';
+            if (inboxFilter === 'ratification') return p.status === 'ratification' || p.status === 'ratification_failed';
+            if (inboxFilter === 'pending') return !needsOurAction && p.status !== 'fm_review' && p.status !== 'ratification' && p.status !== 'ratification_failed';
+            return true;
+        });
+
+        if (filtered.length === 0) {
+            panel.innerHTML = filterHTML + '<p class="diplo-tab-placeholder">No proposals in this category.</p>';
+            return;
+        }
+
+        let cardsHTML = '';
+        for (const p of filtered) {
+            cardsHTML += renderInboxCard(p);
+        }
+
+        panel.innerHTML = filterHTML + cardsHTML;
+    } catch (err) {
+        console.error('Error rendering inbox tab:', err);
+        panel.innerHTML = '<p style="color:#f44;text-align:center;padding:20px;">Error loading inbox.</p>';
+    }
+}
+
+function filterInbox(filter) {
+    inboxFilter = filter;
+    renderInboxTab(filter);
+}
+
+function renderInboxCard(p) {
+    const pd = p.proposal_data || {};
+    const articles = pd.articles || [];
+    const struckIndices = new Set(pd.struck_articles || []);
+    const isIncoming = p.target_nation_id === currentNation.id;
+    const isRevised = p.status === 'revised';
+    const revisedByUs = isRevised && p.target_nation_id !== currentNation.id;
+    const revisedByThem = isRevised && p.target_nation_id === currentNation.id;
+    const needsOurAction = (p.status === 'proposed' && isIncoming) || (isRevised && !revisedByUs);
+
+    // Classification
+    const classification = pd.classification || null;
+    const classBadge = classification
+        ? '<span class="classification-badge classification-' + classification.toLowerCase() + '">' + classification + '</span>'
+        : '';
+
+    // Status badge
+    let statusBadge = '';
+    if (p.status === 'proposed' && isIncoming) {
+        statusBadge = '<span class="proposal-status-badge badge-action">Awaiting Your Response</span>';
+    } else if (p.status === 'proposed' && !isIncoming) {
+        statusBadge = '<span class="proposal-status-badge badge-waiting">Awaiting Response</span>';
+    } else if (isRevised && !revisedByUs) {
+        statusBadge = '<span class="proposal-status-badge badge-action">Revised — Your Turn</span>';
+    } else if (isRevised && revisedByUs) {
+        statusBadge = '<span class="proposal-status-badge badge-waiting">Revision Sent</span>';
+    } else if (p.status === 'fm_review') {
+        statusBadge = '<span class="proposal-status-badge" style="background:#1a5276;color:#85c1e9;">FM Review</span>';
+    } else if (p.status === 'ratification') {
+        statusBadge = '<span class="proposal-status-badge" style="background:#6a1b9a;color:#ce93d8;">Parliament</span>';
+    } else if (p.status === 'ratification_failed') {
+        statusBadge = '<span class="proposal-status-badge" style="background:#b71c1c;color:#ef9a9a;">Ratification Failed</span>';
+    }
+
+    // Pipeline tracker for MAJOR proposals
+    let pipelineHTML = '';
+    if (classification === 'MAJOR') {
+        pipelineHTML = renderPipelineTracker(p);
+    }
+
+    // Articles display
+    let articlesHTML = '';
+    if (articles.length > 0) {
+        articlesHTML = '<div class="agreement-card-terms">';
+        articles.forEach((art, i) => {
+            const isStruck = struckIndices.has(i);
+            const artLabel = art.text || art.label || art.type || 'Unknown';
+            articlesHTML += '<div class="agreement-card-term' + (isStruck ? ' term-struck' : '') + '">' +
+                '<span class="proposal-article-num">Art. ' + toRoman(i + 1) + '</span> ' +
+                '<span class="proposal-article-label">' + escapeHtml(artLabel) + '</span>' +
+                (isStruck ? ' <span class="struck-label">STRUCK</span>' : '') +
+            '</div>';
+        });
+        articlesHTML += '</div>';
+    }
+
+    // Effects
+    let totalRel = 0, totalMoney = 0;
+    articles.forEach((art, i) => {
+        if (!struckIndices.has(i)) {
+            totalRel += art.relations || 0;
+            totalMoney += art.money || 0;
+        }
+    });
+    const relStr = totalRel > 0 ? '+' + totalRel + ' Relations' : totalRel < 0 ? totalRel + ' Relations' : '';
+    const moneyStr = totalMoney > 0 ? '+$' + (totalMoney / 1e6).toFixed(0) + 'M' : totalMoney < 0 ? '-$' + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M' : '';
+    let effectsHTML = '';
+    if (relStr || moneyStr) {
+        effectsHTML = '<div class="agreement-card-effects">';
+        if (relStr) effectsHTML += '<span class="effect-tag effect-rel">' + relStr + '</span>';
+        if (moneyStr) effectsHTML += '<span class="effect-tag effect-money">' + moneyStr + '</span>';
+        effectsHTML += '</div>';
+    }
+
+    // Action buttons based on status and role
+    let actionsHTML = '';
+    if (needsOurAction) {
+        // Ambassador can accept/reject/strike
+        actionsHTML = '<div class="inbox-card-actions">' +
+            '<button class="proposal-accept-btn" onclick="acceptProposal(\'' + p.id + '\')">Accept</button>' +
+            '<button class="proposal-strike-btn" onclick="inboxStrikeArticles(\'' + p.id + '\')">Strike Articles</button>' +
+            '<button class="proposal-reject-btn" onclick="rejectProposal(\'' + p.id + '\')">Reject</button>' +
+        '</div>';
+    } else if (p.status === 'fm_review' && diplomaticRoles.isFM) {
+        // FM can approve (MINOR → activate, MAJOR → escalate to parliament)
+        actionsHTML = '<div class="inbox-card-actions">' +
+            '<button class="fm-approve-btn" onclick="fmApprove(\'' + p.id + '\')">Approve</button>' +
+            '<button class="fm-escalate-btn" onclick="fmEscalate(\'' + p.id + '\')">Escalate to Parliament</button>' +
+            '<button class="fm-reject-btn" onclick="fmReject(\'' + p.id + '\')">Reject</button>' +
+        '</div>';
+    } else if (p.status === 'ratification_failed' && (diplomaticRoles.isFM || diplomaticRoles.isHoG)) {
+        actionsHTML = '<div class="inbox-card-actions">' +
+            '<button class="fm-escalate-btn" onclick="fmEscalate(\'' + p.id + '\')">Resubmit to Parliament</button>' +
+            '<button class="fm-reject-btn" onclick="fmReject(\'' + p.id + '\')">Abandon</button>' +
+        '</div>';
+    }
+
+    // Strike checkboxes for action-needed proposals
+    let strikeArticlesHTML = '';
+    if (needsOurAction && articles.length > 0) {
+        strikeArticlesHTML = '<div class="proposal-articles-list" id="inbox-articles-' + p.id + '" style="display:none;">';
+        articles.forEach((art, i) => {
+            const artLabel = art.text || art.label || art.type || 'Unknown';
+            strikeArticlesHTML += '<div class="proposal-article-row">' +
+                '<input type="checkbox" class="strike-checkbox" data-proposal-id="' + p.id + '" data-article-index="' + i + '" />' +
+                '<div class="proposal-article-content">' +
+                    '<span class="proposal-article-num">Art. ' + toRoman(i + 1) + '.</span> ' +
+                    '<span class="proposal-article-label">' + escapeHtml(artLabel) + '</span>' +
+                '</div>' +
+            '</div>';
+        });
+        strikeArticlesHTML += '<div class="proposal-btn-row" style="margin-top:6px;">' +
+            '<button class="proposal-strike-btn" onclick="strikeArticles(\'' + p.id + '\'); renderInboxTab();">Confirm Strike</button>' +
+        '</div></div>';
+    }
+
+    return `
+        <div class="inbox-card ${needsOurAction ? 'requires-action' : ''}">
+            <div class="inbox-card-header">
+                <div class="inbox-card-name">${escapeHtml(pd.name || 'Unnamed Proposal')}</div>
+                <div class="inbox-card-badges">
+                    ${classBadge}
+                    ${statusBadge}
+                </div>
+            </div>
+            <div class="inbox-card-meta">
+                ${escapeHtml(pd.proposer_nation_name || 'Unknown')} &amp; ${escapeHtml(pd.target_nation_name || 'Unknown')}
+                &middot; ${pd.duration_years || '?'} year${(pd.duration_years || 0) !== 1 ? 's' : ''}
+                &middot; Proposed ${p.proposed_at_tick != null ? tickToDate(p.proposed_at_tick) : '—'}
+            </div>
+            ${pipelineHTML}
+            ${articlesHTML}
+            ${effectsHTML}
+            ${strikeArticlesHTML}
+            ${actionsHTML}
+        </div>
+    `;
+}
+
+function inboxStrikeArticles(proposalId) {
+    // Toggle visibility of the strike checkboxes section
+    const section = document.getElementById('inbox-articles-' + proposalId);
+    if (section) {
+        section.style.display = section.style.display === 'none' ? '' : 'none';
+    }
+}
+
+// ==================== PIPELINE TRACKER ====================
+
+function renderPipelineTracker(proposal) {
+    const pd = proposal.proposal_data || {};
+    const pipeline = pd.pipeline || {};
+    const status = proposal.status;
+
+    // Pipeline stages for MAJOR: Ambassador Accepted → FM Review → Parliament Ratification → Active
+    const stages = [
+        { key: 'ambassador', label: 'Ambassador' },
+        { key: 'fm_review', label: 'FM Review' },
+        { key: 'parliament', label: 'Parliament' },
+        { key: 'active', label: 'Active' }
+    ];
+
+    // Determine which stages are completed/active
+    const stageStates = {};
+
+    if (status === 'proposed' || status === 'revised') {
+        stageStates.ambassador = 'active';
+    } else if (status === 'fm_review') {
+        stageStates.ambassador = 'completed';
+        stageStates.fm_review = 'active';
+    } else if (status === 'ratification') {
+        stageStates.ambassador = 'completed';
+        stageStates.fm_review = 'completed';
+        stageStates.parliament = 'active';
+    } else if (status === 'ratification_failed') {
+        stageStates.ambassador = 'completed';
+        stageStates.fm_review = 'completed';
+        stageStates.parliament = 'rejected';
+    } else if (status === 'active') {
+        stageStates.ambassador = 'completed';
+        stageStates.fm_review = 'completed';
+        stageStates.parliament = 'completed';
+        stageStates.active = 'completed';
+    } else if (status === 'rejected') {
+        // Find where it was rejected
+        if (pipeline.rejected_at === 'fm') {
+            stageStates.ambassador = 'completed';
+            stageStates.fm_review = 'rejected';
+        } else if (pipeline.rejected_at === 'parliament') {
+            stageStates.ambassador = 'completed';
+            stageStates.fm_review = 'completed';
+            stageStates.parliament = 'rejected';
+        } else {
+            stageStates.ambassador = 'rejected';
+        }
+    }
+
+    let html = '<div class="pipeline-tracker">';
+    stages.forEach((stage, i) => {
+        const state = stageStates[stage.key] || '';
+        if (i > 0) {
+            const prevCompleted = stageStates[stages[i - 1].key] === 'completed';
+            html += '<div class="pipeline-connector ' + (prevCompleted ? 'completed' : '') + '"></div>';
+        }
+        html += '<div class="pipeline-stage ' + state + '">' +
+            '<div class="pipeline-stage-dot"></div><br>' +
+            stage.label +
+        '</div>';
+    });
+    html += '</div>';
+    return html;
+}
+
+// ==================== FM ACTION FUNCTIONS ====================
+
+async function fmApprove(proposalId) {
+    // Authorization: must be FM or HoG
+    await refreshRoles();
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('Only the Foreign Minister or Head of Government can approve proposals.');
+        return;
+    }
+
+    const { data: proposal, error: fetchErr } = await _supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('id', proposalId)
+        .single();
+
+    if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
+
+    // Status check: must be in fm_review
+    if (proposal.status !== 'fm_review') {
+        alert('This proposal is not currently in FM review status.');
+        return;
+    }
+
+    const pd = proposal.proposal_data || {};
+    const classification = pd.classification || 'MINOR';
+
+    if (classification === 'MAJOR') {
+        // MAJOR agreements must go through parliament — use escalate instead
+        alert('MAJOR agreements cannot be directly approved. Use "Escalate to Parliament" instead.');
+        return;
+    }
+
+    // MINOR: FM can directly activate
+    if (!confirm(
+        'Approve "' + (pd.name || 'Agreement') + '" as Foreign Minister?\n\n' +
+        'This MINOR agreement will become active immediately.'
+    )) return;
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Activate the proposal
+    const updatedPipeline = { ...(pd.pipeline || {}), fm_approved_at: currentTick, fm_approved_by: currentFaction.id };
+    pd.pipeline = updatedPipeline;
+
+    const { error: updateErr } = await _supabase
+        .from('diplomatic_proposals')
+        .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
+        .eq('id', proposalId);
+
+    if (updateErr) { alert('Error approving: ' + updateErr.message); return; }
+
+    // Apply relation effects
+    await applyProposalEffects(proposal, currentTick);
+
+    // Fire CIVIC news event
+    await fireProposalEvent(pd, currentTick, 'approved',
+        'Foreign Minister approved "' + (pd.name || 'Agreement') + '" between ' +
+        pd.proposer_nation_name + ' and ' + pd.target_nation_name + '. The agreement is now active.');
+
+    alert('"' + (pd.name || 'Agreement') + '" approved and is now active!');
+    await renderInboxTab();
+    await renderDiploHeader();
+}
+
+async function fmEscalate(proposalId) {
+    // Authorization: must be FM or HoG
+    await refreshRoles();
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('Only the Foreign Minister or Head of Government can escalate proposals.');
+        return;
+    }
+
+    const { data: proposal, error: fetchErr } = await _supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('id', proposalId)
+        .single();
+
+    if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
+
+    // Status check: must be in fm_review
+    if (proposal.status !== 'fm_review') {
+        alert('This proposal is not currently in FM review status.');
+        return;
+    }
+
+    const pd = proposal.proposal_data || {};
+
+    if (!confirm(
+        'Escalate "' + (pd.name || 'Agreement') + '" to Parliament for ratification?\n\n' +
+        'A ratification bill will be submitted to the legislature.'
+    )) return;
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Create a ratification bill
+    const billTitle = 'Ratify: ' + (pd.name || 'Diplomatic Agreement');
+    const billDescription = 'Ratification of the ' + (pd.classification || '') + ' diplomatic agreement "' +
+        (pd.name || 'Agreement') + '" between ' + (pd.proposer_nation_name || 'Unknown') + ' and ' +
+        (pd.target_nation_name || 'Unknown') + '. Duration: ' + (pd.duration_years || '?') + ' year(s).';
+
+    const { data: bill, error: billErr } = await _supabase
+        .from('bills')
+        .insert({
+            nation_id: currentNation.id,
+            bill_type: 'ratification',
+            title: billTitle,
+            description: billDescription,
+            introduced_by_faction_id: currentFaction.id,
+            proposal_id: proposalId,
+            status: 'committee',
+            introduced_at_tick: currentTick
+        })
+        .select('id')
+        .single();
+
+    if (billErr) {
+        console.error('Error creating ratification bill:', billErr);
+        alert('Error submitting to parliament: ' + billErr.message);
+        return;
+    }
+
+    // Update proposal status
+    const updatedPipeline = { ...(pd.pipeline || {}), escalated_at: currentTick, escalated_by: currentFaction.id, ratification_bill_id: bill?.id };
+    pd.pipeline = updatedPipeline;
+
+    await _supabase
+        .from('diplomatic_proposals')
+        .update({ status: 'ratification', proposal_data: pd })
+        .eq('id', proposalId);
+
+    // Fire CIVIC news event
+    await fireProposalEvent(pd, currentTick, 'escalated',
+        'The diplomatic agreement "' + (pd.name || 'Agreement') + '" has been escalated to Parliament for ratification. ' +
+        'A ratification bill has been introduced in committee.');
+
+    alert('"' + (pd.name || 'Agreement') + '" escalated to Parliament. Ratification bill submitted.');
+    await renderInboxTab();
+    await renderDiploHeader();
+}
+
+async function fmReject(proposalId) {
+    // Authorization: must be FM or HoG
+    await refreshRoles();
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('Only the Foreign Minister or Head of Government can reject proposals.');
+        return;
+    }
+
+    const { data: proposal, error: fetchErr } = await _supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('id', proposalId)
+        .single();
+
+    if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
+
+    // Status check: must be in fm_review or ratification_failed
+    if (!['fm_review', 'ratification_failed'].includes(proposal.status)) {
+        alert('This proposal cannot be rejected at this stage.');
+        return;
+    }
+
+    const pd = proposal.proposal_data || {};
+    const action = proposal.status === 'ratification_failed' ? 'abandon' : 'reject';
+
+    if (!confirm(
+        (action === 'abandon' ? 'Abandon' : 'Reject') + ' "' + (pd.name || 'Agreement') + '" as Foreign Minister?\n\n' +
+        'This cannot be undone.'
+    )) return;
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    const updatedPipeline = { ...(pd.pipeline || {}), rejected_at: 'fm', rejected_at_tick: currentTick };
+    pd.pipeline = updatedPipeline;
+
+    await _supabase
+        .from('diplomatic_proposals')
+        .update({ status: 'rejected', proposal_data: pd })
+        .eq('id', proposalId);
+
+    // Fire CIVIC news event
+    await fireProposalEvent(pd, currentTick, 'rejected',
+        'The Foreign Minister has ' + action + 'ed the diplomatic agreement "' + (pd.name || 'Agreement') +
+        '" between ' + pd.proposer_nation_name + ' and ' + pd.target_nation_name + '.');
+
+    alert('"' + (pd.name || 'Agreement') + '" ' + action + 'ed.');
+    await renderInboxTab();
+    await renderDiploHeader();
+}
+
+// ==================== PROPOSAL EFFECT HELPERS ====================
+
+async function applyProposalEffects(proposal, currentTick) {
+    const pd = proposal.proposal_data || {};
+    const articles = pd.articles || [];
+    const struckIndices = new Set(pd.struck_articles || []);
+
+    let totalRel = 0, totalMoney = 0;
+    const activeArticles = [];
+    articles.forEach((art, i) => {
+        if (!struckIndices.has(i)) {
+            totalRel += art.relations || 0;
+            totalMoney += art.money || 0;
+            activeArticles.push(art);
+        }
+    });
+
+    // Update relations score
+    if (totalRel !== 0) {
+        const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+        const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+
+        const { data: rel } = await _supabase
+            .from('diplomatic_relations')
+            .select('id, relation_score, active_treaties')
+            .eq('nation_a_id', nationA)
+            .eq('nation_b_id', nationB)
+            .maybeSingle();
+
+        if (rel) {
+            const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
+            const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposal.id] : [proposal.id];
+            await _supabase.from('diplomatic_relations')
+                .update({ relation_score: newScore, active_treaties: treaties })
+                .eq('id', rel.id);
+        }
+    }
+}
+
+async function fireProposalEvent(pd, currentTick, stage, description) {
+    try {
+        const { data: allNations } = await _supabase.from('nations').select('id');
+        if (allNations && allNations.length > 0) {
+            const eventRows = allNations.map(n => ({
+                nation_id: n.id,
+                event_name: (pd.name || 'Diplomatic Agreement') + ' — ' + stage.charAt(0).toUpperCase() + stage.slice(1),
+                category: 'Diplomatic',
+                description_chosen: description,
+                fired_at_tick: currentTick
+            }));
+            await _supabase.from('event_log').insert(eventRows);
+        }
+    } catch (e) {
+        console.warn('Error firing proposal event:', e);
+    }
+}
+
+// ==================== NATION CARD TOGGLE ====================
+
+async function toggleNationCard(nationId) {
+    const body = document.getElementById('nation-card-body-' + nationId);
+    if (!body) return;
+
+    const card = body.closest('.nation-card');
+    const isExpanded = body.style.display !== 'none';
+
+    // Collapse all cards and clear their content
+    document.querySelectorAll('.nation-card-body').forEach(b => {
+        b.style.display = 'none';
+        b.innerHTML = '';
+    });
+    document.querySelectorAll('.nation-card').forEach(c => {
+        c.classList.remove('expanded');
+        c.classList.remove('highlighted');
+    });
+
+    if (!isExpanded) {
+        body.style.display = '';
+        body.innerHTML = '<p style="color:#888;font-style:italic;font-size:0.82rem;padding:8px 0;">Loading details...</p>';
+        card.classList.add('expanded');
+        await renderNationCardBody(nationId);
+    }
+}
+
+// ==================== NATION CARD BODY (expanded detail) ====================
+
+async function renderNationCardBody(nationId) {
+    const body = document.getElementById('nation-card-body-' + nationId);
+    if (!body) return;
+
+    try {
+        // Fetch the full nation
+        const { data: targetNation, error: natErr } = await _supabase
+            .from('nations').select('*').eq('id', nationId).single();
+        if (natErr || !targetNation) {
+            body.innerHTML = '<p style="color:#f44;">Nation not found.</p>';
+            return;
+        }
+
+        // Set module state for initiative form
+        selectedTargetNation = targetNation;
+
+        // Parallel data fetch
+        const [relation, proposals, ambassador, pendingAmbassador, theirAmbassador, pendingDiploProposals] = await Promise.all([
+            fetchDiplomaticRelation(currentNation?.id, targetNation.id),
+            fetchActiveProposals(currentNation?.id, targetNation.id),
+            fetchAmbassador(currentNation?.id, targetNation.id),
+            fetchPendingAmbassador(currentNation?.id, targetNation.id),
+            fetchAmbassador(targetNation.id, currentNation?.id),
+            fetchPendingDiploProposals(currentNation?.id, targetNation.id)
+        ]);
+        selectedTheirAmbassador = theirAmbassador;
+
+        const flagUrl = FLAG_URLS[targetNation.name] || null;
+        const hasCeasefire = proposals.some(p => p.proposal_type === 'ceasefire');
+        const score = relation?.relation_score ?? 35;
+        const tier = getRelationTier(score, hasCeasefire);
+
+        // Embassy status
+        let embassyStatus = 'N/A';
+        if (relation) {
+            if (currentNation && currentNation.id === relation.nation_a_id) {
+                embassyStatus = relation.embassy_status_a || 'open';
+            } else {
+                embassyStatus = relation.embassy_status_b || 'open';
+            }
+        }
+
+        // Build body HTML
+        let html = '';
+
+        // Key stats
+        html += `
+            <div class="info-block">
+                <div class="info-row">
+                    <span class="info-label">Population</span>
+                    <span class="info-value gold">${formatNumber(targetNation.population)}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Stability</span>
+                    <span class="info-value" style="color:${getStatColor(targetNation.stability)}">${targetNation.stability ?? '—'}%</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Civil Unrest</span>
+                    <span class="info-value" style="color:${getStatColor(100 - (targetNation.civil_unrest || 0))}">${targetNation.civil_unrest ?? '—'}%</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Military Strength</span>
+                    <span class="info-value">${targetNation.military_strength ?? '—'}</span>
+                </div>
+            </div>
+        `;
+
+        // Relation section
+        html += renderRelationSection(tier.label, tier.cssClass, embassyStatus, ambassador);
+
+        // Active proposals
+        if (proposals.length > 0) {
+            html += renderActiveProposals(proposals);
+        }
+
+        // Pending diplomatic proposals
+        if (pendingDiploProposals.length > 0) {
+            html += renderPendingProposals(pendingDiploProposals, targetNation);
+        }
+
+        // Action panel
+        html += renderActionPanel(targetNation, diplomaticRoles, ambassador, pendingAmbassador, theirAmbassador);
+
+        body.innerHTML = html;
+
+        // Render chat section (async, appended after)
+        const chatHTML = await renderChatSection(targetNation, diplomaticRoles, ambassador, theirAmbassador);
+        body.innerHTML += chatHTML;
+
+        // Scroll chat to bottom if present
+        const chatBox = body.querySelector('#diplo-chat-box');
+        if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
+
+    } catch (err) {
+        console.error('Error loading nation card details:', err);
+        body.innerHTML = '<p style="color:#f44;">Error loading details.</p>';
+    }
+}
+
+// ==================== MAP → CARD HIGHLIGHT ====================
+
+async function highlightNationCard(nationName) {
+    // Find the card with matching nation name
+    const card = document.querySelector('.nation-card[data-nation-name="' + nationName + '"]');
+    if (!card) return;
+
+    const nationId = card.dataset.nationId;
+
+    // Remove previous highlights
+    document.querySelectorAll('.nation-card').forEach(c => c.classList.remove('highlighted'));
+
+    // Expand the card (this also collapses others)
+    const body = document.getElementById('nation-card-body-' + nationId);
+    const isAlreadyExpanded = body && body.style.display !== 'none';
+
+    if (!isAlreadyExpanded) {
+        await toggleNationCard(nationId);
+    }
+
+    // Add highlight class
+    card.classList.add('highlighted');
+
+    // Scroll card into view
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ==================== MAP SETUP ====================
@@ -234,145 +1403,42 @@ function setupDiplomacyMap() {
         path.addEventListener('click', async (e) => {
             e.stopPropagation();
 
-            // Toggle selection
+            // Toggle map selection highlight
             document.querySelectorAll('.land').forEach(l => l.classList.remove('selected-nation'));
             e.target.classList.add('selected-nation');
 
             const name = e.target.getAttribute('data-nation-name');
-            const sidebar = document.getElementById('diplo-intel');
-            sidebar.innerHTML = '<p style="color:#888;font-style:italic;">Loading ' + name + '...</p>';
 
-            try {
-                const { data: nation, error } = await _supabase
-                    .from('nations')
-                    .select('*')
-                    .eq('name', name)
-                    .single();
-
-                if (error || !nation) {
-                    sidebar.innerHTML = '<p style="color:#f44;">Nation not found.</p>';
-                    return;
-                }
-
-                await renderDiplomacySidebar(nation);
-            } catch (err) {
-                console.error('Error loading nation:', err);
-                sidebar.innerHTML = '<p style="color:#f44;">Error loading data.</p>';
-            }
+            // Switch to Relations tab and highlight/expand matching card
+            showDiploTab('relations');
+            await highlightNationCard(name);
         });
     });
 }
 
-// ==================== SIDEBAR RENDERING ====================
-
-async function renderDiplomacySidebar(targetNation) {
-    const sidebar = document.getElementById('diplo-intel');
-
-    // Is this the player's own nation?
-    const isOwnNation = currentNation && currentNation.id === targetNation.id;
-
-    // Track target for initiative form
-    selectedTargetNation = targetNation;
-
-    // Parallel fetch: relation, active proposals, our ambassador, pending ambassador, their ambassador, pending diplomatic proposals
-    const [relation, proposals, ambassador, pendingAmbassador, theirAmbassador, pendingDiploProposals] = await Promise.all([
-        fetchDiplomaticRelation(currentNation?.id, targetNation.id),
-        fetchActiveProposals(currentNation?.id, targetNation.id),
-        fetchAmbassador(currentNation?.id, targetNation.id),
-        fetchPendingAmbassador(currentNation?.id, targetNation.id),
-        fetchAmbassador(targetNation.id, currentNation?.id),
-        fetchPendingDiploProposals(currentNation?.id, targetNation.id)
-    ]);
-    selectedTheirAmbassador = theirAmbassador;
-
-    // Flag URLs (same as world.html)
-    const flagUrls = {
-        'Melizea': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Melizea.png',
-        'Avelia': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Avelia1.png',
-        'Sangreza': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/sangreza.png',
-        'Montequilla': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Montequilla.png',
-        'San Estrella': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/sanestrella.png',
-        'Veldaria': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Veldaria.png'
-    };
-    const flagUrl = flagUrls[targetNation.name] || null;
-
-    // Relation tier (score-driven, number never shown)
-    const hasCeasefire = proposals.some(p => p.proposal_type === 'ceasefire');
-    const score = relation?.relation_score ?? 30;
-    const tier = getRelationTier(score, hasCeasefire);
-    const relType = tier.label;
-    const relClass = tier.cssClass;
-
-    // Embassy status (depends on which side we are)
-    let embassyStatus = 'N/A';
-    if (relation) {
-        if (currentNation && currentNation.id === relation.nation_a_id) {
-            embassyStatus = relation.embassy_status_a || 'open';
-        } else {
-            embassyStatus = relation.embassy_status_b || 'open';
-        }
-    }
-
-    sidebar.innerHTML = `
-        <!-- Nation Header -->
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
-            <div>
-                <h3 style="color:#ffcc00;font-size:1.2rem;margin-bottom:4px;">${targetNation.name}</h3>
-                <p style="color:#888;font-size:0.78rem;margin:0;font-style:italic;">${targetNation.capital || 'Unknown Capital'}</p>
-            </div>
-            ${flagUrl ? '<img src="' + flagUrl + '" alt="' + targetNation.name + ' flag" style="width:56px;height:auto;border:1px solid #444;border-radius:3px;" />' : ''}
-        </div>
-
-        ${isOwnNation ? '<div style="background:#1a2a1a;border:1px solid #4CAF50;border-radius:6px;padding:10px;margin-bottom:14px;text-align:center;font-size:0.8rem;color:#4CAF50;font-weight:bold;">YOUR NATION</div>' : ''}
-
-        <!-- Key Stats -->
-        <div class="info-block">
-            <div class="info-row">
-                <span class="info-label">Population</span>
-                <span class="info-value gold">${formatNumber(targetNation.population)}</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Stability</span>
-                <span class="info-value" style="color:${getStatColor(targetNation.stability)}">${targetNation.stability ?? '—'}%</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Civil Unrest</span>
-                <span class="info-value" style="color:${getStatColor(100 - (targetNation.civil_unrest || 0))}">${targetNation.civil_unrest ?? '—'}%</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Military Strength</span>
-                <span class="info-value">${targetNation.military_strength ?? '—'}</span>
-            </div>
-        </div>
-
-        ${!isOwnNation ? renderRelationSection(relType, relClass, embassyStatus, ambassador) : ''}
-
-        ${!isOwnNation && proposals.length > 0 ? renderActiveProposals(proposals) : ''}
-
-        ${!isOwnNation && pendingDiploProposals.length > 0 ? renderPendingProposals(pendingDiploProposals, targetNation) : ''}
-
-        ${!isOwnNation ? renderActionPanel(targetNation, diplomaticRoles, ambassador, pendingAmbassador, theirAmbassador) : ''}
-    `;
-
-    // Render chat section after the main sidebar HTML is set
-    if (!isOwnNation) {
-        const chatHTML = await renderChatSection(targetNation, diplomaticRoles, ambassador, theirAmbassador);
-        sidebar.innerHTML += chatHTML;
-    }
-}
+// ==================== (renderDiplomacySidebar replaced by renderNationCardBody in Phase 1) ====================
 
 // ==================== RELATION TIER (score-driven) ====================
 
 function getRelationTier(score, hasCeasefire) {
-    if (hasCeasefire)  return { label: 'Ceasefire', cssClass: 'rel-ceasefire' };
-    if (score <= -50)  return { label: 'War',       cssClass: 'rel-war' };
-    if (score <= -20)  return { label: 'Hostile',   cssClass: 'rel-hostile' };
-    if (score <= 0)    return { label: 'Tense',     cssClass: 'rel-tense' };
-    if (score <= 19)   return { label: 'Cool',      cssClass: 'rel-cool' };
-    if (score <= 39)   return { label: 'Neutral',   cssClass: 'rel-neutral' };
-    if (score <= 59)   return { label: 'Warm',      cssClass: 'rel-warm' };
-    if (score <= 79)   return { label: 'Friendly',  cssClass: 'rel-friendly' };
-    return                     { label: 'Allied',    cssClass: 'rel-allied' };
+    if (hasCeasefire)  return { label: 'Ceasefire',     cssClass: 'rel-ceasefire' };
+    if (score >= 90)   return { label: 'Allied',        cssClass: 'rel-allied' };
+    if (score >= 70)   return { label: 'Friendly',      cssClass: 'rel-friendly' };
+    if (score >= 50)   return { label: 'Warm',          cssClass: 'rel-warm' };
+    if (score >= 35)   return { label: 'Neutral',       cssClass: 'rel-neutral' };
+    if (score >= 20)   return { label: 'Cold',          cssClass: 'rel-cold' };
+    if (score >= 5)    return { label: 'Hostile',       cssClass: 'rel-hostile' };
+    return                     { label: 'Adversarial',   cssClass: 'rel-adversarial' };
+}
+
+function getRelationBarColor(score) {
+    if (score >= 90) return '#1b5e20';
+    if (score >= 70) return '#2e7d32';
+    if (score >= 50) return '#558b2f';
+    if (score >= 35) return '#827717';
+    if (score >= 20) return '#e65100';
+    if (score >= 5)  return '#b71c1c';
+    return '#4a0000';
 }
 
 // ==================== RELATION SECTION ====================
@@ -382,6 +1448,47 @@ function renderRelationSection(relType, relClass, embassyStatus, ambassador) {
     const ambName = ambassador
         ? (ambassador.ambassador_first_name || '') + ' ' + (ambassador.ambassador_last_name || '')
         : null;
+
+    // Ambassador term info
+    let termHTML = '';
+    if (ambassador && ambassador.appointed_at_tick != null) {
+        const termLength = ambassador.term_length || 36;
+        const ticksServed = shardTick - ambassador.appointed_at_tick;
+        const ticksRemaining = Math.max(0, termLength - ticksServed);
+        const expiryTick = ambassador.appointed_at_tick + termLength;
+        const remainingYears = Math.floor(ticksRemaining / 12);
+        const remainingMonths = ticksRemaining % 12;
+        const remainingStr = remainingYears > 0
+            ? remainingYears + 'y ' + remainingMonths + 'mo'
+            : remainingMonths + ' month' + (remainingMonths !== 1 ? 's' : '');
+
+        termHTML = `
+            <div class="info-row">
+                <span class="info-label">Appointed</span>
+                <span class="info-value" style="font-size:0.78rem;">${tickToDate(ambassador.appointed_at_tick)}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Term Expires</span>
+                <span class="info-value" style="font-size:0.78rem;">${tickToDate(expiryTick)}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Remaining</span>
+                <span class="info-value" style="font-size:0.78rem;color:${ticksRemaining <= 3 ? '#f44' : ticksRemaining <= 6 ? '#ff9800' : '#4CAF50'};">${remainingStr}</span>
+            </div>`;
+    }
+
+    // Retirement warning
+    let warningHTML = '';
+    if (ambassador && ambassador.appointed_at_tick != null) {
+        const termLength = ambassador.term_length || 36;
+        const ticksRemaining = Math.max(0, termLength - (shardTick - ambassador.appointed_at_tick));
+        if (ticksRemaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && ticksRemaining > 0) {
+            warningHTML = `
+                <div style="background:#3a2a00;border:1px solid #ff9800;border-radius:6px;padding:8px 10px;margin-top:8px;font-size:0.78rem;color:#ff9800;">
+                    &#9888; Ambassador ${ambName ? ambName.trim() : ''} will retire in ${ticksRemaining} tick${ticksRemaining !== 1 ? 's' : ''}. Conclude any active negotiations.
+                </div>`;
+        }
+    }
 
     return `
         <div class="diplo-section-title">Diplomatic Relations</div>
@@ -398,7 +1505,9 @@ function renderRelationSection(relType, relClass, embassyStatus, ambassador) {
                 <span class="info-label">Ambassador</span>
                 <span class="info-value" style="font-size:0.85rem;">${ambName ? ambName.trim() : '<span style="color:#666;">None assigned</span>'}</span>
             </div>
+            ${termHTML}
         </div>
+        ${warningHTML}
     `;
 }
 
@@ -475,7 +1584,10 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
                 <button class="action-btn" disabled style="opacity:0.6;">Awaiting Confirmation: ${pendName.trim()}</button>
                 <button class="action-btn" style="margin-top:8px;" onclick="cancelPendingAmbassador('${pendingAmbassador.id}', '${targetNation.name}')">Cancel Nomination</button>`;
         } else {
-            const adminParams = [getAdminNationOverride() ? 'nation_id=' + getAdminNationOverride() : '', getAdminFactionOverride() ? 'faction_id=' + getAdminFactionOverride() : ''].filter(Boolean).join('&');
+            const urlParams = new URLSearchParams(window.location.search);
+            const adminNation = urlParams.get('nation_id') || sessionStorage.getItem('_admin_nation') || '';
+            const adminFaction = urlParams.get('faction_id') || sessionStorage.getItem('_admin_faction') || '';
+            const adminParams = [adminNation ? 'nation_id=' + adminNation : '', adminFaction ? 'faction_id=' + adminFaction : ''].filter(Boolean).join('&');
             const ambUrl = 'select-ambassador.html?target=' + targetNation.id + (adminParams ? '&' + adminParams : '');
             fmButtons = `<button class="action-btn" onclick="window.location.href='${ambUrl}'">Appoint Ambassador</button>`;
         }
@@ -498,15 +1610,30 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
         const hasTargetAmb = theirAmbassador && theirAmbassador.status === 'active';
         const initiativeDisabled = !hasTargetAmb ? 'disabled style="opacity:0.6;"' : '';
         const initiativeHint = !hasTargetAmb ? '<p class="action-hint">Target nation has no ambassador to negotiate with.</p>' : '';
+
+        // Retirement warning for the player's own ambassador
+        let ambWarningHTML = '';
+        const myAmb = roles.ambassadorTo.find(a => a.target_nation_id === targetNation.id);
+        if (myAmb && myAmb.appointed_at_tick != null) {
+            const tl = myAmb.term_length || 36;
+            const remaining = Math.max(0, tl - (shardTick - myAmb.appointed_at_tick));
+            if (remaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && remaining > 0) {
+                const ambFullName = ((myAmb.ambassador_first_name || '') + ' ' + (myAmb.ambassador_last_name || '')).trim();
+                ambWarningHTML = `<div style="background:#3a2a00;border:1px solid #ff9800;border-radius:6px;padding:8px 10px;margin-top:8px;font-size:0.78rem;color:#ff9800;">&#9888; Ambassador ${ambFullName} will retire in ${remaining} tick${remaining !== 1 ? 's' : ''}. Conclude any active negotiations.</div>`;
+            }
+        }
+
         actions += `
             <div class="action-card" style="margin-bottom:10px;">
                 <div class="action-header">
                     <span class="action-title">Ambassador Actions</span>
                 </div>
                 <p class="action-desc">As Ambassador to ${targetNation.name}, you can negotiate directly.</p>
+                ${ambWarningHTML}
                 <button class="action-btn" ${initiativeDisabled} onclick="openInitiativeForm()">Diplomatic Initiative</button>
                 ${initiativeHint}
                 <button class="action-btn" style="margin-top:8px;" disabled>Gather Intel (Coming Soon)</button>
+                <button class="action-btn" style="margin-top:8px;background:#5a1a1a;border-color:#8b3030;" onclick="resignAmbassador('${myAmb?.id}', '${escapeHtml(targetNation.name)}')">Resign as Ambassador</button>
             </div>
             <div id="initiative-form-container"></div>
         `;
@@ -593,6 +1720,13 @@ async function fetchAmbassador(myNationId, targetNationId) {
 
 // ==================== HELPERS ====================
 
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function tickToDate(tick) {
+    if (tick == null) return '—';
+    const y = 2000 + Math.floor(tick / 12);
+    return MONTHS[tick % 12] + ' ' + y;
+}
+
 function getStatColor(value) {
     if (value == null) return '#888';
     if (value >= 70) return '#4CAF50';
@@ -647,9 +1781,74 @@ async function fetchPendingAmbassador(myNationId, targetNationId) {
     }
 }
 
+// ==================== RESIGN AMBASSADOR ====================
+
+async function resignAmbassador(ambassadorId, nationName) {
+    if (!ambassadorId) { alert('No ambassador found.'); return; }
+
+    // Authorization: must actually be this ambassador (faction owns it)
+    const isMyAmb = diplomaticRoles?.ambassadorTo?.some(a => a.id === ambassadorId);
+    if (!isMyAmb) {
+        alert('You are not this ambassador.');
+        return;
+    }
+
+    if (!confirm(
+        `Resign as Ambassador to ${nationName}?\n\n` +
+        `Your party will lose 1 Approval.\n` +
+        `Any pending negotiations will be affected.`
+    )) return;
+
+    try {
+        const { data: shard } = await _supabase
+            .from('shard')
+            .select('current_tick')
+            .eq('name', 'Alpha Shard')
+            .single();
+        const tick = shard?.current_tick || 0;
+
+        // Get ambassador details
+        const { data: amb } = await _supabase
+            .from('ambassadors')
+            .select('faction_id, ambassador_first_name, ambassador_last_name')
+            .eq('id', ambassadorId)
+            .single();
+
+        if (!amb) { alert('Ambassador not found.'); return; }
+
+        // Deactivate ambassador
+        await _supabase
+            .from('ambassadors')
+            .update({ status: 'resigned', is_active: false, recalled_at_tick: tick })
+            .eq('id', ambassadorId);
+
+        // 1 approval loss for resigning
+        await adjustBlocApproval(_supabase, amb.faction_id, -1);
+
+        const ambName = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim();
+        alert(`Ambassador ${ambName} has resigned from ${nationName}.\n-1 Approval to your party.`);
+
+        // Refresh roles, header, and re-render
+        diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
+        await renderDiploHeader();
+        await renderRelationsTab();
+
+    } catch (e) {
+        console.error('Error resigning ambassador:', e);
+        alert('Error: ' + e.message);
+    }
+}
+
 // ==================== RECALL AMBASSADOR ====================
 
 async function recallAmbassador(ambassadorId, nationName) {
+    // Authorization: must be FM or HoG
+    await refreshRoles();
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('Only the Foreign Minister or Head of Government can recall ambassadors.');
+        return;
+    }
+
     if (!confirm(
         `Recall your Ambassador from ${nationName}?\n\n` +
         `The ambassador's party will lose 1-3 Approval.`
@@ -685,13 +1884,10 @@ async function recallAmbassador(ambassadorId, nationName) {
         const ambName = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim();
         alert(`Ambassador ${ambName} recalled from ${nationName}.\n-${loss} Approval to their party.`);
 
-        // Refresh roles and re-render
+        // Refresh roles, header, and re-render expanded card
         diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
-        renderRoleBadges(diplomaticRoles);
-
-        // Re-select the nation to refresh sidebar
-        const targetPath = document.querySelector('.land.selected-nation');
-        if (targetPath) targetPath.dispatchEvent(new Event('click', { bubbles: true }));
+        await renderDiploHeader();
+        await renderRelationsTab();
 
     } catch (e) {
         console.error('Error recalling ambassador:', e);
@@ -700,6 +1896,13 @@ async function recallAmbassador(ambassadorId, nationName) {
 }
 
 async function cancelPendingAmbassador(ambassadorId, nationName) {
+    // Authorization: must be FM or HoG
+    await refreshRoles();
+    if (!diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('Only the Foreign Minister or Head of Government can cancel ambassador nominations.');
+        return;
+    }
+
     if (!confirm(`Cancel this ambassador nomination to ${nationName}?\n\nThis cannot be undone.`)) return;
 
     try {
@@ -735,10 +1938,8 @@ async function cancelPendingAmbassador(ambassadorId, nationName) {
         alert(`Nomination withdrawn: ${ambName} to ${nationName}.`);
 
         diplomaticRoles = await detectDiplomaticRoles(currentFaction, currentNation, currentCoalition);
-        renderRoleBadges(diplomaticRoles);
-
-        const targetPath = document.querySelector('.land.selected-nation');
-        if (targetPath) targetPath.dispatchEvent(new Event('click', { bubbles: true }));
+        await renderDiploHeader();
+        await renderRelationsTab();
 
     } catch (e) {
         console.error('Error canceling pending ambassador:', e);
@@ -832,6 +2033,13 @@ async function sendDiploMessage(targetNationId, targetNationName) {
     const text = input.value.trim();
     if (!text) return;
 
+    // Authorization: must have an active ambassador to the target nation, or be FM/HoG
+    const isAmbToTarget = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === targetNationId);
+    if (!isAmbToTarget && !diplomaticRoles.isFM && !diplomaticRoles.isHoG) {
+        alert('You must have an active ambassador to send diplomatic messages.');
+        return;
+    }
+
     try {
         // Get current tick
         const { data: shard } = await _supabase
@@ -909,7 +2117,476 @@ function jumpToAmbNation(targetNationId) {
     }
 }
 
-// ==================== DIPLOMATIC INITIATIVE ====================
+// ==================== INITIATIVE WIZARD (Phase 2) ====================
+
+async function renderInitiativeWizard() {
+    const panel = document.getElementById('tab-initiative');
+    if (!panel) return;
+
+    // Reset wizard state
+    wizardStep = 1;
+    wizardTargetNation = null;
+    wizardAgreementType = null;
+    wizardArticles = [];
+    wizardName = '';
+    wizardDuration = 1;
+
+    // Check if player has any diplomatic role that can propose
+    const canPropose = diplomaticRoles && (diplomaticRoles.isFM || diplomaticRoles.ambassadorTo.length > 0);
+    if (!canPropose) {
+        panel.innerHTML = '<p class="diplo-tab-placeholder">You need to be a Foreign Minister or Ambassador to propose initiatives.</p>';
+        return;
+    }
+
+    panel.innerHTML = buildWizardShell();
+    await renderWizardStep1();
+}
+
+function buildWizardShell() {
+    return `
+        <div class="wizard-steps">
+            <div class="wizard-step active" id="wizard-step-ind-1">
+                <span class="wizard-step-num">1</span> Select Nation
+            </div>
+            <div class="wizard-step" id="wizard-step-ind-2">
+                <span class="wizard-step-num">2</span> Agreement Type
+            </div>
+            <div class="wizard-step" id="wizard-step-ind-3">
+                <span class="wizard-step-num">3</span> Draft Articles
+            </div>
+        </div>
+        <div id="wizard-panel-1" class="wizard-panel active"></div>
+        <div id="wizard-panel-2" class="wizard-panel"></div>
+        <div id="wizard-panel-3" class="wizard-panel"></div>
+    `;
+}
+
+function updateWizardStepIndicators(step) {
+    for (let i = 1; i <= 3; i++) {
+        const el = document.getElementById('wizard-step-ind-' + i);
+        if (!el) continue;
+        el.classList.remove('active', 'completed');
+        if (i < step) el.classList.add('completed');
+        if (i === step) el.classList.add('active');
+    }
+    for (let i = 1; i <= 3; i++) {
+        const p = document.getElementById('wizard-panel-' + i);
+        if (!p) continue;
+        p.classList.toggle('active', i === step);
+    }
+}
+
+async function renderWizardStep1() {
+    const panel = document.getElementById('wizard-panel-1');
+    if (!panel) return;
+
+    panel.innerHTML = '<p style="color:#888;font-style:italic;font-size:0.82rem;">Loading nations...</p>';
+
+    // Fetch nations we have ambassadors to (with active counterpart ambassadors)
+    const ambNationIds = diplomaticRoles.ambassadorTo.map(a => a.target_nation_id);
+
+    if (ambNationIds.length === 0) {
+        panel.innerHTML = '<p class="diplo-tab-placeholder">You have no ambassador postings. An ambassador must be active to propose initiatives.</p>';
+        return;
+    }
+
+    // Fetch nations + check if they have ambassadors back to us
+    const [nationsRes, theirAmbRes] = await Promise.all([
+        _supabase.from('nations').select('id, name').in('id', ambNationIds),
+        _supabase.from('ambassadors').select('nation_id, target_nation_id, status, is_active')
+            .eq('target_nation_id', currentNation.id)
+            .eq('is_active', true)
+            .eq('status', 'active')
+            .in('nation_id', ambNationIds)
+    ]);
+
+    const nations = nationsRes.data || [];
+    const theirAmbs = theirAmbRes.data || [];
+    const nationsWithCounterAmb = new Set(theirAmbs.map(a => a.nation_id));
+
+    let html = '<p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;">Select a nation to negotiate with. Both nations must have active ambassadors.</p>';
+
+    for (const nation of nations) {
+        const hasCounter = nationsWithCounterAmb.has(nation.id);
+        const flagUrl = FLAG_URLS[nation.name] || null;
+        const ambInfo = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === nation.id);
+        const ambName = ambInfo ? ((ambInfo.ambassador_first_name || '') + ' ' + (ambInfo.ambassador_last_name || '')).trim() : '';
+
+        html += `
+            <div class="wizard-nation-item ${hasCounter ? '' : 'disabled'}" data-nation-id="${nation.id}" onclick="wizardSelectNation('${nation.id}')">
+                ${flagUrl ? '<img src="' + flagUrl + '" class="nation-card-flag" />' : '<div class="nation-card-flag-placeholder"></div>'}
+                <div>
+                    <div class="wizard-nation-name">${escapeHtml(nation.name)}</div>
+                    <div class="wizard-nation-detail">
+                        Your Amb: ${ambName ? escapeHtml(ambName) : 'None'}
+                        ${!hasCounter ? ' &middot; <span style="color:#ff9800;">No counterpart ambassador</span>' : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    html += '<div class="wizard-nav"><button class="wizard-next-btn" id="wizard-next-1" disabled onclick="wizardGoToStep2()">Next</button></div>';
+    panel.innerHTML = html;
+}
+
+function wizardSelectNation(nationId) {
+    // Toggle selection
+    document.querySelectorAll('.wizard-nation-item').forEach(el => el.classList.remove('selected'));
+    const item = document.querySelector('.wizard-nation-item[data-nation-id="' + nationId + '"]');
+    if (item && !item.classList.contains('disabled')) {
+        item.classList.add('selected');
+        wizardTargetNation = nationId;
+        const btn = document.getElementById('wizard-next-1');
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function wizardGoToStep2() {
+    if (!wizardTargetNation) return;
+    wizardStep = 2;
+    updateWizardStepIndicators(2);
+    await renderWizardStep2();
+}
+
+async function renderWizardStep2() {
+    const panel = document.getElementById('wizard-panel-2');
+    if (!panel) return;
+
+    panel.innerHTML = '<p style="color:#888;font-style:italic;font-size:0.82rem;">Loading agreement types...</p>';
+
+    // Fetch existing active/pending agreements between these nations to disable used types
+    const usedTypes = new Set();
+    try {
+        const { data: existing } = await _supabase
+            .from('diplomatic_proposals')
+            .select('proposal_data, status')
+            .eq('proposal_type', 'diplomatic_initiative')
+            .in('status', ['proposed', 'revised', 'active'])
+            .or(
+                'and(proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + wizardTargetNation + '),' +
+                'and(proposing_nation_id.eq.' + wizardTargetNation + ',target_nation_id.eq.' + currentNation.id + ')'
+            );
+        if (existing) {
+            for (const prop of existing) {
+                const agType = prop.proposal_data?.agreement_type;
+                if (agType) usedTypes.add(agType);
+                // Also check old-style articles for type
+                const arts = prop.proposal_data?.articles || [];
+                const struck = new Set(prop.proposal_data?.struck_articles || []);
+                arts.forEach((art, i) => {
+                    if (prop.status === 'active' && struck.has(i)) return;
+                    if (art.type) usedTypes.add(art.type);
+                });
+            }
+        }
+    } catch (e) { console.warn('Error checking existing agreements:', e); }
+
+    let html = '<p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;">Choose the type of agreement to propose.</p>';
+    html += '<div class="type-card-grid">';
+
+    for (const [key, info] of Object.entries(INITIATIVE_TYPES)) {
+        const isUsed = usedTypes.has(key);
+        const classBadge = '<span class="classification-badge classification-' + info.classification.toLowerCase() + '">' + info.classification + '</span>';
+        const relStr = info.relations > 0 ? '+' + info.relations + ' Rel' : info.relations < 0 ? info.relations + ' Rel' : '';
+        const moneyStr = info.money > 0 ? '+$' + (info.money / 1e6).toFixed(0) + 'M' : info.money < 0 ? '-$' + (Math.abs(info.money) / 1e6).toFixed(0) + 'M' : '';
+
+        html += `
+            <div class="type-card ${isUsed ? 'disabled' : ''}" data-type-key="${key}" onclick="wizardSelectType('${key}')">
+                <div class="type-card-title">${escapeHtml(info.label)} ${classBadge}</div>
+                <div class="type-card-desc">${escapeHtml(info.description)}</div>
+                <div class="type-card-effects">
+                    ${relStr ? '<span class="effect-tag effect-rel">' + relStr + '</span>' : ''}
+                    ${moneyStr ? '<span class="effect-tag effect-money">' + moneyStr + '</span>' : ''}
+                    ${!relStr && !moneyStr ? '<span class="effect-tag" style="background:var(--bg-hover);color:var(--text-muted);">No effects</span>' : ''}
+                </div>
+                ${isUsed ? '<div class="type-card-already">Already active or pending</div>' : ''}
+            </div>
+        `;
+    }
+
+    html += '</div>';
+    html += `<div class="wizard-nav">
+        <button class="wizard-back-btn" onclick="wizardBackToStep1()">Back</button>
+        <button class="wizard-next-btn" id="wizard-next-2" disabled onclick="wizardGoToStep3()">Next</button>
+    </div>`;
+
+    panel.innerHTML = html;
+}
+
+function wizardSelectType(typeKey) {
+    document.querySelectorAll('.type-card').forEach(el => el.classList.remove('selected'));
+    const card = document.querySelector('.type-card[data-type-key="' + typeKey + '"]');
+    if (card && !card.classList.contains('disabled')) {
+        card.classList.add('selected');
+        wizardAgreementType = typeKey;
+        const btn = document.getElementById('wizard-next-2');
+        if (btn) btn.disabled = false;
+    }
+}
+
+function wizardBackToStep1() {
+    wizardStep = 1;
+    wizardAgreementType = null;
+    updateWizardStepIndicators(1);
+}
+
+async function wizardGoToStep3() {
+    if (!wizardAgreementType) return;
+    wizardStep = 3;
+    wizardArticles = [];
+    wizardName = '';
+    wizardDuration = 1;
+    updateWizardStepIndicators(3);
+    await renderWizardStep3();
+}
+
+async function renderWizardStep3() {
+    const panel = document.getElementById('wizard-panel-3');
+    if (!panel) return;
+
+    const typeInfo = INITIATIVE_TYPES[wizardAgreementType];
+    if (!typeInfo) return;
+
+    // Fetch target nation name and ambassador info
+    const { data: targetNation } = await _supabase.from('nations').select('id, name').eq('id', wizardTargetNation).single();
+    const targetName = targetNation?.name || 'Unknown';
+
+    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
+    const ourAmbName = ourAmb ? ((ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '')).trim() : '?';
+
+    // Get their ambassador
+    const { data: theirAmb } = await _supabase
+        .from('ambassadors')
+        .select('ambassador_first_name, ambassador_last_name')
+        .eq('nation_id', wizardTargetNation)
+        .eq('target_nation_id', currentNation.id)
+        .eq('is_active', true)
+        .eq('status', 'active')
+        .maybeSingle();
+    const theirAmbName = theirAmb ? ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim() : '?';
+
+    const classBadge = '<span class="classification-badge classification-' + typeInfo.classification.toLowerCase() + '">' + typeInfo.classification + '</span>';
+
+    const durationOptions = [1,2,3,4,5,6,7].map(y =>
+        '<option value="' + y + '">' + y + ' Year' + (y > 1 ? 's' : '') + '</option>'
+    ).join('');
+
+    // Auto-generate preamble
+    const preamble = 'Ambassador ' + escapeHtml(ourAmbName) + ' of ' + escapeHtml(currentNation.name) +
+        ', in collaboration with Ambassador ' + escapeHtml(theirAmbName) + ' of ' + escapeHtml(targetName) +
+        ', hereby propose the following ' + escapeHtml(typeInfo.label) + ':';
+
+    // Effects summary
+    const relStr = typeInfo.relations > 0 ? '+' + typeInfo.relations + ' Relations' : typeInfo.relations < 0 ? typeInfo.relations + ' Relations' : '';
+    const moneyStr = typeInfo.money > 0 ? '+$' + (typeInfo.money / 1e6).toFixed(0) + 'M FM Fund' : typeInfo.money < 0 ? '-$' + (Math.abs(typeInfo.money) / 1e6).toFixed(0) + 'M FM Fund' : '';
+
+    let html = `
+        <div style="margin-bottom:12px;">
+            <span style="font-size:0.82rem;font-weight:bold;color:var(--text-primary);">${escapeHtml(typeInfo.label)}</span>
+            ${classBadge}
+        </div>
+
+        <div class="initiative-field">
+            <label>Name of Agreement</label>
+            <input type="text" id="wizard-name" placeholder="e.g. The Concordia Accord" maxlength="120" oninput="wizardUpdatePreview()" />
+        </div>
+
+        <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;line-height:1.5;padding:8px 10px;background:var(--bg-body);border-radius:4px;border:1px solid var(--border-light);">
+            ${preamble}
+        </div>
+
+        <div class="initiative-field">
+            <label>Articles <button class="action-btn" style="font-size:0.68rem;padding:3px 10px;margin-left:8px;" onclick="wizardAddArticle()">+ Add Article</button></label>
+        </div>
+        <div id="wizard-articles-list">
+            <div style="color:#666;font-size:0.78rem;font-style:italic;padding:4px 0;">No articles added yet. Add at least one article.</div>
+        </div>
+
+        <div class="initiative-field">
+            <label>Duration</label>
+            <select id="wizard-duration" onchange="wizardUpdatePreview()">${durationOptions}</select>
+        </div>
+
+        <div id="wizard-preview" class="initiative-preview" style="display:none;"></div>
+        <div id="wizard-effects" class="initiative-effects">
+            ${relStr ? '<span class="effect-tag effect-rel">' + relStr + '</span>' : ''}
+            ${moneyStr ? '<span class="effect-tag effect-money">' + moneyStr + '</span>' : ''}
+            ${!relStr && !moneyStr ? '<span class="effect-tag" style="background:var(--bg-hover);color:var(--text-muted);">No mechanical effects</span>' : ''}
+        </div>
+
+        <div class="wizard-nav">
+            <button class="wizard-back-btn" onclick="wizardBackToStep2()">Back</button>
+            <button class="wizard-next-btn" id="wizard-submit-btn" disabled onclick="wizardSubmit()">Submit Proposal</button>
+        </div>
+    `;
+
+    panel.innerHTML = html;
+}
+
+function wizardBackToStep2() {
+    wizardStep = 2;
+    wizardArticles = [];
+    updateWizardStepIndicators(2);
+}
+
+function wizardAddArticle() {
+    wizardArticles.push({ text: '' });
+    wizardRenderArticles();
+    wizardUpdatePreview();
+}
+
+function wizardRemoveArticle(index) {
+    wizardArticles.splice(index, 1);
+    wizardRenderArticles();
+    wizardUpdatePreview();
+}
+
+function wizardUpdateArticleText(index, text) {
+    if (wizardArticles[index]) {
+        wizardArticles[index].text = text;
+    }
+    wizardUpdatePreview();
+}
+
+function wizardRenderArticles() {
+    const list = document.getElementById('wizard-articles-list');
+    if (!list) return;
+
+    if (wizardArticles.length === 0) {
+        list.innerHTML = '<div style="color:#666;font-size:0.78rem;font-style:italic;padding:4px 0;">No articles added yet. Add at least one article.</div>';
+        return;
+    }
+
+    list.innerHTML = wizardArticles.map((art, i) => `
+        <div class="freeform-article">
+            <div class="freeform-article-header">
+                <span class="initiative-article-num">Article ${toRoman(i + 1)}</span>
+                <button class="initiative-article-remove" onclick="wizardRemoveArticle(${i})">X</button>
+            </div>
+            <textarea placeholder="Describe this article's terms..." oninput="wizardUpdateArticleText(${i}, this.value)">${escapeHtml(art.text)}</textarea>
+        </div>
+    `).join('');
+}
+
+function wizardUpdatePreview() {
+    const nameInput = document.getElementById('wizard-name');
+    const durationSelect = document.getElementById('wizard-duration');
+    const previewEl = document.getElementById('wizard-preview');
+    const submitBtn = document.getElementById('wizard-submit-btn');
+    if (!previewEl) return;
+
+    wizardName = nameInput?.value?.trim() || '';
+    wizardDuration = parseInt(durationSelect?.value || '1');
+
+    const hasArticles = wizardArticles.length > 0 && wizardArticles.some(a => a.text.trim());
+    const canSubmit = wizardName && hasArticles;
+    if (submitBtn) submitBtn.disabled = !canSubmit;
+
+    if (!canSubmit) {
+        previewEl.style.display = 'none';
+        return;
+    }
+
+    const typeInfo = INITIATIVE_TYPES[wizardAgreementType];
+    const articlesHtml = wizardArticles
+        .filter(a => a.text.trim())
+        .map((art, i) =>
+            '<div class="preview-article"><span class="preview-article-num">Article ' + toRoman(i + 1) + '.</span> ' +
+            escapeHtml(art.text) + '</div>'
+        ).join('');
+
+    previewEl.style.display = 'block';
+    previewEl.innerHTML =
+        '<div class="preview-title">' + escapeHtml(wizardName) + '</div>' +
+        '<div class="preview-subtitle">' + escapeHtml(typeInfo?.label || '') + '</div>' +
+        '<div class="preview-label">Proposes:</div>' +
+        articlesHtml +
+        '<div class="preview-duration">To last a sum of ' + wizardDuration + ' year' + (wizardDuration !== 1 ? 's' : '') + '.</div>';
+}
+
+async function wizardSubmit() {
+    if (!wizardName) { alert('Please enter a name for the agreement.'); return; }
+    const filledArticles = wizardArticles.filter(a => a.text.trim());
+    if (filledArticles.length === 0) { alert('Please add at least one article with content.'); return; }
+    if (!wizardTargetNation || !wizardAgreementType) { alert('Missing target nation or agreement type.'); return; }
+
+    const typeInfo = INITIATIVE_TYPES[wizardAgreementType];
+    if (!typeInfo) { alert('Invalid agreement type.'); return; }
+
+    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
+    if (!ourAmb) { alert('You are not ambassador to this nation.'); return; }
+
+    // Get their ambassador
+    const { data: theirAmb } = await _supabase
+        .from('ambassadors')
+        .select('ambassador_first_name, ambassador_last_name')
+        .eq('nation_id', wizardTargetNation)
+        .eq('target_nation_id', currentNation.id)
+        .eq('is_active', true)
+        .eq('status', 'active')
+        .maybeSingle();
+
+    if (!theirAmb) { alert('Target nation has no active ambassador to negotiate with.'); return; }
+
+    const { data: targetNation } = await _supabase.from('nations').select('name').eq('id', wizardTargetNation).single();
+
+    const ourAmbName = ((ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '')).trim();
+    const theirAmbName = ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim();
+
+    // Get current tick
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Determine proposal tier based on classification
+    const proposalTier = typeInfo.classification === 'MAJOR' ? 3 : 1;
+
+    const proposalData = {
+        name: wizardName,
+        agreement_type: wizardAgreementType,
+        classification: typeInfo.classification,
+        duration_years: wizardDuration,
+        articles: filledArticles.map(a => ({
+            text: a.text.trim(),
+            type: wizardAgreementType,
+            label: typeInfo.label,
+            description: typeInfo.description,
+            relations: typeInfo.relations,
+            money: typeInfo.money
+        })),
+        proposer_ambassador_name: ourAmbName,
+        target_ambassador_name: theirAmbName,
+        proposer_nation_name: currentNation.name,
+        target_nation_name: targetNation?.name || 'Unknown'
+    };
+
+    const { error } = await _supabase.from('diplomatic_proposals').insert({
+        proposing_nation_id: currentNation.id,
+        target_nation_id: wizardTargetNation,
+        proposed_by_faction_id: currentFaction.id,
+        proposal_type: 'diplomatic_initiative',
+        proposal_tier: proposalTier,
+        status: 'proposed',
+        proposal_data: proposalData,
+        proposed_at_tick: currentTick
+    });
+
+    if (error) {
+        console.error('Error submitting initiative:', error);
+        alert('Error submitting initiative: ' + error.message);
+        return;
+    }
+
+    alert('Diplomatic Initiative "' + wizardName + '" proposed!\n\n' +
+        (typeInfo.classification === 'MINOR' ? 'As a MINOR agreement, it can be accepted directly by the target ambassador.' :
+        'As a MAJOR agreement, it will require escalation through the legislative pipeline after ambassador acceptance.'));
+
+    // Reset and re-render wizard
+    await renderInitiativeWizard();
+    await renderDiploHeader();
+}
+
+// ==================== LEGACY DIPLOMATIC INITIATIVE ====================
 
 async function fetchPendingDiploProposals(myNationId, targetNationId) {
     if (!myNationId || !targetNationId || myNationId === targetNationId) return [];
@@ -957,7 +2634,7 @@ function renderPendingProposals(proposals, targetNation) {
                     '<input type="checkbox" class="strike-checkbox" data-proposal-id="' + p.id + '" data-article-index="' + i + '" />' +
                     '<div class="proposal-article-content">' +
                         '<span class="proposal-article-num">Article ' + toRoman(i + 1) + '.</span> ' +
-                        '<span class="proposal-article-label">' + escapeHtml(art.label) + '</span>' +
+                        '<span class="proposal-article-label">' + escapeHtml(art.text || art.label) + '</span>' +
                         (effectParts ? '<span class="proposal-article-effects">' + effectParts + '</span>' : '') +
                     '</div>' +
                 '</div>';
@@ -975,7 +2652,7 @@ function renderPendingProposals(proposals, targetNation) {
             const articleRows = articles.map((art, i) =>
                 '<div class="proposal-article-row"><div class="proposal-article-content">' +
                     '<span class="proposal-article-num">Article ' + toRoman(i + 1) + '.</span> ' +
-                    '<span class="proposal-article-label">' + escapeHtml(art.label) + '</span>' +
+                    '<span class="proposal-article-label">' + escapeHtml(art.text || art.label) + '</span>' +
                 '</div></div>'
             ).join('');
             actionButtons = '<div class="proposal-articles-list">' + articleRows + '</div>';
@@ -991,7 +2668,7 @@ function renderPendingProposals(proposals, targetNation) {
                     '<div class="proposal-article-content">' +
                         (isStruck ? '<span class="struck-label">STRUCK</span> ' : '') +
                         '<span class="proposal-article-num">Article ' + toRoman(i + 1) + '.</span> ' +
-                        '<span class="proposal-article-label">' + escapeHtml(art.label) + '</span>' +
+                        '<span class="proposal-article-label">' + escapeHtml(art.text || art.label) + '</span>' +
                         (!isStruck && effectParts ? '<span class="proposal-article-effects">' + effectParts + '</span>' : '') +
                     '</div>' +
                 '</div>';
@@ -1011,7 +2688,7 @@ function renderPendingProposals(proposals, targetNation) {
                     '<div class="proposal-article-content">' +
                         (isStruck ? '<span class="struck-label">STRUCK</span> ' : '') +
                         '<span class="proposal-article-num">Article ' + toRoman(i + 1) + '.</span> ' +
-                        '<span class="proposal-article-label">' + escapeHtml(art.label) + '</span>' +
+                        '<span class="proposal-article-label">' + escapeHtml(art.text || art.label) + '</span>' +
                     '</div>' +
                 '</div>';
             }).join('');
@@ -1296,8 +2973,17 @@ async function submitInitiative() {
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
 
+    // Determine classification: MAJOR if any article is MAJOR type
+    const hasMajorArticle = initiativeArticles.some(a => {
+        const typeInfo = INITIATIVE_TYPES[a.type];
+        return typeInfo && typeInfo.classification === 'MAJOR';
+    });
+    const classification = hasMajorArticle ? 'MAJOR' : 'MINOR';
+    const proposalTier = hasMajorArticle ? 3 : 1;
+
     const proposalData = {
         name: name,
+        classification: classification,
         duration_years: duration,
         articles: initiativeArticles.map(a => ({ type: a.type, label: a.label, description: a.description, relations: a.relations, money: a.money })),
         proposer_ambassador_name: ourAmbName,
@@ -1311,7 +2997,7 @@ async function submitInitiative() {
         target_nation_id: target.id,
         proposed_by_faction_id: currentFaction.id,
         proposal_type: 'diplomatic_initiative',
-        proposal_tier: 1,
+        proposal_tier: proposalTier,
         status: 'proposed',
         proposal_data: proposalData,
         proposed_at_tick: currentTick
@@ -1326,9 +3012,8 @@ async function submitInitiative() {
     alert('Diplomatic Initiative "' + name + '" proposed to ' + target.name + '!');
     closeInitiativeForm();
 
-    // Re-render sidebar
-    const targetPath = document.querySelector('.land.selected-nation');
-    if (targetPath) targetPath.dispatchEvent(new Event('click', { bubbles: true }));
+    // Refresh the expanded card
+    if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
 }
 
 async function acceptProposal(proposalId) {
@@ -1341,9 +3026,19 @@ async function acceptProposal(proposalId) {
 
     if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
 
+    // Authorization: caller must be target nation's ambassador to proposer, or FM/HoG
+    await refreshRoles();
+    const isTargetNation = proposal.target_nation_id === currentNation.id;
+    const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
+    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG)) {
+        alert('You are not authorized to accept this proposal.');
+        return;
+    }
+
     const pd = proposal.proposal_data || {};
     const articles = pd.articles || [];
     const struckIndices = new Set(pd.struck_articles || []);
+    const classification = pd.classification || 'MINOR';
 
     // Calculate totals from active (non-struck) articles
     let totalRel = 0, totalMoney = 0;
@@ -1361,71 +3056,90 @@ async function acceptProposal(proposalId) {
         (totalRel && totalMoney ? ', ' : '') +
         (totalMoney ? (totalMoney > 0 ? '+' : '-') + '$' + (Math.abs(totalMoney) / 1e6).toFixed(0) + 'M FM Fund' : '');
 
-    if (!confirm(
-        'Accept "' + (pd.name || 'Initiative') + '"?\n\n' +
-        articleCount + ' article(s) will take effect.\n' +
-        (effectSummary || 'No mechanical effects.') + '\n\n' +
-        'Duration: ' + (pd.duration_years || '?') + ' year(s)'
-    )) return;
+    // MAJOR agreements go to FM review after ambassador acceptance
+    const isMajor = classification === 'MAJOR';
+    const confirmMsg = isMajor
+        ? 'Accept "' + (pd.name || 'Initiative') + '"?\n\n' +
+          articleCount + ' article(s).\n' +
+          (effectSummary || 'No mechanical effects.') + '\n\n' +
+          'Duration: ' + (pd.duration_years || '?') + ' year(s)\n\n' +
+          'Note: As a MAJOR agreement, this will be sent to the Foreign Minister for review before taking effect.'
+        : 'Accept "' + (pd.name || 'Initiative') + '"?\n\n' +
+          articleCount + ' article(s) will take effect.\n' +
+          (effectSummary || 'No mechanical effects.') + '\n\n' +
+          'Duration: ' + (pd.duration_years || '?') + ' year(s)';
+
+    if (!confirm(confirmMsg)) return;
 
     // Get current tick
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const currentTick = shard?.current_tick || 0;
 
-    // Update proposal status
-    const { error: updateErr } = await _supabase
-        .from('diplomatic_proposals')
-        .update({ status: 'active', activated_at_tick: currentTick })
-        .eq('id', proposalId);
+    if (isMajor) {
+        // MAJOR pipeline: Ambassador accepted → FM review
+        const updatedPipeline = { ...(pd.pipeline || {}), ambassador_accepted_at: currentTick };
+        pd.pipeline = updatedPipeline;
 
-    if (updateErr) { alert('Error accepting proposal: ' + updateErr.message); return; }
+        const { error: updateErr } = await _supabase
+            .from('diplomatic_proposals')
+            .update({ status: 'fm_review', proposal_data: pd })
+            .eq('id', proposalId);
 
-    // Update relations score
-    if (totalRel !== 0) {
-        const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
-        const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+        if (updateErr) { alert('Error accepting proposal: ' + updateErr.message); return; }
 
-        const { data: rel } = await _supabase
-            .from('diplomatic_relations')
-            .select('id, relation_score, active_treaties')
-            .eq('nation_a_id', nationA)
-            .eq('nation_b_id', nationB)
-            .maybeSingle();
+        // Fire CIVIC news event for FM review stage
+        await fireProposalEvent(pd, currentTick, 'ambassador_accepted',
+            'Ambassadors have agreed on "' + (pd.name || 'Agreement') + '" between ' +
+            pd.proposer_nation_name + ' and ' + pd.target_nation_name +
+            '. The MAJOR agreement now awaits Foreign Minister review.');
 
-        if (rel) {
-            const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
-            const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposalId] : [proposalId];
-            await _supabase.from('diplomatic_relations')
-                .update({ relation_score: newScore, active_treaties: treaties })
-                .eq('id', rel.id);
-        }
+        alert('"' + (pd.name || 'Initiative') + '" accepted by ambassadors.\n\nAs a MAJOR agreement, it has been forwarded to the Foreign Minister for review.');
+    } else {
+        // MINOR: activate immediately (original flow)
+        const { error: updateErr } = await _supabase
+            .from('diplomatic_proposals')
+            .update({ status: 'active', activated_at_tick: currentTick })
+            .eq('id', proposalId);
+
+        if (updateErr) { alert('Error accepting proposal: ' + updateErr.message); return; }
+
+        // Apply effects
+        await applyProposalEffects(proposal, currentTick);
+
+        // Fire event for ALL nations
+        const articleNames = activeArticles.map(a => a.label || a.text || '').join(', ');
+        await fireProposalEvent(pd, currentTick, 'activated',
+            pd.proposer_nation_name + ' and ' + pd.target_nation_name +
+            ' have signed "' + (pd.name || 'Diplomatic Initiative') + '". ' +
+            'The ' + articleCount + '-article agreement (' + articleNames + ') is effective for ' + (pd.duration_years || '?') + ' year(s).');
+
+        alert('"' + (pd.name || 'Initiative') + '" has been accepted and is now active!');
     }
 
-    // Fire event for ALL nations
-    const { data: allNations } = await _supabase.from('nations').select('id');
-    if (allNations && allNations.length > 0) {
-        const articleNames = activeArticles.map(a => a.label).join(', ');
-        const eventRows = allNations.map(n => ({
-            nation_id: n.id,
-            event_name: pd.name || 'Diplomatic Initiative',
-            category: 'Diplomatic',
-            description_chosen: pd.proposer_nation_name + ' and ' + pd.target_nation_name +
-                ' have signed "' + (pd.name || 'Diplomatic Initiative') + '". ' +
-                'Ambassador ' + (pd.proposer_ambassador_name || '?') + ' and Ambassador ' + (pd.target_ambassador_name || '?') +
-                ' formalized the ' + articleCount + '-article agreement (' + articleNames + '), effective for ' + (pd.duration_years || '?') + ' year(s).',
-            fired_at_tick: currentTick
-        }));
-        await _supabase.from('event_log').insert(eventRows);
-    }
-
-    alert('"' + (pd.name || 'Initiative') + '" has been accepted and is now active!');
-
-    // Re-render sidebar
-    const targetPath = document.querySelector('.land.selected-nation');
-    if (targetPath) targetPath.dispatchEvent(new Event('click', { bubbles: true }));
+    // Refresh the expanded card + inbox
+    if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
+    await renderDiploHeader();
 }
 
 async function rejectProposal(proposalId) {
+    // Fetch proposal for authorization check
+    const { data: proposal } = await _supabase
+        .from('diplomatic_proposals')
+        .select('proposing_nation_id, target_nation_id')
+        .eq('id', proposalId)
+        .single();
+
+    if (!proposal) { alert('Could not load proposal.'); return; }
+
+    // Authorization: caller must be target nation's ambassador to proposer, or FM/HoG
+    await refreshRoles();
+    const isTargetNation = proposal.target_nation_id === currentNation.id;
+    const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
+    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG)) {
+        alert('You are not authorized to reject this proposal.');
+        return;
+    }
+
     if (!confirm('Reject this diplomatic initiative?')) return;
 
     const { error } = await _supabase
@@ -1436,8 +3150,7 @@ async function rejectProposal(proposalId) {
     if (error) { alert('Error rejecting proposal: ' + error.message); return; }
 
     alert('Proposal rejected.');
-    const targetPath = document.querySelector('.land.selected-nation');
-    if (targetPath) targetPath.dispatchEvent(new Event('click', { bubbles: true }));
+    if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
 }
 
 async function strikeArticles(proposalId) {
@@ -1450,11 +3163,20 @@ async function strikeArticles(proposalId) {
     // Fetch proposal to get current data
     const { data: proposal } = await _supabase
         .from('diplomatic_proposals')
-        .select('proposal_data')
+        .select('*')
         .eq('id', proposalId)
         .single();
 
     if (!proposal) { alert('Could not load proposal.'); return; }
+
+    // Authorization: caller must be target nation's ambassador to proposer, or FM/HoG
+    await refreshRoles();
+    const isTargetNation = proposal.target_nation_id === currentNation.id;
+    const isAmbToProposer = diplomaticRoles.ambassadorTo.some(a => a.target_nation_id === proposal.proposing_nation_id);
+    if (!isTargetNation || (!isAmbToProposer && !diplomaticRoles.isFM && !diplomaticRoles.isHoG)) {
+        alert('You are not authorized to revise this proposal.');
+        return;
+    }
 
     const pd = proposal.proposal_data || {};
     const totalArticles = (pd.articles || []).length;
@@ -1480,12 +3202,15 @@ async function strikeArticles(proposalId) {
     if (error) { alert('Error sending revision: ' + error.message); return; }
 
     alert('Revised agreement sent back with ' + struckIndices.length + ' article(s) struck.');
-    const targetPath = document.querySelector('.land.selected-nation');
-    if (targetPath) targetPath.dispatchEvent(new Event('click', { bubbles: true }));
+    if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
 }
 
 // Expose functions for HTML onclick/onchange handlers
+window.showDiploTab = showDiploTab;
+window.toggleNationCard = toggleNationCard;
+window.highlightNationCard = highlightNationCard;
 window.jumpToAmbNation = jumpToAmbNation;
+window.resignAmbassador = resignAmbassador;
 window.recallAmbassador = recallAmbassador;
 window.cancelPendingAmbassador = cancelPendingAmbassador;
 window.sendDiploMessage = sendDiploMessage;
@@ -1499,6 +3224,26 @@ window.submitInitiative = submitInitiative;
 window.acceptProposal = acceptProposal;
 window.rejectProposal = rejectProposal;
 window.strikeArticles = strikeArticles;
+// Phase 2 exports
+window.withdrawAgreement = withdrawAgreement;
+window.wizardSelectNation = wizardSelectNation;
+window.wizardGoToStep2 = wizardGoToStep2;
+window.wizardSelectType = wizardSelectType;
+window.wizardBackToStep1 = wizardBackToStep1;
+window.wizardGoToStep3 = wizardGoToStep3;
+window.wizardBackToStep2 = wizardBackToStep2;
+window.wizardAddArticle = wizardAddArticle;
+window.wizardRemoveArticle = wizardRemoveArticle;
+window.wizardUpdateArticleText = wizardUpdateArticleText;
+window.wizardUpdatePreview = wizardUpdatePreview;
+window.wizardSubmit = wizardSubmit;
+// Phase 3 exports
+window.renderInboxTab = renderInboxTab;
+window.filterInbox = filterInbox;
+window.inboxStrikeArticles = inboxStrikeArticles;
+window.fmApprove = fmApprove;
+window.fmEscalate = fmEscalate;
+window.fmReject = fmReject;
 </script>
 
 </body>
