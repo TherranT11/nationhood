@@ -102,6 +102,11 @@ function resolveStatEffects(effects) {
         const r = Object.assign({}, e);
         if (r.rateFormula !== undefined) { r.rate = rollDice(r.rateFormula); delete r.rateFormula; }
         if (r.durationFormula !== undefined) { r.duration_ticks = rollDice(r.durationFormula); delete r.durationFormula; }
+        // Presidential: minister approval effects target the faction (President's party) instead
+        if (isPresidential && r.target === 'minister' && r.stat_key === 'minister_approval') {
+            r.target = 'faction';
+            r.stat_key = 'approval_rating';
+        }
         return r;
     });
 }
@@ -450,6 +455,7 @@ const MINISTRY_ACTIONS = {
 let currentNation = null;
 let currentFaction = null;
 let isAutocracy = false;
+let isPresidential = false;
 let allParties = [];
 let myMinistries = [];
 let activeMinistryKey = null;
@@ -518,6 +524,7 @@ initPage('ministry-actions', async (state) => {
     }
 
     isAutocracy = isGovernmentAutocracy(nation);
+    isPresidential = isGovernmentPresidential(nation);
 
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     currentTick = shard?.current_tick || 0;
@@ -1042,7 +1049,7 @@ function openActionModal(actionKey) {
             immediate.forEach(e => {
                 const arrow = e.direction === 'up' ? '▲' : '▼';
                 const color = e.direction === 'up' ? '#4caf50' : '#f44336';
-                const statLabel = (e.target === 'minister' ? 'Minister ' : '') + e.stat_key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                const statLabel = (e.target === 'minister' && e.stat_key === 'minister_approval') ? (isPresidential ? 'President\'s Approval' : 'Minister Approval') : e.stat_key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                 const rateDisplay = e.rateFormula || ((e.direction === 'up' ? '+' : '-') + (e.rate || 1));
                 bodyHtml += '<div style="font-size:0.8rem;color:' + color + ';margin:2px 0;">' + arrow + ' ' + statLabel + ' ' + rateDisplay + '</div>';
             });
@@ -1053,7 +1060,7 @@ function openActionModal(actionKey) {
             ongoing.forEach(e => {
                 const arrow = e.direction === 'up' ? '▲' : '▼';
                 const color = e.direction === 'up' ? '#4caf50' : '#f44336';
-                const statLabel = (e.target === 'minister' ? 'Minister ' : '') + e.stat_key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                const statLabel = (e.target === 'minister' && e.stat_key === 'minister_approval') ? (isPresidential ? 'President\'s Approval' : 'Minister Approval') : e.stat_key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                 const rateDisplay = e.rateFormula || ((e.direction === 'up' ? '+' : '-') + (e.rate || 1));
                 const durDisplay = e.durationFormula ? e.durationFormula : (e.duration_ticks === 9999 ? '∞' : e.duration_ticks);
                 const delay = e.delay_ticks > 1 ? ' (after ' + e.delay_ticks + 't)' : '';
