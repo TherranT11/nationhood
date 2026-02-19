@@ -693,7 +693,7 @@ function renderStatEffects() {
             <div class="se-fields">
                 <div class="form-field">
                     <label>Stat</label>
-                    <select onchange="statEffects[${idx}].stat_key=this.value; updateEffectPreview()">
+                    <select onchange="updateEffect(${idx},'stat_key',this.value)">
                         <option value="">-- Select --</option>
                         ${STAT_OPTIONS_HTML.replace(`value="${e.stat_key}"`, `value="${e.stat_key}" selected`)}
                     </select>
@@ -701,21 +701,21 @@ function renderStatEffects() {
                 <div class="form-field">
                     <label>Dir</label>
                     <div class="dir-toggle">
-                        <button class="dir-btn ${(normalizeEffectDirection(e.direction) || 'up') === 'up' ? 'sel-up' : ''}" onclick="statEffects[${idx}].direction='up'; renderStatEffects()">▲</button>
-                        <button class="dir-btn ${(normalizeEffectDirection(e.direction) || 'up') === 'down' ? 'sel-down' : ''}" onclick="statEffects[${idx}].direction='down'; renderStatEffects()">▼</button>
+                        <button class="dir-btn ${(normalizeEffectDirection(e.direction) || 'up') === 'up' ? 'sel-up' : ''}" onclick="updateEffect(${idx},'direction','up')">▲</button>
+                        <button class="dir-btn ${(normalizeEffectDirection(e.direction) || 'up') === 'down' ? 'sel-down' : ''}" onclick="updateEffect(${idx},'direction','down')">▼</button>
                     </div>
                 </div>
                 <div class="form-field">
                     <label>Rate/tick</label>
-                    <input type="number" value="${e.rate}" min="0.1" max="5" step="0.1" onchange="statEffects[${idx}].rate=parseFloat(this.value); updateEffectPreview()">
+                    <input type="number" value="${e.rate}" min="0.1" max="5" step="0.1" onchange="updateEffect(${idx},'rate',parseFloat(this.value))">
                 </div>
                 <div class="form-field">
                     <label>Delay</label>
-                    <input type="number" value="${e.delay_ticks}" min="0" max="24" step="1" onchange="statEffects[${idx}].delay_ticks=parseInt(this.value); updateEffectPreview()">
+                    <input type="number" value="${e.delay_ticks}" min="0" max="24" step="1" onchange="updateEffect(${idx},'delay_ticks',parseInt(this.value))">
                 </div>
                 <div class="form-field">
                     <label>Duration</label>
-                    <input type="number" value="${e.duration_ticks}" min="1" max="60" step="1" onchange="statEffects[${idx}].duration_ticks=parseInt(this.value); updateEffectPreview()">
+                    <input type="number" value="${e.duration_ticks}" min="1" max="60" step="1" onchange="updateEffect(${idx},'duration_ticks',parseInt(this.value))">
                 </div>
             </div>
         </div>
@@ -726,6 +726,17 @@ function renderStatEffects() {
     selects.forEach((sel, idx) => { if (statEffects[idx]?.stat_key) sel.value = statEffects[idx].stat_key; });
 
     updateEffectPreview();
+}
+
+function updateEffect(idx, field, value) {
+    if (!statEffects[idx]) return;
+    statEffects[idx][field] = value;
+    if (field === 'direction') renderStatEffects();
+    else updateEffectPreview();
+}
+
+function updateOpposed(idx, value) {
+    opposedSlots[idx] = value;
 }
 
 function updateEffectPreview() {
@@ -796,7 +807,7 @@ function renderOpposedSlots() {
 
     container.innerHTML = opposedSlots.map((val, idx) => `
         <div class="opposed-row">
-            <select onchange="opposedSlots[${idx}]=this.value">
+            <select onchange="updateOpposed(${idx},this.value)">
                 <option value="">-- Select policy --</option>
                 ${candidates.map(c => `<option value="${c.id}" ${val === c.id ? 'selected' : ''}>${c.policy_name}</option>`).join('')}
             </select>
@@ -950,7 +961,7 @@ async function savePolicy() {
         major_sector: sector,
         minor_sector: lawCategory, // keep for backward compat
         law_category: lawCategory,
-        ideology: ideologiesArr[0] || null, // keep for backward compat
+        ideology: ideologiesArr[0] || 'Agnostic', // keep for backward compat; column is NOT NULL
         ideologies: ideologiesArr,
         upfront_cost: parseFloat(document.getElementById('b-upfront').value) || 0,
         upfront_scaling_stat: document.getElementById('b-upfront-scaling').value || null,
@@ -1110,6 +1121,8 @@ window.removeOpposedSlot = removeOpposedSlot;
 window.toggleIdeology = toggleIdeology;
 window.toggleAgnostic = toggleAgnostic;
 window.togglePrereq = togglePrereq;
+window.updateEffect = updateEffect;
+window.updateOpposed = updateOpposed;
 </script>
 </body>
 </html>
