@@ -221,37 +221,45 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
         }
     }
 
-    // Ambassadors: query ambassadors table for active ambassadors belonging to this faction
+    // Ambassadors: fetch ALL active ambassadors from this nation, then filter by faction in JS
+    // (avoids compound .eq() filter issues with RLS policies)
     try {
-        const { data: ambassadors, error: ambErr } = await _supabase
+        const { data: allNationAmbassadors, error: ambErr } = await _supabase
             .from('ambassadors')
             .select('*')
-            .eq('faction_id', faction.id)
             .eq('nation_id', nation.id)
-            .eq('is_active', true)
             .eq('status', 'active');
 
         if (ambErr) {
             console.warn('Ambassador query error:', ambErr);
-        } else if (ambassadors && ambassadors.length > 0) {
-            // Look up target nation names separately (avoids FK join issues)
-            const targetIds = ambassadors.map(a => a.target_nation_id);
-            const { data: targetNations } = await _supabase
-                .from('nations')
-                .select('id, name')
-                .in('id', targetIds);
-            const nationNameMap = {};
-            (targetNations || []).forEach(n => { nationNameMap[n.id] = n.name; });
+        } else if (allNationAmbassadors && allNationAmbassadors.length > 0) {
+            // Filter to ambassadors belonging to this faction
+            const myAmbassadors = allNationAmbassadors.filter(a => a.faction_id === faction.id);
 
-            roles.ambassadorTo = ambassadors.map(a => ({
-                id: a.id,
-                target_nation_id: a.target_nation_id,
-                target_nation_name: nationNameMap[a.target_nation_id] || 'Unknown',
-                appointed_at_tick: a.appointed_at_tick,
-                term_length: a.term_length || 36,
-                ambassador_first_name: a.ambassador_first_name,
-                ambassador_last_name: a.ambassador_last_name
-            }));
+            console.log('[Diplo] Active ambassadors from nation:', allNationAmbassadors.length,
+                '| Matched to faction ' + faction.id + ':', myAmbassadors.length,
+                '| Faction IDs in DB:', allNationAmbassadors.map(a => a.faction_id));
+
+            if (myAmbassadors.length > 0) {
+                // Look up target nation names separately (avoids FK join issues)
+                const targetIds = myAmbassadors.map(a => a.target_nation_id);
+                const { data: targetNations } = await _supabase
+                    .from('nations')
+                    .select('id, name')
+                    .in('id', targetIds);
+                const nationNameMap = {};
+                (targetNations || []).forEach(n => { nationNameMap[n.id] = n.name; });
+
+                roles.ambassadorTo = myAmbassadors.map(a => ({
+                    id: a.id,
+                    target_nation_id: a.target_nation_id,
+                    target_nation_name: nationNameMap[a.target_nation_id] || 'Unknown',
+                    appointed_at_tick: a.appointed_at_tick,
+                    term_length: a.term_length || 36,
+                    ambassador_first_name: a.ambassador_first_name,
+                    ambassador_last_name: a.ambassador_last_name
+                }));
+            }
         }
     } catch (e) {
         console.warn('Could not load ambassadors:', e);
