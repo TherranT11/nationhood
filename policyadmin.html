@@ -961,7 +961,7 @@ async function savePolicy() {
         major_sector: sector,
         minor_sector: lawCategory, // keep for backward compat
         law_category: lawCategory,
-        ideology: ideologiesArr[0] || null, // keep for backward compat
+        ideology: ideologiesArr[0] || 'Agnostic', // keep for backward compat; column is NOT NULL
         ideologies: ideologiesArr,
         upfront_cost: parseFloat(document.getElementById('b-upfront').value) || 0,
         upfront_scaling_stat: document.getElementById('b-upfront-scaling').value || null,
