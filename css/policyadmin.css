@@ -213,3 +213,13 @@ body { overflow: auto !important; height: auto !important; }
 .prereq-select-area { margin-top: 10px; }
 .prereq-badge { display: inline-block; background: #1a2a2a; border: 1px solid #2196F3; color: #64B5F6; padding: 2px 8px; border-radius: 3px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
 .prereq-lock-badge { display: inline-block; background: #2a2a1a; border: 1px solid #ff9800; color: #ff9800; padding: 2px 8px; border-radius: 3px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Ideology Agnostic toggle */
+.agnostic-toggle { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.agnostic-toggle label { font-size: 0.85rem; color: #e0e0e0; cursor: pointer; }
+.agnostic-toggle input { width: 20px; height: 20px; accent-color: #ffcc00; cursor: pointer; }
+
+/* Policy type badges */
+.tag-structural { background: #1a2a2a; color: #64B5F6; border: 1px solid #2196F3; }
+.tag-lever { background: #2a1a2a; color: #ce93d8; border: 1px solid #9b59b6; }
+.tag-agnostic { background: #2a2a2a; color: #888; border: 1px solid #555; }
