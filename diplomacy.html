@@ -225,7 +225,7 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
     try {
         const { data: ambassadors, error: ambErr } = await _supabase
             .from('ambassadors')
-            .select('id, target_nation_id, appointed_at_tick, term_length, ambassador_first_name, ambassador_last_name')
+            .select('*')
             .eq('faction_id', faction.id)
             .eq('nation_id', nation.id)
             .eq('is_active', true)
@@ -359,9 +359,9 @@ async function renderRelationsTab() {
             _supabase.from('nations').select('*').order('name'),
             _supabase.from('diplomatic_relations').select('*')
                 .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id),
-            _supabase.from('ambassadors').select('id, faction_id, target_nation_id, ambassador_first_name, ambassador_last_name, appointed_at_tick, term_length')
+            _supabase.from('ambassadors').select('*')
                 .eq('nation_id', currentNation.id).eq('is_active', true).eq('status', 'active'),
-            _supabase.from('ambassadors').select('id, nation_id, target_nation_id, ambassador_first_name, ambassador_last_name')
+            _supabase.from('ambassadors').select('*')
                 .eq('target_nation_id', currentNation.id).eq('is_active', true).eq('status', 'active'),
             _supabase.from('diplomatic_proposals').select('proposing_nation_id, target_nation_id')
                 .eq('status', 'active')
