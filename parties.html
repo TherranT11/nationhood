@@ -18,7 +18,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -112,7 +112,7 @@ async function renderParties() {
 
     const { data: blocs } = await _supabase
         .from('voter_blocs')
-        .select('id, bloc_name, population_weight')
+        .select('id, bloc_name, population_weight, priority_issues')
         .eq('nation_id', n.id)
         .eq('is_active', true);
 
@@ -194,21 +194,18 @@ async function renderParties() {
 
     const nextElectionDate = nextElection ? tickToDate(nextElection.election_tick) : '—';
 
-    // === Approval by Voter Bloc ===
+    // === Approval by Voter Bloc (compute data) ===
     const blocLookup = {};
     for (const b of (blocs || [])) blocLookup[b.id] = b;
 
-    // Index: approvalByBloc[blocId][factionId] = approval
     const approvalByBloc = {};
     for (const row of (allBlocApprovals || [])) {
         if (!approvalByBloc[row.bloc_id]) approvalByBloc[row.bloc_id] = {};
         approvalByBloc[row.bloc_id][row.faction_id] = row.approval ?? 0;
     }
 
-    // Build per-bloc rows
     const blocRows = (blocs || []).map(b => {
         const myApproval = approvalByBloc[b.id]?.[f.id] ?? 0;
-        // Find leader for this bloc
         let leaderId = null;
         let leaderApproval = -1;
         for (const pid of allPartyIds) {
@@ -236,6 +233,155 @@ async function renderParties() {
     const leadingPopPct = Math.round(blocsLeading.reduce((s, r) => s + r.popWeight, 0) * 100);
     const swingBlocs = blocRows.filter(r => !r.isLeading && r.margin <= 3);
 
+    // === Performance Credit ===
+    const MINISTRY_NAMES = {
+        prime_minister: 'Prime Minister', interior: 'Interior', foreign: 'Foreign',
+        defense: 'Defense', finance: 'Finance', education: 'Education',
+        healthcare: 'Healthcare', labor: 'Labor', justice: 'Justice',
+        transportation: 'Transportation', security: 'Security'
+    };
+
+    // Fetch ministries held by our party
+    const { data: myMinistries } = await _supabase
+        .from('ministries')
+        .select('ministry_key')
+        .eq('nation_id', n.id)
+        .eq('party_id', f.id)
+        .eq('is_active', true);
+
+    // Check if we're PM
+    const isPM = coalition && coalition.lead_party_id === f.id;
+
+    const heldKeys = new Set((myMinistries || []).map(m => m.ministry_key));
+    if (isPM) heldKeys.add('prime_minister');
+    const heldMinistryCount = heldKeys.size;
+
+    // Build stat-to-trend data if we hold ministries
+    let trendingWell = [];
+    let trendingBadly = [];
+    let trendingFlat = [];
+    let swingWarnings = [];
+
+    if (heldMinistryCount > 0) {
+        // Fetch previous tick stats
+        const currentTick = currentShard?.current_tick || 0;
+        let prevStats = null;
+        if (currentTick > 0) {
+            const { data: histRow } = await _supabase
+                .from('nations_history')
+                .select('*')
+                .eq('nation_id', n.id)
+                .eq('tick', currentTick - 1)
+                .single();
+            prevStats = histRow;
+        }
+
+        // Find all stats we're responsible for
+        const myStats = [];
+        for (const [statKey, ministryKey] of Object.entries(STAT_TO_MINISTRY)) {
+            if (heldKeys.has(ministryKey)) myStats.push(statKey);
+        }
+
+        // Compute trends
+        const FLAT_THRESHOLD = 0.15;
+        for (const statKey of myStats) {
+            const current = n[statKey];
+            const prev = prevStats ? prevStats[statKey] : null;
+            if (current == null) continue;
+
+            const sign = statDirectionSign(statKey);
+            if (sign === 0) continue;
+
+            const rawDelta = (prev != null) ? current - prev : 0;
+            const improvement = rawDelta * sign; // positive = getting better
+
+            const label = statKey.replace(/_/g, ' ');
+            if (Math.abs(rawDelta) < FLAT_THRESHOLD) {
+                trendingFlat.push({ statKey, label });
+            } else if (improvement > 0) {
+                trendingWell.push({ statKey, label, arrow: sign > 0 ? '▲' : '▼' });
+            } else {
+                trendingBadly.push({ statKey, label, arrow: sign > 0 ? '▼' : '▲' });
+            }
+        }
+
+        // Check if badly-trending stats hurt us with swing blocs
+        if (trendingBadly.length > 0) {
+            const badStatKeys = new Set(trendingBadly.map(t => t.statKey));
+            for (const b of (blocs || [])) {
+                const isSwing = swingBlocs.some(sb => sb.blocId === b.id);
+                if (!isSwing) continue;
+                const issues = b.priority_issues || [];
+                for (const issue of issues) {
+                    const catStats = ISSUE_CATEGORY_STATS[issue] || [];
+                    const hits = catStats.filter(s => badStatKeys.has(s));
+                    if (hits.length > 0) {
+                        swingWarnings.push({ blocName: b.bloc_name, stats: hits.map(s => s.replace(/_/g, ' ')) });
+                    }
+                }
+            }
+        }
+    }
+
+    // Build Performance Credit HTML
+    let perfCreditHtml = '';
+    if (heldMinistryCount === 0) {
+        perfCreditHtml = `
+            <div class="perf-panel">
+                <div class="perf-header">Performance Credit</div>
+                <div class="perf-empty">
+                    <div class="perf-empty-label">Ministries: None</div>
+                    <div class="perf-empty-msg">You earn no credit for stat improvements. Attack rivals who do, or negotiate your way into a coalition.</div>
+                </div>
+            </div>`;
+    } else {
+        const ministryList = [...heldKeys].map(k => MINISTRY_NAMES[k] || k).join(', ');
+        let titleParts = [];
+        if (isPM) titleParts.push('Prime Minister');
+        const nonPM = [...heldKeys].filter(k => k !== 'prime_minister');
+        if (nonPM.length > 0) titleParts.push(nonPM.map(k => MINISTRY_NAMES[k] || k).join(', '));
+        const titleLine = titleParts.join(' + ');
+
+        let trendsHtml = '';
+        if (trendingWell.length > 0) {
+            trendsHtml += `<div class="perf-trend-section">
+                <div class="perf-trend-label perf-trend-good">Trending well:</div>
+                ${trendingWell.map(t => `<div class="perf-trend-item perf-trend-good">${t.arrow} ${t.label}</div>`).join('')}
+            </div>`;
+        }
+        if (trendingBadly.length > 0) {
+            trendsHtml += `<div class="perf-trend-section">
+                <div class="perf-trend-label perf-trend-bad">Trending badly:</div>
+                ${trendingBadly.map(t => `<div class="perf-trend-item perf-trend-bad">${t.arrow} ${t.label}</div>`).join('')}
+            </div>`;
+        }
+        if (trendingFlat.length > 0) {
+            trendsHtml += `<div class="perf-trend-section">
+                <div class="perf-trend-label perf-trend-flat">Flat:</div>
+                ${trendingFlat.map(t => `<div class="perf-trend-item perf-trend-flat">── ${t.label}</div>`).join('')}
+            </div>`;
+        }
+        if (trendingWell.length === 0 && trendingBadly.length === 0 && trendingFlat.length === 0) {
+            trendsHtml = '<div class="perf-trend-none">No trend data yet.</div>';
+        }
+
+        let warningsHtml = '';
+        if (swingWarnings.length > 0) {
+            warningsHtml = swingWarnings.map(w =>
+                `<div class="perf-warning">⚠ ${w.stats.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(', ')} is hurting you with ${w.blocName} — a swing bloc.</div>`
+            ).join('');
+        }
+
+        perfCreditHtml = `
+            <div class="perf-panel perf-panel-active">
+                <div class="perf-header">Performance Credit</div>
+                <div class="perf-ministries">${titleLine}</div>
+                <div class="perf-trends">${trendsHtml}</div>
+                ${warningsHtml ? `<div class="perf-warnings">${warningsHtml}</div>` : ''}
+            </div>`;
+    }
+
+    // === Approval by Voter Bloc (build HTML) ===
     let blocTableHtml = '';
     for (const r of blocRows) {
         const barColor = r.isLeading ? partyColor : 'var(--text-muted, #555)';
@@ -319,6 +465,8 @@ async function renderParties() {
             <div class="momentum-rank">You are ${ordinal(momentumRank)} of ${totalParties} in Momentum right now.</div>
             <div class="momentum-desc">How loud you are in the national conversation right now.</div>
         </div>
+
+        ${perfCreditHtml}
 
         </div>
 
