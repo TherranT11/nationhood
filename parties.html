@@ -342,23 +342,29 @@ async function renderParties() {
         if (nonPM.length > 0) titleParts.push(nonPM.map(k => MINISTRY_NAMES[k] || k).join(', '));
         const titleLine = titleParts.join(' + ');
 
+        const MAX_TREND_ITEMS = 5;
         let trendsHtml = '';
         if (trendingWell.length > 0) {
+            const shown = trendingWell.slice(0, MAX_TREND_ITEMS);
+            const extra = trendingWell.length - shown.length;
             trendsHtml += `<div class="perf-trend-section">
                 <div class="perf-trend-label perf-trend-good">Trending well:</div>
-                ${trendingWell.map(t => `<div class="perf-trend-item perf-trend-good">${t.arrow} ${t.label}</div>`).join('')}
+                ${shown.map(t => `<div class="perf-trend-item perf-trend-good">${t.arrow} ${t.label}</div>`).join('')}
+                ${extra > 0 ? `<div class="perf-trend-item perf-trend-good">+ ${extra} more</div>` : ''}
             </div>`;
         }
         if (trendingBadly.length > 0) {
+            const shown = trendingBadly.slice(0, MAX_TREND_ITEMS);
+            const extra = trendingBadly.length - shown.length;
             trendsHtml += `<div class="perf-trend-section">
                 <div class="perf-trend-label perf-trend-bad">Trending badly:</div>
-                ${trendingBadly.map(t => `<div class="perf-trend-item perf-trend-bad">${t.arrow} ${t.label}</div>`).join('')}
+                ${shown.map(t => `<div class="perf-trend-item perf-trend-bad">${t.arrow} ${t.label}</div>`).join('')}
+                ${extra > 0 ? `<div class="perf-trend-item perf-trend-bad">+ ${extra} more</div>` : ''}
             </div>`;
         }
         if (trendingFlat.length > 0) {
             trendsHtml += `<div class="perf-trend-section">
-                <div class="perf-trend-label perf-trend-flat">Flat:</div>
-                ${trendingFlat.map(t => `<div class="perf-trend-item perf-trend-flat">── ${t.label}</div>`).join('')}
+                <div class="perf-trend-item perf-trend-flat">── ${trendingFlat.length} stat${trendingFlat.length !== 1 ? 's' : ''} flat</div>
             </div>`;
         }
         if (trendingWell.length === 0 && trendingBadly.length === 0 && trendingFlat.length === 0) {
