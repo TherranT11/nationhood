@@ -47,7 +47,7 @@
 <!-- Page-Specific Script -->
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { initPage, formatNumber, scaleRawToDollars } from './js/common.js';
+import { initPage, formatNumber } from './js/common.js';
 import { isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, loadSeats, CANONICAL_GOVERNMENT_TYPES, GAME_CONFIG } from './js/game-common.js';
 /**
  * World Page
@@ -281,8 +281,8 @@ function generateStatDescriptions(nation) {
     if (nation.legitimacy <= 30) descriptions.push("The government struggles to maintain public trust and legitimacy.");
     if (nation.happiness <= 30) descriptions.push("National morale is low, with widespread dissatisfaction among the populace.");
     if (nation.healthcare_quality <= 30) descriptions.push("Healthcare infrastructure is severely lacking, affecting public health outcomes.");
-    if (scaleRawToDollars(nation.gdp) >= 100e9) descriptions.push("A powerful economy makes this country a major force in regional trade.");
-    if (scaleRawToDollars(nation.debt) >= 80e9) descriptions.push("Mounting national debt threatens long-term economic stability.");
+    if (nation.gdp >= 100) descriptions.push("A powerful economy makes this country a major force in regional trade.");
+    if (nation.debt >= 80) descriptions.push("Mounting national debt threatens long-term economic stability.");
     if (nation.inflation >= 70) descriptions.push("Runaway inflation has eroded purchasing power and savings.");
     if (nation.population_growth <= 30) descriptions.push("Population decline poses challenges for the workforce and social services.");
     if (nation.emigration >= 70) descriptions.push("Brain drain is a serious concern as skilled workers seek opportunities abroad.");

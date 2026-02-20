@@ -309,11 +309,13 @@ function getTrendArrow(statKey, currentValue, inverted, format) {
     }
     var delta = currentValue - previousValue;
     var invertedClass = inverted ? ' inverted' : '';
+    // Scale delta to dollars for currency/gdp display (stored as small-scale billions)
+    var displayDelta = (format === 'currency' || format === 'gdp') ? delta * 1e9 : delta;
     if (delta > 0) {
-        var formatted = (format === 'currency') ? '+' + formatCurrencyShort(delta) : (format === 'gdp') ? '+' + formatCurrencyShort(delta) : '+' + roundDelta(delta);
+        var formatted = (format === 'currency' || format === 'gdp') ? '+' + formatCurrencyShort(displayDelta) : '+' + roundDelta(delta);
         return '<span class="trend-arrow trend-up' + invertedClass + '">▲ ' + formatted + '</span>';
     } else if (delta < 0) {
-        var formatted = (format === 'currency') ? formatCurrencyShort(delta) : (format === 'gdp') ? formatCurrencyShort(delta) : roundDelta(delta);
+        var formatted = (format === 'currency' || format === 'gdp') ? formatCurrencyShort(displayDelta) : roundDelta(delta);
         return '<span class="trend-arrow trend-down' + invertedClass + '">▼ ' + formatted + '</span>';
     }
     return '<span class="trend-arrow trend-neutral">―</span>';

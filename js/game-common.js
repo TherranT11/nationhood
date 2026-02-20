@@ -431,10 +431,9 @@ export const INVERTED_STATS = [
 ];
 
 // Stats stored as raw numbers (not 0-100 indices).
+// GDP and debt are stored as small-scale (value = billions), so no divisor needed.
 export const RAW_SCALING_DIVISORS = {
-    population: 1_000_000,
-    gdp: 1_000_000_000,
-    debt: 1_000_000_000
+    population: 1_000_000
 };
 
 // ==================== NATIONAL BUDGET CALCULATION ====================
@@ -7578,12 +7577,15 @@ export async function processStatEffects(supabase, nation, currentTick) {
                 }
 
                 if (ticksSincePassed > delay && ticksSincePassed <= delay + duration) {
+                    // GDP is only changed by gdp_growth via applyGdpGrowth — skip stat effects
+                    if (statKey === 'gdp') continue;
+
                     const currentVal = nationUpdates[statKey] !== undefined
                         ? nationUpdates[statKey]
                         : (nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50);
 
-                    // For raw-value stats (GDP, debt, population), scale rate by divisor
-                    // so rate: 1 means +$1B for GDP/debt, +1M for population
+                    // For raw-value stats (population), scale rate by divisor
+                    // so rate: 1 means +1M for population
                     const scaledRate = RAW_SCALING_DIVISORS[statKey] ? rate * RAW_SCALING_DIVISORS[statKey] : rate;
 
                     let newVal;

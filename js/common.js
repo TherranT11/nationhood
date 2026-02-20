@@ -423,13 +423,12 @@ export function formatCurrency(n) {
 }
 
 /**
- * Convert a raw 0-100 scale stat to dollar amount (× $1 Billion).
- * Values already at dollar scale (>= 1,000,000) are returned as-is.
- * Matches the guard in sql/fix_nation_gdp_debt_population_scale.sql.
+ * Convert a small-scale stat (value = billions) to raw dollar amount.
+ * DB stores GDP/debt as small numbers: 195 = $195 Billion.
  */
 export function scaleRawToDollars(val) {
     if (val == null || val <= 0) return val;
-    return val < 1000000 ? val * 1e9 : val;
+    return val * 1e9;
 }
 
 export function showLoading(containerId = 'content-area') {
