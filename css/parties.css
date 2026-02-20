@@ -730,3 +730,67 @@
             align-items: center;
             justify-content: center;
         }
+
+        /* ===== STAT GRID COLUMN VARIANTS ===== */
+        .stat-grid.stat-grid-3col { grid-template-columns: repeat(3, 1fr); }
+        .stat-grid.stat-grid-4col { grid-template-columns: repeat(4, 1fr); }
+
+        /* ===== MOBILE RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .stat-grid.stat-grid-3col,
+            .stat-grid.stat-grid-4col {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .parties-display-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .action-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .ideo-axis-label {
+                width: 60px;
+                font-size: 0.62rem;
+            }
+
+            .poll-bloc-name {
+                min-width: 90px;
+                font-size: 0.68rem;
+            }
+
+            .donor-bloc-name {
+                min-width: auto;
+            }
+
+            .donor-bloc-row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .donor-bloc-stats {
+                flex-wrap: wrap;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stat-grid.stat-grid-3col,
+            .stat-grid.stat-grid-4col {
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+            }
+
+            .stat-card {
+                padding: 10px 8px;
+            }
+
+            .stat-card .stat-value {
+                font-size: 1rem;
+            }
+
+            .standings-name {
+                min-width: 80px;
+                font-size: 0.75rem;
+            }
+        }

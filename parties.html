@@ -705,7 +705,7 @@ async function renderPartiesPage(nation, faction) {
         if (!isAutocracy) {
             campaignActionsHTML = `
             <div class="section-header" style="margin-top: 30px;">Your Party Resources</div>
-            <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 12px;">
+            <div class="stat-grid stat-grid-3col" style="margin-bottom: 12px;">
                 <div class="stat-card"><div class="stat-label">Action Points</div><div class="stat-value" id="party-ap">${faction?.action_points || 0}</div></div>
                 <div class="stat-card"><div class="stat-label">Party Funds</div><div class="stat-value" id="party-funds">$${(faction?.party_funds || 0).toLocaleString()}</div></div>
                 <div class="stat-card"><div class="stat-label">Approval Rating</div><div class="stat-value" id="party-approval">${faction?._derivedApproval ?? faction?.approval_rating ?? 0}%</div></div>
@@ -814,7 +814,7 @@ async function renderPartiesPage(nation, faction) {
 
             campaignActionsHTML = `
             <div class="section-header" style="margin-top: 30px;">Your Faction Resources</div>
-            <div class="stat-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
+            <div class="stat-grid stat-grid-4col" style="margin-bottom: 24px;">
                 <div class="stat-card"><div class="stat-label">Action Points</div><div class="stat-value" id="party-ap">${faction?.action_points || 0}</div></div>
                 <div class="stat-card"><div class="stat-label">Seats</div><div class="stat-value" id="party-seats">${faction?.seats || 0} / ${totalSeats}</div></div>
                 <div class="stat-card"><div class="stat-label">Faction Loyalty</div><div class="stat-value" id="party-loyalty" style="color:${loyaltyColor}">${myLoyalty}%</div></div>
@@ -968,7 +968,7 @@ async function renderPartiesPage(nation, faction) {
             <div class="panel-padding">
                 <div class="section-header">${headerText} in ${nation.name}</div>
 
-                <div class="stat-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px;">
+                <div class="stat-grid stat-grid-4col" style="margin-bottom:24px;">
                     <div class="stat-card"><div class="stat-label">Total ${termPlural}</div><div class="stat-value">${parties.length}</div></div>
                     <div class="stat-card"><div class="stat-label">${isAutocracy ? 'In Regime' : 'Government / Coalition'}</div><div class="stat-value" style="color:#4CAF50;">${governmentCount}</div></div>
                     <div class="stat-card"><div class="stat-label">${isAutocracy ? 'Max Factions' : 'Opposition'}</div><div class="stat-value" style="color:${isAutocracy ? '#ffcc00' : '#ff4444'};">${isAutocracy ? (nation.max_parties || 4) : oppositionCount}</div></div>
