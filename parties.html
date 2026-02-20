@@ -119,6 +119,7 @@ async function renderParties() {
     }
     const rawMomentum = wTotal > 0 ? wSum / wTotal : 0;
     const momentumScore = Math.round(Math.max(0, Math.min(100, 50 + rawMomentum)));
+    const decayPerTick = Math.round(Math.abs(rawMomentum) * 0.20 * 10) / 10;
     const role = getPartyRole(f.id, mySeats, coalition);
     const badgeClass = getRoleBadgeClass(role);
 
@@ -234,6 +235,7 @@ async function renderParties() {
             <div class="momentum-bar-track">
                 <div class="momentum-bar-fill" style="width:${momentumScore}%;background:${partyColor}"></div>
             </div>
+            <div class="momentum-decay">${decayPerTick > 0 ? `${rawMomentum > 0 ? '−' : '+'}${decayPerTick} / tick` : 'Stable'}</div>
             <div class="momentum-desc">How loud you are in the national conversation right now.</div>
         </div>
 

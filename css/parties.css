@@ -296,6 +296,13 @@ body.light-mode .momentum-bar-track {
     min-width: 2px;
 }
 
+.momentum-decay {
+    margin-top: 6px;
+    font-size: 0.7rem;
+    color: var(--text-muted, #666);
+    text-align: right;
+}
+
 .momentum-desc {
     margin-top: auto;
     padding-top: 12px;
