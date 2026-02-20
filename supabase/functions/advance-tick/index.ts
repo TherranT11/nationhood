@@ -567,6 +567,64 @@ async function applyGdpGrowth(supabase, nation) {
     await supabase.from('nations').update({ gdp: newGdp }).eq('id', nation.id);
 }
 
+/**
+ * Apply natural stat decay for a nation. Each tick, configured stats drift
+ * toward their target (equilibrium or erosion).
+ */
+async function processStatDecay(supabase, nation) {
+    const appliedDecay: any[] = [];
+    const nationUpdates: Record<string, number> = {};
+
+    for (const [statKey, config] of Object.entries(STAT_DECAY_CONFIG)) {
+        if (!NATION_STAT_COLUMN_SET.has(statKey)) continue;
+
+        const currentVal = nation[statKey] !== undefined && nation[statKey] !== null
+            ? Number(nation[statKey]) : 50;
+        const { target, speed } = config;
+
+        if (currentVal === target) continue;
+
+        let newVal: number;
+        if (currentVal > target) {
+            newVal = Math.max(target, currentVal - speed);
+        } else {
+            newVal = Math.min(target, currentVal + speed);
+        }
+
+        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+
+        if (newVal !== Math.round(currentVal * 10) / 10) {
+            nationUpdates[statKey] = newVal;
+            appliedDecay.push({
+                stat: statKey,
+                type: config.type,
+                previousValue: Math.round(currentVal * 10) / 10,
+                newValue: newVal,
+                target,
+                speed
+            });
+        }
+    }
+
+    if (Object.keys(nationUpdates).length > 0) {
+        const { error } = await supabase
+            .from('nations')
+            .update(nationUpdates)
+            .eq('id', nation.id);
+
+        if (error) {
+            console.error('[processStatDecay] Nation stat update FAILED',
+                { nationId: nation.id, payload: nationUpdates, error: error.message });
+            return [];
+        }
+
+        console.log(`[processStatDecay] Decay applied for ${nation.name}: ${appliedDecay.length} stat(s)`);
+        Object.assign(nation, nationUpdates);
+    }
+
+    return appliedDecay;
+}
+
 // Ideology spectrum opposites
 const IDEOLOGY_OPPOSITES = {
     'LIBERTY': 'EQUALITY',           'EQUALITY': 'LIBERTY',
@@ -2386,7 +2444,7 @@ const DECAY_SPEED = { VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
  *   - 'erosion': degrades toward a bad floor (punishes neglect)
  * Stats not listed are persistent — they hold value indefinitely.
  */
-const STAT_DECAY_CONFIG = {
+const STAT_DECAY_CONFIG: Record<string, { type: string; target: number; speed: number }> = {
     // ── Equilibrium (drift back to midpoint) ──
     inflation:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
     interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
@@ -2423,13 +2481,6 @@ const STAT_DECAY_CONFIG = {
     social_mobility:          { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
     benefits:                 { type: 'erosion', target: 0,  speed: DECAY_SPEED.MEDIUM },
 };
-
-// Validate decay config keys at module load
-for (const key of Object.keys(STAT_DECAY_CONFIG)) {
-    if (!NATION_STAT_COLUMN_SET.has(key)) {
-        console.error(`[STAT_DECAY_CONFIG] Invalid stat key: "${key}" — not in NATION_STAT_COLUMNS`);
-    }
-}
 
 // ==================== THREE-PILLAR VOTING SYSTEM MAPPINGS ====================
 

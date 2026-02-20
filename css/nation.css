@@ -414,6 +414,10 @@
         background: rgba(255, 204, 0, 0.15);
         color: var(--accent);
     }
+    .ab-type-decay {
+        background: rgba(158, 158, 158, 0.15);
+        color: var(--text-muted);
+    }
 
     /* Empty state */
     .affected-by-empty {
