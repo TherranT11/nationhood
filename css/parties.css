@@ -2319,6 +2319,60 @@ body.light-mode .outreach-bloc-row:hover {
 }
 
 
+/* ==================== FUNDRAISER TABS ==================== */
+
+.fundraiser-tabs-section {
+    margin-top: 24px;
+}
+
+.fundraiser-tabs-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid var(--border-main, #333);
+    margin-bottom: 0;
+}
+
+.fundraiser-tab {
+    padding: 10px 24px;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: var(--text-muted, #888);
+    font-weight: 700;
+    font-size: 0.92rem;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    letter-spacing: 0.5px;
+}
+
+.fundraiser-tab:hover {
+    color: var(--text-primary, #eee);
+}
+
+.fundraiser-tab.active {
+    color: #ffd700;
+    border-bottom-color: #ffd700;
+}
+
+.fundraiser-tab-content {
+    padding-top: 4px;
+}
+
+.promises-badge {
+    display: inline-block;
+    background: #ff9800;
+    color: #111;
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 1px 6px;
+    border-radius: 10px;
+    margin-left: 6px;
+    vertical-align: middle;
+    min-width: 18px;
+    text-align: center;
+}
+
+
 /* ==================== FUNDRAISER PANEL ==================== */
 
 .fundraiser-panel {
