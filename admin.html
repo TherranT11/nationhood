@@ -48,6 +48,7 @@
             <button class="tab" onclick="showTab('elections')">Elections</button>
             <button class="tab" onclick="showTab('players')">Players</button>
             <button class="tab" onclick="showTab('voters')">Voters</button>
+            <button class="tab" onclick="showTab('demands')">Demands</button>
             <button class="tab" onclick="showTab('danger')">Danger Zone</button>
             <button class="tab" onclick="showTab('inspector')">Inspector</button>
         </div>
@@ -248,6 +249,59 @@
             </div>
         </div>
 
+        <!-- ==================== DEMANDS TAB ==================== -->
+        <div class="tab-content" id="tab-demands">
+            <h2>Donor Demands</h2>
+            <p style="color:#888; font-size:0.9rem; margin-bottom:20px;">
+                Create and manage demand templates for each voter bloc. These are the promises donors ask parties to fulfill in exchange for large donations.
+            </p>
+
+            <!-- Bloc selector -->
+            <div class="input-group">
+                <label>Select Voter Bloc</label>
+                <select id="demand-bloc-select" onchange="onDemandBlocSelect()">
+                    <option value="">-- Choose a voter bloc --</option>
+                </select>
+            </div>
+
+            <!-- Everything below hidden until bloc selected -->
+            <div id="demand-bloc-info" class="hidden">
+
+                <!-- Bloc ideology tags display -->
+                <div class="shard-info" style="margin-bottom:20px;">
+                    <div class="info-row">
+                        <span class="info-label">Bloc:</span>
+                        <span class="info-value" id="demand-bloc-name-display">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Ideology Tags:</span>
+                        <span class="info-value" id="demand-bloc-ideology-display">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Demands:</span>
+                        <span class="info-value" id="demand-count-display">0</span>
+                    </div>
+                </div>
+
+                <!-- Action buttons -->
+                <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
+                    <button class="btn btn-primary" onclick="showAddDemandForm()">+ Add Demand</button>
+                    <button class="btn btn-success" onclick="seedDefaultDemands()">Seed Defaults for This Bloc</button>
+                    <button class="btn btn-secondary" onclick="seedAllDefaultDemands()">Seed All Bloc Defaults</button>
+                </div>
+
+                <div id="demand-action-status" style="margin-bottom:16px;"></div>
+
+                <!-- Add/Edit Demand Form (hidden by default) -->
+                <div id="demand-form-container" class="hidden"></div>
+
+                <!-- Existing Demands List -->
+                <div id="existing-demands-display">
+                    <div class="no-players">Select a voter bloc to view demands.</div>
+                </div>
+            </div>
+        </div>
+
         <!-- ==================== DANGER ZONE TAB ==================== -->
         <div class="tab-content" id="tab-danger">
             <h2>🔥 Danger Zone</h2>
@@ -356,7 +410,7 @@
 <script type="module">
 const { createClient } = supabase;
 import { applyPopulationGrowth } from './js/common.js';
-import { GAME_CONFIG, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processBlocApprovalDecay, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPartyStandingsJitter, processPMTraitEffects, calculateNationalBudget, markFactionActive, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runManualElectionByGovernmentType } from './js/game-common.js';
+import { GAME_CONFIG, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processBlocApprovalDecay, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPartyStandingsJitter, processPMTraitEffects, calculateNationalBudget, markFactionActive, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runManualElectionByGovernmentType, DONOR_DEMANDS } from './js/game-common.js';
 const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
     const _supabase = createClient(supabaseUrl, supabaseKey);
@@ -400,6 +454,7 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
         await loadElectionNations();
         await updateScheduleTickHint();
         await loadVoterNations();
+        await loadDemandBlocs();
         await loadInspectorNations();
     }
 
@@ -1838,6 +1893,859 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
         document.getElementById('inspector-frame').style.height = height;
     }
 
+    // ================================================================
+    //                    DEMAND TEMPLATE MANAGEMENT
+    // ================================================================
+
+    const DEMAND_TYPES = [
+        { value: 'stat_target', label: 'Stat Target', desc: 'Reach a stat value' },
+        { value: 'ministry_and_stat', label: 'Ministry + Stat', desc: 'Win ministry and change a stat' },
+        { value: 'ministry_and_dual_stat', label: 'Ministry + 2 Stats', desc: 'Win ministry and change two stats' },
+        { value: 'ministry_appointment', label: 'Ministry Appointment', desc: 'Get appointed to a ministry' },
+        { value: 'pass_bill', label: 'Pass Bill', desc: 'Pass a specific named bill' },
+        { value: 'pass_bill_count', label: 'Pass N Bills', desc: 'Pass N bills with specific tags' },
+        { value: 'block_bill', label: 'Block Bill', desc: 'Block a specific bill from passing' },
+        { value: 'block_bill_tag', label: 'Block Bill Tag', desc: 'Block all bills with a tag' },
+        { value: 'block_stat_decrease', label: 'Block Stat Decrease', desc: 'Prevent a stat from decreasing' },
+        { value: 'block_stat_increase', label: 'Block Stat Increase', desc: 'Prevent a stat from increasing' },
+        { value: 'repeal_bill', label: 'Repeal Bill', desc: 'Repeal a recently passed bill by tag' },
+        { value: 'no_confidence', label: 'No Confidence', desc: 'Remove a minister' },
+        { value: 'no_confidence_conditional', label: 'No Confidence (Conditional)', desc: 'Remove minister on scandal trigger' },
+        { value: 'coalition_restriction', label: 'Coalition Restriction', desc: 'Restrict coalition partnerships' },
+        { value: 'vote_pattern', label: 'Vote Pattern', desc: 'Vote a certain way on bills' },
+        { value: 'rally_count', label: 'Rally Count', desc: 'Hold N rallies on a theme' },
+        { value: 'press_conference_count', label: 'Press Conference Count', desc: 'Hold N press conferences' },
+        { value: 'stat_floor', label: 'Stat Floor', desc: 'Keep stat above minimum' },
+        { value: 'stat_sustained', label: 'Stat Sustained', desc: 'Keep stat above level for N ticks' },
+        { value: 'constitutional_amendment', label: 'Constitutional Amendment', desc: 'Pass amendment (supermajority)' },
+    ];
+
+    const IDEOLOGY_TAG_OPTIONS = [
+        'LIBERTY', 'EQUALITY', 'TRADITION', 'PROGRESS',
+        'SECURITY', 'FREEDOM', 'GLOBALISM', 'NATIONALISM',
+        'INDIVIDUALISM', 'COLLECTIVISM'
+    ];
+
+    const MINISTRY_KEYS = [
+        'interior', 'foreign', 'defense', 'finance',
+        'education', 'healthcare', 'labor', 'justice', 'agriculture',
+        'prime_minister'
+    ];
+
+    // Stat options for dropdowns (use NATION_STAT_COLUMNS from import)
+    const STAT_OPTIONS = NATION_STAT_COLUMNS;
+
+    let demandBlocsCache = []; // all distinct bloc names
+    let selectedDemandBloc = null;
+    let demandTemplatesCache = [];
+    let editingDemandId = null;
+
+    // ---- Load distinct bloc names for dropdown ----
+    async function loadDemandBlocs() {
+        try {
+            const { data } = await _supabase.from('voter_blocs')
+                .select('bloc_name, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
+                .order('bloc_name');
+
+            // Deduplicate by bloc_name, keeping first occurrence
+            const seen = new Set();
+            demandBlocsCache = [];
+            for (const row of (data || [])) {
+                if (!seen.has(row.bloc_name)) {
+                    seen.add(row.bloc_name);
+                    demandBlocsCache.push(row);
+                }
+            }
+
+            const select = document.getElementById('demand-bloc-select');
+            select.innerHTML = '<option value="">-- Choose a voter bloc --</option>';
+            demandBlocsCache.forEach(b => {
+                select.innerHTML += `<option value="${b.bloc_name}">${b.bloc_name}</option>`;
+            });
+        } catch (error) { console.error(error); }
+    }
+
+    function getBlocIdeologyTags(bloc) {
+        const tags = [];
+        const axes = [
+            { key: 'axis_liberty_equality', left: 'LIBERTY', right: 'EQUALITY' },
+            { key: 'axis_tradition_progress', left: 'TRADITION', right: 'PROGRESS' },
+            { key: 'axis_security_freedom', left: 'SECURITY', right: 'FREEDOM' },
+            { key: 'axis_globalism_nationalism', left: 'GLOBALISM', right: 'NATIONALISM' },
+            { key: 'axis_individualism_collectivism', left: 'INDIVIDUALISM', right: 'COLLECTIVISM' },
+        ];
+        for (const a of axes) {
+            const val = bloc[a.key] ?? 50;
+            if (val <= 35) tags.push(a.left);
+            else if (val >= 65) tags.push(a.right);
+        }
+        return tags;
+    }
+
+    // ---- Bloc selected ----
+    async function onDemandBlocSelect() {
+        const blocName = document.getElementById('demand-bloc-select').value;
+        const infoDiv = document.getElementById('demand-bloc-info');
+
+        if (!blocName) { infoDiv.classList.add('hidden'); selectedDemandBloc = null; return; }
+
+        selectedDemandBloc = demandBlocsCache.find(b => b.bloc_name === blocName);
+        const ideologyTags = getBlocIdeologyTags(selectedDemandBloc);
+
+        document.getElementById('demand-bloc-name-display').textContent = blocName;
+        document.getElementById('demand-bloc-ideology-display').innerHTML =
+            ideologyTags.length > 0
+                ? ideologyTags.map(t => `<span style="background:#2a2a2a;padding:2px 8px;border-radius:10px;font-size:0.8rem;margin-right:4px;">${t}</span>`).join('')
+                : '<span style="color:#666;">Centrist (no strong leanings)</span>';
+
+        document.getElementById('demand-form-container').classList.add('hidden');
+        editingDemandId = null;
+
+        await loadExistingDemandsDisplay(blocName);
+        infoDiv.classList.remove('hidden');
+    }
+
+    // ---- Load & render demands ----
+    async function loadExistingDemandsDisplay(blocName) {
+        const container = document.getElementById('existing-demands-display');
+        try {
+            const { data, error } = await _supabase.from('demand_templates')
+                .select('*')
+                .eq('bloc_name', blocName)
+                .order('sort_order', { ascending: true });
+            if (error) throw error;
+
+            demandTemplatesCache = data || [];
+            document.getElementById('demand-count-display').textContent = demandTemplatesCache.length;
+
+            if (demandTemplatesCache.length === 0) {
+                container.innerHTML = '<div class="no-players">No demands for this bloc. Click "Seed Defaults" or "+ Add Demand" to create some.</div>';
+                return;
+            }
+
+            container.innerHTML = demandTemplatesCache.map((d, i) => renderDemandCard(d, i)).join('');
+        } catch (error) {
+            console.error(error);
+            container.innerHTML = '<div class="no-players" style="color:#ff4444;">Error loading demands: ' + error.message + '</div>';
+        }
+    }
+
+    function renderDemandCard(demand, index) {
+        const tags = (demand.ideology_tags || []).map(t =>
+            `<span style="background:#1a2a1a;color:#4CAF50;padding:1px 6px;border-radius:8px;font-size:0.7rem;">${t}</span>`
+        ).join(' ');
+
+        const typeLabel = DEMAND_TYPES.find(t => t.value === demand.demand_type)?.label || demand.demand_type;
+
+        // Check alignment with bloc ideology
+        const blocTags = getBlocIdeologyTags(selectedDemandBloc);
+        const demandTags = demand.ideology_tags || [];
+        const misaligned = demandTags.length > 0 && !demandTags.some(t => blocTags.includes(t));
+        const alignWarning = misaligned
+            ? '<span style="color:#ff9800;font-size:0.7rem;margin-left:6px;" title="Demand ideology doesn\'t match bloc">MISALIGNED</span>'
+            : '';
+
+        // Build conditions summary
+        const cond = demand.conditions || {};
+        let condSummary = '';
+        if (cond.stat_key) condSummary += `${cond.stat_key} ${cond.direction || ''} ${cond.delta ? ('delta ' + cond.delta) : ''} ${cond.absolute_target !== undefined ? ('target ' + cond.absolute_target) : ''} `;
+        if (cond.ministry_key) condSummary += `ministry: ${cond.ministry_key} `;
+        if (cond.bill_name) condSummary += `bill: ${cond.bill_name} `;
+        if (cond.bill_tags) condSummary += `bill tags: [${cond.bill_tags.join(', ')}] `;
+        if (cond.protected_stat) condSummary += `protect: ${cond.protected_stat} `;
+        if (cond.blocked_tag) condSummary += `block tag: ${cond.blocked_tag} `;
+        if (cond.repeal_tag) condSummary += `repeal tag: ${cond.repeal_tag} `;
+        if (cond.target_ministry) condSummary += `target ministry: ${cond.target_ministry} `;
+        condSummary = condSummary.trim();
+
+        return `
+            <div class="bloc-card" id="demand-card-${demand.id}" style="${misaligned ? 'border-left:3px solid #ff9800;' : ''}${!demand.is_active ? 'opacity:0.5;' : ''}">
+                <div class="bloc-card-header" onclick="toggleDemandDetail('${demand.id}')">
+                    <div class="bloc-card-left">
+                        <div class="bloc-card-name">${demand.demand_name}${alignWarning}</div>
+                        <div class="bloc-card-meta">
+                            <span style="color:#CE93D8;font-size:0.75rem;">${typeLabel}</span>
+                            <span style="color:#888;font-size:0.75rem;">| ${demand.deadline} ticks</span>
+                            ${!demand.is_active ? '<span style="color:#ff4444;font-size:0.75rem;">| DISABLED</span>' : ''}
+                        </div>
+                        <div style="margin-top:4px;">${tags}</div>
+                    </div>
+                    <div class="bloc-card-actions">
+                        <button onclick="event.stopPropagation(); editDemand('${demand.id}')">Edit</button>
+                        <button class="btn-del" onclick="event.stopPropagation(); deleteDemand('${demand.id}', '${demand.demand_name.replace(/'/g, "\\'")}')">Delete</button>
+                    </div>
+                </div>
+                <div class="bloc-detail hidden" id="demand-detail-${demand.id}">
+                    <div style="font-size:0.85rem;color:#ccc;margin-bottom:8px;"><strong>Text:</strong> ${demand.demand_text}</div>
+                    ${condSummary ? `<div style="font-size:0.8rem;color:#888;"><strong>Conditions:</strong> ${condSummary}</div>` : ''}
+                    <div style="font-size:0.75rem;color:#666;margin-top:4px;"><strong>Raw:</strong> <code>${JSON.stringify(demand.conditions)}</code></div>
+                </div>
+            </div>
+        `;
+    }
+
+    function toggleDemandDetail(demandId) {
+        const detail = document.getElementById('demand-detail-' + demandId);
+        if (detail) detail.classList.toggle('hidden');
+    }
+
+    // ---- Add / Edit Demand Form ----
+    function showAddDemandForm() {
+        editingDemandId = null;
+        renderDemandForm({
+            demand_name: '', demand_text: '', demand_type: 'stat_target',
+            deadline: 20, conditions: {}, ideology_tags: [], is_active: true
+        });
+    }
+
+    function editDemand(demandId) {
+        const demand = demandTemplatesCache.find(d => d.id === demandId);
+        if (!demand) return;
+        editingDemandId = demandId;
+        renderDemandForm(demand);
+    }
+
+    function renderDemandForm(demand) {
+        const container = document.getElementById('demand-form-container');
+        const title = editingDemandId ? 'Edit Demand' : 'Add New Demand';
+        const ideoTags = demand.ideology_tags || [];
+        const cond = demand.conditions || {};
+
+        container.innerHTML = `
+            <div class="bloc-form" style="border-color:#ffcc00;">
+                <h3>${title}</h3>
+
+                <!-- Row 1: Name + Type -->
+                <div class="bloc-form-row">
+                    <div class="bloc-form-field" style="flex:2;">
+                        <label>Demand Name</label>
+                        <input type="text" id="demand-form-name" value="${demand.demand_name || ''}" placeholder="e.g. Free Enterprise Deregulation Act">
+                    </div>
+                    <div class="bloc-form-field" style="flex:1;">
+                        <label>Demand Type</label>
+                        <select id="demand-form-type" onchange="onDemandTypeChange()">
+                            ${DEMAND_TYPES.map(t => `<option value="${t.value}" ${t.value === demand.demand_type ? 'selected' : ''}>${t.label}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Row 2: Text + Deadline -->
+                <div class="bloc-form-row">
+                    <div class="bloc-form-field" style="flex:3;">
+                        <label>Display Text <span style="color:#666;font-size:0.7rem;">(shown to player, use {target_val} for computed targets)</span></label>
+                        <input type="text" id="demand-form-text" value="${demand.demand_text || ''}" placeholder="e.g. Get corruption below {target_val}">
+                    </div>
+                    <div class="bloc-form-field" style="flex:1;">
+                        <label>Deadline (ticks)</label>
+                        <input type="number" id="demand-form-deadline" value="${demand.deadline || 20}" min="1" max="100">
+                    </div>
+                </div>
+
+                <!-- Ideology Tags -->
+                <label style="font-size:0.75rem;color:#888;text-transform:uppercase;font-weight:bold;margin-top:12px;margin-bottom:6px;display:block;">Ideology Tags (what this demand aligns with)</label>
+                <div class="bloc-form-issues" id="demand-form-ideology-tags">
+                    ${IDEOLOGY_TAG_OPTIONS.map(tag => {
+                        const active = ideoTags.includes(tag) ? 'active' : '';
+                        return `<button type="button" class="bloc-form-issue-btn ${active}" onclick="toggleDemandTag(this)">${tag}</button>`;
+                    }).join('')}
+                </div>
+
+                <!-- Active toggle -->
+                <div style="margin-top:12px;">
+                    <label style="cursor:pointer;display:flex;align-items:center;gap:8px;">
+                        <input type="checkbox" id="demand-form-active" ${demand.is_active !== false ? 'checked' : ''}>
+                        <span style="font-size:0.85rem;color:#ccc;">Active (will be used in fundraiser offers)</span>
+                    </label>
+                </div>
+
+                <!-- Divider -->
+                <div style="border-top:1px solid #333;margin:16px 0;"></div>
+
+                <!-- Type-specific condition fields -->
+                <label style="font-size:0.75rem;color:#ffcc00;text-transform:uppercase;font-weight:bold;margin-bottom:8px;display:block;">Conditions</label>
+                <div id="demand-condition-fields"></div>
+
+                <!-- Raw JSON (collapsed) -->
+                <details style="margin-top:12px;">
+                    <summary style="color:#888;font-size:0.8rem;cursor:pointer;">Raw Conditions JSON (advanced)</summary>
+                    <textarea id="demand-form-conditions-raw" style="width:100%;height:120px;background:#1a1a1a;color:#ccc;border:1px solid #444;border-radius:4px;padding:8px;font-family:monospace;font-size:0.8rem;margin-top:6px;">${JSON.stringify(cond, null, 2)}</textarea>
+                </details>
+
+                <!-- Buttons -->
+                <div class="bloc-form-btns">
+                    <button class="btn btn-success" onclick="saveDemandForm()">Save Demand</button>
+                    <button class="btn btn-secondary" onclick="cancelDemandForm()">Cancel</button>
+                </div>
+            </div>
+        `;
+
+        container.classList.remove('hidden');
+        renderConditionFields(demand.demand_type, cond);
+        document.getElementById('demand-form-name').focus();
+    }
+
+    function renderConditionFields(type, cond) {
+        const container = document.getElementById('demand-condition-fields');
+        if (!container) return;
+        cond = cond || {};
+
+        const statSelect = (id, selected) => `<select id="${id}" style="background:#2a2a2a;border:1px solid #444;color:#ccc;padding:6px;border-radius:4px;">
+            <option value="">-- stat --</option>
+            ${STAT_OPTIONS.map(s => `<option value="${s}" ${s === selected ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>`;
+
+        const ministrySelect = (id, selected) => `<select id="${id}" style="background:#2a2a2a;border:1px solid #444;color:#ccc;padding:6px;border-radius:4px;">
+            <option value="">-- ministry --</option>
+            ${MINISTRY_KEYS.map(m => `<option value="${m}" ${m === selected ? 'selected' : ''}>${m}</option>`).join('')}
+        </select>`;
+
+        const dirSelect = (id, selected) => `<select id="${id}" style="background:#2a2a2a;border:1px solid #444;color:#ccc;padding:6px;border-radius:4px;">
+            <option value="above" ${selected === 'above' ? 'selected' : ''}>Above / Increase</option>
+            <option value="below" ${selected === 'below' ? 'selected' : ''}>Below / Decrease</option>
+        </select>`;
+
+        const numInput = (id, val, placeholder) => `<input type="number" id="${id}" value="${val ?? ''}" placeholder="${placeholder}" style="width:80px;background:#2a2a2a;border:1px solid #444;color:#ccc;padding:6px;border-radius:4px;">`;
+
+        const textInput = (id, val, placeholder, width) => `<input type="text" id="${id}" value="${val || ''}" placeholder="${placeholder}" style="width:${width || '200px'};background:#2a2a2a;border:1px solid #444;color:#ccc;padding:6px;border-radius:4px;">`;
+
+        let html = '';
+
+        switch (type) {
+            case 'stat_target':
+                html = `
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <label style="color:#888;font-size:0.8rem;">Stat:</label> ${statSelect('cond-stat-key', cond.stat_key)}
+                        <label style="color:#888;font-size:0.8rem;">Direction:</label> ${dirSelect('cond-direction', cond.direction)}
+                        <label style="color:#888;font-size:0.8rem;">Delta:</label> ${numInput('cond-delta', cond.delta, 'e.g. 5')}
+                        <label style="color:#888;font-size:0.8rem;">Absolute target:</label> ${numInput('cond-abs-target', cond.absolute_target, 'e.g. 30')}
+                    </div>
+                    <div style="color:#666;font-size:0.75rem;margin-top:4px;">Delta = change from current. Absolute target = fixed value. Use one or both.</div>`;
+                break;
+
+            case 'ministry_and_stat':
+                html = `
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <label style="color:#888;font-size:0.8rem;">Ministry:</label> ${ministrySelect('cond-ministry', cond.ministry_key)}
+                        <label style="color:#888;font-size:0.8rem;">Stat:</label> ${statSelect('cond-stat-key', cond.stat_key)}
+                        <label style="color:#888;font-size:0.8rem;">Direction:</label> ${dirSelect('cond-direction', cond.direction)}
+                        <label style="color:#888;font-size:0.8rem;">Delta:</label> ${numInput('cond-delta', cond.delta, '5')}
+                    </div>`;
+                break;
+
+            case 'ministry_and_dual_stat':
+                const s1 = cond.stats?.[0] || {};
+                const s2 = cond.stats?.[1] || {};
+                html = `
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+                        <label style="color:#888;font-size:0.8rem;">Ministry:</label> ${ministrySelect('cond-ministry', cond.ministry_key)}
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
+                        <label style="color:#888;font-size:0.8rem;">Stat 1:</label> ${statSelect('cond-stat1-key', s1.stat_key)}
+                        ${dirSelect('cond-stat1-dir', s1.direction)}
+                        ${numInput('cond-stat1-delta', s1.delta, '3')}
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <label style="color:#888;font-size:0.8rem;">Stat 2:</label> ${statSelect('cond-stat2-key', s2.stat_key)}
+                        ${dirSelect('cond-stat2-dir', s2.direction)}
+                        ${numInput('cond-stat2-delta', s2.delta, '3')}
+                    </div>`;
+                break;
+
+            case 'ministry_appointment':
+                html = `<div style="display:flex;gap:10px;align-items:center;">
+                    <label style="color:#888;font-size:0.8rem;">Ministry:</label> ${ministrySelect('cond-ministry', cond.ministry_key)}
+                </div>`;
+                break;
+
+            case 'pass_bill':
+                html = `
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+                        <label style="color:#888;font-size:0.8rem;">Bill Name:</label> ${textInput('cond-bill-name', cond.bill_name, 'e.g. Free Enterprise Act', '300px')}
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <label style="color:#888;font-size:0.8rem;">Bill Tags (comma-separated):</label>
+                        ${textInput('cond-bill-tags', (cond.bill_tags || []).join(', '), 'e.g. LIBERTY, INDIVIDUALISM', '300px')}
+                    </div>`;
+                break;
+
+            case 'pass_bill_count':
+                html = `
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <label style="color:#888;font-size:0.8rem;">Bill Tags:</label>
+                        ${textInput('cond-bill-tags', (cond.bill_tags || []).join(', '), 'e.g. TRADITION', '200px')}
+                        <label style="color:#888;font-size:0.8rem;">Count:</label> ${numInput('cond-count', cond.count, '2')}
+                    </div>`;
+                break;
+
+            case 'block_bill':
+                html = `
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <label style="color:#888;font-size:0.8rem;">Bill Tags:</label>
+                        ${textInput('cond-bill-tags', (cond.bill_tags || []).join(', '), 'e.g. GLOBALISM', '200px')}
+                        <label style="color:#888;font-size:0.8rem;">Bill Pattern:</label>
+                        ${textInput('cond-bill-pattern', cond.bill_pattern, 'e.g. trade', '150px')}
+                    </div>`;
+                break;
+
+            case 'block_bill_tag':
+                html = `<div style="display:flex;gap:10px;align-items:center;">
+                    <label style="color:#888;font-size:0.8rem;">Blocked Tag:</label>
+                    ${textInput('cond-blocked-tag', cond.blocked_tag, 'e.g. GLOBALISM', '200px')}
+                </div>`;
+                break;
+
+            case 'block_stat_decrease':
+            case 'block_stat_increase':
+                html = `<div style="display:flex;gap:10px;align-items:center;">
+                    <label style="color:#888;font-size:0.8rem;">Protected Stat:</label> ${statSelect('cond-protected-stat', cond.protected_stat)}
+                </div>`;
+                break;
+
+            case 'repeal_bill':
+                html = `<div style="display:flex;gap:10px;align-items:center;">
+                    <label style="color:#888;font-size:0.8rem;">Repeal Tag:</label>
+                    ${textInput('cond-repeal-tag', cond.repeal_tag, 'e.g. COLLECTIVISM', '200px')}
+                </div>`;
+                break;
+
+            case 'no_confidence':
+                html = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <label style="color:#888;font-size:0.8rem;">Target Ministry:</label> ${ministrySelect('cond-target-ministry', cond.target_ministry)}
+                    <label style="cursor:pointer;display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="cond-replace-required" ${cond.replace_required ? 'checked' : ''}>
+                        <span style="font-size:0.8rem;color:#888;">Replacement required</span>
+                    </label>
+                </div>`;
+                break;
+
+            case 'no_confidence_conditional':
+                html = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <label style="color:#888;font-size:0.8rem;">Trigger:</label>
+                    ${textInput('cond-trigger', cond.trigger, 'e.g. corruption_scandal', '200px')}
+                    <label style="cursor:pointer;display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="cond-auto-success" ${cond.auto_success_if_none ? 'checked' : ''}>
+                        <span style="font-size:0.8rem;color:#888;">Auto-succeed if no trigger</span>
+                    </label>
+                </div>`;
+                break;
+
+            case 'coalition_restriction':
+                html = `
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <label style="color:#888;font-size:0.8rem;">Block coalition with ideology:</label>
+                        ${textInput('cond-block-ideology', cond.block_coalition_with_ideology || cond.block_coalition_with_tag, 'e.g. GLOBALISM', '200px')}
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px;">
+                        <label style="color:#888;font-size:0.8rem;">Leave if bill tag passed:</label>
+                        ${textInput('cond-leave-bill-tag', cond.leave_if_bill_tag, 'e.g. GLOBALISM', '200px')}
+                    </div>`;
+                break;
+
+            case 'vote_pattern':
+                html = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <label style="color:#888;font-size:0.8rem;">Oppose Tag:</label>
+                    ${textInput('cond-oppose-tag', cond.oppose_tag || cond.oppose_ideology, 'e.g. EQUALITY', '200px')}
+                    <label style="color:#888;font-size:0.8rem;">Vote:</label>
+                    <select id="cond-vote" style="background:#2a2a2a;border:1px solid #444;color:#ccc;padding:6px;border-radius:4px;">
+                        <option value="no" ${cond.vote === 'no' ? 'selected' : ''}>No (vote against)</option>
+                        <option value="yes" ${cond.vote === 'yes' ? 'selected' : ''}>Yes (vote for)</option>
+                    </select>
+                </div>`;
+                break;
+
+            case 'rally_count':
+                html = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <label style="color:#888;font-size:0.8rem;">Required Tags:</label>
+                    ${textInput('cond-required-tags', (cond.required_tags || []).join(', '), 'e.g. SECURITY, NATIONALISM', '250px')}
+                    <label style="color:#888;font-size:0.8rem;">Count:</label> ${numInput('cond-count', cond.count, '3')}
+                </div>`;
+                break;
+
+            case 'press_conference_count':
+                html = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <label style="color:#888;font-size:0.8rem;">Target Ideology:</label>
+                    ${textInput('cond-target-ideology', cond.target_ideology, 'e.g. PROGRESS', '200px')}
+                    <label style="color:#888;font-size:0.8rem;">Target Topic:</label>
+                    ${textInput('cond-target-topic', cond.target_topic, 'e.g. surveillance', '200px')}
+                    <label style="color:#888;font-size:0.8rem;">Count:</label> ${numInput('cond-count', cond.count, '3')}
+                </div>`;
+                break;
+
+            case 'stat_floor':
+                html = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <label style="color:#888;font-size:0.8rem;">Stat:</label> ${statSelect('cond-stat-key', cond.stat_key)}
+                    <label style="color:#888;font-size:0.8rem;">Floor:</label> ${numInput('cond-floor', cond.floor, '50')}
+                    <label style="cursor:pointer;display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="cond-floor-from-current" ${cond.floor_from_current ? 'checked' : ''}>
+                        <span style="font-size:0.8rem;color:#888;">Use current value as floor</span>
+                    </label>
+                </div>`;
+                break;
+
+            case 'stat_sustained':
+                html = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <label style="color:#888;font-size:0.8rem;">Stat:</label> ${statSelect('cond-stat-key', cond.stat_key)}
+                    <label style="color:#888;font-size:0.8rem;">Direction:</label> ${dirSelect('cond-direction', cond.direction)}
+                    <label style="color:#888;font-size:0.8rem;">Threshold:</label> ${numInput('cond-threshold', cond.threshold, '70')}
+                    <label style="color:#888;font-size:0.8rem;">Sustained Ticks:</label> ${numInput('cond-sustained-ticks', cond.sustained_ticks, '5')}
+                </div>`;
+                break;
+
+            case 'constitutional_amendment':
+                html = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <label style="color:#888;font-size:0.8rem;">Bill Tags:</label>
+                    ${textInput('cond-bill-tags', (cond.bill_tags || []).join(', '), 'e.g. FREEDOM', '200px')}
+                    <label style="cursor:pointer;display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="cond-supermajority" ${cond.supermajority !== false ? 'checked' : ''}>
+                        <span style="font-size:0.8rem;color:#888;">Requires supermajority</span>
+                    </label>
+                </div>`;
+                break;
+
+            default:
+                html = '<div style="color:#666;font-size:0.8rem;">Select a demand type to see condition fields.</div>';
+        }
+
+        container.innerHTML = html;
+    }
+
+    function onDemandTypeChange() {
+        const type = document.getElementById('demand-form-type').value;
+        // Try to preserve raw JSON if user edited it
+        let cond = {};
+        try {
+            const raw = document.getElementById('demand-form-conditions-raw');
+            if (raw) cond = JSON.parse(raw.value);
+        } catch (e) { /* ignore */ }
+        renderConditionFields(type, cond);
+    }
+
+    function toggleDemandTag(btn) {
+        btn.classList.toggle('active');
+    }
+
+    function getFormIdeologyTags() {
+        const buttons = document.querySelectorAll('#demand-form-ideology-tags .bloc-form-issue-btn.active');
+        return Array.from(buttons).map(b => b.textContent.trim());
+    }
+
+    // ---- Build conditions from form fields ----
+    function buildConditionsFromForm(type) {
+        const cond = {};
+        const val = (id) => document.getElementById(id)?.value?.trim() || '';
+        const num = (id) => { const v = document.getElementById(id)?.value; return v !== '' && v !== undefined ? Number(v) : undefined; };
+        const checked = (id) => document.getElementById(id)?.checked || false;
+        const parseTags = (id) => val(id).split(',').map(s => s.trim()).filter(Boolean);
+
+        switch (type) {
+            case 'stat_target':
+                if (val('cond-stat-key')) cond.stat_key = val('cond-stat-key');
+                if (val('cond-direction')) cond.direction = val('cond-direction');
+                if (num('cond-delta') !== undefined) cond.delta = num('cond-delta');
+                if (num('cond-abs-target') !== undefined) cond.absolute_target = num('cond-abs-target');
+                break;
+
+            case 'ministry_and_stat':
+                if (val('cond-ministry')) cond.ministry_key = val('cond-ministry');
+                if (val('cond-stat-key')) cond.stat_key = val('cond-stat-key');
+                if (val('cond-direction')) cond.direction = val('cond-direction');
+                if (num('cond-delta') !== undefined) cond.delta = num('cond-delta');
+                break;
+
+            case 'ministry_and_dual_stat':
+                if (val('cond-ministry')) cond.ministry_key = val('cond-ministry');
+                cond.stats = [
+                    { stat_key: val('cond-stat1-key'), direction: val('cond-stat1-dir'), delta: num('cond-stat1-delta') },
+                    { stat_key: val('cond-stat2-key'), direction: val('cond-stat2-dir'), delta: num('cond-stat2-delta') },
+                ].filter(s => s.stat_key);
+                break;
+
+            case 'ministry_appointment':
+                if (val('cond-ministry')) cond.ministry_key = val('cond-ministry');
+                break;
+
+            case 'pass_bill': {
+                const billName = val('cond-bill-name');
+                if (billName) cond.bill_name = billName;
+                const tags = parseTags('cond-bill-tags');
+                if (tags.length) cond.bill_tags = tags;
+                break;
+            }
+
+            case 'pass_bill_count': {
+                const tags = parseTags('cond-bill-tags');
+                if (tags.length) cond.bill_tags = tags;
+                if (num('cond-count') !== undefined) cond.count = num('cond-count');
+                break;
+            }
+
+            case 'block_bill': {
+                const tags = parseTags('cond-bill-tags');
+                if (tags.length) cond.bill_tags = tags;
+                if (val('cond-bill-pattern')) cond.bill_pattern = val('cond-bill-pattern');
+                break;
+            }
+
+            case 'block_bill_tag':
+                if (val('cond-blocked-tag')) cond.blocked_tag = val('cond-blocked-tag');
+                break;
+
+            case 'block_stat_decrease':
+                if (val('cond-protected-stat')) { cond.protected_stat = val('cond-protected-stat'); cond.direction = 'no_decrease'; }
+                break;
+
+            case 'block_stat_increase':
+                if (val('cond-protected-stat')) { cond.protected_stat = val('cond-protected-stat'); cond.direction = 'no_increase'; }
+                break;
+
+            case 'repeal_bill':
+                if (val('cond-repeal-tag')) cond.repeal_tag = val('cond-repeal-tag');
+                break;
+
+            case 'no_confidence':
+                if (val('cond-target-ministry')) cond.target_ministry = val('cond-target-ministry');
+                if (checked('cond-replace-required')) cond.replace_required = true;
+                break;
+
+            case 'no_confidence_conditional':
+                if (val('cond-trigger')) cond.trigger = val('cond-trigger');
+                if (checked('cond-auto-success')) cond.auto_success_if_none = true;
+                break;
+
+            case 'coalition_restriction':
+                if (val('cond-block-ideology')) cond.block_coalition_with_ideology = val('cond-block-ideology');
+                if (val('cond-leave-bill-tag')) { cond.leave_if_bill_tag = val('cond-leave-bill-tag'); cond.leave_window = 2; }
+                break;
+
+            case 'vote_pattern':
+                if (val('cond-oppose-tag')) cond.oppose_tag = val('cond-oppose-tag');
+                if (val('cond-vote')) cond.vote = val('cond-vote');
+                break;
+
+            case 'rally_count': {
+                const tags = parseTags('cond-required-tags');
+                if (tags.length) cond.required_tags = tags;
+                if (num('cond-count') !== undefined) cond.count = num('cond-count');
+                break;
+            }
+
+            case 'press_conference_count':
+                if (val('cond-target-ideology')) cond.target_ideology = val('cond-target-ideology');
+                if (val('cond-target-topic')) cond.target_topic = val('cond-target-topic');
+                if (num('cond-count') !== undefined) cond.count = num('cond-count');
+                break;
+
+            case 'stat_floor':
+                if (val('cond-stat-key')) cond.stat_key = val('cond-stat-key');
+                if (num('cond-floor') !== undefined) cond.floor = num('cond-floor');
+                if (checked('cond-floor-from-current')) cond.floor_from_current = true;
+                break;
+
+            case 'stat_sustained':
+                if (val('cond-stat-key')) cond.stat_key = val('cond-stat-key');
+                if (val('cond-direction')) cond.direction = val('cond-direction');
+                if (num('cond-threshold') !== undefined) cond.threshold = num('cond-threshold');
+                if (num('cond-sustained-ticks') !== undefined) cond.sustained_ticks = num('cond-sustained-ticks');
+                break;
+
+            case 'constitutional_amendment': {
+                const tags = parseTags('cond-bill-tags');
+                if (tags.length) cond.bill_tags = tags;
+                if (checked('cond-supermajority')) cond.supermajority = true;
+                break;
+            }
+        }
+
+        return cond;
+    }
+
+    function cancelDemandForm() {
+        document.getElementById('demand-form-container').classList.add('hidden');
+        editingDemandId = null;
+    }
+
+    // ---- Save (Create or Update) ----
+    async function saveDemandForm() {
+        if (!selectedDemandBloc) return;
+
+        const name = document.getElementById('demand-form-name').value.trim();
+        if (!name) { alert('Demand name is required.'); return; }
+
+        const text = document.getElementById('demand-form-text').value.trim();
+        if (!text) { alert('Display text is required.'); return; }
+
+        const type = document.getElementById('demand-form-type').value;
+        const deadline = parseInt(document.getElementById('demand-form-deadline').value) || 20;
+        const ideologyTags = getFormIdeologyTags();
+        const isActive = document.getElementById('demand-form-active').checked;
+
+        // Build conditions: try structured fields first, fall back to raw JSON
+        let conditions;
+        const structuredCond = buildConditionsFromForm(type);
+        if (Object.keys(structuredCond).length > 0) {
+            conditions = structuredCond;
+        } else {
+            // Fall back to raw JSON
+            try {
+                conditions = JSON.parse(document.getElementById('demand-form-conditions-raw').value || '{}');
+            } catch (e) {
+                alert('Invalid JSON in raw conditions field.');
+                return;
+            }
+        }
+
+        // Also sync raw JSON back to structured if user edited raw
+        // (structured fields take priority)
+
+        const demandData = {
+            bloc_name: selectedDemandBloc.bloc_name,
+            demand_name: name,
+            demand_text: text,
+            demand_type: type,
+            deadline,
+            conditions,
+            ideology_tags: ideologyTags,
+            is_active: isActive,
+        };
+
+        const statusEl = document.getElementById('demand-action-status');
+
+        try {
+            if (editingDemandId) {
+                demandData.updated_at = new Date().toISOString();
+                const { error } = await _supabase.from('demand_templates').update(demandData).eq('id', editingDemandId);
+                if (error) throw error;
+                statusEl.innerHTML = '<span style="color:#4CAF50;font-weight:bold;">Demand updated!</span>';
+            } else {
+                demandData.sort_order = demandTemplatesCache.length;
+                const { error } = await _supabase.from('demand_templates').insert(demandData);
+                if (error) throw error;
+                statusEl.innerHTML = '<span style="color:#4CAF50;font-weight:bold;">Demand created!</span>';
+            }
+            setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
+            cancelDemandForm();
+            await loadExistingDemandsDisplay(selectedDemandBloc.bloc_name);
+        } catch (error) {
+            statusEl.innerHTML = '<span style="color:#ff4444;font-weight:bold;">Error: ' + error.message + '</span>';
+        }
+    }
+
+    // ---- Delete ----
+    async function deleteDemand(demandId, demandName) {
+        if (!confirm(`Delete demand "${demandName}"?`)) return;
+        const statusEl = document.getElementById('demand-action-status');
+        try {
+            const { error } = await _supabase.from('demand_templates').delete().eq('id', demandId);
+            if (error) throw error;
+            statusEl.innerHTML = '<span style="color:#4CAF50;font-weight:bold;">Demand deleted.</span>';
+            setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
+            await loadExistingDemandsDisplay(selectedDemandBloc.bloc_name);
+        } catch (error) {
+            statusEl.innerHTML = '<span style="color:#ff4444;font-weight:bold;">Error: ' + error.message + '</span>';
+        }
+    }
+
+    // ---- Seed defaults from hardcoded DONOR_DEMANDS ----
+    async function seedDefaultDemands() {
+        if (!selectedDemandBloc) return;
+        const blocName = selectedDemandBloc.bloc_name;
+        const defaults = DONOR_DEMANDS[blocName];
+        if (!defaults || defaults.length === 0) {
+            alert(`No hardcoded defaults found for "${blocName}".`);
+            return;
+        }
+
+        if (!confirm(`This will insert ${defaults.length} default demands for "${blocName}". Existing demands are NOT deleted. Continue?`)) return;
+
+        const statusEl = document.getElementById('demand-action-status');
+        statusEl.innerHTML = '<span style="color:#2196F3;font-weight:bold;">Seeding defaults...</span>';
+
+        try {
+            const rows = defaults.map((d, i) => ({
+                bloc_name: blocName,
+                demand_name: d.conditions?.bill_name || d.text.substring(0, 60),
+                demand_text: d.text,
+                demand_type: d.type,
+                deadline: d.deadline,
+                conditions: d.conditions,
+                ideology_tags: extractIdeologyTags(d),
+                is_active: true,
+                sort_order: i,
+            }));
+
+            const { error } = await _supabase.from('demand_templates').insert(rows);
+            if (error) throw error;
+
+            statusEl.innerHTML = `<span style="color:#4CAF50;font-weight:bold;">Seeded ${rows.length} demands for ${blocName}!</span>`;
+            setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
+            await loadExistingDemandsDisplay(blocName);
+        } catch (error) {
+            statusEl.innerHTML = '<span style="color:#ff4444;font-weight:bold;">Error: ' + error.message + '</span>';
+        }
+    }
+
+    async function seedAllDefaultDemands() {
+        const allBlocNames = Object.keys(DONOR_DEMANDS);
+        if (!confirm(`This will insert default demands for ALL ${allBlocNames.length} blocs (${allBlocNames.join(', ')}). Existing demands are NOT deleted. Continue?`)) return;
+
+        const statusEl = document.getElementById('demand-action-status');
+        statusEl.innerHTML = '<span style="color:#2196F3;font-weight:bold;">Seeding all defaults...</span>';
+
+        try {
+            const allRows = [];
+            for (const blocName of allBlocNames) {
+                const defaults = DONOR_DEMANDS[blocName];
+                defaults.forEach((d, i) => {
+                    allRows.push({
+                        bloc_name: blocName,
+                        demand_name: d.conditions?.bill_name || d.text.substring(0, 60),
+                        demand_text: d.text,
+                        demand_type: d.type,
+                        deadline: d.deadline,
+                        conditions: d.conditions,
+                        ideology_tags: extractIdeologyTags(d),
+                        is_active: true,
+                        sort_order: i,
+                    });
+                });
+            }
+
+            const { error } = await _supabase.from('demand_templates').insert(allRows);
+            if (error) throw error;
+
+            statusEl.innerHTML = `<span style="color:#4CAF50;font-weight:bold;">Seeded ${allRows.length} demands across ${allBlocNames.length} blocs!</span>`;
+            setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
+            if (selectedDemandBloc) {
+                await loadExistingDemandsDisplay(selectedDemandBloc.bloc_name);
+            }
+        } catch (error) {
+            statusEl.innerHTML = '<span style="color:#ff4444;font-weight:bold;">Error: ' + error.message + '</span>';
+        }
+    }
+
+    // Extract ideology tags from a hardcoded demand for seeding
+    function extractIdeologyTags(demand) {
+        const tags = new Set();
+        const c = demand.conditions || {};
+
+        // Directly specified bill tags
+        if (c.bill_tags) c.bill_tags.forEach(t => tags.add(t));
+        // Required rally/action tags
+        if (c.required_tags) c.required_tags.forEach(t => tags.add(t));
+        // Opposition targets (these are what this demand OPPOSES — add the opposite)
+        // For now just include the tag reference as-is for the admin to review
+        if (c.oppose_tag) tags.add(c.oppose_tag);
+        if (c.oppose_ideology) tags.add(c.oppose_ideology);
+        if (c.blocked_tag) tags.add(c.blocked_tag);
+        if (c.repeal_tag) tags.add(c.repeal_tag);
+        if (c.block_coalition_with_ideology) tags.add(c.block_coalition_with_ideology);
+        if (c.block_coalition_with_tag) tags.add(c.block_coalition_with_tag);
+        if (c.target_ideology) tags.add(c.target_ideology);
+
+        return Array.from(tags);
+    }
+
+
 // Expose functions for HTML onclick/onchange handlers
 window.authenticate = authenticate;
 window.logout = logout;
@@ -1867,6 +2775,18 @@ window.deleteVoterBloc = deleteVoterBloc;
 window.toggleIssue = toggleIssue;
 window.saveBlocForm = saveBlocForm;
 window.cancelBlocForm = cancelBlocForm;
+// Demands tab
+window.onDemandBlocSelect = onDemandBlocSelect;
+window.showAddDemandForm = showAddDemandForm;
+window.editDemand = editDemand;
+window.deleteDemand = deleteDemand;
+window.saveDemandForm = saveDemandForm;
+window.cancelDemandForm = cancelDemandForm;
+window.toggleDemandDetail = toggleDemandDetail;
+window.toggleDemandTag = toggleDemandTag;
+window.onDemandTypeChange = onDemandTypeChange;
+window.seedDefaultDemands = seedDefaultDemands;
+window.seedAllDefaultDemands = seedAllDefaultDemands;
 </script>
 </body>
 </html>
