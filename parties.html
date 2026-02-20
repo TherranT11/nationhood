@@ -18,7 +18,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -109,10 +109,27 @@ async function renderParties() {
     const ideologyTags = buildIdeologyTags(f);
     const abbr = f.abbreviation ? `<span class="my-party-abbr">(${f.abbreviation})</span>` : '';
 
-    // Build projected vote share bars (sorted descending)
-    const parties = (allParties || [])
-        .map(p => ({ ...p, share: p.national_vote_share || 0 }))
-        .sort((a, b) => b.share - a.share);
+    // Build projected vote share bars via election simulation
+    const partyLookup = {};
+    for (const p of (allParties || [])) partyLookup[p.id] = p;
+
+    let parties = [];
+    try {
+        const preview = await runElectionPreview(_supabase, n.id);
+        parties = (preview.results || []).map(r => ({
+            id: r.party_id,
+            share: r.vote_percentage || 0,
+            abbreviation: partyLookup[r.party_id]?.abbreviation || null,
+            party_color: partyLookup[r.party_id]?.party_color || '#666',
+            faction_name: r.party_name
+        }));
+    } catch (e) {
+        console.warn('Election preview unavailable:', e.message);
+        parties = (allParties || []).map(p => ({
+            ...p, share: p.national_vote_share || 0
+        }));
+    }
+    parties.sort((a, b) => b.share - a.share);
     const maxShare = Math.max(...parties.map(p => p.share), 1);
 
     let voteBarsHtml = '';
