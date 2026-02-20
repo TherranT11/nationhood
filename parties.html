@@ -18,7 +18,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -541,6 +541,8 @@ async function renderParties() {
             <div id="rally-container"></div>
             <div id="pc-container"></div>
         </div>
+
+        <div id="outreach-container"></div>
 
         </div>
     `;
@@ -1185,6 +1187,108 @@ async function renderParties() {
     }
 
     renderPC();
+
+    // ── Voter Outreach UI ──
+    let outreachScreen = 'select'; // 'select' | 'results'
+    let outreachResults = null;
+
+    // Fetch recent outreach for cooldown
+    const { data: recentOutreach } = await _supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', f.id)
+        .eq('action_type', 'outreach')
+        .gte('tick_performed', (currentShard?.current_tick || 0) - OUTREACH_CONFIG.COOLDOWN_TICKS + 1)
+        .order('tick_performed', { ascending: false });
+
+    const recentOutreachBlocIds = new Set((recentOutreach || []).map(r => r.result?.blocId).filter(Boolean));
+
+    function renderOutreach() {
+        const container = document.getElementById('outreach-container');
+        if (!container) return;
+
+        if (outreachScreen === 'select') {
+            const costOk = (f.action_points || 0) >= OUTREACH_CONFIG.AP_COST && (f.party_funds || 0) >= OUTREACH_CONFIG.MONEY_COST;
+
+            const rows = (blocs || []).map(b => {
+                const onCooldown = recentOutreachBlocIds.has(b.id);
+                const disabled = !costOk || onCooldown;
+                const approvalRow = (approvalRows || []).find(a => a.bloc_id === b.id);
+                const currentPref = approvalRow ? Math.round(approvalRow.preference_score || 0) : '?';
+                const popPct = b.population_weight ? (b.population_weight * 100).toFixed(0) + '%' : '';
+                return `<div class="outreach-bloc-row${disabled ? ' disabled' : ''}" data-bloc-id="${b.id}">
+                    <span class="outreach-bloc-name">${b.bloc_name}</span>
+                    <span class="outreach-bloc-pop">${popPct}</span>
+                    <span class="outreach-bloc-pref">${currentPref}%</span>
+                    ${onCooldown ? '<span class="outreach-bloc-cd">recent</span>' : '<span class="outreach-bloc-cd"></span>'}
+                </div>`;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="outreach-panel">
+                    <div class="outreach-header-row">
+                        <span class="outreach-title">Voter Outreach</span>
+                        <span class="outreach-cost">Cost: ${OUTREACH_CONFIG.AP_COST} AP + $${OUTREACH_CONFIG.MONEY_COST.toLocaleString()}</span>
+                    </div>
+                    <div class="outreach-desc">Door knocking, community events, local engagement. Guaranteed small gain with one bloc, no backlash.</div>
+                    ${!costOk ? '<div class="outreach-cooldown">Not enough AP or funds.</div>' : ''}
+                    <div class="outreach-divider"></div>
+                    <div class="outreach-bloc-header">
+                        <span class="outreach-bloc-name">Bloc</span>
+                        <span class="outreach-bloc-pop">Pop</span>
+                        <span class="outreach-bloc-pref">Pref</span>
+                        <span class="outreach-bloc-cd"></span>
+                    </div>
+                    <div class="outreach-bloc-list">${rows}</div>
+                </div>`;
+
+            container.querySelectorAll('.outreach-bloc-row:not(.disabled)').forEach(row => {
+                row.addEventListener('click', async () => {
+                    const blocId = row.dataset.blocId;
+                    // Confirm inline — just execute directly (spec says no risk)
+                    row.classList.add('disabled');
+                    row.style.opacity = '0.5';
+                    const tick = currentShard?.current_tick || 0;
+                    const result = await executeOutreach(_supabase, f.id, n.id, blocId, tick);
+                    if (result.success) {
+                        outreachResults = result;
+                        outreachScreen = 'results';
+                        renderOutreach();
+                    } else {
+                        alert(result.error);
+                        row.classList.remove('disabled');
+                        row.style.opacity = '';
+                    }
+                });
+            });
+
+        } else if (outreachScreen === 'results') {
+            const r = outreachResults;
+            container.innerHTML = `
+                <div class="outreach-panel outreach-panel-results">
+                    <div class="outreach-title">Voter Outreach Results</div>
+                    <div class="outreach-divider outreach-divider-accent"></div>
+                    <div class="outreach-result-bloc">${r.blocName}</div>
+                    <div class="outreach-result-pref">Preference: +${r.prefDelta} (${r.oldPref}% → ${r.newPref}%)</div>
+                    <div class="outreach-divider"></div>
+                    <div class="outreach-result-summary">
+                        <div>Cost: $${OUTREACH_CONFIG.MONEY_COST.toLocaleString()} — Treasury: $${r.oldTreasury.toLocaleString()} → $${r.newTreasury.toLocaleString()}</div>
+                        <div>AP: ${r.newAp + OUTREACH_CONFIG.AP_COST} → ${r.newAp}</div>
+                    </div>
+                    <div class="outreach-actions">
+                        <button class="outreach-btn" id="outreach-dismiss">DISMISS</button>
+                    </div>
+                </div>`;
+
+            document.getElementById('outreach-dismiss').addEventListener('click', () => {
+                outreachScreen = 'select';
+                outreachResults = null;
+                renderParties();
+            });
+        }
+    }
+
+    renderOutreach();
 }
 
 initPage('parties', async (state) => {

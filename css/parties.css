@@ -1425,6 +1425,204 @@ body.light-mode .pc-proj-neutral {
     background: rgba(255, 68, 68, 0.25);
 }
 
+/* ===== VOTER OUTREACH PANEL ===== */
+.outreach-panel {
+    background: var(--bg-panel, #1a1a1a);
+    border: 1px solid var(--border-main, #333);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-top: 20px;
+    max-width: 33%;
+}
+
+.outreach-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+}
+
+.outreach-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-secondary, #888);
+}
+
+.outreach-cost {
+    font-size: 0.72rem;
+    color: var(--text-muted, #666);
+    text-align: right;
+}
+
+.outreach-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted, #888);
+    line-height: 1.5;
+    margin-bottom: 12px;
+}
+
+.outreach-cooldown {
+    font-size: 0.72rem;
+    color: #ffaa00;
+    margin-bottom: 8px;
+}
+
+.outreach-divider {
+    height: 1px;
+    background: var(--border-main, #333);
+    margin: 14px 0;
+}
+
+.outreach-divider-accent {
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent, #ffcc00) 0%, transparent 100%);
+}
+
+/* ---- Bloc list ---- */
+.outreach-bloc-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-main, #333);
+    margin-bottom: 2px;
+}
+
+.outreach-bloc-header .outreach-bloc-name,
+.outreach-bloc-header .outreach-bloc-pop,
+.outreach-bloc-header .outreach-bloc-pref,
+.outreach-bloc-header .outreach-bloc-cd {
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-muted, #666);
+}
+
+.outreach-bloc-name { flex: 1; min-width: 0; }
+.outreach-bloc-pop { width: 40px; flex-shrink: 0; text-align: right; }
+.outreach-bloc-pref { width: 40px; flex-shrink: 0; text-align: right; }
+.outreach-bloc-cd { width: 48px; flex-shrink: 0; text-align: center; }
+
+.outreach-bloc-list {
+    max-height: 340px;
+    overflow-y: auto;
+}
+
+.outreach-bloc-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    cursor: pointer;
+    transition: background 0.12s ease;
+    border-radius: 3px;
+}
+body.light-mode .outreach-bloc-row {
+    border-bottom-color: rgba(0, 0, 0, 0.04);
+}
+
+.outreach-bloc-row:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+body.light-mode .outreach-bloc-row:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.outreach-bloc-row.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.outreach-bloc-row .outreach-bloc-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.78rem;
+    color: var(--text-primary, #e0e0e0);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.outreach-bloc-row .outreach-bloc-pop {
+    width: 40px;
+    flex-shrink: 0;
+    text-align: right;
+    font-size: 0.72rem;
+    color: var(--text-muted, #888);
+    font-variant-numeric: tabular-nums;
+}
+
+.outreach-bloc-row .outreach-bloc-pref {
+    width: 40px;
+    flex-shrink: 0;
+    text-align: right;
+    font-size: 0.72rem;
+    color: var(--text-secondary, #aaa);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.outreach-bloc-row .outreach-bloc-cd {
+    width: 48px;
+    flex-shrink: 0;
+    text-align: center;
+    font-size: 0.65rem;
+    color: #ffaa00;
+    font-weight: 600;
+}
+
+/* ---- Results ---- */
+.outreach-result-bloc {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text-primary, #e0e0e0);
+    margin-bottom: 6px;
+}
+
+.outreach-result-pref {
+    font-size: 0.82rem;
+    color: #4CAF50;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.outreach-result-summary {
+    font-size: 0.75rem;
+    color: var(--text-secondary, #aaa);
+    line-height: 1.7;
+}
+
+.outreach-actions {
+    display: flex;
+    justify-content: center;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-main, #333);
+}
+
+.outreach-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border-main, #333);
+    border-radius: 4px;
+    color: var(--text-secondary, #aaa);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 8px 24px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.outreach-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary, #e0e0e0);
+}
+
 @media (max-width: 800px) {
     .parties-top-panels {
         flex-direction: column;
@@ -1464,5 +1662,8 @@ body.light-mode .pc-proj-neutral {
     }
     .pc-stat-header .pc-stat-ministry {
         display: none;
+    }
+    .outreach-panel {
+        max-width: 100%;
     }
 }
