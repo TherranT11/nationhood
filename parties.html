@@ -78,10 +78,10 @@ async function renderParties() {
         return;
     }
 
-    // Fetch all parties for seat data
+    // Fetch all parties for seat + vote share data
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, faction_name, seats')
+        .select('id, faction_name, abbreviation, seats, national_vote_share, party_color')
         .eq('nation_id', n.id)
         .eq('faction_type', 'party');
 
@@ -89,6 +89,13 @@ async function renderParties() {
     const mySeats = seatData.currentSeats || 0;
 
     const coalition = await fetchActiveCoalition(_supabase, n.id);
+
+    // Fetch next scheduled election
+    const { data: nextElection } = await _supabase
+        .from('elections').select('election_tick')
+        .eq('nation_id', n.id).eq('status', 'scheduled')
+        .gt('election_tick', currentShard?.current_tick || 0)
+        .order('election_tick', { ascending: true }).limit(1).maybeSingle();
     const role = getPartyRole(f.id, mySeats, coalition);
     const badgeClass = getRoleBadgeClass(role);
 
@@ -102,8 +109,35 @@ async function renderParties() {
     const ideologyTags = buildIdeologyTags(f);
     const abbr = f.abbreviation ? `<span class="my-party-abbr">(${f.abbreviation})</span>` : '';
 
+    // Build projected vote share bars (sorted descending)
+    const parties = (allParties || [])
+        .map(p => ({ ...p, share: p.national_vote_share || 0 }))
+        .sort((a, b) => b.share - a.share);
+    const maxShare = Math.max(...parties.map(p => p.share), 1);
+
+    let voteBarsHtml = '';
+    for (const p of parties) {
+        const pct = p.share.toFixed(1);
+        const barW = (p.share / maxShare) * 100;
+        const color = p.party_color || '#666';
+        const isMe = p.id === f.id;
+        const label = p.abbreviation || p.faction_name;
+        voteBarsHtml += `
+            <div class="vote-bar-row${isMe ? ' vote-bar-mine' : ''}">
+                <span class="vote-bar-label">${label}</span>
+                <div class="vote-bar-track">
+                    <div class="vote-bar-fill" style="width:${barW}%;background:${color}"></div>
+                </div>
+                <span class="vote-bar-pct">${pct}%</span>
+            </div>`;
+    }
+
+    const nextElectionDate = nextElection ? tickToDate(nextElection.election_tick) : '—';
+
     el.innerHTML = `
         <div class="parties-page">
+        <div class="parties-top-panels">
+
         <div class="my-party-card" style="border-left-color:${partyColor}">
             <div class="my-party-top-row">
                 <div class="my-party-logo" style="color:${partyColor}">
@@ -141,6 +175,16 @@ async function renderParties() {
                     <div class="stat-val stat-money">${treasury}</div>
                 </div>
             </div>
+        </div>
+
+        <div class="vote-share-panel">
+            <div class="vote-share-header">Projected Vote Share</div>
+            <div class="vote-bars">
+                ${voteBarsHtml}
+            </div>
+            <div class="vote-share-footer">Next election: ${nextElectionDate}</div>
+        </div>
+
         </div>
         </div>
     `;
