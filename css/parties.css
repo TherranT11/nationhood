@@ -1744,7 +1744,7 @@ body.light-mode .rally-subject-row:hover {
 .actions-row {
     display: flex;
     gap: 20px;
-    align-items: flex-start;
+    align-items: stretch;
     margin-top: 20px;
 }
 
@@ -2102,7 +2102,7 @@ body.light-mode .pc-proj-neutral {
     border: 1px solid var(--border-main, #333);
     border-radius: 8px;
     padding: 20px 24px;
-    flex: 1;
+    flex: 1 1 0;
     min-width: 0;
 }
 .outreach-header-row {
