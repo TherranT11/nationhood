@@ -96,6 +96,29 @@ async function renderParties() {
         .eq('nation_id', n.id).eq('status', 'scheduled')
         .gt('election_tick', currentShard?.current_tick || 0)
         .order('election_tick', { ascending: true }).limit(1).maybeSingle();
+
+    // Fetch momentum data for this party
+    const { data: myBlocApprovals } = await _supabase
+        .from('faction_bloc_approval')
+        .select('momentum, bloc_id')
+        .eq('faction_id', f.id);
+
+    const { data: blocs } = await _supabase
+        .from('voter_blocs')
+        .select('id, population_weight')
+        .eq('nation_id', n.id)
+        .eq('is_active', true);
+
+    const blocWeights = {};
+    for (const b of (blocs || [])) blocWeights[b.id] = b.population_weight || 1;
+    let wSum = 0, wTotal = 0;
+    for (const row of (myBlocApprovals || [])) {
+        const w = blocWeights[row.bloc_id] || 1;
+        wSum += (row.momentum || 0) * w;
+        wTotal += w;
+    }
+    const rawMomentum = wTotal > 0 ? wSum / wTotal : 0;
+    const momentumScore = Math.round(Math.max(0, Math.min(100, 50 + rawMomentum)));
     const role = getPartyRole(f.id, mySeats, coalition);
     const badgeClass = getRoleBadgeClass(role);
 
@@ -200,6 +223,18 @@ async function renderParties() {
                 ${voteBarsHtml}
             </div>
             <div class="vote-share-footer">Next election: ${nextElectionDate}</div>
+        </div>
+
+        <div class="momentum-panel">
+            <div class="momentum-header">Momentum</div>
+            <div class="momentum-score-row">
+                <span class="momentum-value">${momentumScore}</span>
+                <span class="momentum-max">/ 100</span>
+            </div>
+            <div class="momentum-bar-track">
+                <div class="momentum-bar-fill" style="width:${momentumScore}%;background:${partyColor}"></div>
+            </div>
+            <div class="momentum-desc">How loud you are in the national conversation right now.</div>
         </div>
 
         </div>
