@@ -3367,14 +3367,14 @@ async function processPartialElection(supabase, nation, election, currentTick) {
         }
     }));
 
-    // 3b. Load per-bloc preference data (Three-Pillar system)
+    // 3b. Load per-bloc approval data
     const { data: fbaRows } = await supabase
-        .from('faction_bloc_approval').select('faction_id, bloc_id, approval, preference_score')
+        .from('faction_bloc_approval').select('faction_id, bloc_id, approval')
         .in('faction_id', factionIds);
     const allBlocApprovals = {};
     for (const row of (fbaRows || [])) {
         if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
-        allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? row.approval ?? 40;
+        allBlocApprovals[row.bloc_id][row.faction_id] = row.approval;
     }
 
     // 4. Run election simulation for ONLY the delta seats
@@ -8396,7 +8396,7 @@ async function runElectionPreview(supabase, nationId) {
         }
     }));
 
-    // 3b. Load per-bloc preference data (Three-Pillar system)
+    // 3b. Load per-bloc preference data from faction_bloc_approval (Three-Pillar system)
     const { data: fbaRows } = await supabase
         .from('faction_bloc_approval')
         .select('faction_id, bloc_id, approval, preference_score')
@@ -8410,7 +8410,7 @@ async function runElectionPreview(supabase, nationId) {
         allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? row.approval ?? 40;
     }
 
-    // 4. Run simulation with per-bloc preference scores
+    // 4. Run simulation with per-bloc approvals
     const result = runElectionSimulation(blocs, parties, totalSeats, allBlocApprovals);
 
     // 5. Build friendly results with weighted average approval per party
@@ -8461,6 +8461,9 @@ async function runElectionPreview(supabase, nationId) {
 // ===== END GAME LOGIC =====
 
 
+<<<<<<< claude/nationhood-game-JpWMJ
+// ===== TICK SYSTEM (edge-function-only — not in game-common.js) =====
+=======
 // ===== TICK-ONLY HELPERS (not needed by browser pages) =====
 
 async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
@@ -8515,6 +8518,7 @@ async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
         }
     }
 }
+>>>>>>> main
 
 function advanceMonth(currentDate) {
     const parts = currentDate.split(',');
@@ -8538,6 +8542,10 @@ async function acquireTickLock(supabase) {
     const STALE_LOCK_MS = 5 * 60 * 1000; // 5 minutes
     const now = new Date().toISOString();
 
+<<<<<<< claude/nationhood-game-JpWMJ
+    // Attempt: acquire lock when tick_processing is false
+=======
+>>>>>>> main
     const { data: acquired, error: err1 } = await supabase
         .from('shard')
         .update({ tick_processing: true, tick_processing_started_at: now })
@@ -8547,6 +8555,10 @@ async function acquireTickLock(supabase) {
 
     if (!err1 && acquired && acquired.length > 0) return true;
 
+<<<<<<< claude/nationhood-game-JpWMJ
+    // Check for stale lock (crashed tab)
+=======
+>>>>>>> main
     const { data: shard } = await supabase
         .from('shard')
         .select('tick_processing, tick_processing_started_at')
@@ -8577,6 +8589,15 @@ async function releaseTickLock(supabase) {
         .eq('name', 'Alpha Shard');
 }
 
+/**
+ * Scan all effect records in the database for invalid stat keys.
+ * Logs errors for any stat_key that doesn't match NATION_STAT_COLUMNS
+ * (after alias resolution). Runs periodically as a safety net.
+ */
+async function auditStatKeys(supabase) {
+    const invalid = [];
+
+    // 1. Policy stat_effects
 async function auditStatKeys(supabase) {
     const invalid = [];
 
@@ -8590,6 +8611,7 @@ async function auditStatKeys(supabase) {
         }
     }
 
+    // 2. Crisis effects
     const { data: crisisEffects } = await supabase.from('crisis_effects').select('id, crisis_template_id, stat_key, target');
     for (const ce of (crisisEffects || [])) {
         if (ce.target !== 'nation') continue;
@@ -8599,6 +8621,7 @@ async function auditStatKeys(supabase) {
         }
     }
 
+    // 3. Crisis triggers
     const { data: crisisTriggers } = await supabase.from('crisis_triggers').select('id, crisis_template_id, stat_key');
     for (const ct of (crisisTriggers || [])) {
         const resolved = normalizeNationStatKey(ct.stat_key);
@@ -8607,6 +8630,10 @@ async function auditStatKeys(supabase) {
         }
     }
 
+<<<<<<< claude/nationhood-game-JpWMJ
+    // 4. Crisis end triggers
+=======
+>>>>>>> main
     const { data: crisisEndTriggers } = await supabase.from('crisis_end_triggers').select('id, crisis_template_id, stat_key');
     for (const cet of (crisisEndTriggers || [])) {
         const resolved = normalizeNationStatKey(cet.stat_key);
@@ -8615,6 +8642,10 @@ async function auditStatKeys(supabase) {
         }
     }
 
+<<<<<<< claude/nationhood-game-JpWMJ
+    // 5. Event effects
+=======
+>>>>>>> main
     const { data: eventEffects } = await supabase.from('event_effects').select('id, event_id, stat_key, target');
     for (const ee of (eventEffects || [])) {
         if (ee.target !== 'nation') continue;
@@ -8624,6 +8655,10 @@ async function auditStatKeys(supabase) {
         }
     }
 
+<<<<<<< claude/nationhood-game-JpWMJ
+    // 6. Event triggers
+=======
+>>>>>>> main
     const { data: eventTriggers } = await supabase.from('event_triggers').select('id, event_id, stat_key');
     for (const et of (eventTriggers || [])) {
         if (!et.stat_key) continue;
@@ -8645,6 +8680,12 @@ async function auditStatKeys(supabase) {
     return invalid;
 }
 
+<<<<<<< claude/nationhood-game-JpWMJ
+/**
+ * Process lingering approval decay from minister purges (autocracy mechanic).
+ */
+=======
+>>>>>>> main
 async function processPurgeDecay(supabase, nationId, currentTick) {
     const { data: purgeActions } = await supabase
         .from('campaign_actions')
@@ -8668,7 +8709,14 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
     }
 }
 
+<<<<<<< claude/nationhood-game-JpWMJ
+// ==================== ADVANCE TICK ====================
+
 async function advanceTick(supabase) {
+    // 1. Pre-compute next tick metadata
+=======
+async function advanceTick(supabase) {
+>>>>>>> main
     const { data: shard } = await supabase
         .from('shard')
         .select('current_tick, tick_interval_hours, current_date, next_tick_at')
@@ -8677,15 +8725,28 @@ async function advanceTick(supabase) {
     if (!shard) throw new Error('Shard not found');
 
     const newTick = (shard.current_tick || 0) + 1;
+<<<<<<< claude/nationhood-game-JpWMJ
+    // Anchor next_tick_at to the previous schedule to prevent drift
+    // Uses UTC-safe millisecond arithmetic instead of setHours() which is timezone-dependent
     const intervalMs = (shard.tick_interval_hours || 12) * 60 * 60 * 1000;
     const prevTickAt = new Date(shard.next_tick_at || new Date());
     let nextTickAt = new Date(prevTickAt.getTime() + intervalMs);
+    // Safety: if calculated next tick is in the past (e.g. server was down), advance to future
+=======
+    const intervalMs = (shard.tick_interval_hours || 12) * 60 * 60 * 1000;
+    const prevTickAt = new Date(shard.next_tick_at || new Date());
+    let nextTickAt = new Date(prevTickAt.getTime() + intervalMs);
+>>>>>>> main
     const now = Date.now();
     while (nextTickAt.getTime() <= now) {
         nextTickAt = new Date(nextTickAt.getTime() + intervalMs);
     }
     const newDate = advanceMonth(shard.current_date || 'January, 2000');
 
+<<<<<<< claude/nationhood-game-JpWMJ
+    // 2. Load all nations
+=======
+>>>>>>> main
     const { data: nations } = await supabase.from('nations').select('*');
     const nationList = nations || [];
 
@@ -8701,6 +8762,12 @@ async function advanceTick(supabase) {
     const failedNationIds = new Set();
     const failedFactionIds = new Set();
 
+<<<<<<< claude/nationhood-game-JpWMJ
+    // Accumulate AP for party factions each tick:
+    // base 5 AP, +1 if in government, +1 if approval > 60. Capped at MAX_AP.
+    // Uses atomic RPC to prevent race conditions with concurrent player deductions.
+=======
+>>>>>>> main
     let apDistributed = 0;
     let apFailed = 0;
     for (const nation of nationList) {
@@ -8768,17 +8835,29 @@ async function advanceTick(supabase) {
         return summary;
     }
 
+<<<<<<< claude/nationhood-game-JpWMJ
+    // 3. Commit shard tick/date after critical AP phase succeeds
+=======
+>>>>>>> main
     await supabase.from('shard').update({
         current_tick: newTick,
         next_tick_at: nextTickAt.toISOString(),
         current_date: newDate
     }).eq('name', 'Alpha Shard');
 
+<<<<<<< claude/nationhood-game-JpWMJ
+    // Clear expired coup cooldowns
+=======
+>>>>>>> main
     await supabase.from('factions')
         .update({ action_lockout_until_tick: null })
         .not('action_lockout_until_tick', 'is', null)
         .lte('action_lockout_until_tick', newTick);
 
+<<<<<<< claude/nationhood-game-JpWMJ
+    // Periodic integrity scan for invalid stat keys
+=======
+>>>>>>> main
     if (newTick % 10 === 1) {
         try {
             await auditStatKeys(supabase);
@@ -8787,6 +8866,19 @@ async function advanceTick(supabase) {
         }
     }
 
+<<<<<<< claude/nationhood-game-JpWMJ
+    // 4. Process each nation
+    for (const nation of nationList) {
+      try {
+        // Set correct seat count for this nation (affects supermajority thresholds, etc.)
+        initGameConfigForNation(nation);
+
+        // Stat effects (from passed bills/active laws)
+        const effectResults = await processStatEffects(supabase, nation, newTick);
+        if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });
+
+        // Ministry action effects
+=======
     for (const nation of nationList) {
       try {
         initGameConfigForNation(nation);
@@ -8794,12 +8886,26 @@ async function advanceTick(supabase) {
         const effectResults = await processStatEffects(supabase, nation, newTick);
         if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });
 
+>>>>>>> main
         const ministryResults = await processMinistryActions(supabase, nation, newTick);
         if (ministryResults.length > 0) {
             summary.ministryActions = summary.ministryActions || [];
             summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
         }
 
+<<<<<<< claude/nationhood-game-JpWMJ
+        // Apply GDP growth rate
+        await applyGdpGrowth(supabase, nation);
+
+        // Ongoing costs
+        const costResult = await processOngoingCosts(supabase, nation, newTick);
+        if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
+
+        // PM trait effects
+        await processPMTraitEffects(supabase, nation, newTick);
+
+        // Elections (democracy only)
+=======
         await applyGdpGrowth(supabase, nation);
 
         const decayResults = await processStatDecay(supabase, nation);
@@ -8813,32 +8919,87 @@ async function advanceTick(supabase) {
 
         await processPMTraitEffects(supabase, nation, newTick);
 
+>>>>>>> main
         const electionResults = await processElections(supabase, nation, newTick);
         if (electionResults.length > 0) {
             summary.elections = summary.elections || [];
             summary.elections.push({ nation: nation.name, elections: electionResults });
         }
 
+<<<<<<< claude/nationhood-game-JpWMJ
+        // Government vacancy penalties (democracy only)
+=======
+>>>>>>> main
         const vacancyResult = await processGovernmentVacancy(supabase, nation, newTick);
         if (vacancyResult) {
             summary.vacancies = summary.vacancies || [];
             summary.vacancies.push(vacancyResult);
         }
 
+<<<<<<< claude/nationhood-game-JpWMJ
+        // Resolve expired votes for this nation
         const resolutions = await resolveExpiredVotes(supabase, nation.id);
         if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
 
+        // Auto-sign expired president's desk bills (Presidential systems)
+=======
+        const resolutions = await resolveExpiredVotes(supabase, nation.id);
+        if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
+
+>>>>>>> main
         const deskResults = await processPresidentDesk(supabase, nation, newTick);
         if (deskResults.length > 0) {
             summary.presidentDesk = summary.presidentDesk || [];
             summary.presidentDesk.push({ nation: nation.name, bills: deskResults });
         }
 
+<<<<<<< claude/nationhood-game-JpWMJ
+        // Presidential pre-election candidate generation, term end safety net, + selection timeout
+=======
+>>>>>>> main
         await triggerPresidentialCandidateSelection(supabase, nation, newTick);
         await processPresidentialTermEnd(supabase, nation, newTick);
         await processPresidentCandidateTimeout(supabase, nation, newTick);
         await processParliamentaryPMTimeout(supabase, nation, newTick);
 
+<<<<<<< claude/nationhood-game-JpWMJ
+        // Ideology shifts from resolved bills
+        await processIdeologyShifts(supabase, nation.id, resolutions);
+
+        // Purge approval decay (autocracy scapegoat mechanic)
+        if (isGovernmentAutocracy(nation)) {
+            await processPurgeDecay(supabase, nation.id, newTick);
+        }
+
+        // Bloc approval decay toward ideology-based targets
+        await processBlocApprovalDecay(supabase, nation);
+
+        // Random ±1D3% jitter to party standings (democracies only)
+        await processPartyStandingsJitter(supabase, nation);
+
+        // Stat decay (equilibrium drift + erosion)
+        await processStatDecay(supabase, nation);
+
+        // Three-pillar voter preference recalculation
+        await calculateThreePillarPreferences(supabase, nation, newTick);
+
+        // Faction loyalty (autocracy)
+        if (isGovernmentAutocracy(nation)) {
+            await processLoyaltyTick(supabase, nation);
+        }
+
+        // Auto-resolve shakeups that are 1+ ticks old
+        if (isGovernmentAutocracy(nation)) {
+            await autoResolveStaleShakeups(supabase, nation.id, newTick);
+        }
+
+        // Re-fetch nation with post-effect values, then snapshot to history
+        const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+        if (freshNation) Object.assign(nation, freshNation);
+        await snapshotNationHistory(supabase, freshNation || nation, newTick);
+
+        // Crises (persistent negative events that apply effects every tick)
+=======
         await processIncumbentCampaignBonuses(supabase, nation, newTick);
 
         await processIdeologyShifts(supabase, nation.id, resolutions);
@@ -8860,35 +9021,55 @@ async function advanceTick(supabase) {
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (freshNation) Object.assign(nation, freshNation);
 
+>>>>>>> main
         const crisisResults = await processCrises(supabase, nation, newTick);
         if (crisisResults.length > 0) {
             summary.crises = summary.crises || [];
             summary.crises.push({ nation: nation.name, crises: crisisResults });
         }
 
+<<<<<<< claude/nationhood-game-JpWMJ
+        // Democratic revolution (autocracy only)
+=======
+>>>>>>> main
         const revolutionResult = await processRevolution(supabase, nation, newTick);
         if (revolutionResult) {
             summary.revolutions = summary.revolutions || [];
             summary.revolutions.push(revolutionResult);
         }
 
+<<<<<<< claude/nationhood-game-JpWMJ
+        // Random events
         const eventResults = await processEvents(supabase, nation, newTick);
         if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
 
+        // Ministry inbox events (fire from templates + expire overdue)
+=======
+        const eventResults = await processEvents(supabase, nation, newTick);
+        if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
+
+>>>>>>> main
         const ministryEventResults = await processMinistryInboxEvents(supabase, freshNation || nation, newTick);
         if (ministryEventResults.length > 0) {
             summary.ministryEvents = summary.ministryEvents || [];
             summary.ministryEvents.push({ nation: nation.name, events: ministryEventResults });
         }
 
+<<<<<<< claude/nationhood-game-JpWMJ
+        // Ambassador term limits (retirements + warnings)
+=======
+>>>>>>> main
         const retirementResults = await processAmbassadorRetirements(supabase, freshNation || nation, newTick);
         if (retirementResults.length > 0) {
             summary.ambassadorRetirements = summary.ambassadorRetirements || [];
             summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
         }
+<<<<<<< claude/nationhood-game-JpWMJ
+=======
 
         const { data: finalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         await snapshotNationHistory(supabase, finalNation || nation, newTick);
+>>>>>>> main
       } catch (nationErr) {
         console.error(`[advanceTick] FAILED processing nation ${nation.id} (${nation.name}):`, nationErr);
         summary.errors = summary.errors || [];
