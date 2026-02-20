@@ -2317,3 +2317,350 @@ body.light-mode .outreach-bloc-row:hover {
         font-size: 0.75rem;
     }
 }
+
+
+/* ==================== FUNDRAISER PANEL ==================== */
+
+.fundraiser-panel {
+    background: var(--bg-panel, #1a1a1a);
+    border: 1px solid var(--border-main, #333);
+    border-left: 4px solid #ffd700;
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin-top: 16px;
+}
+
+.fundraiser-panel-results {
+    border-left-color: #4CAF50;
+}
+
+.fundraiser-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.fundraiser-title {
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: #ffd700;
+}
+
+.fundraiser-cost {
+    color: var(--text-muted, #888);
+    font-size: 0.82rem;
+}
+
+.fundraiser-donor-info {
+    margin-bottom: 8px;
+}
+
+.fundraiser-donor-name {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text-primary, #eee);
+    letter-spacing: 0.5px;
+}
+
+.fundraiser-donor-ideology {
+    font-size: 0.85rem;
+    color: var(--text-muted, #888);
+    margin-top: 2px;
+}
+
+.fundraiser-donor-desc {
+    font-size: 0.88rem;
+    color: var(--text-secondary, #aaa);
+    margin-bottom: 10px;
+}
+
+.fundraiser-divider {
+    border-top: 1px solid var(--border-main, #333);
+    margin: 12px 0;
+}
+
+.fundraiser-divider-thin {
+    border-top: 1px solid rgba(255,255,255,0.08);
+    margin: 10px 0;
+}
+
+.fundraiser-option {
+    margin-bottom: 14px;
+}
+
+.fundraiser-option-label {
+    font-weight: 700;
+    font-size: 0.88rem;
+    color: var(--text-muted, #888);
+    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+}
+
+.fundraiser-option-box {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-main, #333);
+    border-radius: 6px;
+    padding: 14px 16px;
+}
+
+.fundraiser-option-big {
+    border-color: #ffd700;
+}
+
+.fundraiser-option-locked {
+    border-color: #ff4444;
+    opacity: 0.6;
+}
+
+.fundraiser-option-amount {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: #4CAF50;
+    margin-bottom: 6px;
+}
+
+.fundraiser-option-desc {
+    font-size: 0.88rem;
+    color: var(--text-secondary, #aaa);
+    margin-bottom: 10px;
+}
+
+.fundraiser-option-demand {
+    font-size: 0.92rem;
+    color: #ffd700;
+    font-style: italic;
+    margin-bottom: 6px;
+}
+
+.fundraiser-option-deadline {
+    font-size: 0.82rem;
+    color: var(--text-muted, #888);
+    margin-bottom: 8px;
+}
+
+.fundraiser-rewards {
+    margin-bottom: 10px;
+}
+
+.fundraiser-reward-good {
+    font-size: 0.82rem;
+    color: #4CAF50;
+    margin-bottom: 2px;
+}
+
+.fundraiser-reward-bad {
+    font-size: 0.82rem;
+    color: #ff4444;
+}
+
+.fundraiser-conflict {
+    background: rgba(255, 152, 0, 0.1);
+    border: 1px solid #ff9800;
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin: 8px 0;
+    font-size: 0.82rem;
+    color: #ff9800;
+}
+
+.fundraiser-btn {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 0.88rem;
+    cursor: pointer;
+    text-align: center;
+    margin-top: 10px;
+    transition: opacity 0.15s;
+}
+
+.fundraiser-btn:hover:not(:disabled) {
+    opacity: 0.85;
+}
+
+.fundraiser-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.fundraiser-btn-accept {
+    background: #4CAF50;
+    color: #fff;
+}
+
+.fundraiser-btn-promise {
+    background: #ffd700;
+    color: #111;
+}
+
+.fundraiser-btn-decline {
+    background: transparent;
+    border: 1px solid var(--border-main, #555);
+    color: var(--text-muted, #888);
+}
+
+.fundraiser-btn-dismiss {
+    background: var(--bg-panel, #333);
+    color: var(--text-primary, #eee);
+    border: 1px solid var(--border-main, #555);
+}
+
+.fundraiser-decline {
+    margin-top: 10px;
+}
+
+.fundraiser-result-heading {
+    font-weight: 700;
+    font-size: 1rem;
+    color: #ffd700;
+    margin-bottom: 10px;
+}
+
+.fundraiser-result-line {
+    font-size: 0.9rem;
+    color: var(--text-secondary, #aaa);
+    margin-bottom: 4px;
+}
+
+.fundraiser-result-promise {
+    background: rgba(255, 215, 0, 0.08);
+    border: 1px solid #ffd700;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin: 10px 0;
+}
+
+.fundraiser-result-promise-label {
+    font-weight: 700;
+    color: #ffd700;
+    margin-bottom: 4px;
+    font-size: 0.88rem;
+}
+
+.fundraiser-result-headline {
+    font-size: 0.82rem;
+    color: var(--text-muted, #888);
+    font-style: italic;
+    margin-top: 8px;
+}
+
+.fundraiser-actions {
+    margin-top: 14px;
+}
+
+
+/* ==================== PROMISES PANEL ==================== */
+
+.promises-panel {
+    background: var(--bg-panel, #1a1a1a);
+    border: 1px solid var(--border-main, #333);
+    border-left: 4px solid #ff9800;
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin-top: 16px;
+}
+
+.promises-header {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #ff9800;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+}
+
+.promises-empty {
+    font-size: 0.85rem;
+    color: var(--text-muted, #888);
+    font-style: italic;
+}
+
+.promise-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-main, #333);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+}
+
+.promise-card-resolved {
+    opacity: 0.7;
+}
+
+.promise-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.promise-card-bloc {
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: var(--text-primary, #eee);
+}
+
+.promise-card-amount {
+    font-size: 0.82rem;
+    color: #4CAF50;
+    font-weight: 600;
+}
+
+.promise-card-demand {
+    font-size: 0.88rem;
+    color: #ffd700;
+    font-style: italic;
+    margin-bottom: 6px;
+}
+
+.promise-card-deadline {
+    font-size: 0.82rem;
+    color: var(--text-muted, #888);
+    margin-bottom: 8px;
+}
+
+.promise-card-status {
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.promise-progress-details {
+    font-size: 0.82rem;
+    color: var(--text-secondary, #aaa);
+    margin-bottom: 8px;
+    line-height: 1.5;
+}
+
+.promise-bar-wrap {
+    margin: 8px 0;
+}
+
+.promise-bar {
+    height: 8px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.promise-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.promise-bar-label {
+    font-size: 0.75rem;
+    color: var(--text-muted, #888);
+    margin-top: 2px;
+    display: block;
+}
+
+.promise-card-stakes {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+}

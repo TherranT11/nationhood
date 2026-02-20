@@ -5845,6 +5845,323 @@ async function executeOutreach(supabase, factionId, nationId, blocId, currentTic
 }
 
 
+// ==================== FUNDRAISER PROMISE TICK PROCESSING ====================
+
+const FUNDRAISER_CONFIG = {
+    AP_COST: 1,
+    MONEY_COST: 0,
+    COOLDOWN_TICKS: 3,
+    PROMISE_KEPT_PREF_BONUS: 5,
+    PROMISE_KEPT_MOMENTUM: 4,
+    PROMISE_KEPT_DONATION_MULTIPLIER_BONUS: 0.25,
+    PROMISE_BROKEN_DONOR_PREF: -8,
+    PROMISE_BROKEN_ALL_PREF: -2,
+    PROMISE_BROKEN_MOMENTUM: -12,
+    PROMISE_BROKEN_LOCKOUT_TICKS: 30,
+    PROMISE_BROKEN_NERVOUS_PREF: -1,
+    GLOBAL_BROKEN_LOCKOUT_THRESHOLD: 2,
+    GLOBAL_BROKEN_WINDOW_TICKS: 20,
+};
+
+function evaluatePromiseStatus(promise, nationStats, currentTick, ministries, coalitionPartyIds, campaignActions) {
+    const cond = promise.conditions;
+    const remaining = promise.tick_deadline - currentTick;
+    const progress = { ...promise.progress };
+
+    const holdsMinistry = (key) => {
+        return (ministries || []).some(m => m.ministry_key === key && m.party_id === promise.party_id);
+    };
+
+    switch (promise.demand_type) {
+        case 'stat_target': {
+            const currentVal = Number(nationStats[cond.stat_key] ?? 50);
+            const target = cond.target_value ?? cond.absolute_target;
+            progress.current_value = currentVal;
+            progress.target_value = target;
+            if (cond.direction === 'below' && currentVal <= target) return { status: 'fulfilled', progress };
+            if (cond.direction === 'above' && currentVal >= target) return { status: 'fulfilled', progress };
+            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
+            return { status: 'in_progress', progress };
+        }
+        case 'ministry_and_stat': {
+            const hasMinistry = holdsMinistry(cond.ministry_key);
+            const currentVal = Number(nationStats[cond.stat_key] ?? 50);
+            const target = cond.target_value ?? cond.absolute_target;
+            progress.has_ministry = hasMinistry;
+            progress.ministry_key = cond.ministry_key;
+            progress.current_value = currentVal;
+            progress.target_value = target;
+            const statMet = cond.direction === 'below' ? currentVal <= target : currentVal >= target;
+            if (hasMinistry && statMet) return { status: 'fulfilled', progress };
+            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
+            return { status: 'in_progress', progress };
+        }
+        case 'ministry_and_dual_stat': {
+            const hasMinistry = holdsMinistry(cond.ministry_key);
+            progress.has_ministry = hasMinistry;
+            progress.stats = [];
+            let allMet = hasMinistry;
+            for (const s of (cond.stats || [])) {
+                const currentVal = Number(nationStats[s.stat_key] ?? 50);
+                const met = s.direction === 'above' ? currentVal >= s.target_value : currentVal <= s.target_value;
+                progress.stats.push({ stat_key: s.stat_key, current: currentVal, target: s.target_value, met });
+                if (!met) allMet = false;
+            }
+            if (allMet) return { status: 'fulfilled', progress };
+            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
+            return { status: 'in_progress', progress };
+        }
+        case 'stat_floor': {
+            const currentVal = Number(nationStats[cond.stat_key] ?? 50);
+            progress.current_value = currentVal;
+            progress.floor = cond.floor;
+            if (currentVal < cond.floor) return { status: 'broken', progress };
+            return { status: 'in_progress', progress };
+        }
+        case 'stat_sustained': {
+            const currentVal = Number(nationStats[cond.stat_key] ?? 50);
+            progress.current_value = currentVal;
+            progress.threshold = cond.threshold;
+            progress.sustained_count = progress.sustained_count || 0;
+            progress.required = cond.sustained_ticks;
+            if (currentVal >= cond.threshold) { progress.sustained_count++; } else { progress.sustained_count = 0; }
+            if (progress.sustained_count >= cond.sustained_ticks) return { status: 'fulfilled', progress };
+            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
+            return { status: 'in_progress', progress };
+        }
+        case 'block_stat_decrease':
+        case 'block_stat_increase': {
+            const currentVal = Number(nationStats[cond.protected_stat] ?? 50);
+            const baseline = cond.baseline_value ?? currentVal;
+            progress.current_value = currentVal;
+            progress.baseline = baseline;
+            if (cond.direction === 'no_decrease' && currentVal < baseline - 0.5) return { status: 'broken', progress };
+            if (cond.direction === 'no_increase' && currentVal > baseline + 0.5) return { status: 'broken', progress };
+            return { status: 'in_progress', progress };
+        }
+        case 'rally_count': {
+            const requiredTags = cond.required_tags || [];
+            const matchingRallies = (campaignActions || []).filter(a => {
+                if (a.action_type !== 'rally' || a.party_id !== promise.party_id) return false;
+                if (a.tick_performed < promise.tick_created || a.tick_performed > promise.tick_deadline) return false;
+                const tags = a.result?.tags || [];
+                return requiredTags.some(rt => tags.includes(rt));
+            });
+            progress.completed = matchingRallies.length;
+            progress.required = cond.count;
+            if (matchingRallies.length >= cond.count) return { status: 'fulfilled', progress };
+            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
+            return { status: 'in_progress', progress };
+        }
+        case 'press_conference_count': {
+            const matchingPCs = (campaignActions || []).filter(a => {
+                if (a.action_type !== 'press_conference' || a.party_id !== promise.party_id) return false;
+                if (a.tick_performed < promise.tick_created || a.tick_performed > promise.tick_deadline) return false;
+                return true;
+            });
+            progress.completed = matchingPCs.length;
+            progress.required = cond.count;
+            if (matchingPCs.length >= cond.count) return { status: 'fulfilled', progress };
+            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
+            return { status: 'in_progress', progress };
+        }
+        case 'ministry_appointment': {
+            const hasMinistry = holdsMinistry(cond.ministry_key);
+            progress.has_ministry = hasMinistry;
+            progress.ministry_key = cond.ministry_key;
+            if (hasMinistry) return { status: 'fulfilled', progress };
+            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
+            return { status: 'in_progress', progress };
+        }
+        case 'pass_bill':
+        case 'pass_bill_count':
+        case 'repeal_bill':
+        case 'block_bill':
+        case 'block_bill_tag':
+        case 'vote_pattern':
+        case 'coalition_restriction':
+        case 'no_confidence':
+        case 'no_confidence_conditional':
+        case 'constitutional_amendment': {
+            if (progress.completed) return { status: 'fulfilled', progress };
+            if (progress.violated) return { status: 'broken', progress };
+            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
+            return { status: 'in_progress', progress };
+        }
+        default:
+            return { status: 'in_progress', progress };
+    }
+}
+
+async function resolvePromise(supabase, promise, resolution, currentTick, nationStats) {
+    const cfg = FUNDRAISER_CONFIG;
+
+    if (resolution === 'fulfilled') {
+        const { data: blocRow } = await supabase
+            .from('faction_bloc_approval')
+            .select('id, preference_score')
+            .eq('faction_id', promise.party_id)
+            .eq('bloc_id', promise.bloc_id)
+            .single();
+
+        if (blocRow) {
+            const newPref = Math.min(100, Math.round(blocRow.preference_score + cfg.PROMISE_KEPT_PREF_BONUS));
+            await supabase.from('faction_bloc_approval')
+                .update({ preference_score: newPref })
+                .eq('id', blocRow.id);
+        }
+
+        await adjustMomentum(supabase, promise.party_id, cfg.PROMISE_KEPT_MOMENTUM);
+
+        const { data: trust } = await supabase
+            .from('donor_trust')
+            .select('large_donation_multiplier, promises_kept')
+            .eq('party_id', promise.party_id)
+            .eq('bloc_id', promise.bloc_id)
+            .single();
+
+        if (trust) {
+            await supabase.from('donor_trust')
+                .update({
+                    large_donation_multiplier: Math.round((Number(trust.large_donation_multiplier || 1) + cfg.PROMISE_KEPT_DONATION_MULTIPLIER_BONUS) * 100) / 100,
+                    promises_kept: (trust.promises_kept || 0) + 1,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('party_id', promise.party_id)
+                .eq('bloc_id', promise.bloc_id);
+        }
+
+        await supabase.from('fundraiser_promises')
+            .update({ status: 'fulfilled', tick_resolved: currentTick, updated_at: new Date().toISOString() })
+            .eq('id', promise.id);
+
+    } else if (resolution === 'broken') {
+        const { data: blocRow } = await supabase
+            .from('faction_bloc_approval')
+            .select('id, preference_score')
+            .eq('faction_id', promise.party_id)
+            .eq('bloc_id', promise.bloc_id)
+            .single();
+
+        if (blocRow) {
+            const newPref = Math.max(0, Math.round(blocRow.preference_score + cfg.PROMISE_BROKEN_DONOR_PREF));
+            await supabase.from('faction_bloc_approval')
+                .update({ preference_score: newPref })
+                .eq('id', blocRow.id);
+        }
+
+        await adjustBlocApproval(supabase, promise.party_id, cfg.PROMISE_BROKEN_ALL_PREF);
+        await adjustMomentum(supabase, promise.party_id, cfg.PROMISE_BROKEN_MOMENTUM);
+
+        const { data: trust } = await supabase
+            .from('donor_trust')
+            .select('*')
+            .eq('party_id', promise.party_id)
+            .eq('bloc_id', promise.bloc_id)
+            .single();
+
+        if (trust) {
+            await supabase.from('donor_trust')
+                .update({
+                    lockout_until_tick: currentTick + cfg.PROMISE_BROKEN_LOCKOUT_TICKS,
+                    promises_broken: (trust.promises_broken || 0) + 1,
+                    recent_broken_count: (trust.recent_broken_count || 0) + 1,
+                    last_broken_tick: currentTick,
+                    large_donation_multiplier: 1.0,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('party_id', promise.party_id)
+                .eq('bloc_id', promise.bloc_id);
+        }
+
+        // Nervous other promise holders
+        const { data: otherPromises } = await supabase
+            .from('fundraiser_promises')
+            .select('bloc_id')
+            .eq('party_id', promise.party_id)
+            .eq('status', 'active')
+            .neq('id', promise.id);
+
+        if (otherPromises && otherPromises.length > 0) {
+            const nervousBlocIds = [...new Set(otherPromises.map(p => p.bloc_id))];
+            for (const nervousBlocId of nervousBlocIds) {
+                const { data: nervousRow } = await supabase
+                    .from('faction_bloc_approval')
+                    .select('id, preference_score')
+                    .eq('faction_id', promise.party_id)
+                    .eq('bloc_id', nervousBlocId)
+                    .single();
+                if (nervousRow) {
+                    const newPref = Math.max(0, Math.round(nervousRow.preference_score + cfg.PROMISE_BROKEN_NERVOUS_PREF));
+                    await supabase.from('faction_bloc_approval')
+                        .update({ preference_score: newPref })
+                        .eq('id', nervousRow.id);
+                }
+            }
+        }
+
+        await supabase.from('fundraiser_promises')
+            .update({ status: 'broken', tick_resolved: currentTick, updated_at: new Date().toISOString() })
+            .eq('id', promise.id);
+    }
+}
+
+async function processPromiseTick(supabase, nation, currentTick) {
+    const { data: activePromises } = await supabase
+        .from('fundraiser_promises')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .eq('status', 'active');
+
+    if (!activePromises || activePromises.length === 0) return [];
+
+    const results = [];
+
+    const { data: ministries } = await supabase
+        .from('ministries')
+        .select('ministry_key, party_id')
+        .eq('nation_id', nation.id)
+        .eq('is_active', true);
+
+    const coalition = await fetchActiveCoalition(supabase, nation.id);
+    const coalitionPartyIds = coalition?.party_ids || [];
+
+    const partyIds = [...new Set(activePromises.map(p => p.party_id))];
+    const minTick = Math.min(...activePromises.map(p => p.tick_created));
+    const { data: campaignActions } = await supabase
+        .from('campaign_actions')
+        .select('party_id, action_type, tick_performed, result')
+        .in('party_id', partyIds)
+        .gte('tick_performed', minTick);
+
+    const { data: freshNation } = await supabase
+        .from('nations').select('*').eq('id', nation.id).single();
+    const nationStats = freshNation || nation;
+
+    for (const promise of activePromises) {
+        const evaluation = evaluatePromiseStatus(promise, nationStats, currentTick, ministries, coalitionPartyIds, campaignActions);
+
+        await supabase.from('fundraiser_promises')
+            .update({ progress: evaluation.progress, updated_at: new Date().toISOString() })
+            .eq('id', promise.id);
+
+        if (evaluation.status === 'fulfilled') {
+            await resolvePromise(supabase, promise, 'fulfilled', currentTick, nationStats);
+            results.push({ promise, resolution: 'fulfilled' });
+            continue;
+        }
+
+        if (evaluation.status === 'broken' || currentTick >= promise.tick_deadline) {
+            await resolvePromise(supabase, promise, 'broken', currentTick, nationStats);
+            results.push({ promise, resolution: 'broken' });
+            continue;
+        }
+    }
+
+    return results;
+}
+
+
 // ==================== LOYALTY TICK PROCESSING ====================
 
 async function processLoyaltyTick(supabase, nation) {
@@ -8982,6 +9299,13 @@ async function advanceTick(supabase) {
 
         // Three-pillar voter preference recalculation
         await calculateThreePillarPreferences(supabase, nation, newTick);
+
+        // Fundraiser promise tracking (check fulfillment, apply rewards/penalties)
+        const promiseResults = await processPromiseTick(supabase, nation, newTick);
+        if (promiseResults.length > 0) {
+            summary.promiseResolutions = summary.promiseResolutions || [];
+            summary.promiseResolutions.push({ nation: nation.name, promises: promiseResults });
+        }
 
         // Faction loyalty (autocracy)
         if (isGovernmentAutocracy(nation)) {
