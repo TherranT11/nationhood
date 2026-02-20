@@ -6436,12 +6436,19 @@ export function selectDonorBloc(blocs, approvalRows) {
 /**
  * Generate a fundraiser offer for a given bloc.
  * Returns { smallAmount, largeAmount, demand, demandIndex, deadline }
+ * @param {string} blocName - Voter bloc name
+ * @param {object} nationStats - Current nation stats
+ * @param {number} trustMultiplier - Trust bonus multiplier
+ * @param {Array|null} dbDemands - Optional demand templates from database (overrides hardcoded)
  */
-export function generateFundraiserOffer(blocName, nationStats, trustMultiplier = 1.0) {
+export function generateFundraiserOffer(blocName, nationStats, trustMultiplier = 1.0, dbDemands = null) {
     const ranges = DONATION_RANGES[blocName];
     if (!ranges) return null;
 
-    const demands = DONOR_DEMANDS[blocName];
+    // Use DB demands if provided, otherwise fall back to hardcoded
+    const demands = (dbDemands && dbDemands.length > 0)
+        ? dbDemands.map(d => ({ text: d.demand_text, type: d.demand_type, deadline: d.deadline, conditions: d.conditions }))
+        : DONOR_DEMANDS[blocName];
     if (!demands || demands.length === 0) return null;
 
     // Roll donation amounts
@@ -6649,8 +6656,19 @@ export async function executeFundraiserOffer(supabase, factionId, nationId, curr
         .from('nations').select('*').eq('id', nationId).single();
     if (!nation) return { success: false, error: 'Nation not found.' };
 
-    // ── 8. Generate offer ──
-    const offer = generateFundraiserOffer(selectedBloc.bloc_name, nation, trustMultiplier);
+    // ── 8. Load demand templates from DB, fall back to hardcoded ──
+    let dbDemands = null;
+    const { data: demandRows } = await supabase
+        .from('demand_templates')
+        .select('*')
+        .eq('bloc_name', selectedBloc.bloc_name)
+        .eq('is_active', true)
+        .order('sort_order');
+    if (demandRows && demandRows.length > 0) {
+        dbDemands = demandRows;
+    }
+
+    const offer = generateFundraiserOffer(selectedBloc.bloc_name, nation, trustMultiplier, dbDemands);
     if (!offer) return { success: false, error: 'Could not generate an offer for this bloc.' };
 
     // Halve the small amount if they already have an active promise with this bloc
