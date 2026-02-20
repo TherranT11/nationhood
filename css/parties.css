@@ -318,6 +318,113 @@ body.light-mode .momentum-bar-track {
     line-height: 1.4;
 }
 
+/* ===== PERFORMANCE CREDIT PANEL ===== */
+.perf-panel {
+    background: var(--bg-panel, #1a1a1a);
+    border: 1px solid var(--border-main, #333);
+    border-radius: 8px;
+    padding: 20px 24px;
+    min-width: 220px;
+    max-width: 300px;
+    display: flex;
+    flex-direction: column;
+}
+
+.perf-header {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-secondary, #888);
+    margin-bottom: 14px;
+}
+
+/* ---- Empty state (no ministries) ---- */
+.perf-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.perf-empty-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-secondary, #aaa);
+    margin-bottom: 10px;
+}
+
+.perf-empty-msg {
+    font-size: 0.72rem;
+    color: var(--text-muted, #666);
+    line-height: 1.5;
+}
+
+/* ---- Active state (has ministries) ---- */
+.perf-ministries {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-primary, #e0e0e0);
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-main, #333);
+    line-height: 1.4;
+}
+
+.perf-trends {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+}
+
+.perf-trend-section {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.perf-trend-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+}
+
+.perf-trend-label.perf-trend-good { color: #4CAF50; }
+.perf-trend-label.perf-trend-bad { color: #ff4444; }
+.perf-trend-label.perf-trend-flat { color: var(--text-muted, #666); }
+
+.perf-trend-item {
+    font-size: 0.75rem;
+    padding-left: 8px;
+    line-height: 1.5;
+}
+
+.perf-trend-item.perf-trend-good { color: #4CAF50; }
+.perf-trend-item.perf-trend-bad { color: #ff4444; }
+.perf-trend-item.perf-trend-flat { color: var(--text-muted, #666); }
+
+.perf-trend-none {
+    font-size: 0.72rem;
+    color: var(--text-muted, #666);
+    font-style: italic;
+}
+
+/* ---- Swing warnings ---- */
+.perf-warnings {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-main, #333);
+}
+
+.perf-warning {
+    font-size: 0.7rem;
+    color: #ffaa00;
+    line-height: 1.5;
+}
+
 /* ===== APPROVAL BY VOTER BLOC PANEL ===== */
 .bloc-approval-panel {
     background: var(--bg-panel, #1a1a1a);
@@ -477,7 +584,8 @@ body.light-mode .bloc-bar-track {
         flex-direction: column;
     }
     .vote-share-panel,
-    .momentum-panel {
+    .momentum-panel,
+    .perf-panel {
         max-width: 520px;
         min-width: 0;
         width: 100%;
