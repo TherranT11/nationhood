@@ -1215,7 +1215,7 @@ async function renderParties() {
                 const disabled = !costOk || onCooldown;
                 const approvalRow = (allBlocApprovals || []).find(a => a.bloc_id === b.id && a.faction_id === f.id);
                 const currentPref = approvalRow ? Math.round(approvalRow.preference_score || 0) : '?';
-                const popPct = b.population_weight ? (b.population_weight * 100).toFixed(0) + '%' : '';
+                const popPct = b.population_weight ? Math.round(b.population_weight) + '%' : '';
                 return `<div class="outreach-bloc-row${disabled ? ' disabled' : ''}" data-bloc-id="${b.id}">
                     <span class="outreach-bloc-name">${b.bloc_name}</span>
                     <span class="outreach-bloc-pop">${popPct}</span>
