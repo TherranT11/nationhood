@@ -1534,15 +1534,10 @@ async function renderParties() {
     const fundraiserCooldownRemaining = Math.max(0, FUNDRAISER_CONFIG.COOLDOWN_TICKS - ((currentShard?.current_tick || 0) - lastFundraiserTick));
     const fundraiserOnCooldown = fundraiserCooldownRemaining > 0;
 
-    window.openFundraiserPanel = function() {
-        if (fundraiserScreen === 'offer') {
-            fundraiserScreen = 'closed';
-            renderFundraiser();
-            return;
-        }
+    window.openFundraiserForBloc = function(blocId) {
         fundraiserScreen = 'loading';
         renderFundraiser();
-        executeFundraiserOffer(_supabase, f.id, n.id, currentShard?.current_tick || 0).then(result => {
+        executeFundraiserOffer(_supabase, f.id, n.id, currentShard?.current_tick || 0, blocId).then(result => {
             if (result.success) {
                 fundraiserOffer = result;
                 fundraiserScreen = 'offer';
@@ -1560,28 +1555,48 @@ async function renderParties() {
 
         if (fundraiserScreen === 'closed') {
             const costOk = currentAP >= FUNDRAISER_CONFIG.AP_COST;
+            const disabled = fundraiserOnCooldown || !costOk;
+
+            const blocRows = (blocs || []).map(b => {
+                const approvalRow = (allBlocApprovals || []).find(a => a.bloc_id === b.id && a.faction_id === f.id);
+                const currentPref = approvalRow ? Math.round(approvalRow.preference_score || 0) : 0;
+                const tooLow = currentPref < 20;
+                const ranges = DONATION_RANGES[b.bloc_name];
+                const rangeLabel = ranges
+                    ? `$${Math.round(ranges.small[0]/1000)}k–$${Math.round(ranges.large[1]/1000)}k`
+                    : '';
+                const isDisabled = disabled || tooLow;
+                return `<div class="fundraiser-bloc-row${isDisabled ? ' disabled' : ''}" data-bloc-id="${b.id}">
+                    <span class="fundraiser-bloc-name">${b.bloc_name}</span>
+                    <span class="fundraiser-bloc-pref">${currentPref}%</span>
+                    <span class="fundraiser-bloc-range">${rangeLabel}</span>
+                    ${tooLow ? '<span class="fundraiser-bloc-status" style="color:#ff4444;">won\'t fund</span>' : ''}
+                </div>`;
+            }).join('');
+
             container.innerHTML = `
                 <div class="fundraiser-panel">
                     <div class="fundraiser-header-row">
                         <span class="fundraiser-title">Hold a Fundraiser</span>
                         <span class="fundraiser-cost">Cost: ${FUNDRAISER_CONFIG.AP_COST} AP</span>
                     </div>
-                    <div class="fundraiser-donor-desc">Hold a fundraising event. A voter bloc's donors will approach you with two envelopes: clean money with no strings, or big money with a political demand attached.</div>
+                    <div class="fundraiser-donor-desc">Choose a voter bloc to approach for donations. They'll offer clean money, or big money with a political demand.</div>
+                    ${fundraiserOnCooldown ? `<div class="outreach-cooldown" style="color:#ff9800;">On cooldown — available in ${fundraiserCooldownRemaining} tick(s).</div>` : ''}
+                    ${!costOk && !fundraiserOnCooldown ? '<div class="outreach-cooldown" style="color:#ff4444;">Not enough AP.</div>' : ''}
                     <div class="fundraiser-divider"></div>
-                    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">
-                        <span>Cooldown: ${FUNDRAISER_CONFIG.COOLDOWN_TICKS} ticks</span>
-                        ${fundraiserOnCooldown ? `<span style="color:#ff9800;">Available in ${fundraiserCooldownRemaining} tick(s)</span>` : '<span style="color:#4CAF50;">Available now</span>'}
+                    <div class="fundraiser-bloc-header">
+                        <span class="fundraiser-bloc-name">Bloc</span>
+                        <span class="fundraiser-bloc-pref">Pref</span>
+                        <span class="fundraiser-bloc-range">Range</span>
                     </div>
-                    ${fundraiserOnCooldown || !costOk
-                        ? `<button class="fundraiser-btn fundraiser-btn-accept" disabled style="opacity:0.4;cursor:not-allowed;">${fundraiserOnCooldown ? 'On Cooldown' : 'Not Enough AP'}</button>`
-                        : '<button class="fundraiser-btn fundraiser-btn-promise" id="fundraiser-start">FIND DONORS</button>'
-                    }
+                    <div class="fundraiser-bloc-list">${blocRows}</div>
                 </div>`;
 
-            const startBtn = document.getElementById('fundraiser-start');
-            if (startBtn) {
-                startBtn.addEventListener('click', () => { window.openFundraiserPanel(); });
-            }
+            container.querySelectorAll('.fundraiser-bloc-row:not(.disabled)').forEach(row => {
+                row.addEventListener('click', () => {
+                    window.openFundraiserForBloc(row.dataset.blocId);
+                });
+            });
             return;
         }
 
