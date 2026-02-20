@@ -13,6 +13,46 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+let rpcPreflightCheckPromise = null;
+
+async function ensureApRpcAvailability(supabase) {
+    if (!rpcPreflightCheckPromise) {
+        rpcPreflightCheckPromise = (async () => {
+            const probeFactionId = "00000000-0000-0000-0000-000000000000";
+
+            const probes = [
+                {
+                    name: "accumulate_ap",
+                    call: () => supabase.rpc("accumulate_ap", {
+                        p_faction_id: probeFactionId,
+                        p_gain: 0,
+                        p_max_ap: 20,
+                    }),
+                },
+                {
+                    name: "deduct_ap",
+                    call: () => supabase.rpc("deduct_ap", {
+                        p_faction_id: probeFactionId,
+                        p_cost: 0,
+                    }),
+                },
+            ];
+
+            for (const probe of probes) {
+                const { error } = await probe.call();
+                if (error) {
+                    throw new Error(
+                        `Missing or inaccessible required RPC '${probe.name}'. Deploy SQL function/grants before rolling out advance-tick. Detail: ${error.message}`
+                    );
+                }
+            }
+            console.log("[advance-tick] RPC preflight passed for accumulate_ap and deduct_ap.");
+        })();
+    }
+
+    return rpcPreflightCheckPromise;
+}
+
 // ===== GAME LOGIC (from js/game-common.js) =====
 
 // __GAME_COMMON_JS__
@@ -119,7 +159,8 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     try {
-        // 0. Startup integrity check for ministry template gov_types
+        // 0. Startup checks
+        await ensureApRpcAvailability(supabase);
         await runMinistryEventTemplateGovTypeIntegrityCheck(supabase);
 
         // 1. Check for force parameter (admin manual trigger)
@@ -177,11 +218,12 @@ Deno.serve(async (req) => {
         // 4. Process the tick
         try {
             const summary = await advanceTick(supabase);
+            const responseStatus = summary.partial ? "partial" : "success";
             console.log(
-                `[advance-tick] Tick ${summary.tick} processed (${summary.nations} nations)`
+                `[advance-tick] Tick ${summary.tick} ${summary.partial ? 'partially processed' : 'processed'} (${summary.nations} nations)`
             );
             return new Response(
-                JSON.stringify({ status: "success", summary }),
+                JSON.stringify({ status: responseStatus, summary }),
                 { headers: corsHeaders }
             );
         } catch (e) {
