@@ -32,6 +32,12 @@ function tickToDate(tick) {
     return `${MONTHS[tick % 12]}, ${y}`;
 }
 
+function ordinal(n) {
+    const s = ['th','st','nd','rd'];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
 function getPartyRole(factionId, seats, coalition) {
     if (!seats || seats === 0) return 'No Seats';
     if (coalition && coalition.party_ids && coalition.party_ids.includes(factionId)) {
@@ -97,11 +103,12 @@ async function renderParties() {
         .gt('election_tick', currentShard?.current_tick || 0)
         .order('election_tick', { ascending: true }).limit(1).maybeSingle();
 
-    // Fetch momentum data for this party
-    const { data: myBlocApprovals } = await _supabase
+    // Fetch momentum data for all parties
+    const allPartyIds = (allParties || []).map(p => p.id);
+    const { data: allBlocApprovals } = await _supabase
         .from('faction_bloc_approval')
-        .select('momentum, bloc_id')
-        .eq('faction_id', f.id);
+        .select('faction_id, momentum, bloc_id')
+        .in('faction_id', allPartyIds);
 
     const { data: blocs } = await _supabase
         .from('voter_blocs')
@@ -111,15 +118,27 @@ async function renderParties() {
 
     const blocWeights = {};
     for (const b of (blocs || [])) blocWeights[b.id] = b.population_weight || 1;
-    let wSum = 0, wTotal = 0;
-    for (const row of (myBlocApprovals || [])) {
+
+    // Compute weighted-average momentum per party
+    const partyMomentum = {};
+    for (const row of (allBlocApprovals || [])) {
+        if (!partyMomentum[row.faction_id]) partyMomentum[row.faction_id] = { wSum: 0, wTotal: 0 };
         const w = blocWeights[row.bloc_id] || 1;
-        wSum += (row.momentum || 0) * w;
-        wTotal += w;
+        partyMomentum[row.faction_id].wSum += (row.momentum || 0) * w;
+        partyMomentum[row.faction_id].wTotal += w;
     }
-    const rawMomentum = wTotal > 0 ? wSum / wTotal : 0;
+    const partyScores = allPartyIds.map(id => {
+        const m = partyMomentum[id];
+        const raw = m && m.wTotal > 0 ? m.wSum / m.wTotal : 0;
+        return { id, score: Math.round(Math.max(0, Math.min(100, 50 + raw))) };
+    }).sort((a, b) => b.score - a.score);
+
+    const myEntry = partyMomentum[f.id];
+    const rawMomentum = myEntry && myEntry.wTotal > 0 ? myEntry.wSum / myEntry.wTotal : 0;
     const momentumScore = Math.round(Math.max(0, Math.min(100, 50 + rawMomentum)));
     const decayPerTick = Math.round(Math.abs(rawMomentum) * 0.20 * 10) / 10;
+    const momentumRank = partyScores.findIndex(p => p.id === f.id) + 1;
+    const totalParties = partyScores.length;
     const role = getPartyRole(f.id, mySeats, coalition);
     const badgeClass = getRoleBadgeClass(role);
 
@@ -236,6 +255,7 @@ async function renderParties() {
                 <div class="momentum-bar-fill" style="width:${momentumScore}%;background:${partyColor}"></div>
             </div>
             <div class="momentum-decay">${decayPerTick > 0 ? `${rawMomentum > 0 ? '−' : '+'}${decayPerTick} / tick` : 'Stable'}</div>
+            <div class="momentum-rank">You are ${ordinal(momentumRank)} of ${totalParties} in Momentum right now.</div>
             <div class="momentum-desc">How loud you are in the national conversation right now.</div>
         </div>
 

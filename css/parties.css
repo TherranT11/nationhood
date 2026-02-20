@@ -303,8 +303,14 @@ body.light-mode .momentum-bar-track {
     text-align: right;
 }
 
-.momentum-desc {
+.momentum-rank {
     margin-top: auto;
+    font-size: 0.72rem;
+    color: var(--text-secondary, #888);
+    font-weight: 600;
+}
+
+.momentum-desc {
     padding-top: 12px;
     border-top: 1px solid var(--border-main, #333);
     font-size: 0.68rem;
