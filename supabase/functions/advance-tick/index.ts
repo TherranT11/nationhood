@@ -3367,14 +3367,14 @@ export async function processPartialElection(supabase, nation, election, current
         }
     }));
 
-    // 3b. Load per-bloc preference data (Three-Pillar system)
+    // 3b. Load per-bloc approval data
     const { data: fbaRows } = await supabase
-        .from('faction_bloc_approval').select('faction_id, bloc_id, approval, preference_score')
+        .from('faction_bloc_approval').select('faction_id, bloc_id, approval')
         .in('faction_id', factionIds);
     const allBlocApprovals = {};
     for (const row of (fbaRows || [])) {
         if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
-        allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? row.approval ?? 40;
+        allBlocApprovals[row.bloc_id][row.faction_id] = row.approval;
     }
 
     // 4. Run election simulation for ONLY the delta seats
@@ -6185,70 +6185,6 @@ export async function processStatEffects(supabase, nation, currentTick) {
     return appliedEffects;
 }
 
-// ==================== STAT DECAY PROCESSING ====================
-
-/**
- * Apply natural stat decay for a nation. Each tick, configured stats drift
- * toward their target by their speed, but never overshoot.
- *
- * @param {object} supabase - Supabase client
- * @param {object} nation   - Full nation row (in-memory, mutated on success)
- * @returns {Array<object>}  Applied decay descriptors for tick summary
- */
-async function processStatDecay(supabase, nation) {
-    const appliedDecay = [];
-    const nationUpdates = {};
-
-    for (const [statKey, config] of Object.entries(STAT_DECAY_CONFIG)) {
-        if (!NATION_STAT_COLUMN_SET.has(statKey)) continue;
-
-        const currentVal = nation[statKey] !== undefined && nation[statKey] !== null
-            ? Number(nation[statKey]) : 50;
-        const { target, speed } = config;
-
-        if (currentVal === target) continue;
-
-        let newVal;
-        if (currentVal > target) {
-            newVal = Math.max(target, currentVal - speed);
-        } else {
-            newVal = Math.min(target, currentVal + speed);
-        }
-
-        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
-
-        if (newVal !== Math.round(currentVal * 10) / 10) {
-            nationUpdates[statKey] = newVal;
-            appliedDecay.push({
-                stat: statKey,
-                type: config.type,
-                previousValue: Math.round(currentVal * 10) / 10,
-                newValue: newVal,
-                target,
-                speed
-            });
-        }
-    }
-
-    if (Object.keys(nationUpdates).length > 0) {
-        const { error } = await supabase
-            .from('nations')
-            .update(nationUpdates)
-            .eq('id', nation.id);
-
-        if (error) {
-            console.error('[processStatDecay] Nation stat update FAILED',
-                { nationId: nation.id, payload: nationUpdates, error: error.message });
-            return [];
-        }
-
-        console.log(`[processStatDecay] Decay applied for ${nation.name}: ${appliedDecay.length} stat(s)`);
-        Object.assign(nation, nationUpdates);
-    }
-
-    return appliedDecay;
-}
-
 /**
  * Process ministry action stat effects during tick advancement.
  * Mirrors processStatEffects but reads from ministry_action_log.
@@ -8460,7 +8396,7 @@ export async function runElectionPreview(supabase, nationId) {
         }
     }));
 
-    // 3b. Load per-bloc preference data (Three-Pillar system)
+    // 3b. Load per-bloc preference data from faction_bloc_approval (Three-Pillar system)
     const { data: fbaRows } = await supabase
         .from('faction_bloc_approval')
         .select('faction_id, bloc_id, approval, preference_score')
@@ -8474,7 +8410,7 @@ export async function runElectionPreview(supabase, nationId) {
         allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? row.approval ?? 40;
     }
 
-    // 4. Run simulation with per-bloc preference scores
+    // 4. Run simulation with per-bloc approvals
     const result = runElectionSimulation(blocs, parties, totalSeats, allBlocApprovals);
 
     // 5. Build friendly results with weighted average approval per party
@@ -8524,6 +8460,435 @@ export async function runElectionPreview(supabase, nationId) {
 
 // ===== END GAME LOGIC =====
 
+
+// ===== TICK SYSTEM (edge-function-only — not in game-common.js) =====
+
+function advanceMonth(currentDate) {
+    const parts = currentDate.split(',');
+    const month = parts[0].trim();
+    const year = parseInt(parts[1].trim());
+
+    const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    const idx = months.indexOf(month);
+    if (idx === -1) { console.error('Invalid month:', month); return currentDate; }
+
+    const nextIdx = (idx + 1) % 12;
+    const nextYear = nextIdx === 0 ? year + 1 : year;
+    return `${months[nextIdx]}, ${nextYear}`;
+}
+
+async function acquireTickLock(supabase) {
+    const STALE_LOCK_MS = 5 * 60 * 1000; // 5 minutes
+    const now = new Date().toISOString();
+
+    // Attempt: acquire lock when tick_processing is false
+    const { data: acquired, error: err1 } = await supabase
+        .from('shard')
+        .update({ tick_processing: true, tick_processing_started_at: now })
+        .eq('name', 'Alpha Shard')
+        .eq('tick_processing', false)
+        .select('name');
+
+    if (!err1 && acquired && acquired.length > 0) return true;
+
+    // Check for stale lock (crashed tab)
+    const { data: shard } = await supabase
+        .from('shard')
+        .select('tick_processing, tick_processing_started_at')
+        .eq('name', 'Alpha Shard')
+        .single();
+
+    if (shard && shard.tick_processing && shard.tick_processing_started_at) {
+        const lockAge = Date.now() - new Date(shard.tick_processing_started_at).getTime();
+        if (lockAge > STALE_LOCK_MS) {
+            console.warn('Stale tick lock detected (' + Math.round(lockAge / 1000) + 's old), forcing acquire');
+            const { data: forced, error: err2 } = await supabase
+                .from('shard')
+                .update({ tick_processing: true, tick_processing_started_at: now })
+                .eq('name', 'Alpha Shard')
+                .eq('tick_processing', true)
+                .select('name');
+            return !err2 && forced && forced.length > 0;
+        }
+    }
+
+    return false;
+}
+
+async function releaseTickLock(supabase) {
+    await supabase
+        .from('shard')
+        .update({ tick_processing: false, tick_processing_started_at: null })
+        .eq('name', 'Alpha Shard');
+}
+
+/**
+ * Scan all effect records in the database for invalid stat keys.
+ * Logs errors for any stat_key that doesn't match NATION_STAT_COLUMNS
+ * (after alias resolution). Runs periodically as a safety net.
+ */
+async function auditStatKeys(supabase) {
+    const invalid = [];
+
+    // 1. Policy stat_effects
+    const { data: policies } = await supabase.from('policies').select('id, policy_name, stat_effects');
+    for (const p of (policies || [])) {
+        for (const eff of (p.stat_effects || [])) {
+            const resolved = normalizeNationStatKey(eff.stat_key);
+            if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
+                invalid.push({ source: 'policy', name: p.policy_name, id: p.id, bad_key: eff.stat_key });
+            }
+        }
+    }
+
+    // 2. Crisis effects
+    const { data: crisisEffects } = await supabase.from('crisis_effects').select('id, crisis_template_id, stat_key, target');
+    for (const ce of (crisisEffects || [])) {
+        if (ce.target !== 'nation') continue;
+        const resolved = normalizeNationStatKey(ce.stat_key);
+        if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
+            invalid.push({ source: 'crisis_effect', id: ce.id, template_id: ce.crisis_template_id, bad_key: ce.stat_key });
+        }
+    }
+
+    // 3. Crisis triggers
+    const { data: crisisTriggers } = await supabase.from('crisis_triggers').select('id, crisis_template_id, stat_key');
+    for (const ct of (crisisTriggers || [])) {
+        const resolved = normalizeNationStatKey(ct.stat_key);
+        if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
+            invalid.push({ source: 'crisis_trigger', id: ct.id, template_id: ct.crisis_template_id, bad_key: ct.stat_key });
+        }
+    }
+
+    // 4. Crisis end triggers
+    const { data: crisisEndTriggers } = await supabase.from('crisis_end_triggers').select('id, crisis_template_id, stat_key');
+    for (const cet of (crisisEndTriggers || [])) {
+        const resolved = normalizeNationStatKey(cet.stat_key);
+        if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
+            invalid.push({ source: 'crisis_end_trigger', id: cet.id, template_id: cet.crisis_template_id, bad_key: cet.stat_key });
+        }
+    }
+
+    // 5. Event effects
+    const { data: eventEffects } = await supabase.from('event_effects').select('id, event_id, stat_key, target');
+    for (const ee of (eventEffects || [])) {
+        if (ee.target !== 'nation') continue;
+        const resolved = normalizeNationStatKey(ee.stat_key);
+        if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
+            invalid.push({ source: 'event_effect', id: ee.id, event_id: ee.event_id, bad_key: ee.stat_key });
+        }
+    }
+
+    // 6. Event triggers
+    const { data: eventTriggers } = await supabase.from('event_triggers').select('id, event_id, stat_key');
+    for (const et of (eventTriggers || [])) {
+        if (!et.stat_key) continue;
+        const resolved = normalizeNationStatKey(et.stat_key);
+        if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
+            invalid.push({ source: 'event_trigger', id: et.id, event_id: et.event_id, bad_key: et.stat_key });
+        }
+    }
+
+    if (invalid.length > 0) {
+        console.error(`[auditStatKeys] Found ${invalid.length} invalid stat key(s) in the database:`);
+        for (const entry of invalid) {
+            console.error(`  - ${entry.source}: "${entry.bad_key}" (id=${entry.id}${entry.name ? ', name=' + entry.name : ''})`);
+        }
+    } else {
+        console.log('[auditStatKeys] All stat keys valid.');
+    }
+
+    return invalid;
+}
+
+/**
+ * Process lingering approval decay from minister purges (autocracy mechanic).
+ */
+async function processPurgeDecay(supabase, nationId, currentTick) {
+    const { data: purgeActions } = await supabase
+        .from('campaign_actions')
+        .select('id, party_id, result')
+        .eq('nation_id', nationId)
+        .eq('action_type', 'purge_minister');
+
+    if (!purgeActions || purgeActions.length === 0) return;
+
+    for (const action of purgeActions) {
+        const result = action.result;
+        if (!result || !result.decay_ticks_remaining || result.decay_ticks_remaining <= 0) continue;
+
+        const decayRate = result.decay_rate || 1;
+        await adjustBlocApproval(supabase, action.party_id, -decayRate);
+
+        const newRemaining = result.decay_ticks_remaining - 1;
+        await supabase.from('campaign_actions')
+            .update({ result: { ...result, decay_ticks_remaining: newRemaining } })
+            .eq('id', action.id);
+    }
+}
+
+// ==================== ADVANCE TICK ====================
+
+async function advanceTick(supabase) {
+    // 1. Pre-compute next tick metadata
+    const { data: shard } = await supabase
+        .from('shard')
+        .select('current_tick, tick_interval_hours, current_date, next_tick_at')
+        .eq('name', 'Alpha Shard')
+        .single();
+    if (!shard) throw new Error('Shard not found');
+
+    const newTick = (shard.current_tick || 0) + 1;
+    // Anchor next_tick_at to the previous schedule to prevent drift
+    // Uses UTC-safe millisecond arithmetic instead of setHours() which is timezone-dependent
+    const intervalMs = (shard.tick_interval_hours || 12) * 60 * 60 * 1000;
+    const prevTickAt = new Date(shard.next_tick_at || new Date());
+    let nextTickAt = new Date(prevTickAt.getTime() + intervalMs);
+    // Safety: if calculated next tick is in the past (e.g. server was down), advance to future
+    const now = Date.now();
+    while (nextTickAt.getTime() <= now) {
+        nextTickAt = new Date(nextTickAt.getTime() + intervalMs);
+    }
+    const newDate = advanceMonth(shard.current_date || 'January, 2000');
+
+    // 2. Load all nations
+    const { data: nations } = await supabase.from('nations').select('*');
+    const nationList = nations || [];
+
+    const summary = {
+        tick: newTick,
+        nations: nationList.length,
+        effects: [],
+        costs: [],
+        resolutions: [],
+        events: [],
+        apFailures: []
+    };
+    const failedNationIds = new Set();
+    const failedFactionIds = new Set();
+
+    // Accumulate AP for party factions each tick:
+    // base 5 AP, +1 if in government, +1 if approval > 60. Capped at MAX_AP.
+    // Uses atomic RPC to prevent race conditions with concurrent player deductions.
+    let apDistributed = 0;
+    let apFailed = 0;
+    for (const nation of nationList) {
+      try {
+        const { data: factions } = await supabase
+            .from('factions')
+            .select('id, approval_rating, faction_type')
+            .eq('nation_id', nation.id)
+            .eq('faction_type', 'party');
+
+        if (!factions || factions.length === 0) continue;
+
+        const coalition = await fetchActiveCoalition(supabase, nation.id);
+        const governmentPartyIds = new Set([
+            ...(coalition?.party_ids || []),
+            nation.ruling_faction_id
+        ].filter(Boolean));
+
+        for (const faction of factions) {
+            const isInGovernment = governmentPartyIds.has(faction.id);
+            let apGain = 5;
+            if (isInGovernment) apGain += 1;
+            if ((faction.approval_rating ?? 50) > 60) apGain += 1;
+
+            const result = await accumulateAP(supabase, faction.id, apGain);
+            if (result.success) {
+                console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+${apGain})`);
+                apDistributed++;
+            } else {
+                console.error(`[advanceTick] AP accumulation FAILED for faction ${faction.id}: ${result.error}`);
+                apFailed++;
+                summary.apFailures.push({
+                    nationId: nation.id,
+                    nation: nation.name,
+                    factionId: faction.id,
+                    error: result.error
+                });
+                failedNationIds.add(nation.id);
+                failedFactionIds.add(faction.id);
+            }
+        }
+      } catch (apErr) {
+        console.error(`[advanceTick] AP distribution FAILED for nation ${nation.id} (${nation.name}):`, apErr);
+        summary.errors = summary.errors || [];
+        summary.errors.push({ nation: nation.name, nationId: nation.id, phase: 'ap_distribution', error: String(apErr) });
+        apFailed++;
+        summary.apFailures.push({
+            nationId: nation.id,
+            nation: nation.name,
+            factionId: null,
+            error: String(apErr)
+        });
+        failedNationIds.add(nation.id);
+      }
+    }
+    summary.apDistributed = apDistributed;
+    summary.apFailed = apFailed;
+
+    if (apFailed > 0) {
+        summary.partial = true;
+        summary.failureReason = 'ap_distribution_failed';
+        summary.failedNationIds = Array.from(failedNationIds);
+        summary.failedFactionIds = Array.from(failedFactionIds);
+        summary.message = 'Tick marked partial: AP distribution failed for one or more factions; shard tick was not advanced.';
+        return summary;
+    }
+
+    // 3. Commit shard tick/date after critical AP phase succeeds
+    await supabase.from('shard').update({
+        current_tick: newTick,
+        next_tick_at: nextTickAt.toISOString(),
+        current_date: newDate
+    }).eq('name', 'Alpha Shard');
+
+    // Clear expired coup cooldowns
+    await supabase.from('factions')
+        .update({ action_lockout_until_tick: null })
+        .not('action_lockout_until_tick', 'is', null)
+        .lte('action_lockout_until_tick', newTick);
+
+    // Periodic integrity scan for invalid stat keys
+    if (newTick % 10 === 1) {
+        try {
+            await auditStatKeys(supabase);
+        } catch (auditErr) {
+            console.error('[advanceTick] auditStatKeys failed (non-fatal):', auditErr);
+        }
+    }
+
+    // 4. Process each nation
+    for (const nation of nationList) {
+      try {
+        // Set correct seat count for this nation (affects supermajority thresholds, etc.)
+        initGameConfigForNation(nation);
+
+        // Stat effects (from passed bills/active laws)
+        const effectResults = await processStatEffects(supabase, nation, newTick);
+        if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });
+
+        // Ministry action effects
+        const ministryResults = await processMinistryActions(supabase, nation, newTick);
+        if (ministryResults.length > 0) {
+            summary.ministryActions = summary.ministryActions || [];
+            summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
+        }
+
+        // Apply GDP growth rate
+        await applyGdpGrowth(supabase, nation);
+
+        // Ongoing costs
+        const costResult = await processOngoingCosts(supabase, nation, newTick);
+        if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
+
+        // PM trait effects
+        await processPMTraitEffects(supabase, nation, newTick);
+
+        // Elections (democracy only)
+        const electionResults = await processElections(supabase, nation, newTick);
+        if (electionResults.length > 0) {
+            summary.elections = summary.elections || [];
+            summary.elections.push({ nation: nation.name, elections: electionResults });
+        }
+
+        // Government vacancy penalties (democracy only)
+        const vacancyResult = await processGovernmentVacancy(supabase, nation, newTick);
+        if (vacancyResult) {
+            summary.vacancies = summary.vacancies || [];
+            summary.vacancies.push(vacancyResult);
+        }
+
+        // Resolve expired votes for this nation
+        const resolutions = await resolveExpiredVotes(supabase, nation.id);
+        if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
+
+        // Auto-sign expired president's desk bills (Presidential systems)
+        const deskResults = await processPresidentDesk(supabase, nation, newTick);
+        if (deskResults.length > 0) {
+            summary.presidentDesk = summary.presidentDesk || [];
+            summary.presidentDesk.push({ nation: nation.name, bills: deskResults });
+        }
+
+        // Presidential pre-election candidate generation, term end safety net, + selection timeout
+        await triggerPresidentialCandidateSelection(supabase, nation, newTick);
+        await processPresidentialTermEnd(supabase, nation, newTick);
+        await processPresidentCandidateTimeout(supabase, nation, newTick);
+        await processParliamentaryPMTimeout(supabase, nation, newTick);
+
+        // Ideology shifts from resolved bills
+        await processIdeologyShifts(supabase, nation.id, resolutions);
+
+        // Purge approval decay (autocracy scapegoat mechanic)
+        if (isGovernmentAutocracy(nation)) {
+            await processPurgeDecay(supabase, nation.id, newTick);
+        }
+
+        // Bloc approval decay toward ideology-based targets
+        await processBlocApprovalDecay(supabase, nation);
+
+        // Random ±1D3% jitter to party standings (democracies only)
+        await processPartyStandingsJitter(supabase, nation);
+
+        // Stat decay (equilibrium drift + erosion)
+        await processStatDecay(supabase, nation);
+
+        // Three-pillar voter preference recalculation
+        await calculateThreePillarPreferences(supabase, nation, newTick);
+
+        // Faction loyalty (autocracy)
+        if (isGovernmentAutocracy(nation)) {
+            await processLoyaltyTick(supabase, nation);
+        }
+
+        // Auto-resolve shakeups that are 1+ ticks old
+        if (isGovernmentAutocracy(nation)) {
+            await autoResolveStaleShakeups(supabase, nation.id, newTick);
+        }
+
+        // Re-fetch nation with post-effect values, then snapshot to history
+        const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+        if (freshNation) Object.assign(nation, freshNation);
+        await snapshotNationHistory(supabase, freshNation || nation, newTick);
+
+        // Crises (persistent negative events that apply effects every tick)
+        const crisisResults = await processCrises(supabase, nation, newTick);
+        if (crisisResults.length > 0) {
+            summary.crises = summary.crises || [];
+            summary.crises.push({ nation: nation.name, crises: crisisResults });
+        }
+
+        // Democratic revolution (autocracy only)
+        const revolutionResult = await processRevolution(supabase, nation, newTick);
+        if (revolutionResult) {
+            summary.revolutions = summary.revolutions || [];
+            summary.revolutions.push(revolutionResult);
+        }
+
+        // Random events
+        const eventResults = await processEvents(supabase, nation, newTick);
+        if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
+
+        // Ministry inbox events (fire from templates + expire overdue)
+        const ministryEventResults = await processMinistryInboxEvents(supabase, freshNation || nation, newTick);
+        if (ministryEventResults.length > 0) {
+            summary.ministryEvents = summary.ministryEvents || [];
+            summary.ministryEvents.push({ nation: nation.name, events: ministryEventResults });
+        }
+      } catch (nationErr) {
+        console.error(`[advanceTick] FAILED processing nation ${nation.id} (${nation.name}):`, nationErr);
+        summary.errors = summary.errors || [];
+        summary.errors.push({ nation: nation.name, nationId: nation.id, error: String(nationErr) });
+      }
+    }
+
+    return summary;
+}
 
 // ===== INTEGRITY CHECKS =====
 
