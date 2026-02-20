@@ -2378,11 +2378,11 @@ body.light-mode .outreach-bloc-row:hover {
 .fundraiser-panel {
     background: var(--bg-panel, #1a1a1a);
     border: 1px solid var(--border-main, #333);
-    border-left: 4px solid #ffd700;
     border-radius: 8px;
-    padding: 18px 20px;
-    flex: 1;
-    min-width: 0;
+    padding: 20px 24px;
+    margin-top: 20px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .fundraiser-panel-results {
@@ -2397,9 +2397,11 @@ body.light-mode .outreach-bloc-row:hover {
 }
 
 .fundraiser-title {
+    font-size: 0.7rem;
     font-weight: 700;
-    font-size: 1.05rem;
-    color: #ffd700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-secondary, #888);
 }
 
 .fundraiser-cost {
