@@ -1077,14 +1077,25 @@ async function renderParties() {
     for (const m of (allMinistries || [])) ministryHolder[m.ministry_key] = m.party_id;
     if (coalition && coalition.lead_party_id) ministryHolder['prime_minister'] = coalition.lead_party_id;
 
-    // Fetch previous tick for trend if not already done
+    // Fetch history from 3 ticks ago for trend (wider window catches gradual changes)
     let pcPrevStats = null;
     const pcTick = currentShard?.current_tick || 0;
+    const PC_TREND_WINDOW = 3;
     if (pcTick > 0) {
+        const lookbackTick = Math.max(0, pcTick - PC_TREND_WINDOW);
         const { data: histRow } = await _supabase
             .from('nations_history').select('*')
-            .eq('nation_id', n.id).eq('tick', pcTick - 1).single();
-        pcPrevStats = histRow;
+            .eq('nation_id', n.id).eq('tick', lookbackTick).maybeSingle();
+        if (histRow) {
+            pcPrevStats = histRow;
+        } else {
+            // Fallback: oldest available row before current tick
+            const { data: fallbackRows } = await _supabase
+                .from('nations_history').select('*')
+                .eq('nation_id', n.id).lt('tick', pcTick)
+                .order('tick', { ascending: true }).limit(1);
+            pcPrevStats = fallbackRows?.[0] || null;
+        }
     }
 
     const MINISTRY_DISPLAY = {
