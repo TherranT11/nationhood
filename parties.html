@@ -1522,18 +1522,6 @@ async function renderParties() {
     let fundraiserOffer = null;
     let fundraiserResult = null;
 
-    // Check cooldown
-    const { data: recentFundraisers } = await _supabase
-        .from('campaign_actions')
-        .select('tick_performed')
-        .eq('party_id', f.id)
-        .eq('action_type', 'fundraiser')
-        .order('tick_performed', { ascending: false })
-        .limit(1);
-    const lastFundraiserTick = recentFundraisers?.[0]?.tick_performed ?? -999;
-    const fundraiserCooldownRemaining = Math.max(0, FUNDRAISER_CONFIG.COOLDOWN_TICKS - ((currentShard?.current_tick || 0) - lastFundraiserTick));
-    const fundraiserOnCooldown = fundraiserCooldownRemaining > 0;
-
     window.openFundraiserForBloc = function(blocId) {
         fundraiserScreen = 'loading';
         renderFundraiser();
@@ -1555,7 +1543,7 @@ async function renderParties() {
 
         if (fundraiserScreen === 'closed') {
             const costOk = currentAP >= FUNDRAISER_CONFIG.AP_COST;
-            const disabled = fundraiserOnCooldown || !costOk;
+            const disabled = !costOk;
 
             const blocRows = (blocs || []).map(b => {
                 const approvalRow = (allBlocApprovals || []).find(a => a.bloc_id === b.id && a.faction_id === f.id);
@@ -1581,8 +1569,7 @@ async function renderParties() {
                         <span class="fundraiser-cost">Cost: ${FUNDRAISER_CONFIG.AP_COST} AP</span>
                     </div>
                     <div class="fundraiser-donor-desc">Choose a voter bloc to approach for donations. They'll offer clean money, or big money with a political demand.</div>
-                    ${fundraiserOnCooldown ? `<div class="outreach-cooldown" style="color:#ff9800;">On cooldown — available in ${fundraiserCooldownRemaining} tick(s).</div>` : ''}
-                    ${!costOk && !fundraiserOnCooldown ? '<div class="outreach-cooldown" style="color:#ff4444;">Not enough AP.</div>' : ''}
+                    ${!costOk ? '<div class="outreach-cooldown" style="color:#ff4444;">Not enough AP.</div>' : ''}
                     <div class="fundraiser-divider"></div>
                     <div class="fundraiser-bloc-header">
                         <span class="fundraiser-bloc-name">Bloc</span>
@@ -1640,7 +1627,7 @@ async function renderParties() {
                     <div class="fundraiser-option">
                         <div class="fundraiser-option-label">OPTION A: NO STRINGS</div>
                         <div class="fundraiser-option-box">
-                            <div class="fundraiser-option-amount">Accept $${offer.smallAmount.toLocaleString()}</div>
+                            <div class="fundraiser-option-amount">Accept $${offer.smallAmount.toLocaleString()}${o.smallHalved ? ' <span style="color:#ffa500;font-size:0.85em;">(half rate — active promise pending)</span>' : ''}</div>
                             <div class="fundraiser-option-desc">No obligations. No promises. Clean money.</div>
                             <button class="fundraiser-btn fundraiser-btn-accept" id="fundraiser-accept-small">ACCEPT</button>
                         </div>
@@ -1666,7 +1653,9 @@ async function renderParties() {
                     <div class="fundraiser-option">
                         <div class="fundraiser-option-label">OPTION B: UNAVAILABLE</div>
                         <div class="fundraiser-option-box fundraiser-option-locked">
-                            <div class="fundraiser-option-desc" style="color:#ff4444;">Large donations are unavailable. This bloc doesn't trust you with conditions right now.</div>
+                            <div class="fundraiser-option-desc" style="color:#ff4444;">${o.hasActivePromiseWithBloc
+                                ? 'Large donations are unavailable. Fulfill your active promise to this bloc before requesting another.'
+                                : 'Large donations are unavailable. This bloc doesn\'t trust you with conditions right now.'}</div>
                         </div>
                     </div>
                     `}

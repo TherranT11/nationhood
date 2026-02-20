@@ -5848,9 +5848,8 @@ async function executeOutreach(supabase, factionId, nationId, blocId, currentTic
 // ==================== FUNDRAISER PROMISE TICK PROCESSING ====================
 
 const FUNDRAISER_CONFIG = {
-    AP_COST: 1,
+    AP_COST: 2,
     MONEY_COST: 0,
-    COOLDOWN_TICKS: 3,
     PROMISE_KEPT_PREF_BONUS: 5,
     PROMISE_KEPT_MOMENTUM: 4,
     PROMISE_KEPT_DONATION_MULTIPLIER_BONUS: 0.25,
