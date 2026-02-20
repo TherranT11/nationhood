@@ -1099,12 +1099,13 @@ async function fmEscalate(proposalId) {
         .insert({
             nation_id: currentNation.id,
             bill_type: 'ratification',
-            title: billTitle,
-            description: billDescription,
-            introduced_by_faction_id: currentFaction.id,
-            proposal_id: proposalId,
+            bill_name: billTitle,
+            preamble: billDescription,
+            proposed_by: currentFaction.id,
+            diplomatic_proposal_id: proposalId,
             status: 'committee',
-            introduced_at_tick: currentTick
+            proposed_tick: currentTick,
+            voting_ends_tick: currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS
         })
         .select('id')
         .single();
