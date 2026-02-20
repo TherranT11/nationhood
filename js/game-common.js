@@ -5791,9 +5791,8 @@ export async function executeOutreach(supabase, factionId, nationId, blocId, cur
 // ==================== FUNDRAISER SYSTEM ====================
 
 export const FUNDRAISER_CONFIG = {
-    AP_COST: 1,
+    AP_COST: 2,
     MONEY_COST: 0,
-    COOLDOWN_TICKS: 3,
     PROMISE_KEPT_PREF_BONUS: 5,
     PROMISE_KEPT_MOMENTUM: 4,
     PROMISE_KEPT_DONATION_MULTIPLIER_BONUS: 0.25,  // +25% future large donations
@@ -6597,20 +6596,7 @@ export async function executeFundraiserOffer(supabase, factionId, nationId, curr
     if ((faction.action_points || 0) < FUNDRAISER_CONFIG.AP_COST)
         return { success: false, error: `Not enough AP. Need ${FUNDRAISER_CONFIG.AP_COST}.` };
 
-    // ── 2. Check cooldown ──
-    const { data: recentFundraisers } = await supabase
-        .from('campaign_actions')
-        .select('tick_performed')
-        .eq('party_id', factionId)
-        .eq('action_type', 'fundraiser')
-        .order('tick_performed', { ascending: false })
-        .limit(1);
-
-    const lastTick = recentFundraisers?.[0]?.tick_performed ?? -999;
-    if (currentTick - lastTick < FUNDRAISER_CONFIG.COOLDOWN_TICKS)
-        return { success: false, error: `Fundraiser on cooldown. Available in ${FUNDRAISER_CONFIG.COOLDOWN_TICKS - (currentTick - lastTick)} tick(s).` };
-
-    // ── 3. Load the chosen voter bloc ──
+    // ── 2. Load the chosen voter bloc ──
     const { data: selectedBloc } = await supabase
         .from('voter_blocs')
         .select('id, bloc_name, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
@@ -6641,25 +6627,36 @@ export async function executeFundraiserOffer(supabase, factionId, nationId, curr
 
     const isLockedOut = trustRow && trustRow.lockout_until_tick > currentTick;
     const globalBrokenRecent = trustRow?.recent_broken_count ?? 0;
-    const bigOffersBlocked = isLockedOut || globalBrokenRecent >= FUNDRAISER_CONFIG.GLOBAL_BROKEN_LOCKOUT_THRESHOLD;
 
     const trustMultiplier = trustRow?.large_donation_multiplier ?? 1.0;
 
-    // ── 6. Load nation stats for demand generation ──
-    const { data: nation } = await supabase
-        .from('nations').select('*').eq('id', nationId).single();
-    if (!nation) return { success: false, error: 'Nation not found.' };
-
-    // ── 7. Generate offer ──
-    const offer = generateFundraiserOffer(selectedBloc.bloc_name, nation, trustMultiplier);
-    if (!offer) return { success: false, error: 'Could not generate an offer for this bloc.' };
-
-    // ── 8. Load active promises for conflict detection ──
+    // ── 6. Load active promises — check for existing promise with this bloc ──
     const { data: activePromises } = await supabase
         .from('fundraiser_promises')
         .select('*')
         .eq('party_id', factionId)
         .eq('status', 'active');
+
+    const hasActivePromiseWithBloc = (activePromises || []).some(p => p.bloc_id === selectedBloc.id);
+
+    // If active promise with this bloc: small donation halved, large blocked
+    // If trust locked out or too many broken promises: large also blocked
+    const bigOffersBlocked = hasActivePromiseWithBloc || isLockedOut || globalBrokenRecent >= FUNDRAISER_CONFIG.GLOBAL_BROKEN_LOCKOUT_THRESHOLD;
+    const smallHalved = hasActivePromiseWithBloc;
+
+    // ── 7. Load nation stats for demand generation ──
+    const { data: nation } = await supabase
+        .from('nations').select('*').eq('id', nationId).single();
+    if (!nation) return { success: false, error: 'Nation not found.' };
+
+    // ── 8. Generate offer ──
+    const offer = generateFundraiserOffer(selectedBloc.bloc_name, nation, trustMultiplier);
+    if (!offer) return { success: false, error: 'Could not generate an offer for this bloc.' };
+
+    // Halve the small amount if they already have an active promise with this bloc
+    if (smallHalved) {
+        offer.smallAmount = Math.round(offer.smallAmount / 2);
+    }
 
     const conflicts = detectPromiseConflicts(offer.demand, activePromises || []);
 
@@ -6684,6 +6681,8 @@ export async function executeFundraiserOffer(supabase, factionId, nationId, curr
         blocIdeologyTags,
         offer,
         bigOffersBlocked,
+        smallHalved,
+        hasActivePromiseWithBloc,
         conflicts,
         currentTreasury: faction.party_funds || 0,
         currentAP: faction.action_points || 0,
