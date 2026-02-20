@@ -31,7 +31,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatNumber, scaleRawToDollars } from './js/common.js';
-import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, INVERTED_STATS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, normalizeNationStatKey } from './js/game-common.js';
+import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, INVERTED_STATS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
 /**
  * Nation Page - Comprehensive Stats Display
  * With Rankings and Trend Arrows
@@ -148,6 +148,7 @@ async function loadStatEffectSources(nationId, nation) {
     parseMinistryEffects(results[2].data || [], map);
     parseDiplomaticEffects(results[3].data || [], map);
     parseLeaderTraitEffects(results[4], map);
+    parseDecayEffects(nation, map);
 
     statEffectsByKey = map;
     qCacheSet(cacheKey, map, 2 * 60 * 1000);
@@ -267,6 +268,18 @@ function parseLeaderTraitEffects(traitData, map) {
         var delta = perTick[rawStat];
         if (delta === 0) continue;
         addEffectToMap(map, rawStat, traitLabel, delta > 0 ? 'up' : 'down', 'Leader Trait');
+    }
+}
+
+function parseDecayEffects(nation, map) {
+    for (var statKey in STAT_DECAY_CONFIG) {
+        if (!STAT_DECAY_CONFIG.hasOwnProperty(statKey)) continue;
+        var config = STAT_DECAY_CONFIG[statKey];
+        var currentVal = nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 50;
+        if (currentVal === config.target) continue;
+        var dir = currentVal > config.target ? 'down' : 'up';
+        var label = config.type === 'erosion' ? 'Natural Erosion' : 'Natural Decay';
+        addEffectToMap(map, statKey, label, dir, 'Decay');
     }
 }
 
