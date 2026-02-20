@@ -121,7 +121,8 @@ body.light-mode .role-badge-none {
 /* ---- Stats row ---- */
 .my-party-stats {
     display: flex;
-    gap: 28px;
+    flex-wrap: wrap;
+    gap: 14px 28px;
     padding-top: 14px;
     border-top: 1px solid var(--border-main, #333);
 }
@@ -604,5 +605,18 @@ body.light-mode .bloc-bar-track {
     }
     .bloc-approval-footer {
         flex-direction: column;
+    }
+    /* Party stats: 2×2 grid on mobile */
+    .my-party-stats {
+        gap: 10px 16px;
+    }
+    .my-party-stat {
+        flex: 1 1 calc(50% - 16px);
+        min-width: 0;
+    }
+    .my-party-stat .stat-val {
+        white-space: normal;
+        word-break: break-word;
+        font-size: 0.82rem;
     }
 }
