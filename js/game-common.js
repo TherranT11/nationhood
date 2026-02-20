@@ -6584,11 +6584,11 @@ export function detectPromiseConflicts(newDemand, activePromises) {
 }
 
 /**
- * Execute the fundraiser action.
- * Steps: validate -> select bloc -> generate offer -> return offer for UI.
+ * Execute the fundraiser action for a specific voter bloc chosen by the player.
+ * Steps: validate -> generate offer for chosen bloc -> return offer for UI.
  * The player then chooses (small / large+promise / decline) in a separate call.
  */
-export async function executeFundraiserOffer(supabase, factionId, nationId, currentTick) {
+export async function executeFundraiserOffer(supabase, factionId, nationId, currentTick, blocId) {
     // ── 1. Validate AP ──
     const { data: faction } = await supabase
         .from('factions').select('party_funds, action_points, abbreviation, faction_name')
@@ -6610,23 +6610,24 @@ export async function executeFundraiserOffer(supabase, factionId, nationId, curr
     if (currentTick - lastTick < FUNDRAISER_CONFIG.COOLDOWN_TICKS)
         return { success: false, error: `Fundraiser on cooldown. Available in ${FUNDRAISER_CONFIG.COOLDOWN_TICKS - (currentTick - lastTick)} tick(s).` };
 
-    // ── 3. Load voter blocs + approval ──
-    const { data: blocs } = await supabase
+    // ── 3. Load the chosen voter bloc ──
+    const { data: selectedBloc } = await supabase
         .from('voter_blocs')
         .select('id, bloc_name, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
-        .eq('nation_id', nationId).eq('is_active', true);
+        .eq('id', blocId).single();
+    if (!selectedBloc) return { success: false, error: 'Voter bloc not found.' };
 
-    const { data: approvalRows } = await supabase
+    // ── 4. Check bloc preference — blocs below 20 pref won't fund you ──
+    const { data: approvalRow } = await supabase
         .from('faction_bloc_approval')
         .select('id, bloc_id, preference_score, momentum')
-        .eq('faction_id', factionId);
+        .eq('faction_id', factionId)
+        .eq('bloc_id', blocId)
+        .single();
+    if (!approvalRow) return { success: false, error: 'No approval data for this bloc.' };
 
-    if (!blocs || blocs.length === 0) return { success: false, error: 'No voter blocs found.' };
-    if (!approvalRows || approvalRows.length === 0) return { success: false, error: 'No approval data found.' };
-
-    // ── 4. Select donor bloc ──
-    const selectedBloc = selectDonorBloc(blocs, approvalRows);
-    if (!selectedBloc) return { success: false, error: 'No bloc is willing to fund you right now. Improve your standing.' };
+    const pref = Number(approvalRow.preference_score ?? 0);
+    if (pref < 20) return { success: false, error: `${selectedBloc.bloc_name} won't fund you — your preference is too low (${Math.round(pref)}%).` };
 
     // ── 5. Check donor trust / lockout ──
     let trustRow = null;
