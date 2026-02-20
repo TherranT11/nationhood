@@ -406,12 +406,21 @@ async function renderParties() {
     }
 
     // === Approval by Voter Bloc (build HTML) ===
+    const totalEligible = n.eligible_voters || 0;
+    function compactNum(v) {
+        if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+        if (v >= 1_000) return (v / 1_000).toFixed(v >= 100_000 ? 0 : 1).replace(/\.0$/, '') + 'K';
+        return String(Math.round(v));
+    }
+
     let blocTableHtml = '';
     for (const r of blocRows) {
         const barColor = r.isLeading ? partyColor : 'var(--text-muted, #555)';
+        const voters = compactNum(totalEligible * (r.popWeight / 100));
         blocTableHtml += `
             <div class="bloc-row${r.isLeading ? ' bloc-row-leading' : ''}">
                 <span class="bloc-name">${r.blocName}</span>
+                <span class="bloc-voters">${voters}</span>
                 <div class="bloc-bar-track">
                     <div class="bloc-bar-fill" style="width:${r.myApproval}%;background:${barColor}"></div>
                 </div>
@@ -513,6 +522,7 @@ async function renderParties() {
             </div>
             <div class="bloc-table-header">
                 <span class="bloc-name">Bloc</span>
+                <span class="bloc-voters">Voters</span>
                 <span class="bloc-bar-track-header"></span>
                 <span class="bloc-approval">Your Approval</span>
                 <span class="bloc-change">Change</span>
