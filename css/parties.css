@@ -1017,6 +1017,9 @@ body.light-mode .rally-subject-row:hover {
     gap: 20px;
     align-items: flex-start;
     margin-top: 20px;
+    max-width: 85%;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 /* ===== PRESS CONFERENCE PANEL ===== */
@@ -1433,8 +1436,6 @@ body.light-mode .pc-proj-neutral {
     padding: 20px 24px;
     margin-top: 20px;
     max-width: 33%;
-    margin-left: auto;
-    margin-right: auto;
 }
 
 .outreach-header-row {
