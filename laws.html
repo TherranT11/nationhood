@@ -610,6 +610,8 @@ function renderCommitteeBill(bill) {
     let decreeActionsHTML = '';
     if (lawsIsAutocracy) {
         decreeActionsHTML = `<div class="decree-actions">${isHeadFaction ? `<button class="decree-action-btn enact" onclick="event.stopPropagation(); enactDecree('${bill.id}')">⚡ Enact Decree</button>` : ''}${isSponsor ? `<button class="decree-action-btn retract-decree" onclick="event.stopPropagation(); retractBill('${bill.id}')">Retract</button>` : ''}</div>`;
+    } else if (isSponsor) {
+        decreeActionsHTML = `<div class="decree-actions"><button class="decree-action-btn retract-decree" onclick="event.stopPropagation(); retractBill('${bill.id}')">Retract Bill</button></div>`;
     }
     return `
         <div class="committee-bill clickable-bill" onclick="window.location.href='bill.html?id=${bill.id}'">
@@ -1094,8 +1096,38 @@ async function setStance(billId, stance) {
 }
 
 async function retractBill(billId) {
-    if (!confirm(`Retract this ${termBill.toLowerCase()}?`)) return;
+    if (!confirm(`Retract this ${termBill.toLowerCase()}? This cannot be undone.`)) return;
     try {
+        // Load bill + articles before deletion so we can reverse ideology
+        const { data: bill } = await _supabase.from('bills')
+            .select('proposed_by, bill_articles(*, policies(*))')
+            .eq('id', billId).single();
+
+        // Reverse ideology shift: -1 per ideology tag (mirrors +1 proposer bonus)
+        if (bill && bill.proposed_by === currentFaction?.id) {
+            const ideo = await loadFactionIdeology(_supabase, bill.proposed_by);
+            if (ideo) {
+                const updateObj = {};
+                for (const art of (bill.bill_articles || [])) {
+                    const p = art.policies || art;
+                    if (!p) continue;
+                    const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
+                        ? p.ideologies.map(i => i.toUpperCase())
+                        : (p.ideology ? [p.ideology.toUpperCase()] : []);
+                    for (const tag of ideos) {
+                        const mapping = IDEOLOGY_TO_AXIS[tag];
+                        if (!mapping) continue;
+                        const reversal = -1 * mapping.direction;
+                        const key = mapping.axisKey;
+                        updateObj[key] = Math.max(-100, Math.min(100, (updateObj[key] ?? ideo[key] ?? 0) + reversal));
+                    }
+                }
+                if (Object.keys(updateObj).length > 0) {
+                    await _supabase.from('faction_ideology').update(updateObj).eq('faction_id', bill.proposed_by);
+                }
+            }
+        }
+
         await _supabase.from('bill_support').delete().eq('bill_id', billId);
         await _supabase.from('bill_articles').delete().eq('bill_id', billId);
         await _supabase.from('bills').delete().eq('id', billId);

@@ -908,6 +908,32 @@ async function sendToFloor() {
 async function retractBill() {
     if (!confirm('Retract this? This cannot be undone.')) return;
     try {
+        // Reverse ideology shift: -1 per ideology tag (mirrors +1 proposer bonus)
+        if (currentBill && currentBill.proposed_by === currentFaction?.id) {
+            const ideo = await loadFactionIdeology(_supabase, currentBill.proposed_by);
+            if (ideo) {
+                const articles = currentBill.bill_articles || [];
+                const updateObj = {};
+                for (const art of articles) {
+                    const p = art.policies || art;
+                    if (!p) continue;
+                    const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
+                        ? p.ideologies.map(i => i.toUpperCase())
+                        : (p.ideology ? [p.ideology.toUpperCase()] : []);
+                    for (const tag of ideos) {
+                        const mapping = IDEOLOGY_TO_AXIS[tag];
+                        if (!mapping) continue;
+                        const reversal = -1 * mapping.direction;
+                        const key = mapping.axisKey;
+                        updateObj[key] = Math.max(-100, Math.min(100, (updateObj[key] ?? ideo[key] ?? 0) + reversal));
+                    }
+                }
+                if (Object.keys(updateObj).length > 0) {
+                    await _supabase.from('faction_ideology').update(updateObj).eq('faction_id', currentBill.proposed_by);
+                }
+            }
+        }
+
         await _supabase.from('bill_comments').delete().eq('bill_id', billId);
         await _supabase.from('bill_amendment_requests').delete().eq('bill_id', billId);
         await _supabase.from('bill_support').delete().eq('bill_id', billId);
