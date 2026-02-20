@@ -606,14 +606,6 @@ async function renderNationPage(nation) {
         renderStatBox('Sanctions', 'sanctions', nation.sanctions, 'International penalties', null, true)
     ]);
 
-    // VOTER DEMOGRAPHICS
-    h += '<div class="sector-block"><div class="sector-header"><span class="sector-icon">🗳️</span> Voter Demographics</div>';
-    h += renderVoterAxis('Competition', nation.competition_voters, 'Cooperation');
-    h += renderVoterAxis('Liberty', nation.liberty_voters, 'Equality');
-    h += renderVoterAxis('Security', nation.security_voters, 'Freedom');
-    h += renderVoterAxis('Globalism', nation.globalism_voters, 'Nationalism');
-    h += '</div>';
-
     h += '</div>'; // end stats-section
 
     document.getElementById('content-area').innerHTML = h;
@@ -726,17 +718,6 @@ function renderStatBox(name, statKey, value, description, format, inverted, disp
         rankHTML +
         '<div class="affected-by-panel" id="abp-' + statKey + '"></div>' +
     '</div>';
-}
-
-function renderVoterAxis(leftLabel, leftValue, rightLabel) {
-    var leftPct = (leftValue !== null && leftValue !== undefined) ? Math.round(leftValue * 10) / 10 : 50;
-    var rightPct = Math.round((100 - leftPct) * 10) / 10;
-    return '<div class="voter-axis">' +
-        '<div class="voter-axis-header"><span class="voter-axis-left">' + leftLabel + '</span><span class="voter-axis-right">' + rightLabel + '</span></div>' +
-        '<div class="voter-bar-container">' +
-            '<div class="voter-bar-left" style="width:' + leftPct + '%">' + leftPct + '%</div>' +
-            '<div class="voter-bar-right">' + rightPct + '%</div>' +
-        '</div></div>';
 }
 
 function formatPopulation(pop) {

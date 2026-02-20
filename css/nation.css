@@ -266,49 +266,6 @@
         background: var(--your-party-bg);
     }
 
-    /* Voter Demographics Special Section */
-    .voter-axis {
-        background: var(--bg-panel);
-        border-radius: 6px;
-        padding: 14px;
-        margin-bottom: 12px;
-    }
-    .voter-axis-header {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 8px;
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    .voter-axis-left { color: var(--blue); }
-    .voter-axis-right { color: var(--orange); }
-    .voter-bar-container {
-        height: 24px;
-        background: var(--border-main);
-        border-radius: 4px;
-        overflow: hidden;
-        display: flex;
-    }
-    .voter-bar-left {
-        background: linear-gradient(90deg, #2196F3, #64B5F6);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-size: 0.75rem;
-        font-weight: bold;
-    }
-    .voter-bar-right {
-        background: linear-gradient(90deg, #FFB74D, #ff9800);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-size: 0.75rem;
-        font-weight: bold;
-        flex: 1;
-    }
 
     /* ===== Affected-By Panel ===== */
     .stat-box[data-stat-key] {
