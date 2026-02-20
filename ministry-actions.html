@@ -71,7 +71,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
-import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, GAME_CONFIG, initGameConfigForNation, loadSeats, deductAP, CANONICAL_GOVERNMENT_TYPES, adjustBlocApproval, markFactionActive } from './js/game-common.js';
+import { isGovernmentAutocracy, isGovernmentPresidential, fetchActiveCoalition, detectHeadFaction, GAME_CONFIG, initGameConfigForNation, loadSeats, deductAP, CANONICAL_GOVERNMENT_TYPES, adjustBlocApproval, adjustMomentum, markFactionActive } from './js/game-common.js';
 (function () {
     'use strict';
 // ==================== HELPERS ====================
@@ -961,6 +961,8 @@ async function respondToEvent(eventId, optionIndex) {
                 }
             } else if (eff.target === 'faction') {
                 await adjustBlocApproval(_supabase, currentFaction.id, change);
+                // Also feed into Three-Pillar momentum so preference_score updates
+                await adjustMomentum(_supabase, currentFaction.id, change);
             }
             appliedEffects.push({ stat_key: eff.stat_key, change: change, target: eff.target || 'nation' });
         }
