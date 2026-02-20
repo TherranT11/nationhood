@@ -386,7 +386,7 @@ async function renderParties() {
             <div id="poll-selector" class="poll-selector"></div>
 
             <div class="section-header" style="margin-top: 20px;">Party Actions</div>
-            <div class="action-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 16px;">
+            <div class="action-grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 16px;">
                 <div class="action-card">
                     <div class="action-header">
                         <div class="action-title">Generate Poll</div>
@@ -415,22 +415,8 @@ async function renderParties() {
                         Build Coalition
                     </button>
                 </div>
-                <div class="action-card">
-                    <div class="action-header">
-                        <div class="action-title">Fundraiser</div>
-                        <div class="action-cost">${FUNDRAISER_CONFIG.AP_COST} AP</div>
-                    </div>
-                    <div class="action-desc">
-                        Hold a fundraising event. A voter bloc's donors approach with two envelopes: clean money, or big money with a political demand.
-                        <br><span style="color: #888; font-size: 0.78rem;">Cooldown: ${FUNDRAISER_CONFIG.COOLDOWN_TICKS} ticks.</span>
-                    </div>
-                    <button class="action-btn" id="btn-fundraiser" onclick="openFundraiserPanel()">
-                        Hold Fundraiser
-                    </button>
-                </div>
             </div>
             <div id="coalition-panel" class="donor-panel"></div>
-            <div id="fundraiser-container" class="donor-panel"></div>
 
             <div class="section-header" style="margin-top: 20px;">Recent Actions</div>
             <div id="action-log" class="action-log"><div class="action-log-empty">No actions taken yet this campaign.</div></div>`;
@@ -779,6 +765,8 @@ async function renderParties() {
         </div>
 
         <div id="outreach-container"></div>
+
+        <div id="fundraiser-container"></div>
 
         <div id="promises-container"></div>
 
@@ -1570,7 +1558,29 @@ async function renderParties() {
         if (!container) return;
 
         if (fundraiserScreen === 'closed') {
-            container.innerHTML = '';
+            const costOk = currentAP >= FUNDRAISER_CONFIG.AP_COST;
+            container.innerHTML = `
+                <div class="fundraiser-panel">
+                    <div class="fundraiser-header-row">
+                        <span class="fundraiser-title">Hold a Fundraiser</span>
+                        <span class="fundraiser-cost">Cost: ${FUNDRAISER_CONFIG.AP_COST} AP</span>
+                    </div>
+                    <div class="fundraiser-donor-desc">Hold a fundraising event. A voter bloc's donors will approach you with two envelopes: clean money with no strings, or big money with a political demand attached.</div>
+                    <div class="fundraiser-divider"></div>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">
+                        <span>Cooldown: ${FUNDRAISER_CONFIG.COOLDOWN_TICKS} ticks</span>
+                        ${fundraiserOnCooldown ? `<span style="color:#ff9800;">Available in ${fundraiserCooldownRemaining} tick(s)</span>` : '<span style="color:#4CAF50;">Available now</span>'}
+                    </div>
+                    ${fundraiserOnCooldown || !costOk
+                        ? `<button class="fundraiser-btn fundraiser-btn-accept" disabled style="opacity:0.4;cursor:not-allowed;">${fundraiserOnCooldown ? 'On Cooldown' : 'Not Enough AP'}</button>`
+                        : '<button class="fundraiser-btn fundraiser-btn-promise" id="fundraiser-start">FIND DONORS</button>'
+                    }
+                </div>`;
+
+            const startBtn = document.getElementById('fundraiser-start');
+            if (startBtn) {
+                startBtn.addEventListener('click', () => { window.openFundraiserPanel(); });
+            }
             return;
         }
 
@@ -1900,6 +1910,10 @@ async function renderParties() {
     }
 
     renderPromises();
+
+    // ── Tab Switching ──
+    // Render default fundraiser panel (always visible, like rally/outreach)
+    renderFundraiser();
 }
 
 initPage('parties', async (state) => {
