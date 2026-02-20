@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Parties | Nationhood Alpha</title>
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/parties.css">
@@ -17,665 +18,292 @@
 </div>
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { initPage, qCache, qCacheSet, formatNumber } from './js/common.js';
-import { loadSeats, loadFactionIdeology, IDEOLOGY_TO_AXIS, GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, detectHeadFaction, fetchActiveCoalition, deductAP, getIdeologyLabel, IDEOLOGY_AXES, disbandParty, loadNationIdeologies, adjustBlocApproval, ensureBlocApprovals, getIdeologySummary, markFactionActive, recalcDerivedApproval, BUILD_COALITION_AP_COST, BUILD_COALITION_MONEY_COST, BUILD_COALITION_COOLDOWN_TICKS, BUILD_COALITION_PANDER_HISTORY_TICKS, PANDER_OPPOSITION_MAP } from './js/game-common.js';
-import { PARTY_ICONS, PARTY_COLOR_PALETTE, DEFAULT_PARTY_ICON, getPartyIconSVG, getDefaultPartyColor, colorDistance } from './js/party-icons.js';
+import { initPage, qCache, formatCurrency } from './js/common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach } from './js/game-common.js';
+import { getPartyIconSVG } from './js/party-icons.js';
+
 let currentFaction = null;
 let currentNation = null;
+let currentShard = null;
 
-// Ideology data caches
-let ideologyDataMap = {};       // factionId -> faction_ideology row
-// (ideology events cache removed — simplified ideology system)
-let allPartiesCache = [];       // all parties for this nation
-let selectedChipIds = new Set(); // currently selected party IDs in comparison chart
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function tickToDate(tick) {
+    if (tick == null) return '—';
+    const y = 2000 + Math.floor(tick / 12);
+    return `${MONTHS[tick % 12]}, ${y}`;
+}
 
-// Faction colors — sourced from DB party_color field, falling back to palette
-const FACTION_COLORS_FALLBACK = [
-    '#ffcc00', '#4CAF50', '#2196F3', '#ff4444', '#ff9800',
-    '#9C27B0', '#00BCD4', '#E91E63', '#8BC34A', '#FF5722'
-];
-let factionColorMap = {};
+function ordinal(n) {
+    const s = ['th','st','nd','rd'];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
 
-// Poll / voter bloc data
-let _voterBlocs = [];
-let _currentShardTick = 0;
-let _currentShardDate = '';
-const POLL_AP_COST = 2;
-const POLL_COST_PER_BLOC = 25000;
-const POLL_COOLDOWN_TICKS = 3;
-
-// ===================================================================
-// COURT DONORS CONFIG
-// ===================================================================
-const COURT_DONORS_AP_COST = 2;
-const COURT_DONORS_COOLDOWN_TICKS = 3;
-
-const DONOR_BLOC_CONFIG = {
-    'Business Owners': {
-        yield: [300000, 500000],
-        bonus: null,
-        approvalCosts: [
-            { blocName: 'Urban Workers', delta: -5 },
-            { blocName: 'Ethnic Minorities', delta: -3 }
-        ]
-    },
-    'Military & Security': {
-        yield: [150000, 300000],
-        bonus: null,
-        approvalCosts: [
-            { blocName: 'Urban Progressives', delta: -3 },
-            { blocName: 'Academics & Professionals', delta: -3 }
-        ]
-    },
-    'Religious Conservatives': {
-        yield: [100000, 200000],
-        bonus: { type: 'approval', label: 'Volunteer Network', delta: 2 },
-        approvalCosts: [
-            { blocName: 'Urban Progressives', delta: -5 },
-            { blocName: 'Academics & Professionals', delta: -3 }
-        ]
-    },
-    'Nationalist Bloc': {
-        yield: [150000, 300000],
-        bonus: { type: 'approval', label: 'Rally Turnout', delta: 2 },
-        approvalCosts: [
-            { blocName: 'Ethnic Minorities', delta: -5 },
-            { blocName: 'Urban Progressives', delta: -3 }
-        ]
-    },
-    'Rural Traditionalists': {
-        yield: [50000, 150000],
-        bonus: { type: 'money', label: 'In-Kind Support', amount: 25000 },
-        approvalCosts: [
-            { blocName: 'Urban Progressives', delta: -3 },
-            { blocName: 'Urban Workers', delta: -3 }
-        ]
-    },
-    'Urban Workers': {
-        yield: [75000, 200000],
-        bonus: null,
-        approvalCosts: [
-            { blocName: 'Business Owners', delta: -5 }
-        ]
-    },
-    'Urban Progressives': {
-        yield: [100000, 250000],
-        bonus: { type: 'approval', label: 'Media Boost', delta: 2 },
-        approvalCosts: [
-            { blocName: 'Religious Conservatives', delta: -3 },
-            { blocName: 'Rural Traditionalists', delta: -3 }
-        ]
-    },
-    'Academics & Professionals': {
-        yield: [100000, 300000],
-        bonus: { type: 'approval', label: 'Policy Credibility', delta: 2 },
-        approvalCosts: [
-            { blocName: 'Religious Conservatives', delta: -3 },
-            { blocName: 'Nationalist Bloc', delta: -3 }
-        ]
-    },
-    'Ethnic Minorities': {
-        yield: [50000, 150000],
-        bonus: { type: 'approval', label: 'Community Mobilization', delta: 2 },
-        approvalCosts: [
-            { blocName: 'Nationalist Bloc', delta: -3 },
-            { blocName: 'Religious Conservatives', delta: -3 }
-        ]
+function getPartyRole(factionId, seats, coalition) {
+    if (!seats || seats === 0) return 'No Seats';
+    if (coalition && coalition.party_ids && coalition.party_ids.includes(factionId)) {
+        return coalition.lead_party_id === factionId
+            ? 'Lead — Governing Coalition'
+            : 'Governing Coalition';
     }
-};
+    return 'Opposition';
+}
 
-const GRASSROOTS_YIELD = [25000, 75000];
+function getRoleBadgeClass(role) {
+    if (role.includes('Governing')) return 'role-badge-gov';
+    if (role === 'Opposition') return 'role-badge-opp';
+    return 'role-badge-none';
+}
 
-/**
- * Compute alignment (0-100) between a faction's ideology axes and a voter bloc's axes.
- * Uses faction_ideology (-100..+100) normalized to 0-100, compared to bloc axes (0-100).
- */
-function computeFactionBlocAlignment(factionIdeo, bloc) {
-    let totalScore = 0;
-    let count = 0;
-    for (const axis of IDEOLOGY_AXES) {
-        const fVal = factionIdeo[axis.key] ?? 0; // -100 to +100
-        const bVal = bloc['axis_' + axis.key] ?? 50; // 0 to 100
-        const fNorm = (fVal + 100) / 2; // normalize to 0-100
-        totalScore += 100 - Math.abs(fNorm - bVal);
-        count++;
+function buildIdeologyTags(f) {
+    let html = '';
+    if (f.ideology_value_1) {
+        const cls = 'tag-' + f.ideology_value_1.toLowerCase();
+        html += `<span class="ideology-tag ${cls}">${f.ideology_value_1}</span>`;
     }
-    return count > 0 ? Math.round(totalScore / count) : 50;
+    if (f.ideology_value_2) {
+        const cls = 'tag-' + f.ideology_value_2.toLowerCase();
+        html += `<span class="ideology-tag ${cls}">${f.ideology_value_2}</span>`;
+    }
+    return html;
 }
 
-function getAlignmentMultiplier(alignment) {
-    if (alignment > 70) return { mult: 2.0, label: 'Champion', cls: 'donor-align-champion' };
-    if (alignment >= 50) return { mult: 1.5, label: 'Good Fit', cls: 'donor-align-good' };
-    if (alignment >= 30) return { mult: 1.0, label: 'Baseline', cls: 'donor-align-baseline' };
-    return { mult: 0, label: 'Blocked', cls: 'donor-align-blocked' };
-}
+async function renderParties() {
+    const el = document.getElementById('content-area');
+    const f = currentFaction;
+    const n = currentNation;
 
-function rollDonorYield(config, alignment) {
-    const [min, max] = config.yield;
-    const base = min + Math.floor(Math.random() * (max - min + 1));
-    const { mult } = getAlignmentMultiplier(alignment);
-    let total = Math.round(base * mult);
-    if (config.bonus?.type === 'money') total += config.bonus.amount;
-    return total;
-}
-
-function rollGrassrootsYield(overallApproval) {
-    const [min, max] = GRASSROOTS_YIELD;
-    const base = min + Math.floor(Math.random() * (max - min + 1));
-    if (overallApproval < 30) return Math.round(base * 0.5);
-    if (overallApproval > 50) return Math.round(base * 1.5);
-    return base;
-}
-
-initPage('parties', async (state) => {
-    const { nation, faction } = state;
-    currentFaction = faction;
-    currentNation = nation;
-    initGameConfigForNation(nation);
-
-    if (!nation) {
-        document.getElementById('content-area').innerHTML = `
-            <div class="placeholder-panel">
-                <div class="ph-icon">🏛️</div>
-                <h3>No Nation Selected</h3>
-                <p>Your party is not assigned to a nation yet.</p>
-            </div>`;
+    if (!f || !n) {
+        el.innerHTML = '<p style="color:var(--text-muted);text-align:center;margin-top:40px;">No party data available.</p>';
         return;
     }
-    await renderPartiesPage(nation, faction);
-});
 
+    const isAutocracy = isGovernmentAutocracy(n);
 
-// ===================================================================
-// IDEOLOGY DATA LOADING
-// ===================================================================
-
-async function loadAllIdeologyData(nationId) {
-    ideologyDataMap = {};
-    const ideologies = await loadNationIdeologies(_supabase, nationId);
-    for (const row of ideologies) {
-        ideologyDataMap[row.faction_id] = row;
-    }
-}
-
-
-// ===================================================================
-// DYNAMIC IDEOLOGY TAGS (strongest 2 from spectrum data)
-// ===================================================================
-
-/**
- * Get the 2 strongest ideology positions from spectrum data.
- * Falls back to declared ideology_value_1/2 if no spectrum data exists.
- */
-function getStrongestIdeologyTags(party) {
-    const ideoRow = ideologyDataMap[party.id];
-
-    if (!ideoRow) {
-        // No spectrum data — use declared values
-        const tags = [];
-        if (party.ideology_value_1) tags.push({
-            label: party.ideology_value_1,
-            tagClass: 'tag-' + party.ideology_value_1.toLowerCase()
-        });
-        if (party.ideology_value_2) tags.push({
-            label: party.ideology_value_2,
-            tagClass: 'tag-' + party.ideology_value_2.toLowerCase()
-        });
-        return tags;
+    if (isAutocracy) {
+        el.innerHTML = '<p style="color:var(--text-muted);text-align:center;margin-top:40px;">Autocracy view coming soon.</p>';
+        return;
     }
 
-    // Rank axes by absolute score, pick top 2
-    const ranked = IDEOLOGY_AXES.map(axis => {
-        const score = ideoRow[axis.key] || 0;
-        const absScore = Math.abs(score);
-        const sideLabel = score < 0 ? axis.leftLabel : axis.rightLabel;
-        return { absScore, sideLabel };
-    }).sort((a, b) => b.absScore - a.absScore);
+    // Fetch all parties for seat + vote share data
+    const { data: allParties } = await _supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, seats, national_vote_share, party_color')
+        .eq('nation_id', n.id)
+        .eq('faction_type', 'party');
 
-    const top2 = ranked.slice(0, 2).filter(r => r.absScore > 0);
+    const seatData = await loadSeats(_supabase, n.id, false, allParties || [], f.id);
+    const mySeats = seatData.currentSeats || 0;
 
-    if (top2.length === 0) {
-        // True centrist — fall back to declared
-        const tags = [];
-        if (party.ideology_value_1) tags.push({
-            label: party.ideology_value_1,
-            tagClass: 'tag-' + party.ideology_value_1.toLowerCase()
-        });
-        if (party.ideology_value_2) tags.push({
-            label: party.ideology_value_2,
-            tagClass: 'tag-' + party.ideology_value_2.toLowerCase()
-        });
-        return tags;
+    const coalition = await fetchActiveCoalition(_supabase, n.id);
+
+    // Fetch next scheduled election
+    const { data: nextElection } = await _supabase
+        .from('elections').select('election_tick')
+        .eq('nation_id', n.id).eq('status', 'scheduled')
+        .gt('election_tick', currentShard?.current_tick || 0)
+        .order('election_tick', { ascending: true }).limit(1).maybeSingle();
+
+    // Fetch momentum data for all parties
+    const allPartyIds = (allParties || []).map(p => p.id);
+    const { data: allBlocApprovals } = await _supabase
+        .from('faction_bloc_approval')
+        .select('faction_id, momentum, bloc_id, approval, preference_score')
+        .in('faction_id', allPartyIds);
+
+    const { data: blocs } = await _supabase
+        .from('voter_blocs')
+        .select('id, bloc_name, population_weight, priority_issues, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
+        .eq('nation_id', n.id)
+        .eq('is_active', true);
+
+    const blocWeights = {};
+    for (const b of (blocs || [])) blocWeights[b.id] = b.population_weight || 1;
+
+    // Compute weighted-average momentum per party
+    const partyMomentum = {};
+    for (const row of (allBlocApprovals || [])) {
+        if (!partyMomentum[row.faction_id]) partyMomentum[row.faction_id] = { wSum: 0, wTotal: 0 };
+        const w = blocWeights[row.bloc_id] || 1;
+        partyMomentum[row.faction_id].wSum += (row.momentum || 0) * w;
+        partyMomentum[row.faction_id].wTotal += w;
     }
+    const partyScores = allPartyIds.map(id => {
+        const m = partyMomentum[id];
+        const raw = m && m.wTotal > 0 ? m.wSum / m.wTotal : 0;
+        return { id, score: Math.round(Math.max(0, Math.min(100, 50 + raw))) };
+    }).sort((a, b) => b.score - a.score);
 
-    return top2.map(r => ({
-        label: r.sideLabel.toUpperCase(),
-        tagClass: 'tag-' + r.sideLabel.toLowerCase()
-    }));
-}
+    const myEntry = partyMomentum[f.id];
+    const rawMomentum = myEntry && myEntry.wTotal > 0 ? myEntry.wSum / myEntry.wTotal : 0;
+    const momentumScore = Math.round(Math.max(0, Math.min(100, 50 + rawMomentum)));
+    const decayPerTick = Math.round(Math.abs(rawMomentum) * 0.20 * 10) / 10;
+    const momentumRank = partyScores.findIndex(p => p.id === f.id) + 1;
+    const totalParties = partyScores.length;
+    const role = getPartyRole(f.id, mySeats, coalition);
+    const badgeClass = getRoleBadgeClass(role);
 
+    const partyColor = f.party_color || '#ffcc00';
+    const logoSvg = getPartyIconSVG(f.party_logo, 44, partyColor);
+    const treasury = formatCurrency(f.party_funds || 0);
+    const founded = tickToDate(f.founded_tick);
+    const leaderName = f.leader_first_name && f.leader_last_name
+        ? f.leader_first_name + ' ' + f.leader_last_name + (f.leader_age ? ', ' + f.leader_age : '')
+        : '—';
+    const ideologyTags = buildIdeologyTags(f);
+    const abbr = f.abbreviation ? `<span class="my-party-abbr">(${f.abbreviation})</span>` : '';
 
-// ===================================================================
-// PARTY IDENTITY EDITOR
-// ===================================================================
+    // Build projected vote share bars via election simulation
+    const partyLookup = {};
+    for (const p of (allParties || [])) partyLookup[p.id] = p;
 
-function buildPartyIdentitySection(faction, nation, allParties) {
-    const currentColor = faction.party_color || getDefaultPartyColor(allParties.findIndex(p => p.id === faction.id));
-    const currentLogo = faction.party_logo || DEFAULT_PARTY_ICON;
-    const currentDesc = faction.party_description || '';
-
-    const colorSwatches = PARTY_COLOR_PALETTE.map(c => {
-        const isActive = currentColor.toUpperCase() === c.hex.toUpperCase();
-        return `<div class="pi-color-swatch ${isActive ? 'active' : ''}" data-hex="${c.hex}" style="background:${c.hex};" title="${c.label}" onclick="selectPartyColor('${c.hex}')"></div>`;
-    }).join('');
-
-    const categories = {};
-    for (const [key, icon] of Object.entries(PARTY_ICONS)) {
-        if (!categories[icon.category]) categories[icon.category] = [];
-        categories[icon.category].push({ key, ...icon });
-    }
-
-    let logoGridHTML = '';
-    for (const [cat, icons] of Object.entries(categories)) {
-        logoGridHTML += `<div class="pi-icon-category">${cat}</div><div class="pi-icon-grid">`;
-        logoGridHTML += icons.map(ic => {
-            const isActive = currentLogo === ic.key;
-            return `<div class="pi-icon-option ${isActive ? 'active' : ''}" data-icon="${ic.key}" title="${ic.label}" onclick="selectPartyLogo('${ic.key}')">${getPartyIconSVG(ic.key, 24)}</div>`;
-        }).join('');
-        logoGridHTML += `</div>`;
-    }
-
-    // Check for similar colors warning
-    let colorWarning = '';
-    const otherColors = allParties.filter(p => p.id !== faction.id && p.party_color).map(p => p.party_color);
-
-    return `
-        <div class="section-header" style="margin-top: 30px;">Party Identity</div>
-        <div class="pi-editor" id="party-identity-editor">
-            <div class="pi-preview" id="pi-preview">
-                <span class="pi-preview-logo" id="pi-preview-logo" style="color:${currentColor};">${getPartyIconSVG(currentLogo, 32, currentColor)}</span>
-                <span class="pi-preview-name" style="color:${currentColor};">${faction.faction_name}</span>
-                <span class="pi-preview-abbr">${faction.abbreviation || ''}</span>
-            </div>
-
-            <div class="pi-field">
-                <label class="pi-label">Description <span class="pi-hint">(${currentDesc.length}/200)</span></label>
-                <textarea class="pi-textarea" id="pi-description" maxlength="200" rows="2" placeholder="A political faction of ${nation.name}." oninput="onDescriptionInput(this)">${currentDesc}</textarea>
-            </div>
-
-            <div class="pi-field">
-                <label class="pi-label">Party Color</label>
-                <div class="pi-color-palette">${colorSwatches}</div>
-                <div class="pi-custom-color">
-                    <label class="pi-hint">Custom hex:</label>
-                    <input type="text" class="pi-hex-input" id="pi-custom-hex" value="${currentColor}" maxlength="7" placeholder="#E63946" oninput="onCustomHexInput(this)">
-                    <div class="pi-color-preview" id="pi-color-preview" style="background:${currentColor};"></div>
-                </div>
-                <div class="pi-color-warning" id="pi-color-warning" style="display:none;"></div>
-            </div>
-
-            <div class="pi-field">
-                <label class="pi-label">Party Logo</label>
-                <div class="pi-logo-browser">${logoGridHTML}</div>
-            </div>
-
-            <button class="pi-save-btn" id="pi-save-btn" onclick="savePartyIdentity()">Save Changes</button>
-            <div class="pi-save-status" id="pi-save-status"></div>
-        </div>`;
-}
-
-// ===================================================================
-// IDEOLOGY COMPARISON CHART (Design Guide Section 8)
-// ===================================================================
-
-/**
- * Build the full ideology comparison section.
- */
-function buildIdeologySection(parties, faction) {
-    factionColorMap = {};
-    parties.forEach((p, i) => {
-        factionColorMap[p.id] = p.party_color || FACTION_COLORS_FALLBACK[i % FACTION_COLORS_FALLBACK.length];
-    });
-
-    // Pre-select the player's party
-    selectedChipIds = new Set();
-    if (faction) selectedChipIds.add(faction.id);
-
-    const chipsHTML = parties.map(p => {
-        const color = factionColorMap[p.id];
-        const isYours = p.id === faction?.id;
-        const isSelected = selectedChipIds.has(p.id);
-        return `<div class="ideology-party-chip ${isSelected ? 'selected' : ''} ${isYours ? 'your-chip' : ''}"
-                     style="--chip-color: ${color};"
-                     data-faction-id="${p.id}"
-                     onclick="toggleIdeologyChip(this, '${p.id}')">
-                    ${p.faction_name}${isYours ? ' ★' : ''}
-                </div>`;
-    }).join('');
-
-    return `
-        <div class="ideology-section">
-            <div class="section-header">Ideology</div>
-            <div class="ideology-party-selector">
-                ${chipsHTML}
-            </div>
-            <div class="ideology-chart" id="ideology-chart">
-                ${buildIdeologyChart()}
-            </div>
-        </div>`;
-}
-
-/**
- * Render the 5-axis chart with dots for all selected factions.
- */
-function buildIdeologyChart() {
-    const selectedIds = [...selectedChipIds];
-
-    if (selectedIds.length === 0) {
-        return '<div class="ideology-chart-empty">Select a party above to view their ideology spectrum.</div>';
-    }
-
-    const anyHasData = selectedIds.some(id => ideologyDataMap[id]);
-
-    if (!anyHasData) {
-        return '<div class="ideology-chart-empty">No ideology data yet. Spectrum positions update as factions vote on bills.</div>';
-    }
-
-    const axesHTML = IDEOLOGY_AXES.map(axis => {
-        let dotsHTML = '';
-        let ghostsHTML = '';
-
-        for (const fId of selectedIds) {
-            const ideoRow = ideologyDataMap[fId];
-            if (!ideoRow) continue;
-
-            const score = ideoRow[axis.key] || 0;
-            const pct = ((score + 100) / 200) * 100;
-            const color = factionColorMap[fId];
-            const party = allPartiesCache.find(p => p.id === fId);
-            const name = party?.faction_name || 'Unknown';
-            const label = getIdeologyLabel(score, axis);
-
-            dotsHTML += `
-                <div class="ideo-dot" style="left:${pct}%;background:${color};">
-                    <div class="ideo-dot-tooltip">
-                        <strong>${name}</strong><br>
-                        ${label} · ${score > 0 ? '+' : ''}${score}
-                    </div>
-                </div>`;
-
-            // Ghost marker for declared starting position (±30)
-            let declaredDir = null;
-            if (ideoRow.declared_axis_1 === axis.key) declaredDir = ideoRow.declared_direction_1;
-            else if (ideoRow.declared_axis_2 === axis.key) declaredDir = ideoRow.declared_direction_2;
-
-            if (declaredDir !== null && declaredDir !== undefined) {
-                const ghostScore = declaredDir > 0 ? 30 : -30;
-                const ghostPct = ((ghostScore + 100) / 200) * 100;
-                ghostsHTML += `
-                    <div class="ideo-ghost-marker" style="left:${ghostPct}%;border-color:${color};"
-                         title="${name}: declared position (${ghostScore > 0 ? '+' : ''}${ghostScore})"></div>`;
-            }
-        }
-
-        const gradientBg = `linear-gradient(to right, ${axis.leftColor}33, ${axis.leftColor}11 40%, ${axis.rightColor}11 60%, ${axis.rightColor}33)`;
-
-        return `
-            <div class="ideo-axis">
-                <div class="ideo-axis-label left">${axis.leftLabel}</div>
-                <div class="ideo-axis-track" style="background:${gradientBg};">
-                    <div class="ideo-axis-center"></div>
-                    ${ghostsHTML}
-                    ${dotsHTML}
-                </div>
-                <div class="ideo-axis-label right">${axis.rightLabel}</div>
-            </div>`;
-    }).join('');
-
-    // Label summaries for selected factions
-    const summariesHTML = selectedIds.map(fId => {
-        const ideoRow = ideologyDataMap[fId];
-        if (!ideoRow) return '';
-
-        const color = factionColorMap[fId];
-        const party = allPartiesCache.find(p => p.id === fId);
-        const name = party?.faction_name || 'Unknown';
-        const summary = getIdeologySummary(ideoRow);
-
-        return `
-            <div class="ideology-label-row">
-                <div class="ideology-label-swatch" style="background:${color};"></div>
-                <div class="ideology-label-name">${name}</div>
-                <div class="ideology-label-text">${summary}</div>
-            </div>`;
-    }).filter(Boolean).join('');
-
-    return axesHTML + (summariesHTML ?
-        `<div class="ideology-label-summary">${summariesHTML}</div>` : '');
-}
-
-/** Toggle a party chip on/off and re-render the chart */
-function toggleIdeologyChip(chipEl, factionId) {
-    if (selectedChipIds.has(factionId)) {
-        selectedChipIds.delete(factionId);
-        chipEl.classList.remove('selected');
-    } else {
-        selectedChipIds.add(factionId);
-        chipEl.classList.add('selected');
-    }
-    const chartEl = document.getElementById('ideology-chart');
-    if (chartEl) chartEl.innerHTML = buildIdeologyChart();
-}
-
-
-// ===================================================================
-// MAIN PAGE RENDER
-// ===================================================================
-
-async function renderPartiesPage(nation, faction) {
-    const isAutocracy = isGovernmentAutocracy(nation);
-    const termPlural = isAutocracy ? 'Factions' : 'Parties';
-    const termSingular = isAutocracy ? 'Faction' : 'Party';
-    const headerText = isAutocracy ? 'Internal Factions' : 'Political Parties';
-
-    document.getElementById('content-area').innerHTML = `
-        <div class="panel-padding">
-            <div class="section-header">${headerText} in ${nation.name}</div>
-            <div class="loading-container" style="height:200px;">
-                <div class="loading-spinner"></div>
-                <div>Loading ${termPlural.toLowerCase()}...</div>
-            </div>
-        </div>`;
-
+    let parties = [];
     try {
-        const { data: parties, error } = await _supabase
-            .from('factions').select('*')
-            .eq('nation_id', nation.id).eq('faction_type', 'party')
-            .order('seats', { ascending: false });
-        if (error) throw error;
+        const preview = await runElectionPreview(_supabase, n.id);
+        parties = (preview.results || []).map(r => ({
+            id: r.party_id,
+            share: r.vote_percentage || 0,
+            abbreviation: partyLookup[r.party_id]?.abbreviation || null,
+            party_color: partyLookup[r.party_id]?.party_color || '#666',
+            faction_name: r.party_name
+        }));
+    } catch (e) {
+        console.warn('Election preview unavailable:', e.message);
+        parties = (allParties || []).map(p => ({
+            ...p, share: p.national_vote_share || 0
+        }));
+    }
+    parties.sort((a, b) => b.share - a.share);
+    const maxShare = Math.max(...parties.map(p => p.share), 1);
 
-        if (!parties || parties.length === 0) {
-            document.getElementById('content-area').innerHTML = `
-                <div class="panel-padding">
-                    <div class="section-header">${headerText} in ${nation.name}</div>
-                    <div style="text-align:center;color:#666;padding:40px;">No ${termPlural.toLowerCase()} in this nation yet.</div>
-                </div>`;
-            return;
+    let voteBarsHtml = '';
+    for (const p of parties) {
+        const pct = p.share.toFixed(1);
+        const barW = (p.share / maxShare) * 100;
+        const color = p.party_color || '#666';
+        const isMe = p.id === f.id;
+        const label = p.abbreviation || p.faction_name;
+        voteBarsHtml += `
+            <div class="vote-bar-row${isMe ? ' vote-bar-mine' : ''}">
+                <span class="vote-bar-label">${label}</span>
+                <div class="vote-bar-track">
+                    <div class="vote-bar-fill" style="width:${barW}%;background:${color}"></div>
+                </div>
+                <span class="vote-bar-pct">${pct}%</span>
+            </div>`;
+    }
+
+    const nextElectionDate = nextElection ? tickToDate(nextElection.election_tick) : '—';
+
+    // === Approval by Voter Bloc (compute data) ===
+    const blocLookup = {};
+    for (const b of (blocs || [])) blocLookup[b.id] = b;
+
+    const approvalByBloc = {};
+    for (const row of (allBlocApprovals || [])) {
+        if (!approvalByBloc[row.bloc_id]) approvalByBloc[row.bloc_id] = {};
+        approvalByBloc[row.bloc_id][row.faction_id] = row.approval ?? 0;
+    }
+
+    const blocRows = (blocs || []).map(b => {
+        const myApproval = approvalByBloc[b.id]?.[f.id] ?? 0;
+        let leaderId = null;
+        let leaderApproval = -1;
+        for (const pid of allPartyIds) {
+            const a = approvalByBloc[b.id]?.[pid] ?? 0;
+            if (a > leaderApproval) { leaderApproval = a; leaderId = pid; }
+        }
+        const leaderParty = partyLookup[leaderId];
+        const isLeading = leaderId === f.id;
+        const margin = leaderApproval - myApproval;
+        return {
+            blocId: b.id,
+            blocName: b.bloc_name,
+            popWeight: b.population_weight || 0,
+            myApproval,
+            leaderId,
+            leaderAbbr: leaderParty?.abbreviation || '?',
+            leaderColor: leaderParty?.party_color || '#666',
+            isLeading,
+            margin
+        };
+    }).sort((a, b) => b.myApproval - a.myApproval);
+
+    const blocsLeading = blocRows.filter(r => r.isLeading);
+    const leadingCount = blocsLeading.length;
+    const leadingPopPct = Math.round(blocsLeading.reduce((s, r) => s + r.popWeight, 0));
+    const swingBlocs = blocRows.filter(r => !r.isLeading && r.margin <= 3);
+
+    // === Performance Credit ===
+    const MINISTRY_NAMES = {
+        prime_minister: 'Prime Minister', interior: 'Interior', foreign: 'Foreign',
+        defense: 'Defense', finance: 'Finance', education: 'Education',
+        healthcare: 'Healthcare', labor: 'Labor', justice: 'Justice',
+        transportation: 'Transportation', security: 'Security'
+    };
+
+    // Fetch ministries held by our party
+    const { data: myMinistries } = await _supabase
+        .from('ministries')
+        .select('ministry_key')
+        .eq('nation_id', n.id)
+        .eq('party_id', f.id)
+        .eq('is_active', true);
+
+    // Check if we're PM
+    const isPM = coalition && coalition.lead_party_id === f.id;
+
+    const heldKeys = new Set((myMinistries || []).map(m => m.ministry_key));
+    if (isPM) heldKeys.add('prime_minister');
+    const heldMinistryCount = heldKeys.size;
+
+    // Build stat-to-trend data if we hold ministries
+    let trendingWell = [];
+    let trendingBadly = [];
+    let trendingFlat = [];
+    let swingWarnings = [];
+
+    if (heldMinistryCount > 0) {
+        // Fetch previous tick stats
+        const currentTick = currentShard?.current_tick || 0;
+        let prevStats = null;
+        if (currentTick > 0) {
+            const { data: histRow } = await _supabase
+                .from('nations_history')
+                .select('*')
+                .eq('nation_id', n.id)
+                .eq('tick', currentTick - 1)
+                .single();
+            prevStats = histRow;
         }
 
-        // Load voter bloc approval data for derived approval
-        const { data: voterBlocs } = await _supabase
-            .from('voter_blocs').select('id, bloc_name, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
-            .eq('nation_id', nation.id).eq('is_active', true);
-
-        const { data: blocApprovals } = await _supabase
-            .from('faction_bloc_approval').select('faction_id, bloc_id, approval')
-            .in('faction_id', parties.map(p => p.id));
-
-        // Load current faction's donor cooldowns for Court Donors panel
-        if (faction) {
-            const { data: myBlocApprovals } = await _supabase
-                .from('faction_bloc_approval')
-                .select('id, bloc_id, approval, donor_cooldown_until_tick')
-                .eq('faction_id', faction.id);
-            _donorBlocApprovals = myBlocApprovals || [];
+        // Find all stats we're responsible for
+        const myStats = [];
+        for (const [statKey, ministryKey] of Object.entries(STAT_TO_MINISTRY)) {
+            if (heldKeys.has(ministryKey)) myStats.push(statKey);
         }
 
-        // Derive overall approval per party from bloc-weighted average
-        function getDerivedApproval(factionId) {
-            if (!blocApprovals || !voterBlocs || voterBlocs.length === 0) return null;
-            const fa = blocApprovals.filter(a => a.faction_id === factionId);
-            if (fa.length === 0) return null;
-            let weightedSum = 0;
-            for (const ba of fa) {
-                const bloc = voterBlocs.find(b => b.id === ba.bloc_id);
-                if (bloc) weightedSum += ba.approval * (parseFloat(bloc.population_weight) || 0);
+        // Compute trends
+        const FLAT_THRESHOLD = 0.15;
+        for (const statKey of myStats) {
+            const current = n[statKey];
+            const prev = prevStats ? prevStats[statKey] : null;
+            if (current == null) continue;
+
+            const sign = statDirectionSign(statKey);
+            if (sign === 0) continue;
+
+            const rawDelta = (prev != null) ? current - prev : 0;
+            const improvement = rawDelta * sign; // positive = getting better
+
+            const label = statKey.replace(/_/g, ' ');
+            if (Math.abs(rawDelta) < FLAT_THRESHOLD) {
+                trendingFlat.push({ statKey, label });
+            } else if (improvement > 0) {
+                trendingWell.push({ statKey, label, arrow: sign > 0 ? '▲' : '▼' });
+            } else {
+                trendingBadly.push({ statKey, label, arrow: sign > 0 ? '▼' : '▲' });
             }
-            return Math.round(weightedSum / 100);
-        }
-
-        // Attach derived approval to each party for sorting/display
-        parties.forEach(p => {
-            p._derivedApproval = getDerivedApproval(p.id);
-        });
-
-        // Sort by derived approval (fallback to old approval_rating, then seats)
-        parties.sort((a, b) => {
-            const aApp = a._derivedApproval ?? a.approval_rating ?? 0;
-            const bApp = b._derivedApproval ?? b.approval_rating ?? 0;
-            return bApp - aApp;
-        });
-
-        allPartiesCache = parties;
-        _voterBlocs = voterBlocs || [];
-
-        // Load shard date for poll display
-        const { data: shardInfo } = await _supabase
-            .from('shard').select('current_tick, current_date').eq('name', 'Alpha Shard').single();
-        const currentShardTick = shardInfo?.current_tick || 0;
-        const currentShardDate = shardInfo?.current_date || '';
-        _currentShardTick = currentShardTick;
-        _currentShardDate = currentShardDate;
-
-        // Load latest poll data for player's party
-        let lastPollData = null;
-        let previousPollData = null;
-        if (faction) {
-            const { data: pollActions } = await _supabase
-                .from('campaign_actions').select('*')
-                .eq('party_id', faction.id)
-                .eq('action_type', 'generate_poll')
-                .order('created_at', { ascending: false })
-                .limit(2);
-            if (pollActions && pollActions.length > 0) {
-                lastPollData = pollActions[0];
-                if (pollActions.length > 1) previousPollData = pollActions[1];
-            }
-        }
-
-        let lastCoalitionData = null;
-        if (faction) {
-            const { data: coalitionActions } = await _supabase
-                .from('campaign_actions').select('tick_performed')
-                .eq('party_id', faction.id)
-                .eq('action_type', 'build_coalition')
-                .order('created_at', { ascending: false })
-                .limit(1);
-            if (coalitionActions && coalitionActions.length > 0) lastCoalitionData = coalitionActions[0];
-        }
-
-        // Load all ideology data
-        await loadAllIdeologyData(nation.id);
-
-        let election = null;
-        if (!isAutocracy) {
-            const { data: electionData } = await _supabase
-                .from('elections').select('*')
-.eq('nation_id', nation.id).eq('status', 'completed')
-.order('election_tick', { ascending: false }).order('created_at', { ascending: false }).limit(1).maybeSingle();
-            election = electionData;
-        }
-
-        let coalition = null;
-        if (!isAutocracy) {
-            coalition = await fetchActiveCoalition(_supabase, nation.id);
-        }
-
-        const coalitionPartyIds = coalition?.party_ids || [];
-        const leadPartyId = coalition?.lead_party_id;
-        const totalSeats = GAME_CONFIG.TOTAL_SEATS;
-        const majorityThreshold = GAME_CONFIG.MAJORITY_SEATS;
-
-        const govParties = [];
-        const oppParties = [];
-
-        parties.forEach(party => {
-            let seats = 0;
-            if (isAutocracy) {
-                seats = party.seats || 0;
-            } else if (election && election.results && election.results.seats) {
-                const partyResult = election.results.seats.find(s => s.party_id === party.id);
-                seats = partyResult?.seats || 0;
-            }
-
-            let status = 'opposition', statusText = 'Opposition';
-            if (isAutocracy) {
-                status = 'government'; statusText = 'Regime';
-            } else if (coalitionPartyIds.includes(party.id)) {
-                if (party.id === leadPartyId) { status = 'government'; statusText = 'Lead Party'; }
-                else { status = 'coalition'; statusText = 'Coalition'; }
-            } else if (seats >= majorityThreshold) {
-                status = 'government'; statusText = 'Government';
-            }
-
-            const entry = { party, seats, status, statusText };
-            if (status === 'opposition') oppParties.push(entry);
-            else govParties.push(entry);
-        });
-
-        function buildCard(entry) {
-            const { party, seats, status, statusText } = entry;
-            const isYourParty = party.id === faction?.id;
-
-            // Dynamic ideology tags: strongest 2 from spectrum (or declared fallback)
-            const ideoTags = getStrongestIdeologyTags(party);
-            const ideoTagsHTML = ideoTags.length > 0
-                ? ideoTags.map(t => `<span class="ideology-tag ${t.tagClass}">${t.label}</span>`).join('')
-                : (isAutocracy ? '<span style="color:#666;font-style:italic;">Regime Faction</span>' : '');
-
-            const partyColor = party.party_color || FACTION_COLORS_FALLBACK[parties.indexOf(party) % FACTION_COLORS_FALLBACK.length];
-            const partyLogo = party.party_logo || DEFAULT_PARTY_ICON;
-            const partyDesc = party.party_description || '';
-
-            return `
-                <div class="party-display-card ${isYourParty ? 'your-party' : ''}" style="border-left: 4px solid ${partyColor};" title="${partyDesc ? partyDesc.replace(/"/g, '&quot;') : `A political faction of ${nation.name}.`}">
-                    <div class="party-card-header">
-                        <div class="party-card-name" style="display:flex;align-items:center;gap:8px;">
-                            <span class="party-logo-icon" style="color:${partyColor};flex-shrink:0;">${getPartyIconSVG(partyLogo, 28, partyColor)}</span>
-                            <div>
-                                <div class="party-display-name">
-                                    ${party.faction_name}
-                                    ${party.is_npc ? '<span class="party-npc-badge">AI</span>' : ''}
-                                    ${isYourParty ? `<span style="color:#ffcc00;font-size:0.75rem;margin-left:8px;">★ YOUR ${termSingular.toUpperCase()}</span>` : ''}
-                                </div>
-                                <div class="party-display-abbr">${party.abbreviation || '—'}</div>
-                            </div>
-                        </div>
-                        <div class="party-status-badge status-${status}">${statusText}</div>
-                    </div>
-                    <div class="party-display-ideologies">
-                        ${ideoTagsHTML}
-                    </div>
-                    <div class="party-display-stats-compact">
-                        <span class="party-compact-stat"><span class="party-compact-label">Seats</span> ${seats} / ${totalSeats}</span>
-                        <span class="party-compact-stat"><span class="party-compact-label">AP</span> ${party.action_points || 0}</span>
-                        ${isAutocracy ? (() => {
-                            const loyalty = party.loyalty ?? 50;
-                            const loyaltyClass = loyalty >= 30 ? 'good' : loyalty < 15 ? 'bad' : '';
-                            return `<span class="party-compact-stat"><span class="party-compact-label">Loyalty</span> <span class="${loyaltyClass}">${loyalty}%</span></span>`;
-                        })() : ''}
-                    </div>
-                </div>`;
         }
 
         const governmentCount = govParties.length;
@@ -930,36 +558,17 @@ async function renderPartiesPage(nation, faction) {
             <div class="section-header" style="margin-top: 30px;">Recent Actions</div>
             <div id="action-log" class="action-log"><div class="action-log-empty">No actions taken yet.</div></div>`;
         }
+    }
 
-        // Build the single ideology comparison section
-        const ideologySectionHTML = buildIdeologySection(parties, faction);
-
-        // Build Party Standings section (weighted amalgamation of all voter blocs)
-        const standingsHTML = (() => {
-            if (isAutocracy) return '';
-            const sorted = [...parties].sort((a, b) => {
-                const aApp = a._derivedApproval ?? a.approval_rating ?? 0;
-                const bApp = b._derivedApproval ?? b.approval_rating ?? 0;
-                return bApp - aApp;
-            });
-            const rows = sorted.map((p, i) => {
-                const approval = p._derivedApproval ?? p.approval_rating ?? 0;
-                const isYours = p.id === faction?.id;
-                const origIdx = parties.indexOf(p);
-                const color = p.party_color || FACTION_COLORS_FALLBACK[origIdx % FACTION_COLORS_FALLBACK.length];
-                const barColor = approval >= 50 ? '#4CAF50' : approval >= 35 ? '#ff9800' : '#ff4444';
-                return `<div class="standings-row${isYours ? ' standings-yours' : ''}">
-                    <span class="standings-rank">${i + 1}</span>
-                    <span class="standings-name" style="border-left: 3px solid ${color}; padding-left: 8px;">${p.abbreviation || p.faction_name}${isYours ? ' ★' : ''}</span>
-                    <div class="standings-bar"><div class="standings-bar-fill" style="width:${approval}%;background:${barColor};"></div></div>
-                    <span class="standings-value" style="color:${barColor};">${approval}%</span>
-                </div>`;
-            }).join('');
-            return `<div class="standings-section">
-                <div class="section-header">Party Standings</div>
-                <div class="standings-container">
-                    ${rows}
-                    <div class="standings-note">Weighted by voter bloc size</div>
+    // Build Performance Credit HTML
+    let perfCreditHtml = '';
+    if (heldMinistryCount === 0) {
+        perfCreditHtml = `
+            <div class="perf-panel">
+                <div class="perf-header">Performance Credit</div>
+                <div class="perf-empty">
+                    <div class="perf-empty-label">Ministries: None</div>
+                    <div class="perf-empty-msg">You earn no credit for stat improvements. Attack rivals who do, or negotiate your way into a coalition.</div>
                 </div>
             </div>`;
         })();
@@ -1035,1609 +644,971 @@ async function renderPartiesPage(nation, faction) {
                         '</div>' +
                     '</div>';
                 })()}
-            </div>`;
-
-        if (!isAutocracy) {
-            await populateDropdowns();
-            // Update poll button cooldown state
-            if (faction && lastPollData) {
-                const ticksSince = currentShardTick - (lastPollData.tick_performed || 0);
-                if (ticksSince < POLL_COOLDOWN_TICKS) {
-                    const btn = document.getElementById('btn-generate-poll');
-                    if (btn) {
-                        const ticksLeft = POLL_COOLDOWN_TICKS - ticksSince;
-                        btn.disabled = true;
-                        btn.textContent = `Cooldown (${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''})`;
-                        btn.style.background = '#555';
-                    }
-                }
-            }
-            // Update build coalition button cooldown state
-            if (faction && lastCoalitionData) {
-                const ticksSince = currentShardTick - (lastCoalitionData.tick_performed || 0);
-                if (ticksSince < BUILD_COALITION_COOLDOWN_TICKS) {
-                    const btn = document.getElementById('btn-build-coalition');
-                    if (btn) {
-                        const ticksLeft = BUILD_COALITION_COOLDOWN_TICKS - ticksSince;
-                        btn.disabled = true;
-                        btn.dataset.cooldown = 'true';
-                        btn.textContent = `Cooldown (${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''})`;
-                        btn.style.background = '#555';
-                    }
-                }
-            }
-        } else {
-            await populateAutocracyDropdowns();
-        }
-        await loadActionLog();
-
-    } catch (error) {
-        console.error('Error loading parties:', error);
-        document.getElementById('content-area').innerHTML = `
-            <div class="panel-padding">
-                <div class="section-header">${headerText} in ${nation.name}</div>
-                <div style="text-align:center;color:#ff4444;padding:40px;">Error loading ${termPlural.toLowerCase()}. Please refresh.</div>
-            </div>`;
-    }
-}
-
-
-// ===================================================================
-// CAMPAIGN ACTIONS (Democracy)
-// ===================================================================
-
-async function populateDropdowns() {
-    if (!currentFaction || !currentNation) return;
-    const { data: parties } = await _supabase
-        .from('factions').select('id, faction_name')
-        .eq('nation_id', currentNation.id).eq('faction_type', 'party').neq('id', currentFaction.id);
-    const attackSelect = document.getElementById('attack-target');
-    if (attackSelect && parties) {
-        attackSelect.innerHTML = '<option value="">Select Target Party...</option>';
-        parties.forEach(p => { attackSelect.innerHTML += `<option value="${p.id}">${p.faction_name}</option>`; });
-    }
-}
-
-async function loadActionLog() {
-    if (!currentFaction) return;
-    const { data: actions } = await _supabase
-        .from('campaign_actions').select('*').eq('party_id', currentFaction.id)
-        .order('created_at', { ascending: false }).limit(5);
-    const logDiv = document.getElementById('action-log');
-    if (!logDiv) return;
-    if (!actions || actions.length === 0) {
-        logDiv.innerHTML = '<div class="action-log-empty">No actions taken yet.</div>';
-        return;
-    }
-    logDiv.innerHTML = actions.map(a => {
-        const date = new Date(a.created_at).toLocaleString();
-        let message = '';
-        if (a.action_type === 'lobby') message = `Lobbied ${a.result?.group_name || 'Unknown'}: Received $${(a.result?.payout || 0).toLocaleString()}`;
-        else if (a.action_type === 'spread_rumors') message = `Spread Rumors vs ${a.result?.target || 'Unknown'}: Stole ${a.result?.seats_stolen || 0} seats, -${a.result?.stability_loss || 0} stability`;
-        else if (a.action_type === 'give_speech') message = `Gave Speech: +${a.result?.approval_gain || 0}% approval`;
-        else if (a.action_type === 'rally_celebrate') message = `Celebrated the Regime: +${a.result?.approval_gain || 0} approval, +1 loyalty to all`;
-        else if (a.action_type === 'rally_denounce') message = `Denounced ${a.result?.target_name || 'Unknown'}: -${a.result?.loyalty_loss || 0} loyalty, +1 polarization`;
-        else if (a.action_type === 'rally_pledge') message = `Pledged Loyalty: +${a.result?.loyalty_gain || 0} loyalty`;
-        else if (a.action_type === 'undermine') message = `Undermined ${a.result?.target_name || 'Unknown'}: -${a.result?.loyalty_loss || 0} loyalty, -1 stability${a.result?.revealed ? ' (REVEALED!)' : ''}`;
-        else if (a.action_type === 'patronage_network') message = `Patronage to ${a.result?.target_name || 'Unknown'}: +$50k, +2 loyalty, +1 corruption${a.result?.is_self ? ' (hoarding!)' : ''}`;
-        else if (a.action_type === 'claim_power') message = `CLAIMED POWER! Established government with ${a.result?.ministries_assigned || 0} ministers.`;
-        else if (a.action_type === 'seize_power_success') message = `SEIZED POWER! (${a.result?.challenger_seats || 0} vs ${a.result?.regime_seats || 0} seats)`;
-        else if (a.action_type === 'seize_power_failed') message = `Failed Coup! -${a.result?.seats_lost || 0} seats, Seize Power blocked until tick ${a.result?.coup_cooldown_until || a.result?.lockout_until || '?'}`;
-        else if (a.action_type === 'generate_poll') {
-            const blocCount = a.result?.blocs_polled || 0;
-            const cost = a.result?.cost || 0;
-            message = `Conducted Poll: ${blocCount} bloc${blocCount !== 1 ? 's' : ''} surveyed ($${cost.toLocaleString()})`;
-        }
-        else if (a.action_type === 'build_coalition') {
-            const target = a.result?.target_bloc_name || 'Unknown';
-            const attempt = a.result?.attempt_number || 1;
-            const effectLabel = attempt === 1 ? 'full' : attempt === 2 ? 'half' : 'quarter';
-            message = `Build Coalition: Pandered to ${target} (${effectLabel} effect) — net ${a.result?.net_weighted?.toFixed(2) ?? '?'} weighted approval`;
-        }
-        else if (a.action_type === 'court_donors') {
-            const y = a.result?.yield || 0;
-            const bn = a.result?.bloc_name || 'Unknown';
-            const mult = a.result?.multiplier || 1;
-            const bonus = a.result?.bonus ? ` + ${a.result.bonus}` : '';
-            message = `Courted ${bn}: +$${y.toLocaleString()} (x${mult})${bonus}`;
-        }
-        else if (a.action_type === 'court_grassroots') {
-            const y = a.result?.yield || 0;
-            message = `Grassroots Fundraising: +$${y.toLocaleString()}`;
-        }
-        else { message = a.action_type.replace(/_/g, ' '); }
-        return `<div class="action-log-item"><div class="action-log-time">Tick ${a.tick_performed} • ${date}</div><div class="action-log-message">${message}</div></div>`;
-    }).join('');
-}
-
-// ===================================================================
-// BUILD COALITION
-// ===================================================================
-
-let _coalitionBlocApprovals = [];
-
-async function openCoalitionPanel() {
-    const container = document.getElementById('coalition-panel');
-    if (!container) return;
-    if (!currentFaction) { alert('No faction loaded.'); return; }
-    if (_voterBlocs.length === 0) { alert('No voter blocs found.'); return; }
-
-    if (container.classList.contains('open')) { closeCoalitionPanel(); return; }
-
-    const tick = _currentShardTick;
-
-    const { data: blocApprovals } = await _supabase
-        .from('faction_bloc_approval').select('id, bloc_id, approval')
-        .eq('faction_id', currentFaction.id);
-    _coalitionBlocApprovals = blocApprovals || [];
-
-    // Load recent pander history for diminishing returns
-    const { data: recentPanders } = await _supabase
-        .from('campaign_actions').select('result, tick_performed')
-        .eq('party_id', currentFaction.id).eq('action_type', 'build_coalition')
-        .gte('tick_performed', tick - BUILD_COALITION_PANDER_HISTORY_TICKS);
-    const panderHistory = recentPanders || [];
-
-    const panderCounts = {};
-    for (const action of panderHistory) {
-        const bid = action.result?.target_bloc_id;
-        if (bid) panderCounts[bid] = (panderCounts[bid] || 0) + 1;
-    }
-
-    let blocsHTML = '';
-    for (const bloc of _voterBlocs) {
-        const opposition = PANDER_OPPOSITION_MAP[bloc.bloc_name];
-        if (!opposition) continue;
-
-        const popWeight = parseFloat(bloc.population_weight) || 0;
-        const panderCount = panderCounts[bloc.id] || 0;
-
-        let factor = 1.0;
-        let dimLabel = '';
-        if (panderCount === 1) { factor = 0.5; dimLabel = 'HALF effect (pandered 1x in last 10 ticks)'; }
-        else if (panderCount >= 2) { factor = 0.25; dimLabel = 'QUARTER effect + \u22121 ALL blocs (pandered 2x+)'; }
-
-        const gainRaw = Math.trunc(2 * factor);
-        const gainWeighted = gainRaw * (popWeight / 100);
-
-        let penaltyWeightedTotal = 0;
-        const penaltyItemsHTML = opposition.map(opp => {
-            const oppBloc = _voterBlocs.find(b => b.bloc_name === opp.bloc);
-            const oppWeight = oppBloc ? (parseFloat(oppBloc.population_weight) || 0) : 0;
-            const oppDeltaRaw = Math.round(opp.delta * factor);
-            const oppWeighted = oppDeltaRaw * (oppWeight / 100);
-            penaltyWeightedTotal += oppWeighted;
-            return `<div style="color:#ff9966;padding-left:8px;">${oppDeltaRaw % 1 === 0 ? oppDeltaRaw : oppDeltaRaw.toFixed(1)} ${opp.bloc} <span style="color:#777;">(${oppWeighted.toFixed(2)} wtd)</span></div>`;
-        }).join('');
-
-        let extraPenaltyWeighted = 0;
-        let extraPenaltyHTML = '';
-        if (panderCount >= 2) {
-            const totalWeight = _voterBlocs.reduce((s, b) => s + (parseFloat(b.population_weight) || 0), 0);
-            extraPenaltyWeighted = -1 * (totalWeight / 100);
-            extraPenaltyHTML = `<div style="color:#ff6666;font-size:0.75rem;margin-top:4px;">\u22121 ALL blocs (empty pandering): ${extraPenaltyWeighted.toFixed(2)} wtd</div>`;
-        }
-
-        const netWeighted = gainWeighted + penaltyWeightedTotal + extraPenaltyWeighted;
-        const netColor = netWeighted >= 0 ? '#4CAF50' : '#ff6666';
-
-        blocsHTML += `
-        <div class="donor-bloc-card" style="${panderCount > 0 ? 'border-color:#ff9800;' : ''}">
-            <div class="donor-bloc-header">
-                <div>
-                    <div class="donor-bloc-name">${bloc.bloc_name}</div>
-                    <div style="color:#888;font-size:0.78rem;">${popWeight}% of electorate</div>
-                </div>
-                <button class="action-btn" style="padding:6px 14px;font-size:0.82rem;" onclick="doBuildCoalition('${bloc.id}')">Pander</button>
-            </div>
-            <div style="margin-top:8px;font-size:0.82rem;">
-                <div style="color:#4CAF50;">Gain: +${gainRaw % 1 === 0 ? gainRaw : gainRaw.toFixed(1)} ${bloc.bloc_name} <span style="color:#777;">(+${gainWeighted.toFixed(2)} wtd)</span></div>
-                <div style="color:#ff9966;margin-top:2px;">Penalties:</div>
-                ${penaltyItemsHTML}
-                ${extraPenaltyHTML}
-                <div style="margin-top:6px;border-top:1px solid #333;padding-top:4px;">
-                    Net weighted: <span style="color:${netColor};font-weight:bold;">${netWeighted >= 0 ? '+' : ''}${netWeighted.toFixed(2)}</span>
-                </div>
-            </div>
-            ${dimLabel ? `<div style="color:#ff9800;font-size:0.75rem;margin-top:6px;">\u26a0 Diminishing: ${dimLabel}</div>` : ''}
-        </div>`;
-    }
-
-    container.innerHTML = `
-        <div class="donor-panel-header">
-            <div style="font-weight:bold;font-size:1rem;">Build Coalition — Select a Bloc to Pander To</div>
-            <div style="color:#aaa;font-size:0.8rem;margin-top:4px;">Cost: ${BUILD_COALITION_AP_COST} AP + $${(BUILD_COALITION_MONEY_COST / 1000).toFixed(0)}k &nbsp;|&nbsp; Cooldown: ${BUILD_COALITION_COOLDOWN_TICKS} ticks (global)</div>
-            <div style="color:#ff9966;font-size:0.78rem;margin-top:2px;">Net is always negative — pandering sharpens your base, it doesn't grow it.</div>
-            <button onclick="closeCoalitionPanel()" style="margin-top:8px;background:#333;border:1px solid #555;color:#ccc;padding:4px 12px;border-radius:4px;cursor:pointer;">Close</button>
-        </div>
-        <div class="donor-blocs-list">${blocsHTML || '<div style="color:#888;padding:16px;">No blocs available.</div>'}</div>
-    `;
-    container.classList.add('open');
-}
-
-function closeCoalitionPanel() {
-    const container = document.getElementById('coalition-panel');
-    if (container) { container.classList.remove('open'); container.innerHTML = ''; }
-}
-
-async function doBuildCoalition(blocId) {
-    if (!currentFaction || !currentNation) return;
-
-    const bloc = _voterBlocs.find(b => b.id === blocId);
-    if (!bloc) { alert('Voter bloc not found.'); return; }
-
-    const opposition = PANDER_OPPOSITION_MAP[bloc.bloc_name];
-    if (!opposition) { alert('No opposition map for this bloc.'); return; }
-
-    if ((currentFaction.action_points || 0) < BUILD_COALITION_AP_COST) {
-        alert(`Not enough AP (need ${BUILD_COALITION_AP_COST}).`);
-        return;
-    }
-    if ((currentFaction.party_funds || 0) < BUILD_COALITION_MONEY_COST) {
-        alert(`Not enough Party Funds (need $${(BUILD_COALITION_MONEY_COST / 1000).toFixed(0)}k, have $${((currentFaction.party_funds || 0) / 1000).toFixed(0)}k).`);
-        return;
-    }
-
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const tick = shard?.current_tick || 0;
-
-    // Check global cooldown
-    const { data: lastCoalition } = await _supabase
-        .from('campaign_actions').select('tick_performed')
-        .eq('party_id', currentFaction.id).eq('action_type', 'build_coalition')
-        .order('created_at', { ascending: false }).limit(1).maybeSingle();
-    if (lastCoalition && (tick - lastCoalition.tick_performed) < BUILD_COALITION_COOLDOWN_TICKS) {
-        const ticksLeft = BUILD_COALITION_COOLDOWN_TICKS - (tick - lastCoalition.tick_performed);
-        alert(`Build Coalition cooldown: ${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} remaining.`);
-        return;
-    }
-
-    // Count panders to this bloc within last 10 ticks (diminishing returns)
-    const { data: recentBlocPanders } = await _supabase
-        .from('campaign_actions').select('tick_performed')
-        .eq('party_id', currentFaction.id).eq('action_type', 'build_coalition')
-        .gte('tick_performed', tick - BUILD_COALITION_PANDER_HISTORY_TICKS)
-        .filter('result->>target_bloc_id', 'eq', blocId);
-    const panderCount = recentBlocPanders?.length || 0;
-
-    let factor = 1.0;
-    let attemptNumber = panderCount + 1;
-    if (panderCount === 1) factor = 0.5;
-    else if (panderCount >= 2) factor = 0.25;
-
-    const gainRaw = Math.trunc(2 * factor);
-
-    const effectLabel = panderCount === 0 ? 'full' : panderCount === 1 ? 'HALF' : 'QUARTER';
-    const dimWarning = panderCount >= 2
-        ? '\n\u26a0 QUARTER effect + extra \u22121 ALL blocs (empty pandering!)'
-        : panderCount === 1 ? '\n\u26a0 HALF effect (pandered to them recently)' : '';
-    const penaltyDesc = opposition.map(o => `${Math.round(o.delta * factor)} ${o.bloc}`).join(', ');
-    const ordinal = ['st','nd','rd'][attemptNumber - 1] || 'th';
-    const confirmMsg = `Pander to ${bloc.bloc_name}?\n\n` +
-        `Effect: ${effectLabel} (${attemptNumber}${ordinal} pander within 10 ticks)\n` +
-        `Gain: +${gainRaw} ${bloc.bloc_name}\n` +
-        `Penalties: ${penaltyDesc}${dimWarning}\n\n` +
-        `Cost: ${BUILD_COALITION_AP_COST} AP + $${(BUILD_COALITION_MONEY_COST / 1000).toFixed(0)}k\n` +
-        `Cooldown: ${BUILD_COALITION_COOLDOWN_TICKS} ticks (global)`;
-    if (!confirm(confirmMsg)) return;
-
-    // Deduct AP
-    const apResult = await deductAP(_supabase, currentFaction.id, BUILD_COALITION_AP_COST);
-    if (!apResult.success) { alert('Not enough AP.'); return; }
-    currentFaction.action_points = apResult.newAp;
-
-    try {
-        let { data: allBlocApprovals, error: blocErr } = await _supabase
-            .from('faction_bloc_approval').select('id, bloc_id, approval')
-            .eq('faction_id', currentFaction.id);
-        if (blocErr) throw new Error('Failed to load bloc approvals: ' + blocErr.message);
-
-        if (!allBlocApprovals || allBlocApprovals.length === 0) {
-            allBlocApprovals = await ensureBlocApprovals(_supabase, currentFaction.id, currentNation.id);
-            if (!allBlocApprovals || allBlocApprovals.length === 0) {
-                alert('No voter bloc data found.');
-                return;
-            }
-        }
-
-        // Deduct funds inside try — keeps state consistent if approval writes fail
-        const newFunds = (currentFaction.party_funds || 0) - BUILD_COALITION_MONEY_COST;
-        await _supabase.from('factions').update({ party_funds: newFunds }).eq('id', currentFaction.id);
-        currentFaction.party_funds = newFunds;
-
-        const blocChanges = {};
-
-        // Apply gain to target bloc
-        const targetRow = allBlocApprovals.find(r => r.bloc_id === blocId);
-        if (targetRow && gainRaw > 0) {
-            const newApproval = Math.max(0, Math.min(100, targetRow.approval + gainRaw));
-            await _supabase.from('faction_bloc_approval').update({ approval: newApproval }).eq('id', targetRow.id);
-            blocChanges[blocId] = { delta: gainRaw, bloc_name: bloc.bloc_name };
-            targetRow.approval = newApproval;
-        }
-
-        // Apply penalties to opposed blocs
-        for (const opp of opposition) {
-            const oppBloc = _voterBlocs.find(b => b.bloc_name === opp.bloc);
-            if (!oppBloc) continue;
-            const oppRow = allBlocApprovals.find(r => r.bloc_id === oppBloc.id);
-            if (!oppRow) continue;
-            const oppDelta = Math.round(opp.delta * factor);
-            if (oppDelta === 0) continue;
-            const newApproval = Math.max(0, Math.min(100, oppRow.approval + oppDelta));
-            await _supabase.from('faction_bloc_approval').update({ approval: newApproval }).eq('id', oppRow.id);
-            blocChanges[oppBloc.id] = { delta: oppDelta, bloc_name: opp.bloc };
-            oppRow.approval = newApproval;
-        }
-
-        // Extra -1 all blocs for 3rd+ pander (empty pandering)
-        if (panderCount >= 2) {
-            for (const row of allBlocApprovals) {
-                const newApproval = Math.max(0, Math.min(100, row.approval - 1));
-                await _supabase.from('faction_bloc_approval').update({ approval: newApproval }).eq('id', row.id);
-                if (blocChanges[row.bloc_id]) blocChanges[row.bloc_id].delta -= 1;
-                else {
-                    const bl = _voterBlocs.find(b => b.id === row.bloc_id);
-                    blocChanges[row.bloc_id] = { delta: -1, bloc_name: bl?.bloc_name || row.bloc_id };
-                }
-                row.approval = newApproval;
-            }
-        }
-
-        // Recalculate derived overall approval
-        const newDerived = await recalcDerivedApproval(_supabase, currentFaction.id, allBlocApprovals);
-        currentFaction._derivedApproval = newDerived;
-        currentFaction.approval_rating = newDerived;
-
-        // Compute net weighted for logging
-        const popWeight = parseFloat(bloc.population_weight) || 0;
-        let netWeighted = gainRaw * (popWeight / 100);
-        for (const opp of opposition) {
-            const oppBloc = _voterBlocs.find(b => b.bloc_name === opp.bloc);
-            const oppWeight = oppBloc ? (parseFloat(oppBloc.population_weight) || 0) : 0;
-            netWeighted += Math.round(opp.delta * factor) * (oppWeight / 100);
-        }
-        if (panderCount >= 2) {
-            const totalWeight = _voterBlocs.reduce((s, b) => s + (parseFloat(b.population_weight) || 0), 0);
-            netWeighted -= totalWeight / 100;
-        }
-
-        await _supabase.from('campaign_actions').insert({
-            party_id: currentFaction.id,
-            nation_id: currentNation.id,
-            action_type: 'build_coalition',
-            ap_cost: BUILD_COALITION_AP_COST,
-            money_cost: BUILD_COALITION_MONEY_COST,
-            tick_performed: tick,
-            result: {
-                target_bloc_id: blocId,
-                target_bloc_name: bloc.bloc_name,
-                attempt_number: attemptNumber,
-                factor,
-                gain: gainRaw,
-                bloc_changes: blocChanges,
-                net_weighted: Math.round(netWeighted * 100) / 100,
-                new_derived_approval: newDerived,
-                empty_pandering_penalty: panderCount >= 2
-            }
-        });
-
-        const apEl = document.getElementById('party-ap');
-        if (apEl) apEl.textContent = currentFaction.action_points || 0;
-        const fundsEl = document.getElementById('party-funds');
-        if (fundsEl) fundsEl.textContent = '$' + (currentFaction.party_funds || 0).toLocaleString();
-        const approvalEl = document.getElementById('party-approval');
-        if (approvalEl) approvalEl.textContent = (newDerived ?? currentFaction.approval_rating ?? 0) + '%';
-
-        const penSummary = Object.values(blocChanges)
-            .filter(c => c.delta < 0)
-            .map(c => `${c.delta} ${c.bloc_name}`)
-            .join(', ');
-        alert(`Pandered to ${bloc.bloc_name}!\n\n+${gainRaw} approval with ${bloc.bloc_name}.\nPenalties: ${penSummary || 'none'}\nNet weighted: ${netWeighted >= 0 ? '+' : ''}${netWeighted.toFixed(2)}`);
-
-        closeCoalitionPanel();
-        await loadActionLog();
-        await markFactionActive(_supabase, currentFaction.id);
-        sessionStorage.removeItem('nationhood_state');
-
-        const btn = document.getElementById('btn-build-coalition');
-        if (btn) {
-            btn.disabled = true;
-            btn.dataset.cooldown = 'true';
-            btn.textContent = `Cooldown (${BUILD_COALITION_COOLDOWN_TICKS} tick${BUILD_COALITION_COOLDOWN_TICKS !== 1 ? 's' : ''})`;
-            btn.style.background = '#555';
-        }
-
-    } catch (error) {
-        console.error('[BuildCoalition] Error:', error);
-        alert('Build Coalition error: ' + error.message);
-    }
-}
-
-// ===================================================================
-// COURT DONORS
-// ===================================================================
-
-let _donorBlocApprovals = []; // faction_bloc_approval rows with donor_cooldown_until_tick
-
-function openDonorPanel() {
-    const container = document.getElementById('donor-panel');
-    if (!container) return;
-    if (!currentFaction) { alert('No faction loaded.'); return; }
-    if (_voterBlocs.length === 0) { alert('No voter blocs found.'); return; }
-
-    // Toggle if already open
-    if (container.classList.contains('open')) { closeDonorPanel(); return; }
-
-    const factionIdeo = ideologyDataMap[currentFaction.id];
-    const overallApproval = currentFaction._derivedApproval ?? currentFaction.approval_rating ?? 0;
-    const tick = _currentShardTick;
-
-    let blocsHTML = '';
-
-    for (const bloc of _voterBlocs) {
-        const config = DONOR_BLOC_CONFIG[bloc.bloc_name];
-        if (!config) continue; // skip blocs not in the config
-
-        const fba = _donorBlocApprovals.find(r => r.bloc_id === bloc.id);
-        const approval = fba?.approval ?? 40;
-        const cooldownTick = fba?.donor_cooldown_until_tick || 0;
-        const alignment = factionIdeo ? computeFactionBlocAlignment(factionIdeo, bloc) : 50;
-        const alignInfo = getAlignmentMultiplier(alignment);
-        const onCooldown = cooldownTick > tick;
-        const cooldownLeft = onCooldown ? cooldownTick - tick : 0;
-
-        // Gate checks
-        const approvalGateOk = approval > 30;
-        const alignmentGateOk = alignment >= 30;
-        const blocked = !approvalGateOk || !alignmentGateOk || onCooldown;
-
-        let blockedReason = '';
-        if (onCooldown) blockedReason = `Cooldown: ${cooldownLeft} tick${cooldownLeft !== 1 ? 's' : ''}`;
-        else if (!approvalGateOk) blockedReason = 'Approval too low (need > 30)';
-        else if (!alignmentGateOk) blockedReason = 'Platform too misaligned (need \u2265 30)';
-
-        // Yield range display with multiplier
-        const [minY, maxY] = config.yield;
-        const displayMin = Math.round(minY * alignInfo.mult / 1000);
-        const displayMax = Math.round(maxY * alignInfo.mult / 1000);
-        const yieldText = alignInfo.mult > 0 ? `$${displayMin}k\u2013$${displayMax}k` : '\u2014';
-        const multText = alignInfo.mult > 1 ? ` (x${alignInfo.mult})` : '';
-
-        // Approval cost text
-        const costParts = config.approvalCosts.map(c => `<span class="donor-cost-negative">${c.delta} ${c.blocName}</span>`).join(', ');
-        // Bonus text
-        let bonusText = '';
-        if (config.bonus) {
-            if (config.bonus.type === 'approval') bonusText = `<span class="donor-cost-positive">+${config.bonus.delta} approval (${config.bonus.label})</span>`;
-            else if (config.bonus.type === 'money') bonusText = `<span class="donor-cost-positive">+$${(config.bonus.amount / 1000)}k (${config.bonus.label})</span>`;
-        }
-
-        const approvalColor = approval > 50 ? '#4CAF50' : approval > 30 ? '#ff9800' : '#ff4444';
-
-        blocsHTML += `
-        <div class="donor-bloc-row ${blocked ? 'disabled' : ''}">
-            <div class="donor-bloc-name">${bloc.bloc_name}</div>
-            <div class="donor-bloc-stats">
-                <span class="stat-pill">Approval: <span style="color:${approvalColor}">${approval}%</span></span>
-                <span class="stat-pill">Alignment: <span class="${alignInfo.cls}">${alignment}% ${alignInfo.label}</span></span>
-                <span class="stat-pill donor-yield">${yieldText}${multText}</span>
-            </div>
-            ${blocked
-                ? `<span class="donor-blocked-reason">${blockedReason}</span>`
-                : `<button class="donor-court-btn" onclick="doCourtDonors('${bloc.id}')">Court</button>`
-            }
-            <div class="donor-cost-row">
-                Costs: ${costParts}${bonusText ? ' | Bonus: ' + bonusText : ''}
-            </div>
-        </div>`;
-    }
-
-    // Grassroots Small Donors (always available)
-    const grassMin = Math.round(GRASSROOTS_YIELD[0] / 1000);
-    const grassMax = Math.round(GRASSROOTS_YIELD[1] / 1000);
-    let grassMult = '';
-    if (overallApproval < 30) grassMult = ' (x0.5)';
-    else if (overallApproval > 50) grassMult = ' (x1.5)';
-
-    blocsHTML += `
-    <div class="donor-bloc-row donor-grassroots-row">
-        <div class="donor-bloc-name" style="color: #4CAF50;">Grassroots Small Donors</div>
-        <div class="donor-bloc-stats">
-            <span class="stat-pill" style="color: #4CAF50;">Always Available</span>
-            <span class="stat-pill">Overall Approval: ${overallApproval}%</span>
-            <span class="stat-pill donor-yield">$${grassMin}k\u2013$${grassMax}k${grassMult}</span>
-        </div>
-        <button class="donor-court-btn" onclick="doCourtGrassroots()">Court</button>
-        <div class="donor-cost-row" style="color: #4CAF50;">No approval cost. No cooldown. Yield scales with overall approval.</div>
-    </div>`;
-
-    container.innerHTML = `
-        <div class="donor-panel-title">Court Donors \u2014 Select a Voter Bloc</div>
-        ${blocsHTML}
-        <div class="donor-panel-footer">
-            <span style="font-size: 0.75rem; color: #888;">Gates: Approval > 30% AND Alignment \u2265 30%</span>
-            <button onclick="closeDonorPanel()">Close</button>
-        </div>
-    `;
-    container.classList.add('open');
-}
-
-function closeDonorPanel() {
-    const container = document.getElementById('donor-panel');
-    if (container) { container.classList.remove('open'); container.innerHTML = ''; }
-}
-
-async function doCourtDonors(blocId) {
-    if (!currentFaction || !currentNation) return;
-
-    const bloc = _voterBlocs.find(b => b.id === blocId);
-    if (!bloc) { alert('Voter bloc not found.'); return; }
-
-    const config = DONOR_BLOC_CONFIG[bloc.bloc_name];
-    if (!config) { alert('No donor config for this bloc.'); return; }
-
-    // Check AP
-    if ((currentFaction.action_points || 0) < COURT_DONORS_AP_COST) {
-        alert(`Not enough AP (need ${COURT_DONORS_AP_COST}).`);
-        return;
-    }
-
-    // Fetch fresh tick
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const tick = shard?.current_tick || 0;
-
-    // Re-fetch bloc approval to check cooldown and approval freshly
-    const { data: fbaRow } = await _supabase.from('faction_bloc_approval')
-        .select('id, bloc_id, approval, donor_cooldown_until_tick')
-        .eq('faction_id', currentFaction.id).eq('bloc_id', blocId).single();
-    if (!fbaRow) { alert('No approval data found for this bloc.'); return; }
-
-    const approval = fbaRow.approval ?? 40;
-    const cooldownTick = fbaRow.donor_cooldown_until_tick || 0;
-
-    if (cooldownTick > tick) {
-        alert(`Cooldown: ${cooldownTick - tick} tick(s) remaining for ${bloc.bloc_name}.`);
-        return;
-    }
-    if (approval <= 30) { alert(`Approval too low with ${bloc.bloc_name} (${approval}%, need > 30).`); return; }
-
-    const factionIdeo = ideologyDataMap[currentFaction.id];
-    const alignment = factionIdeo ? computeFactionBlocAlignment(factionIdeo, bloc) : 50;
-    if (alignment < 30) { alert(`Platform too misaligned with ${bloc.bloc_name} (${alignment}%, need >= 30).`); return; }
-
-    const alignInfo = getAlignmentMultiplier(alignment);
-
-    // Confirm
-    const [minY, maxY] = config.yield;
-    const displayMin = Math.round(minY * alignInfo.mult / 1000);
-    const displayMax = Math.round(maxY * alignInfo.mult / 1000);
-    const costDesc = config.approvalCosts.map(c => `${c.delta} ${c.blocName}`).join(', ');
-    let confirmMsg = `Court ${bloc.bloc_name} donors?\n\n`;
-    confirmMsg += `Yield: $${displayMin}k\u2013$${displayMax}k (${alignInfo.label} x${alignInfo.mult})\n`;
-    confirmMsg += `Approval costs: ${costDesc}\n`;
-    if (config.bonus) confirmMsg += `Bonus: ${config.bonus.label}\n`;
-    confirmMsg += `AP cost: ${COURT_DONORS_AP_COST}\n`;
-    confirmMsg += `Cooldown: ${COURT_DONORS_COOLDOWN_TICKS} ticks`;
-    if (!confirm(confirmMsg)) return;
-
-    // Deduct AP
-    const apResult = await deductAP(_supabase, currentFaction.id, COURT_DONORS_AP_COST);
-    if (!apResult.success) { alert('Not enough AP.'); return; }
-    currentFaction.action_points = apResult.newAp;
-
-    try {
-        // Roll yield
-        const yield$ = rollDonorYield(config, alignment);
-
-        // Add to party_funds
-        const newFunds = (currentFaction.party_funds || 0) + yield$;
-        await _supabase.from('factions').update({ party_funds: newFunds }).eq('id', currentFaction.id);
-        currentFaction.party_funds = newFunds;
-
-        // Apply approval bonus to the courted bloc only
-        const { data: allBlocApprovals } = await _supabase.from('faction_bloc_approval')
-            .select('id, bloc_id, approval').eq('faction_id', currentFaction.id);
-
-        if (config.bonus?.type === 'approval') {
-            const donorRow = allBlocApprovals?.find(r => r.bloc_id === blocId);
-            if (donorRow) {
-                donorRow.approval = Math.round(Math.max(0, Math.min(100, donorRow.approval + config.bonus.delta)));
-                await _supabase.from('faction_bloc_approval')
-                    .update({ approval: donorRow.approval }).eq('id', donorRow.id);
-            }
-        }
-
-        const blocChanges = {};
-        for (const cost of config.approvalCosts) {
-            const targetBloc = _voterBlocs.find(b => b.bloc_name === cost.blocName);
-            if (!targetBloc) continue;
-            const targetRow = allBlocApprovals?.find(r => r.bloc_id === targetBloc.id);
-            if (!targetRow) continue;
-            const newApproval = Math.round(Math.max(0, Math.min(100, targetRow.approval + cost.delta)));
-            await _supabase.from('faction_bloc_approval')
-                .update({ approval: newApproval }).eq('id', targetRow.id);
-            targetRow.approval = newApproval;
-            blocChanges[targetBloc.id] = { delta: cost.delta, bloc_name: cost.blocName };
-        }
-
-        // Recalculate derived overall approval
-        const newDerived = await recalcDerivedApproval(_supabase, currentFaction.id, allBlocApprovals);
-        currentFaction._derivedApproval = newDerived;
-        currentFaction.approval_rating = newDerived;
-
-        // Set cooldown on the courted bloc
-        await _supabase.from('faction_bloc_approval')
-            .update({ donor_cooldown_until_tick: tick + COURT_DONORS_COOLDOWN_TICKS })
-            .eq('id', fbaRow.id);
-
-        // Log the campaign action
-        await _supabase.from('campaign_actions').insert({
-            party_id: currentFaction.id,
-            nation_id: currentNation.id,
-            action_type: 'court_donors',
-            ap_cost: COURT_DONORS_AP_COST,
-            tick_performed: tick,
-            result: {
-                bloc_name: bloc.bloc_name,
-                bloc_id: blocId,
-                yield: yield$,
-                alignment,
-                multiplier: alignInfo.mult,
-                bonus: config.bonus?.label || null,
-                approval_costs: blocChanges,
-                new_derived_approval: newDerived
-            }
-        });
-
-        // Update UI
-        const apEl = document.getElementById('party-ap');
-        if (apEl) apEl.textContent = currentFaction.action_points || 0;
-        const fundsEl = document.getElementById('party-funds');
-        if (fundsEl) fundsEl.textContent = '$' + (currentFaction.party_funds || 0).toLocaleString();
-        const approvalEl = document.getElementById('party-approval');
-        if (approvalEl) approvalEl.textContent = (newDerived ?? currentFaction.approval_rating ?? 0) + '%';
-
-        let msg = `Courted ${bloc.bloc_name} donors!\n\n`;
-        msg += `Received: $${yield$.toLocaleString()}\n`;
-        msg += `Alignment: ${alignment}% (${alignInfo.label} x${alignInfo.mult})`;
-        if (config.bonus) msg += `\nBonus: ${config.bonus.label}`;
-        const costSummary = config.approvalCosts.map(c => `${c.delta} ${c.blocName}`).join(', ');
-        msg += `\nApproval costs: ${costSummary}`;
-        alert(msg);
-
-        // Refresh donor panel and action log
-        closeDonorPanel();
-        // Reload donor cooldowns
-        const { data: freshBlocApprovals } = await _supabase.from('faction_bloc_approval')
-            .select('id, bloc_id, approval, donor_cooldown_until_tick')
-            .eq('faction_id', currentFaction.id);
-        _donorBlocApprovals = freshBlocApprovals || [];
-        await loadActionLog();
-        await markFactionActive(_supabase, currentFaction.id);
-        sessionStorage.removeItem('nationhood_state');
-
-    } catch (error) {
-        console.error('[CourtDonors] Error:', error);
-        alert('Court Donors error: ' + error.message);
-    }
-}
-
-async function doCourtGrassroots() {
-    if (!currentFaction || !currentNation) return;
-
-    if ((currentFaction.action_points || 0) < COURT_DONORS_AP_COST) {
-        alert(`Not enough AP (need ${COURT_DONORS_AP_COST}).`);
-        return;
-    }
-
-    const overallApproval = currentFaction._derivedApproval ?? currentFaction.approval_rating ?? 0;
-    const yield$ = rollGrassrootsYield(overallApproval);
-
-    let msg = `Court Grassroots Small Donors?\n\n`;
-    msg += `Estimated yield: $${GRASSROOTS_YIELD[0].toLocaleString()}\u2013$${GRASSROOTS_YIELD[1].toLocaleString()}`;
-    if (overallApproval < 30) msg += ' (x0.5 — low approval)';
-    else if (overallApproval > 50) msg += ' (x1.5 — high approval)';
-    msg += `\nNo approval costs. AP cost: ${COURT_DONORS_AP_COST}`;
-    if (!confirm(msg)) return;
-
-    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const tick = shard?.current_tick || 0;
-
-    const apResult = await deductAP(_supabase, currentFaction.id, COURT_DONORS_AP_COST);
-    if (!apResult.success) { alert('Not enough AP.'); return; }
-    currentFaction.action_points = apResult.newAp;
-
-    try {
-        const newFunds = (currentFaction.party_funds || 0) + yield$;
-        await _supabase.from('factions').update({ party_funds: newFunds }).eq('id', currentFaction.id);
-        currentFaction.party_funds = newFunds;
-
-        await _supabase.from('campaign_actions').insert({
-            party_id: currentFaction.id,
-            nation_id: currentNation.id,
-            action_type: 'court_grassroots',
-            ap_cost: COURT_DONORS_AP_COST,
-            tick_performed: tick,
-            result: {
-                yield: yield$,
-                overall_approval: overallApproval
-            }
-        });
-
-        const apEl = document.getElementById('party-ap');
-        if (apEl) apEl.textContent = currentFaction.action_points || 0;
-        const fundsEl = document.getElementById('party-funds');
-        if (fundsEl) fundsEl.textContent = '$' + (currentFaction.party_funds || 0).toLocaleString();
-
-        alert(`Grassroots fundraising: Received $${yield$.toLocaleString()}`);
-
-        closeDonorPanel();
-        await loadActionLog();
-        await markFactionActive(_supabase, currentFaction.id);
-        sessionStorage.removeItem('nationhood_state');
-
-    } catch (error) {
-        console.error('[CourtGrassroots] Error:', error);
-        alert('Grassroots fundraising error: ' + error.message);
-    }
-}
-
-// ===================================================================
-// GENERATE POLL
-// ===================================================================
-
-function openPollSelector() {
-    const container = document.getElementById('poll-selector');
-    if (!container) { console.error('[Poll] No poll-selector container found'); return; }
-    if (!currentFaction) { alert('No faction loaded.'); return; }
-    if (_voterBlocs.length === 0) {
-        alert('No voter blocs found for this nation. Cannot generate poll.');
-        console.error('[Poll] _voterBlocs is empty');
-        return;
-    }
-
-    // Check cooldown
-    const btn = document.getElementById('btn-generate-poll');
-
-    const blocsHTML = _voterBlocs.map(bloc => {
-        // Derive ideology tags from axis values (< 35 → left, > 65 → right)
-        const ideoTags = IDEOLOGY_AXES.map(axis => {
-            const val = bloc['axis_' + axis.key];
-            if (val != null && val < 35) return `<span class="ideology-tag tag-${axis.leftLabel.toLowerCase()}" style="font-size:0.6rem;padding:1px 5px;margin:1px;">${axis.leftLabel}</span>`;
-            if (val != null && val > 65) return `<span class="ideology-tag tag-${axis.rightLabel.toLowerCase()}" style="font-size:0.6rem;padding:1px 5px;margin:1px;">${axis.rightLabel}</span>`;
-            return '';
-        }).filter(Boolean).join('');
-        return `
-        <label class="poll-bloc-check" style="flex-wrap:wrap;">
-            <input type="checkbox" value="${bloc.id}" onchange="updatePollCost()">
-            ${bloc.bloc_name}
-            <span style="color:#666;font-size:0.72rem;margin-left:auto;">${parseFloat(bloc.population_weight) || 0}% pop</span>
-            ${ideoTags ? `<div style="width:100%;padding-left:22px;margin-top:2px;">${ideoTags}</div>` : ''}
-        </label>`;
-    }).join('');
-
-    container.innerHTML = `
-        <div class="poll-selector-title">Select Voter Blocs to Poll</div>
-        ${blocsHTML}
-        <div style="margin-top:8px;">
-            <label class="poll-bloc-check" style="color:#ffcc00;font-weight:bold;">
-                <input type="checkbox" id="poll-select-all" onchange="togglePollSelectAll()">
-                Select All ($${(_voterBlocs.length * POLL_COST_PER_BLOC).toLocaleString()})
-            </label>
-        </div>
-        <div class="poll-selector-cost">
-            <span class="cost-label">Cost: <span id="poll-cost-display">2 AP + $0</span></span>
-            <span class="cost-label">Funds: $${(currentFaction.party_funds || 0).toLocaleString()}</span>
-        </div>
-        <div class="poll-submit-row">
-            <button class="poll-cancel-btn" onclick="closePollSelector()">Cancel</button>
-            <button class="poll-submit-btn" id="poll-submit-btn" onclick="doGeneratePoll()" disabled>Submit Poll</button>
-        </div>
-    `;
-    container.classList.add('open');
-}
-
-function closePollSelector() {
-    const container = document.getElementById('poll-selector');
-    if (container) {
-        container.classList.remove('open');
-        container.innerHTML = '';
-    }
-}
-
-function togglePollSelectAll() {
-    const selectAll = document.getElementById('poll-select-all');
-    if (!selectAll) return;
-    const checks = document.querySelectorAll('#poll-selector input[type=checkbox]:not(#poll-select-all)');
-    checks.forEach(cb => cb.checked = selectAll.checked);
-    updatePollCost();
-}
-
-function updatePollCost() {
-    const checks = document.querySelectorAll('#poll-selector input[type=checkbox]:not(#poll-select-all)');
-    const count = [...checks].filter(cb => cb.checked).length;
-    const cost = count * POLL_COST_PER_BLOC;
-    const costDisplay = document.getElementById('poll-cost-display');
-    if (costDisplay) costDisplay.textContent = `${POLL_AP_COST} AP + $${cost.toLocaleString()}`;
-    const submitBtn = document.getElementById('poll-submit-btn');
-    if (submitBtn) submitBtn.disabled = count === 0;
-}
-
-async function doGeneratePoll() {
-    if (!currentFaction || !currentNation) return;
-
-    // Gather selected blocs
-    const checks = document.querySelectorAll('#poll-selector input[type=checkbox]:not(#poll-select-all)');
-    const selectedBlocIds = [...checks].filter(cb => cb.checked).map(cb => cb.value);
-    if (selectedBlocIds.length === 0) { alert('Select at least one voter bloc to poll.'); return; }
-
-    // Check AP
-    if ((currentFaction.action_points || 0) < POLL_AP_COST) {
-        alert(`Not enough AP (need ${POLL_AP_COST}).`);
-        return;
-    }
-
-    // Check funds
-    const totalCost = selectedBlocIds.length * POLL_COST_PER_BLOC;
-    if ((currentFaction.party_funds || 0) < totalCost) {
-        alert(`Not enough Party Funds. Need $${totalCost.toLocaleString()}, have $${(currentFaction.party_funds || 0).toLocaleString()}.`);
-        return;
-    }
-
-    // Fetch fresh tick for cooldown + insert
-    const { data: shard } = await _supabase.from('shard').select('current_tick, current_date').eq('name', 'Alpha Shard').single();
-    const tick = shard?.current_tick || 0;
-    const shardDate = shard?.current_date || '';
-
-    // Check cooldown (3 ticks since last poll)
-    const { data: lastPoll, error: cooldownErr } = await _supabase
-        .from('campaign_actions').select('tick_performed')
-        .eq('party_id', currentFaction.id)
-        .eq('action_type', 'generate_poll')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-    if (cooldownErr) console.error('[Poll] Cooldown check error:', cooldownErr.message);
-
-    if (lastPoll && (tick - lastPoll.tick_performed) < POLL_COOLDOWN_TICKS) {
-        const ticksLeft = POLL_COOLDOWN_TICKS - (tick - lastPoll.tick_performed);
-        alert(`Poll cooldown: ${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} remaining.`);
-        return;
-    }
-
-    // Deduct AP
-    const apResult = await deductAP(_supabase, currentFaction.id, POLL_AP_COST);
-    if (!apResult.success) { alert('Not enough AP.'); return; }
-    currentFaction.action_points = apResult.newAp;
-
-    try {
-        // Deduct party funds
-        const newFunds = (currentFaction.party_funds || 0) - totalCost;
-        const { error: fundsErr } = await _supabase.from('factions')
-            .update({ party_funds: newFunds })
-            .eq('id', currentFaction.id);
-        if (fundsErr) throw new Error('Failed to deduct funds: ' + fundsErr.message);
-        currentFaction.party_funds = newFunds;
-
-        // Load actual bloc approval data
-        const { data: actualApprovals, error: approvalErr } = await _supabase
-            .from('faction_bloc_approval')
-            .select('bloc_id, approval')
-            .eq('faction_id', currentFaction.id)
-            .in('bloc_id', selectedBlocIds);
-        if (approvalErr) console.error('[Poll] Approval fetch error:', approvalErr.message);
-
-        // Build poll results with margin of error
-        const blocResults = {};
-        for (const blocId of selectedBlocIds) {
-            const actual = actualApprovals?.find(a => a.bloc_id === blocId);
-            const realApproval = actual?.approval ?? 40;
-            // 1D3 margin of error, randomly + or -
-            const margin = Math.floor(Math.random() * 3) + 1;
-            const direction = Math.random() < 0.5 ? 1 : -1;
-            const shown = Math.max(0, Math.min(100, realApproval + (margin * direction)));
-            blocResults[blocId] = { shown, margin };
-        }
-
-        // Calculate shown overall approval with 1D3 margin
-        const derivedApproval = currentFaction._derivedApproval ?? currentFaction.approval_rating ?? 50;
-        const overallMargin = Math.floor(Math.random() * 3) + 1;
-        const overallDir = Math.random() < 0.5 ? 1 : -1;
-        const shownOverall = Math.max(0, Math.min(100, derivedApproval + (overallMargin * overallDir)));
-
-        // Save campaign action
-        const { error: insertErr } = await _supabase.from('campaign_actions').insert({
-            party_id: currentFaction.id,
-            action_type: 'generate_poll',
-            ap_cost: POLL_AP_COST,
-            money_cost: totalCost,
-            tick_performed: tick,
-            result: {
-                bloc_results: blocResults,
-                blocs_polled: selectedBlocIds.length,
-                cost: totalCost,
-                shown_overall: shownOverall,
-                poll_date: shardDate
-            }
-        });
-        if (insertErr) throw new Error('Failed to save poll: ' + insertErr.message);
-
-        // Update UI
-        const fundsEl = document.getElementById('party-funds');
-        if (fundsEl) fundsEl.textContent = '$' + newFunds.toLocaleString();
-        const apEl = document.getElementById('party-ap');
-        if (apEl) apEl.textContent = currentFaction.action_points || 0;
-
-        closePollSelector();
-        alert(`Poll complete! Surveyed ${selectedBlocIds.length} bloc${selectedBlocIds.length !== 1 ? 's' : ''} for $${totalCost.toLocaleString()}.`);
-
-        // Reload to show new poll results
-        await renderPartiesPage(currentNation, currentFaction);
-    } catch (error) {
-        console.error('[Poll] Error:', error);
-        alert('Poll error: ' + error.message);
-    }
-}
-
-// ===================================================================
-// AUTOCRACY ACTIONS
-// ===================================================================
-
-async function populateAutocracyDropdowns() {
-    if (!currentFaction || !currentNation) return;
-    const { data: factions } = await _supabase
-        .from('factions').select('id, faction_name, seats, loyalty')
-        .eq('nation_id', currentNation.id).eq('faction_type', 'party').neq('id', currentFaction.id);
-    if (!factions) return;
-
-    // Undermine target dropdown
-    const undermineSelect = document.getElementById('undermine-target');
-    if (undermineSelect) {
-        undermineSelect.innerHTML = '<option value="">Select Target Faction...</option>';
-        factions.forEach(f => {
-            undermineSelect.innerHTML += `<option value="${f.id}">${f.faction_name} (${f.seats} seats, ${f.loyalty ?? 50}% loyalty)</option>`;
-        });
-    }
-
-    // Denounce target dropdown (ruling Rally Support)
-    const denounceSelect = document.getElementById('denounce-target');
-    if (denounceSelect) {
-        denounceSelect.innerHTML = '<option value="">Select Target Faction...</option>';
-        factions.forEach(f => {
-            denounceSelect.innerHTML += `<option value="${f.id}">${f.faction_name}</option>`;
-        });
-    }
-
-    // Patronage target dropdown (ruling Patronage Network)
-    const patronageSelect = document.getElementById('patronage-target');
-    if (patronageSelect) {
-        // Keep existing "Select Faction..." option, add self + others
-        patronageSelect.innerHTML = `<option value="">Select Faction...</option><option value="${currentFaction.id}">${currentFaction.faction_name} (Self)</option>`;
-        factions.forEach(f => {
-            patronageSelect.innerHTML += `<option value="${f.id}">${f.faction_name}</option>`;
-        });
-    }
-}
-
-function toggleDenounceTarget() {
-    const mode = document.getElementById('rally-mode')?.value;
-    const wrap = document.getElementById('denounce-target-wrap');
-    if (wrap) wrap.style.display = mode === 'denounce' ? 'block' : 'none';
-}
-
-function updateAutocracyUI() {
-    const apEl = document.getElementById('party-ap');
-    const seatsEl = document.getElementById('party-seats');
-    const loyaltyEl = document.getElementById('party-loyalty');
-    const statusEl = document.getElementById('party-status');
-    if (apEl) apEl.textContent = currentFaction.action_points || 0;
-    if (seatsEl) seatsEl.textContent = (currentFaction.seats || 0) + ' / ' + GAME_CONFIG.TOTAL_SEATS;
-
-    const loyalty = currentFaction.loyalty ?? 50;
-    let loyaltyColor, statusText;
-    if (loyalty >= 30) { loyaltyColor = '#4CAF50'; statusText = 'LOYAL'; }
-    else if (loyalty >= 15) { loyaltyColor = '#ff9800'; statusText = 'DISLOYAL'; }
-    else { loyaltyColor = '#ff4444'; statusText = 'SUPPRESSED'; }
-
-    if (loyaltyEl) { loyaltyEl.textContent = loyalty + '%'; loyaltyEl.style.color = loyaltyColor; }
-    if (statusEl) {
-        statusEl.textContent = statusText;
-        statusEl.style.color = loyaltyColor;
-    }
-}
-
-// ---- RALLY SUPPORT ----
-async function doRallySupport() {
-    if (!currentFaction || !currentNation) return;
-    if ((currentFaction.action_points || 0) < 2) { alert('Not enough AP (need 2).'); return; }
-
-    const apResult = await deductAP(_supabase, currentFaction.id, 2);
-    if (!apResult.success) { alert('Not enough AP (need 2).'); return; }
-    currentFaction.action_points = apResult.newAp;
-
-    const isRuling = currentFaction.id === currentNation.ruling_faction_id;
-
-    try {
-        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const tick = shard?.current_tick || 0;
-
-        if (isRuling) {
-            const mode = document.getElementById('rally-mode')?.value || 'celebrate';
-
-            if (mode === 'celebrate') {
-                const approvalGain = Math.floor(Math.random() * 2) + 1; // 1D2
-                await adjustBlocApproval(_supabase, currentFaction.id, approvalGain);
-
-                // +1 loyalty to ALL factions in nation
-                const { data: allFactions } = await _supabase.from('factions')
-                    .select('id, loyalty')
-                    .eq('nation_id', currentNation.id).eq('faction_type', 'party');
-                for (const f of (allFactions || [])) {
-                    await _supabase.from('factions')
-                        .update({ loyalty: Math.min(100, (f.loyalty ?? 50) + 1) })
-                        .eq('id', f.id);
-                }
-
-                // +1 corruption to nation
-                const { data: nat } = await _supabase.from('nations')
-                    .select('corruption').eq('id', currentNation.id).single();
-                await _supabase.from('nations')
-                    .update({ corruption: Math.min(100, (nat?.corruption ?? 50) + 1) })
-                    .eq('id', currentNation.id);
-
-                await _supabase.from('campaign_actions').insert({
-                    party_id: currentFaction.id, nation_id: currentNation.id,
-                    action_type: 'rally_celebrate', tick_performed: tick,
-                    result: { approval_gain: approvalGain, loyalty_gain_all: 1, corruption_gain: 1 }
-                });
-
-                currentFaction.approval_rating = Math.min(100, (currentFaction.approval_rating ?? 50) + approvalGain);
-                currentFaction.loyalty = Math.min(100, (currentFaction.loyalty ?? 50) + 1);
-                alert(`Celebrated the Regime! +${approvalGain} approval, +1 loyalty to all factions, +1 corruption.`);
-            } else {
-                // Denounce Enemies
-                const targetId = document.getElementById('denounce-target')?.value;
-                if (!targetId) { alert('Select a target faction!'); return; }
-
-                const loyaltyLoss = Math.floor(Math.random() * 2) + 1; // 1D2
-                const { data: target } = await _supabase.from('factions')
-                    .select('loyalty, faction_name').eq('id', targetId).single();
-                const newTargetLoyalty = Math.max(0, (target?.loyalty ?? 50) - loyaltyLoss);
-                await _supabase.from('factions').update({ loyalty: newTargetLoyalty }).eq('id', targetId);
-
-                await adjustBlocApproval(_supabase, currentFaction.id, 1);
-
-                const { data: nat } = await _supabase.from('nations')
-                    .select('polarization').eq('id', currentNation.id).single();
-                await _supabase.from('nations')
-                    .update({ polarization: Math.min(100, (nat?.polarization ?? 50) + 1) })
-                    .eq('id', currentNation.id);
-
-                await _supabase.from('campaign_actions').insert({
-                    party_id: currentFaction.id, nation_id: currentNation.id,
-                    action_type: 'rally_denounce', tick_performed: tick,
-                    result: { target_name: target?.faction_name, loyalty_loss: loyaltyLoss, approval_gain: 1, polarization_gain: 1 }
-                });
-
-                currentFaction.approval_rating = Math.min(100, (currentFaction.approval_rating ?? 50) + 1);
-                alert(`Denounced ${target?.faction_name}! -${loyaltyLoss} loyalty to them, +1 approval, +1 polarization.`);
-            }
-        } else {
-            // Opposition: Pledge Loyalty (+1D2 loyalty to self)
-            const loyaltyGain = Math.floor(Math.random() * 2) + 1;
-            const newLoyalty = Math.min(100, (currentFaction.loyalty ?? 50) + loyaltyGain);
-            await _supabase.from('factions')
-                .update({ loyalty: newLoyalty })
-                .eq('id', currentFaction.id);
-
-            await _supabase.from('campaign_actions').insert({
-                party_id: currentFaction.id, nation_id: currentNation.id,
-                action_type: 'rally_pledge', tick_performed: tick,
-                result: { loyalty_gain: loyaltyGain }
-            });
-
-            currentFaction.loyalty = newLoyalty;
-            alert(`Pledged Loyalty! +${loyaltyGain} loyalty.`);
-        }
-
-        updateAutocracyUI();
-        await loadActionLog();
-        await markFactionActive(_supabase, currentFaction.id);
-        sessionStorage.removeItem('nationhood_state');
-    } catch (error) {
-        console.error('Rally error:', error);
-        alert('Error: ' + error.message);
-    }
-}
-
-// ---- UNDERMINE ----
-async function doUndermine() {
-    if (!currentFaction || !currentNation) return;
-    if ((currentFaction.action_points || 0) < 3) { alert('Not enough AP (need 3).'); return; }
-
-    const targetId = document.getElementById('undermine-target')?.value;
-    if (!targetId) { alert('Select a target faction!'); return; }
-
-    if (!confirm('Undermine this faction? This will reduce their loyalty and cost -1 national stability.')) return;
-
-    const apResult = await deductAP(_supabase, currentFaction.id, 3);
-    if (!apResult.success) { alert('Not enough AP (need 3).'); return; }
-    currentFaction.action_points = apResult.newAp;
-
-    try {
-        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const tick = shard?.current_tick || 0;
-
-        const loyaltyLoss = Math.floor(Math.random() * 3) + 1; // 1D3
-
-        const { data: target } = await _supabase.from('factions')
-            .select('loyalty, faction_name').eq('id', targetId).single();
-        const newTargetLoyalty = Math.max(0, (target?.loyalty ?? 50) - loyaltyLoss);
-        await _supabase.from('factions').update({ loyalty: newTargetLoyalty }).eq('id', targetId);
-
-        const { data: nat } = await _supabase.from('nations')
-            .select('stability').eq('id', currentNation.id).single();
-        await _supabase.from('nations')
-            .update({ stability: Math.max(0, (nat?.stability ?? 50) - 1) })
-            .eq('id', currentNation.id);
-
-        const revealed = newTargetLoyalty < 20;
-
-        await _supabase.from('campaign_actions').insert({
-            party_id: currentFaction.id, nation_id: currentNation.id,
-            action_type: 'undermine', tick_performed: tick,
-            result: { target_name: target?.faction_name, target_id: targetId, loyalty_loss: loyaltyLoss, stability_loss: 1, revealed }
-        });
-
-        let msg = `Undermined ${target?.faction_name}! -${loyaltyLoss} loyalty, -1 national stability.`;
-        if (revealed) msg += '\n\nTheir loyalty is below 20 -- they know it was you!';
-        alert(msg);
-
-        updateAutocracyUI();
-        await loadActionLog();
-        await markFactionActive(_supabase, currentFaction.id);
-        sessionStorage.removeItem('nationhood_state');
-    } catch (error) {
-        console.error('Undermine error:', error);
-        alert('Error: ' + error.message);
-    }
-}
-
-// ---- PATRONAGE NETWORK (Ruling Only) ----
-async function doPatronageNetwork() {
-    if (!currentFaction || !currentNation) return;
-    if (currentFaction.id !== currentNation.ruling_faction_id) {
-        alert('Only the ruling faction can use Patronage Network.');
-        return;
-    }
-    if ((currentFaction.action_points || 0) < 2) { alert('Not enough AP (need 2).'); return; }
-
-    const targetId = document.getElementById('patronage-target')?.value;
-    if (!targetId) { alert('Select a target faction!'); return; }
-
-    const isSelf = targetId === currentFaction.id;
-
-    if (!confirm(
-        `Distribute $50,000 from the national treasury to ${isSelf ? 'your own faction' : 'this faction'}?\n\n` +
-        `Effects:\n` +
-        `- Target: +$50,000 funds, +2 loyalty\n` +
-        `- Nation: +1 corruption, -$50,000 treasury\n` +
-        (isSelf ? '- All other factions: -1 loyalty\n' : '') +
-        '\nProceed?'
-    )) return;
-
-    const apResult = await deductAP(_supabase, currentFaction.id, 2);
-    if (!apResult.success) { alert('Not enough AP (need 2).'); return; }
-    currentFaction.action_points = apResult.newAp;
-
-    try {
-        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const tick = shard?.current_tick || 0;
-
-        const { data: targetFaction } = await _supabase.from('factions')
-            .select('loyalty, party_funds, faction_name').eq('id', targetId).single();
-
-        // Target: +$50k funds, +2 loyalty
-        await _supabase.from('factions').update({
-            party_funds: (targetFaction?.party_funds || 0) + 50000,
-            loyalty: Math.min(100, (targetFaction?.loyalty ?? 50) + 2)
-        }).eq('id', targetId);
-
-        // Nation: +1 corruption
-        const { data: nat } = await _supabase.from('nations')
-            .select('corruption').eq('id', currentNation.id).single();
-        await _supabase.from('nations').update({
-            corruption: Math.min(100, (nat?.corruption ?? 50) + 1)
-        }).eq('id', currentNation.id);
-
-        // If self: all other factions -1 loyalty
-        if (isSelf) {
-            const { data: otherFactions } = await _supabase.from('factions')
-                .select('id, loyalty')
-                .eq('nation_id', currentNation.id).eq('faction_type', 'party')
-                .neq('id', currentFaction.id);
-            for (const f of (otherFactions || [])) {
-                await _supabase.from('factions')
-                    .update({ loyalty: Math.max(0, (f.loyalty ?? 50) - 1) })
-                    .eq('id', f.id);
-            }
-        }
-
-        await _supabase.from('campaign_actions').insert({
-            party_id: currentFaction.id, nation_id: currentNation.id,
-            action_type: 'patronage_network', tick_performed: tick,
-            result: {
-                target_name: targetFaction?.faction_name, target_id: targetId,
-                is_self: isSelf, funds_transferred: 50000, loyalty_gain: 2,
-                corruption_gain: 1, others_loyalty_loss: isSelf ? 1 : 0
-            }
-        });
-
-        if (isSelf) currentFaction.loyalty = Math.min(100, (currentFaction.loyalty ?? 50) + 2);
-        alert(`Patronage distributed! ${targetFaction?.faction_name} received $50,000 and +2 loyalty. Nation +1 corruption.` +
-            (isSelf ? '\nAll other factions: -1 loyalty.' : ''));
-
-        updateAutocracyUI();
-        await loadActionLog();
-        await markFactionActive(_supabase, currentFaction.id);
-        sessionStorage.removeItem('nationhood_state');
-    } catch (error) {
-        console.error('Patronage error:', error);
-        alert('Error: ' + error.message);
-    }
-}
-
-// ---- SEIZE POWER (Opposition Only) ----
-async function doSeizePower() {
-    if (!currentFaction || !currentNation) return;
-    if (currentFaction.id === currentNation.ruling_faction_id) {
-        alert('You are already the ruling faction.');
-        return;
-    }
-
-    if ((currentFaction.action_points || 0) < 15) { alert('Not enough AP (need 15).'); return; }
-
-    // Atomic AP deduction — prevents race conditions and double-spend
-    const apResult = await deductAP(_supabase, currentFaction.id, 15);
-    if (!apResult.success) { alert('Not enough AP (need 15).'); return; }
-    currentFaction.action_points = apResult.newAp;
-
-    const { data: allFactions } = await _supabase.from('factions')
-        .select('id, faction_name, seats, loyalty')
-        .eq('nation_id', currentNation.id).eq('faction_type', 'party');
-
-    const disloyalFactions = (allFactions || []).filter(f =>
-        f.id !== currentFaction.id && (f.loyalty ?? 50) < 30
-    );
-
-    if (disloyalFactions.length < 2) {
-        alert('Cannot seize power. Need 2+ factions with loyalty below 30. Currently: ' + disloyalFactions.length);
-        return;
-    }
-
-    // Preview the sides
-    const rulingId = currentNation.ruling_faction_id;
-    let previewRegime = [], previewChallenger = [];
-    for (const f of (allFactions || [])) {
-        if (f.id === currentFaction.id) { previewChallenger.push(f.faction_name); continue; }
-        if (f.id === rulingId) { previewRegime.push(f.faction_name); continue; }
-        if ((f.loyalty ?? 50) >= 30) previewRegime.push(f.faction_name);
-        else previewChallenger.push(f.faction_name);
-    }
-
-    if (!confirm(
-        'SEIZE POWER?\n\nCost: 15 AP\n\n' +
-        'Predicted sides:\n' +
-        'Regime: ' + previewRegime.join(', ') + '\n' +
-        'Your side: ' + previewChallenger.join(', ') + '\n\n' +
-        'Side with more total seats wins.\n\n' +
-        'WIN: You become ruler. Old ruler becomes opposition at 50 loyalty.\n' +
-        'FAIL: -25 seats, -20 approval, loyalty=0, purged from ministries. Seize Power blocked 6 ticks.\n\nProceed?'
-    )) return;
-
-    try {
-        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const tick = shard?.current_tick || 0;
-
-        let regimeSeats = 0, challengerSeats = 0;
-        const regimeSide = [], challengerSide = [];
-
-        for (const f of (allFactions || [])) {
-            if (f.id === currentFaction.id) {
-                challengerSeats += f.seats || 0;
-                challengerSide.push(f.faction_name);
-                continue;
-            }
-            if (f.id === rulingId) {
-                regimeSeats += f.seats || 0;
-                regimeSide.push(f.faction_name);
-                continue;
-            }
-            if ((f.loyalty ?? 50) >= 30) {
-                regimeSeats += f.seats || 0;
-                regimeSide.push(f.faction_name);
-            } else {
-                challengerSeats += f.seats || 0;
-                challengerSide.push(f.faction_name);
-            }
-        }
-
-        const challengerWins = challengerSeats > regimeSeats;
-
-        if (challengerWins) {
-            // === WIN ===
-            // Old ruler: lose all ministries, become opposition at loyalty 50
-            await _supabase.from('ministries')
-                .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
-                .eq('nation_id', currentNation.id).eq('party_id', rulingId);
-
-            await _supabase.from('factions').update({ loyalty: 50 }).eq('id', rulingId);
-
-            // New ruler
-            await _supabase.from('nations').update({ ruling_faction_id: currentFaction.id }).eq('id', currentNation.id);
-            await _supabase.from('factions').update({ loyalty: 80 }).eq('id', currentFaction.id);
-
-            await _supabase.from('campaign_actions').insert({
-                party_id: currentFaction.id, nation_id: currentNation.id,
-                action_type: 'seize_power_success', tick_performed: tick,
-                result: { regime_seats: regimeSeats, challenger_seats: challengerSeats, regime_side: regimeSide, challenger_side: challengerSide, old_ruler_id: rulingId }
-            });
-
-            currentFaction.loyalty = 80;
-            currentNation.ruling_faction_id = currentFaction.id;
-
-            alert(
-                'POWER SEIZED!\n\n' +
-                `Your coalition: ${challengerSide.join(', ')} (${challengerSeats} seats)\n` +
-                `Regime: ${regimeSide.join(', ')} (${regimeSeats} seats)\n\n` +
-                'You are now the ruling faction!'
-            );
-        } else {
-            // === FAIL ===
-            const mySeats = currentFaction.seats || 0;
-
-            await _supabase.from('factions').update({
-                seats: Math.max(0, mySeats - 25),
-                loyalty: 0,
-                action_lockout_until_tick: tick + 6
-            }).eq('id', currentFaction.id);
-            await adjustBlocApproval(_supabase, currentFaction.id, -20);
-
-            // Purge from ministries
-            await _supabase.from('ministries')
-                .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
-                .eq('nation_id', currentNation.id).eq('party_id', currentFaction.id);
-
-            await _supabase.from('campaign_actions').insert({
-                party_id: currentFaction.id, nation_id: currentNation.id,
-                action_type: 'seize_power_failed', tick_performed: tick,
-                result: { regime_seats: regimeSeats, challenger_seats: challengerSeats, regime_side: regimeSide, challenger_side: challengerSide, seats_lost: Math.min(25, mySeats), approval_lost: 20, coup_cooldown_until: tick + 6 }
-            });
-
-            currentFaction.seats = Math.max(0, mySeats - 25);
-            currentFaction.approval_rating = Math.max(0, (currentFaction.approval_rating ?? 50) - 20);
-            currentFaction.loyalty = 0;
-            currentFaction.action_lockout_until_tick = tick + 6;
-
-            alert(
-                'COUP FAILED!\n\n' +
-                `Your coalition: ${challengerSide.join(', ')} (${challengerSeats} seats)\n` +
-                `Regime: ${regimeSide.join(', ')} (${regimeSeats} seats)\n\n` +
-                `Consequences:\n` +
-                `- Lost ${Math.min(25, mySeats)} seats\n` +
-                `- Lost 20 approval\n` +
-                `- Loyalty set to 0\n` +
-                `- Purged from all ministries\n` +
-                `- Cannot attempt Seize Power for 6 ticks`
-            );
-        }
-
-        updateAutocracyUI();
-        await loadActionLog();
-        await markFactionActive(_supabase, currentFaction.id);
-        sessionStorage.removeItem('nationhood_state');
-    } catch (error) {
-        console.error('Seize power error:', error);
-        alert('Error: ' + error.message);
-    }
-}
-
-// ---- DISBAND PARTY ----
-async function doDisbandParty() {
-    if (!currentFaction || !currentNation) return;
-
-    // Block autocracy ruling faction
-    if (isGovernmentAutocracy(currentNation) &&
-        currentFaction.id === currentNation.ruling_faction_id) {
-        alert('The ruling faction cannot disband.');
-        return;
-    }
-
-    // Fetch current tick
-    const { data: shard } = await _supabase
-        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const tick = shard?.current_tick || 0;
-
-    // Check cooldown
-    if (currentFaction.disband_cooldown_until_tick &&
-        currentFaction.disband_cooldown_until_tick > tick) {
-        const remaining = currentFaction.disband_cooldown_until_tick - tick;
-        alert(`Disband is on cooldown for ${remaining} more tick${remaining !== 1 ? 's' : ''}.`);
-        return;
-    }
-
-    // Confirmation dialog
-    if (!confirm(
-        'DISBAND PARTY?\n\n' +
-        'This will permanently remove your party from ' + currentNation.name + '.\n\n' +
-        'Consequences:\n' +
-        '- Your party leaves the nation immediately\n' +
-        '- If you are PM, you will resign first\n' +
-        '- If you are in the coalition, it may collapse\n' +
-        '- Your seats remain vacant until the next election\n' +
-        '- 24-tick cooldown before you can disband again\n\n' +
-        'You will need to join a new nation to continue playing.\n\n' +
-        'Are you sure?'
-    )) return;
-
-    try {
-        await disbandParty(_supabase, currentNation.id, currentFaction.id, tick);
-        sessionStorage.removeItem('nationhood_state');
-        alert('Your party has been disbanded. Redirecting to nation selection...');
-        window.location.href = 'world.html';
-    } catch (error) {
-        console.error('Disband error:', error);
-        alert('Error: ' + error.message);
-    }
-}
-
-// Expose functions for HTML onclick/onchange handlers
-window.toggleIdeologyChip = toggleIdeologyChip;
-window.openDonorPanel = openDonorPanel;
-window.doRallySupport = doRallySupport;
-window.doUndermine = doUndermine;
-window.doPatronageNetwork = doPatronageNetwork;
-window.doSeizePower = doSeizePower;
-window.doDisbandParty = doDisbandParty;
-window.doCourtDonors = doCourtDonors;
-window.doCourtGrassroots = doCourtGrassroots;
-window.closeDonorPanel = closeDonorPanel;
-window.togglePollSelectAll = togglePollSelectAll;
-window.updatePollCost = updatePollCost;
-window.closePollSelector = closePollSelector;
-window.doGeneratePoll = doGeneratePoll;
-window.openPollSelector = openPollSelector;
-window.toggleDenounceTarget = toggleDenounceTarget;
-window.openCoalitionPanel = openCoalitionPanel;
-window.closeCoalitionPanel = closeCoalitionPanel;
-window.doBuildCoalition = doBuildCoalition;
-
-// Party Identity Editor handlers
-let _piSelectedColor = null;
-let _piSelectedLogo = null;
-
-function selectPartyColor(hex) {
-    _piSelectedColor = hex;
-    // Update swatch active states
-    document.querySelectorAll('.pi-color-swatch').forEach(el => {
-        el.classList.toggle('active', el.dataset.hex.toUpperCase() === hex.toUpperCase());
-    });
-    // Update custom hex input
-    const hexInput = document.getElementById('pi-custom-hex');
-    if (hexInput) hexInput.value = hex;
-    // Update preview
-    const previewEl = document.getElementById('pi-color-preview');
-    if (previewEl) previewEl.style.background = hex;
-    updatePartyPreview();
-    checkColorSimilarity(hex);
-}
-
-function onCustomHexInput(input) {
-    let val = input.value.trim();
-    if (!val.startsWith('#')) val = '#' + val;
-    if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
-        _piSelectedColor = val;
-        // Deselect palette swatches
-        document.querySelectorAll('.pi-color-swatch').forEach(el => {
-            el.classList.toggle('active', el.dataset.hex.toUpperCase() === val.toUpperCase());
-        });
-        const previewEl = document.getElementById('pi-color-preview');
-        if (previewEl) previewEl.style.background = val;
-        updatePartyPreview();
-        checkColorSimilarity(val);
-    }
-}
-
-function selectPartyLogo(iconKey) {
-    _piSelectedLogo = iconKey;
-    document.querySelectorAll('.pi-icon-option').forEach(el => {
-        el.classList.toggle('active', el.dataset.icon === iconKey);
-    });
-    updatePartyPreview();
-}
-
-function onDescriptionInput(textarea) {
-    const hint = textarea.parentElement.querySelector('.pi-hint');
-    if (hint) hint.textContent = `(${textarea.value.length}/200)`;
-}
-
-function updatePartyPreview() {
-    const logo = _piSelectedLogo || currentFaction?.party_logo || DEFAULT_PARTY_ICON;
-    const color = _piSelectedColor || currentFaction?.party_color || '#ffcc00';
-    const logoEl = document.getElementById('pi-preview-logo');
-    const nameEl = document.querySelector('.pi-preview-name');
-    if (logoEl) {
-        logoEl.innerHTML = getPartyIconSVG(logo, 32, color);
-        logoEl.style.color = color;
-    }
-    if (nameEl) nameEl.style.color = color;
-}
-
-function checkColorSimilarity(hex) {
-    const warningEl = document.getElementById('pi-color-warning');
-    if (!warningEl) return;
-    const otherParties = allPartiesCache.filter(p => p.id !== currentFaction?.id && p.party_color);
-    const similar = otherParties.find(p => colorDistance(hex, p.party_color) < 30);
-    if (similar) {
-        warningEl.textContent = `Another party (${similar.faction_name}) is using a very similar color. This may cause confusion in charts and maps.`;
-        warningEl.style.display = 'block';
     } else {
-        warningEl.style.display = 'none';
+        const ministryList = [...heldKeys].map(k => MINISTRY_NAMES[k] || k).join(', ');
+        let titleParts = [];
+        if (isPM) titleParts.push('Prime Minister');
+        const nonPM = [...heldKeys].filter(k => k !== 'prime_minister');
+        if (nonPM.length > 0) titleParts.push(nonPM.map(k => MINISTRY_NAMES[k] || k).join(', '));
+        const titleLine = titleParts.join(' + ');
+
+        const MAX_TREND_ITEMS = 5;
+        let trendsHtml = '';
+        if (trendingWell.length > 0) {
+            const shown = trendingWell.slice(0, MAX_TREND_ITEMS);
+            const extra = trendingWell.length - shown.length;
+            trendsHtml += `<div class="perf-trend-section">
+                <div class="perf-trend-label perf-trend-good">Trending well:</div>
+                ${shown.map(t => `<div class="perf-trend-item perf-trend-good">${t.arrow} ${t.label}</div>`).join('')}
+                ${extra > 0 ? `<div class="perf-trend-item perf-trend-good">+ ${extra} more</div>` : ''}
+            </div>`;
+        }
+        if (trendingBadly.length > 0) {
+            const shown = trendingBadly.slice(0, MAX_TREND_ITEMS);
+            const extra = trendingBadly.length - shown.length;
+            trendsHtml += `<div class="perf-trend-section">
+                <div class="perf-trend-label perf-trend-bad">Trending badly:</div>
+                ${shown.map(t => `<div class="perf-trend-item perf-trend-bad">${t.arrow} ${t.label}</div>`).join('')}
+                ${extra > 0 ? `<div class="perf-trend-item perf-trend-bad">+ ${extra} more</div>` : ''}
+            </div>`;
+        }
+        if (trendingFlat.length > 0) {
+            trendsHtml += `<div class="perf-trend-section">
+                <div class="perf-trend-item perf-trend-flat">── ${trendingFlat.length} stat${trendingFlat.length !== 1 ? 's' : ''} flat</div>
+            </div>`;
+        }
+        if (trendingWell.length === 0 && trendingBadly.length === 0 && trendingFlat.length === 0) {
+            trendsHtml = '<div class="perf-trend-none">No trend data yet.</div>';
+        }
+
+        let warningsHtml = '';
+        if (swingWarnings.length > 0) {
+            warningsHtml = swingWarnings.map(w =>
+                `<div class="perf-warning">⚠ ${w.stats.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(', ')} is hurting you with ${w.blocName} — a swing bloc.</div>`
+            ).join('');
+        }
+
+        perfCreditHtml = `
+            <div class="perf-panel perf-panel-active">
+                <div class="perf-header">Performance Credit</div>
+                <div class="perf-ministries">${titleLine}</div>
+                <div class="perf-trends">${trendsHtml}</div>
+                ${warningsHtml ? `<div class="perf-warnings">${warningsHtml}</div>` : ''}
+            </div>`;
     }
+
+    // === Action Points Panel ===
+    const currentAP = Math.min(f.action_points || 0, GAME_CONFIG.MAX_AP);
+    const maxAP = GAME_CONFIG.MAX_AP;
+    const apPct = Math.round((currentAP / maxAP) * 100);
+    const currentTick = currentShard?.current_tick || 0;
+    const ticksUntilElection = nextElection ? nextElection.election_tick - currentTick : null;
+
+    let apTip = '';
+    if (ticksUntilElection !== null && ticksUntilElection <= 6) {
+        apTip = `Election in ${ticksUntilElection} tick${ticksUntilElection !== 1 ? 's' : ''} — bank AP or campaign now.`;
+    } else if (currentAP >= maxAP) {
+        apTip = 'AP is full — spend it before it goes to waste.';
+    } else if (currentAP <= 2) {
+        apTip = 'AP is low. Choose your next move carefully.';
+    } else {
+        apTip = 'Spend AP on bills, campaigns, and ministry actions.';
+    }
+
+    // === Approval by Voter Bloc (build HTML) ===
+    const totalEligible = n.eligible_voters || 0;
+    function compactNum(v) {
+        if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+        if (v >= 1_000) return (v / 1_000).toFixed(v >= 100_000 ? 0 : 1).replace(/\.0$/, '') + 'K';
+        return String(Math.round(v));
+    }
+
+    let blocTableHtml = '';
+    for (const r of blocRows) {
+        const barColor = r.isLeading ? partyColor : 'var(--text-muted, #555)';
+        const voters = compactNum(totalEligible * (r.popWeight / 100));
+        blocTableHtml += `
+            <div class="bloc-row${r.isLeading ? ' bloc-row-leading' : ''}">
+                <span class="bloc-name">${r.blocName}</span>
+                <span class="bloc-voters">${voters}</span>
+                <div class="bloc-bar-track">
+                    <div class="bloc-bar-fill" style="width:${r.myApproval}%;background:${barColor}"></div>
+                </div>
+                <span class="bloc-approval">${r.myApproval}%</span>
+                <span class="bloc-change">—</span>
+                <span class="bloc-leader" style="color:${r.leaderColor}">${r.isLeading ? 'YOU' : r.leaderAbbr}</span>
+            </div>`;
+    }
+
+    const swingText = swingBlocs.length > 0
+        ? `Swing Blocs (within 3%): ${swingBlocs.map(r => r.blocName).join(', ')}`
+        : 'No swing blocs';
+
+    el.innerHTML = `
+        <div class="parties-page">
+        <div class="parties-top-panels">
+
+        <div class="my-party-card" style="border-left-color:${partyColor}">
+            <div class="my-party-top-row">
+                <div class="my-party-logo" style="color:${partyColor}">
+                    ${logoSvg}
+                </div>
+                <div class="my-party-identity">
+                    <div class="my-party-name-row">
+                        <span class="my-party-name" style="color:${partyColor}">${f.faction_name}</span>
+                        ${abbr}
+                    </div>
+                    <div class="my-party-role-row">
+                        <span class="role-badge ${badgeClass}">${role}</span>
+                    </div>
+                    <div class="my-party-ideology-row">
+                        ${ideologyTags}
+                    </div>
+                </div>
+            </div>
+
+            <div class="my-party-stats">
+                <div class="my-party-stat">
+                    <div class="stat-label">Party Leader</div>
+                    <div class="stat-val">${leaderName}</div>
+                </div>
+                <div class="my-party-stat">
+                    <div class="stat-label">Seats</div>
+                    <div class="stat-val">${mySeats} / ${GAME_CONFIG.TOTAL_SEATS}</div>
+                </div>
+                <div class="my-party-stat">
+                    <div class="stat-label">Founded</div>
+                    <div class="stat-val">${founded}</div>
+                </div>
+                <div class="my-party-stat">
+                    <div class="stat-label">Treasury</div>
+                    <div class="stat-val stat-money">${treasury}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="vote-share-panel">
+            <div class="vote-share-header">Projected Vote Share</div>
+            <div class="vote-bars">
+                ${voteBarsHtml}
+            </div>
+            <div class="vote-share-footer">Next election: ${nextElectionDate}</div>
+        </div>
+
+        <div class="momentum-panel">
+            <div class="momentum-header">Momentum</div>
+            <div class="momentum-score-row">
+                <span class="momentum-value">${momentumScore}</span>
+                <span class="momentum-max">/ 100</span>
+            </div>
+            <div class="momentum-bar-track">
+                <div class="momentum-bar-fill" style="width:${momentumScore}%;background:${partyColor}"></div>
+            </div>
+            <div class="momentum-decay">${decayPerTick > 0 ? `${rawMomentum > 0 ? '−' : '+'}${decayPerTick} / tick` : 'Stable'}</div>
+            <div class="momentum-rank">You are ${ordinal(momentumRank)} of ${totalParties} in Momentum right now.</div>
+            <div class="momentum-desc">How loud you are in the national conversation right now.</div>
+        </div>
+
+        ${perfCreditHtml}
+
+        <div class="ap-panel">
+            <div class="ap-header">Action Points</div>
+            <div class="ap-score-row">
+                <span class="ap-value">${currentAP}</span>
+                <span class="ap-max">/ ${maxAP}</span>
+            </div>
+            <div class="ap-bar-track">
+                <div class="ap-bar-fill" style="width:${apPct}%;background:${partyColor}"></div>
+            </div>
+            <div class="ap-tip">${apTip}</div>
+        </div>
+
+        </div>
+
+        <div class="bloc-approval-panel">
+            <div class="bloc-approval-header-row">
+                <span class="bloc-approval-title">Approval by Voter Bloc</span>
+                <span class="bloc-approval-note">&plusmn; margin of error</span>
+            </div>
+            <div class="bloc-table-header">
+                <span class="bloc-name">Bloc</span>
+                <span class="bloc-voters">Voters</span>
+                <span class="bloc-bar-track-header"></span>
+                <span class="bloc-approval">Your Approval</span>
+                <span class="bloc-change">Change</span>
+                <span class="bloc-leader">Leader</span>
+            </div>
+            <div class="bloc-table-body">
+                ${blocTableHtml}
+            </div>
+            <div class="bloc-approval-footer">
+                <span>Leading: ${leadingCount} of ${blocRows.length}${leadingPopPct > 0 ? ` (${leadingPopPct}% of pop)` : ''}</span>
+                <span>${swingText}</span>
+            </div>
+        </div>
+
+        <div class="actions-row">
+            <div id="rally-container"></div>
+            <div id="pc-container"></div>
+        </div>
+
+        <div id="outreach-container"></div>
+
+        </div>
+    `;
+
+    // ── Rally UI ──
+    let rallyScreen = 'select'; // 'select' | 'preview' | 'results'
+    let rallySelectedIdx = null;
+    let rallyResults = null;
+    let rallyFilter = 'All';
+    let rallyShowAll = false;
+
+    // Fetch recent rallies for cooldown/diminish info
+    const { data: recentRallies } = await _supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', f.id)
+        .eq('action_type', 'rally')
+        .gte('tick_performed', (currentShard?.current_tick || 0) - RALLY_CONFIG.DIMINISH_WINDOW)
+        .order('tick_performed', { ascending: false });
+
+    const ralliedThisTick = (recentRallies || []).some(r => r.tick_performed === (currentShard?.current_tick || 0));
+
+    // Get tag use counts for diminishing returns display
+    function getTagUseCounts(tags) {
+        const counts = {};
+        for (const tag of tags) counts[tag] = 0;
+        for (const r of (recentRallies || [])) {
+            for (const t of (r.result?.tags || [])) {
+                if (counts[t] !== undefined) counts[t]++;
+            }
+        }
+        return counts;
+    }
+
+    // Ideology tag colors from IDEOLOGY_AXES
+    const IDEO_COLORS = {};
+    for (const ax of IDEOLOGY_AXES) {
+        IDEO_COLORS[ax.left] = ax.leftColor;
+        IDEO_COLORS[ax.right] = ax.rightColor;
+    }
+    function colorTag(tag) {
+        const upper = tag.toUpperCase();
+        const color = IDEO_COLORS[upper] || 'var(--text-muted, #888)';
+        const label = tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
+        return `<span style="color:${color};font-weight:700">${label}</span>`;
+    }
+    function colorTagUpper(tag) {
+        const upper = tag.toUpperCase();
+        const color = IDEO_COLORS[upper] || 'var(--text-muted, #888)';
+        return `<span style="color:${color};font-weight:700">${upper}</span>`;
+    }
+
+    function renderRally() {
+        const container = document.getElementById('rally-container');
+        if (!container) return;
+
+        if (rallyScreen === 'select') {
+            const costOk = currentAP >= RALLY_CONFIG.AP_COST && (f.party_funds || 0) >= RALLY_CONFIG.MONEY_COST;
+            const allTags = ['All', 'Tradition', 'Progress', 'Liberty', 'Equality', 'Security', 'Freedom', 'Nationalism', 'Globalism', 'Collectivism', 'Individualism'];
+            const filterBtns = allTags.map(t => {
+                const color = t === 'All' ? '' : IDEO_COLORS[t.toUpperCase()] || '';
+                const style = color && rallyFilter === t ? ` style="border-color:${color};color:${color}"` : color ? ` style="color:${color}"` : '';
+                return `<button class="rally-filter-btn${rallyFilter === t ? ' active' : ''}" data-filter="${t}"${style}>${t}</button>`;
+            }).join('');
+
+            let filtered = RALLY_SUBJECTS.map((s, i) => ({ ...s, idx: i }));
+            if (rallyFilter !== 'All') {
+                filtered = filtered.filter(s => s.tags.includes(rallyFilter.toUpperCase()));
+            }
+            const shown = rallyShowAll ? filtered : filtered.slice(0, 15);
+            const hasMore = filtered.length > 15 && !rallyShowAll;
+
+            let rows = shown.map(s =>
+                `<div class="rally-subject-row${!costOk || ralliedThisTick ? ' disabled' : ''}" data-idx="${s.idx}">
+                    <span class="rally-subject-name">${s.name}</span>
+                    <span class="rally-subject-tags">${s.tags.map(t => colorTagUpper(t)).join('&nbsp; ')}</span>
+                </div>`
+            ).join('');
+
+            container.innerHTML = `
+                <div class="rally-panel">
+                    <div class="rally-header-row">
+                        <span class="rally-title">Hold a Rally</span>
+                        <span class="rally-cost">Cost: ${RALLY_CONFIG.AP_COST} AP + $${(RALLY_CONFIG.MONEY_COST).toLocaleString()}</span>
+                    </div>
+                    <div class="rally-desc">Choose a subject for your rally. Each subject has ideology tags that determine which voter blocs are energized and which are alienated.</div>
+                    ${ralliedThisTick ? '<div class="rally-cooldown">You have already held a rally this tick.</div>' : ''}
+                    ${!costOk && !ralliedThisTick ? '<div class="rally-cooldown">Not enough AP or funds.</div>' : ''}
+                    <div class="rally-divider"></div>
+                    <div class="rally-filters">${filterBtns}</div>
+                    <div class="rally-divider"></div>
+                    <div class="rally-subject-header">
+                        <span class="rally-subject-name">Subject</span>
+                        <span class="rally-subject-tags">Tags</span>
+                    </div>
+                    <div class="rally-subject-list">${rows}</div>
+                    ${hasMore ? `<div class="rally-show-all">Showing 15 of ${filtered.length} subjects <button class="rally-show-all-btn">[Show All]</button></div>` : ''}
+                </div>`;
+
+            // Event listeners
+            container.querySelectorAll('.rally-filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => { rallyFilter = btn.dataset.filter; rallyShowAll = false; renderRally(); });
+            });
+            container.querySelectorAll('.rally-subject-row:not(.disabled)').forEach(row => {
+                row.addEventListener('click', () => { rallySelectedIdx = parseInt(row.dataset.idx); rallyScreen = 'preview'; renderRally(); });
+            });
+            const showAllBtn = container.querySelector('.rally-show-all-btn');
+            if (showAllBtn) showAllBtn.addEventListener('click', () => { rallyShowAll = true; renderRally(); });
+
+        } else if (rallyScreen === 'preview') {
+            const subject = RALLY_SUBJECTS[rallySelectedIdx];
+            const classified = classifyRallyBlocs(subject, blocs || []);
+            const energized = classified.filter(c => c.classification === 'energized');
+            const alienated = classified.filter(c => c.classification === 'alienated');
+            const unaffected = classified.filter(c => c.classification === 'unaffected');
+
+            const tagCounts = getTagUseCounts(subject.tags);
+            const diminished = subject.tags.filter(t => tagCounts[t] > 0);
+
+            const tagLabels = subject.tags.map(t => t.charAt(0) + t.slice(1).toLowerCase());
+            const tagColored = subject.tags.map(t => colorTagUpper(t)).join('&nbsp; ');
+            const tagColoredMixed = subject.tags.map(t => colorTag(t)).join(' or ');
+
+            function blocPctLabel(c) { return `(${Math.round(c.popWeight)}%)`; }
+            function matchLabel(c) { return c.matchTag ? colorTagUpper(c.matchTag) : ''; }
+            function opposeLabel(c) {
+                if (!c.opposeTag) return '';
+                const opp = IDEOLOGY_OPPOSITES[c.opposeTag];
+                return opp ? '\u2190 ' + colorTag(opp) : '';
+            }
+
+            const enPop = energized.reduce((s, c) => s + c.popWeight, 0);
+            const alPop = alienated.reduce((s, c) => s + c.popWeight, 0);
+            const unPop = unaffected.reduce((s, c) => s + c.popWeight, 0);
+
+            let diminishHtml = '';
+            if (diminished.length > 0) {
+                diminishHtml = diminished.map(t => {
+                    const uses = tagCounts[t];
+                    const label = t.charAt(0) + t.slice(1).toLowerCase();
+                    const last = (recentRallies || []).find(r => (r.result?.tags || []).includes(t));
+                    const ago = last ? (currentShard?.current_tick || 0) - last.tick_performed : '?';
+                    const effect = uses === 1 ? 'halved' : 'quartered';
+                    return `<div class="rally-diminish-warn">Diminished effect: You rallied on ${label.toUpperCase()} ${ago} tick${ago !== 1 ? 's' : ''} ago. Energize effect ${effect} for ${label}-aligned blocs.</div>`;
+                }).join('');
+            }
+
+            container.innerHTML = `
+                <div class="rally-panel">
+                    <div class="rally-header-row">
+                        <span class="rally-title">Hold a Rally</span>
+                        <span class="rally-cost">Cost: ${RALLY_CONFIG.AP_COST} AP + $${(RALLY_CONFIG.MONEY_COST).toLocaleString()}</span>
+                    </div>
+                    <div class="rally-selected">
+                        <div class="rally-selected-label">SELECTED: "${subject.name}"</div>
+                        <div class="rally-selected-tags">Tags: ${tagColored}</div>
+                    </div>
+                    <div class="rally-divider rally-divider-accent"></div>
+
+                    <div class="rally-section-title">PROJECTED EFFECTS</div>
+
+                    <div class="rally-group-label rally-energized">ENERGIZED <span class="rally-group-note">(share ${tagColoredMixed})</span></div>
+                    <div class="rally-group-box">
+                        ${energized.length === 0 ? '<div class="rally-group-empty">None</div>' :
+                            energized.map(c => `<div class="rally-bloc-row rally-energized">▲ ${c.blocName} ${blocPctLabel(c)} <span class="rally-bloc-tag">${matchLabel(c).toUpperCase()}</span> <span class="rally-bloc-est">est. +1 to +2</span></div>`).join('')}
+                    </div>
+
+                    <div class="rally-group-label rally-alienated">ALIENATED <span class="rally-group-note">(oppose ${tagColoredMixed})</span></div>
+                    <div class="rally-group-box">
+                        ${alienated.length === 0 ? '<div class="rally-group-empty">None</div>' :
+                            alienated.map(c => `<div class="rally-bloc-row rally-alienated">▼ ${c.blocName} ${blocPctLabel(c)} <span class="rally-bloc-tag">${opposeLabel(c)}</span> <span class="rally-bloc-est">est. 0 to -2</span></div>`).join('')}
+                    </div>
+
+                    <div class="rally-group-label rally-unaffected">UNAFFECTED</div>
+                    <div class="rally-group-box">
+                        ${unaffected.length === 0 ? '<div class="rally-group-empty">None</div>' :
+                            unaffected.map(c => `<div class="rally-bloc-row rally-unaffected">\u2014 ${c.blocName} ${blocPctLabel(c)} <span class="rally-bloc-tag">no match or opposition</span></div>`).join('')}
+                    </div>
+
+                    <div class="rally-divider"></div>
+                    <div class="rally-momentum-est">MOMENTUM: +${RALLY_CONFIG.GLOBAL_MOMENTUM_MIN} to +${RALLY_CONFIG.GLOBAL_MOMENTUM_MAX} (global)</div>
+                    <div class="rally-divider"></div>
+
+                    ${diminishHtml ? `<div class="rally-diminish-section">${diminishHtml}</div><div class="rally-divider"></div>` : ''}
+
+                    <div class="rally-net-est">
+                        <div class="rally-net-title">NET ESTIMATE</div>
+                        <div>Energized: ${energized.length} bloc${energized.length !== 1 ? 's' : ''} (${Math.round(enPop)}% of electorate)</div>
+                        <div>Alienated: ${alienated.length} bloc${alienated.length !== 1 ? 's' : ''} (${Math.round(alPop)}% of electorate)</div>
+                        <div>Unaffected: ${unaffected.length} bloc${unaffected.length !== 1 ? 's' : ''} (${Math.round(unPop)}% of electorate)</div>
+                    </div>
+
+                    <div class="rally-actions">
+                        <button class="rally-btn rally-btn-confirm" id="rally-confirm">CONFIRM RALLY</button>
+                        <button class="rally-btn rally-btn-cancel" id="rally-cancel">CANCEL</button>
+                    </div>
+                </div>`;
+
+            document.getElementById('rally-confirm').addEventListener('click', async () => {
+                const btn = document.getElementById('rally-confirm');
+                btn.disabled = true;
+                btn.textContent = 'Executing...';
+                const tick = currentShard?.current_tick || 0;
+                const result = await executeRally(_supabase, f.id, n.id, rallySelectedIdx, tick);
+                if (result.success) {
+                    rallyResults = result;
+                    rallyScreen = 'results';
+                    renderRally();
+                } else {
+                    alert(result.error);
+                    btn.disabled = false;
+                    btn.textContent = 'CONFIRM RALLY';
+                }
+            });
+            document.getElementById('rally-cancel').addEventListener('click', () => { rallyScreen = 'select'; rallySelectedIdx = null; renderRally(); });
+
+        } else if (rallyScreen === 'results') {
+            const r = rallyResults;
+            const subject = r.subject;
+            const tagColored2 = subject.tags.map(t => colorTagUpper(t)).join('&nbsp; ');
+            const energized = r.blocResults.filter(c => c.classification === 'energized');
+            const alienated = r.blocResults.filter(c => c.classification === 'alienated');
+            const unaffected = r.blocResults.filter(c => c.classification === 'unaffected');
+
+            function resultRow(c, symbol) {
+                const sign = c.prefDelta > 0 ? '+' : '';
+                return `<div class="rally-bloc-row ${c.classification === 'energized' ? 'rally-energized' : c.classification === 'alienated' ? 'rally-alienated' : 'rally-unaffected'}">${symbol} ${c.blocName} <span class="rally-result-delta">${c.prefDelta === 0 ? 'no change' : sign + c.prefDelta + ' preference'}</span> <span class="rally-result-pref">(${c.oldPref}% \u2192 ${c.newPref}%)</span></div>`;
+            }
+
+            container.innerHTML = `
+                <div class="rally-panel rally-panel-results">
+                    <div class="rally-title">Rally Results</div>
+                    <div class="rally-selected">
+                        <div>"${subject.name}"</div>
+                        <div class="rally-selected-tags">${tagColored2}</div>
+                    </div>
+                    <div class="rally-divider rally-divider-accent"></div>
+
+                    <div class="rally-group-label rally-energized">ENERGIZED</div>
+                    <div class="rally-group-box">
+                        ${energized.length === 0 ? '<div class="rally-group-empty">None</div>' :
+                            energized.map(c => resultRow(c, '▲')).join('')}
+                    </div>
+
+                    <div class="rally-group-label rally-alienated">ALIENATED</div>
+                    <div class="rally-group-box">
+                        ${alienated.length === 0 ? '<div class="rally-group-empty">None</div>' :
+                            alienated.map(c => resultRow(c, '▼')).join('')}
+                    </div>
+
+                    <div class="rally-group-label rally-unaffected">UNAFFECTED</div>
+                    <div class="rally-group-box">
+                        ${unaffected.length === 0 ? '<div class="rally-group-empty">None</div>' :
+                            unaffected.map(c => resultRow(c, '\u2014')).join('')}
+                    </div>
+
+                    <div class="rally-divider"></div>
+                    <div class="rally-results-summary">
+                        <div>Momentum: +${r.globalMomentum} (global)</div>
+                        <div>Cost: $${RALLY_CONFIG.MONEY_COST.toLocaleString()} deducted \u2014 Treasury: $${r.oldTreasury.toLocaleString()} \u2192 $${r.newTreasury.toLocaleString()}</div>
+                        <div>AP: ${r.newAp + RALLY_CONFIG.AP_COST} \u2192 ${r.newAp}</div>
+                    </div>
+
+                    <div class="rally-actions">
+                        <button class="rally-btn rally-btn-cancel" id="rally-dismiss">DISMISS</button>
+                    </div>
+                </div>`;
+
+            document.getElementById('rally-dismiss').addEventListener('click', () => {
+                rallyScreen = 'select';
+                rallySelectedIdx = null;
+                rallyResults = null;
+                renderParties(); // full refresh to update AP, treasury, etc.
+            });
+        }
+    }
+
+    renderRally();
+
+    // ── Press Conference UI ──
+    let pcScreen = 'select'; // 'select' | 'preview' | 'results'
+    let pcSelectedStat = null;
+    let pcResults = null;
+    let pcFilter = 'All';
+
+    // Fetch recent press conferences for cooldown
+    const { data: recentPCs } = await _supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', f.id)
+        .eq('action_type', 'press_conference')
+        .gte('tick_performed', (currentShard?.current_tick || 0) - PRESS_CONF_CONFIG.SAME_STAT_WINDOW)
+        .order('tick_performed', { ascending: false });
+
+    const pcThisTick = (recentPCs || []).some(r => r.tick_performed === (currentShard?.current_tick || 0));
+
+    // Build stat list with trend + ministry + holder info
+    const { data: allMinistries } = await _supabase
+        .from('ministries')
+        .select('party_id, ministry_key')
+        .eq('nation_id', n.id)
+        .eq('is_active', true);
+
+    const ministryHolder = {};
+    for (const m of (allMinistries || [])) ministryHolder[m.ministry_key] = m.party_id;
+    if (coalition && coalition.lead_party_id) ministryHolder['prime_minister'] = coalition.lead_party_id;
+
+    // Fetch previous tick for trend if not already done
+    let pcPrevStats = null;
+    const pcTick = currentShard?.current_tick || 0;
+    if (pcTick > 0) {
+        const { data: histRow } = await _supabase
+            .from('nations_history').select('*')
+            .eq('nation_id', n.id).eq('tick', pcTick - 1).single();
+        pcPrevStats = histRow;
+    }
+
+    const MINISTRY_DISPLAY = {
+        prime_minister: 'PM', interior: 'Interior', foreign: 'Foreign',
+        defense: 'Defense', finance: 'Finance', education: 'Education',
+        healthcare: 'Healthcare', labor: 'Labor', justice: 'Justice',
+        transportation: 'Transport', security: 'Security'
+    };
+
+    const statList = [];
+    const FLAT_THRESHOLD_PC = 0.15;
+    for (const [statKey, ministryKey] of Object.entries(STAT_TO_MINISTRY)) {
+        const sign = statDirectionSign(statKey);
+        if (sign === 0) continue;
+        const cur = n[statKey];
+        const prev = pcPrevStats ? pcPrevStats[statKey] : null;
+        if (cur == null) continue;
+
+        const rawDelta = (prev != null) ? cur - prev : 0;
+        const improvement = rawDelta * sign;
+        let trend = 'flat';
+        if (improvement > FLAT_THRESHOLD_PC) trend = 'well';
+        else if (improvement < -FLAT_THRESHOLD_PC) trend = 'badly';
+
+        const holderId = ministryHolder[ministryKey] || null;
+        let mode;
+        if (holderId === f.id) mode = 'credit';
+        else if (holderId) mode = 'attack';
+        else mode = 'attention';
+
+        const holderParty = holderId ? partyLookup[holderId] : null;
+        const holderAbbr = holderParty?.abbreviation || (holderId === f.id ? 'YOU' : null);
+
+        // Check same-stat penalty
+        const sameStatRecent = (recentPCs || []).filter(r => r.result?.statKey === statKey);
+
+        statList.push({
+            statKey,
+            label: statKey.replace(/_/g, ' '),
+            ministryKey,
+            ministryLabel: MINISTRY_DISPLAY[ministryKey] || ministryKey,
+            trend,
+            mode,
+            holderId,
+            holderAbbr,
+            holderColor: holderParty?.party_color || '#666',
+            willBackfire: (mode === 'credit' && trend === 'badly') || (mode === 'attack' && trend === 'well'),
+            isFlat: trend === 'flat',
+            sameStatPenalty: sameStatRecent.length > 0,
+        });
+    }
+
+    // Group stats by ministry for the filter
+    const ministryKeys = [...new Set(statList.map(s => s.ministryKey))];
+
+    function renderPC() {
+        const container = document.getElementById('pc-container');
+        if (!container) return;
+
+        if (pcScreen === 'select') {
+            const costOk = (f.action_points || 0) >= PRESS_CONF_CONFIG.AP_COST && (f.party_funds || 0) >= PRESS_CONF_CONFIG.MONEY_COST;
+            const canAct = costOk && !pcThisTick;
+
+            // Filter buttons: All + ministry names
+            const filterOptions = ['All', ...ministryKeys.map(k => MINISTRY_DISPLAY[k] || k)];
+            const filterBtns = filterOptions.map(label => {
+                return `<button class="pc-filter-btn${pcFilter === label ? ' active' : ''}" data-filter="${label}">${label}</button>`;
+            }).join('');
+
+            // Filter stats
+            let filtered = statList;
+            if (pcFilter !== 'All') {
+                filtered = statList.filter(s => (MINISTRY_DISPLAY[s.ministryKey] || s.ministryKey) === pcFilter);
+            }
+
+            // Sort: trending badly first (good attack targets), then well, then flat
+            const trendOrder = { badly: 0, well: 1, flat: 2 };
+            filtered.sort((a, b) => trendOrder[a.trend] - trendOrder[b.trend]);
+
+            const rows = filtered.map(s => {
+                const trendIcon = s.trend === 'well' ? '<span class="pc-trend-good">▲</span>'
+                    : s.trend === 'badly' ? '<span class="pc-trend-bad">▼</span>'
+                    : '<span class="pc-trend-flat">—</span>';
+                const modeIcon = s.mode === 'credit' ? '📣' : s.mode === 'attack' ? '⚔️' : '📢';
+                const modeLabel = s.mode === 'credit' ? 'Credit' : s.mode === 'attack' ? 'Attack' : 'Attention';
+                const backfireWarn = s.willBackfire ? ' <span class="pc-backfire-warn">⚠</span>' : '';
+                const penaltyNote = s.sameStatPenalty ? ' <span class="pc-penalty-note">½</span>' : '';
+                const holderTag = s.holderAbbr
+                    ? `<span class="pc-holder" style="color:${s.holderColor}">${s.holderAbbr}</span>`
+                    : '<span class="pc-holder pc-holder-none">—</span>';
+                const statLabel = s.label.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                return `<div class="pc-stat-row${!canAct ? ' disabled' : ''}" data-stat="${s.statKey}">
+                    <span class="pc-stat-trend">${trendIcon}</span>
+                    <span class="pc-stat-name">${statLabel}</span>
+                    <span class="pc-stat-ministry">${s.ministryLabel}</span>
+                    ${holderTag}
+                    <span class="pc-stat-mode pc-mode-${s.mode}">${modeIcon} ${modeLabel}${backfireWarn}${penaltyNote}</span>
+                </div>`;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="pc-panel">
+                    <div class="pc-header-row">
+                        <span class="pc-title">Press Conference</span>
+                        <span class="pc-cost">Cost: ${PRESS_CONF_CONFIG.AP_COST} AP + $${PRESS_CONF_CONFIG.MONEY_COST.toLocaleString()}</span>
+                    </div>
+                    <div class="pc-desc">Speak publicly about a national stat. Take credit, attack rivals, or draw attention.</div>
+                    ${pcThisTick ? '<div class="pc-cooldown">You have already held a press conference this tick.</div>' : ''}
+                    ${!costOk && !pcThisTick ? '<div class="pc-cooldown">Not enough AP or funds.</div>' : ''}
+                    <div class="pc-divider"></div>
+                    <div class="pc-filters">${filterBtns}</div>
+                    <div class="pc-divider"></div>
+                    <div class="pc-stat-header">
+                        <span class="pc-stat-trend">Trend</span>
+                        <span class="pc-stat-name">Stat</span>
+                        <span class="pc-stat-ministry">Ministry</span>
+                        <span class="pc-holder">Holder</span>
+                        <span class="pc-stat-mode">Action</span>
+                    </div>
+                    <div class="pc-stat-list">${rows}</div>
+                    <div class="pc-legend">
+                        <span>📣 Credit = your ministry</span>
+                        <span>⚔️ Attack = rival's ministry</span>
+                        <span>📢 Attention = no holder</span>
+                        <span>⚠ = backfire (wrong trend)</span>
+                        <span>½ = same-stat penalty</span>
+                        <span>— = flat (reduced effect)</span>
+                    </div>
+                </div>`;
+
+            container.querySelectorAll('.pc-filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => { pcFilter = btn.dataset.filter; renderPC(); });
+            });
+            container.querySelectorAll('.pc-stat-row:not(.disabled)').forEach(row => {
+                row.addEventListener('click', () => { pcSelectedStat = row.dataset.stat; pcScreen = 'preview'; renderPC(); });
+            });
+
+        } else if (pcScreen === 'preview') {
+            const s = statList.find(x => x.statKey === pcSelectedStat);
+            if (!s) { pcScreen = 'select'; renderPC(); return; }
+
+            const statLabel = s.label.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            const trendLabel = s.trend === 'well' ? 'Trending Well ▲' : s.trend === 'badly' ? 'Trending Badly ▼' : 'Flat —';
+            const trendClass = s.trend === 'well' ? 'pc-trend-good' : s.trend === 'badly' ? 'pc-trend-bad' : 'pc-trend-flat';
+
+            // Find caring blocs
+            const caringBlocsList = [];
+            for (const b of (blocs || [])) {
+                const issues = b.priority_issues || [];
+                for (const issue of issues) {
+                    const catStats = ISSUE_CATEGORY_STATS[issue] || [];
+                    if (catStats.includes(s.statKey)) {
+                        caringBlocsList.push(b.bloc_name);
+                        break;
+                    }
+                }
+            }
+
+            const flatNote = s.isFlat ? ' (reduced — stat is flat)' : '';
+            const penaltyNotes = [s.sameStatPenalty ? 'same-stat penalty' : '', s.isFlat ? 'flat stat' : ''].filter(Boolean).join(' + ');
+            const penaltySuffix = penaltyNotes ? ` (reduced: ${penaltyNotes})` : '';
+
+            let projectedHtml = '';
+            if (s.mode === 'credit') {
+                if (s.willBackfire) {
+                    projectedHtml = `
+                        <div class="pc-projection pc-proj-bad">
+                            <div class="pc-proj-title">BACKFIRE — Stat is Actively Declining Under Your Watch</div>
+                            <div>Your momentum: ${PRESS_CONF_CONFIG.CREDIT_BACKFIRE_MOMENTUM}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
+                            ${caringBlocsList.length > 0 ? `<div>Caring blocs get ${PRESS_CONF_CONFIG.CREDIT_BACKFIRE_PREF} preference toward you</div>` : ''}
+                            <div class="pc-proj-headline">Projected headline: "${s.holderAbbr || 'YOU'} Claims Credit — Public Not Convinced"</div>
+                        </div>`;
+                } else {
+                    const creditTitle = s.isFlat
+                        ? 'TAKING CREDIT — Stat is Stable Under Your Watch'
+                        : 'TAKING CREDIT — Stat is Improving Under Your Watch';
+                    projectedHtml = `
+                        <div class="pc-projection pc-proj-good">
+                            <div class="pc-proj-title">${creditTitle}</div>
+                            <div>Your momentum: +${PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MIN} to +${PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MAX}${penaltySuffix}</div>
+                            ${caringBlocsList.length > 0 ? `<div>Caring blocs get +${PRESS_CONF_CONFIG.CREDIT_PREF_DELTA} preference toward you</div>` : ''}
+                        </div>`;
+                }
+            } else if (s.mode === 'attack') {
+                if (s.willBackfire) {
+                    projectedHtml = `
+                        <div class="pc-projection pc-proj-bad">
+                            <div class="pc-proj-title">BACKFIRE — Stat is Actually Improving</div>
+                            <div>Your momentum: ${PRESS_CONF_CONFIG.ATTACK_BACKFIRE_SELF_MOMENTUM}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
+                            <div>${s.holderAbbr} gets +${PRESS_CONF_CONFIG.ATTACK_BACKFIRE_TARGET_MOMENTUM} momentum (sympathy boost)</div>
+                            <div class="pc-proj-headline">Projected headline: "Attack on ${s.holderAbbr} Backfires — Stat is Up"</div>
+                        </div>`;
+                } else {
+                    const attackTitle = s.isFlat
+                        ? `ATTACK — Criticizing ${s.holderAbbr} for Stagnant Performance`
+                        : `ATTACK — Blaming ${s.holderAbbr} for a Failing Stat`;
+                    projectedHtml = `
+                        <div class="pc-projection pc-proj-good">
+                            <div class="pc-proj-title">${attackTitle}</div>
+                            <div>${s.holderAbbr}'s momentum: -${PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MIN} to -${PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MAX}${penaltySuffix}</div>
+                            <div>Your momentum: +${PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MIN} to +${PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MAX}${penaltySuffix}</div>
+                            ${caringBlocsList.length > 0 ? `<div>Credit transfer: caring blocs shift -${PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT} from ${s.holderAbbr}, +${PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT} to you</div>` : ''}
+                        </div>`;
+                }
+            } else {
+                projectedHtml = `
+                    <div class="pc-projection pc-proj-neutral">
+                        <div class="pc-proj-title">DRAWING ATTENTION — No Party Holds This Ministry</div>
+                        <div>Your momentum: +${PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MIN} to +${PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MAX}${s.sameStatPenalty ? ' (reduced: same-stat penalty)' : ''}</div>
+                        <div>No credit transfer (nobody to blame or praise)</div>
+                    </div>`;
+            }
+
+            const caringHtml = caringBlocsList.length > 0
+                ? `<div class="pc-caring-blocs"><span class="pc-caring-label">Blocs who care:</span> ${caringBlocsList.join(', ')}</div>`
+                : '<div class="pc-caring-blocs"><span class="pc-caring-label">No blocs have this as a priority issue.</span></div>';
+
+            container.innerHTML = `
+                <div class="pc-panel">
+                    <div class="pc-header-row">
+                        <span class="pc-title">Press Conference</span>
+                        <span class="pc-cost">Cost: ${PRESS_CONF_CONFIG.AP_COST} AP + $${PRESS_CONF_CONFIG.MONEY_COST.toLocaleString()}</span>
+                    </div>
+                    <div class="pc-selected">
+                        <div class="pc-selected-stat">${statLabel}</div>
+                        <div class="pc-selected-meta">
+                            <span class="${trendClass}">${trendLabel}</span>
+                            <span class="pc-selected-ministry">${s.ministryLabel}${s.holderAbbr ? ` — held by <span style="color:${s.holderColor};font-weight:700">${s.holderAbbr}</span>` : ' — no holder'}</span>
+                        </div>
+                    </div>
+                    <div class="pc-divider pc-divider-accent"></div>
+                    ${projectedHtml}
+                    <div class="pc-divider"></div>
+                    ${caringHtml}
+                    ${s.sameStatPenalty ? '<div class="pc-same-stat-warn">⚠ Same-stat penalty: You\'ve spoken about this stat recently. Momentum effects halved.</div>' : ''}
+                    <div class="pc-actions">
+                        <button class="pc-btn pc-btn-confirm${s.willBackfire ? ' pc-btn-danger' : ''}" id="pc-confirm">${s.willBackfire ? 'PROCEED ANYWAY' : 'HOLD PRESS CONFERENCE'}</button>
+                        <button class="pc-btn pc-btn-cancel" id="pc-cancel">CANCEL</button>
+                    </div>
+                </div>`;
+
+            document.getElementById('pc-confirm').addEventListener('click', async () => {
+                const btn = document.getElementById('pc-confirm');
+                btn.disabled = true;
+                btn.textContent = 'Speaking...';
+                const tick = currentShard?.current_tick || 0;
+                const result = await executePressConference(_supabase, f.id, n.id, pcSelectedStat, tick);
+                if (result.success) {
+                    pcResults = result;
+                    pcScreen = 'results';
+                    renderPC();
+                } else {
+                    alert(result.error);
+                    btn.disabled = false;
+                    btn.textContent = s.willBackfire ? 'PROCEED ANYWAY' : 'HOLD PRESS CONFERENCE';
+                }
+            });
+            document.getElementById('pc-cancel').addEventListener('click', () => { pcScreen = 'select'; pcSelectedStat = null; renderPC(); });
+
+        } else if (pcScreen === 'results') {
+            const r = pcResults;
+            const statLabel = r.statLabel.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+            const modeLabel = r.mode === 'credit' ? (r.backfire ? 'Credit (Backfire!)' : 'Taking Credit')
+                : r.mode === 'attack' ? (r.backfire ? 'Attack (Backfire!)' : 'Attack')
+                : 'Drawing Attention';
+            const modeClass = r.backfire ? 'pc-result-backfire' : (r.mode === 'attention' ? 'pc-result-neutral' : 'pc-result-success');
+
+            let blocHtml = '';
+            if (r.blocResults.length > 0) {
+                const selfResults = r.blocResults.filter(b => b.party === 'self');
+                const targetResults = r.blocResults.filter(b => b.party === 'target');
+                if (selfResults.length > 0) {
+                    blocHtml += `<div class="pc-result-group"><div class="pc-result-group-label">Your preference changes:</div>`;
+                    for (const b of selfResults) {
+                        const sign = b.prefDelta > 0 ? '+' : '';
+                        blocHtml += `<div class="pc-result-bloc">${b.blocName}: ${sign}${b.prefDelta} (${b.oldPref}% → ${b.newPref}%)</div>`;
+                    }
+                    blocHtml += '</div>';
+                }
+                if (targetResults.length > 0) {
+                    blocHtml += `<div class="pc-result-group"><div class="pc-result-group-label">${r.targetAbbr}'s preference changes:</div>`;
+                    for (const b of targetResults) {
+                        const sign = b.prefDelta > 0 ? '+' : '';
+                        blocHtml += `<div class="pc-result-bloc">${b.blocName}: ${sign}${b.prefDelta} (${b.oldPref}% → ${b.newPref}%)</div>`;
+                    }
+                    blocHtml += '</div>';
+                }
+            } else {
+                blocHtml = '<div class="pc-result-group"><div class="pc-result-bloc">No preference changes.</div></div>';
+            }
+
+            container.innerHTML = `
+                <div class="pc-panel pc-panel-results">
+                    <div class="pc-title">Press Conference Results</div>
+                    <div class="pc-result-headline ${modeClass}">"${r.headline}"</div>
+                    <div class="pc-result-mode">${modeLabel}</div>
+                    <div class="pc-divider pc-divider-accent"></div>
+
+                    <div class="pc-result-section">
+                        <div class="pc-result-stat">Stat: ${statLabel}</div>
+                        <div class="pc-result-momentum">Your momentum: ${r.selfMomentumDelta > 0 ? '+' : ''}${r.selfMomentumDelta}${r.sameStatPenalty && r.flatStat ? ' (reduced — same-stat + flat stat)' : r.sameStatPenalty ? ' (reduced — same-stat penalty)' : r.flatStat ? ' (reduced — flat stat)' : ''}</div>
+                        ${r.targetAbbr ? `<div class="pc-result-momentum">${r.targetAbbr}'s momentum: ${r.targetMomentumDelta > 0 ? '+' : ''}${r.targetMomentumDelta}</div>` : ''}
+                    </div>
+
+                    <div class="pc-divider"></div>
+                    ${blocHtml}
+                    <div class="pc-divider"></div>
+
+                    <div class="pc-results-summary">
+                        <div>Cost: $${PRESS_CONF_CONFIG.MONEY_COST.toLocaleString()} deducted — Treasury: $${r.oldTreasury.toLocaleString()} → $${r.newTreasury.toLocaleString()}</div>
+                        <div>AP: ${r.newAp + PRESS_CONF_CONFIG.AP_COST} → ${r.newAp}</div>
+                    </div>
+
+                    <div class="pc-actions">
+                        <button class="pc-btn pc-btn-cancel" id="pc-dismiss">DISMISS</button>
+                    </div>
+                </div>`;
+
+            document.getElementById('pc-dismiss').addEventListener('click', () => {
+                pcScreen = 'select';
+                pcSelectedStat = null;
+                pcResults = null;
+                renderParties();
+            });
+        }
+    }
+
+    renderPC();
+
+    // ── Voter Outreach UI ──
+    let outreachScreen = 'select'; // 'select' | 'results'
+    let outreachResults = null;
+
+    // Fetch recent outreach for cooldown
+    const { data: recentOutreach } = await _supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', f.id)
+        .eq('action_type', 'outreach')
+        .gte('tick_performed', (currentShard?.current_tick || 0) - OUTREACH_CONFIG.COOLDOWN_TICKS + 1)
+        .order('tick_performed', { ascending: false });
+
+    const recentOutreachBlocIds = new Set((recentOutreach || []).map(r => r.result?.blocId).filter(Boolean));
+
+    function renderOutreach() {
+        const container = document.getElementById('outreach-container');
+        if (!container) return;
+
+        if (outreachScreen === 'select') {
+            const costOk = (f.action_points || 0) >= OUTREACH_CONFIG.AP_COST && (f.party_funds || 0) >= OUTREACH_CONFIG.MONEY_COST;
+
+            const rows = (blocs || []).map(b => {
+                const onCooldown = recentOutreachBlocIds.has(b.id);
+                const disabled = !costOk || onCooldown;
+                const approvalRow = (allBlocApprovals || []).find(a => a.bloc_id === b.id && a.faction_id === f.id);
+                const currentPref = approvalRow ? Math.round(approvalRow.preference_score || 0) : '?';
+                const popPct = b.population_weight ? Math.round(b.population_weight) + '%' : '';
+                return `<div class="outreach-bloc-row${disabled ? ' disabled' : ''}" data-bloc-id="${b.id}">
+                    <span class="outreach-bloc-name">${b.bloc_name}</span>
+                    <span class="outreach-bloc-pop">${popPct}</span>
+                    <span class="outreach-bloc-pref">${currentPref}%</span>
+                    ${onCooldown ? '<span class="outreach-bloc-cd">recent</span>' : '<span class="outreach-bloc-cd"></span>'}
+                </div>`;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="outreach-panel">
+                    <div class="outreach-header-row">
+                        <span class="outreach-title">Voter Outreach</span>
+                        <span class="outreach-cost">Cost: ${OUTREACH_CONFIG.AP_COST} AP + $${OUTREACH_CONFIG.MONEY_COST.toLocaleString()}</span>
+                    </div>
+                    <div class="outreach-desc">Door knocking, community events, local engagement. Guaranteed small gain with one bloc, no backlash.</div>
+                    ${!costOk ? '<div class="outreach-cooldown">Not enough AP or funds.</div>' : ''}
+                    <div class="outreach-divider"></div>
+                    <div class="outreach-bloc-header">
+                        <span class="outreach-bloc-name">Bloc</span>
+                        <span class="outreach-bloc-pop">Pop</span>
+                        <span class="outreach-bloc-pref">Pref</span>
+                        <span class="outreach-bloc-cd"></span>
+                    </div>
+                    <div class="outreach-bloc-list">${rows}</div>
+                </div>`;
+
+            container.querySelectorAll('.outreach-bloc-row:not(.disabled)').forEach(row => {
+                row.addEventListener('click', async () => {
+                    const blocId = row.dataset.blocId;
+                    // Confirm inline — just execute directly (spec says no risk)
+                    row.classList.add('disabled');
+                    row.style.opacity = '0.5';
+                    const tick = currentShard?.current_tick || 0;
+                    const result = await executeOutreach(_supabase, f.id, n.id, blocId, tick);
+                    if (result.success) {
+                        outreachResults = result;
+                        outreachScreen = 'results';
+                        renderOutreach();
+                    } else {
+                        alert(result.error);
+                        row.classList.remove('disabled');
+                        row.style.opacity = '';
+                    }
+                });
+            });
+
+        } else if (outreachScreen === 'results') {
+            const r = outreachResults;
+            container.innerHTML = `
+                <div class="outreach-panel outreach-panel-results">
+                    <div class="outreach-title">Voter Outreach Results</div>
+                    <div class="outreach-divider outreach-divider-accent"></div>
+                    <div class="outreach-result-bloc">${r.blocName}</div>
+                    <div class="outreach-result-pref">Preference: +${r.prefDelta} (${r.oldPref}% → ${r.newPref}%)</div>
+                    <div class="outreach-divider"></div>
+                    <div class="outreach-result-summary">
+                        <div>Cost: $${OUTREACH_CONFIG.MONEY_COST.toLocaleString()} — Treasury: $${r.oldTreasury.toLocaleString()} → $${r.newTreasury.toLocaleString()}</div>
+                        <div>AP: ${r.newAp + OUTREACH_CONFIG.AP_COST} → ${r.newAp}</div>
+                    </div>
+                    <div class="outreach-actions">
+                        <button class="outreach-btn" id="outreach-dismiss">DISMISS</button>
+                    </div>
+                </div>`;
+
+            document.getElementById('outreach-dismiss').addEventListener('click', () => {
+                outreachScreen = 'select';
+                outreachResults = null;
+                renderParties();
+            });
+        }
+    }
+
+    renderOutreach();
 }
 
-async function savePartyIdentity() {
-    if (!currentFaction) return;
-    const btn = document.getElementById('pi-save-btn');
-    const statusEl = document.getElementById('pi-save-status');
-    btn.disabled = true;
-    btn.textContent = 'Saving...';
-
-    try {
-        const desc = document.getElementById('pi-description')?.value?.trim() || '';
-        if (desc.length > 200) throw new Error('Description must be 200 characters or less.');
-
-        const color = _piSelectedColor || currentFaction.party_color || getDefaultPartyColor(0);
-        if (!/^#[0-9A-Fa-f]{6}$/.test(color)) throw new Error('Invalid color format. Use hex like #E63946.');
-
-        const logo = _piSelectedLogo || currentFaction.party_logo || DEFAULT_PARTY_ICON;
-
-        const { error } = await _supabase
-            .from('factions')
-            .update({
-                party_color: color,
-                party_logo: logo,
-                party_description: desc || null
-            })
-            .eq('id', currentFaction.id);
-
-        if (error) throw error;
-
-        // Update local state
-        currentFaction.party_color = color;
-        currentFaction.party_logo = logo;
-        currentFaction.party_description = desc || null;
-
-        statusEl.textContent = 'Saved!';
-        statusEl.style.color = '#4CAF50';
-        setTimeout(() => { statusEl.textContent = ''; }, 3000);
-    } catch (err) {
-        console.error('Save party identity error:', err);
-        statusEl.textContent = 'Error: ' + err.message;
-        statusEl.style.color = '#ff4444';
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Save Changes';
-    }
-}
-
-window.selectPartyColor = selectPartyColor;
-window.onCustomHexInput = onCustomHexInput;
-window.selectPartyLogo = selectPartyLogo;
-window.onDescriptionInput = onDescriptionInput;
-window.savePartyIdentity = savePartyIdentity;
+initPage('parties', async (state) => {
+    const { nation, faction, shard } = state;
+    currentFaction = faction;
+    currentNation = nation;
+    currentShard = shard;
+    initGameConfigForNation(nation);
+    await renderParties();
+});
 </script>
 </body>
 </html>

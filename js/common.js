@@ -226,6 +226,7 @@ export function renderTopBar(activeTab) {
                 <button class="logout-btn" onclick="handleLogout()">Abandon Session</button>
             </div>
         </div>
+        <button class="hamburger-btn" onclick="document.querySelector('.nav-tabs').classList.toggle('nav-open')" aria-label="Toggle navigation">&#9776;</button>
         <nav class="nav-tabs">
             ${renderNavTabs(activeTab)}
         </nav>
@@ -246,7 +247,6 @@ export function renderNavTabs(activeTab) {
         { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
         { id: 'economy', label: 'Economy', href: 'economy.html' },
         { id: 'events', label: 'Events', href: 'events.html' },
-        { id: 'factions', label: 'Factions', href: 'factions.html' },
         { id: 'conflict', label: 'Conflict', href: 'conflict.html' }
     ];
 
