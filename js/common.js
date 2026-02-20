@@ -226,6 +226,7 @@ export function renderTopBar(activeTab) {
                 <button class="logout-btn" onclick="handleLogout()">Abandon Session</button>
             </div>
         </div>
+        <button class="hamburger-btn" onclick="document.querySelector('.nav-tabs').classList.toggle('nav-open')" aria-label="Toggle navigation">&#9776;</button>
         <nav class="nav-tabs">
             ${renderNavTabs(activeTab)}
         </nav>
