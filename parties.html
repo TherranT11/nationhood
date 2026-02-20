@@ -523,6 +523,7 @@ async function renderParties() {
             </div>
             <div class="bloc-approval-footer">
                 <span>Leading: ${leadingCount} of ${blocRows.length}${leadingPopPct > 0 ? ` (${leadingPopPct}% of pop)` : ''}</span>
+                <span>${(n.eligible_voters || 0).toLocaleString()} eligible voters</span>
                 <span>${swingText}</span>
             </div>
         </div>
