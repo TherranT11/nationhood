@@ -902,7 +902,8 @@ async function renderParties() {
             holderId,
             holderAbbr,
             holderColor: holderParty?.party_color || '#666',
-            willBackfire: (mode === 'credit' && trend !== 'well') || (mode === 'attack' && trend !== 'badly'),
+            willBackfire: (mode === 'credit' && trend === 'badly') || (mode === 'attack' && trend === 'well'),
+            isFlat: trend === 'flat',
             sameStatPenalty: sameStatRecent.length > 0,
         });
     }
@@ -979,8 +980,9 @@ async function renderParties() {
                         <span>📣 Credit = your ministry</span>
                         <span>⚔️ Attack = rival's ministry</span>
                         <span>📢 Attention = no holder</span>
-                        <span>⚠ = will backfire</span>
+                        <span>⚠ = backfire (wrong trend)</span>
                         <span>½ = same-stat penalty</span>
+                        <span>— = flat (reduced effect)</span>
                     </div>
                 </div>`;
 
@@ -1012,21 +1014,28 @@ async function renderParties() {
                 }
             }
 
+            const flatNote = s.isFlat ? ' (reduced — stat is flat)' : '';
+            const penaltyNotes = [s.sameStatPenalty ? 'same-stat penalty' : '', s.isFlat ? 'flat stat' : ''].filter(Boolean).join(' + ');
+            const penaltySuffix = penaltyNotes ? ` (reduced: ${penaltyNotes})` : '';
+
             let projectedHtml = '';
             if (s.mode === 'credit') {
                 if (s.willBackfire) {
                     projectedHtml = `
                         <div class="pc-projection pc-proj-bad">
-                            <div class="pc-proj-title">BACKFIRE — Taking Credit for a Bad Stat</div>
+                            <div class="pc-proj-title">BACKFIRE — Stat is Actively Declining Under Your Watch</div>
                             <div>Your momentum: ${PRESS_CONF_CONFIG.CREDIT_BACKFIRE_MOMENTUM}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
                             ${caringBlocsList.length > 0 ? `<div>Caring blocs get ${PRESS_CONF_CONFIG.CREDIT_BACKFIRE_PREF} preference toward you</div>` : ''}
                             <div class="pc-proj-headline">Projected headline: "${s.holderAbbr || 'YOU'} Claims Credit — Public Not Convinced"</div>
                         </div>`;
                 } else {
+                    const creditTitle = s.isFlat
+                        ? 'TAKING CREDIT — Stat is Stable Under Your Watch'
+                        : 'TAKING CREDIT — Stat is Improving Under Your Watch';
                     projectedHtml = `
                         <div class="pc-projection pc-proj-good">
-                            <div class="pc-proj-title">TAKING CREDIT — Stat is Improving Under Your Watch</div>
-                            <div>Your momentum: +${PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MIN} to +${PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MAX}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
+                            <div class="pc-proj-title">${creditTitle}</div>
+                            <div>Your momentum: +${PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MIN} to +${PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MAX}${penaltySuffix}</div>
                             ${caringBlocsList.length > 0 ? `<div>Caring blocs get +${PRESS_CONF_CONFIG.CREDIT_PREF_DELTA} preference toward you</div>` : ''}
                         </div>`;
                 }
@@ -1034,17 +1043,20 @@ async function renderParties() {
                 if (s.willBackfire) {
                     projectedHtml = `
                         <div class="pc-projection pc-proj-bad">
-                            <div class="pc-proj-title">BACKFIRE — Attacking a Stat That's Not Failing</div>
+                            <div class="pc-proj-title">BACKFIRE — Stat is Actually Improving</div>
                             <div>Your momentum: ${PRESS_CONF_CONFIG.ATTACK_BACKFIRE_SELF_MOMENTUM}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
                             <div>${s.holderAbbr} gets +${PRESS_CONF_CONFIG.ATTACK_BACKFIRE_TARGET_MOMENTUM} momentum (sympathy boost)</div>
-                            <div class="pc-proj-headline">Projected headline: "Attack on ${s.holderAbbr} Backfires"</div>
+                            <div class="pc-proj-headline">Projected headline: "Attack on ${s.holderAbbr} Backfires — Stat is Up"</div>
                         </div>`;
                 } else {
+                    const attackTitle = s.isFlat
+                        ? `ATTACK — Criticizing ${s.holderAbbr} for Stagnant Performance`
+                        : `ATTACK — Blaming ${s.holderAbbr} for a Failing Stat`;
                     projectedHtml = `
                         <div class="pc-projection pc-proj-good">
-                            <div class="pc-proj-title">ATTACK — Blaming ${s.holderAbbr} for a Failing Stat</div>
-                            <div>${s.holderAbbr}'s momentum: -${PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MIN} to -${PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MAX}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
-                            <div>Your momentum: +${PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MIN} to +${PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MAX}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
+                            <div class="pc-proj-title">${attackTitle}</div>
+                            <div>${s.holderAbbr}'s momentum: -${PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MIN} to -${PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MAX}${penaltySuffix}</div>
+                            <div>Your momentum: +${PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MIN} to +${PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MAX}${penaltySuffix}</div>
                             ${caringBlocsList.length > 0 ? `<div>Credit transfer: caring blocs shift -${PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT} from ${s.holderAbbr}, +${PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT} to you</div>` : ''}
                         </div>`;
                 }
@@ -1052,7 +1064,7 @@ async function renderParties() {
                 projectedHtml = `
                     <div class="pc-projection pc-proj-neutral">
                         <div class="pc-proj-title">DRAWING ATTENTION — No Party Holds This Ministry</div>
-                        <div>Your momentum: +${PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MIN} to +${PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MAX}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
+                        <div>Your momentum: +${PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MIN} to +${PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MAX}${s.sameStatPenalty ? ' (reduced: same-stat penalty)' : ''}</div>
                         <div>No credit transfer (nobody to blame or praise)</div>
                     </div>`;
             }
@@ -1145,7 +1157,7 @@ async function renderParties() {
 
                     <div class="pc-result-section">
                         <div class="pc-result-stat">Stat: ${statLabel}</div>
-                        <div class="pc-result-momentum">Your momentum: ${r.selfMomentumDelta > 0 ? '+' : ''}${r.selfMomentumDelta}${r.sameStatPenalty ? ' (halved — same-stat penalty)' : ''}</div>
+                        <div class="pc-result-momentum">Your momentum: ${r.selfMomentumDelta > 0 ? '+' : ''}${r.selfMomentumDelta}${r.sameStatPenalty && r.flatStat ? ' (reduced — same-stat + flat stat)' : r.sameStatPenalty ? ' (reduced — same-stat penalty)' : r.flatStat ? ' (reduced — flat stat)' : ''}</div>
                         ${r.targetAbbr ? `<div class="pc-result-momentum">${r.targetAbbr}'s momentum: ${r.targetMomentumDelta > 0 ? '+' : ''}${r.targetMomentumDelta}</div>` : ''}
                     </div>
 
