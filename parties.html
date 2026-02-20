@@ -656,60 +656,87 @@ async function renderParties() {
         ? `Swing Blocs (within 3%): ${swingBlocs.map(r => r.blocName).join(', ')}`
         : 'No swing blocs';
 
-    // === Build Other Parties Cards ===
+    // === Build Other Parties Cards (segmented by Governing / Opposition) ===
     const otherParties = (allParties || []).filter(p => p.id !== f.id);
     let otherPartiesHtml = '';
     if (otherParties.length > 0) {
-        let cardsHtml = '';
+        const govParties = [];
+        const oppParties = [];
         for (const op of otherParties) {
-            const opColor = op.party_color || '#666';
-            const opLogo = getPartyIconSVG(op.party_logo, 36, opColor);
             const opSeats = seatData.allPartySeats[op.id] || 0;
             const opRole = getPartyRole(op.id, opSeats, coalition);
-            const opBadgeClass = getRoleBadgeClass(opRole);
-            const opLeader = op.leader_first_name && op.leader_last_name
-                ? op.leader_first_name + ' ' + op.leader_last_name + (op.leader_age ? ', ' + op.leader_age : '')
-                : '\u2014';
-            const opFounded = tickToDate(op.founded_tick);
-            const opIdeology = buildIdeologyTags(op);
-            const opAbbr = op.abbreviation
-                ? `<span class="other-party-abbr">(${op.abbreviation})</span>` : '';
-
-            cardsHtml += `
-            <div class="other-party-card" style="border-left-color:${opColor}">
-                <div class="other-party-top-row">
-                    <div class="other-party-logo" style="color:${opColor}">${opLogo}</div>
-                    <div class="other-party-identity">
-                        <div class="other-party-name-row">
-                            <span class="other-party-name" style="color:${opColor}">${op.faction_name}</span>
-                            ${opAbbr}
-                        </div>
-                        <div class="other-party-role-row">
-                            <span class="role-badge ${opBadgeClass}">${opRole}</span>
-                        </div>
-                        <div class="other-party-ideology-row">${opIdeology}</div>
-                    </div>
-                </div>
-                <div class="other-party-stats">
-                    <div class="other-party-stat">
-                        <div class="stat-label">Party Leader</div>
-                        <div class="stat-val">${opLeader}</div>
-                    </div>
-                    <div class="other-party-stat">
-                        <div class="stat-label">Seats</div>
-                        <div class="stat-val">${opSeats} / ${GAME_CONFIG.TOTAL_SEATS}</div>
-                    </div>
-                    <div class="other-party-stat">
-                        <div class="stat-label">Founded</div>
-                        <div class="stat-val">${opFounded}</div>
-                    </div>
-                </div>
-            </div>`;
+            if (opRole.includes('Governing')) {
+                govParties.push({ ...op, _seats: opSeats, _role: opRole });
+            } else {
+                oppParties.push({ ...op, _seats: opSeats, _role: opRole });
+            }
         }
+
+        function buildOtherPartyCards(list) {
+            let html = '';
+            for (const op of list) {
+                const opColor = op.party_color || '#666';
+                const opLogo = getPartyIconSVG(op.party_logo, 36, opColor);
+                const opBadgeClass = getRoleBadgeClass(op._role);
+                const opLeader = op.leader_first_name && op.leader_last_name
+                    ? op.leader_first_name + ' ' + op.leader_last_name + (op.leader_age ? ', ' + op.leader_age : '')
+                    : '\u2014';
+                const opFounded = tickToDate(op.founded_tick);
+                const opIdeology = buildIdeologyTags(op);
+                const opAbbr = op.abbreviation
+                    ? `<span class="other-party-abbr">(${op.abbreviation})</span>` : '';
+
+                html += `
+                <div class="other-party-card" style="border-left-color:${opColor}">
+                    <div class="other-party-top-row">
+                        <div class="other-party-logo" style="color:${opColor}">${opLogo}</div>
+                        <div class="other-party-identity">
+                            <div class="other-party-name-row">
+                                <span class="other-party-name" style="color:${opColor}">${op.faction_name}</span>
+                                ${opAbbr}
+                            </div>
+                            <div class="other-party-role-row">
+                                <span class="role-badge ${opBadgeClass}">${op._role}</span>
+                            </div>
+                            <div class="other-party-ideology-row">${opIdeology}</div>
+                        </div>
+                    </div>
+                    <div class="other-party-stats">
+                        <div class="other-party-stat">
+                            <div class="stat-label">Party Leader</div>
+                            <div class="stat-val">${opLeader}</div>
+                        </div>
+                        <div class="other-party-stat">
+                            <div class="stat-label">Seats</div>
+                            <div class="stat-val">${op._seats} / ${GAME_CONFIG.TOTAL_SEATS}</div>
+                        </div>
+                        <div class="other-party-stat">
+                            <div class="stat-label">Founded</div>
+                            <div class="stat-val">${opFounded}</div>
+                        </div>
+                    </div>
+                </div>`;
+            }
+            return html;
+        }
+
+        const govHtml = govParties.length > 0 ? `
+            <div class="other-parties-group">
+                <div class="other-parties-group-label other-parties-group-gov">Governing</div>
+                <div class="other-parties-grid">${buildOtherPartyCards(govParties)}</div>
+            </div>` : '';
+
+        const oppHtml = oppParties.length > 0 ? `
+            <div class="other-parties-group">
+                <div class="other-parties-group-label other-parties-group-opp">Opposition</div>
+                <div class="other-parties-grid">${buildOtherPartyCards(oppParties)}</div>
+            </div>` : '';
+
         otherPartiesHtml = `
         <div class="other-parties-section">
             <div class="other-parties-header">Other Parties</div>
-            <div class="other-parties-grid">${cardsHtml}</div>
+            ${govHtml}
+            ${oppHtml}
         </div>`;
     }
 
