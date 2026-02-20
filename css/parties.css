@@ -2798,3 +2798,133 @@ body.light-mode .outreach-bloc-row:hover {
     padding-top: 6px;
     border-top: 1px solid rgba(255,255,255,0.06);
 }
+
+/* ===== OTHER PARTIES SECTION ===== */
+.other-parties-section {
+    margin-top: 24px;
+}
+.other-parties-header {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-secondary, #888);
+    margin-bottom: 14px;
+}
+.other-parties-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+
+/* ---- Individual Other Party Card ---- */
+.other-party-card {
+    background: var(--bg-panel, #1a1a1a);
+    border: 1px solid var(--border-main, #333);
+    border-left: 4px solid var(--accent);
+    border-radius: 8px;
+    padding: 16px 18px;
+}
+
+/* ---- Top row: logo + identity ---- */
+.other-party-top-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.other-party-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+body.light-mode .other-party-logo {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.08);
+}
+.other-party-identity {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+.other-party-name-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.other-party-name {
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+.other-party-abbr {
+    font-size: 0.72rem;
+    color: var(--text-muted, #666);
+    font-weight: 400;
+}
+.other-party-role-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.other-party-ideology-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+/* ---- Stats row ---- */
+.other-party-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 20px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-main, #333);
+}
+.other-party-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.other-party-stat .stat-label {
+    font-size: 0.6rem;
+    color: var(--text-secondary, #888);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 600;
+}
+.other-party-stat .stat-val {
+    font-size: 0.82rem;
+    color: var(--text-primary, #e0e0e0);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 1000px) {
+    .other-parties-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+@media (max-width: 600px) {
+    .other-parties-grid {
+        grid-template-columns: 1fr;
+    }
+    .other-party-stats {
+        gap: 8px 14px;
+    }
+    .other-party-stat {
+        flex: 1 1 calc(50% - 14px);
+    }
+}
