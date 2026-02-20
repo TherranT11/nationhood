@@ -663,6 +663,7 @@ body.light-mode .bloc-bar-track {
     border-radius: 8px;
     padding: 24px 28px;
     margin-top: 20px;
+    max-width: 50%;
 }
 
 .rally-header-row {
@@ -1036,5 +1037,8 @@ body.light-mode .rally-subject-row:hover {
     }
     .bloc-approval-footer {
         flex-direction: column;
+    }
+    .rally-panel {
+        max-width: 100%;
     }
 }

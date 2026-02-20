@@ -18,7 +18,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, classifyRallyBlocs, executeRally } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -572,6 +572,24 @@ async function renderParties() {
         return counts;
     }
 
+    // Ideology tag colors from IDEOLOGY_AXES
+    const IDEO_COLORS = {};
+    for (const ax of IDEOLOGY_AXES) {
+        IDEO_COLORS[ax.left] = ax.leftColor;
+        IDEO_COLORS[ax.right] = ax.rightColor;
+    }
+    function colorTag(tag) {
+        const upper = tag.toUpperCase();
+        const color = IDEO_COLORS[upper] || 'var(--text-muted, #888)';
+        const label = tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
+        return `<span style="color:${color};font-weight:700">${label}</span>`;
+    }
+    function colorTagUpper(tag) {
+        const upper = tag.toUpperCase();
+        const color = IDEO_COLORS[upper] || 'var(--text-muted, #888)';
+        return `<span style="color:${color};font-weight:700">${upper}</span>`;
+    }
+
     function renderRally() {
         const container = document.getElementById('rally-container');
         if (!container) return;
@@ -579,9 +597,11 @@ async function renderParties() {
         if (rallyScreen === 'select') {
             const costOk = currentAP >= RALLY_CONFIG.AP_COST && (f.party_funds || 0) >= RALLY_CONFIG.MONEY_COST;
             const allTags = ['All', 'Tradition', 'Progress', 'Liberty', 'Equality', 'Security', 'Freedom', 'Nationalism', 'Globalism', 'Collectivism', 'Individualism'];
-            const filterBtns = allTags.map(t =>
-                `<button class="rally-filter-btn${rallyFilter === t ? ' active' : ''}" data-filter="${t}">${t}</button>`
-            ).join('');
+            const filterBtns = allTags.map(t => {
+                const color = t === 'All' ? '' : IDEO_COLORS[t.toUpperCase()] || '';
+                const style = color && rallyFilter === t ? ` style="border-color:${color};color:${color}"` : color ? ` style="color:${color}"` : '';
+                return `<button class="rally-filter-btn${rallyFilter === t ? ' active' : ''}" data-filter="${t}"${style}>${t}</button>`;
+            }).join('');
 
             let filtered = RALLY_SUBJECTS.map((s, i) => ({ ...s, idx: i }));
             if (rallyFilter !== 'All') {
@@ -593,7 +613,7 @@ async function renderParties() {
             let rows = shown.map(s =>
                 `<div class="rally-subject-row${!costOk || ralliedThisTick ? ' disabled' : ''}" data-idx="${s.idx}">
                     <span class="rally-subject-name">${s.name}</span>
-                    <span class="rally-subject-tags">${s.tags.map(t => t.charAt(0) + t.slice(1).toLowerCase()).join('  ')}</span>
+                    <span class="rally-subject-tags">${s.tags.map(t => colorTagUpper(t)).join('&nbsp; ')}</span>
                 </div>`
             ).join('');
 
@@ -638,14 +658,15 @@ async function renderParties() {
             const diminished = subject.tags.filter(t => tagCounts[t] > 0);
 
             const tagLabels = subject.tags.map(t => t.charAt(0) + t.slice(1).toLowerCase());
-            const oppLabels = subject.tags.map(t => { const o = IDEOLOGY_OPPOSITES[t]; return o ? o.charAt(0) + o.slice(1).toLowerCase() : '?'; });
+            const tagColored = subject.tags.map(t => colorTagUpper(t)).join('&nbsp; ');
+            const tagColoredMixed = subject.tags.map(t => colorTag(t)).join(' or ');
 
             function blocPctLabel(c) { return `(${Math.round(c.popWeight)}%)`; }
-            function matchLabel(c) { return c.matchTag ? c.matchTag.charAt(0) + c.matchTag.slice(1).toLowerCase() : ''; }
+            function matchLabel(c) { return c.matchTag ? colorTagUpper(c.matchTag) : ''; }
             function opposeLabel(c) {
                 if (!c.opposeTag) return '';
                 const opp = IDEOLOGY_OPPOSITES[c.opposeTag];
-                return opp ? '\u2190 ' + opp.charAt(0) + opp.slice(1).toLowerCase() : '';
+                return opp ? '\u2190 ' + colorTag(opp) : '';
             }
 
             const enPop = energized.reduce((s, c) => s + c.popWeight, 0);
@@ -672,19 +693,19 @@ async function renderParties() {
                     </div>
                     <div class="rally-selected">
                         <div class="rally-selected-label">SELECTED: "${subject.name}"</div>
-                        <div class="rally-selected-tags">Tags: ${tagLabels.join('  ')}</div>
+                        <div class="rally-selected-tags">Tags: ${tagColored}</div>
                     </div>
                     <div class="rally-divider rally-divider-accent"></div>
 
                     <div class="rally-section-title">PROJECTED EFFECTS</div>
 
-                    <div class="rally-group-label rally-energized">ENERGIZED <span class="rally-group-note">(share ${tagLabels.join(' or ')})</span></div>
+                    <div class="rally-group-label rally-energized">ENERGIZED <span class="rally-group-note">(share ${tagColoredMixed})</span></div>
                     <div class="rally-group-box">
                         ${energized.length === 0 ? '<div class="rally-group-empty">None</div>' :
                             energized.map(c => `<div class="rally-bloc-row rally-energized">▲ ${c.blocName} ${blocPctLabel(c)} <span class="rally-bloc-tag">${matchLabel(c).toUpperCase()}</span> <span class="rally-bloc-est">est. +1 to +2</span></div>`).join('')}
                     </div>
 
-                    <div class="rally-group-label rally-alienated">ALIENATED <span class="rally-group-note">(oppose ${tagLabels.join(' or ')})</span></div>
+                    <div class="rally-group-label rally-alienated">ALIENATED <span class="rally-group-note">(oppose ${tagColoredMixed})</span></div>
                     <div class="rally-group-box">
                         ${alienated.length === 0 ? '<div class="rally-group-empty">None</div>' :
                             alienated.map(c => `<div class="rally-bloc-row rally-alienated">▼ ${c.blocName} ${blocPctLabel(c)} <span class="rally-bloc-tag">${opposeLabel(c)}</span> <span class="rally-bloc-est">est. 0 to -2</span></div>`).join('')}
@@ -736,7 +757,7 @@ async function renderParties() {
         } else if (rallyScreen === 'results') {
             const r = rallyResults;
             const subject = r.subject;
-            const tagLabels = subject.tags.map(t => t.charAt(0) + t.slice(1).toLowerCase());
+            const tagColored2 = subject.tags.map(t => colorTagUpper(t)).join('&nbsp; ');
             const energized = r.blocResults.filter(c => c.classification === 'energized');
             const alienated = r.blocResults.filter(c => c.classification === 'alienated');
             const unaffected = r.blocResults.filter(c => c.classification === 'unaffected');
@@ -751,7 +772,7 @@ async function renderParties() {
                     <div class="rally-title">Rally Results</div>
                     <div class="rally-selected">
                         <div>"${subject.name}"</div>
-                        <div class="rally-selected-tags">${tagLabels.join('  ').toUpperCase()}</div>
+                        <div class="rally-selected-tags">${tagColored2}</div>
                     </div>
                     <div class="rally-divider rally-divider-accent"></div>
 
