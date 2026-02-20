@@ -5037,6 +5037,208 @@ export async function adjustMomentum(supabase, factionId, delta) {
 }
 
 
+// ==================== RALLY SYSTEM ====================
+
+export const RALLY_CONFIG = {
+    AP_COST: 1,
+    MONEY_COST: 100000,
+    DIMINISH_WINDOW: 5,
+    ENERGIZE_THRESHOLD: 60,
+    GLOBAL_MOMENTUM_MIN: 3,
+    GLOBAL_MOMENTUM_MAX: 5,
+    ENERGIZE_MOMENTUM: 3,
+};
+
+export const RALLY_SUBJECTS = [
+    { name: 'Protect Domestic Industry',       tags: ['NATIONALISM', 'COLLECTIVISM'] },
+    { name: 'Religious Freedom',               tags: ['TRADITION', 'SECURITY'] },
+    { name: 'Tax Cuts for Growth',             tags: ['LIBERTY', 'INDIVIDUALISM'] },
+    { name: 'Close the Wage Gap',              tags: ['EQUALITY', 'COLLECTIVISM'] },
+    { name: 'Strong Borders, Safe Nation',     tags: ['NATIONALISM', 'SECURITY'] },
+    { name: 'Defend Free Speech',              tags: ['FREEDOM', 'LIBERTY'] },
+    { name: "Invest in Our Children's Future", tags: ['PROGRESS', 'COLLECTIVISM'] },
+    { name: 'Cut Red Tape',                    tags: ['LIBERTY', 'INDIVIDUALISM'] },
+    { name: 'Support Our Troops',              tags: ['SECURITY', 'NATIONALISM'] },
+    { name: "Workers' Rights Now",             tags: ['EQUALITY', 'COLLECTIVISM'] },
+    { name: 'Preserve Our Heritage',           tags: ['TRADITION', 'NATIONALISM'] },
+    { name: 'Green Energy Revolution',         tags: ['PROGRESS', 'GLOBALISM'] },
+    { name: 'Law and Order',                   tags: ['SECURITY', 'TRADITION'] },
+    { name: 'Open Markets, Open Minds',        tags: ['GLOBALISM', 'LIBERTY'] },
+    { name: 'Power to the People',             tags: ['EQUALITY', 'FREEDOM'] },
+    { name: 'Fair Trade, Not Free Trade',      tags: ['NATIONALISM', 'EQUALITY'] },
+    { name: 'Digital Privacy Rights',          tags: ['FREEDOM', 'INDIVIDUALISM'] },
+    { name: 'Expand Foreign Aid',              tags: ['GLOBALISM', 'COLLECTIVISM'] },
+    { name: 'Community and Family Values',     tags: ['TRADITION', 'COLLECTIVISM'] },
+    { name: 'Affordable Housing Now',          tags: ['EQUALITY', 'PROGRESS'] },
+    { name: 'Entrepreneurship Unleashed',      tags: ['INDIVIDUALISM', 'PROGRESS'] },
+    { name: 'International Cooperation',       tags: ['GLOBALISM', 'EQUALITY'] },
+    { name: 'End Government Corruption',       tags: ['FREEDOM', 'EQUALITY'] },
+    { name: 'Safe Streets Initiative',         tags: ['SECURITY', 'COLLECTIVISM'] },
+    { name: 'Defend Our Sovereignty',          tags: ['NATIONALISM', 'INDIVIDUALISM'] },
+    { name: 'Empower Local Communities',       tags: ['TRADITION', 'INDIVIDUALISM'] },
+    { name: 'Reform the Justice System',       tags: ['FREEDOM', 'PROGRESS'] },
+    { name: 'Fiscal Responsibility',           tags: ['LIBERTY', 'SECURITY'] },
+    { name: 'Protect Civil Liberties',         tags: ['LIBERTY', 'FREEDOM'] },
+    { name: 'Celebrate Cultural Diversity',    tags: ['GLOBALISM', 'PROGRESS'] },
+];
+
+/**
+ * Classify voter blocs as energized / alienated / unaffected for a rally subject.
+ * A bloc is energized if it leans toward ANY of the rally's ideology tags (axis >= 60).
+ * A bloc is alienated if it leans OPPOSITE to any tag AND is not energized.
+ */
+export function classifyRallyBlocs(subject, blocs) {
+    const results = [];
+    const threshold = RALLY_CONFIG.ENERGIZE_THRESHOLD;
+    for (const bloc of blocs) {
+        let energized = false;
+        let alienated = false;
+        let matchTag = null;
+        let opposeTag = null;
+        for (const tag of subject.tags) {
+            const axisInfo = IDEOLOGY_TO_AXIS[tag];
+            if (!axisInfo) continue;
+            const blocVal = bloc['axis_' + axisInfo.axisKey] ?? 50;
+            // direction +1 means right pole: high blocVal = aligned
+            // direction -1 means left pole: low blocVal = aligned
+            const alignment = axisInfo.direction === 1 ? blocVal : (100 - blocVal);
+            if (alignment >= threshold) {
+                energized = true;
+                matchTag = tag;
+            } else if (alignment <= (100 - threshold) && !energized) {
+                alienated = true;
+                opposeTag = tag;
+            }
+        }
+        results.push({
+            blocId: bloc.id,
+            blocName: bloc.bloc_name,
+            popWeight: bloc.population_weight || 0,
+            classification: energized ? 'energized' : (alienated ? 'alienated' : 'unaffected'),
+            matchTag: energized ? matchTag : null,
+            opposeTag: alienated ? opposeTag : null,
+        });
+    }
+    return results;
+}
+
+/**
+ * Execute a rally: validate, roll effects, update DB, log.
+ * Returns { success, subject, globalMomentum, blocResults, newAp, oldTreasury, newTreasury }
+ */
+export async function executeRally(supabase, factionId, nationId, subjectIndex, currentTick) {
+    const subject = RALLY_SUBJECTS[subjectIndex];
+    if (!subject) return { success: false, error: 'Invalid rally subject.' };
+
+    // ── 1. Validate AP + funds ──
+    const { data: faction } = await supabase
+        .from('factions').select('party_funds, action_points').eq('id', factionId).single();
+    if (!faction) return { success: false, error: 'Faction not found.' };
+    if ((faction.action_points || 0) < RALLY_CONFIG.AP_COST)
+        return { success: false, error: `Not enough AP. Need ${RALLY_CONFIG.AP_COST}.` };
+    if ((faction.party_funds || 0) < RALLY_CONFIG.MONEY_COST)
+        return { success: false, error: `Not enough funds. Need $${RALLY_CONFIG.MONEY_COST.toLocaleString()}.` };
+
+    // ── 2. Check cooldown + diminishing returns ──
+    const { data: recentRallies } = await supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', factionId)
+        .eq('action_type', 'rally')
+        .gte('tick_performed', currentTick - RALLY_CONFIG.DIMINISH_WINDOW)
+        .order('tick_performed', { ascending: false });
+
+    if ((recentRallies || []).some(r => r.tick_performed === currentTick))
+        return { success: false, error: 'Already held a rally this tick.' };
+
+    const tagUseCounts = {};
+    for (const tag of subject.tags) tagUseCounts[tag] = 0;
+    for (const r of (recentRallies || [])) {
+        for (const tag of (r.result?.tags || [])) {
+            if (tagUseCounts[tag] !== undefined) tagUseCounts[tag]++;
+        }
+    }
+
+    // ── 3. Classify blocs ──
+    const { data: blocs } = await supabase
+        .from('voter_blocs')
+        .select('id, bloc_name, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
+        .eq('nation_id', nationId).eq('is_active', true);
+
+    const classified = classifyRallyBlocs(subject, blocs || []);
+
+    // ── 4. Fetch current approval rows ──
+    const { data: approvalRows } = await supabase
+        .from('faction_bloc_approval')
+        .select('id, bloc_id, preference_score, momentum')
+        .eq('faction_id', factionId);
+    const byBloc = {};
+    for (const row of (approvalRows || [])) byBloc[row.bloc_id] = row;
+
+    // ── 5. Roll effects ──
+    const globalMomentum = Math.floor(Math.random() * (RALLY_CONFIG.GLOBAL_MOMENTUM_MAX - RALLY_CONFIG.GLOBAL_MOMENTUM_MIN + 1)) + RALLY_CONFIG.GLOBAL_MOMENTUM_MIN;
+    const blocResults = [];
+
+    for (const c of classified) {
+        const row = byBloc[c.blocId];
+        if (!row) continue;
+        const oldPref = Math.round(row.preference_score || 0);
+        let prefDelta = 0;
+        let momentumDelta = globalMomentum;
+
+        if (c.classification === 'energized') {
+            let roll = Math.floor(Math.random() * 2) + 1; // 1D2: 1 or 2
+            let bMom = RALLY_CONFIG.ENERGIZE_MOMENTUM;
+            const uses = tagUseCounts[c.matchTag] || 0;
+            if (uses === 1) { roll = Math.max(1, Math.ceil(roll / 2)); bMom = Math.max(1, Math.ceil(bMom / 2)); }
+            else if (uses >= 2) { roll = Math.max(1, Math.ceil(roll / 4)); bMom = Math.max(1, Math.ceil(bMom / 4)); }
+            prefDelta = roll;
+            momentumDelta += bMom;
+        } else if (c.classification === 'alienated') {
+            prefDelta = -(Math.floor(Math.random() * 3)); // 0, -1, or -2
+        }
+
+        const newPref = Math.max(0, Math.min(100, oldPref + prefDelta));
+        const newMomentum = Math.round(((row.momentum || 0) + momentumDelta) * 100) / 100;
+
+        await supabase.from('faction_bloc_approval')
+            .update({ preference_score: newPref, momentum: newMomentum })
+            .eq('id', row.id);
+
+        blocResults.push({ ...c, prefDelta, momentumDelta, oldPref, newPref });
+    }
+
+    // ── 6. Deduct AP + money ──
+    const apResult = await deductAP(supabase, factionId, RALLY_CONFIG.AP_COST);
+    const oldTreasury = faction.party_funds || 0;
+    const newTreasury = oldTreasury - RALLY_CONFIG.MONEY_COST;
+    await supabase.from('factions')
+        .update({ party_funds: newTreasury })
+        .eq('id', factionId);
+
+    // ── 7. Log ──
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId,
+        nation_id: nationId,
+        action_type: 'rally',
+        ap_cost: RALLY_CONFIG.AP_COST,
+        money_cost: RALLY_CONFIG.MONEY_COST,
+        tick_performed: currentTick,
+        result: { subject: subject.name, tags: subject.tags, subjectIndex, globalMomentum, blocResults }
+    });
+
+    return {
+        success: true,
+        subject,
+        globalMomentum,
+        blocResults,
+        newAp: apResult.newAp ?? ((faction.action_points || 0) - RALLY_CONFIG.AP_COST),
+        oldTreasury,
+        newTreasury,
+    };
+}
+
+
 // ==================== LOYALTY TICK PROCESSING ====================
 
 export async function processLoyaltyTick(supabase, nation) {
