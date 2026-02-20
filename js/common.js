@@ -423,20 +423,16 @@ export function formatCurrency(n) {
 }
 
 /**
- * Ensure a GDP/debt value is in raw-dollar scale for display.
+ * GDP and debt are stored in the DB as raw dollars:
+ *   88,000,000,000 = $88 Billion
  *
- * The DB may store values in two scales depending on whether the
- * fix_nation_gdp_debt_population_scale migration has been applied:
- *   - Old scale: 50 means $50 Billion  (needs × 1e9)
- *   - New scale: 50,000,000,000 means $50 Billion  (already correct)
- *
- * Threshold: values >= 1,000,000 are assumed to already be in raw
- * dollars; smaller values are treated as the legacy "billions" shorthand.
+ * This function is now a pass-through. It exists only to avoid
+ * breaking callers (nation.html, map.html, forum.html) that still
+ * reference it. No conversion is needed — formatCurrencyShort()
+ * handles the display formatting directly.
  */
 export function scaleRawToDollars(val) {
-    if (val == null || val <= 0) return val;
-    if (Math.abs(val) >= 1_000_000) return val;
-    return val * 1e9;
+    return val;
 }
 
 export function showLoading(containerId = 'content-area') {

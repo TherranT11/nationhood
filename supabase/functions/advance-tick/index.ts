@@ -488,7 +488,7 @@ const INVERTED_STATS = [
 ];
 
 // Stats stored as raw numbers (not 0-100 indices).
-// GDP and debt are stored as small-scale (value = billions), so no divisor needed.
+// GDP and debt are stored as raw dollars (88B = 88,000,000,000).
 const RAW_SCALING_DIVISORS = {
     population: 1_000_000
 };
@@ -2259,9 +2259,9 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
  *
  * CANONICAL STAT KEY REFERENCE:
  *   --- Economic ---
- *   gdp                        GDP ($B)
+ *   gdp                        GDP (raw dollars: 88B = 88000000000)
  *   gdp_growth                 Annual economic growth rate
- *   debt                       Government debt obligations ($B)
+ *   debt                       Government debt (raw dollars: 83B = 83000000000)
  *   debt_growth                Rate of debt accumulation
  *   inflation                  Rate of price increases
  *   interest_rates             Central bank lending rate
