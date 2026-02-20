@@ -1442,6 +1442,7 @@ body.light-mode .ap-bar-track {
     padding: 24px 28px;
     flex: 1 1 0;
     min-width: 0;
+    width: 100%;
 }
 .rally-header-row {
     display: flex;
@@ -1745,7 +1746,16 @@ body.light-mode .rally-subject-row:hover {
     display: flex;
     gap: 20px;
     align-items: stretch;
+    justify-content: center;
     margin-top: 20px;
+}
+#rally-container,
+#pc-container,
+#outreach-container,
+#fundraiser-container {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
 }
 
 /* ===== PRESS CONFERENCE PANEL ===== */
@@ -1756,6 +1766,7 @@ body.light-mode .rally-subject-row:hover {
     padding: 24px 28px;
     flex: 1 1 0;
     min-width: 0;
+    width: 100%;
 }
 .pc-header-row {
     display: flex;
@@ -2104,6 +2115,7 @@ body.light-mode .pc-proj-neutral {
     padding: 20px 24px;
     flex: 1 1 0;
     min-width: 0;
+    width: 100%;
 }
 .outreach-header-row {
     display: flex;
@@ -2382,6 +2394,7 @@ body.light-mode .outreach-bloc-row:hover {
     padding: 20px 24px;
     flex: 1 1 0;
     min-width: 0;
+    width: 100%;
 }
 
 .fundraiser-panel-results {
