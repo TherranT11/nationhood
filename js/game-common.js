@@ -5623,6 +5623,106 @@ export async function executePressConference(supabase, factionId, nationId, stat
 }
 
 
+// ==================== VOTER OUTREACH ====================
+
+export const OUTREACH_CONFIG = {
+    AP_COST: 3,
+    MONEY_COST: 25000,
+    PREF_MIN: 1,        // 1D2
+    PREF_MAX: 2,
+    COOLDOWN_TICKS: 2,  // can't target the same bloc 2 ticks in a row
+};
+
+/**
+ * Execute a voter outreach campaign targeting a specific voter bloc.
+ * Guaranteed small preference gain (+1D2), no backlash, no headlines.
+ */
+export async function executeOutreach(supabase, factionId, nationId, blocId, currentTick) {
+    // ── 1. Validate AP + funds ──
+    const { data: faction } = await supabase
+        .from('factions').select('party_funds, action_points')
+        .eq('id', factionId).single();
+    if (!faction) return { success: false, error: 'Faction not found.' };
+    if ((faction.action_points || 0) < OUTREACH_CONFIG.AP_COST)
+        return { success: false, error: `Not enough AP. Need ${OUTREACH_CONFIG.AP_COST}.` };
+    if ((faction.party_funds || 0) < OUTREACH_CONFIG.MONEY_COST)
+        return { success: false, error: `Not enough funds. Need $${OUTREACH_CONFIG.MONEY_COST.toLocaleString()}.` };
+
+    // ── 2. Check cooldown (same bloc within COOLDOWN_TICKS) ──
+    const { data: recentOutreach } = await supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', factionId)
+        .eq('action_type', 'outreach')
+        .gte('tick_performed', currentTick - OUTREACH_CONFIG.COOLDOWN_TICKS + 1)
+        .order('tick_performed', { ascending: false });
+
+    const recentBlocIds = (recentOutreach || []).map(r => r.result?.blocId).filter(Boolean);
+    if (recentBlocIds.includes(blocId))
+        return { success: false, error: 'You targeted this bloc too recently. Choose a different bloc.' };
+
+    // ── 3. Fetch bloc info ──
+    const { data: bloc } = await supabase
+        .from('voter_blocs').select('id, bloc_name, population_weight')
+        .eq('id', blocId).single();
+    if (!bloc) return { success: false, error: 'Bloc not found.' };
+
+    // ── 4. Fetch current approval row ──
+    const { data: approvalRow } = await supabase
+        .from('faction_bloc_approval')
+        .select('id, preference_score')
+        .eq('faction_id', factionId)
+        .eq('bloc_id', blocId)
+        .single();
+    if (!approvalRow) return { success: false, error: 'No approval row for this bloc.' };
+
+    // ── 5. Roll effect ──
+    const prefDelta = Math.floor(Math.random() * (OUTREACH_CONFIG.PREF_MAX - OUTREACH_CONFIG.PREF_MIN + 1)) + OUTREACH_CONFIG.PREF_MIN;
+    const oldPref = Math.round(approvalRow.preference_score || 0);
+    const newPref = Math.max(0, Math.min(100, oldPref + prefDelta));
+
+    await supabase.from('faction_bloc_approval')
+        .update({ preference_score: newPref })
+        .eq('id', approvalRow.id);
+
+    // ── 6. Deduct AP + money ──
+    const apResult = await deductAP(supabase, factionId, OUTREACH_CONFIG.AP_COST);
+    const oldTreasury = faction.party_funds || 0;
+    const newTreasury = oldTreasury - OUTREACH_CONFIG.MONEY_COST;
+    await supabase.from('factions')
+        .update({ party_funds: newTreasury })
+        .eq('id', factionId);
+
+    // ── 7. Log ──
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId,
+        nation_id: nationId,
+        action_type: 'outreach',
+        ap_cost: OUTREACH_CONFIG.AP_COST,
+        money_cost: OUTREACH_CONFIG.MONEY_COST,
+        tick_performed: currentTick,
+        result: {
+            blocId,
+            blocName: bloc.bloc_name,
+            prefDelta,
+            oldPref,
+            newPref,
+        }
+    });
+
+    return {
+        success: true,
+        blocName: bloc.bloc_name,
+        prefDelta,
+        oldPref,
+        newPref,
+        newAp: apResult.newAp ?? ((faction.action_points || 0) - OUTREACH_CONFIG.AP_COST),
+        oldTreasury,
+        newTreasury,
+    };
+}
+
+
 // ==================== LOYALTY TICK PROCESSING ====================
 
 export async function processLoyaltyTick(supabase, nation) {
