@@ -2380,9 +2380,8 @@ body.light-mode .outreach-bloc-row:hover {
     border: 1px solid var(--border-main, #333);
     border-radius: 8px;
     padding: 20px 24px;
-    margin-top: 20px;
-    width: 100%;
-    box-sizing: border-box;
+    flex: 1 1 0;
+    min-width: 0;
 }
 
 .fundraiser-panel-results {
