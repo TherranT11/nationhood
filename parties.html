@@ -766,20 +766,9 @@ async function renderParties() {
 
         <div id="outreach-container"></div>
 
-        <div class="fundraiser-tabs-section">
-            <div class="fundraiser-tabs-bar">
-                <button class="fundraiser-tab active" data-tab="fundraiser-action">Fundraiser</button>
-                <button class="fundraiser-tab" data-tab="fundraiser-promises">Promises${''}</button>
-            </div>
-            <div class="fundraiser-tab-content">
-                <div id="fundraiser-tab-action" class="fundraiser-tab-pane active">
-                    <div id="fundraiser-container"></div>
-                </div>
-                <div id="fundraiser-tab-promises" class="fundraiser-tab-pane" style="display:none;">
-                    <div id="promises-container"></div>
-                </div>
-            </div>
-        </div>
+        <div id="fundraiser-container"></div>
+
+        <div id="promises-container"></div>
 
         </div>
     `;
@@ -1569,7 +1558,29 @@ async function renderParties() {
         if (!container) return;
 
         if (fundraiserScreen === 'closed') {
-            container.innerHTML = '';
+            const costOk = currentAP >= FUNDRAISER_CONFIG.AP_COST;
+            container.innerHTML = `
+                <div class="fundraiser-panel">
+                    <div class="fundraiser-header-row">
+                        <span class="fundraiser-title">Hold a Fundraiser</span>
+                        <span class="fundraiser-cost">Cost: ${FUNDRAISER_CONFIG.AP_COST} AP</span>
+                    </div>
+                    <div class="fundraiser-donor-desc">Hold a fundraising event. A voter bloc's donors will approach you with two envelopes: clean money with no strings, or big money with a political demand attached.</div>
+                    <div class="fundraiser-divider"></div>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">
+                        <span>Cooldown: ${FUNDRAISER_CONFIG.COOLDOWN_TICKS} ticks</span>
+                        ${fundraiserOnCooldown ? `<span style="color:#ff9800;">Available in ${fundraiserCooldownRemaining} tick(s)</span>` : '<span style="color:#4CAF50;">Available now</span>'}
+                    </div>
+                    ${fundraiserOnCooldown || !costOk
+                        ? `<button class="fundraiser-btn fundraiser-btn-accept" disabled style="opacity:0.4;cursor:not-allowed;">${fundraiserOnCooldown ? 'On Cooldown' : 'Not Enough AP'}</button>`
+                        : '<button class="fundraiser-btn fundraiser-btn-promise" id="fundraiser-start">FIND DONORS</button>'
+                    }
+                </div>`;
+
+            const startBtn = document.getElementById('fundraiser-start');
+            if (startBtn) {
+                startBtn.addEventListener('click', () => { window.openFundraiserPanel(); });
+            }
             return;
         }
 
@@ -1901,75 +1912,8 @@ async function renderParties() {
     renderPromises();
 
     // ── Tab Switching ──
-    // Show the fundraiser offer screen by default when opening the tab
-    function renderFundraiserDefault() {
-        const container = document.getElementById('fundraiser-container');
-        if (!container) return;
-        if (fundraiserScreen !== 'closed') return; // already showing something
-
-        const costOk = currentAP >= FUNDRAISER_CONFIG.AP_COST;
-        container.innerHTML = `
-            <div class="fundraiser-panel">
-                <div class="fundraiser-header-row">
-                    <span class="fundraiser-title">Hold a Fundraiser</span>
-                    <span class="fundraiser-cost">Cost: ${FUNDRAISER_CONFIG.AP_COST} AP</span>
-                </div>
-                <div class="fundraiser-donor-desc">Hold a fundraising event. A voter bloc's donors will approach you with two envelopes: clean money with no strings, or big money with a political demand attached.</div>
-                <div class="fundraiser-divider"></div>
-                <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">
-                    <span>Cooldown: ${FUNDRAISER_CONFIG.COOLDOWN_TICKS} ticks</span>
-                    ${fundraiserOnCooldown ? `<span style="color:#ff9800;">Available in ${fundraiserCooldownRemaining} tick(s)</span>` : '<span style="color:#4CAF50;">Available now</span>'}
-                </div>
-                ${fundraiserOnCooldown || !costOk
-                    ? `<button class="fundraiser-btn fundraiser-btn-accept" disabled style="opacity:0.4;cursor:not-allowed;">${fundraiserOnCooldown ? 'On Cooldown' : 'Not Enough AP'}</button>`
-                    : '<button class="fundraiser-btn fundraiser-btn-promise" id="fundraiser-start">FIND DONORS</button>'
-                }
-            </div>`;
-
-        const startBtn = document.getElementById('fundraiser-start');
-        if (startBtn) {
-            startBtn.addEventListener('click', () => {
-                window.openFundraiserPanel();
-            });
-        }
-    }
-
-    renderFundraiserDefault();
-
-    // Wire up tabs
-    const tabBtns = document.querySelectorAll('.fundraiser-tab');
-    const actionPane = document.getElementById('fundraiser-tab-action');
-    const promisesPane = document.getElementById('fundraiser-tab-promises');
-
-    // Count active promises for badge
-    const { data: promiseCountData } = await _supabase
-        .from('fundraiser_promises')
-        .select('id')
-        .eq('party_id', f.id)
-        .eq('status', 'active');
-    const activePromiseCount = (promiseCountData || []).length;
-
-    // Update promises tab label with count badge
-    const promisesTab = document.querySelector('.fundraiser-tab[data-tab="fundraiser-promises"]');
-    if (promisesTab && activePromiseCount > 0) {
-        promisesTab.innerHTML = `Promises <span class="promises-badge">${activePromiseCount}</span>`;
-    }
-
-    tabBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            tabBtns.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            const tab = btn.dataset.tab;
-            if (tab === 'fundraiser-action') {
-                actionPane.style.display = '';
-                promisesPane.style.display = 'none';
-            } else {
-                actionPane.style.display = 'none';
-                promisesPane.style.display = '';
-                renderPromises(); // Refresh when switching to promises tab
-            }
-        });
-    });
+    // Render default fundraiser panel (always visible, like rally/outreach)
+    renderFundraiser();
 }
 
 initPage('parties', async (state) => {
