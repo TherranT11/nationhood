@@ -230,7 +230,7 @@ async function renderParties() {
 
     const blocsLeading = blocRows.filter(r => r.isLeading);
     const leadingCount = blocsLeading.length;
-    const leadingPopPct = Math.round(blocsLeading.reduce((s, r) => s + r.popWeight, 0) * 100);
+    const leadingPopPct = Math.round(blocsLeading.reduce((s, r) => s + r.popWeight, 0));
     const swingBlocs = blocRows.filter(r => !r.isLeading && r.margin <= 3);
 
     // === Performance Credit ===
@@ -342,23 +342,29 @@ async function renderParties() {
         if (nonPM.length > 0) titleParts.push(nonPM.map(k => MINISTRY_NAMES[k] || k).join(', '));
         const titleLine = titleParts.join(' + ');
 
+        const MAX_TREND_ITEMS = 5;
         let trendsHtml = '';
         if (trendingWell.length > 0) {
+            const shown = trendingWell.slice(0, MAX_TREND_ITEMS);
+            const extra = trendingWell.length - shown.length;
             trendsHtml += `<div class="perf-trend-section">
                 <div class="perf-trend-label perf-trend-good">Trending well:</div>
-                ${trendingWell.map(t => `<div class="perf-trend-item perf-trend-good">${t.arrow} ${t.label}</div>`).join('')}
+                ${shown.map(t => `<div class="perf-trend-item perf-trend-good">${t.arrow} ${t.label}</div>`).join('')}
+                ${extra > 0 ? `<div class="perf-trend-item perf-trend-good">+ ${extra} more</div>` : ''}
             </div>`;
         }
         if (trendingBadly.length > 0) {
+            const shown = trendingBadly.slice(0, MAX_TREND_ITEMS);
+            const extra = trendingBadly.length - shown.length;
             trendsHtml += `<div class="perf-trend-section">
                 <div class="perf-trend-label perf-trend-bad">Trending badly:</div>
-                ${trendingBadly.map(t => `<div class="perf-trend-item perf-trend-bad">${t.arrow} ${t.label}</div>`).join('')}
+                ${shown.map(t => `<div class="perf-trend-item perf-trend-bad">${t.arrow} ${t.label}</div>`).join('')}
+                ${extra > 0 ? `<div class="perf-trend-item perf-trend-bad">+ ${extra} more</div>` : ''}
             </div>`;
         }
         if (trendingFlat.length > 0) {
             trendsHtml += `<div class="perf-trend-section">
-                <div class="perf-trend-label perf-trend-flat">Flat:</div>
-                ${trendingFlat.map(t => `<div class="perf-trend-item perf-trend-flat">── ${t.label}</div>`).join('')}
+                <div class="perf-trend-item perf-trend-flat">── ${trendingFlat.length} stat${trendingFlat.length !== 1 ? 's' : ''} flat</div>
             </div>`;
         }
         if (trendingWell.length === 0 && trendingBadly.length === 0 && trendingFlat.length === 0) {
@@ -379,6 +385,24 @@ async function renderParties() {
                 <div class="perf-trends">${trendsHtml}</div>
                 ${warningsHtml ? `<div class="perf-warnings">${warningsHtml}</div>` : ''}
             </div>`;
+    }
+
+    // === Action Points Panel ===
+    const currentAP = Math.min(f.action_points || 0, GAME_CONFIG.MAX_AP);
+    const maxAP = GAME_CONFIG.MAX_AP;
+    const apPct = Math.round((currentAP / maxAP) * 100);
+    const currentTick = currentShard?.current_tick || 0;
+    const ticksUntilElection = nextElection ? nextElection.election_tick - currentTick : null;
+
+    let apTip = '';
+    if (ticksUntilElection !== null && ticksUntilElection <= 6) {
+        apTip = `Election in ${ticksUntilElection} tick${ticksUntilElection !== 1 ? 's' : ''} — bank AP or campaign now.`;
+    } else if (currentAP >= maxAP) {
+        apTip = 'AP is full — spend it before it goes to waste.';
+    } else if (currentAP <= 2) {
+        apTip = 'AP is low. Choose your next move carefully.';
+    } else {
+        apTip = 'Spend AP on bills, campaigns, and ministry actions.';
     }
 
     // === Approval by Voter Bloc (build HTML) ===
@@ -467,6 +491,18 @@ async function renderParties() {
         </div>
 
         ${perfCreditHtml}
+
+        <div class="ap-panel">
+            <div class="ap-header">Action Points</div>
+            <div class="ap-score-row">
+                <span class="ap-value">${currentAP}</span>
+                <span class="ap-max">/ ${maxAP}</span>
+            </div>
+            <div class="ap-bar-track">
+                <div class="ap-bar-fill" style="width:${apPct}%;background:${partyColor}"></div>
+            </div>
+            <div class="ap-tip">${apTip}</div>
+        </div>
 
         </div>
 
