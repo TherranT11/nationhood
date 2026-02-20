@@ -431,7 +431,7 @@ export const INVERTED_STATS = [
 ];
 
 // Stats stored as raw numbers (not 0-100 indices).
-// GDP and debt are stored as small-scale (value = billions), so no divisor needed.
+// GDP and debt are stored as raw dollars (88B = 88,000,000,000).
 export const RAW_SCALING_DIVISORS = {
     population: 1_000_000
 };
