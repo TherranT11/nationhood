@@ -381,6 +381,24 @@ async function renderParties() {
             </div>`;
     }
 
+    // === Action Points Panel ===
+    const currentAP = Math.min(f.action_points || 0, GAME_CONFIG.MAX_AP);
+    const maxAP = GAME_CONFIG.MAX_AP;
+    const apPct = Math.round((currentAP / maxAP) * 100);
+    const currentTick = currentShard?.current_tick || 0;
+    const ticksUntilElection = nextElection ? nextElection.election_tick - currentTick : null;
+
+    let apTip = '';
+    if (ticksUntilElection !== null && ticksUntilElection <= 6) {
+        apTip = `Election in ${ticksUntilElection} tick${ticksUntilElection !== 1 ? 's' : ''} — bank AP or campaign now.`;
+    } else if (currentAP >= maxAP) {
+        apTip = 'AP is full — spend it before it goes to waste.';
+    } else if (currentAP <= 2) {
+        apTip = 'AP is low. Choose your next move carefully.';
+    } else {
+        apTip = 'Spend AP on bills, campaigns, and ministry actions.';
+    }
+
     // === Approval by Voter Bloc (build HTML) ===
     let blocTableHtml = '';
     for (const r of blocRows) {
@@ -467,6 +485,18 @@ async function renderParties() {
         </div>
 
         ${perfCreditHtml}
+
+        <div class="ap-panel">
+            <div class="ap-header">Action Points</div>
+            <div class="ap-score-row">
+                <span class="ap-value">${currentAP}</span>
+                <span class="ap-max">/ ${maxAP}</span>
+            </div>
+            <div class="ap-bar-track">
+                <div class="ap-bar-fill" style="width:${apPct}%;background:${partyColor}"></div>
+            </div>
+            <div class="ap-tip">${apTip}</div>
+        </div>
 
         </div>
 
