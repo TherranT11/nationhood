@@ -8880,6 +8880,13 @@ async function advanceTick(supabase) {
             summary.ministryEvents = summary.ministryEvents || [];
             summary.ministryEvents.push({ nation: nation.name, events: ministryEventResults });
         }
+
+        // Ambassador term limits (retirements + warnings)
+        const retirementResults = await processAmbassadorRetirements(supabase, freshNation || nation, newTick);
+        if (retirementResults.length > 0) {
+            summary.ambassadorRetirements = summary.ambassadorRetirements || [];
+            summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
+        }
       } catch (nationErr) {
         console.error(`[advanceTick] FAILED processing nation ${nation.id} (${nation.name}):`, nationErr);
         summary.errors = summary.errors || [];
