@@ -25,8 +25,11 @@ const OUTPUT_PATH = path.join(ROOT, 'supabase', 'functions', 'advance-tick', 'in
 const MARKER = '// __GAME_COMMON_JS__';
 
 // Read source files
-const gameCommon = fs.readFileSync(GAME_COMMON_PATH, 'utf8');
+let gameCommon = fs.readFileSync(GAME_COMMON_PATH, 'utf8');
 const template = fs.readFileSync(TEMPLATE_PATH, 'utf8');
+
+// Strip ES module export keywords — Edge Functions run as a single Deno.serve() module
+gameCommon = gameCommon.replace(/^export /gm, '');
 
 // Split template on marker
 const markerIndex = template.indexOf(MARKER);
