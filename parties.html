@@ -88,7 +88,7 @@ async function renderParties() {
     // Fetch all parties for seat + vote share data
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, faction_name, abbreviation, seats, national_vote_share, party_color')
+        .select('id, faction_name, abbreviation, seats, national_vote_share, party_color, party_logo, leader_first_name, leader_last_name, leader_age, founded_tick, ideology_value_1, ideology_value_2')
         .eq('nation_id', n.id)
         .eq('faction_type', 'party');
 
@@ -656,6 +656,63 @@ async function renderParties() {
         ? `Swing Blocs (within 3%): ${swingBlocs.map(r => r.blocName).join(', ')}`
         : 'No swing blocs';
 
+    // === Build Other Parties Cards ===
+    const otherParties = (allParties || []).filter(p => p.id !== f.id);
+    let otherPartiesHtml = '';
+    if (otherParties.length > 0) {
+        let cardsHtml = '';
+        for (const op of otherParties) {
+            const opColor = op.party_color || '#666';
+            const opLogo = getPartyIconSVG(op.party_logo, 36, opColor);
+            const opSeats = seatData.allPartySeats[op.id] || 0;
+            const opRole = getPartyRole(op.id, opSeats, coalition);
+            const opBadgeClass = getRoleBadgeClass(opRole);
+            const opLeader = op.leader_first_name && op.leader_last_name
+                ? op.leader_first_name + ' ' + op.leader_last_name + (op.leader_age ? ', ' + op.leader_age : '')
+                : '\u2014';
+            const opFounded = tickToDate(op.founded_tick);
+            const opIdeology = buildIdeologyTags(op);
+            const opAbbr = op.abbreviation
+                ? `<span class="other-party-abbr">(${op.abbreviation})</span>` : '';
+
+            cardsHtml += `
+            <div class="other-party-card" style="border-left-color:${opColor}">
+                <div class="other-party-top-row">
+                    <div class="other-party-logo" style="color:${opColor}">${opLogo}</div>
+                    <div class="other-party-identity">
+                        <div class="other-party-name-row">
+                            <span class="other-party-name" style="color:${opColor}">${op.faction_name}</span>
+                            ${opAbbr}
+                        </div>
+                        <div class="other-party-role-row">
+                            <span class="role-badge ${opBadgeClass}">${opRole}</span>
+                        </div>
+                        <div class="other-party-ideology-row">${opIdeology}</div>
+                    </div>
+                </div>
+                <div class="other-party-stats">
+                    <div class="other-party-stat">
+                        <div class="stat-label">Party Leader</div>
+                        <div class="stat-val">${opLeader}</div>
+                    </div>
+                    <div class="other-party-stat">
+                        <div class="stat-label">Seats</div>
+                        <div class="stat-val">${opSeats} / ${GAME_CONFIG.TOTAL_SEATS}</div>
+                    </div>
+                    <div class="other-party-stat">
+                        <div class="stat-label">Founded</div>
+                        <div class="stat-val">${opFounded}</div>
+                    </div>
+                </div>
+            </div>`;
+        }
+        otherPartiesHtml = `
+        <div class="other-parties-section">
+            <div class="other-parties-header">Other Parties</div>
+            <div class="other-parties-grid">${cardsHtml}</div>
+        </div>`;
+    }
+
     el.innerHTML = `
         <div class="parties-page">
         <div class="parties-top-panels">
@@ -770,6 +827,8 @@ async function renderParties() {
         </div>
 
         <div id="promises-container"></div>
+
+        ${otherPartiesHtml}
 
         </div>
     `;
