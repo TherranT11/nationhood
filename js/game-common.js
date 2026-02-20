@@ -5319,15 +5319,18 @@ export const PRESS_CONF_CONFIG = {
     // Drawing Attention (no ministry holds it)
     ATTENTION_MOMENTUM_MIN: 1,  // 1D2
     ATTENTION_MOMENTUM_MAX: 2,
+    // Flat-stat multiplier (stat unchanged — works but at reduced effect)
+    FLAT_MOMENTUM_MULT: 0.6,
 };
 
 /**
  * Execute a press conference about a specific national stat.
  *
  * Modes:
- *  - "credit": Player holds the responsible ministry. Stat must trend well or backfire.
- *  - "attack": Another party holds the ministry. Stat must trend badly or backfire.
+ *  - "credit": Player holds the responsible ministry. Backfires only if stat is actively declining.
+ *  - "attack": Another party holds the ministry. Backfires only if stat is actively improving.
  *  - "attention": No party holds the ministry. Small momentum gain.
+ * Flat stats (no change) work at reduced effect (60% momentum) but never backfire.
  */
 export async function executePressConference(supabase, factionId, nationId, statKey, currentTick) {
     const ministryKey = STAT_TO_MINISTRY[statKey];
@@ -5416,9 +5419,14 @@ export async function executePressConference(supabase, factionId, nationId, stat
     const trendingBadly = improvement < -FLAT_THRESHOLD;
 
     // ── 5. Determine backfire ──
+    // Backfire ONLY when the trend actively contradicts your claim:
+    //   Credit backfires if stat is actively declining (not flat).
+    //   Attack backfires if stat is actively improving (not flat).
+    // Flat stats work at reduced effect (FLAT_MOMENTUM_MULT) but never backfire.
     let backfire = false;
-    if (mode === 'credit' && !trendingWell) backfire = true;
-    if (mode === 'attack' && !trendingBadly) backfire = true;
+    let flatStat = !trendingWell && !trendingBadly;
+    if (mode === 'credit' && trendingBadly) backfire = true;
+    if (mode === 'attack' && trendingWell) backfire = true;
 
     // ── 6. Find blocs who care about this stat ──
     const { data: blocs } = await supabase
@@ -5463,7 +5471,10 @@ export async function executePressConference(supabase, factionId, nationId, stat
     }
 
     // ── 9. Roll effects ──
-    const halfMomentum = sameStatPenalty ? 0.5 : 1;
+    // Momentum multipliers stack: same-stat penalty (0.5) and flat-stat reduction (0.6)
+    const sameStatMult = sameStatPenalty ? 0.5 : 1;
+    const flatMult = (!backfire && flatStat) ? PRESS_CONF_CONFIG.FLAT_MOMENTUM_MULT : 1;
+    const momMult = sameStatMult * flatMult;
     const statLabel = statKey.replace(/_/g, ' ');
     let selfMomentumDelta = 0;
     let targetMomentumDelta = 0;
@@ -5471,6 +5482,7 @@ export async function executePressConference(supabase, factionId, nationId, stat
     let headline = '';
 
     const playerAbbr = faction.abbreviation || faction.faction_name;
+    const titleCase = s => s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
     function roll(min, max) {
         return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -5478,8 +5490,8 @@ export async function executePressConference(supabase, factionId, nationId, stat
 
     if (mode === 'credit') {
         if (backfire) {
-            selfMomentumDelta = Math.round(PRESS_CONF_CONFIG.CREDIT_BACKFIRE_MOMENTUM * halfMomentum);
-            headline = `${playerAbbr} Claims Credit for Worsening ${statLabel.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} — Public Not Convinced`;
+            selfMomentumDelta = Math.round(PRESS_CONF_CONFIG.CREDIT_BACKFIRE_MOMENTUM * sameStatMult);
+            headline = `${playerAbbr} Claims Credit for Worsening ${titleCase(statLabel)} — Public Not Convinced`;
             // Blocs who care: -1 preference
             for (const b of caringBlocs) {
                 const row = myByBloc[b.id];
@@ -5491,8 +5503,10 @@ export async function executePressConference(supabase, factionId, nationId, stat
                 blocResults.push({ blocId: b.id, blocName: b.bloc_name, party: 'self', prefDelta: delta, oldPref, newPref });
             }
         } else {
-            selfMomentumDelta = Math.round(roll(PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MIN, PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MAX) * halfMomentum);
-            headline = `${playerAbbr} Takes Credit for Improving ${statLabel.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}`;
+            selfMomentumDelta = Math.max(1, Math.round(roll(PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MIN, PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MAX) * momMult));
+            headline = flatStat
+                ? `${playerAbbr} Highlights Stable ${titleCase(statLabel)} Under Their Watch`
+                : `${playerAbbr} Takes Credit for Improving ${titleCase(statLabel)}`;
             for (const b of caringBlocs) {
                 const row = myByBloc[b.id];
                 if (!row) continue;
@@ -5505,16 +5519,17 @@ export async function executePressConference(supabase, factionId, nationId, stat
         }
     } else if (mode === 'attack') {
         if (backfire) {
-            selfMomentumDelta = Math.round(PRESS_CONF_CONFIG.ATTACK_BACKFIRE_SELF_MOMENTUM * halfMomentum);
+            selfMomentumDelta = Math.round(PRESS_CONF_CONFIG.ATTACK_BACKFIRE_SELF_MOMENTUM * sameStatMult);
             targetMomentumDelta = PRESS_CONF_CONFIG.ATTACK_BACKFIRE_TARGET_MOMENTUM;
-            const trendDir = trendingWell ? 'Improving' : 'Stable';
-            headline = `${playerAbbr} Attacks ${targetAbbr} on ${statLabel.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} — But It's ${trendDir}`;
+            headline = `${playerAbbr} Attacks ${targetAbbr} on ${titleCase(statLabel)} — But It's Improving`;
         } else {
             const targetMomRoll = roll(PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MIN, PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MAX);
             const selfMomRoll = roll(PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MIN, PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MAX);
-            selfMomentumDelta = Math.round(selfMomRoll * halfMomentum);
-            targetMomentumDelta = -targetMomRoll;
-            headline = `${playerAbbr} Blasts ${targetAbbr} Over Worsening ${statLabel.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}`;
+            selfMomentumDelta = Math.max(1, Math.round(selfMomRoll * momMult));
+            targetMomentumDelta = -Math.max(1, Math.round(targetMomRoll * flatMult));
+            headline = flatStat
+                ? `${playerAbbr} Criticizes ${targetAbbr} for Stagnant ${titleCase(statLabel)}`
+                : `${playerAbbr} Blasts ${targetAbbr} Over Worsening ${titleCase(statLabel)}`;
             // Credit transfer: -1 from target, +1 to player for caring blocs
             for (const b of caringBlocs) {
                 const myRow = myByBloc[b.id];
@@ -5535,8 +5550,8 @@ export async function executePressConference(supabase, factionId, nationId, stat
         }
     } else {
         // attention mode
-        selfMomentumDelta = Math.round(roll(PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MIN, PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MAX) * halfMomentum);
-        headline = `${playerAbbr} Draws Attention to ${statLabel.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}`;
+        selfMomentumDelta = Math.max(1, Math.round(roll(PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MIN, PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MAX) * sameStatMult));
+        headline = `${playerAbbr} Draws Attention to ${titleCase(statLabel)}`;
     }
 
     // ── 10. Apply momentum ──
@@ -5570,6 +5585,7 @@ export async function executePressConference(supabase, factionId, nationId, stat
             ministryKey,
             mode,
             backfire,
+            flatStat,
             headline,
             selfMomentumDelta,
             targetMomentumDelta,
@@ -5586,6 +5602,7 @@ export async function executePressConference(supabase, factionId, nationId, stat
         success: true,
         mode,
         backfire,
+        flatStat,
         headline,
         statKey,
         statLabel,
