@@ -18,7 +18,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -537,7 +537,10 @@ async function renderParties() {
             </div>
         </div>
 
-        <div id="rally-container"></div>
+        <div class="actions-row">
+            <div id="rally-container"></div>
+            <div id="pc-container"></div>
+        </div>
 
         </div>
     `;
@@ -816,6 +819,360 @@ async function renderParties() {
     }
 
     renderRally();
+
+    // ── Press Conference UI ──
+    let pcScreen = 'select'; // 'select' | 'preview' | 'results'
+    let pcSelectedStat = null;
+    let pcResults = null;
+    let pcFilter = 'All';
+
+    // Fetch recent press conferences for cooldown
+    const { data: recentPCs } = await _supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', f.id)
+        .eq('action_type', 'press_conference')
+        .gte('tick_performed', (currentShard?.current_tick || 0) - PRESS_CONF_CONFIG.SAME_STAT_WINDOW)
+        .order('tick_performed', { ascending: false });
+
+    const pcThisTick = (recentPCs || []).some(r => r.tick_performed === (currentShard?.current_tick || 0));
+
+    // Build stat list with trend + ministry + holder info
+    const { data: allMinistries } = await _supabase
+        .from('ministries')
+        .select('party_id, ministry_key')
+        .eq('nation_id', n.id)
+        .eq('is_active', true);
+
+    const ministryHolder = {};
+    for (const m of (allMinistries || [])) ministryHolder[m.ministry_key] = m.party_id;
+    if (coalition && coalition.lead_party_id) ministryHolder['prime_minister'] = coalition.lead_party_id;
+
+    // Fetch previous tick for trend if not already done
+    let pcPrevStats = null;
+    const pcTick = currentShard?.current_tick || 0;
+    if (pcTick > 0) {
+        const { data: histRow } = await _supabase
+            .from('nations_history').select('*')
+            .eq('nation_id', n.id).eq('tick', pcTick - 1).single();
+        pcPrevStats = histRow;
+    }
+
+    const MINISTRY_DISPLAY = {
+        prime_minister: 'PM', interior: 'Interior', foreign: 'Foreign',
+        defense: 'Defense', finance: 'Finance', education: 'Education',
+        healthcare: 'Healthcare', labor: 'Labor', justice: 'Justice',
+        transportation: 'Transport', security: 'Security'
+    };
+
+    const statList = [];
+    const FLAT_THRESHOLD_PC = 0.15;
+    for (const [statKey, ministryKey] of Object.entries(STAT_TO_MINISTRY)) {
+        const sign = statDirectionSign(statKey);
+        if (sign === 0) continue;
+        const cur = n[statKey];
+        const prev = pcPrevStats ? pcPrevStats[statKey] : null;
+        if (cur == null) continue;
+
+        const rawDelta = (prev != null) ? cur - prev : 0;
+        const improvement = rawDelta * sign;
+        let trend = 'flat';
+        if (improvement > FLAT_THRESHOLD_PC) trend = 'well';
+        else if (improvement < -FLAT_THRESHOLD_PC) trend = 'badly';
+
+        const holderId = ministryHolder[ministryKey] || null;
+        let mode;
+        if (holderId === f.id) mode = 'credit';
+        else if (holderId) mode = 'attack';
+        else mode = 'attention';
+
+        const holderParty = holderId ? partyLookup[holderId] : null;
+        const holderAbbr = holderParty?.abbreviation || (holderId === f.id ? 'YOU' : null);
+
+        // Check same-stat penalty
+        const sameStatRecent = (recentPCs || []).filter(r => r.result?.statKey === statKey);
+
+        statList.push({
+            statKey,
+            label: statKey.replace(/_/g, ' '),
+            ministryKey,
+            ministryLabel: MINISTRY_DISPLAY[ministryKey] || ministryKey,
+            trend,
+            mode,
+            holderId,
+            holderAbbr,
+            holderColor: holderParty?.party_color || '#666',
+            willBackfire: (mode === 'credit' && trend !== 'well') || (mode === 'attack' && trend !== 'badly'),
+            sameStatPenalty: sameStatRecent.length > 0,
+        });
+    }
+
+    // Group stats by ministry for the filter
+    const ministryKeys = [...new Set(statList.map(s => s.ministryKey))];
+
+    function renderPC() {
+        const container = document.getElementById('pc-container');
+        if (!container) return;
+
+        if (pcScreen === 'select') {
+            const costOk = (f.action_points || 0) >= PRESS_CONF_CONFIG.AP_COST && (f.party_funds || 0) >= PRESS_CONF_CONFIG.MONEY_COST;
+            const canAct = costOk && !pcThisTick;
+
+            // Filter buttons: All + ministry names
+            const filterOptions = ['All', ...ministryKeys.map(k => MINISTRY_DISPLAY[k] || k)];
+            const filterBtns = filterOptions.map(label => {
+                return `<button class="pc-filter-btn${pcFilter === label ? ' active' : ''}" data-filter="${label}">${label}</button>`;
+            }).join('');
+
+            // Filter stats
+            let filtered = statList;
+            if (pcFilter !== 'All') {
+                filtered = statList.filter(s => (MINISTRY_DISPLAY[s.ministryKey] || s.ministryKey) === pcFilter);
+            }
+
+            // Sort: trending badly first (good attack targets), then well, then flat
+            const trendOrder = { badly: 0, well: 1, flat: 2 };
+            filtered.sort((a, b) => trendOrder[a.trend] - trendOrder[b.trend]);
+
+            const rows = filtered.map(s => {
+                const trendIcon = s.trend === 'well' ? '<span class="pc-trend-good">▲</span>'
+                    : s.trend === 'badly' ? '<span class="pc-trend-bad">▼</span>'
+                    : '<span class="pc-trend-flat">—</span>';
+                const modeIcon = s.mode === 'credit' ? '📣' : s.mode === 'attack' ? '⚔️' : '📢';
+                const modeLabel = s.mode === 'credit' ? 'Credit' : s.mode === 'attack' ? 'Attack' : 'Attention';
+                const backfireWarn = s.willBackfire ? ' <span class="pc-backfire-warn">⚠</span>' : '';
+                const penaltyNote = s.sameStatPenalty ? ' <span class="pc-penalty-note">½</span>' : '';
+                const holderTag = s.holderAbbr
+                    ? `<span class="pc-holder" style="color:${s.holderColor}">${s.holderAbbr}</span>`
+                    : '<span class="pc-holder pc-holder-none">—</span>';
+                const statLabel = s.label.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                return `<div class="pc-stat-row${!canAct ? ' disabled' : ''}" data-stat="${s.statKey}">
+                    <span class="pc-stat-trend">${trendIcon}</span>
+                    <span class="pc-stat-name">${statLabel}</span>
+                    <span class="pc-stat-ministry">${s.ministryLabel}</span>
+                    ${holderTag}
+                    <span class="pc-stat-mode pc-mode-${s.mode}">${modeIcon} ${modeLabel}${backfireWarn}${penaltyNote}</span>
+                </div>`;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="pc-panel">
+                    <div class="pc-header-row">
+                        <span class="pc-title">Press Conference</span>
+                        <span class="pc-cost">Cost: ${PRESS_CONF_CONFIG.AP_COST} AP + $${PRESS_CONF_CONFIG.MONEY_COST.toLocaleString()}</span>
+                    </div>
+                    <div class="pc-desc">Speak publicly about a national stat. Take credit, attack rivals, or draw attention.</div>
+                    ${pcThisTick ? '<div class="pc-cooldown">You have already held a press conference this tick.</div>' : ''}
+                    ${!costOk && !pcThisTick ? '<div class="pc-cooldown">Not enough AP or funds.</div>' : ''}
+                    <div class="pc-divider"></div>
+                    <div class="pc-filters">${filterBtns}</div>
+                    <div class="pc-divider"></div>
+                    <div class="pc-stat-header">
+                        <span class="pc-stat-trend">Trend</span>
+                        <span class="pc-stat-name">Stat</span>
+                        <span class="pc-stat-ministry">Ministry</span>
+                        <span class="pc-holder">Holder</span>
+                        <span class="pc-stat-mode">Action</span>
+                    </div>
+                    <div class="pc-stat-list">${rows}</div>
+                    <div class="pc-legend">
+                        <span>📣 Credit = your ministry</span>
+                        <span>⚔️ Attack = rival's ministry</span>
+                        <span>📢 Attention = no holder</span>
+                        <span>⚠ = will backfire</span>
+                        <span>½ = same-stat penalty</span>
+                    </div>
+                </div>`;
+
+            container.querySelectorAll('.pc-filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => { pcFilter = btn.dataset.filter; renderPC(); });
+            });
+            container.querySelectorAll('.pc-stat-row:not(.disabled)').forEach(row => {
+                row.addEventListener('click', () => { pcSelectedStat = row.dataset.stat; pcScreen = 'preview'; renderPC(); });
+            });
+
+        } else if (pcScreen === 'preview') {
+            const s = statList.find(x => x.statKey === pcSelectedStat);
+            if (!s) { pcScreen = 'select'; renderPC(); return; }
+
+            const statLabel = s.label.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            const trendLabel = s.trend === 'well' ? 'Trending Well ▲' : s.trend === 'badly' ? 'Trending Badly ▼' : 'Flat —';
+            const trendClass = s.trend === 'well' ? 'pc-trend-good' : s.trend === 'badly' ? 'pc-trend-bad' : 'pc-trend-flat';
+
+            // Find caring blocs
+            const caringBlocsList = [];
+            for (const b of (blocs || [])) {
+                const issues = b.priority_issues || [];
+                for (const issue of issues) {
+                    const catStats = ISSUE_CATEGORY_STATS[issue] || [];
+                    if (catStats.includes(s.statKey)) {
+                        caringBlocsList.push(b.bloc_name);
+                        break;
+                    }
+                }
+            }
+
+            let projectedHtml = '';
+            if (s.mode === 'credit') {
+                if (s.willBackfire) {
+                    projectedHtml = `
+                        <div class="pc-projection pc-proj-bad">
+                            <div class="pc-proj-title">BACKFIRE — Taking Credit for a Bad Stat</div>
+                            <div>Your momentum: ${PRESS_CONF_CONFIG.CREDIT_BACKFIRE_MOMENTUM}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
+                            ${caringBlocsList.length > 0 ? `<div>Caring blocs get ${PRESS_CONF_CONFIG.CREDIT_BACKFIRE_PREF} preference toward you</div>` : ''}
+                            <div class="pc-proj-headline">Projected headline: "${s.holderAbbr || 'YOU'} Claims Credit — Public Not Convinced"</div>
+                        </div>`;
+                } else {
+                    projectedHtml = `
+                        <div class="pc-projection pc-proj-good">
+                            <div class="pc-proj-title">TAKING CREDIT — Stat is Improving Under Your Watch</div>
+                            <div>Your momentum: +${PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MIN} to +${PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MAX}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
+                            ${caringBlocsList.length > 0 ? `<div>Caring blocs get +${PRESS_CONF_CONFIG.CREDIT_PREF_DELTA} preference toward you</div>` : ''}
+                        </div>`;
+                }
+            } else if (s.mode === 'attack') {
+                if (s.willBackfire) {
+                    projectedHtml = `
+                        <div class="pc-projection pc-proj-bad">
+                            <div class="pc-proj-title">BACKFIRE — Attacking a Stat That's Not Failing</div>
+                            <div>Your momentum: ${PRESS_CONF_CONFIG.ATTACK_BACKFIRE_SELF_MOMENTUM}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
+                            <div>${s.holderAbbr} gets +${PRESS_CONF_CONFIG.ATTACK_BACKFIRE_TARGET_MOMENTUM} momentum (sympathy boost)</div>
+                            <div class="pc-proj-headline">Projected headline: "Attack on ${s.holderAbbr} Backfires"</div>
+                        </div>`;
+                } else {
+                    projectedHtml = `
+                        <div class="pc-projection pc-proj-good">
+                            <div class="pc-proj-title">ATTACK — Blaming ${s.holderAbbr} for a Failing Stat</div>
+                            <div>${s.holderAbbr}'s momentum: -${PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MIN} to -${PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MAX}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
+                            <div>Your momentum: +${PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MIN} to +${PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MAX}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
+                            ${caringBlocsList.length > 0 ? `<div>Credit transfer: caring blocs shift -${PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT} from ${s.holderAbbr}, +${PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT} to you</div>` : ''}
+                        </div>`;
+                }
+            } else {
+                projectedHtml = `
+                    <div class="pc-projection pc-proj-neutral">
+                        <div class="pc-proj-title">DRAWING ATTENTION — No Party Holds This Ministry</div>
+                        <div>Your momentum: +${PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MIN} to +${PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MAX}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
+                        <div>No credit transfer (nobody to blame or praise)</div>
+                    </div>`;
+            }
+
+            const caringHtml = caringBlocsList.length > 0
+                ? `<div class="pc-caring-blocs"><span class="pc-caring-label">Blocs who care:</span> ${caringBlocsList.join(', ')}</div>`
+                : '<div class="pc-caring-blocs"><span class="pc-caring-label">No blocs have this as a priority issue.</span></div>';
+
+            container.innerHTML = `
+                <div class="pc-panel">
+                    <div class="pc-header-row">
+                        <span class="pc-title">Press Conference</span>
+                        <span class="pc-cost">Cost: ${PRESS_CONF_CONFIG.AP_COST} AP + $${PRESS_CONF_CONFIG.MONEY_COST.toLocaleString()}</span>
+                    </div>
+                    <div class="pc-selected">
+                        <div class="pc-selected-stat">${statLabel}</div>
+                        <div class="pc-selected-meta">
+                            <span class="${trendClass}">${trendLabel}</span>
+                            <span class="pc-selected-ministry">${s.ministryLabel}${s.holderAbbr ? ` — held by <span style="color:${s.holderColor};font-weight:700">${s.holderAbbr}</span>` : ' — no holder'}</span>
+                        </div>
+                    </div>
+                    <div class="pc-divider pc-divider-accent"></div>
+                    ${projectedHtml}
+                    <div class="pc-divider"></div>
+                    ${caringHtml}
+                    ${s.sameStatPenalty ? '<div class="pc-same-stat-warn">⚠ Same-stat penalty: You\'ve spoken about this stat recently. Momentum effects halved.</div>' : ''}
+                    <div class="pc-actions">
+                        <button class="pc-btn pc-btn-confirm${s.willBackfire ? ' pc-btn-danger' : ''}" id="pc-confirm">${s.willBackfire ? 'PROCEED ANYWAY' : 'HOLD PRESS CONFERENCE'}</button>
+                        <button class="pc-btn pc-btn-cancel" id="pc-cancel">CANCEL</button>
+                    </div>
+                </div>`;
+
+            document.getElementById('pc-confirm').addEventListener('click', async () => {
+                const btn = document.getElementById('pc-confirm');
+                btn.disabled = true;
+                btn.textContent = 'Speaking...';
+                const tick = currentShard?.current_tick || 0;
+                const result = await executePressConference(_supabase, f.id, n.id, pcSelectedStat, tick);
+                if (result.success) {
+                    pcResults = result;
+                    pcScreen = 'results';
+                    renderPC();
+                } else {
+                    alert(result.error);
+                    btn.disabled = false;
+                    btn.textContent = s.willBackfire ? 'PROCEED ANYWAY' : 'HOLD PRESS CONFERENCE';
+                }
+            });
+            document.getElementById('pc-cancel').addEventListener('click', () => { pcScreen = 'select'; pcSelectedStat = null; renderPC(); });
+
+        } else if (pcScreen === 'results') {
+            const r = pcResults;
+            const statLabel = r.statLabel.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+            const modeLabel = r.mode === 'credit' ? (r.backfire ? 'Credit (Backfire!)' : 'Taking Credit')
+                : r.mode === 'attack' ? (r.backfire ? 'Attack (Backfire!)' : 'Attack')
+                : 'Drawing Attention';
+            const modeClass = r.backfire ? 'pc-result-backfire' : (r.mode === 'attention' ? 'pc-result-neutral' : 'pc-result-success');
+
+            let blocHtml = '';
+            if (r.blocResults.length > 0) {
+                const selfResults = r.blocResults.filter(b => b.party === 'self');
+                const targetResults = r.blocResults.filter(b => b.party === 'target');
+                if (selfResults.length > 0) {
+                    blocHtml += `<div class="pc-result-group"><div class="pc-result-group-label">Your preference changes:</div>`;
+                    for (const b of selfResults) {
+                        const sign = b.prefDelta > 0 ? '+' : '';
+                        blocHtml += `<div class="pc-result-bloc">${b.blocName}: ${sign}${b.prefDelta} (${b.oldPref}% → ${b.newPref}%)</div>`;
+                    }
+                    blocHtml += '</div>';
+                }
+                if (targetResults.length > 0) {
+                    blocHtml += `<div class="pc-result-group"><div class="pc-result-group-label">${r.targetAbbr}'s preference changes:</div>`;
+                    for (const b of targetResults) {
+                        const sign = b.prefDelta > 0 ? '+' : '';
+                        blocHtml += `<div class="pc-result-bloc">${b.blocName}: ${sign}${b.prefDelta} (${b.oldPref}% → ${b.newPref}%)</div>`;
+                    }
+                    blocHtml += '</div>';
+                }
+            } else {
+                blocHtml = '<div class="pc-result-group"><div class="pc-result-bloc">No preference changes.</div></div>';
+            }
+
+            container.innerHTML = `
+                <div class="pc-panel pc-panel-results">
+                    <div class="pc-title">Press Conference Results</div>
+                    <div class="pc-result-headline ${modeClass}">"${r.headline}"</div>
+                    <div class="pc-result-mode">${modeLabel}</div>
+                    <div class="pc-divider pc-divider-accent"></div>
+
+                    <div class="pc-result-section">
+                        <div class="pc-result-stat">Stat: ${statLabel}</div>
+                        <div class="pc-result-momentum">Your momentum: ${r.selfMomentumDelta > 0 ? '+' : ''}${r.selfMomentumDelta}${r.sameStatPenalty ? ' (halved — same-stat penalty)' : ''}</div>
+                        ${r.targetAbbr ? `<div class="pc-result-momentum">${r.targetAbbr}'s momentum: ${r.targetMomentumDelta > 0 ? '+' : ''}${r.targetMomentumDelta}</div>` : ''}
+                    </div>
+
+                    <div class="pc-divider"></div>
+                    ${blocHtml}
+                    <div class="pc-divider"></div>
+
+                    <div class="pc-results-summary">
+                        <div>Cost: $${PRESS_CONF_CONFIG.MONEY_COST.toLocaleString()} deducted — Treasury: $${r.oldTreasury.toLocaleString()} → $${r.newTreasury.toLocaleString()}</div>
+                        <div>AP: ${r.newAp + PRESS_CONF_CONFIG.AP_COST} → ${r.newAp}</div>
+                    </div>
+
+                    <div class="pc-actions">
+                        <button class="pc-btn pc-btn-cancel" id="pc-dismiss">DISMISS</button>
+                    </div>
+                </div>`;
+
+            document.getElementById('pc-dismiss').addEventListener('click', () => {
+                pcScreen = 'select';
+                pcSelectedStat = null;
+                pcResults = null;
+                renderParties();
+            });
+        }
+    }
+
+    renderPC();
 }
 
 initPage('parties', async (state) => {

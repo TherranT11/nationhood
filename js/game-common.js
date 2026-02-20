@@ -5239,6 +5239,318 @@ export async function executeRally(supabase, factionId, nationId, subjectIndex, 
 }
 
 
+// ==================== PRESS CONFERENCE ====================
+
+export const PRESS_CONF_CONFIG = {
+    AP_COST: 2,
+    MONEY_COST: 50000,
+    SAME_STAT_WINDOW: 3,        // ticks within which same-stat penalty applies
+    // Taking Credit (your ministry, stat trending well)
+    CREDIT_MOMENTUM_MIN: 3,     // 1D3+2
+    CREDIT_MOMENTUM_MAX: 5,
+    CREDIT_PREF_DELTA: 1,       // +1 preference for caring blocs
+    // Taking Credit backfire (your ministry, stat trending badly)
+    CREDIT_BACKFIRE_MOMENTUM: -2,
+    CREDIT_BACKFIRE_PREF: -1,
+    // Attack (rival ministry, stat trending badly)
+    ATTACK_TARGET_MOM_MIN: 2,   // -(1D3+1) → -2 to -4
+    ATTACK_TARGET_MOM_MAX: 4,
+    ATTACK_SELF_MOM_MIN: 1,     // 1D3 → +1 to +3
+    ATTACK_SELF_MOM_MAX: 3,
+    ATTACK_PREF_SHIFT: 1,       // -1 from target, +1 to you
+    // Attack backfire (rival ministry, stat trending well)
+    ATTACK_BACKFIRE_SELF_MOMENTUM: -2,
+    ATTACK_BACKFIRE_TARGET_MOMENTUM: 1,
+    // Drawing Attention (no ministry holds it)
+    ATTENTION_MOMENTUM_MIN: 1,  // 1D2
+    ATTENTION_MOMENTUM_MAX: 2,
+};
+
+/**
+ * Execute a press conference about a specific national stat.
+ *
+ * Modes:
+ *  - "credit": Player holds the responsible ministry. Stat must trend well or backfire.
+ *  - "attack": Another party holds the ministry. Stat must trend badly or backfire.
+ *  - "attention": No party holds the ministry. Small momentum gain.
+ */
+export async function executePressConference(supabase, factionId, nationId, statKey, currentTick) {
+    const ministryKey = STAT_TO_MINISTRY[statKey];
+    if (!ministryKey) return { success: false, error: 'Unknown stat.' };
+
+    const sign = statDirectionSign(statKey);
+    if (sign === 0) return { success: false, error: 'Stat has no clear direction.' };
+
+    // ── 1. Validate AP + funds ──
+    const { data: faction } = await supabase
+        .from('factions').select('party_funds, action_points, abbreviation, faction_name')
+        .eq('id', factionId).single();
+    if (!faction) return { success: false, error: 'Faction not found.' };
+    if ((faction.action_points || 0) < PRESS_CONF_CONFIG.AP_COST)
+        return { success: false, error: `Not enough AP. Need ${PRESS_CONF_CONFIG.AP_COST}.` };
+    if ((faction.party_funds || 0) < PRESS_CONF_CONFIG.MONEY_COST)
+        return { success: false, error: `Not enough funds. Need $${PRESS_CONF_CONFIG.MONEY_COST.toLocaleString()}.` };
+
+    // ── 2. Check cooldown ──
+    const { data: recentPCs } = await supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', factionId)
+        .eq('action_type', 'press_conference')
+        .gte('tick_performed', currentTick - PRESS_CONF_CONFIG.SAME_STAT_WINDOW)
+        .order('tick_performed', { ascending: false });
+
+    if ((recentPCs || []).some(r => r.tick_performed === currentTick))
+        return { success: false, error: 'Already held a press conference this tick.' };
+
+    // Same-stat penalty
+    const sameStatRecent = (recentPCs || []).filter(r => r.result?.statKey === statKey);
+    const sameStatPenalty = sameStatRecent.length > 0;
+
+    // ── 3. Determine mode ──
+    const { data: allMinistries } = await supabase
+        .from('ministries')
+        .select('party_id, ministry_key')
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+
+    // Also check who is PM (lead coalition party) for prime_minister stats
+    const coalition = await fetchActiveCoalition(supabase, nationId);
+    const isPM = coalition && coalition.lead_party_id === factionId;
+
+    let holderPartyId = null;
+    const ministryRow = (allMinistries || []).find(m => m.ministry_key === ministryKey);
+    if (ministryRow) {
+        holderPartyId = ministryRow.party_id;
+    }
+    if (ministryKey === 'prime_minister' && coalition) {
+        holderPartyId = coalition.lead_party_id;
+    }
+
+    let mode; // 'credit' | 'attack' | 'attention'
+    let targetPartyId = null;
+    if (holderPartyId === factionId || (ministryKey === 'prime_minister' && isPM)) {
+        mode = 'credit';
+    } else if (holderPartyId) {
+        mode = 'attack';
+        targetPartyId = holderPartyId;
+    } else {
+        mode = 'attention';
+    }
+
+    // ── 4. Determine stat trend ──
+    const { data: nation } = await supabase
+        .from('nations').select('*').eq('id', nationId).single();
+    let prevStats = null;
+    if (currentTick > 0) {
+        const { data: histRow } = await supabase
+            .from('nations_history')
+            .select('*')
+            .eq('nation_id', nationId)
+            .eq('tick', currentTick - 1)
+            .single();
+        prevStats = histRow;
+    }
+
+    const currentVal = nation ? nation[statKey] : null;
+    const prevVal = prevStats ? prevStats[statKey] : null;
+    const rawDelta = (currentVal != null && prevVal != null) ? currentVal - prevVal : 0;
+    const improvement = rawDelta * sign; // positive = trending in the good direction
+    const FLAT_THRESHOLD = 0.15;
+    const trendingWell = improvement > FLAT_THRESHOLD;
+    const trendingBadly = improvement < -FLAT_THRESHOLD;
+
+    // ── 5. Determine backfire ──
+    let backfire = false;
+    if (mode === 'credit' && !trendingWell) backfire = true;
+    if (mode === 'attack' && !trendingBadly) backfire = true;
+
+    // ── 6. Find blocs who care about this stat ──
+    const { data: blocs } = await supabase
+        .from('voter_blocs')
+        .select('id, bloc_name, population_weight, priority_issues')
+        .eq('nation_id', nationId).eq('is_active', true);
+
+    const caringBlocs = [];
+    for (const b of (blocs || [])) {
+        const issues = b.priority_issues || [];
+        for (const issue of issues) {
+            const catStats = ISSUE_CATEGORY_STATS[issue] || [];
+            if (catStats.includes(statKey)) {
+                caringBlocs.push(b);
+                break;
+            }
+        }
+    }
+
+    // ── 7. Fetch approval rows for both player and target ──
+    const partyIdsNeeded = [factionId];
+    if (targetPartyId) partyIdsNeeded.push(targetPartyId);
+
+    const { data: approvalRows } = await supabase
+        .from('faction_bloc_approval')
+        .select('id, faction_id, bloc_id, preference_score, momentum')
+        .in('faction_id', partyIdsNeeded);
+
+    const myByBloc = {};
+    const targetByBloc = {};
+    for (const row of (approvalRows || [])) {
+        if (row.faction_id === factionId) myByBloc[row.bloc_id] = row;
+        if (targetPartyId && row.faction_id === targetPartyId) targetByBloc[row.bloc_id] = row;
+    }
+
+    // ── 8. Get target party info ──
+    let targetAbbr = null;
+    if (targetPartyId) {
+        const { data: targetFaction } = await supabase
+            .from('factions').select('abbreviation, faction_name').eq('id', targetPartyId).single();
+        targetAbbr = targetFaction?.abbreviation || targetFaction?.faction_name || '???';
+    }
+
+    // ── 9. Roll effects ──
+    const halfMomentum = sameStatPenalty ? 0.5 : 1;
+    const statLabel = statKey.replace(/_/g, ' ');
+    let selfMomentumDelta = 0;
+    let targetMomentumDelta = 0;
+    const blocResults = [];
+    let headline = '';
+
+    const playerAbbr = faction.abbreviation || faction.faction_name;
+
+    function roll(min, max) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    if (mode === 'credit') {
+        if (backfire) {
+            selfMomentumDelta = Math.round(PRESS_CONF_CONFIG.CREDIT_BACKFIRE_MOMENTUM * halfMomentum);
+            headline = `${playerAbbr} Claims Credit for Worsening ${statLabel.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} — Public Not Convinced`;
+            // Blocs who care: -1 preference
+            for (const b of caringBlocs) {
+                const row = myByBloc[b.id];
+                if (!row) continue;
+                const oldPref = Math.round(row.preference_score || 0);
+                const delta = PRESS_CONF_CONFIG.CREDIT_BACKFIRE_PREF;
+                const newPref = Math.max(0, Math.min(100, oldPref + delta));
+                await supabase.from('faction_bloc_approval').update({ preference_score: newPref }).eq('id', row.id);
+                blocResults.push({ blocId: b.id, blocName: b.bloc_name, party: 'self', prefDelta: delta, oldPref, newPref });
+            }
+        } else {
+            selfMomentumDelta = Math.round(roll(PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MIN, PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MAX) * halfMomentum);
+            headline = `${playerAbbr} Takes Credit for Improving ${statLabel.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}`;
+            for (const b of caringBlocs) {
+                const row = myByBloc[b.id];
+                if (!row) continue;
+                const oldPref = Math.round(row.preference_score || 0);
+                const delta = PRESS_CONF_CONFIG.CREDIT_PREF_DELTA;
+                const newPref = Math.max(0, Math.min(100, oldPref + delta));
+                await supabase.from('faction_bloc_approval').update({ preference_score: newPref }).eq('id', row.id);
+                blocResults.push({ blocId: b.id, blocName: b.bloc_name, party: 'self', prefDelta: delta, oldPref, newPref });
+            }
+        }
+    } else if (mode === 'attack') {
+        if (backfire) {
+            selfMomentumDelta = Math.round(PRESS_CONF_CONFIG.ATTACK_BACKFIRE_SELF_MOMENTUM * halfMomentum);
+            targetMomentumDelta = PRESS_CONF_CONFIG.ATTACK_BACKFIRE_TARGET_MOMENTUM;
+            const trendDir = trendingWell ? 'Improving' : 'Stable';
+            headline = `${playerAbbr} Attacks ${targetAbbr} on ${statLabel.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} — But It's ${trendDir}`;
+        } else {
+            const targetMomRoll = roll(PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MIN, PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MAX);
+            const selfMomRoll = roll(PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MIN, PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MAX);
+            selfMomentumDelta = Math.round(selfMomRoll * halfMomentum);
+            targetMomentumDelta = -targetMomRoll;
+            headline = `${playerAbbr} Blasts ${targetAbbr} Over Worsening ${statLabel.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}`;
+            // Credit transfer: -1 from target, +1 to player for caring blocs
+            for (const b of caringBlocs) {
+                const myRow = myByBloc[b.id];
+                const tgtRow = targetByBloc[b.id];
+                if (myRow) {
+                    const oldPref = Math.round(myRow.preference_score || 0);
+                    const newPref = Math.max(0, Math.min(100, oldPref + PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT));
+                    await supabase.from('faction_bloc_approval').update({ preference_score: newPref }).eq('id', myRow.id);
+                    blocResults.push({ blocId: b.id, blocName: b.bloc_name, party: 'self', prefDelta: PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT, oldPref, newPref });
+                }
+                if (tgtRow) {
+                    const oldPref = Math.round(tgtRow.preference_score || 0);
+                    const newPref = Math.max(0, Math.min(100, oldPref - PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT));
+                    await supabase.from('faction_bloc_approval').update({ preference_score: newPref }).eq('id', tgtRow.id);
+                    blocResults.push({ blocId: b.id, blocName: b.bloc_name, party: 'target', prefDelta: -PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT, oldPref, newPref });
+                }
+            }
+        }
+    } else {
+        // attention mode
+        selfMomentumDelta = Math.round(roll(PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MIN, PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MAX) * halfMomentum);
+        headline = `${playerAbbr} Draws Attention to ${statLabel.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}`;
+    }
+
+    // ── 10. Apply momentum ──
+    // Self momentum: apply to all our bloc rows
+    if (selfMomentumDelta !== 0) {
+        await adjustMomentum(supabase, factionId, selfMomentumDelta);
+    }
+    // Target momentum (attack mode)
+    if (targetPartyId && targetMomentumDelta !== 0) {
+        await adjustMomentum(supabase, targetPartyId, targetMomentumDelta);
+    }
+
+    // ── 11. Deduct AP + money ──
+    const apResult = await deductAP(supabase, factionId, PRESS_CONF_CONFIG.AP_COST);
+    const oldTreasury = faction.party_funds || 0;
+    const newTreasury = oldTreasury - PRESS_CONF_CONFIG.MONEY_COST;
+    await supabase.from('factions')
+        .update({ party_funds: newTreasury })
+        .eq('id', factionId);
+
+    // ── 12. Log ──
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId,
+        nation_id: nationId,
+        action_type: 'press_conference',
+        ap_cost: PRESS_CONF_CONFIG.AP_COST,
+        money_cost: PRESS_CONF_CONFIG.MONEY_COST,
+        tick_performed: currentTick,
+        result: {
+            statKey,
+            ministryKey,
+            mode,
+            backfire,
+            headline,
+            selfMomentumDelta,
+            targetMomentumDelta,
+            targetPartyId,
+            targetAbbr,
+            sameStatPenalty,
+            blocResults,
+            trendingWell,
+            trendingBadly,
+        }
+    });
+
+    return {
+        success: true,
+        mode,
+        backfire,
+        headline,
+        statKey,
+        statLabel,
+        ministryKey,
+        selfMomentumDelta,
+        targetMomentumDelta,
+        targetAbbr,
+        targetPartyId,
+        sameStatPenalty,
+        blocResults,
+        caringBlocNames: caringBlocs.map(b => b.bloc_name),
+        trendingWell,
+        trendingBadly,
+        newAp: apResult.newAp ?? ((faction.action_points || 0) - PRESS_CONF_CONFIG.AP_COST),
+        oldTreasury,
+        newTreasury,
+    };
+}
+
+
 // ==================== LOYALTY TICK PROCESSING ====================
 
 export async function processLoyaltyTick(supabase, nation) {
