@@ -5778,14 +5778,27 @@ async function executePressConference(supabase, factionId, nationId, statKey, cu
     const { data: nation } = await supabase
         .from('nations').select('*').eq('id', nationId).single();
     let prevStats = null;
+    const PC_TREND_WINDOW = 3;
     if (currentTick > 0) {
+        const lookbackTick = Math.max(0, currentTick - PC_TREND_WINDOW);
         const { data: histRow } = await supabase
             .from('nations_history')
             .select('*')
             .eq('nation_id', nationId)
-            .eq('tick', currentTick - 1)
-            .single();
-        prevStats = histRow;
+            .eq('tick', lookbackTick)
+            .maybeSingle();
+        if (histRow) {
+            prevStats = histRow;
+        } else {
+            const { data: fallbackRows } = await supabase
+                .from('nations_history')
+                .select('*')
+                .eq('nation_id', nationId)
+                .lt('tick', currentTick)
+                .order('tick', { ascending: true })
+                .limit(1);
+            prevStats = fallbackRows?.[0] || null;
+        }
     }
 
     const currentVal = nation ? nation[statKey] : null;
