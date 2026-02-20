@@ -532,6 +532,7 @@ body.light-mode .ap-bar-track {
 }
 
 .bloc-table-header .bloc-name,
+.bloc-table-header .bloc-voters,
 .bloc-table-header .bloc-approval,
 .bloc-table-header .bloc-change,
 .bloc-table-header .bloc-leader {
@@ -544,6 +545,7 @@ body.light-mode .ap-bar-track {
 }
 
 .bloc-table-header .bloc-name { width: 180px; }
+.bloc-table-header .bloc-voters { width: 52px; text-align: right; }
 .bloc-table-header .bloc-approval { width: 72px; text-align: right; }
 .bloc-table-header .bloc-change { width: 52px; text-align: right; }
 .bloc-table-header .bloc-leader { width: 48px; text-align: center; }
@@ -579,6 +581,15 @@ body.light-mode .bloc-row {
 .bloc-row-leading .bloc-name {
     color: var(--text-primary, #e0e0e0);
     font-weight: 700;
+}
+
+.bloc-row .bloc-voters {
+    width: 52px;
+    flex-shrink: 0;
+    text-align: right;
+    font-size: 0.72rem;
+    color: var(--text-muted, #666);
+    font-variant-numeric: tabular-nums;
 }
 
 .bloc-bar-track {
