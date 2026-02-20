@@ -423,11 +423,19 @@ export function formatCurrency(n) {
 }
 
 /**
- * Convert a small-scale stat (value = billions) to raw dollar amount.
- * DB stores GDP/debt as small numbers: 195 = $195 Billion.
+ * Ensure a GDP/debt value is in raw-dollar scale for display.
+ *
+ * The DB may store values in two scales depending on whether the
+ * fix_nation_gdp_debt_population_scale migration has been applied:
+ *   - Old scale: 50 means $50 Billion  (needs × 1e9)
+ *   - New scale: 50,000,000,000 means $50 Billion  (already correct)
+ *
+ * Threshold: values >= 1,000,000 are assumed to already be in raw
+ * dollars; smaller values are treated as the legacy "billions" shorthand.
  */
 export function scaleRawToDollars(val) {
     if (val == null || val <= 0) return val;
+    if (Math.abs(val) >= 1_000_000) return val;
     return val * 1e9;
 }
 

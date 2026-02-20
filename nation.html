@@ -309,8 +309,14 @@ function getTrendArrow(statKey, currentValue, inverted, format) {
     }
     var delta = currentValue - previousValue;
     var invertedClass = inverted ? ' inverted' : '';
-    // Scale delta to dollars for currency/gdp display (stored as small-scale billions)
-    var displayDelta = (format === 'currency' || format === 'gdp') ? delta * 1e9 : delta;
+    // Scale delta to dollars for currency/gdp display.
+    // If the stat value is already in raw dollars (>= 1M), use delta as-is;
+    // otherwise apply the legacy small-scale → dollars conversion.
+    var displayDelta = delta;
+    if (format === 'currency' || format === 'gdp') {
+        var isRawDollars = Math.abs(currentValue) >= 1000000;
+        displayDelta = isRawDollars ? delta : delta * 1e9;
+    }
     if (delta > 0) {
         var formatted = (format === 'currency' || format === 'gdp') ? '+' + formatCurrencyShort(displayDelta) : '+' + roundDelta(delta);
         return '<span class="trend-arrow trend-up' + invertedClass + '">▲ ' + formatted + '</span>';
