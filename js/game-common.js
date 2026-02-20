@@ -1659,6 +1659,66 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'veto_override' });
             }
+        } else if (bill.bill_type === 'ratification' && bill.diplomatic_proposal_id) {
+            // Diplomatic ratification bill
+            if (passed) {
+                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+                // Activate the linked diplomatic proposal
+                const { data: proposal } = await supabase.from('diplomatic_proposals')
+                    .select('*').eq('id', bill.diplomatic_proposal_id).single();
+                if (proposal) {
+                    const pd = proposal.proposal_data || {};
+                    const updatedPipeline = { ...(pd.pipeline || {}), ratified_at: currentTick };
+                    pd.pipeline = updatedPipeline;
+                    await supabase.from('diplomatic_proposals')
+                        .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
+                        .eq('id', bill.diplomatic_proposal_id);
+                    // Apply relation effects from active articles
+                    const articles = pd.articles || [];
+                    const struckIndices = new Set(pd.struck_articles || []);
+                    let totalRel = 0;
+                    articles.forEach((art, i) => {
+                        if (!struckIndices.has(i)) totalRel += art.relations || 0;
+                    });
+                    if (totalRel !== 0) {
+                        const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                        const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+                        const { data: rel } = await supabase.from('diplomatic_relations')
+                            .select('id, relation_score, active_treaties')
+                            .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
+                        if (rel) {
+                            const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
+                            const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposal.id] : [proposal.id];
+                            await supabase.from('diplomatic_relations')
+                                .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
+                        }
+                    }
+                    try {
+                        await supabase.rpc('fire_system_event', {
+                            p_trigger_key: 'bill_passed',
+                            p_nation_id: bill.nation_id,
+                            p_tick: currentTick,
+                            p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), article_count: '0' }
+                        });
+                    } catch (e) { /* non-blocking */ }
+                }
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'ratification' });
+            } else {
+                await failBill(supabase, bill);
+                // Mark proposal as ratification_failed so FM can abandon or retry
+                await supabase.from('diplomatic_proposals')
+                    .update({ status: 'ratification_failed' })
+                    .eq('id', bill.diplomatic_proposal_id);
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_trigger_key: 'bill_failed',
+                        p_nation_id: bill.nation_id,
+                        p_tick: currentTick,
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
+                    });
+                } catch (e) { /* non-blocking */ }
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'ratification' });
+            }
         } else if (passed) {
             // Presidential systems: route regular/repeal bills to president's desk
             if (isPresidentialRepublic(nation)) {
