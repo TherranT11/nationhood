@@ -59,7 +59,7 @@ const STATE_TTL = 5 * 60 * 1000; // 5 minutes
 // Admin inspector overrides: ?nation_id= and ?faction_id= in URL
 // Falls back to sessionStorage so overrides survive in-page navigations
 // (e.g. Appoint Ambassador link) that may lose URL params.
-function getAdminNationOverride() {
+export function getAdminNationOverride() {
     try {
         const params = new URLSearchParams(window.location.search);
         const fromUrl = params.get('nation_id') || null;
@@ -68,7 +68,7 @@ function getAdminNationOverride() {
     } catch (e) { return null; }
 }
 
-function getAdminFactionOverride() {
+export function getAdminFactionOverride() {
     try {
         const params = new URLSearchParams(window.location.search);
         const fromUrl = params.get('faction_id') || null;
