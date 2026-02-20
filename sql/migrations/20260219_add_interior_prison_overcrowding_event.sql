@@ -29,7 +29,7 @@ INSERT INTO ministry_event_templates (
     'crime_rate',
     '>',
     45,
-    '{
+    $${
         "titles": [
             "Prisons at 140% Capacity — Warden Council Requests Emergency Meeting",
             "Corrections Authority Warns of Imminent Prison Crisis"
@@ -195,5 +195,5 @@ INSERT INTO ministry_event_templates (
                 }
             ]
         }
-    }'::jsonb
+    }$$::jsonb
 );

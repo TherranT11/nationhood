@@ -448,3 +448,95 @@ body.light-mode .coalition-party-card.locked { background: #fff3e0; }
     animation: spin 1s linear infinite; margin-bottom: 16px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== HAMBURGER BUTTON (hidden on desktop) ===== */
+.hamburger-btn {
+    display: none;
+    background: transparent;
+    border: 1px solid var(--border-main);
+    color: var(--accent);
+    font-size: 1.4rem;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.hamburger-btn:hover { border-color: var(--accent); }
+
+/* ===== MOBILE RESPONSIVE ===== */
+@media (max-width: 768px) {
+    /* Fix body scroll */
+    body {
+        height: auto;
+        overflow-y: auto;
+    }
+
+    /* Show hamburger */
+    .hamburger-btn { display: block; }
+
+    /* Top bar layout */
+    .top-bar-row1 {
+        flex-wrap: wrap;
+        padding: 8px 12px 4px;
+    }
+    .top-bar-left {
+        flex-wrap: wrap;
+        gap: 8px;
+        width: 100%;
+    }
+    .top-bar-right {
+        width: 100%;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 4px;
+    }
+    .tick-info { gap: 12px; }
+    .nation-badge {
+        border-right: none;
+        padding-right: 0;
+        flex-direction: row;
+        gap: 8px;
+    }
+    .nation-flag { width: 32px; height: 22px; }
+
+    /* Collapsible nav */
+    .nav-tabs {
+        display: none;
+    }
+    .nav-tabs.nav-open {
+        display: flex;
+        flex-direction: column;
+        padding: 4px 12px 8px;
+    }
+    .nav-tabs.nav-open .nav-tab {
+        padding: 10px 14px;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        border-top: none;
+    }
+    .nav-tabs.nav-open .nav-tab.active {
+        border-top: none;
+        border-left: 2px solid var(--accent);
+    }
+
+    /* Content area */
+    #content-area { overflow-y: visible; }
+
+    /* Shared layout grids → single column */
+    .gov-two-col,
+    .cabinet-grid,
+    .action-grid { grid-template-columns: 1fr; }
+    .party-layout { grid-template-columns: 1fr; }
+    .party-info-block { position: static; }
+
+    /* World page sidebar stacks below map */
+    #world-content { flex-direction: column; height: auto; }
+    #world-sidebar {
+        width: 100%;
+        border-left: none;
+        border-top: 2px solid var(--sidebar-border);
+    }
+
+    /* Loading state */
+    .loading-container { height: auto; min-height: 60vh; }
+}

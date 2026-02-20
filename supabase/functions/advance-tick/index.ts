@@ -6247,6 +6247,70 @@ async function processStatEffects(supabase, nation, currentTick) {
     return appliedEffects;
 }
 
+// ==================== STAT DECAY PROCESSING ====================
+
+/**
+ * Apply natural stat decay for a nation. Each tick, configured stats drift
+ * toward their target by their speed, but never overshoot.
+ *
+ * @param {object} supabase - Supabase client
+ * @param {object} nation   - Full nation row (in-memory, mutated on success)
+ * @returns {Array<object>}  Applied decay descriptors for tick summary
+ */
+async function processStatDecay(supabase, nation) {
+    const appliedDecay = [];
+    const nationUpdates = {};
+
+    for (const [statKey, config] of Object.entries(STAT_DECAY_CONFIG)) {
+        if (!NATION_STAT_COLUMN_SET.has(statKey)) continue;
+
+        const currentVal = nation[statKey] !== undefined && nation[statKey] !== null
+            ? Number(nation[statKey]) : 50;
+        const { target, speed } = config;
+
+        if (currentVal === target) continue;
+
+        let newVal;
+        if (currentVal > target) {
+            newVal = Math.max(target, currentVal - speed);
+        } else {
+            newVal = Math.min(target, currentVal + speed);
+        }
+
+        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+
+        if (newVal !== Math.round(currentVal * 10) / 10) {
+            nationUpdates[statKey] = newVal;
+            appliedDecay.push({
+                stat: statKey,
+                type: config.type,
+                previousValue: Math.round(currentVal * 10) / 10,
+                newValue: newVal,
+                target,
+                speed
+            });
+        }
+    }
+
+    if (Object.keys(nationUpdates).length > 0) {
+        const { error } = await supabase
+            .from('nations')
+            .update(nationUpdates)
+            .eq('id', nation.id);
+
+        if (error) {
+            console.error('[processStatDecay] Nation stat update FAILED',
+                { nationId: nation.id, payload: nationUpdates, error: error.message });
+            return [];
+        }
+
+        console.log(`[processStatDecay] Decay applied for ${nation.name}: ${appliedDecay.length} stat(s)`);
+        Object.assign(nation, nationUpdates);
+    }
+
+    return appliedDecay;
+}
+
 /**
  * Process ministry action stat effects during tick advancement.
  * Mirrors processStatEffects but reads from ministry_action_log.
