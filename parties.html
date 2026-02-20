@@ -19,7 +19,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -417,21 +417,20 @@ async function renderParties() {
                 </div>
                 <div class="action-card">
                     <div class="action-header">
-                        <div class="action-title">Court Donors</div>
-                        <div class="action-cost">2 AP</div>
+                        <div class="action-title">Fundraiser</div>
+                        <div class="action-cost">${FUNDRAISER_CONFIG.AP_COST} AP</div>
                     </div>
                     <div class="action-desc">
-                        Approach a voter bloc for financial support. Higher alignment yields more funds,
-                        but other blocs may disapprove.
-                        <br><span style="color: #888; font-size: 0.78rem;">Cooldown: 3 ticks per bloc.</span>
+                        Hold a fundraising event. A voter bloc's donors approach with two envelopes: clean money, or big money with a political demand.
+                        <br><span style="color: #888; font-size: 0.78rem;">Cooldown: ${FUNDRAISER_CONFIG.COOLDOWN_TICKS} ticks.</span>
                     </div>
-                    <button class="action-btn" id="btn-court-donors" onclick="openDonorPanel()">
-                        Court Donors
+                    <button class="action-btn" id="btn-fundraiser" onclick="openFundraiserPanel()">
+                        Hold Fundraiser
                     </button>
                 </div>
             </div>
             <div id="coalition-panel" class="donor-panel"></div>
-            <div id="donor-panel" class="donor-panel"></div>
+            <div id="fundraiser-container" class="donor-panel"></div>
 
             <div class="section-header" style="margin-top: 20px;">Recent Actions</div>
             <div id="action-log" class="action-log"><div class="action-log-empty">No actions taken yet this campaign.</div></div>`;
@@ -780,6 +779,8 @@ async function renderParties() {
         </div>
 
         <div id="outreach-container"></div>
+
+        <div id="promises-container"></div>
 
         </div>
     `;
@@ -1526,6 +1527,379 @@ async function renderParties() {
     }
 
     renderOutreach();
+
+    // ── Fundraiser UI ──
+    let fundraiserScreen = 'closed'; // 'closed' | 'offer' | 'result'
+    let fundraiserOffer = null;
+    let fundraiserResult = null;
+
+    // Check cooldown
+    const { data: recentFundraisers } = await _supabase
+        .from('campaign_actions')
+        .select('tick_performed')
+        .eq('party_id', f.id)
+        .eq('action_type', 'fundraiser')
+        .order('tick_performed', { ascending: false })
+        .limit(1);
+    const lastFundraiserTick = recentFundraisers?.[0]?.tick_performed ?? -999;
+    const fundraiserCooldownRemaining = Math.max(0, FUNDRAISER_CONFIG.COOLDOWN_TICKS - ((currentShard?.current_tick || 0) - lastFundraiserTick));
+    const fundraiserOnCooldown = fundraiserCooldownRemaining > 0;
+
+    window.openFundraiserPanel = function() {
+        if (fundraiserScreen === 'offer') {
+            fundraiserScreen = 'closed';
+            renderFundraiser();
+            return;
+        }
+        fundraiserScreen = 'loading';
+        renderFundraiser();
+        executeFundraiserOffer(_supabase, f.id, n.id, currentShard?.current_tick || 0).then(result => {
+            if (result.success) {
+                fundraiserOffer = result;
+                fundraiserScreen = 'offer';
+            } else {
+                alert(result.error);
+                fundraiserScreen = 'closed';
+            }
+            renderFundraiser();
+        });
+    };
+
+    function renderFundraiser() {
+        const container = document.getElementById('fundraiser-container');
+        if (!container) return;
+
+        if (fundraiserScreen === 'closed') {
+            container.innerHTML = '';
+            return;
+        }
+
+        if (fundraiserScreen === 'loading') {
+            container.innerHTML = `
+                <div class="fundraiser-panel">
+                    <div class="fundraiser-header-row">
+                        <span class="fundraiser-title">Fundraiser</span>
+                        <span class="fundraiser-cost">Cost: ${FUNDRAISER_CONFIG.AP_COST} AP</span>
+                    </div>
+                    <div style="text-align:center;padding:30px;color:var(--text-muted);">Finding donors...</div>
+                </div>`;
+            return;
+        }
+
+        if (fundraiserScreen === 'offer') {
+            const o = fundraiserOffer;
+            const bloc = o.bloc;
+            const offer = o.offer;
+            const ideoTags = o.blocIdeologyTags.map(t => colorTagUpper(t)).join('&nbsp; ');
+            const conflictHtml = o.conflicts.length > 0
+                ? o.conflicts.map(c => `<div class="fundraiser-conflict">WARNING: ${c.message}</div>`).join('')
+                : '';
+
+            const bigBlocked = o.bigOffersBlocked;
+
+            container.innerHTML = `
+                <div class="fundraiser-panel">
+                    <div class="fundraiser-header-row">
+                        <span class="fundraiser-title">Fundraiser</span>
+                        <span class="fundraiser-cost">Cost: ${FUNDRAISER_CONFIG.AP_COST} AP</span>
+                    </div>
+
+                    <div class="fundraiser-donor-info">
+                        <div class="fundraiser-donor-name">DONOR: ${bloc.bloc_name.toUpperCase()}</div>
+                        <div class="fundraiser-donor-ideology">Ideology: ${ideoTags}</div>
+                    </div>
+                    <div class="fundraiser-donor-desc">A delegation of ${bloc.bloc_name.toLowerCase()} would like to support your party.</div>
+                    <div class="fundraiser-divider"></div>
+
+                    <div class="fundraiser-option">
+                        <div class="fundraiser-option-label">OPTION A: NO STRINGS</div>
+                        <div class="fundraiser-option-box">
+                            <div class="fundraiser-option-amount">Accept $${offer.smallAmount.toLocaleString()}</div>
+                            <div class="fundraiser-option-desc">No obligations. No promises. Clean money.</div>
+                            <button class="fundraiser-btn fundraiser-btn-accept" id="fundraiser-accept-small">ACCEPT</button>
+                        </div>
+                    </div>
+
+                    ${!bigBlocked ? `
+                    <div class="fundraiser-option">
+                        <div class="fundraiser-option-label">OPTION B: WITH CONDITIONS</div>
+                        <div class="fundraiser-option-box fundraiser-option-big">
+                            <div class="fundraiser-option-amount">Accept $${offer.largeAmount.toLocaleString()}</div>
+                            <div class="fundraiser-option-demand">DEMAND: "${offer.demand.resolvedText}"</div>
+                            <div class="fundraiser-option-deadline">Deadline: ${offer.deadline} ticks (due by Tick ${(o.currentTick || 0) + offer.deadline})</div>
+                            <div class="fundraiser-divider-thin"></div>
+                            <div class="fundraiser-rewards">
+                                <div class="fundraiser-reward-good">IF YOU DELIVER: +${FUNDRAISER_CONFIG.PROMISE_KEPT_PREF_BONUS} preference with ${bloc.bloc_name}, +${FUNDRAISER_CONFIG.PROMISE_KEPT_MOMENTUM} momentum</div>
+                                <div class="fundraiser-reward-bad">IF YOU FAIL: ${FUNDRAISER_CONFIG.PROMISE_BROKEN_DONOR_PREF} preference with ${bloc.bloc_name}, ${FUNDRAISER_CONFIG.PROMISE_BROKEN_ALL_PREF} preference with ALL blocs, ${FUNDRAISER_CONFIG.PROMISE_BROKEN_MOMENTUM} momentum</div>
+                            </div>
+                            ${conflictHtml}
+                            <button class="fundraiser-btn fundraiser-btn-promise" id="fundraiser-accept-large">ACCEPT WITH PROMISE</button>
+                        </div>
+                    </div>
+                    ` : `
+                    <div class="fundraiser-option">
+                        <div class="fundraiser-option-label">OPTION B: UNAVAILABLE</div>
+                        <div class="fundraiser-option-box fundraiser-option-locked">
+                            <div class="fundraiser-option-desc" style="color:#ff4444;">Large donations are unavailable. This bloc doesn't trust you with conditions right now.</div>
+                        </div>
+                    </div>
+                    `}
+
+                    <div class="fundraiser-decline">
+                        <button class="fundraiser-btn fundraiser-btn-decline" id="fundraiser-decline">DECLINE BOTH — NO FUNDRAISER</button>
+                    </div>
+                </div>`;
+
+            // Wire up buttons
+            document.getElementById('fundraiser-accept-small').addEventListener('click', async () => {
+                const btn = document.getElementById('fundraiser-accept-small');
+                btn.disabled = true; btn.textContent = 'Processing...';
+                const result = await acceptSmallDonation(_supabase, f.id, n.id, bloc.id, bloc.bloc_name, offer.smallAmount, o.currentTick, o.factionAbbr);
+                if (result.success) {
+                    fundraiserResult = result;
+                    fundraiserScreen = 'result';
+                    renderFundraiser();
+                } else {
+                    alert(result.error || 'Failed');
+                    btn.disabled = false; btn.textContent = 'ACCEPT';
+                }
+            });
+
+            if (!bigBlocked) {
+                document.getElementById('fundraiser-accept-large').addEventListener('click', async () => {
+                    const btn = document.getElementById('fundraiser-accept-large');
+                    btn.disabled = true; btn.textContent = 'Processing...';
+                    const result = await acceptLargeDonation(
+                        _supabase, f.id, n.id, bloc.id, bloc.bloc_name,
+                        offer.largeAmount, offer.demand, offer.demandIndex,
+                        offer.deadline, o.currentTick, o.nationStats, o.factionAbbr
+                    );
+                    if (result.success) {
+                        fundraiserResult = result;
+                        fundraiserScreen = 'result';
+                        renderFundraiser();
+                    } else {
+                        alert(result.error || 'Failed');
+                        btn.disabled = false; btn.textContent = 'ACCEPT WITH PROMISE';
+                    }
+                });
+            }
+
+            document.getElementById('fundraiser-decline').addEventListener('click', async () => {
+                const btn = document.getElementById('fundraiser-decline');
+                btn.disabled = true; btn.textContent = 'Declining...';
+                const result = await declineFundraiser(_supabase, f.id, n.id, bloc.id, bloc.bloc_name, o.currentTick);
+                if (result.success) {
+                    fundraiserResult = { ...result, blocName: bloc.bloc_name };
+                    fundraiserScreen = 'result';
+                    renderFundraiser();
+                } else {
+                    alert(result.error || 'Failed');
+                    btn.disabled = false; btn.textContent = 'DECLINE BOTH — NO FUNDRAISER';
+                }
+            });
+
+        } else if (fundraiserScreen === 'result') {
+            const r = fundraiserResult;
+            let resultBody = '';
+
+            if (r.type === 'small_donation') {
+                resultBody = `
+                    <div class="fundraiser-result-heading">FUNDRAISER RESULTS</div>
+                    <div class="fundraiser-result-line">Donor: ${r.blocName}</div>
+                    <div class="fundraiser-result-line">Accepted: $${r.amount.toLocaleString()} (no strings)</div>
+                    <div class="fundraiser-divider-thin"></div>
+                    <div class="fundraiser-result-line">Treasury: $${r.oldTreasury.toLocaleString()} → $${r.newTreasury.toLocaleString()}</div>
+                    <div class="fundraiser-result-line">AP: ${r.newAp + FUNDRAISER_CONFIG.AP_COST} → ${r.newAp}</div>`;
+            } else if (r.type === 'large_donation') {
+                resultBody = `
+                    <div class="fundraiser-result-heading">FUNDRAISER RESULTS</div>
+                    <div class="fundraiser-result-line">Donor: ${r.blocName}</div>
+                    <div class="fundraiser-result-line">Accepted: $${r.amount.toLocaleString()} with conditions</div>
+                    <div class="fundraiser-divider-thin"></div>
+                    <div class="fundraiser-result-line">Treasury: $${r.oldTreasury.toLocaleString()} → $${r.newTreasury.toLocaleString()}</div>
+                    <div class="fundraiser-result-line">AP: ${r.newAp + FUNDRAISER_CONFIG.AP_COST} → ${r.newAp}</div>
+                    <div class="fundraiser-divider-thin"></div>
+                    <div class="fundraiser-result-promise">
+                        <div class="fundraiser-result-promise-label">PROMISE RECORDED</div>
+                        <div>"${r.demandText}"</div>
+                        <div>Deadline: ${r.deadline} ticks (due Tick ${r.tickDeadline})</div>
+                        <div style="color:var(--text-muted);font-size:0.82rem;margin-top:6px;">This promise is now tracked on your Promises tab below.</div>
+                    </div>
+                    ${r.headline ? `<div class="fundraiser-result-headline">CIVIC: "${r.headline}"</div>` : ''}`;
+            } else {
+                resultBody = `
+                    <div class="fundraiser-result-heading">FUNDRAISER DECLINED</div>
+                    <div class="fundraiser-result-line">You declined both offers from ${r.blocName}.</div>
+                    <div class="fundraiser-result-line">AP: ${r.newAp + FUNDRAISER_CONFIG.AP_COST} → ${r.newAp}</div>`;
+            }
+
+            container.innerHTML = `
+                <div class="fundraiser-panel fundraiser-panel-results">
+                    ${resultBody}
+                    <div class="fundraiser-actions">
+                        <button class="fundraiser-btn fundraiser-btn-dismiss" id="fundraiser-dismiss">DISMISS</button>
+                    </div>
+                </div>`;
+
+            document.getElementById('fundraiser-dismiss').addEventListener('click', () => {
+                fundraiserScreen = 'closed';
+                fundraiserOffer = null;
+                fundraiserResult = null;
+                renderFundraiser();
+                renderPromises(); // Refresh promises after fundraiser
+            });
+        }
+    }
+
+    // ── Active Promises UI (Phase 5) ──
+    async function renderPromises() {
+        const container = document.getElementById('promises-container');
+        if (!container) return;
+
+        const { data: promises } = await _supabase
+            .from('fundraiser_promises')
+            .select('*')
+            .eq('party_id', f.id)
+            .order('tick_created', { ascending: false });
+
+        const activePromises = (promises || []).filter(p => p.status === 'active');
+        const resolvedPromises = (promises || []).filter(p => p.status !== 'active');
+
+        if (activePromises.length === 0 && resolvedPromises.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        const currentTick = currentShard?.current_tick || 0;
+
+        function promiseStatusIcon(p) {
+            if (p.status === 'fulfilled') return '<span style="color:#4CAF50;">FULFILLED</span>';
+            if (p.status === 'broken') return '<span style="color:#ff4444;">BROKEN</span>';
+
+            const remaining = p.tick_deadline - currentTick;
+            const elapsed = currentTick - p.tick_created;
+            const total = p.deadline_ticks;
+            const pct = Math.min(100, Math.round((elapsed / total) * 100));
+
+            // Determine status from progress
+            const prog = p.progress || {};
+            let statusText = 'IN PROGRESS';
+            let statusColor = '#ff9800';
+            let statusIcon = 'hourglass';
+
+            if (remaining <= Math.ceil(total * 0.25)) {
+                statusText = 'AT RISK';
+                statusColor = '#ff4444';
+                statusIcon = 'warning';
+            } else if (prog.has_ministry || (prog.completed && prog.completed > 0)) {
+                statusText = 'IN PROGRESS';
+                statusColor = '#ff9800';
+                statusIcon = 'progress';
+            }
+
+            return `<span style="color:${statusColor};">${statusText}</span>`;
+        }
+
+        function promiseProgressBar(p) {
+            if (p.status !== 'active') return '';
+            const elapsed = currentTick - p.tick_created;
+            const total = p.deadline_ticks;
+            const pct = Math.min(100, Math.round((elapsed / total) * 100));
+            const remaining = p.tick_deadline - currentTick;
+            const barColor = remaining <= Math.ceil(total * 0.25) ? '#ff4444' : '#ff9800';
+            const filled = Math.round(pct / 3.125); // 32 chars
+            const empty = 32 - filled;
+            return `<div class="promise-bar-wrap">
+                <div class="promise-bar"><div class="promise-bar-fill" style="width:${pct}%;background:${barColor};"></div></div>
+                <span class="promise-bar-label">(${elapsed} of ${total} ticks elapsed)</span>
+            </div>`;
+        }
+
+        function promiseProgressDetails(p) {
+            if (p.status !== 'active') return '';
+            const prog = p.progress || {};
+            const lines = [];
+
+            if (prog.has_ministry !== undefined) {
+                lines.push(prog.has_ministry
+                    ? `<span style="color:#4CAF50;">Ministry (${prog.ministry_key}): Acquired</span>`
+                    : `<span style="color:#ff9800;">Ministry (${prog.ministry_key}): Not yet acquired</span>`);
+            }
+            if (prog.current_value !== undefined && prog.target_value !== undefined) {
+                const cond = p.conditions || {};
+                const stat = cond.stat_key || '';
+                const dir = cond.direction === 'below' ? 'needs' : 'needs';
+                const needed = Math.abs(prog.target_value - prog.current_value);
+                const met = cond.direction === 'below'
+                    ? prog.current_value <= prog.target_value
+                    : prog.current_value >= prog.target_value;
+                lines.push(met
+                    ? `<span style="color:#4CAF50;">${stat}: ${prog.current_value} (target: ${prog.target_value}) — MET</span>`
+                    : `<span style="color:#ff9800;">${stat}: ${prog.current_value} → ${dir} ${prog.target_value} (${needed.toFixed(1)} more)</span>`);
+            }
+            if (prog.completed !== undefined && prog.required !== undefined) {
+                lines.push(`<span>Progress: ${prog.completed} / ${prog.required}</span>`);
+            }
+            if (prog.sustained_count !== undefined) {
+                lines.push(`<span>Sustained: ${prog.sustained_count} / ${prog.required} consecutive ticks</span>`);
+            }
+            if (prog.floor !== undefined && prog.current_value !== undefined) {
+                lines.push(`<span>Floor: ${prog.floor} (current: ${prog.current_value})</span>`);
+            }
+            if (prog.stats && Array.isArray(prog.stats)) {
+                for (const s of prog.stats) {
+                    lines.push(s.met
+                        ? `<span style="color:#4CAF50;">${s.stat_key}: ${s.current} (target: ${s.target}) — MET</span>`
+                        : `<span style="color:#ff9800;">${s.stat_key}: ${s.current} → needs ${s.target}</span>`);
+                }
+            }
+            return lines.length > 0 ? `<div class="promise-progress-details">${lines.join('<br>')}</div>` : '';
+        }
+
+        const activeHTML = activePromises.map(p => {
+            const remaining = p.tick_deadline - currentTick;
+            return `<div class="promise-card">
+                <div class="promise-card-header">
+                    <span class="promise-card-bloc">Promise to ${p.bloc_name}</span>
+                    <span class="promise-card-amount">$${(p.donation_amount || 0).toLocaleString()} received</span>
+                </div>
+                <div class="promise-card-demand">"${p.demand_text}"</div>
+                <div class="promise-card-deadline">Deadline: ${remaining} ticks remaining (due Tick ${p.tick_deadline})</div>
+                <div class="promise-card-status">STATUS: ${promiseStatusIcon(p)}</div>
+                ${promiseProgressDetails(p)}
+                ${promiseProgressBar(p)}
+                <div class="promise-card-stakes">
+                    <div style="color:#4CAF50;font-size:0.82rem;">Success: +${FUNDRAISER_CONFIG.PROMISE_KEPT_PREF_BONUS} pref w/ ${p.bloc_name}, +${FUNDRAISER_CONFIG.PROMISE_KEPT_MOMENTUM} momentum</div>
+                    <div style="color:#ff4444;font-size:0.82rem;">Failure: ${FUNDRAISER_CONFIG.PROMISE_BROKEN_DONOR_PREF} pref w/ ${p.bloc_name}, ${FUNDRAISER_CONFIG.PROMISE_BROKEN_ALL_PREF} all blocs, ${FUNDRAISER_CONFIG.PROMISE_BROKEN_MOMENTUM} momentum</div>
+                </div>
+            </div>`;
+        }).join('');
+
+        const resolvedHTML = resolvedPromises.slice(0, 5).map(p => {
+            const icon = p.status === 'fulfilled' ? '<span style="color:#4CAF50;">FULFILLED</span>' : '<span style="color:#ff4444;">BROKEN</span>';
+            return `<div class="promise-card promise-card-resolved">
+                <div class="promise-card-header">
+                    <span class="promise-card-bloc">Promise to ${p.bloc_name}</span>
+                    <span>${icon}</span>
+                </div>
+                <div class="promise-card-demand" style="color:var(--text-muted);">"${p.demand_text}"</div>
+                <div style="color:var(--text-muted);font-size:0.78rem;">Resolved at Tick ${p.tick_resolved || '?'} | $${(p.donation_amount || 0).toLocaleString()}</div>
+            </div>`;
+        }).join('');
+
+        container.innerHTML = `
+            <div class="promises-panel">
+                <div class="promises-header">ACTIVE PROMISES</div>
+                ${activePromises.length > 0 ? activeHTML : '<div class="promises-empty">No active promises.</div>'}
+                ${resolvedPromises.length > 0 ? `
+                    <div class="promises-header" style="margin-top:16px;">PROMISE HISTORY</div>
+                    ${resolvedHTML}
+                ` : ''}
+            </div>`;
+    }
+
+    renderPromises();
 }
 
 initPage('parties', async (state) => {
