@@ -19,7 +19,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -113,7 +113,7 @@ async function renderParties() {
 
     const { data: blocs } = await _supabase
         .from('voter_blocs')
-        .select('id, bloc_name, population_weight, priority_issues')
+        .select('id, bloc_name, population_weight, priority_issues, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
         .eq('nation_id', n.id)
         .eq('is_active', true);
 
@@ -231,7 +231,7 @@ async function renderParties() {
 
     const blocsLeading = blocRows.filter(r => r.isLeading);
     const leadingCount = blocsLeading.length;
-    const leadingPopPct = Math.round(blocsLeading.reduce((s, r) => s + r.popWeight, 0) * 100);
+    const leadingPopPct = Math.round(blocsLeading.reduce((s, r) => s + r.popWeight, 0));
     const swingBlocs = blocRows.filter(r => !r.isLeading && r.margin <= 3);
 
     // === Performance Credit ===
@@ -306,21 +306,257 @@ async function renderParties() {
             }
         }
 
-        // Check if badly-trending stats hurt us with swing blocs
-        if (trendingBadly.length > 0) {
-            const badStatKeys = new Set(trendingBadly.map(t => t.statKey));
-            for (const b of (blocs || [])) {
-                const isSwing = swingBlocs.some(sb => sb.blocId === b.id);
-                if (!isSwing) continue;
-                const issues = b.priority_issues || [];
-                for (const issue of issues) {
-                    const catStats = ISSUE_CATEGORY_STATS[issue] || [];
-                    const hits = catStats.filter(s => badStatKeys.has(s));
-                    if (hits.length > 0) {
-                        swingWarnings.push({ blocName: b.bloc_name, stats: hits.map(s => s.replace(/_/g, ' ')) });
-                    }
+        const governmentCount = govParties.length;
+        const oppositionCount = oppParties.length;
+        const isRulingFaction = isAutocracy && nation.ruling_faction_id === faction?.id;
+
+        // Autocracy loyalty thresholds and seize power eligibility
+        let myLoyalty = faction?.loyalty ?? 50;
+        let isSuppressed = isAutocracy && myLoyalty < 15;
+        let isDisloyal = isAutocracy && myLoyalty >= 15 && myLoyalty < 30;
+        let isCoupCooldown = false;
+        let cooldownTick = faction?.action_lockout_until_tick;
+        let currentTick = 0;
+        if (isAutocracy && faction) {
+            const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            currentTick = shard?.current_tick || 0;
+            isCoupCooldown = cooldownTick && currentTick < cooldownTick;
+        }
+        let canSeizePower = false;
+        if (isAutocracy && !isRulingFaction && faction) {
+            const disloyalCount = parties.filter(p => p.id !== faction?.id && (p.loyalty ?? 50) < 30).length;
+            canSeizePower = disloyalCount >= 2 && (faction?.action_points || 0) >= 15 && !isCoupCooldown;
+        }
+
+        // Build campaign actions
+        let campaignActionsHTML = '';
+        if (!isAutocracy) {
+            campaignActionsHTML = `
+            <div class="section-header" style="margin-top: 30px;">Your Party Resources</div>
+            <div class="stat-grid stat-grid-3col" style="margin-bottom: 12px;">
+                <div class="stat-card"><div class="stat-label">Action Points</div><div class="stat-value" id="party-ap">${faction?.action_points || 0}</div></div>
+                <div class="stat-card"><div class="stat-label">Party Funds</div><div class="stat-value" id="party-funds">$${(faction?.party_funds || 0).toLocaleString()}</div></div>
+                <div class="stat-card"><div class="stat-label">Approval Rating</div><div class="stat-value" id="party-approval">${faction?._derivedApproval ?? faction?.approval_rating ?? 0}%</div></div>
+            </div>
+            ${(() => {
+                if (!voterBlocs || voterBlocs.length === 0 || !faction) return '';
+                const pollResult = lastPollData?.result;
+                const prevResult = previousPollData?.result;
+                const pollDate = lastPollData?.result?.poll_date || null;
+                const polledBlocIds = pollResult?.bloc_results ? Object.keys(pollResult.bloc_results) : [];
+
+                if (!pollResult) {
+                    return `<div class="poll-panel">
+                        <div class="poll-panel-header">
+                            <div class="poll-panel-title">Poll for ${faction.faction_name}</div>
+                        </div>
+                        <div class="poll-no-data">No polls conducted yet. Use <strong>Generate Poll</strong> to survey voter blocs.</div>
+                    </div>`;
                 }
-            }
+
+                const blocRows = voterBlocs.map(bloc => {
+                    const polled = pollResult.bloc_results?.[bloc.id];
+                    if (!polled) return `<div class="poll-bloc-unpolled">${bloc.bloc_name} — not polled</div>`;
+                    const prev = prevResult?.bloc_results?.[bloc.id];
+                    const color = polled.shown >= 55 ? '#4CAF50' : polled.shown <= 35 ? '#ff4444' : '#ff9800';
+                    let deltaHTML = '';
+                    if (prev) {
+                        const diff = polled.shown - prev.shown;
+                        if (diff > 0) deltaHTML = `<span class="poll-bloc-delta up">+${diff}</span>`;
+                        else if (diff < 0) deltaHTML = `<span class="poll-bloc-delta down">${diff}</span>`;
+                        else deltaHTML = `<span class="poll-bloc-delta flat">—</span>`;
+                    }
+                    return `<div class="poll-bloc-row">
+                        <span class="poll-bloc-name">${bloc.bloc_name}</span>
+                        <div class="poll-bloc-bar"><div class="poll-bloc-bar-fill" style="width:${polled.shown}%;background:${color};"></div></div>
+                        <span class="poll-bloc-value" style="color:${color};">${polled.shown}%</span>
+                        ${deltaHTML}
+                    </div>`;
+                }).join('');
+
+                return `<div class="poll-panel">
+                    <div class="poll-panel-header">
+                        <div class="poll-panel-title">Poll for ${faction.faction_name}</div>
+                        <div class="poll-panel-date">${pollDate ? 'Conducted: ' + pollDate : ''}</div>
+                    </div>
+                    <div>${blocRows}</div>
+                    <div class="poll-margin-note">± margin of error</div>
+                </div>`;
+            })()}
+            <div id="poll-selector" class="poll-selector"></div>
+
+            <div class="section-header" style="margin-top: 20px;">Party Actions</div>
+            <div class="action-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 16px;">
+                <div class="action-card">
+                    <div class="action-header">
+                        <div class="action-title">Generate Poll</div>
+                        <div class="action-cost">2 AP + $25k/bloc</div>
+                    </div>
+                    <div class="action-desc">
+                        Commission a poll to reveal your approval with selected voter blocs.
+                        Results have a <strong>margin of error</strong>.
+                        <br><span style="color: #888; font-size: 0.78rem;">Cooldown: 1 per 3 ticks.</span>
+                    </div>
+                    <button class="action-btn" id="btn-generate-poll" onclick="openPollSelector()">
+                        Generate Poll
+                    </button>
+                </div>
+                <div class="action-card">
+                    <div class="action-header">
+                        <div class="action-title">Build Coalition</div>
+                        <div class="action-cost">3 AP + $200k</div>
+                    </div>
+                    <div class="action-desc">
+                        Publicly align with a voter bloc's interests. Concentrates support with the target at the cost of alienating rival blocs.
+                        <strong>Always a net negative overall</strong> — pandering sharpens your base, it doesn't grow it.
+                        <br><span style="color: #888; font-size: 0.78rem;">Cooldown: 2 ticks (global). Diminishing returns per bloc within 10 ticks.</span>
+                    </div>
+                    <button class="action-btn" id="btn-build-coalition" onclick="openCoalitionPanel()">
+                        Build Coalition
+                    </button>
+                </div>
+                <div class="action-card">
+                    <div class="action-header">
+                        <div class="action-title">Court Donors</div>
+                        <div class="action-cost">2 AP</div>
+                    </div>
+                    <div class="action-desc">
+                        Approach a voter bloc for financial support. Higher alignment yields more funds,
+                        but other blocs may disapprove.
+                        <br><span style="color: #888; font-size: 0.78rem;">Cooldown: 3 ticks per bloc.</span>
+                    </div>
+                    <button class="action-btn" id="btn-court-donors" onclick="openDonorPanel()">
+                        Court Donors
+                    </button>
+                </div>
+            </div>
+            <div id="coalition-panel" class="donor-panel"></div>
+            <div id="donor-panel" class="donor-panel"></div>
+
+            <div class="section-header" style="margin-top: 20px;">Recent Actions</div>
+            <div id="action-log" class="action-log"><div class="action-log-empty">No actions taken yet this campaign.</div></div>`;
+        } else {
+            const loyaltyColor = myLoyalty >= 30 ? '#4CAF50' : myLoyalty >= 15 ? '#ff9800' : '#ff4444';
+            const statusText = myLoyalty >= 30 ? 'LOYAL' : myLoyalty >= 15 ? 'DISLOYAL' : 'SUPPRESSED';
+            const statusColor = loyaltyColor;
+
+            campaignActionsHTML = `
+            <div class="section-header" style="margin-top: 30px;">Your Faction Resources</div>
+            <div class="stat-grid stat-grid-4col" style="margin-bottom: 24px;">
+                <div class="stat-card"><div class="stat-label">Action Points</div><div class="stat-value" id="party-ap">${faction?.action_points || 0}</div></div>
+                <div class="stat-card"><div class="stat-label">Seats</div><div class="stat-value" id="party-seats">${faction?.seats || 0} / ${totalSeats}</div></div>
+                <div class="stat-card"><div class="stat-label">Faction Loyalty</div><div class="stat-value" id="party-loyalty" style="color:${loyaltyColor}">${myLoyalty}%</div></div>
+                <div class="stat-card"><div class="stat-label">Status</div><div class="stat-value" id="party-status" style="color:${statusColor}">${statusText}</div></div>
+            </div>
+
+            ${isCoupCooldown ? `
+            <div style="background: #3a1a1a; border: 1px solid #ff9800; border-radius: 8px; padding: 16px; text-align: center; margin-bottom: 20px;">
+                <div style="color: #ff9800; font-weight: bold; font-size: 1.1rem;">COUP COOLDOWN</div>
+                <div style="color: #aaa; margin-top: 8px;">Seize Power is unavailable until tick ${cooldownTick} after your failed coup attempt. Other actions still work.</div>
+            </div>` : ''}
+
+            <div class="section-header">Faction Actions</div>
+
+            ${isSuppressed ? `
+            <div style="background: #3a1a1a; border: 1px solid #ff4444; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <div style="color: #ff4444; font-weight: bold;">SUPPRESSED</div>
+                <div style="color: #aaa; margin-top: 4px; font-size: 0.85rem;">Low loyalty status only. It no longer drains AP, seats, or ministry positions.</div>
+            </div>` : ''}
+
+            ${isDisloyal ? `
+            <div style="background: #3a2a1a; border: 1px solid #ff9800; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <div style="color: #ff9800; font-weight: bold;">DISLOYAL</div>
+                <div style="color: #aaa; margin-top: 4px; font-size: 0.85rem;">Low loyalty status only. It no longer drains AP, seats, or ministry positions.</div>
+            </div>` : ''}
+
+            <div style="margin-bottom:12px;color:#888;font-size:0.82rem;">
+                <strong>Loyalty Thresholds:</strong> Loyal (30+) = status only | Disloyal (15-29) = status only | Suppressed (&lt;15) = status only
+            </div>
+
+            <div class="action-grid" style="grid-template-columns: repeat(2, 1fr);">
+                <!-- RALLY SUPPORT -->
+                <div class="action-card">
+                    <div class="action-header"><div class="action-title">Rally Support</div><div class="action-cost">2 AP</div></div>
+                    <div class="action-desc">
+                        ${isRulingFaction
+                            ? 'Choose: <strong>Celebrate the Regime</strong> (+1D2 approval, +1 loyalty to ALL factions, +1 corruption) or <strong>Denounce Enemies</strong> (pick target, -1D2 loyalty, +1 approval, +1 polarization).'
+                            : 'Pledge loyalty to the regime. Gain <strong>+1D2 loyalty</strong> for your faction.'
+                        }
+                    </div>
+                    ${isRulingFaction ? `
+                    <div style="margin: 10px 0;">
+                        <select id="rally-mode" class="action-select" onchange="toggleDenounceTarget()">
+                            <option value="celebrate">Celebrate the Regime</option>
+                            <option value="denounce">Denounce Enemies</option>
+                        </select>
+                    </div>
+                    <div id="denounce-target-wrap" style="margin: 10px 0; display: none;">
+                        <select id="denounce-target" class="action-select">
+                            <option value="">Select Target Faction...</option>
+                        </select>
+                    </div>` : ''}
+                    <button class="action-btn" onclick="doRallySupport()">
+                        ${isRulingFaction ? 'Rally Support' : 'Pledge Loyalty'}
+                    </button>
+                </div>
+
+                <!-- UNDERMINE -->
+                <div class="action-card">
+                    <div class="action-header"><div class="action-title">Undermine</div><div class="action-cost">3 AP</div></div>
+                    <div class="action-desc">
+                        Target a rival faction: <strong>-1D3 loyalty</strong>, nation <strong>-1 stability</strong>.
+                        <br><span style="color: #ff9800; font-size: 0.78rem;">If target loyalty is below 20, they learn who did it.</span>
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <select id="undermine-target" class="action-select">
+                            <option value="">Select Target Faction...</option>
+                        </select>
+                    </div>
+                    <button class="action-btn action-btn-risk" onclick="doUndermine()">
+                        Undermine
+                    </button>
+                </div>
+
+                ${isRulingFaction ? `
+                <!-- PATRONAGE NETWORK (Ruling Only) -->
+                <div class="action-card">
+                    <div class="action-header"><div class="action-title">Patronage Network</div><div class="action-cost">2 AP</div></div>
+                    <div class="action-desc">
+                        Give <strong>$50,000</strong> from the national treasury to a faction. Target gains <strong>+2 loyalty</strong>. Nation <strong>+1 corruption</strong>.
+                        <br><span style="color: #ff9800; font-size: 0.78rem;">If you pick yourself, all other factions lose 1 loyalty.</span>
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <select id="patronage-target" class="action-select">
+                            <option value="">Select Faction...</option>
+                        </select>
+                    </div>
+                    <button class="action-btn" onclick="doPatronageNetwork()">
+                        Distribute Patronage
+                    </button>
+                </div>` : ''}
+
+                ${!isRulingFaction ? `
+                <!-- SEIZE POWER (Opposition Only) -->
+                <div class="action-card" style="border-left-color: #ff4444;">
+                    <div class="action-header"><div class="action-title" style="color: #ff4444;">Seize Power</div><div class="action-cost">15 AP</div></div>
+                    <div class="action-desc">
+                        Attempt to overthrow the ruling faction. Requires <strong>2+ factions with loyalty below 30</strong>.
+                        <br><br>
+                        Factions pick sides based on loyalty. Side with more seats wins.
+                        <br><br>
+                        <strong style="color: #4CAF50;">WIN:</strong> You become ruler. Old ruler becomes opposition at 50 loyalty.
+                        <br><strong style="color: #ff4444;">FAIL:</strong> -25 seats, -20 approval, loyalty=0, purged from ministries. Seize Power blocked for 6 ticks.
+                    </div>
+                    <button class="action-btn" style="background: ${canSeizePower ? '#ff4444' : '#555'};"
+                        onclick="doSeizePower()"
+                        ${(!canSeizePower || isCoupCooldown) ? 'disabled' : ''}
+                        ${isCoupCooldown ? 'title="Coup cooldown active"' : !canSeizePower ? 'title="Need 2+ factions with loyalty below 30 and 15 AP"' : ''}>
+                        ${isCoupCooldown ? 'Coup Cooldown' : canSeizePower ? 'Seize Power' : 'Cannot Seize (Need 2+ disloyal)'}
+                    </button>
+                </div>` : ''}
+            </div>
+            <div class="section-header" style="margin-top: 30px;">Recent Actions</div>
+            <div id="action-log" class="action-log"><div class="action-log-empty">No actions taken yet.</div></div>`;
         }
     }
 
@@ -335,6 +571,79 @@ async function renderParties() {
                     <div class="perf-empty-msg">You earn no credit for stat improvements. Attack rivals who do, or negotiate your way into a coalition.</div>
                 </div>
             </div>`;
+        })();
+
+        document.getElementById('content-area').innerHTML = `
+            <div class="panel-padding">
+                <div class="section-header">${headerText} in ${nation.name}</div>
+
+                <div class="stat-grid stat-grid-4col" style="margin-bottom:24px;">
+                    <div class="stat-card"><div class="stat-label">Total ${termPlural}</div><div class="stat-value">${parties.length}</div></div>
+                    <div class="stat-card"><div class="stat-label">${isAutocracy ? 'In Regime' : 'Government / Coalition'}</div><div class="stat-value" style="color:#4CAF50;">${governmentCount}</div></div>
+                    <div class="stat-card"><div class="stat-label">${isAutocracy ? 'Max Factions' : 'Opposition'}</div><div class="stat-value" style="color:${isAutocracy ? '#ffcc00' : '#ff4444'};">${isAutocracy ? (nation.max_parties || 4) : oppositionCount}</div></div>
+                    <div class="stat-card"><div class="stat-label">Total Seats</div><div class="stat-value">${totalSeats}</div></div>
+                </div>
+
+                ${standingsHTML}
+
+                ${isAutocracy ? `
+                    <div class="parties-section-label regime">⚡ Regime Factions</div>
+                    <div class="parties-display-grid">${govParties.map(buildCard).join('')}</div>
+                ` : `
+                    <div class="parties-section-label gov">🏛️ Government / Coalition</div>
+                    ${govParties.length > 0
+                        ? `<div class="parties-display-grid">${govParties.map(buildCard).join('')}</div>`
+                        : '<div class="parties-section-empty">No coalition formed yet.</div>'}
+
+                    <div class="parties-section-label opp">⚔️ Opposition</div>
+                    ${oppParties.length > 0
+                        ? `<div class="parties-display-grid">${oppParties.map(buildCard).join('')}</div>`
+                        : '<div class="parties-section-empty">No opposition parties.</div>'}
+                `}
+
+                <!-- Single Ideology Comparison Section -->
+                ${ideologySectionHTML}
+
+                <!-- Party Identity Editor (your party only) -->
+                ${faction ? buildPartyIdentitySection(faction, nation, parties) : ''}
+
+                <!-- Campaign / Faction Actions -->
+                ${campaignActionsHTML}
+
+                <!-- Disband Party (always at bottom) -->
+                ${(() => {
+                    if (!faction || faction.is_npc) return '';
+                    const isRulingInAutocracy = isAutocracy && nation.ruling_faction_id === faction.id;
+                    let disbandDisabled = false;
+                    let disbandReason = '';
+                    if (isRulingInAutocracy) {
+                        disbandDisabled = true;
+                        disbandReason = 'Ruling faction cannot disband';
+                    } else if (faction.disband_cooldown_until_tick && faction.disband_cooldown_until_tick > currentShardTick) {
+                        disbandDisabled = true;
+                        const remaining = faction.disband_cooldown_until_tick - currentShardTick;
+                        disbandReason = 'Cooldown (' + remaining + ' tick' + (remaining !== 1 ? 's' : '') + ')';
+                    }
+                    return '<div style="margin-top: 60px; padding-top: 30px; border-top: 1px solid #333;">' +
+                        '<div class="action-card" style="border-left-color: #ff4444;">' +
+                            '<div class="action-header">' +
+                                '<div class="action-title" style="color: #ff4444;">Disband Party</div>' +
+                            '</div>' +
+                            '<div class="action-desc">' +
+                                'Permanently leave ' + nation.name + '. Your seats remain vacant until the next election. ' +
+                                'If you are PM or in the coalition, those roles are vacated. ' +
+                                'You will need to join a new nation to continue playing.' +
+                                '<br><span style="color: #888; font-size: 0.78rem;">Cooldown: 24 ticks after disbanding.</span>' +
+                            '</div>' +
+                            '<button class="action-btn" style="background: ' + (disbandDisabled ? '#555' : '#ff4444') + ';"' +
+                                ' onclick="doDisbandParty()"' +
+                                (disbandDisabled ? ' disabled' : '') +
+                                (disbandDisabled ? ' title="' + disbandReason + '"' : '') + '>' +
+                                (disbandDisabled ? disbandReason : 'Disband Party') +
+                            '</button>' +
+                        '</div>' +
+                    '</div>';
+                })()}
     } else {
         const ministryList = [...heldKeys].map(k => MINISTRY_NAMES[k] || k).join(', ');
         let titleParts = [];
@@ -343,23 +652,29 @@ async function renderParties() {
         if (nonPM.length > 0) titleParts.push(nonPM.map(k => MINISTRY_NAMES[k] || k).join(', '));
         const titleLine = titleParts.join(' + ');
 
+        const MAX_TREND_ITEMS = 5;
         let trendsHtml = '';
         if (trendingWell.length > 0) {
+            const shown = trendingWell.slice(0, MAX_TREND_ITEMS);
+            const extra = trendingWell.length - shown.length;
             trendsHtml += `<div class="perf-trend-section">
                 <div class="perf-trend-label perf-trend-good">Trending well:</div>
-                ${trendingWell.map(t => `<div class="perf-trend-item perf-trend-good">${t.arrow} ${t.label}</div>`).join('')}
+                ${shown.map(t => `<div class="perf-trend-item perf-trend-good">${t.arrow} ${t.label}</div>`).join('')}
+                ${extra > 0 ? `<div class="perf-trend-item perf-trend-good">+ ${extra} more</div>` : ''}
             </div>`;
         }
         if (trendingBadly.length > 0) {
+            const shown = trendingBadly.slice(0, MAX_TREND_ITEMS);
+            const extra = trendingBadly.length - shown.length;
             trendsHtml += `<div class="perf-trend-section">
                 <div class="perf-trend-label perf-trend-bad">Trending badly:</div>
-                ${trendingBadly.map(t => `<div class="perf-trend-item perf-trend-bad">${t.arrow} ${t.label}</div>`).join('')}
+                ${shown.map(t => `<div class="perf-trend-item perf-trend-bad">${t.arrow} ${t.label}</div>`).join('')}
+                ${extra > 0 ? `<div class="perf-trend-item perf-trend-bad">+ ${extra} more</div>` : ''}
             </div>`;
         }
         if (trendingFlat.length > 0) {
             trendsHtml += `<div class="perf-trend-section">
-                <div class="perf-trend-label perf-trend-flat">Flat:</div>
-                ${trendingFlat.map(t => `<div class="perf-trend-item perf-trend-flat">── ${t.label}</div>`).join('')}
+                <div class="perf-trend-item perf-trend-flat">── ${trendingFlat.length} stat${trendingFlat.length !== 1 ? 's' : ''} flat</div>
             </div>`;
         }
         if (trendingWell.length === 0 && trendingBadly.length === 0 && trendingFlat.length === 0) {
@@ -382,13 +697,40 @@ async function renderParties() {
             </div>`;
     }
 
+    // === Action Points Panel ===
+    const currentAP = Math.min(f.action_points || 0, GAME_CONFIG.MAX_AP);
+    const maxAP = GAME_CONFIG.MAX_AP;
+    const apPct = Math.round((currentAP / maxAP) * 100);
+    const currentTick = currentShard?.current_tick || 0;
+    const ticksUntilElection = nextElection ? nextElection.election_tick - currentTick : null;
+
+    let apTip = '';
+    if (ticksUntilElection !== null && ticksUntilElection <= 6) {
+        apTip = `Election in ${ticksUntilElection} tick${ticksUntilElection !== 1 ? 's' : ''} — bank AP or campaign now.`;
+    } else if (currentAP >= maxAP) {
+        apTip = 'AP is full — spend it before it goes to waste.';
+    } else if (currentAP <= 2) {
+        apTip = 'AP is low. Choose your next move carefully.';
+    } else {
+        apTip = 'Spend AP on bills, campaigns, and ministry actions.';
+    }
+
     // === Approval by Voter Bloc (build HTML) ===
+    const totalEligible = n.eligible_voters || 0;
+    function compactNum(v) {
+        if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+        if (v >= 1_000) return (v / 1_000).toFixed(v >= 100_000 ? 0 : 1).replace(/\.0$/, '') + 'K';
+        return String(Math.round(v));
+    }
+
     let blocTableHtml = '';
     for (const r of blocRows) {
         const barColor = r.isLeading ? partyColor : 'var(--text-muted, #555)';
+        const voters = compactNum(totalEligible * (r.popWeight / 100));
         blocTableHtml += `
             <div class="bloc-row${r.isLeading ? ' bloc-row-leading' : ''}">
                 <span class="bloc-name">${r.blocName}</span>
+                <span class="bloc-voters">${voters}</span>
                 <div class="bloc-bar-track">
                     <div class="bloc-bar-fill" style="width:${r.myApproval}%;background:${barColor}"></div>
                 </div>
@@ -469,6 +811,18 @@ async function renderParties() {
 
         ${perfCreditHtml}
 
+        <div class="ap-panel">
+            <div class="ap-header">Action Points</div>
+            <div class="ap-score-row">
+                <span class="ap-value">${currentAP}</span>
+                <span class="ap-max">/ ${maxAP}</span>
+            </div>
+            <div class="ap-bar-track">
+                <div class="ap-bar-fill" style="width:${apPct}%;background:${partyColor}"></div>
+            </div>
+            <div class="ap-tip">${apTip}</div>
+        </div>
+
         </div>
 
         <div class="bloc-approval-panel">
@@ -478,6 +832,7 @@ async function renderParties() {
             </div>
             <div class="bloc-table-header">
                 <span class="bloc-name">Bloc</span>
+                <span class="bloc-voters">Voters</span>
                 <span class="bloc-bar-track-header"></span>
                 <span class="bloc-approval">Your Approval</span>
                 <span class="bloc-change">Change</span>
@@ -492,8 +847,758 @@ async function renderParties() {
             </div>
         </div>
 
+        <div class="actions-row">
+            <div id="rally-container"></div>
+            <div id="pc-container"></div>
+        </div>
+
+        <div id="outreach-container"></div>
+
         </div>
     `;
+
+    // ── Rally UI ──
+    let rallyScreen = 'select'; // 'select' | 'preview' | 'results'
+    let rallySelectedIdx = null;
+    let rallyResults = null;
+    let rallyFilter = 'All';
+    let rallyShowAll = false;
+
+    // Fetch recent rallies for cooldown/diminish info
+    const { data: recentRallies } = await _supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', f.id)
+        .eq('action_type', 'rally')
+        .gte('tick_performed', (currentShard?.current_tick || 0) - RALLY_CONFIG.DIMINISH_WINDOW)
+        .order('tick_performed', { ascending: false });
+
+    const ralliedThisTick = (recentRallies || []).some(r => r.tick_performed === (currentShard?.current_tick || 0));
+
+    // Get tag use counts for diminishing returns display
+    function getTagUseCounts(tags) {
+        const counts = {};
+        for (const tag of tags) counts[tag] = 0;
+        for (const r of (recentRallies || [])) {
+            for (const t of (r.result?.tags || [])) {
+                if (counts[t] !== undefined) counts[t]++;
+            }
+        }
+        return counts;
+    }
+
+    // Ideology tag colors from IDEOLOGY_AXES
+    const IDEO_COLORS = {};
+    for (const ax of IDEOLOGY_AXES) {
+        IDEO_COLORS[ax.left] = ax.leftColor;
+        IDEO_COLORS[ax.right] = ax.rightColor;
+    }
+    function colorTag(tag) {
+        const upper = tag.toUpperCase();
+        const color = IDEO_COLORS[upper] || 'var(--text-muted, #888)';
+        const label = tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
+        return `<span style="color:${color};font-weight:700">${label}</span>`;
+    }
+    function colorTagUpper(tag) {
+        const upper = tag.toUpperCase();
+        const color = IDEO_COLORS[upper] || 'var(--text-muted, #888)';
+        return `<span style="color:${color};font-weight:700">${upper}</span>`;
+    }
+
+    function renderRally() {
+        const container = document.getElementById('rally-container');
+        if (!container) return;
+
+        if (rallyScreen === 'select') {
+            const costOk = currentAP >= RALLY_CONFIG.AP_COST && (f.party_funds || 0) >= RALLY_CONFIG.MONEY_COST;
+            const allTags = ['All', 'Tradition', 'Progress', 'Liberty', 'Equality', 'Security', 'Freedom', 'Nationalism', 'Globalism', 'Collectivism', 'Individualism'];
+            const filterBtns = allTags.map(t => {
+                const color = t === 'All' ? '' : IDEO_COLORS[t.toUpperCase()] || '';
+                const style = color && rallyFilter === t ? ` style="border-color:${color};color:${color}"` : color ? ` style="color:${color}"` : '';
+                return `<button class="rally-filter-btn${rallyFilter === t ? ' active' : ''}" data-filter="${t}"${style}>${t}</button>`;
+            }).join('');
+
+            let filtered = RALLY_SUBJECTS.map((s, i) => ({ ...s, idx: i }));
+            if (rallyFilter !== 'All') {
+                filtered = filtered.filter(s => s.tags.includes(rallyFilter.toUpperCase()));
+            }
+            const shown = rallyShowAll ? filtered : filtered.slice(0, 15);
+            const hasMore = filtered.length > 15 && !rallyShowAll;
+
+            let rows = shown.map(s =>
+                `<div class="rally-subject-row${!costOk || ralliedThisTick ? ' disabled' : ''}" data-idx="${s.idx}">
+                    <span class="rally-subject-name">${s.name}</span>
+                    <span class="rally-subject-tags">${s.tags.map(t => colorTagUpper(t)).join('&nbsp; ')}</span>
+                </div>`
+            ).join('');
+
+            container.innerHTML = `
+                <div class="rally-panel">
+                    <div class="rally-header-row">
+                        <span class="rally-title">Hold a Rally</span>
+                        <span class="rally-cost">Cost: ${RALLY_CONFIG.AP_COST} AP + $${(RALLY_CONFIG.MONEY_COST).toLocaleString()}</span>
+                    </div>
+                    <div class="rally-desc">Choose a subject for your rally. Each subject has ideology tags that determine which voter blocs are energized and which are alienated.</div>
+                    ${ralliedThisTick ? '<div class="rally-cooldown">You have already held a rally this tick.</div>' : ''}
+                    ${!costOk && !ralliedThisTick ? '<div class="rally-cooldown">Not enough AP or funds.</div>' : ''}
+                    <div class="rally-divider"></div>
+                    <div class="rally-filters">${filterBtns}</div>
+                    <div class="rally-divider"></div>
+                    <div class="rally-subject-header">
+                        <span class="rally-subject-name">Subject</span>
+                        <span class="rally-subject-tags">Tags</span>
+                    </div>
+                    <div class="rally-subject-list">${rows}</div>
+                    ${hasMore ? `<div class="rally-show-all">Showing 15 of ${filtered.length} subjects <button class="rally-show-all-btn">[Show All]</button></div>` : ''}
+                </div>`;
+
+            // Event listeners
+            container.querySelectorAll('.rally-filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => { rallyFilter = btn.dataset.filter; rallyShowAll = false; renderRally(); });
+            });
+            container.querySelectorAll('.rally-subject-row:not(.disabled)').forEach(row => {
+                row.addEventListener('click', () => { rallySelectedIdx = parseInt(row.dataset.idx); rallyScreen = 'preview'; renderRally(); });
+            });
+            const showAllBtn = container.querySelector('.rally-show-all-btn');
+            if (showAllBtn) showAllBtn.addEventListener('click', () => { rallyShowAll = true; renderRally(); });
+
+        } else if (rallyScreen === 'preview') {
+            const subject = RALLY_SUBJECTS[rallySelectedIdx];
+            const classified = classifyRallyBlocs(subject, blocs || []);
+            const energized = classified.filter(c => c.classification === 'energized');
+            const alienated = classified.filter(c => c.classification === 'alienated');
+            const unaffected = classified.filter(c => c.classification === 'unaffected');
+
+            const tagCounts = getTagUseCounts(subject.tags);
+            const diminished = subject.tags.filter(t => tagCounts[t] > 0);
+
+            const tagLabels = subject.tags.map(t => t.charAt(0) + t.slice(1).toLowerCase());
+            const tagColored = subject.tags.map(t => colorTagUpper(t)).join('&nbsp; ');
+            const tagColoredMixed = subject.tags.map(t => colorTag(t)).join(' or ');
+
+            function blocPctLabel(c) { return `(${Math.round(c.popWeight)}%)`; }
+            function matchLabel(c) { return c.matchTag ? colorTagUpper(c.matchTag) : ''; }
+            function opposeLabel(c) {
+                if (!c.opposeTag) return '';
+                const opp = IDEOLOGY_OPPOSITES[c.opposeTag];
+                return opp ? '\u2190 ' + colorTag(opp) : '';
+            }
+
+            const enPop = energized.reduce((s, c) => s + c.popWeight, 0);
+            const alPop = alienated.reduce((s, c) => s + c.popWeight, 0);
+            const unPop = unaffected.reduce((s, c) => s + c.popWeight, 0);
+
+            let diminishHtml = '';
+            if (diminished.length > 0) {
+                diminishHtml = diminished.map(t => {
+                    const uses = tagCounts[t];
+                    const label = t.charAt(0) + t.slice(1).toLowerCase();
+                    const last = (recentRallies || []).find(r => (r.result?.tags || []).includes(t));
+                    const ago = last ? (currentShard?.current_tick || 0) - last.tick_performed : '?';
+                    const effect = uses === 1 ? 'halved' : 'quartered';
+                    return `<div class="rally-diminish-warn">Diminished effect: You rallied on ${label.toUpperCase()} ${ago} tick${ago !== 1 ? 's' : ''} ago. Energize effect ${effect} for ${label}-aligned blocs.</div>`;
+                }).join('');
+            }
+
+            container.innerHTML = `
+                <div class="rally-panel">
+                    <div class="rally-header-row">
+                        <span class="rally-title">Hold a Rally</span>
+                        <span class="rally-cost">Cost: ${RALLY_CONFIG.AP_COST} AP + $${(RALLY_CONFIG.MONEY_COST).toLocaleString()}</span>
+                    </div>
+                    <div class="rally-selected">
+                        <div class="rally-selected-label">SELECTED: "${subject.name}"</div>
+                        <div class="rally-selected-tags">Tags: ${tagColored}</div>
+                    </div>
+                    <div class="rally-divider rally-divider-accent"></div>
+
+                    <div class="rally-section-title">PROJECTED EFFECTS</div>
+
+                    <div class="rally-group-label rally-energized">ENERGIZED <span class="rally-group-note">(share ${tagColoredMixed})</span></div>
+                    <div class="rally-group-box">
+                        ${energized.length === 0 ? '<div class="rally-group-empty">None</div>' :
+                            energized.map(c => `<div class="rally-bloc-row rally-energized">▲ ${c.blocName} ${blocPctLabel(c)} <span class="rally-bloc-tag">${matchLabel(c).toUpperCase()}</span> <span class="rally-bloc-est">est. +1 to +2</span></div>`).join('')}
+                    </div>
+
+                    <div class="rally-group-label rally-alienated">ALIENATED <span class="rally-group-note">(oppose ${tagColoredMixed})</span></div>
+                    <div class="rally-group-box">
+                        ${alienated.length === 0 ? '<div class="rally-group-empty">None</div>' :
+                            alienated.map(c => `<div class="rally-bloc-row rally-alienated">▼ ${c.blocName} ${blocPctLabel(c)} <span class="rally-bloc-tag">${opposeLabel(c)}</span> <span class="rally-bloc-est">est. 0 to -2</span></div>`).join('')}
+                    </div>
+
+                    <div class="rally-group-label rally-unaffected">UNAFFECTED</div>
+                    <div class="rally-group-box">
+                        ${unaffected.length === 0 ? '<div class="rally-group-empty">None</div>' :
+                            unaffected.map(c => `<div class="rally-bloc-row rally-unaffected">\u2014 ${c.blocName} ${blocPctLabel(c)} <span class="rally-bloc-tag">no match or opposition</span></div>`).join('')}
+                    </div>
+
+                    <div class="rally-divider"></div>
+                    <div class="rally-momentum-est">MOMENTUM: +${RALLY_CONFIG.GLOBAL_MOMENTUM_MIN} to +${RALLY_CONFIG.GLOBAL_MOMENTUM_MAX} (global)</div>
+                    <div class="rally-divider"></div>
+
+                    ${diminishHtml ? `<div class="rally-diminish-section">${diminishHtml}</div><div class="rally-divider"></div>` : ''}
+
+                    <div class="rally-net-est">
+                        <div class="rally-net-title">NET ESTIMATE</div>
+                        <div>Energized: ${energized.length} bloc${energized.length !== 1 ? 's' : ''} (${Math.round(enPop)}% of electorate)</div>
+                        <div>Alienated: ${alienated.length} bloc${alienated.length !== 1 ? 's' : ''} (${Math.round(alPop)}% of electorate)</div>
+                        <div>Unaffected: ${unaffected.length} bloc${unaffected.length !== 1 ? 's' : ''} (${Math.round(unPop)}% of electorate)</div>
+                    </div>
+
+                    <div class="rally-actions">
+                        <button class="rally-btn rally-btn-confirm" id="rally-confirm">CONFIRM RALLY</button>
+                        <button class="rally-btn rally-btn-cancel" id="rally-cancel">CANCEL</button>
+                    </div>
+                </div>`;
+
+            document.getElementById('rally-confirm').addEventListener('click', async () => {
+                const btn = document.getElementById('rally-confirm');
+                btn.disabled = true;
+                btn.textContent = 'Executing...';
+                const tick = currentShard?.current_tick || 0;
+                const result = await executeRally(_supabase, f.id, n.id, rallySelectedIdx, tick);
+                if (result.success) {
+                    rallyResults = result;
+                    rallyScreen = 'results';
+                    renderRally();
+                } else {
+                    alert(result.error);
+                    btn.disabled = false;
+                    btn.textContent = 'CONFIRM RALLY';
+                }
+            });
+            document.getElementById('rally-cancel').addEventListener('click', () => { rallyScreen = 'select'; rallySelectedIdx = null; renderRally(); });
+
+        } else if (rallyScreen === 'results') {
+            const r = rallyResults;
+            const subject = r.subject;
+            const tagColored2 = subject.tags.map(t => colorTagUpper(t)).join('&nbsp; ');
+            const energized = r.blocResults.filter(c => c.classification === 'energized');
+            const alienated = r.blocResults.filter(c => c.classification === 'alienated');
+            const unaffected = r.blocResults.filter(c => c.classification === 'unaffected');
+
+            function resultRow(c, symbol) {
+                const sign = c.prefDelta > 0 ? '+' : '';
+                return `<div class="rally-bloc-row ${c.classification === 'energized' ? 'rally-energized' : c.classification === 'alienated' ? 'rally-alienated' : 'rally-unaffected'}">${symbol} ${c.blocName} <span class="rally-result-delta">${c.prefDelta === 0 ? 'no change' : sign + c.prefDelta + ' preference'}</span> <span class="rally-result-pref">(${c.oldPref}% \u2192 ${c.newPref}%)</span></div>`;
+            }
+
+            container.innerHTML = `
+                <div class="rally-panel rally-panel-results">
+                    <div class="rally-title">Rally Results</div>
+                    <div class="rally-selected">
+                        <div>"${subject.name}"</div>
+                        <div class="rally-selected-tags">${tagColored2}</div>
+                    </div>
+                    <div class="rally-divider rally-divider-accent"></div>
+
+                    <div class="rally-group-label rally-energized">ENERGIZED</div>
+                    <div class="rally-group-box">
+                        ${energized.length === 0 ? '<div class="rally-group-empty">None</div>' :
+                            energized.map(c => resultRow(c, '▲')).join('')}
+                    </div>
+
+                    <div class="rally-group-label rally-alienated">ALIENATED</div>
+                    <div class="rally-group-box">
+                        ${alienated.length === 0 ? '<div class="rally-group-empty">None</div>' :
+                            alienated.map(c => resultRow(c, '▼')).join('')}
+                    </div>
+
+                    <div class="rally-group-label rally-unaffected">UNAFFECTED</div>
+                    <div class="rally-group-box">
+                        ${unaffected.length === 0 ? '<div class="rally-group-empty">None</div>' :
+                            unaffected.map(c => resultRow(c, '\u2014')).join('')}
+                    </div>
+
+                    <div class="rally-divider"></div>
+                    <div class="rally-results-summary">
+                        <div>Momentum: +${r.globalMomentum} (global)</div>
+                        <div>Cost: $${RALLY_CONFIG.MONEY_COST.toLocaleString()} deducted \u2014 Treasury: $${r.oldTreasury.toLocaleString()} \u2192 $${r.newTreasury.toLocaleString()}</div>
+                        <div>AP: ${r.newAp + RALLY_CONFIG.AP_COST} \u2192 ${r.newAp}</div>
+                    </div>
+
+                    <div class="rally-actions">
+                        <button class="rally-btn rally-btn-cancel" id="rally-dismiss">DISMISS</button>
+                    </div>
+                </div>`;
+
+            document.getElementById('rally-dismiss').addEventListener('click', () => {
+                rallyScreen = 'select';
+                rallySelectedIdx = null;
+                rallyResults = null;
+                renderParties(); // full refresh to update AP, treasury, etc.
+            });
+        }
+    }
+
+    renderRally();
+
+    // ── Press Conference UI ──
+    let pcScreen = 'select'; // 'select' | 'preview' | 'results'
+    let pcSelectedStat = null;
+    let pcResults = null;
+    let pcFilter = 'All';
+
+    // Fetch recent press conferences for cooldown
+    const { data: recentPCs } = await _supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', f.id)
+        .eq('action_type', 'press_conference')
+        .gte('tick_performed', (currentShard?.current_tick || 0) - PRESS_CONF_CONFIG.SAME_STAT_WINDOW)
+        .order('tick_performed', { ascending: false });
+
+    const pcThisTick = (recentPCs || []).some(r => r.tick_performed === (currentShard?.current_tick || 0));
+
+    // Build stat list with trend + ministry + holder info
+    const { data: allMinistries } = await _supabase
+        .from('ministries')
+        .select('party_id, ministry_key')
+        .eq('nation_id', n.id)
+        .eq('is_active', true);
+
+    const ministryHolder = {};
+    for (const m of (allMinistries || [])) ministryHolder[m.ministry_key] = m.party_id;
+    if (coalition && coalition.lead_party_id) ministryHolder['prime_minister'] = coalition.lead_party_id;
+
+    // Fetch previous tick for trend if not already done
+    let pcPrevStats = null;
+    const pcTick = currentShard?.current_tick || 0;
+    if (pcTick > 0) {
+        const { data: histRow } = await _supabase
+            .from('nations_history').select('*')
+            .eq('nation_id', n.id).eq('tick', pcTick - 1).single();
+        pcPrevStats = histRow;
+    }
+
+    const MINISTRY_DISPLAY = {
+        prime_minister: 'PM', interior: 'Interior', foreign: 'Foreign',
+        defense: 'Defense', finance: 'Finance', education: 'Education',
+        healthcare: 'Healthcare', labor: 'Labor', justice: 'Justice',
+        transportation: 'Transport', security: 'Security'
+    };
+
+    const statList = [];
+    const FLAT_THRESHOLD_PC = 0.15;
+    for (const [statKey, ministryKey] of Object.entries(STAT_TO_MINISTRY)) {
+        const sign = statDirectionSign(statKey);
+        if (sign === 0) continue;
+        const cur = n[statKey];
+        const prev = pcPrevStats ? pcPrevStats[statKey] : null;
+        if (cur == null) continue;
+
+        const rawDelta = (prev != null) ? cur - prev : 0;
+        const improvement = rawDelta * sign;
+        let trend = 'flat';
+        if (improvement > FLAT_THRESHOLD_PC) trend = 'well';
+        else if (improvement < -FLAT_THRESHOLD_PC) trend = 'badly';
+
+        const holderId = ministryHolder[ministryKey] || null;
+        let mode;
+        if (holderId === f.id) mode = 'credit';
+        else if (holderId) mode = 'attack';
+        else mode = 'attention';
+
+        const holderParty = holderId ? partyLookup[holderId] : null;
+        const holderAbbr = holderParty?.abbreviation || (holderId === f.id ? 'YOU' : null);
+
+        // Check same-stat penalty
+        const sameStatRecent = (recentPCs || []).filter(r => r.result?.statKey === statKey);
+
+        statList.push({
+            statKey,
+            label: statKey.replace(/_/g, ' '),
+            ministryKey,
+            ministryLabel: MINISTRY_DISPLAY[ministryKey] || ministryKey,
+            trend,
+            mode,
+            holderId,
+            holderAbbr,
+            holderColor: holderParty?.party_color || '#666',
+            willBackfire: (mode === 'credit' && trend === 'badly') || (mode === 'attack' && trend === 'well'),
+            isFlat: trend === 'flat',
+            sameStatPenalty: sameStatRecent.length > 0,
+        });
+    }
+
+    // Group stats by ministry for the filter
+    const ministryKeys = [...new Set(statList.map(s => s.ministryKey))];
+
+    function renderPC() {
+        const container = document.getElementById('pc-container');
+        if (!container) return;
+
+        if (pcScreen === 'select') {
+            const costOk = (f.action_points || 0) >= PRESS_CONF_CONFIG.AP_COST && (f.party_funds || 0) >= PRESS_CONF_CONFIG.MONEY_COST;
+            const canAct = costOk && !pcThisTick;
+
+            // Filter buttons: All + ministry names
+            const filterOptions = ['All', ...ministryKeys.map(k => MINISTRY_DISPLAY[k] || k)];
+            const filterBtns = filterOptions.map(label => {
+                return `<button class="pc-filter-btn${pcFilter === label ? ' active' : ''}" data-filter="${label}">${label}</button>`;
+            }).join('');
+
+            // Filter stats
+            let filtered = statList;
+            if (pcFilter !== 'All') {
+                filtered = statList.filter(s => (MINISTRY_DISPLAY[s.ministryKey] || s.ministryKey) === pcFilter);
+            }
+
+            // Sort: trending badly first (good attack targets), then well, then flat
+            const trendOrder = { badly: 0, well: 1, flat: 2 };
+            filtered.sort((a, b) => trendOrder[a.trend] - trendOrder[b.trend]);
+
+            const rows = filtered.map(s => {
+                const trendIcon = s.trend === 'well' ? '<span class="pc-trend-good">▲</span>'
+                    : s.trend === 'badly' ? '<span class="pc-trend-bad">▼</span>'
+                    : '<span class="pc-trend-flat">—</span>';
+                const modeIcon = s.mode === 'credit' ? '📣' : s.mode === 'attack' ? '⚔️' : '📢';
+                const modeLabel = s.mode === 'credit' ? 'Credit' : s.mode === 'attack' ? 'Attack' : 'Attention';
+                const backfireWarn = s.willBackfire ? ' <span class="pc-backfire-warn">⚠</span>' : '';
+                const penaltyNote = s.sameStatPenalty ? ' <span class="pc-penalty-note">½</span>' : '';
+                const holderTag = s.holderAbbr
+                    ? `<span class="pc-holder" style="color:${s.holderColor}">${s.holderAbbr}</span>`
+                    : '<span class="pc-holder pc-holder-none">—</span>';
+                const statLabel = s.label.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                return `<div class="pc-stat-row${!canAct ? ' disabled' : ''}" data-stat="${s.statKey}">
+                    <span class="pc-stat-trend">${trendIcon}</span>
+                    <span class="pc-stat-name">${statLabel}</span>
+                    <span class="pc-stat-ministry">${s.ministryLabel}</span>
+                    ${holderTag}
+                    <span class="pc-stat-mode pc-mode-${s.mode}">${modeIcon} ${modeLabel}${backfireWarn}${penaltyNote}</span>
+                </div>`;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="pc-panel">
+                    <div class="pc-header-row">
+                        <span class="pc-title">Press Conference</span>
+                        <span class="pc-cost">Cost: ${PRESS_CONF_CONFIG.AP_COST} AP + $${PRESS_CONF_CONFIG.MONEY_COST.toLocaleString()}</span>
+                    </div>
+                    <div class="pc-desc">Speak publicly about a national stat. Take credit, attack rivals, or draw attention.</div>
+                    ${pcThisTick ? '<div class="pc-cooldown">You have already held a press conference this tick.</div>' : ''}
+                    ${!costOk && !pcThisTick ? '<div class="pc-cooldown">Not enough AP or funds.</div>' : ''}
+                    <div class="pc-divider"></div>
+                    <div class="pc-filters">${filterBtns}</div>
+                    <div class="pc-divider"></div>
+                    <div class="pc-stat-header">
+                        <span class="pc-stat-trend">Trend</span>
+                        <span class="pc-stat-name">Stat</span>
+                        <span class="pc-stat-ministry">Ministry</span>
+                        <span class="pc-holder">Holder</span>
+                        <span class="pc-stat-mode">Action</span>
+                    </div>
+                    <div class="pc-stat-list">${rows}</div>
+                    <div class="pc-legend">
+                        <span>📣 Credit = your ministry</span>
+                        <span>⚔️ Attack = rival's ministry</span>
+                        <span>📢 Attention = no holder</span>
+                        <span>⚠ = backfire (wrong trend)</span>
+                        <span>½ = same-stat penalty</span>
+                        <span>— = flat (reduced effect)</span>
+                    </div>
+                </div>`;
+
+            container.querySelectorAll('.pc-filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => { pcFilter = btn.dataset.filter; renderPC(); });
+            });
+            container.querySelectorAll('.pc-stat-row:not(.disabled)').forEach(row => {
+                row.addEventListener('click', () => { pcSelectedStat = row.dataset.stat; pcScreen = 'preview'; renderPC(); });
+            });
+
+        } else if (pcScreen === 'preview') {
+            const s = statList.find(x => x.statKey === pcSelectedStat);
+            if (!s) { pcScreen = 'select'; renderPC(); return; }
+
+            const statLabel = s.label.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            const trendLabel = s.trend === 'well' ? 'Trending Well ▲' : s.trend === 'badly' ? 'Trending Badly ▼' : 'Flat —';
+            const trendClass = s.trend === 'well' ? 'pc-trend-good' : s.trend === 'badly' ? 'pc-trend-bad' : 'pc-trend-flat';
+
+            // Find caring blocs
+            const caringBlocsList = [];
+            for (const b of (blocs || [])) {
+                const issues = b.priority_issues || [];
+                for (const issue of issues) {
+                    const catStats = ISSUE_CATEGORY_STATS[issue] || [];
+                    if (catStats.includes(s.statKey)) {
+                        caringBlocsList.push(b.bloc_name);
+                        break;
+                    }
+                }
+            }
+
+            const flatNote = s.isFlat ? ' (reduced — stat is flat)' : '';
+            const penaltyNotes = [s.sameStatPenalty ? 'same-stat penalty' : '', s.isFlat ? 'flat stat' : ''].filter(Boolean).join(' + ');
+            const penaltySuffix = penaltyNotes ? ` (reduced: ${penaltyNotes})` : '';
+
+            let projectedHtml = '';
+            if (s.mode === 'credit') {
+                if (s.willBackfire) {
+                    projectedHtml = `
+                        <div class="pc-projection pc-proj-bad">
+                            <div class="pc-proj-title">BACKFIRE — Stat is Actively Declining Under Your Watch</div>
+                            <div>Your momentum: ${PRESS_CONF_CONFIG.CREDIT_BACKFIRE_MOMENTUM}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
+                            ${caringBlocsList.length > 0 ? `<div>Caring blocs get ${PRESS_CONF_CONFIG.CREDIT_BACKFIRE_PREF} preference toward you</div>` : ''}
+                            <div class="pc-proj-headline">Projected headline: "${s.holderAbbr || 'YOU'} Claims Credit — Public Not Convinced"</div>
+                        </div>`;
+                } else {
+                    const creditTitle = s.isFlat
+                        ? 'TAKING CREDIT — Stat is Stable Under Your Watch'
+                        : 'TAKING CREDIT — Stat is Improving Under Your Watch';
+                    projectedHtml = `
+                        <div class="pc-projection pc-proj-good">
+                            <div class="pc-proj-title">${creditTitle}</div>
+                            <div>Your momentum: +${PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MIN} to +${PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MAX}${penaltySuffix}</div>
+                            ${caringBlocsList.length > 0 ? `<div>Caring blocs get +${PRESS_CONF_CONFIG.CREDIT_PREF_DELTA} preference toward you</div>` : ''}
+                        </div>`;
+                }
+            } else if (s.mode === 'attack') {
+                if (s.willBackfire) {
+                    projectedHtml = `
+                        <div class="pc-projection pc-proj-bad">
+                            <div class="pc-proj-title">BACKFIRE — Stat is Actually Improving</div>
+                            <div>Your momentum: ${PRESS_CONF_CONFIG.ATTACK_BACKFIRE_SELF_MOMENTUM}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
+                            <div>${s.holderAbbr} gets +${PRESS_CONF_CONFIG.ATTACK_BACKFIRE_TARGET_MOMENTUM} momentum (sympathy boost)</div>
+                            <div class="pc-proj-headline">Projected headline: "Attack on ${s.holderAbbr} Backfires — Stat is Up"</div>
+                        </div>`;
+                } else {
+                    const attackTitle = s.isFlat
+                        ? `ATTACK — Criticizing ${s.holderAbbr} for Stagnant Performance`
+                        : `ATTACK — Blaming ${s.holderAbbr} for a Failing Stat`;
+                    projectedHtml = `
+                        <div class="pc-projection pc-proj-good">
+                            <div class="pc-proj-title">${attackTitle}</div>
+                            <div>${s.holderAbbr}'s momentum: -${PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MIN} to -${PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MAX}${penaltySuffix}</div>
+                            <div>Your momentum: +${PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MIN} to +${PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MAX}${penaltySuffix}</div>
+                            ${caringBlocsList.length > 0 ? `<div>Credit transfer: caring blocs shift -${PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT} from ${s.holderAbbr}, +${PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT} to you</div>` : ''}
+                        </div>`;
+                }
+            } else {
+                projectedHtml = `
+                    <div class="pc-projection pc-proj-neutral">
+                        <div class="pc-proj-title">DRAWING ATTENTION — No Party Holds This Ministry</div>
+                        <div>Your momentum: +${PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MIN} to +${PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MAX}${s.sameStatPenalty ? ' (reduced: same-stat penalty)' : ''}</div>
+                        <div>No credit transfer (nobody to blame or praise)</div>
+                    </div>`;
+            }
+
+            const caringHtml = caringBlocsList.length > 0
+                ? `<div class="pc-caring-blocs"><span class="pc-caring-label">Blocs who care:</span> ${caringBlocsList.join(', ')}</div>`
+                : '<div class="pc-caring-blocs"><span class="pc-caring-label">No blocs have this as a priority issue.</span></div>';
+
+            container.innerHTML = `
+                <div class="pc-panel">
+                    <div class="pc-header-row">
+                        <span class="pc-title">Press Conference</span>
+                        <span class="pc-cost">Cost: ${PRESS_CONF_CONFIG.AP_COST} AP + $${PRESS_CONF_CONFIG.MONEY_COST.toLocaleString()}</span>
+                    </div>
+                    <div class="pc-selected">
+                        <div class="pc-selected-stat">${statLabel}</div>
+                        <div class="pc-selected-meta">
+                            <span class="${trendClass}">${trendLabel}</span>
+                            <span class="pc-selected-ministry">${s.ministryLabel}${s.holderAbbr ? ` — held by <span style="color:${s.holderColor};font-weight:700">${s.holderAbbr}</span>` : ' — no holder'}</span>
+                        </div>
+                    </div>
+                    <div class="pc-divider pc-divider-accent"></div>
+                    ${projectedHtml}
+                    <div class="pc-divider"></div>
+                    ${caringHtml}
+                    ${s.sameStatPenalty ? '<div class="pc-same-stat-warn">⚠ Same-stat penalty: You\'ve spoken about this stat recently. Momentum effects halved.</div>' : ''}
+                    <div class="pc-actions">
+                        <button class="pc-btn pc-btn-confirm${s.willBackfire ? ' pc-btn-danger' : ''}" id="pc-confirm">${s.willBackfire ? 'PROCEED ANYWAY' : 'HOLD PRESS CONFERENCE'}</button>
+                        <button class="pc-btn pc-btn-cancel" id="pc-cancel">CANCEL</button>
+                    </div>
+                </div>`;
+
+            document.getElementById('pc-confirm').addEventListener('click', async () => {
+                const btn = document.getElementById('pc-confirm');
+                btn.disabled = true;
+                btn.textContent = 'Speaking...';
+                const tick = currentShard?.current_tick || 0;
+                const result = await executePressConference(_supabase, f.id, n.id, pcSelectedStat, tick);
+                if (result.success) {
+                    pcResults = result;
+                    pcScreen = 'results';
+                    renderPC();
+                } else {
+                    alert(result.error);
+                    btn.disabled = false;
+                    btn.textContent = s.willBackfire ? 'PROCEED ANYWAY' : 'HOLD PRESS CONFERENCE';
+                }
+            });
+            document.getElementById('pc-cancel').addEventListener('click', () => { pcScreen = 'select'; pcSelectedStat = null; renderPC(); });
+
+        } else if (pcScreen === 'results') {
+            const r = pcResults;
+            const statLabel = r.statLabel.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+            const modeLabel = r.mode === 'credit' ? (r.backfire ? 'Credit (Backfire!)' : 'Taking Credit')
+                : r.mode === 'attack' ? (r.backfire ? 'Attack (Backfire!)' : 'Attack')
+                : 'Drawing Attention';
+            const modeClass = r.backfire ? 'pc-result-backfire' : (r.mode === 'attention' ? 'pc-result-neutral' : 'pc-result-success');
+
+            let blocHtml = '';
+            if (r.blocResults.length > 0) {
+                const selfResults = r.blocResults.filter(b => b.party === 'self');
+                const targetResults = r.blocResults.filter(b => b.party === 'target');
+                if (selfResults.length > 0) {
+                    blocHtml += `<div class="pc-result-group"><div class="pc-result-group-label">Your preference changes:</div>`;
+                    for (const b of selfResults) {
+                        const sign = b.prefDelta > 0 ? '+' : '';
+                        blocHtml += `<div class="pc-result-bloc">${b.blocName}: ${sign}${b.prefDelta} (${b.oldPref}% → ${b.newPref}%)</div>`;
+                    }
+                    blocHtml += '</div>';
+                }
+                if (targetResults.length > 0) {
+                    blocHtml += `<div class="pc-result-group"><div class="pc-result-group-label">${r.targetAbbr}'s preference changes:</div>`;
+                    for (const b of targetResults) {
+                        const sign = b.prefDelta > 0 ? '+' : '';
+                        blocHtml += `<div class="pc-result-bloc">${b.blocName}: ${sign}${b.prefDelta} (${b.oldPref}% → ${b.newPref}%)</div>`;
+                    }
+                    blocHtml += '</div>';
+                }
+            } else {
+                blocHtml = '<div class="pc-result-group"><div class="pc-result-bloc">No preference changes.</div></div>';
+            }
+
+            container.innerHTML = `
+                <div class="pc-panel pc-panel-results">
+                    <div class="pc-title">Press Conference Results</div>
+                    <div class="pc-result-headline ${modeClass}">"${r.headline}"</div>
+                    <div class="pc-result-mode">${modeLabel}</div>
+                    <div class="pc-divider pc-divider-accent"></div>
+
+                    <div class="pc-result-section">
+                        <div class="pc-result-stat">Stat: ${statLabel}</div>
+                        <div class="pc-result-momentum">Your momentum: ${r.selfMomentumDelta > 0 ? '+' : ''}${r.selfMomentumDelta}${r.sameStatPenalty && r.flatStat ? ' (reduced — same-stat + flat stat)' : r.sameStatPenalty ? ' (reduced — same-stat penalty)' : r.flatStat ? ' (reduced — flat stat)' : ''}</div>
+                        ${r.targetAbbr ? `<div class="pc-result-momentum">${r.targetAbbr}'s momentum: ${r.targetMomentumDelta > 0 ? '+' : ''}${r.targetMomentumDelta}</div>` : ''}
+                    </div>
+
+                    <div class="pc-divider"></div>
+                    ${blocHtml}
+                    <div class="pc-divider"></div>
+
+                    <div class="pc-results-summary">
+                        <div>Cost: $${PRESS_CONF_CONFIG.MONEY_COST.toLocaleString()} deducted — Treasury: $${r.oldTreasury.toLocaleString()} → $${r.newTreasury.toLocaleString()}</div>
+                        <div>AP: ${r.newAp + PRESS_CONF_CONFIG.AP_COST} → ${r.newAp}</div>
+                    </div>
+
+                    <div class="pc-actions">
+                        <button class="pc-btn pc-btn-cancel" id="pc-dismiss">DISMISS</button>
+                    </div>
+                </div>`;
+
+            document.getElementById('pc-dismiss').addEventListener('click', () => {
+                pcScreen = 'select';
+                pcSelectedStat = null;
+                pcResults = null;
+                renderParties();
+            });
+        }
+    }
+
+    renderPC();
+
+    // ── Voter Outreach UI ──
+    let outreachScreen = 'select'; // 'select' | 'results'
+    let outreachResults = null;
+
+    // Fetch recent outreach for cooldown
+    const { data: recentOutreach } = await _supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', f.id)
+        .eq('action_type', 'outreach')
+        .gte('tick_performed', (currentShard?.current_tick || 0) - OUTREACH_CONFIG.COOLDOWN_TICKS + 1)
+        .order('tick_performed', { ascending: false });
+
+    const recentOutreachBlocIds = new Set((recentOutreach || []).map(r => r.result?.blocId).filter(Boolean));
+
+    function renderOutreach() {
+        const container = document.getElementById('outreach-container');
+        if (!container) return;
+
+        if (outreachScreen === 'select') {
+            const costOk = (f.action_points || 0) >= OUTREACH_CONFIG.AP_COST && (f.party_funds || 0) >= OUTREACH_CONFIG.MONEY_COST;
+
+            const rows = (blocs || []).map(b => {
+                const onCooldown = recentOutreachBlocIds.has(b.id);
+                const disabled = !costOk || onCooldown;
+                const approvalRow = (allBlocApprovals || []).find(a => a.bloc_id === b.id && a.faction_id === f.id);
+                const currentPref = approvalRow ? Math.round(approvalRow.preference_score || 0) : '?';
+                const popPct = b.population_weight ? Math.round(b.population_weight) + '%' : '';
+                return `<div class="outreach-bloc-row${disabled ? ' disabled' : ''}" data-bloc-id="${b.id}">
+                    <span class="outreach-bloc-name">${b.bloc_name}</span>
+                    <span class="outreach-bloc-pop">${popPct}</span>
+                    <span class="outreach-bloc-pref">${currentPref}%</span>
+                    ${onCooldown ? '<span class="outreach-bloc-cd">recent</span>' : '<span class="outreach-bloc-cd"></span>'}
+                </div>`;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="outreach-panel">
+                    <div class="outreach-header-row">
+                        <span class="outreach-title">Voter Outreach</span>
+                        <span class="outreach-cost">Cost: ${OUTREACH_CONFIG.AP_COST} AP + $${OUTREACH_CONFIG.MONEY_COST.toLocaleString()}</span>
+                    </div>
+                    <div class="outreach-desc">Door knocking, community events, local engagement. Guaranteed small gain with one bloc, no backlash.</div>
+                    ${!costOk ? '<div class="outreach-cooldown">Not enough AP or funds.</div>' : ''}
+                    <div class="outreach-divider"></div>
+                    <div class="outreach-bloc-header">
+                        <span class="outreach-bloc-name">Bloc</span>
+                        <span class="outreach-bloc-pop">Pop</span>
+                        <span class="outreach-bloc-pref">Pref</span>
+                        <span class="outreach-bloc-cd"></span>
+                    </div>
+                    <div class="outreach-bloc-list">${rows}</div>
+                </div>`;
+
+            container.querySelectorAll('.outreach-bloc-row:not(.disabled)').forEach(row => {
+                row.addEventListener('click', async () => {
+                    const blocId = row.dataset.blocId;
+                    // Confirm inline — just execute directly (spec says no risk)
+                    row.classList.add('disabled');
+                    row.style.opacity = '0.5';
+                    const tick = currentShard?.current_tick || 0;
+                    const result = await executeOutreach(_supabase, f.id, n.id, blocId, tick);
+                    if (result.success) {
+                        outreachResults = result;
+                        outreachScreen = 'results';
+                        renderOutreach();
+                    } else {
+                        alert(result.error);
+                        row.classList.remove('disabled');
+                        row.style.opacity = '';
+                    }
+                });
+            });
+
+        } else if (outreachScreen === 'results') {
+            const r = outreachResults;
+            container.innerHTML = `
+                <div class="outreach-panel outreach-panel-results">
+                    <div class="outreach-title">Voter Outreach Results</div>
+                    <div class="outreach-divider outreach-divider-accent"></div>
+                    <div class="outreach-result-bloc">${r.blocName}</div>
+                    <div class="outreach-result-pref">Preference: +${r.prefDelta} (${r.oldPref}% → ${r.newPref}%)</div>
+                    <div class="outreach-divider"></div>
+                    <div class="outreach-result-summary">
+                        <div>Cost: $${OUTREACH_CONFIG.MONEY_COST.toLocaleString()} — Treasury: $${r.oldTreasury.toLocaleString()} → $${r.newTreasury.toLocaleString()}</div>
+                        <div>AP: ${r.newAp + OUTREACH_CONFIG.AP_COST} → ${r.newAp}</div>
+                    </div>
+                    <div class="outreach-actions">
+                        <button class="outreach-btn" id="outreach-dismiss">DISMISS</button>
+                    </div>
+                </div>`;
+
+            document.getElementById('outreach-dismiss').addEventListener('click', () => {
+                outreachScreen = 'select';
+                outreachResults = null;
+                renderParties();
+            });
+        }
+    }
+
+    renderOutreach();
 }
 
 initPage('parties', async (state) => {
