@@ -108,7 +108,7 @@ async function renderParties() {
     const allPartyIds = (allParties || []).map(p => p.id);
     const { data: allBlocApprovals } = await _supabase
         .from('faction_bloc_approval')
-        .select('faction_id, momentum, bloc_id, approval')
+        .select('faction_id, momentum, bloc_id, approval, preference_score')
         .in('faction_id', allPartyIds);
 
     const { data: blocs } = await _supabase
@@ -202,7 +202,7 @@ async function renderParties() {
     const approvalByBloc = {};
     for (const row of (allBlocApprovals || [])) {
         if (!approvalByBloc[row.bloc_id]) approvalByBloc[row.bloc_id] = {};
-        approvalByBloc[row.bloc_id][row.faction_id] = row.approval ?? 0;
+        approvalByBloc[row.bloc_id][row.faction_id] = row.preference_score ?? row.approval ?? 0;
     }
 
     const blocRows = (blocs || []).map(b => {

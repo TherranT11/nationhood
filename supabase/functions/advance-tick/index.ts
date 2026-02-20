@@ -3362,14 +3362,14 @@ async function processPartialElection(supabase, nation, election, currentTick) {
         }
     }));
 
-    // 3b. Load per-bloc approval data
+    // 3b. Load per-bloc preference data (Three-Pillar system)
     const { data: fbaRows } = await supabase
-        .from('faction_bloc_approval').select('faction_id, bloc_id, approval')
+        .from('faction_bloc_approval').select('faction_id, bloc_id, approval, preference_score')
         .in('faction_id', factionIds);
     const allBlocApprovals = {};
     for (const row of (fbaRows || [])) {
         if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
-        allBlocApprovals[row.bloc_id][row.faction_id] = row.approval;
+        allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? row.approval ?? 40;
     }
 
     // 4. Run election simulation for ONLY the delta seats
@@ -8473,20 +8473,21 @@ async function runElectionPreview(supabase, nationId) {
         }
     }));
 
-    // 3b. Load per-bloc approval data from faction_bloc_approval
+    // 3b. Load per-bloc preference data (Three-Pillar system)
     const { data: fbaRows } = await supabase
         .from('faction_bloc_approval')
-        .select('faction_id, bloc_id, approval')
+        .select('faction_id, bloc_id, approval, preference_score')
         .in('faction_id', factionIds);
 
-    // Build allBlocApprovals map: { blocId: { partyId: approval } }
+    // Build allBlocApprovals map: { blocId: { partyId: preference_score } }
+    // Uses preference_score (Three-Pillar system) with fallback to approval (legacy)
     const allBlocApprovals = {};
     for (const row of (fbaRows || [])) {
         if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
-        allBlocApprovals[row.bloc_id][row.faction_id] = row.approval;
+        allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? row.approval ?? 40;
     }
 
-    // 4. Run simulation with per-bloc approvals
+    // 4. Run simulation with per-bloc preference scores
     const result = runElectionSimulation(blocs, parties, totalSeats, allBlocApprovals);
 
     // 5. Build friendly results with weighted average approval per party
