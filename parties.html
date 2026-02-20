@@ -107,12 +107,12 @@ async function renderParties() {
     const allPartyIds = (allParties || []).map(p => p.id);
     const { data: allBlocApprovals } = await _supabase
         .from('faction_bloc_approval')
-        .select('faction_id, momentum, bloc_id')
+        .select('faction_id, momentum, bloc_id, approval')
         .in('faction_id', allPartyIds);
 
     const { data: blocs } = await _supabase
         .from('voter_blocs')
-        .select('id, population_weight')
+        .select('id, bloc_name, population_weight')
         .eq('nation_id', n.id)
         .eq('is_active', true);
 
@@ -194,6 +194,67 @@ async function renderParties() {
 
     const nextElectionDate = nextElection ? tickToDate(nextElection.election_tick) : '—';
 
+    // === Approval by Voter Bloc ===
+    const blocLookup = {};
+    for (const b of (blocs || [])) blocLookup[b.id] = b;
+
+    // Index: approvalByBloc[blocId][factionId] = approval
+    const approvalByBloc = {};
+    for (const row of (allBlocApprovals || [])) {
+        if (!approvalByBloc[row.bloc_id]) approvalByBloc[row.bloc_id] = {};
+        approvalByBloc[row.bloc_id][row.faction_id] = row.approval ?? 0;
+    }
+
+    // Build per-bloc rows
+    const blocRows = (blocs || []).map(b => {
+        const myApproval = approvalByBloc[b.id]?.[f.id] ?? 0;
+        // Find leader for this bloc
+        let leaderId = null;
+        let leaderApproval = -1;
+        for (const pid of allPartyIds) {
+            const a = approvalByBloc[b.id]?.[pid] ?? 0;
+            if (a > leaderApproval) { leaderApproval = a; leaderId = pid; }
+        }
+        const leaderParty = partyLookup[leaderId];
+        const isLeading = leaderId === f.id;
+        const margin = leaderApproval - myApproval;
+        return {
+            blocId: b.id,
+            blocName: b.bloc_name,
+            popWeight: b.population_weight || 0,
+            myApproval,
+            leaderId,
+            leaderAbbr: leaderParty?.abbreviation || '?',
+            leaderColor: leaderParty?.party_color || '#666',
+            isLeading,
+            margin
+        };
+    }).sort((a, b) => b.myApproval - a.myApproval);
+
+    const blocsLeading = blocRows.filter(r => r.isLeading);
+    const leadingCount = blocsLeading.length;
+    const leadingPopPct = Math.round(blocsLeading.reduce((s, r) => s + r.popWeight, 0) * 100);
+    const swingBlocs = blocRows.filter(r => !r.isLeading && r.margin <= 3);
+
+    let blocTableHtml = '';
+    for (const r of blocRows) {
+        const barColor = r.isLeading ? partyColor : 'var(--text-muted, #555)';
+        blocTableHtml += `
+            <div class="bloc-row${r.isLeading ? ' bloc-row-leading' : ''}">
+                <span class="bloc-name">${r.blocName}</span>
+                <div class="bloc-bar-track">
+                    <div class="bloc-bar-fill" style="width:${r.myApproval}%;background:${barColor}"></div>
+                </div>
+                <span class="bloc-approval">${r.myApproval}%</span>
+                <span class="bloc-change">—</span>
+                <span class="bloc-leader" style="color:${r.leaderColor}">${r.isLeading ? 'YOU' : r.leaderAbbr}</span>
+            </div>`;
+    }
+
+    const swingText = swingBlocs.length > 0
+        ? `Swing Blocs (within 3%): ${swingBlocs.map(r => r.blocName).join(', ')}`
+        : 'No swing blocs';
+
     el.innerHTML = `
         <div class="parties-page">
         <div class="parties-top-panels">
@@ -260,6 +321,28 @@ async function renderParties() {
         </div>
 
         </div>
+
+        <div class="bloc-approval-panel">
+            <div class="bloc-approval-header-row">
+                <span class="bloc-approval-title">Approval by Voter Bloc</span>
+                <span class="bloc-approval-note">&plusmn; margin of error</span>
+            </div>
+            <div class="bloc-table-header">
+                <span class="bloc-name">Bloc</span>
+                <span class="bloc-bar-track-header"></span>
+                <span class="bloc-approval">Your Approval</span>
+                <span class="bloc-change">Change</span>
+                <span class="bloc-leader">Leader</span>
+            </div>
+            <div class="bloc-table-body">
+                ${blocTableHtml}
+            </div>
+            <div class="bloc-approval-footer">
+                <span>Leading: ${leadingCount} of ${blocRows.length}${leadingPopPct > 0 ? ` (${leadingPopPct}% of pop)` : ''}</span>
+                <span>${swingText}</span>
+            </div>
+        </div>
+
         </div>
     `;
 }
