@@ -230,7 +230,7 @@ async function renderParties() {
 
     const blocsLeading = blocRows.filter(r => r.isLeading);
     const leadingCount = blocsLeading.length;
-    const leadingPopPct = Math.round(blocsLeading.reduce((s, r) => s + r.popWeight, 0) * 100);
+    const leadingPopPct = Math.round(blocsLeading.reduce((s, r) => s + r.popWeight, 0));
     const swingBlocs = blocRows.filter(r => !r.isLeading && r.margin <= 3);
 
     // === Performance Credit ===
