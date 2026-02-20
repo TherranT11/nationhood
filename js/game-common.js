@@ -3554,8 +3554,94 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
             .eq('id', r.party_id);
     }
 
+    // Dissolve legislature — fail all pending bills (new parliament must re-propose)
+    const { data: dissolvedBills } = await supabase.from('bills')
+        .update({ status: 'failed' })
+        .eq('nation_id', nation.id)
+        .in('status', ['committee', 'floor'])
+        .select('id, bill_type, ambassador_id');
+    await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
+
     if (isPresidential && normalizedElectionType === 'presidential') {
+        // Fail bills on president's desk
+        const { data: deskBills } = await supabase.from('bills')
+            .update({ status: 'failed' })
+            .eq('nation_id', nation.id)
+            .eq('status', 'president_desk')
+            .select('id, bill_type, ambassador_id');
+        await syncAmbassadorsForFailedConfirmationBills(supabase, deskBills);
         await processPresidentialElectionResult(supabase, nation, completedElection, currentTick);
+    } else if (isPresidential && normalizedElectionType === 'parliamentary') {
+        // Midterm parliamentary election — seats reshuffled, president stays
+        console.log(`Manual midterm parliamentary election for ${nation.name} — president stays in office`);
+    } else {
+        // Parliamentary democracy: dissolve existing government after election
+        const { data: frozenBills } = await supabase.from('bills')
+            .update({ status: 'failed' })
+            .eq('nation_id', nation.id)
+            .eq('status', 'frozen')
+            .select('id, bill_type, ambassador_id');
+        await syncAmbassadorsForFailedConfirmationBills(supabase, frozenBills);
+
+        let existingGov = null;
+        const { data: govFormation } = await supabase
+            .from('government_formations')
+            .select('id, status')
+            .eq('nation_id', nation.id)
+            .in('status', ['formed', 'caretaker'])
+            .maybeSingle();
+        if (govFormation) {
+            existingGov = govFormation;
+        } else {
+            const { data: legacyGov } = await supabase
+                .from('active_coalitions')
+                .select('id, status')
+                .eq('nation_id', nation.id)
+                .is('dissolved_at', null)
+                .maybeSingle();
+            if (legacyGov) existingGov = legacyGov;
+        }
+
+        if (existingGov) {
+            console.log(`Dissolving government after manual election for ${nation.name}`);
+
+            try {
+                const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+                const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                if (fullNation) {
+                    await closeAdministration(supabase, nation.id, fullNation, 'dissolved', currentTick, shardData?.current_date || '', null);
+                }
+            } catch (adminErr) { console.warn('Could not close administration on manual election:', adminErr); }
+
+            await supabase
+                .from('government_formations')
+                .update({ status: 'dissolved' })
+                .eq('nation_id', nation.id)
+                .in('status', ['formed', 'caretaker']);
+
+            await supabase
+                .from('active_coalitions')
+                .update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
+                .eq('nation_id', nation.id)
+                .is('dissolved_at', null);
+
+            await supabase
+                .from('head_of_government')
+                .update({ active: false })
+                .eq('nation_id', nation.id)
+                .eq('active', true);
+
+            await supabase
+                .from('ministries')
+                .update({
+                    minister_first_name: null,
+                    minister_last_name: null,
+                    minister_age: null,
+                    party_id: null
+                })
+                .eq('nation_id', nation.id)
+                .eq('is_active', true);
+        }
     }
 
     return {
