@@ -306,8 +306,6 @@ async function renderParties() {
             }
         }
 
-        const governmentCount = govParties.length;
-        const oppositionCount = oppParties.length;
         const isRulingFaction = isAutocracy && nation.ruling_faction_id === faction?.id;
 
         // Autocracy loyalty thresholds and seize power eligibility
