@@ -5282,7 +5282,8 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
                 performance_perception: u.performance_perception,
                 momentum: u.momentum,
                 preference_score: u.preference_score,
-                vote_share: u.vote_share
+                vote_share: u.vote_share,
+                approval: Math.round(u.preference_score)
             })
             .eq('id', u.id);
     }
