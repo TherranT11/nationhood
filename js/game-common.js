@@ -2303,6 +2303,61 @@ export const STATS_LOWER_IS_BETTER = [
     'illegal_immigration', 'emigration', 'sanctions'
 ];
 
+// ==================== STAT DECAY CONFIGURATION ====================
+
+const DECAY_SPEED = { VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
+
+/**
+ * Stats that decay each tick. Two types:
+ *   - 'equilibrium': drifts toward a midpoint (requires constant governing effort)
+ *   - 'erosion': degrades toward a bad floor (punishes neglect)
+ * Stats not listed are persistent — they hold value indefinitely.
+ */
+export const STAT_DECAY_CONFIG = {
+    // ── Equilibrium (drift back to midpoint) ──
+    inflation:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
+    interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
+    currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
+    civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.FAST },
+    polarization:        { type: 'equilibrium', target: 30, speed: DECAY_SPEED.SLOW },
+    terrorism:           { type: 'equilibrium', target: 10, speed: DECAY_SPEED.SLOW },
+    political_violence:  { type: 'equilibrium', target: 10, speed: DECAY_SPEED.MEDIUM },
+    happiness:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
+    foreign_investment:  { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
+    trade_balance:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
+    gdp_growth:          { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
+    immigration:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
+    illegal_immigration: { type: 'equilibrium', target: 30, speed: DECAY_SPEED.SLOW },
+    emigration:          { type: 'equilibrium', target: 30, speed: DECAY_SPEED.MEDIUM },
+    fuel_prices:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
+    debt_growth:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
+
+    // ── Erosion (degrade toward bad floor if neglected) ──
+    physical_infrastructure:  { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
+    digital_infrastructure:   { type: 'erosion', target: 0,  speed: DECAY_SPEED.SLOW },
+    rail_network:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
+    energy_generation:        { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
+    efficiency:               { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
+    corruption:               { type: 'erosion', target: 70, speed: DECAY_SPEED.SLOW },
+    healthcare_quality:       { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
+    healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
+    beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.VERY_SLOW },
+    education_accessibility:  { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
+    press_freedom:            { type: 'erosion', target: 40, speed: DECAY_SPEED.SLOW },
+    judicial_independence:    { type: 'erosion', target: 40, speed: DECAY_SPEED.SLOW },
+    freedom_index:            { type: 'erosion', target: 40, speed: DECAY_SPEED.VERY_SLOW },
+    standard_of_living:       { type: 'erosion', target: 40, speed: DECAY_SPEED.VERY_SLOW },
+    social_mobility:          { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
+    benefits:                 { type: 'erosion', target: 0,  speed: DECAY_SPEED.MEDIUM },
+};
+
+// Validate decay config keys at module load
+for (const key of Object.keys(STAT_DECAY_CONFIG)) {
+    if (!NATION_STAT_COLUMN_SET.has(key)) {
+        console.error(`[STAT_DECAY_CONFIG] Invalid stat key: "${key}" — not in NATION_STAT_COLUMNS`);
+    }
+}
+
 // ==================== THREE-PILLAR VOTING SYSTEM MAPPINGS ====================
 
 /**
@@ -5375,6 +5430,70 @@ export async function processStatEffects(supabase, nation, currentTick) {
     }
 
     return appliedEffects;
+}
+
+// ==================== STAT DECAY PROCESSING ====================
+
+/**
+ * Apply natural stat decay for a nation. Each tick, configured stats drift
+ * toward their target by their speed, but never overshoot.
+ *
+ * @param {object} supabase - Supabase client
+ * @param {object} nation   - Full nation row (in-memory, mutated on success)
+ * @returns {Array<object>}  Applied decay descriptors for tick summary
+ */
+export async function processStatDecay(supabase, nation) {
+    const appliedDecay = [];
+    const nationUpdates = {};
+
+    for (const [statKey, config] of Object.entries(STAT_DECAY_CONFIG)) {
+        if (!NATION_STAT_COLUMN_SET.has(statKey)) continue;
+
+        const currentVal = nation[statKey] !== undefined && nation[statKey] !== null
+            ? Number(nation[statKey]) : 50;
+        const { target, speed } = config;
+
+        if (currentVal === target) continue;
+
+        let newVal;
+        if (currentVal > target) {
+            newVal = Math.max(target, currentVal - speed);
+        } else {
+            newVal = Math.min(target, currentVal + speed);
+        }
+
+        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+
+        if (newVal !== Math.round(currentVal * 10) / 10) {
+            nationUpdates[statKey] = newVal;
+            appliedDecay.push({
+                stat: statKey,
+                type: config.type,
+                previousValue: Math.round(currentVal * 10) / 10,
+                newValue: newVal,
+                target,
+                speed
+            });
+        }
+    }
+
+    if (Object.keys(nationUpdates).length > 0) {
+        const { error } = await supabase
+            .from('nations')
+            .update(nationUpdates)
+            .eq('id', nation.id);
+
+        if (error) {
+            console.error('[processStatDecay] Nation stat update FAILED',
+                { nationId: nation.id, payload: nationUpdates, error: error.message });
+            return [];
+        }
+
+        console.log(`[processStatDecay] Decay applied for ${nation.name}: ${appliedDecay.length} stat(s)`);
+        Object.assign(nation, nationUpdates);
+    }
+
+    return appliedDecay;
 }
 
 /**
