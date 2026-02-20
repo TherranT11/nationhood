@@ -306,38 +306,40 @@ async function renderParties() {
             }
         }
 
-        const isRulingFaction = isAutocracy && nation.ruling_faction_id === faction?.id;
+        const isRulingFaction = isAutocracy && n.ruling_faction_id === f?.id;
 
         // Autocracy loyalty thresholds and seize power eligibility
-        let myLoyalty = faction?.loyalty ?? 50;
+        let myLoyalty = f?.loyalty ?? 50;
         let isSuppressed = isAutocracy && myLoyalty < 15;
         let isDisloyal = isAutocracy && myLoyalty >= 15 && myLoyalty < 30;
         let isCoupCooldown = false;
-        let cooldownTick = faction?.action_lockout_until_tick;
+        let cooldownTick = f?.action_lockout_until_tick;
         let coupTick = 0;
-        if (isAutocracy && faction) {
+        if (isAutocracy && f) {
             const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
             coupTick = shard?.current_tick || 0;
             isCoupCooldown = cooldownTick && coupTick < cooldownTick;
         }
         let canSeizePower = false;
-        if (isAutocracy && !isRulingFaction && faction) {
-            const disloyalCount = parties.filter(p => p.id !== faction?.id && (p.loyalty ?? 50) < 30).length;
-            canSeizePower = disloyalCount >= 2 && (faction?.action_points || 0) >= 15 && !isCoupCooldown;
+        if (isAutocracy && !isRulingFaction && f) {
+            const disloyalCount = parties.filter(p => p.id !== f?.id && (p.loyalty ?? 50) < 30).length;
+            canSeizePower = disloyalCount >= 2 && (f?.action_points || 0) >= 15 && !isCoupCooldown;
         }
 
         // Build campaign actions
         let campaignActionsHTML = '';
+        const lastPollData = null;   // TODO: fetch from campaign_actions when poll feature is implemented
+        const previousPollData = null;
         if (!isAutocracy) {
             campaignActionsHTML = `
             <div class="section-header" style="margin-top: 30px;">Your Party Resources</div>
             <div class="stat-grid stat-grid-3col" style="margin-bottom: 12px;">
-                <div class="stat-card"><div class="stat-label">Action Points</div><div class="stat-value" id="party-ap">${faction?.action_points || 0}</div></div>
-                <div class="stat-card"><div class="stat-label">Party Funds</div><div class="stat-value" id="party-funds">$${(faction?.party_funds || 0).toLocaleString()}</div></div>
-                <div class="stat-card"><div class="stat-label">Approval Rating</div><div class="stat-value" id="party-approval">${faction?._derivedApproval ?? faction?.approval_rating ?? 0}%</div></div>
+                <div class="stat-card"><div class="stat-label">Action Points</div><div class="stat-value" id="party-ap">${f?.action_points || 0}</div></div>
+                <div class="stat-card"><div class="stat-label">Party Funds</div><div class="stat-value" id="party-funds">$${(f?.party_funds || 0).toLocaleString()}</div></div>
+                <div class="stat-card"><div class="stat-label">Approval Rating</div><div class="stat-value" id="party-approval">${f?._derivedApproval ?? f?.approval_rating ?? 0}%</div></div>
             </div>
             ${(() => {
-                if (!voterBlocs || voterBlocs.length === 0 || !faction) return '';
+                if (!blocs || blocs.length === 0 || !f) return '';
                 const pollResult = lastPollData?.result;
                 const prevResult = previousPollData?.result;
                 const pollDate = lastPollData?.result?.poll_date || null;
@@ -346,13 +348,13 @@ async function renderParties() {
                 if (!pollResult) {
                     return `<div class="poll-panel">
                         <div class="poll-panel-header">
-                            <div class="poll-panel-title">Poll for ${faction.faction_name}</div>
+                            <div class="poll-panel-title">Poll for ${f.faction_name}</div>
                         </div>
                         <div class="poll-no-data">No polls conducted yet. Use <strong>Generate Poll</strong> to survey voter blocs.</div>
                     </div>`;
                 }
 
-                const blocRows = voterBlocs.map(bloc => {
+                const blocRows = blocs.map(bloc => {
                     const polled = pollResult.bloc_results?.[bloc.id];
                     if (!polled) return `<div class="poll-bloc-unpolled">${bloc.bloc_name} — not polled</div>`;
                     const prev = prevResult?.bloc_results?.[bloc.id];
@@ -374,7 +376,7 @@ async function renderParties() {
 
                 return `<div class="poll-panel">
                     <div class="poll-panel-header">
-                        <div class="poll-panel-title">Poll for ${faction.faction_name}</div>
+                        <div class="poll-panel-title">Poll for ${f.faction_name}</div>
                         <div class="poll-panel-date">${pollDate ? 'Conducted: ' + pollDate : ''}</div>
                     </div>
                     <div>${blocRows}</div>
@@ -441,8 +443,8 @@ async function renderParties() {
             campaignActionsHTML = `
             <div class="section-header" style="margin-top: 30px;">Your Faction Resources</div>
             <div class="stat-grid stat-grid-4col" style="margin-bottom: 24px;">
-                <div class="stat-card"><div class="stat-label">Action Points</div><div class="stat-value" id="party-ap">${faction?.action_points || 0}</div></div>
-                <div class="stat-card"><div class="stat-label">Seats</div><div class="stat-value" id="party-seats">${faction?.seats || 0} / ${totalSeats}</div></div>
+                <div class="stat-card"><div class="stat-label">Action Points</div><div class="stat-value" id="party-ap">${f?.action_points || 0}</div></div>
+                <div class="stat-card"><div class="stat-label">Seats</div><div class="stat-value" id="party-seats">${f?.seats || 0} / ${GAME_CONFIG.TOTAL_SEATS}</div></div>
                 <div class="stat-card"><div class="stat-label">Faction Loyalty</div><div class="stat-value" id="party-loyalty" style="color:${loyaltyColor}">${myLoyalty}%</div></div>
                 <div class="stat-card"><div class="stat-label">Status</div><div class="stat-value" id="party-status" style="color:${statusColor}">${statusText}</div></div>
             </div>
