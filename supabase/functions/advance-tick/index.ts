@@ -516,18 +516,45 @@ function distributeTradeAmongPartners(exportCapacity, importers) {
 
 /**
  * Derive trade_balance stat (0-100) from raw trade surplus/deficit.
+ *
+ * Maps surplus as a ratio of GDP onto a 0-100 index:
+ *   50 = balanced trade (surplus ≈ 0)
+ *   100 = large trade surplus (+10% of GDP or more)
+ *   0 = large trade deficit (-10% of GDP or more)
+ *
+ * Formula: 50 + (tradeSurplus / gdp) * 500
+ * Scaled so ±10% of GDP spans the full 0-100 range.
+ *
+ * @param {number} tradeSurplus – totalExports - totalImports (can be negative)
+ * @param {number} gdp          – nation's GDP in raw dollars
+ * @returns {number} trade balance index 0-100
  */
 function deriveTradeBalanceIndex(tradeSurplus, gdp) {
-    // STUB — Phase 7 implementation
-    return 50;
+    if (!gdp || gdp <= 0) return 50;
+    var ratio = tradeSurplus / gdp;
+    var index = 50 + (ratio * 500);
+    return Math.round(Math.max(0, Math.min(100, index)) * 10) / 10;
 }
 
 /**
  * Calculate tariff revenue from actual import volumes.
+ *
+ * tariff_revenue = totalImports × (tariffRate / 100) × collectionRate
+ *
+ * tariffRate is the nation's tariff stat (0-100).
+ * collectionRate is how efficiently tariffs are collected (0-1),
+ * typically derived from bureaucratic efficiency (~0.7 average).
+ *
+ * @param {number} totalImports    – actual dollar value of all imports this tick
+ * @param {number} tariffRate      – nation's tariff stat (0-100)
+ * @param {number} collectionRate  – collection efficiency 0-1 (default 0.7)
+ * @returns {number} tariff revenue in dollars
  */
 function calculateTariffRevenue(totalImports, tariffRate, collectionRate) {
-    // STUB — Phase 7 implementation
-    return 0;
+    if (!totalImports || totalImports <= 0) return 0;
+    var rate = (Number(tariffRate) || 0) / 100;
+    var efficiency = (collectionRate != null) ? Number(collectionRate) : 0.7;
+    return Math.round(totalImports * rate * efficiency);
 }
 
 /**
