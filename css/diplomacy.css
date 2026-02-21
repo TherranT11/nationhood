@@ -43,6 +43,7 @@
         }
         .role-hog  { background: #8B0000; color: #fff; }
         .role-fm   { background: #1a5276; color: #fff; }
+        .role-mot  { background: #b8860b; color: #fff; }
         .role-amb  { background: #2e7d32; color: #fff; }
         .role-none { background: var(--bg-hover); color: var(--text-muted); }
 

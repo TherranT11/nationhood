@@ -58,6 +58,7 @@ const MINISTRY_NAMES = {
     healthcare: 'Ministry of Healthcare',
     labor: 'Ministry of Labor',
     justice: 'Ministry of Justice',
+    trade: 'Ministry of Trade',
     transportation: 'Ministry of Transportation',
     security: 'Ministry of Security'
 };
@@ -65,7 +66,7 @@ const MINISTRY_NAMES = {
 const MINISTRY_KEYS_CABINET = [
     'prime_minister',
     'interior','foreign','defense','finance',
-    'education','healthcare','labor','justice','transportation'
+    'education','healthcare','labor','justice','trade','transportation'
 ];
 
 const FIRST_NAMES_POOL = [
@@ -1258,6 +1259,7 @@ async function confirmAssign() {
             healthcare: { title: "Welcome to the Ministry of Healthcare", sender: "Minister of Healthcare", body: "Public health, hospitals, disease prevention, and medical research now fall under your authority. Healthcare quality directly affects citizen happiness, life expectancy, and workforce productivity. Every policy decision here is measured in lives saved or lost." },
             labor: { title: "Welcome to the Ministry of Labor", sender: "Minister of Labor", body: "Workers' rights, employment policy, and labor market regulation are now your responsibility. You must balance the interests of employers and employees while keeping unemployment low and wages fair. The economy's backbone depends on a healthy labor force." },
             justice: { title: "Welcome to the Ministry of Justice", sender: "Minister of Justice", body: "The rule of law is now your charge. You oversee the courts, law enforcement policy, and the criminal justice system. Judicial independence, crime reduction, and civil liberties must be balanced carefully. Justice must be both firm and fair." },
+            trade: { title: "Welcome to the Ministry of Trade", sender: "Minister of Trade", body: "International commerce, trade agreements, tariff policy, and economic partnerships are now your responsibility. You must negotiate favorable terms for your nation while maintaining productive relationships with trading partners. Every deal shapes the economic landscape for years to come." },
             transportation: { title: "Welcome to the Ministry of Transportation", sender: "Minister of Transportation", body: "Roads, railways, ports, and public transit systems are now under your management. Transportation infrastructure drives economic growth and connects communities. Aging systems need maintenance, growing cities need expansion — and budgets are always tight." },
             security: { title: "Welcome to the Ministry of Security", sender: "Minister of Security", body: "National security, intelligence operations, counter-terrorism, and cybersecurity are now your domain. You walk a fine line between protecting citizens and preserving civil liberties. Threats are constant and often invisible — vigilance is your greatest asset." }
         };

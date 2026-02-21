@@ -204,6 +204,7 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
     const roles = {
         isHoG: false,
         isFM: false,
+        isMoT: false,
         ambassadorTo: []  // array of { target_nation_id, target_nation_name }
     };
 
@@ -221,18 +222,23 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
     const alloc = coalition?.ministry_allocations || {};
     roles.isFM = alloc.foreign === faction.id;
 
+    // Minister of Trade: check coalition allocation first, then fall back to ministries table
+    roles.isMoT = alloc.trade === faction.id;
+
     // In autocracies, ministers are stored in the ministries table, not coalition allocations
-    if (!roles.isFM) {
-        const { data: fmEntry } = await _supabase
+    if (!roles.isFM || !roles.isMoT) {
+        const { data: ministryEntries } = await _supabase
             .from('ministries')
-            .select('party_id')
+            .select('ministry_key, party_id')
             .eq('nation_id', nation.id)
-            .eq('ministry_key', 'foreign')
-            .eq('is_active', true)
-            .maybeSingle();
-        if (fmEntry && fmEntry.party_id === faction.id) {
-            roles.isFM = true;
-        }
+            .in('ministry_key', ['foreign', 'trade'])
+            .eq('is_active', true);
+        (ministryEntries || []).forEach(entry => {
+            if (entry.party_id === faction.id) {
+                if (entry.ministry_key === 'foreign') roles.isFM = true;
+                if (entry.ministry_key === 'trade') roles.isMoT = true;
+            }
+        });
     }
 
     // Ambassadors: fetch ALL active ambassadors from this nation, then filter by faction in JS
@@ -317,6 +323,7 @@ async function renderDiploHeader() {
     const roleBadges = [];
     if (diplomaticRoles.isHoG) roleBadges.push('<span class="diplo-role-badge role-hog">Head of Gov</span>');
     if (diplomaticRoles.isFM)  roleBadges.push('<span class="diplo-role-badge role-fm">Foreign Minister</span>');
+    if (diplomaticRoles.isMoT) roleBadges.push('<span class="diplo-role-badge role-mot">Minister of Trade</span>');
     diplomaticRoles.ambassadorTo.forEach(a => {
         roleBadges.push('<span class="diplo-role-badge role-amb">Amb. to ' + escapeHtml(a.target_nation_name) + '</span>');
     });
@@ -1170,8 +1177,9 @@ async function acceptTradeNegotiation(proposalId, negotiationId) {
     const ourAmb = diplomaticRoles.ambassadorTo.find(a =>
         a.target_nation_id === neg.nation_a_id || a.target_nation_id === neg.nation_b_id
     );
-    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb;
-    const role = isHoGOnly ? 'head_of_government' : 'ambassador';
+    const isMoTAcceptor = diplomaticRoles.isMoT && !ourAmb;
+    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !isMoTAcceptor;
+    const role = isHoGOnly ? 'head_of_government' : isMoTAcceptor ? 'trade_minister' : 'ambassador';
 
     // Add ourselves as a participant
     const participants = neg.participants || [];
@@ -2539,10 +2547,11 @@ async function renderInitiativeWizard() {
 
     // Check if player has any diplomatic role that can propose
     // HoG can draft at 3 AP penalty if no ambassador exists
+    // MoT can propose trade negotiations directly
     const hasAmbassador = diplomaticRoles && diplomaticRoles.ambassadorTo.length > 0;
-    const canPropose = diplomaticRoles && (diplomaticRoles.isFM || hasAmbassador || diplomaticRoles.isHoG);
+    const canPropose = diplomaticRoles && (diplomaticRoles.isFM || diplomaticRoles.isMoT || hasAmbassador || diplomaticRoles.isHoG);
     if (!canPropose) {
-        panel.innerHTML = '<p class="diplo-tab-placeholder">You need to be a Foreign Minister, Ambassador, or Head of Government to propose initiatives.</p>';
+        panel.innerHTML = '<p class="diplo-tab-placeholder">You need to be a Foreign Minister, Minister of Trade, Ambassador, or Head of Government to propose initiatives.</p>';
         return;
     }
 
@@ -2713,29 +2722,35 @@ async function renderWizardStep1() {
     const nationsWithCounterAmb = new Set(theirAmbs.map(a => a.nation_id));
 
     // Determine AP cost
-    const isHoGOnly = diplomaticRoles.isHoG && !hasAmbassador;
+    const isHoGOnly = diplomaticRoles.isHoG && !hasAmbassador && !diplomaticRoles.isMoT;
+    const isMoTOnly = diplomaticRoles.isMoT && !hasAmbassador && !diplomaticRoles.isHoG;
+    const canSelectAny = isHoGOnly || isMoTOnly; // HoG or MoT can select any nation
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
     let html = '';
     if (isHoGOnly) {
         html += '<div class="trade-info-box warning" style="margin-bottom:12px;">No ambassador appointed. As Head of Government, you can propose initiatives at a higher AP cost (' + apCost + ' AP instead of 1 AP).</div>';
     }
-    html += '<p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;">Select a nation to negotiate with. Both nations must have active ambassadors, or you can draft as Head of Government.</p>';
+    if (isMoTOnly) {
+        html += '<div class="trade-info-box info" style="margin-bottom:12px;">As Minister of Trade, you can propose trade negotiations to any nation. Diplomatic initiatives still require an ambassador.</div>';
+    }
+    html += '<p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;">Select a nation to negotiate with. Both nations must have active ambassadors, or you can draft as Head of Government or Minister of Trade.</p>';
 
     const nations = allNations || [];
     for (const nation of nations) {
         const weHaveAmb = ambNationIds.includes(nation.id);
         const hasCounter = nationsWithCounterAmb.has(nation.id);
         const mutualAmbs = weHaveAmb && hasCounter;
-        const canSelectAsHoG = isHoGOnly; // HoG can select any nation
-        const canSelect = mutualAmbs || canSelectAsHoG;
+        const canSelect = mutualAmbs || canSelectAny;
         const flagUrl = FLAG_URLS[nation.name] || null;
         const ambInfo = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === nation.id);
         const ambName = ambInfo ? ((ambInfo.ambassador_first_name || '') + ' ' + (ambInfo.ambassador_last_name || '')).trim() : '';
 
         let statusNote = '';
-        if (!weHaveAmb && !isHoGOnly) statusNote = '<span style="color:#ff9800;">No ambassador posted</span>';
+        if (!weHaveAmb && !canSelectAny) statusNote = '<span style="color:#ff9800;">No ambassador posted</span>';
         else if (weHaveAmb && !hasCounter) statusNote = '<span style="color:#ff9800;">No counterpart ambassador</span>';
+
+        const roleLabel = ambName ? 'Your Amb: ' + escapeHtml(ambName) : isHoGOnly ? 'Drafting as HoG' : isMoTOnly ? 'Drafting as Min. of Trade' : 'No ambassador';
 
         html += `
             <div class="wizard-nation-item ${canSelect ? '' : 'disabled'}" data-nation-id="${nation.id}" onclick="wizardSelectNation('${nation.id}')">
@@ -2743,7 +2758,7 @@ async function renderWizardStep1() {
                 <div>
                     <div class="wizard-nation-name">${escapeHtml(nation.name)}</div>
                     <div class="wizard-nation-detail">
-                        ${ambName ? 'Your Amb: ' + escapeHtml(ambName) : isHoGOnly ? 'Drafting as HoG' : 'No ambassador'}
+                        ${roleLabel}
                         ${statusNote ? ' &middot; ' + statusNote : ''}
                     </div>
                 </div>
@@ -2777,18 +2792,23 @@ function renderWizardStep2() {
     const panel = document.getElementById('wizard-panel-2');
     if (!panel) return;
 
+    // MoT-only (no ambassador, no FM, no HoG) can only propose trade
+    const hasAmbassador = diplomaticRoles && diplomaticRoles.ambassadorTo.length > 0;
+    const isMoTOnly = diplomaticRoles.isMoT && !hasAmbassador && !diplomaticRoles.isFM && !diplomaticRoles.isHoG;
+
     let html = '<p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;">What kind of initiative do you want to propose?</p>';
 
     html += '<div class="type-card-grid">';
 
-    // Diplomatic Initiative category
+    // Diplomatic Initiative category (disabled for MoT-only)
     html += `
-        <div class="type-card" data-category="diplomatic" onclick="wizardSelectCategory('diplomatic')">
+        <div class="type-card ${isMoTOnly ? 'disabled' : ''}" data-category="diplomatic" onclick="${isMoTOnly ? '' : "wizardSelectCategory('diplomatic')"}">
             <div class="type-card-title">Diplomatic Initiative</div>
             <div class="type-card-desc">Cultural exchanges, visa agreements, joint statements, and student exchange programs.</div>
             <div class="type-card-effects">
                 <span class="trade-type-tag bilateral">BILATERAL</span>
             </div>
+            ${isMoTOnly ? '<div style="font-size:0.68rem;color:#ff9800;margin-top:4px;">Requires an Ambassador or FM</div>' : ''}
         </div>
     `;
 
@@ -3259,7 +3279,8 @@ async function submitTradeProposal() {
     }
 
     const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
-    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb;
+    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isMoT;
+    const isMoTProposer = diplomaticRoles.isMoT && !ourAmb && !isHoGOnly;
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
     // Deduct AP
@@ -3280,10 +3301,13 @@ async function submitTradeProposal() {
 
     const expiresAt = currentTick + DIPLOMACY_CONFIG.NEGOTIATION_DEFAULT_DURATION;
 
+    // Determine proposer role
+    const proposerRole = isHoGOnly ? 'head_of_government' : isMoTProposer ? 'trade_minister' : 'ambassador';
+
     // Build participant entry for the proposer
     const proposerParticipant = {
         faction_id: currentFaction.id,
-        role: isHoGOnly ? 'head_of_government' : 'ambassador',
+        role: proposerRole,
         joined_at_tick: currentTick,
         nation_id: currentNation.id
     };
@@ -3407,11 +3431,12 @@ async function openTradeNegotiation(negotiationId) {
         html += '<div style="color:var(--text-dim);font-size:0.78rem;font-style:italic;padding:4px 0;">No participants yet.</div>';
     } else {
         for (const p of participants) {
-            const roleLabel = p.role === 'ambassador' ? 'Ambassador' : p.role === 'foreign_minister' ? 'Foreign Minister' : p.role === 'prime_minister' ? 'Prime Minister' : 'Head of Government';
+            const roleLabel = p.role === 'ambassador' ? 'Ambassador' : p.role === 'trade_minister' ? 'Minister of Trade' : p.role === 'foreign_minister' ? 'Foreign Minister' : p.role === 'prime_minister' ? 'Prime Minister' : 'Head of Government';
+            const roleClass = p.role === 'ambassador' ? 'role-amb' : p.role === 'trade_minister' ? 'role-mot' : p.role === 'foreign_minister' ? 'role-fm' : 'role-hog';
             const isOurNation = p.nation_id === currentNation.id;
             html += `
                 <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg-body);border:1px solid var(--border-light);border-radius:4px;margin-bottom:4px;">
-                    <span class="diplo-role-badge ${p.role === 'ambassador' ? 'role-amb' : p.role === 'foreign_minister' ? 'role-fm' : 'role-hog'}">${roleLabel}</span>
+                    <span class="diplo-role-badge ${roleClass}">${roleLabel}</span>
                     <span style="font-size:0.78rem;color:var(--text-primary);">${isOurNation ? escapeHtml(currentNation.name) : escapeHtml(partnerName)}</span>
                     <span style="font-size:0.68rem;color:var(--text-dim);margin-left:auto;">Joined tick ${p.joined_at_tick}</span>
                 </div>
@@ -3419,11 +3444,45 @@ async function openTradeNegotiation(negotiationId) {
         }
     }
 
-    // Can FM or PM join?
+    // Check if MoT has joined for each nation
+    const ourMoTJoined = participants.some(p => p.nation_id === currentNation.id && p.role === 'trade_minister');
+    const partnerMoTJoined = participants.some(p => p.nation_id === partnerId && p.role === 'trade_minister');
+
+    // Show MoT requirement warning if ambassador-initiated and MoT hasn't joined
+    if (neg.status === 'active' && (!ourMoTJoined || !partnerMoTJoined)) {
+        const motDeadline = DIPLOMACY_CONFIG.MOT_JOIN_DEADLINE_TICKS;
+        const ticksSinceActive = shardTick - neg.opened_at_tick;
+        const ticksRemaining = motDeadline - ticksSinceActive;
+        let warningMsg = '';
+        if (!ourMoTJoined && !partnerMoTJoined) {
+            warningMsg = 'Both nations\' Ministers of Trade must join within ' + motDeadline + ' tick' + (motDeadline !== 1 ? 's' : '') + ' or negotiations will be cancelled.';
+        } else if (!ourMoTJoined) {
+            warningMsg = 'Your Minister of Trade must join within ' + motDeadline + ' tick' + (motDeadline !== 1 ? 's' : '') + ' or negotiations will be cancelled.';
+        } else {
+            warningMsg = escapeHtml(partnerName) + '\'s Minister of Trade must join within ' + motDeadline + ' tick' + (motDeadline !== 1 ? 's' : '') + ' or negotiations will be cancelled.';
+        }
+        if (ticksRemaining > 0) {
+            warningMsg += ' (' + ticksRemaining + ' tick' + (ticksRemaining !== 1 ? 's' : '') + ' remaining)';
+        }
+        html += '<div class="trade-info-box warning" style="margin-top:8px;">' + warningMsg + '</div>';
+    }
+
+    // Can FM, PM, or MoT join?
     const myParticipant = participants.find(p => p.faction_id === currentFaction.id);
     if (!myParticipant && neg.status === 'active') {
         const isFM = diplomaticRoles.isFM;
         const isPM = diplomaticRoles.isHoG;
+        const isMoT = diplomaticRoles.isMoT;
+        if (isMoT) {
+            const joinCost = DIPLOMACY_CONFIG.JOIN_NEGOTIATION_MOT_AP;
+            html += `
+                <div style="margin-top:8px;">
+                    <button class="wizard-next-btn" onclick="joinTradeNegotiation('${neg.id}', 'trade_minister', ${joinCost})">
+                        Join as Minister of Trade (${joinCost} AP)
+                    </button>
+                </div>
+            `;
+        }
         if (isFM || isPM) {
             const joinCost = isPM ? DIPLOMACY_CONFIG.JOIN_NEGOTIATION_PM_AP : DIPLOMACY_CONFIG.JOIN_NEGOTIATION_FM_AP;
             const joinRole = isPM ? 'Prime Minister' : 'Foreign Minister';
