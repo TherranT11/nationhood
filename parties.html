@@ -185,14 +185,46 @@ async function renderParties() {
         let standingHTML = '';
         if (isRuling) {
             const grip = getGripLevel(f.grip ?? 75);
+
+            const unrest = n.civil_unrest ?? 0;
+            const violence = n.political_violence ?? 0;
+            const stability = n.stability ?? 100;
+            const raw = (unrest * 0.35) + (violence * 0.35) + ((100 - stability) * 0.30);
+            const coupPct = Math.round(Math.max(0, Math.min(100, raw)));
+
+            let coupLabel, coupColor;
+            if (coupPct >= 75) { coupLabel = 'CRITICAL'; coupColor = '#ff4444'; }
+            else if (coupPct >= 50) { coupLabel = 'HIGH'; coupColor = '#ff5722'; }
+            else if (coupPct >= 30) { coupLabel = 'ELEVATED'; coupColor = '#ff9800'; }
+            else if (coupPct >= 15) { coupLabel = 'LOW'; coupColor = '#4CAF50'; }
+            else { coupLabel = 'MINIMAL'; coupColor = '#4CAF50'; }
+
+            const plotMsg = coupPct >= 50
+                ? 'Active plots detected. Factions are mobilizing.'
+                : 'No active plots detected.';
+
             standingHTML = `
             <div class="standing-box">
                 <div class="standing-header">Your Standing</div>
-                <div class="standing-row">
-                    <div class="standing-label">Grip on Power</div>
-                    <div class="standing-value" style="color:${grip.color}">${grip.label}</div>
+                <div class="standing-columns">
+                    <div class="standing-col">
+                        <div class="standing-row">
+                            <div class="standing-label">Grip on Power</div>
+                            <div class="standing-value" style="color:${grip.color}">${grip.label}</div>
+                        </div>
+                        <div class="standing-desc">${grip.desc}</div>
+                    </div>
+                    <div class="standing-col">
+                        <div class="standing-row">
+                            <div class="standing-label">Coup Risk</div>
+                            <div class="standing-value" style="color:${coupColor}">${coupPct}%</div>
+                        </div>
+                        <div class="coup-risk-bar-track">
+                            <div class="coup-risk-bar-fill" style="width:${coupPct}%;background:${coupColor}"></div>
+                        </div>
+                        <div class="standing-desc">${plotMsg}</div>
+                    </div>
                 </div>
-                <div class="standing-desc">${grip.desc}</div>
             </div>`;
         } else {
             const loyalty = getLoyaltyLevel(f.loyalty ?? 75);
@@ -210,41 +242,6 @@ async function renderParties() {
                     <div class="standing-value" style="color:${ambition.color}">${ambition.label}</div>
                 </div>
                 <div class="standing-desc">${ambition.desc}</div>
-            </div>`;
-        }
-
-        // ── Coup Risk (Strongman only) ──
-        let coupRiskHTML = '';
-        if (isRuling) {
-            const unrest = n.civil_unrest ?? 0;
-            const violence = n.political_violence ?? 0;
-            const stability = n.stability ?? 100;
-            // High unrest + high violence + low stability = high coup risk
-            const raw = (unrest * 0.35) + (violence * 0.35) + ((100 - stability) * 0.30);
-            const coupPct = Math.round(Math.max(0, Math.min(100, raw)));
-
-            let coupLabel, coupColor;
-            if (coupPct >= 75) { coupLabel = 'CRITICAL'; coupColor = '#ff4444'; }
-            else if (coupPct >= 50) { coupLabel = 'HIGH'; coupColor = '#ff5722'; }
-            else if (coupPct >= 30) { coupLabel = 'ELEVATED'; coupColor = '#ff9800'; }
-            else if (coupPct >= 15) { coupLabel = 'LOW'; coupColor = '#4CAF50'; }
-            else { coupLabel = 'MINIMAL'; coupColor = '#4CAF50'; }
-
-            const plotMsg = coupPct >= 50
-                ? 'Active plots detected. Factions are mobilizing.'
-                : 'No active plots detected.';
-
-            coupRiskHTML = `
-            <div class="coup-risk-panel">
-                <div class="coup-risk-header">Coup Risk</div>
-                <div class="coup-risk-row">
-                    <span class="coup-risk-pct" style="color:${coupColor}">${coupPct}%</span>
-                    <span class="coup-risk-label" style="color:${coupColor}">${coupLabel}</span>
-                </div>
-                <div class="coup-risk-bar-track">
-                    <div class="coup-risk-bar-fill" style="width:${coupPct}%;background:${coupColor}"></div>
-                </div>
-                <div class="coup-risk-plots">${plotMsg}</div>
             </div>`;
         }
 
@@ -288,7 +285,6 @@ async function renderParties() {
         </div>
         ${standingHTML}
         </div>
-        ${coupRiskHTML}
         </div>
         `;
         return;
