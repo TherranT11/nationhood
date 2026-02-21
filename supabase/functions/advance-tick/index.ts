@@ -491,8 +491,11 @@ const INVERTED_STATS = [
 
 // Stats stored as raw numbers (not 0-100 indices).
 // GDP and debt are stored as raw dollars (88B = 88,000,000,000).
+// All other stats (0-100 indices) use the default divisor of 50.
 const RAW_SCALING_DIVISORS = {
-    population: 1_000_000
+    population: 1_000_000,
+    gdp: 1_000_000_000,
+    debt: 1_000_000_000
 };
 
 // ==================== NATIONAL BUDGET CALCULATION ====================
