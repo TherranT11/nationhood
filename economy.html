@@ -22,7 +22,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatCurrency } from './js/common.js';
-import { calculateNationalBudget, GAME_CONFIG, RAW_SCALING_DIVISORS } from './js/game-common.js';
+import { calculateNationalBudget, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS } from './js/game-common.js';
 
 // ==================== STATE ====================
 var previousTickData = null;
@@ -30,6 +30,7 @@ var previousYearData = null;
 var currentTick = 0;
 var expenditureData = null;
 var expenditureDetails = null;
+var tradeData = null;
 var currentNation = null;
 var gameYear = 0;
 
@@ -51,6 +52,7 @@ initPage('economy', async function(state) {
     await loadPreviousTickData(nation.id);
     await loadPreviousYearData(nation.id);
     await loadExpenditureData(nation.id, nation);
+    await loadTradeData(nation.id);
     renderEconomyPage(nation);
 });
 
@@ -188,6 +190,52 @@ function scaleCost(baseCost, scalingStat, nation) {
     return baseCost * (statVal / divisor);
 }
 
+// ==================== TRADE DATA ====================
+async function loadTradeData(nationId) {
+    var cacheKey = 'trade_data_' + nationId;
+    var cached = qCache(cacheKey);
+    if (cached) { tradeData = cached; return; }
+
+    // Get latest trade summary for this nation
+    var sumRes = await _supabase.from('trade_summary')
+        .select('*')
+        .eq('nation_id', nationId)
+        .order('tick', { ascending: false })
+        .limit(1);
+
+    if (!sumRes.data || sumRes.data.length === 0) { tradeData = null; return; }
+    var summary = sumRes.data[0];
+
+    // Get per-sector flows for this tick
+    var flowRes = await _supabase.from('trade_flows')
+        .select('sector, export_volume, import_volume, net_flow, price_modifier')
+        .eq('nation_id', nationId)
+        .eq('tick', summary.tick);
+
+    // Get previous tick flows for trend arrows
+    var prevFlowRes = await _supabase.from('trade_flows')
+        .select('sector, export_volume, import_volume')
+        .eq('nation_id', nationId)
+        .eq('tick', summary.tick - 1);
+
+    var flows = {};
+    if (flowRes.data) {
+        for (var i = 0; i < flowRes.data.length; i++) {
+            flows[flowRes.data[i].sector] = flowRes.data[i];
+        }
+    }
+
+    var prevFlows = {};
+    if (prevFlowRes.data) {
+        for (var i = 0; i < prevFlowRes.data.length; i++) {
+            prevFlows[prevFlowRes.data[i].sector] = prevFlowRes.data[i];
+        }
+    }
+
+    tradeData = { summary: summary, flows: flows, prevFlows: prevFlows };
+    qCacheSet(cacheKey, tradeData, 2 * 60 * 1000);
+}
+
 // ==================== RENDER ====================
 function renderEconomyPage(nation) {
     var h = '';
@@ -195,6 +243,7 @@ function renderEconomyPage(nation) {
     h += '<div class="economy-body">';
     h += '<div class="economy-left">';
     h += renderBudgetPanel(nation);
+    h += renderTradePanel(nation);
     h += '</div>';
     h += '<div class="economy-right">';
     h += renderMinistryPanel();
@@ -261,6 +310,13 @@ function renderBudgetPanel(nation) {
     var budget = calculateNationalBudget(nation);
     var currentYear = gameYear || new Date().getFullYear();
     var previousYear = currentYear - 1;
+
+    // Override tariff revenue with real trade engine data when available
+    if (tradeData && tradeData.summary && Number(tradeData.summary.tariff_revenue) > 0) {
+        var oldTariff = budget.tariffRevenue;
+        budget.tariffRevenue = Number(tradeData.summary.tariff_revenue);
+        budget.grossRevenue = budget.grossRevenue - oldTariff + budget.tariffRevenue;
+    }
 
     // Compute previous year budget for YoY comparison
     var prevBudget = null;
@@ -357,6 +413,122 @@ function renderBudgetPanel(nation) {
     h += '</div>'; // .budget-columns
     h += '</div>'; // .budget-panel
     return h;
+}
+
+// ==================== TRADE PANEL ====================
+function renderTradePanel(nation) {
+    var h = '<div class="budget-panel trade-panel">';
+
+    // Header
+    h += '<div class="budget-header">';
+    h += '<div class="budget-title">TRADE</div>';
+    h += '<div class="budget-subtitle">Exports &amp; Imports &mdash; Per Tick</div>';
+    h += '</div>';
+
+    // No data fallback
+    if (!tradeData || !tradeData.summary) {
+        h += '<div class="trade-placeholder">Trade data will appear after the next tick.</div>';
+        h += '</div>';
+        return h;
+    }
+
+    var summary = tradeData.summary;
+    var totalExports = Number(summary.total_exports) || 0;
+    var totalImports = Number(summary.total_imports) || 0;
+    var surplus = Number(summary.trade_surplus) || 0;
+
+    // Summary row: Exports / Imports / Balance
+    h += '<div class="trade-summary-row">';
+
+    h += '<div class="trade-summary-item">';
+    h += '<span class="trade-summary-label">Exports</span>';
+    h += '<span class="trade-summary-value exports">' + formatBudgetCurrency(totalExports) + '</span>';
+    h += '</div>';
+
+    h += '<div class="trade-summary-item">';
+    h += '<span class="trade-summary-label">Imports</span>';
+    h += '<span class="trade-summary-value imports">' + formatBudgetCurrency(totalImports) + '</span>';
+    h += '</div>';
+
+    var balClass = surplus >= 0 ? 'surplus' : 'deficit';
+    var balSign = surplus >= 0 ? '+' : '';
+    h += '<div class="trade-summary-item">';
+    h += '<span class="trade-summary-label">Balance</span>';
+    h += '<span class="trade-summary-value ' + balClass + '">' + balSign + formatBudgetCurrency(surplus) + '</span>';
+    h += '</div>';
+
+    h += '</div>'; // .trade-summary-row
+
+    // Two-column breakdown
+    h += '<div class="budget-columns">';
+
+    // --- Left: Export Breakdown ---
+    h += '<div class="budget-column">';
+    h += '<div class="budget-column-header">Export Breakdown</div>';
+    var expTotal = 0;
+    for (var i = 0; i < TRADE_SECTORS.length; i++) {
+        var sKey = TRADE_SECTORS[i].key;
+        var flow = tradeData.flows[sKey];
+        var expVol = flow ? Number(flow.export_volume) || 0 : 0;
+        if (expVol <= 0) continue;
+        expTotal += expVol;
+        var prevVol = tradeData.prevFlows[sKey] ? Number(tradeData.prevFlows[sKey].export_volume) || 0 : null;
+        h += tradeLineItem(TRADE_SECTORS[i].label, expVol, prevVol, false);
+    }
+    h += budgetTotalLine(expTotal);
+    h += '</div>';
+
+    // --- Right: Import Breakdown ---
+    h += '<div class="budget-column trade-inverted">';
+    h += '<div class="budget-column-header">Import Breakdown</div>';
+    var impTotal = 0;
+    for (var i = 0; i < TRADE_SECTORS.length; i++) {
+        var sKey = TRADE_SECTORS[i].key;
+        if (TRADE_SECTORS[i].export_only) continue;
+        var flow = tradeData.flows[sKey];
+        var impVol = flow ? Number(flow.import_volume) || 0 : 0;
+        if (impVol <= 0) continue;
+        impTotal += impVol;
+        var prevVol = tradeData.prevFlows[sKey] ? Number(tradeData.prevFlows[sKey].import_volume) || 0 : null;
+        h += tradeLineItem(TRADE_SECTORS[i].label, impVol, prevVol, true);
+    }
+    h += budgetTotalLine(impTotal);
+    h += '</div>';
+
+    h += '</div>'; // .budget-columns
+    h += '</div>'; // .budget-panel
+    return h;
+}
+
+function tradeLineItem(label, value, prevValue, inverted) {
+    var h = '<div class="budget-line-item">';
+    h += '<div class="budget-line-top">';
+    h += '<span class="budget-line-label">' + escapeHtml(label) + '</span>';
+    h += '<span class="budget-line-value">' + formatBudgetCurrency(value) + '</span>';
+    h += '</div>';
+    if (prevValue !== null && prevValue !== undefined) {
+        h += '<div class="budget-line-trend">' + tradeTrendHtml(value, prevValue, inverted) + '</div>';
+    }
+    h += '</div>';
+    return h;
+}
+
+function tradeTrendHtml(current, previous, inverted) {
+    if (previous === null || previous === undefined) return '';
+    if (previous === 0 && current === 0) return '';
+    if (previous === 0) {
+        return '<span class="budget-trend trend-up">&#9650; New</span>';
+    }
+    var pctChange = ((current - previous) / Math.abs(previous)) * 100;
+    if (Math.abs(pctChange) < 0.1) {
+        return '<span class="budget-trend trend-neutral">&mdash; 0.0%</span>';
+    }
+    // For exports: up = green (trend-up), down = red (trend-down)
+    // For imports (inverted): up = red, down = green — handled via CSS .trade-inverted
+    if (pctChange > 0) {
+        return '<span class="budget-trend trend-up">&#9650; +' + pctChange.toFixed(1) + '%</span>';
+    }
+    return '<span class="budget-trend trend-down">&#9660; ' + Math.abs(pctChange).toFixed(1) + '%</span>';
 }
 
 // ==================== MINISTRY DETAIL PANEL ====================
