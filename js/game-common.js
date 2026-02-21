@@ -136,10 +136,73 @@ for (var _tsi = 0; _tsi < TRADE_SECTORS.length; _tsi++) {
 /**
  * Calculate a nation's export capacity for a given sector.
  * Returns raw dollar value of potential exports.
+ *
+ * Formulas use 0-20 scale internally (spec baseline). Since codebase stats are
+ * 0-100, scores are normalized by dividing by 5.
+ *
+ * @param {Object} nation    – nation row with all stats (gdp in raw dollars, stats 0-100)
+ * @param {Object} sector    – TRADE_SECTORS entry
+ * @param {Object} [opts]    – optional: { defense_pct } for arms sector (0-100, % of budget)
+ * @returns {number} export capacity in dollars (value side, after currency modifier)
  */
-export function calculateExportCapacity(nation, sector) {
-    // STUB — Phase 2 implementation
-    return 0;
+export function calculateExportCapacity(nation, sector, opts) {
+    var cfg = TRADE_CONFIG;
+
+    // GDP modifier: bigger economies trade more in absolute terms
+    var gdp = Number(nation.gdp) || 0;
+    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    if (gdpModifier <= 0) return 0;
+
+    // Calculate primary export score from sector stat(s) (0-100 scale)
+    var score = 0;
+    if (sector.export_stat) {
+        score = Number(nation[sector.export_stat]) || 0;
+    } else if (sector.export_stats) {
+        var sum = 0;
+        for (var i = 0; i < sector.export_stats.length; i++) {
+            sum += Number(nation[sector.export_stats[i]]) || 0;
+        }
+        score = sum / sector.export_stats.length;
+    }
+
+    // Threshold check: stat must exceed sector threshold to generate any exports
+    if (score <= (sector.export_threshold || 0)) return 0;
+
+    // Normalize from 0-100 codebase scale to 0-20 spec scale
+    var normalizedScore = score / 5;
+
+    // Base capacity = normalizedScore × BASE_TRADE_MULTIPLIER × gdpModifier
+    var capacity = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+
+    // ── Sector-specific modifiers ──
+
+    // Arms: requires meaningful defense spending to have an arms industry
+    if (sector.key === 'arms') {
+        var defensePct = (opts && opts.defense_pct) || 0;
+        if (defensePct <= 8) return 0;
+        capacity *= (defensePct / 15);  // 15% defense spending = 1.0 multiplier
+    }
+
+    // Tourism: smaller than goods trade + requires stability
+    if (sector.key === 'tourism') {
+        capacity *= 0.5;
+        if ((Number(nation.stability) || 0) <= 25) return 0;
+    }
+
+    // Services & Finance: smaller than goods trade
+    if (sector.key === 'services_finance') {
+        capacity *= 0.7;
+    }
+
+    // ── Currency strength modifier ──
+    // Affects export VALUE (what appears on trade page).
+    // Weak currency = exports are cheaper = lower value per unit.
+    // currency_strength 50 = 1.0 (neutral), 25 = 0.5 (cheap), 75 = 1.5 (premium)
+    var currencyStrength = Number(nation.currency_strength) || 50;
+    var currencyModifier = currencyStrength / 50;
+    capacity *= currencyModifier;
+
+    return Math.round(capacity);
 }
 
 /**
