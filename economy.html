@@ -31,6 +31,7 @@ var currentTick = 0;
 var expenditureData = null;
 var expenditureDetails = null;
 var currentNation = null;
+var gameYear = 0;
 
 // ==================== INIT ====================
 initPage('economy', async function(state) {
@@ -59,10 +60,13 @@ async function loadPreviousTickData(nationId) {
     var cached = qCache(cacheKey);
     if (cached) { previousTickData = cached; return; }
 
-    var res = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    var res = await _supabase.from('shard').select('current_tick, current_date').eq('name', 'Alpha Shard').single();
     if (!res.data) return;
 
     currentTick = res.data.current_tick;
+    if (res.data.current_date) {
+        gameYear = parseInt(res.data.current_date.split(', ')[1]) || 0;
+    }
     var previousTick = currentTick - 1;
     if (previousTick < 0) return;
 
@@ -255,7 +259,7 @@ function renderHeroStat(label, value, statKey, inverted, isGdpGrowth) {
 // ==================== BUDGET PANEL ====================
 function renderBudgetPanel(nation) {
     var budget = calculateNationalBudget(nation);
-    var currentYear = new Date().getFullYear();
+    var currentYear = gameYear || new Date().getFullYear();
     var previousYear = currentYear - 1;
 
     // Compute previous year budget for YoY comparison
