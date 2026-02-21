@@ -391,6 +391,9 @@ function pollForNewTick() {
                     sessionStorage.removeItem(STATE_KEY);
                     qCacheBust('');  // clear all query caches on tick change
 
+                    // Notify any page-level listeners that a tick advanced
+                    window.dispatchEvent(new Event('tick-advanced'));
+
                     // Restart the countdown with the new target
                     startTickCountdown();
                 }
@@ -423,12 +426,16 @@ export function formatCurrency(n) {
 }
 
 /**
- * Convert a small-scale stat (value = billions) to raw dollar amount.
- * DB stores GDP/debt as small numbers: 195 = $195 Billion.
+ * GDP and debt are stored in the DB as raw dollars:
+ *   88,000,000,000 = $88 Billion
+ *
+ * This function is now a pass-through. It exists only to avoid
+ * breaking callers (nation.html, map.html, forum.html) that still
+ * reference it. No conversion is needed — formatCurrencyShort()
+ * handles the display formatting directly.
  */
 export function scaleRawToDollars(val) {
-    if (val == null || val <= 0) return val;
-    return val * 1e9;
+    return val;
 }
 
 export function showLoading(containerId = 'content-area') {

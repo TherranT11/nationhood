@@ -108,7 +108,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust } from './js/common.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats } from './js/game-common.js';
 (function () {
     'use strict';
 let currentNation = null, currentFaction = null, currentSeats = 0;
@@ -125,6 +125,9 @@ let isSubmitting = false;
 let termBill = 'Bill', termBills = 'Bills', termDraft = 'Draft Bill', termPropose = 'Propose Bill';
 let showingAllLaws = false;
 let factionIdeology = null; // Dynamic ideology scores for current player
+let archiveBills = null; // null = not loaded yet; array once fetched
+let showingPassedLaws = false;
+const FALLBACK_COLORS = ['#ff4444','#4CAF50','#2196F3','#ff9800','#9C27B0','#00BCD4','#E91E63','#CDDC39'];
 
 function _getCompatiblePolicies(sector) {
     const _activePolicyIds = new Set(activeLaws.map(al => al.policy_id));
@@ -178,11 +181,15 @@ initPage('laws', async (state) => {
         // Reload data after resolutions
         await loadLawsData();
         // Show notification
-        const msgs = resolutions.map(r =>
-            r.result === 'passed'
-                ? '✅ ' + r.billName + ' PASSED (' + r.votesFor + ' for / ' + r.votesAgainst + ' against)'
-                : '❌ ' + r.billName + ' FAILED (' + r.votesFor + ' for / ' + r.votesAgainst + ' against)'
-        );
+        const msgs = resolutions.map(r => {
+            const earlyTag = r.earlyResolution === 'majority_reached' ? ' (Early Majority)'
+                : r.earlyResolution === 'majority_opposed' ? ' (Majority Opposed)' : '';
+            return r.result === 'passed'
+                ? '✅ ' + r.billName + ' PASSED' + earlyTag + ' (' + r.votesFor + ' for / ' + r.votesAgainst + ' against)'
+                : r.result === 'failed'
+                    ? '❌ ' + r.billName + ' FAILED' + earlyTag + ' (' + r.votesFor + ' for / ' + r.votesAgainst + ' against)'
+                    : '📋 ' + r.billName + ' — ' + r.result + ' (' + r.votesFor + ' for / ' + r.votesAgainst + ' against)';
+        });
         setTimeout(() => { alert('Vote Results:\n\n' + msgs.join('\n')); }, 500);
     }
 
@@ -195,12 +202,13 @@ initPage('laws', async (state) => {
 
 async function loadLawsData() {
     try {
+        archiveBills = null; // Reset so archive re-fetches on next open
         const nid = currentNation.id;
 
         // Policies are static game data — cache aggressively
         const cachedPolicies = qCache('policies_active');
 
-        const { data: parties } = await _supabase.from('factions').select('id, faction_name, is_npc, seats, action_points').eq('nation_id', nid).eq('faction_type', 'party');
+        const { data: parties } = await _supabase.from('factions').select('id, faction_name, is_npc, seats, action_points, abbreviation, party_color').eq('nation_id', nid).eq('faction_type', 'party');
         allParties = parties || [];
         const seatData = await loadSeats(_supabase, nid, lawsIsAutocracy, allParties, currentFaction?.id);
         allPartySeats = seatData.allPartySeats; currentSeats = seatData.currentSeats;
@@ -306,6 +314,7 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
                 <div class="section-header" style="margin-bottom:0;border-bottom:none;">${pageTitle}</div>
                 <div class="laws-header-buttons">
                     <button class="all-laws-btn" onclick="toggleAllLaws()">📋 All Laws</button>
+                    <button class="passed-laws-btn" onclick="togglePassedLaws()">📜 Passed Laws</button>
                     <button class="draft-btn ${lawsIsAutocracy ? 'autocracy-btn' : ''}" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'} ${noSeatsTitle}>
                         ${termPropose} <span class="ap-cost">${GAME_CONFIG.DRAFT_BILL_AP_COST} AP</span>
                     </button>
@@ -330,6 +339,9 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
                 <div id="all-laws-list"></div>
             </div>
 
+            <!-- Passed Laws Archive Panel (hidden by default) -->
+            <div class="passed-laws-panel" id="passed-laws-panel"></div>
+
             <!-- Bills View (shown by default) -->
             <div id="bills-view">
                 ${presidentDeskBills.length > 0 ? renderPresidentDeskBills() : ''}
@@ -351,8 +363,12 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
 
 function toggleAllLaws() {
     showingAllLaws = !showingAllLaws;
+    if (showingAllLaws && showingPassedLaws) {
+        showingPassedLaws = false;
+        document.getElementById('passed-laws-panel').classList.remove('active');
+    }
     document.getElementById('all-laws-panel').classList.toggle('active', showingAllLaws);
-    document.getElementById('bills-view').style.display = showingAllLaws ? 'none' : 'block';
+    document.getElementById('bills-view').style.display = (showingAllLaws || showingPassedLaws) ? 'none' : 'block';
     if (showingAllLaws) filterAllLaws();
 }
 
@@ -534,7 +550,10 @@ function renderFloorBill(bill, isVetoed) {
                     <div class="floor-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'no_confidence' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚡ No Confidence</span>' : (bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : (bill.bill_type === 'foundational' ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>' : (bill.bill_type === 'confirmation' ? ' <span style="background:#1a5276;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Confirmation</span>' : (bill.bill_type === 'minister_confirmation' ? ' <span style="background:#E65100;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Cabinet Confirmation</span>' : (bill.bill_type === 'veto_override' ? ' <span style="background:#B71C1C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Veto Override</span>' : (bill.bill_type === 'ratification' ? ' <span style="background:#00695C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🌐 Ratification</span>' : ''))))))}</div>
                     <div class="committee-bill-sponsor">${bill.bill_type === 'no_confidence' ? 'Filed' : 'Proposed'} by ${bill.factions?.faction_name || 'Unknown'}</div>
                 </div>
-                ${isVetoed ? `<div class="floor-status vetoed-status">VETOED</div>` : `<div class="floor-status">VOTING — Ends Tick ${bill.voting_ends_tick}</div>`}
+                ${isVetoed ? `<div class="floor-status vetoed-status">VETOED</div>`
+                    : bill.early_resolution_status === 'majority_reached' ? `<div class="floor-status" style="color:#4CAF50;border-color:#4CAF50;">MAJORITY REACHED — Passes Next Tick</div>`
+                    : bill.early_resolution_status === 'majority_opposed' ? `<div class="floor-status" style="color:#ff4444;border-color:#ff4444;">MAJORITY OPPOSED — Fails Next Tick</div>`
+                    : `<div class="floor-status">VOTING — ${bill.votes_for || 0} YES / ${bill.votes_against || 0} NO</div>`}
             </div>
             <div class="bill-articles">
                 ${bill.bill_type === 'no_confidence' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">⚡ Motion to dissolve the current government</span><div class="article-desc">Requires simple majority (YES > NO) to pass.</div></div></div>' :
@@ -553,7 +572,7 @@ function renderFloorBill(bill, isVetoed) {
                 }).join('')))))))}
             </div>
             ${isVetoed ? `<div class="vetoed-stamp">${isPresidential ? '⛔ VETOED BY PRESIDENT' : '⛔ VETOED BY HEAD FACTION'}</div>` : `
-                <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span></div>
+                <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span><span style="color:var(--text-secondary);font-size:0.75rem;margin-left:8px;">${GAME_CONFIG.TOTAL_SEATS - (bill.votes_for || 0) - (bill.votes_against || 0)} undeclared</span></div>
                 ${lawsIsAutocracy && isHeadFaction ? `<div class="veto-banner"><div><div class="veto-banner-text">⚠ You may veto this ${termBill.toLowerCase()}</div><div style="font-size:0.75rem;color:#888;">Costs -${GAME_CONFIG.VETO_APPROVAL_COST} Approval</div></div><button class="stance-btn veto" onclick="event.stopPropagation(); vetoDecree('${bill.id}')">VETO</button></div>` : ''}
             `}
             ${!isVetoed ? `<div class="click-hint">Click to view full ${termBill.toLowerCase()} & vote →</div>` : ''}
@@ -580,7 +599,7 @@ function renderCommitteeBills() {
 
 function renderRecentBills() {
     return `<div class="section-header" style="color:#888;">Recently Resolved</div>` +
-        recentBills.map(bill => {
+        recentBills.slice(0, 5).map(bill => {
             const isPassed = bill.status === 'passed';
             const statusColor = isPassed ? '#4CAF50' : '#ff4444';
             const statusText = isPassed ? 'PASSED' : 'FAILED';
@@ -601,7 +620,161 @@ function renderRecentBills() {
                         <div class="floor-status" style="color:${statusColor};font-weight:bold;">${statusText}</div>
                     </div>
                 </div>`;
-        }).join('');
+        }).join('') +
+        `<button class="archive-view-all-btn" onclick="togglePassedLaws()">View full legislative record →</button>`;
+}
+
+// ==================== PASSED LAWS ARCHIVE ====================
+
+async function loadArchiveData() {
+    if (archiveBills !== null) return;
+    const nid = currentNation.id;
+    const { data } = await _supabase.from('bills')
+        .select('*, factions(faction_name, abbreviation, party_color), bill_articles(*, policies(*)), bill_support(*, factions(faction_name, abbreviation, party_color))')
+        .eq('nation_id', nid)
+        .in('status', ['passed', 'failed'])
+        .order('passed_tick', { ascending: false });
+    archiveBills = data || [];
+}
+
+async function togglePassedLaws() {
+    showingPassedLaws = !showingPassedLaws;
+    if (showingPassedLaws && showingAllLaws) {
+        showingAllLaws = false;
+        document.getElementById('all-laws-panel').classList.remove('active');
+    }
+    const panel = document.getElementById('passed-laws-panel');
+    const billsView = document.getElementById('bills-view');
+    if (showingPassedLaws) {
+        panel.classList.add('active');
+        billsView.style.display = 'none';
+        if (archiveBills === null) {
+            panel.innerHTML = `<button class="all-laws-back" onclick="togglePassedLaws()">\u2190 Back to ${termBills}</button><div style="text-align:center;padding:40px;color:#888;">Loading legislative record...</div>`;
+            await loadArchiveData();
+        }
+        renderPassedLawsContent();
+    } else {
+        panel.classList.remove('active');
+        billsView.style.display = 'block';
+    }
+}
+
+function renderPassedLawsContent() {
+    const panel = document.getElementById('passed-laws-panel');
+    if (!archiveBills || archiveBills.length === 0) {
+        panel.innerHTML = `<button class="all-laws-back" onclick="togglePassedLaws()">\u2190 Back to ${termBills}</button>
+            <div class="section-header" style="font-size:1rem;">Legislative Record</div>
+            <div style="text-align:center;color:#666;padding:40px;">No legislative record yet.</div>`;
+        return;
+    }
+    const passedCount = archiveBills.filter(b => b.status === 'passed').length;
+    const failedCount = archiveBills.filter(b => b.status === 'failed').length;
+    panel.innerHTML = `<button class="all-laws-back" onclick="togglePassedLaws()">\u2190 Back to ${termBills}</button>
+        <div class="section-header" style="font-size:1rem;">Legislative Record</div>
+        <div class="archive-summary">
+            <span class="archive-summary-stat passed">${passedCount} Passed</span>
+            <span class="archive-summary-stat failed">${failedCount} Failed</span>
+            <span class="archive-summary-stat total">${archiveBills.length} Total</span>
+        </div>
+        <div class="archive-list">${archiveBills.map(bill => renderArchiveBill(bill)).join('')}</div>`;
+}
+
+function renderArchiveBill(bill) {
+    const isPassed = bill.status === 'passed';
+    const statusBadge = isPassed
+        ? '<span class="archive-badge passed">PASSED</span>'
+        : '<span class="archive-badge failed">FAILED</span>';
+
+    // Sponsor info
+    const sponsorName = bill.factions?.abbreviation || bill.factions?.faction_name || 'Unknown';
+    const sponsorColor = bill.factions?.party_color || '#888';
+
+    // Vote tally
+    const yesVotes = bill.votes_for || 0;
+    const noVotes = bill.votes_against || 0;
+    const abstainVotes = Math.max(0, GAME_CONFIG.TOTAL_SEATS - yesVotes - noVotes);
+
+    // Party breakdown from bill_support
+    const supports = (bill.bill_support || [])
+        .filter(s => ['yes', 'no', 'abstain'].includes(s.stance))
+        .sort((a, b) => (b.seat_count || 0) - (a.seat_count || 0));
+    const partyBreakdown = supports.map(s => {
+        const pName = s.factions?.abbreviation || s.factions?.faction_name || '?';
+        const pColor = s.factions?.party_color || '#888';
+        const stanceLabel = s.stance.toUpperCase();
+        const dotColor = s.stance === 'yes' ? '#4CAF50' : (s.stance === 'no' ? '#ff4444' : '#888');
+        return `<span class="archive-party-vote"><span style="color:${pColor};font-weight:bold;">${pName}</span> <span style="color:${dotColor};">\u25CF</span> ${stanceLabel} (${s.seat_count || 0})</span>`;
+    }).join(' ');
+
+    // Ideology tags from bill articles
+    const articles = bill.bill_articles || [];
+    const allIdeologies = new Set();
+    articles.forEach(a => {
+        if (a.policies) {
+            const ideos = (a.policies.ideologies && Array.isArray(a.policies.ideologies))
+                ? a.policies.ideologies : (a.policies.ideology ? [a.policies.ideology] : []);
+            ideos.forEach(i => allIdeologies.add(i));
+        }
+    });
+    const ideologyPills = [...allIdeologies].map(i => renderIdeoTag(i)).join(' ');
+
+    // Stat effects
+    let effectsHTML = '';
+    if (isPassed) {
+        const effects = [];
+        articles.forEach(a => {
+            if (a.policies) {
+                if (a.policies.stat_effects && Array.isArray(a.policies.stat_effects)) {
+                    a.policies.stat_effects.forEach(e => {
+                        effects.push({ stat: e.stat_key, dir: e.direction });
+                    });
+                } else if (a.policies.target_stat) {
+                    effects.push({ stat: a.policies.target_stat, dir: a.policies.stat_direction === 'UP' ? 'up' : 'down' });
+                }
+            }
+        });
+        if (effects.length > 0) {
+            effectsHTML = effects.map(e => {
+                const arrow = e.dir === 'up' ? '\u25B2' : '\u25BC';
+                const cls = e.dir === 'up' ? 'tag-stat-up' : 'tag-stat-down';
+                return `<span class="tag ${cls}">${formatStatName(e.stat)} ${arrow}</span>`;
+            }).join(' ');
+        }
+    } else {
+        effectsHTML = '<span style="color:#666;font-style:italic;">No effect (failed)</span>';
+    }
+
+    // Type badge
+    const typeLabel = bill.bill_type === 'foundational' ? ' <span class="archive-type-badge" style="background:#9C27B0;">Foundational</span>'
+        : bill.bill_type === 'no_confidence' ? ' <span class="archive-type-badge" style="background:#ff4444;">No Confidence</span>'
+        : bill.bill_type === 'repeal' ? ' <span class="archive-type-badge" style="background:#ff4444;">Repeal</span>'
+        : bill.bill_type === 'veto_override' ? ' <span class="archive-type-badge" style="background:#B71C1C;">Veto Override</span>'
+        : bill.bill_type === 'ratification' ? ' <span class="archive-type-badge" style="background:#00695C;">Ratification</span>'
+        : bill.bill_type === 'minister_confirmation' ? ' <span class="archive-type-badge" style="background:#E65100;">Cabinet Confirmation</span>'
+        : bill.bill_type === 'confirmation' ? ' <span class="archive-type-badge" style="background:#1a5276;">Confirmation</span>'
+        : bill.bill_type === 'budget' ? ' <span class="archive-type-badge" style="background:#1B5E20;">Budget</span>'
+        : '';
+
+    return `
+        <div class="archive-bill clickable-bill" onclick="window.location.href='bill.html?id=${bill.id}'">
+            <div class="archive-bill-header">
+                <div class="archive-bill-title">
+                    <span class="archive-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${typeLabel}</span>
+                    ${statusBadge}
+                </div>
+                <div class="archive-bill-meta">
+                    <span>Proposed by <span style="color:${sponsorColor};font-weight:bold;">${sponsorName}</span></span>
+                    <span class="archive-tick">Tick ${bill.passed_tick || '?'}</span>
+                </div>
+            </div>
+            <div class="archive-vote-tally">
+                <span class="archive-yes">${yesVotes} YES</span> — <span class="archive-no">${noVotes} NO</span> — <span class="archive-abstain">${abstainVotes} ABSTAIN</span>
+            </div>
+            ${partyBreakdown ? `<div class="archive-party-breakdown">${partyBreakdown}</div>` : ''}
+            <div class="archive-bill-footer">
+                ${ideologyPills} ${effectsHTML}
+            </div>
+        </div>`;
 }
 
 function renderCommitteeBill(bill) {
@@ -1181,12 +1354,22 @@ async function submitCommitteeArticle() {
 }
 
 async function sendToFloor(billId) {
+    const bill = committeeBills.find(b => b.id === billId);
+    // Prompt to rename the bill before sending to floor
+    const newName = prompt('Rename this Bill?', bill?.bill_name || '');
+    if (newName === null) return; // User cancelled
+
     try {
+        const updateFields = { status: 'floor' };
+        const trimmed = newName.trim();
+        if (trimmed && trimmed !== bill?.bill_name) {
+            updateFields.bill_name = trimmed;
+        }
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        await _supabase.from('bills').update({ status: 'floor', voting_ends_tick: (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS }).eq('id', billId);
+        updateFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
+        await _supabase.from('bills').update(updateFields).eq('id', billId);
 
         // Apply dynamic ideology penalty to sponsor
-        const bill = committeeBills.find(b => b.id === billId);
         if (bill && factionIdeology) {
             const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, bill.bill_articles || []);
             if (dynamicPenalty < 0) {
@@ -1224,6 +1407,7 @@ window.vetoDecree = vetoDecree;
 window.enactDecree = enactDecree;
 window.retractBill = retractBill;
 window.filterAllLaws = filterAllLaws;
+window.togglePassedLaws = togglePassedLaws;
 })();
 </script>
 </body>

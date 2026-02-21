@@ -19,12 +19,14 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser, getFullIdeologyProfile, loadNationIdeologies } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 
 let currentFaction = null;
 let currentNation = null;
 let currentShard = null;
+let selectedIdeologyFactionId = null;
+let ideologyAllParties = null;
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 function tickToDate(tick) {
@@ -128,6 +130,7 @@ async function renderParties() {
     const n = currentNation;
 
     if (!f || !n) {
+        console.warn('[parties] Missing faction or nation:', { faction: f, nation: n });
         el.innerHTML = '<p style="color:var(--text-muted);text-align:center;margin-top:40px;">No party data available.</p>';
         return;
     }
@@ -142,9 +145,16 @@ async function renderParties() {
     // Fetch all parties for seat + vote share data
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, faction_name, abbreviation, seats, national_vote_share, party_color')
+        .select('id, faction_name, abbreviation, seats, national_vote_share, party_color, party_logo, leader_first_name, leader_last_name, leader_age, founded_tick, ideology_value_1, ideology_value_2')
         .eq('nation_id', n.id)
         .eq('faction_type', 'party');
+
+    // Load ideology data for all parties
+    const nationIdeologies = await loadNationIdeologies(_supabase, n.id);
+    const ideoByFaction = {};
+    for (const row of (nationIdeologies || [])) {
+        ideoByFaction[row.faction_id] = row;
+    }
 
     const seatData = await loadSeats(_supabase, n.id, false, allParties || [], f.id);
     const mySeats = seatData.currentSeats || 0;
@@ -360,32 +370,11 @@ async function renderParties() {
             }
         }
 
-        const isRulingFaction = isAutocracy && n.ruling_faction_id === f?.id;
-
-        // Autocracy loyalty thresholds and seize power eligibility
-        let myLoyalty = f?.loyalty ?? 50;
-        let isSuppressed = isAutocracy && myLoyalty < 15;
-        let isDisloyal = isAutocracy && myLoyalty >= 15 && myLoyalty < 30;
-        let isCoupCooldown = false;
-        let cooldownTick = f?.action_lockout_until_tick;
-        let coupTick = 0;
-        if (isAutocracy && f) {
-            const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-            coupTick = shard?.current_tick || 0;
-            isCoupCooldown = cooldownTick && coupTick < cooldownTick;
-        }
-        let canSeizePower = false;
-        if (isAutocracy && !isRulingFaction && f) {
-            const disloyalCount = parties.filter(p => p.id !== f?.id && (p.loyalty ?? 50) < 30).length;
-            canSeizePower = disloyalCount >= 2 && (f?.action_points || 0) >= 15 && !isCoupCooldown;
-        }
-
         // Build campaign actions
         let campaignActionsHTML = '';
         const lastPollData = null;   // TODO: fetch from campaign_actions when poll feature is implemented
         const previousPollData = null;
-        if (!isAutocracy) {
-            campaignActionsHTML = `
+        campaignActionsHTML = `
             <div class="section-header" style="margin-top: 30px;">Your Party Resources</div>
             <div class="stat-grid stat-grid-3col" style="margin-bottom: 12px;">
                 <div class="stat-card"><div class="stat-label">Action Points</div><div class="stat-value" id="party-ap">${f?.action_points || 0}</div></div>
@@ -474,129 +463,6 @@ async function renderParties() {
 
             <div class="section-header" style="margin-top: 20px;">Recent Actions</div>
             <div id="action-log" class="action-log"><div class="action-log-empty">No actions taken yet this campaign.</div></div>`;
-        } else {
-            const loyaltyColor = myLoyalty >= 30 ? '#4CAF50' : myLoyalty >= 15 ? '#ff9800' : '#ff4444';
-            const statusText = myLoyalty >= 30 ? 'LOYAL' : myLoyalty >= 15 ? 'DISLOYAL' : 'SUPPRESSED';
-            const statusColor = loyaltyColor;
-
-            campaignActionsHTML = `
-            <div class="section-header" style="margin-top: 30px;">Your Faction Resources</div>
-            <div class="stat-grid stat-grid-4col" style="margin-bottom: 24px;">
-                <div class="stat-card"><div class="stat-label">Action Points</div><div class="stat-value" id="party-ap">${f?.action_points || 0}</div></div>
-                <div class="stat-card"><div class="stat-label">Seats</div><div class="stat-value" id="party-seats">${f?.seats || 0} / ${GAME_CONFIG.TOTAL_SEATS}</div></div>
-                <div class="stat-card"><div class="stat-label">Faction Loyalty</div><div class="stat-value" id="party-loyalty" style="color:${loyaltyColor}">${myLoyalty}%</div></div>
-                <div class="stat-card"><div class="stat-label">Status</div><div class="stat-value" id="party-status" style="color:${statusColor}">${statusText}</div></div>
-            </div>
-
-            ${isCoupCooldown ? `
-            <div style="background: #3a1a1a; border: 1px solid #ff9800; border-radius: 8px; padding: 16px; text-align: center; margin-bottom: 20px;">
-                <div style="color: #ff9800; font-weight: bold; font-size: 1.1rem;">COUP COOLDOWN</div>
-                <div style="color: #aaa; margin-top: 8px;">Seize Power is unavailable until tick ${cooldownTick} after your failed coup attempt. Other actions still work.</div>
-            </div>` : ''}
-
-            <div class="section-header">Faction Actions</div>
-
-            ${isSuppressed ? `
-            <div style="background: #3a1a1a; border: 1px solid #ff4444; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-                <div style="color: #ff4444; font-weight: bold;">SUPPRESSED</div>
-                <div style="color: #aaa; margin-top: 4px; font-size: 0.85rem;">Low loyalty status only. It no longer drains AP, seats, or ministry positions.</div>
-            </div>` : ''}
-
-            ${isDisloyal ? `
-            <div style="background: #3a2a1a; border: 1px solid #ff9800; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-                <div style="color: #ff9800; font-weight: bold;">DISLOYAL</div>
-                <div style="color: #aaa; margin-top: 4px; font-size: 0.85rem;">Low loyalty status only. It no longer drains AP, seats, or ministry positions.</div>
-            </div>` : ''}
-
-            <div style="margin-bottom:12px;color:#888;font-size:0.82rem;">
-                <strong>Loyalty Thresholds:</strong> Loyal (30+) = status only | Disloyal (15-29) = status only | Suppressed (&lt;15) = status only
-            </div>
-
-            <div class="action-grid" style="grid-template-columns: repeat(2, 1fr);">
-                <!-- RALLY SUPPORT -->
-                <div class="action-card">
-                    <div class="action-header"><div class="action-title">Rally Support</div><div class="action-cost">2 AP</div></div>
-                    <div class="action-desc">
-                        ${isRulingFaction
-                            ? 'Choose: <strong>Celebrate the Regime</strong> (+1D2 approval, +1 loyalty to ALL factions, +1 corruption) or <strong>Denounce Enemies</strong> (pick target, -1D2 loyalty, +1 approval, +1 polarization).'
-                            : 'Pledge loyalty to the regime. Gain <strong>+1D2 loyalty</strong> for your faction.'
-                        }
-                    </div>
-                    ${isRulingFaction ? `
-                    <div style="margin: 10px 0;">
-                        <select id="rally-mode" class="action-select" onchange="toggleDenounceTarget()">
-                            <option value="celebrate">Celebrate the Regime</option>
-                            <option value="denounce">Denounce Enemies</option>
-                        </select>
-                    </div>
-                    <div id="denounce-target-wrap" style="margin: 10px 0; display: none;">
-                        <select id="denounce-target" class="action-select">
-                            <option value="">Select Target Faction...</option>
-                        </select>
-                    </div>` : ''}
-                    <button class="action-btn" onclick="doRallySupport()">
-                        ${isRulingFaction ? 'Rally Support' : 'Pledge Loyalty'}
-                    </button>
-                </div>
-
-                <!-- UNDERMINE -->
-                <div class="action-card">
-                    <div class="action-header"><div class="action-title">Undermine</div><div class="action-cost">3 AP</div></div>
-                    <div class="action-desc">
-                        Target a rival faction: <strong>-1D3 loyalty</strong>, nation <strong>-1 stability</strong>.
-                        <br><span style="color: #ff9800; font-size: 0.78rem;">If target loyalty is below 20, they learn who did it.</span>
-                    </div>
-                    <div style="margin: 10px 0;">
-                        <select id="undermine-target" class="action-select">
-                            <option value="">Select Target Faction...</option>
-                        </select>
-                    </div>
-                    <button class="action-btn action-btn-risk" onclick="doUndermine()">
-                        Undermine
-                    </button>
-                </div>
-
-                ${isRulingFaction ? `
-                <!-- PATRONAGE NETWORK (Ruling Only) -->
-                <div class="action-card">
-                    <div class="action-header"><div class="action-title">Patronage Network</div><div class="action-cost">2 AP</div></div>
-                    <div class="action-desc">
-                        Give <strong>$50,000</strong> from the national treasury to a faction. Target gains <strong>+2 loyalty</strong>. Nation <strong>+1 corruption</strong>.
-                        <br><span style="color: #ff9800; font-size: 0.78rem;">If you pick yourself, all other factions lose 1 loyalty.</span>
-                    </div>
-                    <div style="margin: 10px 0;">
-                        <select id="patronage-target" class="action-select">
-                            <option value="">Select Faction...</option>
-                        </select>
-                    </div>
-                    <button class="action-btn" onclick="doPatronageNetwork()">
-                        Distribute Patronage
-                    </button>
-                </div>` : ''}
-
-                ${!isRulingFaction ? `
-                <!-- SEIZE POWER (Opposition Only) -->
-                <div class="action-card" style="border-left-color: #ff4444;">
-                    <div class="action-header"><div class="action-title" style="color: #ff4444;">Seize Power</div><div class="action-cost">15 AP</div></div>
-                    <div class="action-desc">
-                        Attempt to overthrow the ruling faction. Requires <strong>2+ factions with loyalty below 30</strong>.
-                        <br><br>
-                        Factions pick sides based on loyalty. Side with more seats wins.
-                        <br><br>
-                        <strong style="color: #4CAF50;">WIN:</strong> You become ruler. Old ruler becomes opposition at 50 loyalty.
-                        <br><strong style="color: #ff4444;">FAIL:</strong> -25 seats, -20 approval, loyalty=0, purged from ministries. Seize Power blocked for 6 ticks.
-                    </div>
-                    <button class="action-btn" style="background: ${canSeizePower ? '#ff4444' : '#555'};"
-                        onclick="doSeizePower()"
-                        ${(!canSeizePower || isCoupCooldown) ? 'disabled' : ''}
-                        ${isCoupCooldown ? 'title="Coup cooldown active"' : !canSeizePower ? 'title="Need 2+ factions with loyalty below 30 and 15 AP"' : ''}>
-                        ${isCoupCooldown ? 'Coup Cooldown' : canSeizePower ? 'Seize Power' : 'Cannot Seize (Need 2+ disloyal)'}
-                    </button>
-                </div>` : ''}
-            </div>
-            <div class="section-header" style="margin-top: 30px;">Recent Actions</div>
-            <div id="action-log" class="action-log"><div class="action-log-empty">No actions taken yet.</div></div>`;
-        }
     }
 
     // Build Performance Credit HTML
@@ -709,6 +575,151 @@ async function renderParties() {
     const swingText = swingBlocs.length > 0
         ? `Swing Blocs (within 3%): ${swingBlocs.map(r => r.blocName).join(', ')}`
         : 'No swing blocs';
+
+    // === Build Other Parties Cards (segmented by Governing / Opposition) ===
+    const otherParties = (allParties || []).filter(p => p.id !== f.id);
+    let otherPartiesHtml = '';
+    if (otherParties.length > 0) {
+        const govParties = [];
+        const oppParties = [];
+        for (const op of otherParties) {
+            const opSeats = seatData.allPartySeats[op.id] || 0;
+            const opRole = getPartyRole(op.id, opSeats, coalition);
+            if (opRole.includes('Governing')) {
+                govParties.push({ ...op, _seats: opSeats, _role: opRole });
+            } else {
+                oppParties.push({ ...op, _seats: opSeats, _role: opRole });
+            }
+        }
+
+        function buildOtherPartyCards(list) {
+            let html = '';
+            for (const op of list) {
+                const opColor = op.party_color || '#666';
+                const opLogo = getPartyIconSVG(op.party_logo, 36, opColor);
+                const opBadgeClass = getRoleBadgeClass(op._role);
+                const opLeader = op.leader_first_name && op.leader_last_name
+                    ? op.leader_first_name + ' ' + op.leader_last_name + (op.leader_age ? ', ' + op.leader_age : '')
+                    : '\u2014';
+                const opFounded = tickToDate(op.founded_tick);
+                const opIdeology = buildIdeologyTags(op);
+                const opAbbr = op.abbreviation
+                    ? `<span class="other-party-abbr">(${op.abbreviation})</span>` : '';
+
+                html += `
+                <div class="other-party-card" style="border-left-color:${opColor}">
+                    <div class="other-party-top-row">
+                        <div class="other-party-logo" style="color:${opColor}">${opLogo}</div>
+                        <div class="other-party-identity">
+                            <div class="other-party-name-row">
+                                <span class="other-party-name" style="color:${opColor}">${op.faction_name}</span>
+                                ${opAbbr}
+                            </div>
+                            <div class="other-party-role-row">
+                                <span class="role-badge ${opBadgeClass}">${op._role}</span>
+                            </div>
+                            <div class="other-party-ideology-row">${opIdeology}</div>
+                        </div>
+                    </div>
+                    <div class="other-party-stats">
+                        <div class="other-party-stat">
+                            <div class="stat-label">Party Leader</div>
+                            <div class="stat-val">${opLeader}</div>
+                        </div>
+                        <div class="other-party-stat">
+                            <div class="stat-label">Seats</div>
+                            <div class="stat-val">${op._seats} / ${GAME_CONFIG.TOTAL_SEATS}</div>
+                        </div>
+                        <div class="other-party-stat">
+                            <div class="stat-label">Founded</div>
+                            <div class="stat-val">${opFounded}</div>
+                        </div>
+                    </div>
+                </div>`;
+            }
+            return html;
+        }
+
+        const govHtml = govParties.length > 0 ? `
+            <div class="other-parties-group">
+                <div class="other-parties-group-label other-parties-group-gov">Governing</div>
+                <div class="other-parties-grid">${buildOtherPartyCards(govParties)}</div>
+            </div>` : '';
+
+        const oppHtml = oppParties.length > 0 ? `
+            <div class="other-parties-group">
+                <div class="other-parties-group-label other-parties-group-opp">Opposition</div>
+                <div class="other-parties-grid">${buildOtherPartyCards(oppParties)}</div>
+            </div>` : '';
+
+        otherPartiesHtml = `
+        <div class="other-parties-section">
+            <div class="other-parties-header">Other Parties</div>
+            ${govHtml}
+            ${oppHtml}
+        </div>`;
+    }
+
+    // === Build Ideology Comparison Section ===
+    let ideologyComparisonHtml = '';
+    if (allParties && allParties.length > 0) {
+        let chipHtml = '';
+        for (const p of (allParties || [])) {
+            const isMe = p.id === f.id;
+            const color = p.party_color || '#666';
+            const chipClass = isMe ? 'ideology-party-chip your-chip selected' : 'ideology-party-chip';
+            chipHtml += `<div class="${chipClass}" style="--chip-color:${color}" data-faction-id="${p.id}">${p.faction_name}</div>`;
+        }
+
+        const myIdeo = ideoByFaction[f.id];
+        let axesHtml = '';
+        let leaningSummaryHtml = '';
+
+        if (myIdeo) {
+            for (const axis of IDEOLOGY_AXES) {
+                const score = myIdeo[axis.key] || 0;
+                const position = 50 + (score / 2);
+                axesHtml += `
+                <div class="ideo-axis">
+                    <div class="ideo-axis-label left">${axis.leftLabel}</div>
+                    <div class="ideo-axis-track" data-axis-key="${axis.key}">
+                        <div class="ideo-axis-center"></div>
+                        <div class="ideo-dot" style="left:${position}%;background:${partyColor}" data-faction-id="${f.id}">
+                            <div class="ideo-dot-tooltip">${f.faction_name}: ${score > 0 ? '+' : ''}${score}</div>
+                        </div>
+                    </div>
+                    <div class="ideo-axis-label right">${axis.rightLabel}</div>
+                </div>`;
+            }
+
+            const profile = getFullIdeologyProfile(myIdeo);
+            const nonCentrist = profile.filter(p => p.label !== 'Centrist');
+            if (nonCentrist.length > 0) {
+                leaningSummaryHtml = `
+                <div class="ideology-label-summary" id="ideology-label-summary">
+                    <div class="ideology-label-row">
+                        <div class="ideology-label-swatch" style="background:${partyColor}"></div>
+                        <span class="ideology-label-name">${f.faction_name}</span>
+                        <span class="ideology-label-text">${nonCentrist.map(p => p.label).join(', ')}</span>
+                    </div>
+                </div>`;
+            }
+        } else {
+            axesHtml = '<div class="ideology-chart-empty">No ideology data available.</div>';
+        }
+
+        ideologyComparisonHtml = `
+        <div class="ideology-section" id="ideology-section">
+            <div class="ideology-section-header">Ideology Comparison</div>
+            <div class="ideology-party-selector" id="ideology-party-selector">
+                ${chipHtml}
+            </div>
+            <div class="ideology-chart" id="ideology-chart">
+                ${axesHtml}
+                ${leaningSummaryHtml}
+            </div>
+        </div>`;
+    }
 
     el.innerHTML = `
         <div class="parties-page">
@@ -825,8 +836,87 @@ async function renderParties() {
 
         <div id="promises-container"></div>
 
+        ${otherPartiesHtml}
+
+        ${ideologyComparisonHtml}
+
         </div>
     `;
+
+    // ── Ideology Comparison: chip toggle logic ──
+    const ideoSection = document.getElementById('ideology-section');
+    if (ideoSection) {
+        const selector = document.getElementById('ideology-party-selector');
+        const chartEl = document.getElementById('ideology-chart');
+
+        function rebuildIdeologyChart() {
+            const selectedChips = selector.querySelectorAll('.ideology-party-chip.selected');
+            const selectedIds = [...selectedChips].map(c => c.dataset.factionId);
+
+            let axesHtml = '';
+            for (const axis of IDEOLOGY_AXES) {
+                let dotsHtml = '<div class="ideo-axis-center"></div>';
+
+                for (const fid of selectedIds) {
+                    const ideo = ideoByFaction[fid];
+                    if (!ideo) continue;
+                    const party = (allParties || []).find(p => p.id === fid);
+                    if (!party) continue;
+                    const score = ideo[axis.key] || 0;
+                    const position = 50 + (score / 2);
+                    const color = party.party_color || '#666';
+                    const isMe = fid === f.id;
+
+                    dotsHtml += `
+                        <div class="ideo-dot" style="left:${position}%;background:${color};${isMe ? 'z-index:5;' : ''}" data-faction-id="${fid}">
+                            <div class="ideo-dot-tooltip">${party.faction_name}: ${score > 0 ? '+' : ''}${score}</div>
+                        </div>`;
+                }
+
+                axesHtml += `
+                <div class="ideo-axis">
+                    <div class="ideo-axis-label left">${axis.leftLabel}</div>
+                    <div class="ideo-axis-track" data-axis-key="${axis.key}">
+                        ${dotsHtml}
+                    </div>
+                    <div class="ideo-axis-label right">${axis.rightLabel}</div>
+                </div>`;
+            }
+
+            let summaryHtml = '';
+            for (const fid of selectedIds) {
+                const ideo = ideoByFaction[fid];
+                if (!ideo) continue;
+                const party = (allParties || []).find(p => p.id === fid);
+                if (!party) continue;
+
+                const profile = getFullIdeologyProfile(ideo);
+                const nonCentrist = profile.filter(p => p.label !== 'Centrist');
+                if (nonCentrist.length === 0) continue;
+
+                summaryHtml += `
+                    <div class="ideology-label-row">
+                        <div class="ideology-label-swatch" style="background:${party.party_color || '#666'}"></div>
+                        <span class="ideology-label-name">${party.faction_name}</span>
+                        <span class="ideology-label-text">${nonCentrist.map(p => p.label).join(', ')}</span>
+                    </div>`;
+            }
+
+            if (summaryHtml) {
+                summaryHtml = `<div class="ideology-label-summary">${summaryHtml}</div>`;
+            }
+
+            chartEl.innerHTML = axesHtml + summaryHtml;
+        }
+
+        selector.addEventListener('click', (e) => {
+            const chip = e.target.closest('.ideology-party-chip');
+            if (!chip) return;
+            if (chip.dataset.factionId === f.id) return;
+            chip.classList.toggle('selected');
+            rebuildIdeologyChart();
+        });
+    }
 
     // ── Rally UI ──
     let rallyScreen = 'select'; // 'select' | 'preview' | 'results'
@@ -1131,14 +1221,25 @@ async function renderParties() {
     for (const m of (allMinistries || [])) ministryHolder[m.ministry_key] = m.party_id;
     if (coalition && coalition.lead_party_id) ministryHolder['prime_minister'] = coalition.lead_party_id;
 
-    // Fetch previous tick for trend if not already done
+    // Fetch history from 3 ticks ago for trend (wider window catches gradual changes)
     let pcPrevStats = null;
     const pcTick = currentShard?.current_tick || 0;
+    const PC_TREND_WINDOW = 3;
     if (pcTick > 0) {
+        const lookbackTick = Math.max(0, pcTick - PC_TREND_WINDOW);
         const { data: histRow } = await _supabase
             .from('nations_history').select('*')
-            .eq('nation_id', n.id).eq('tick', pcTick - 1).single();
-        pcPrevStats = histRow;
+            .eq('nation_id', n.id).eq('tick', lookbackTick).maybeSingle();
+        if (histRow) {
+            pcPrevStats = histRow;
+        } else {
+            // Fallback: oldest available row before current tick
+            const { data: fallbackRows } = await _supabase
+                .from('nations_history').select('*')
+                .eq('nation_id', n.id).lt('tick', pcTick)
+                .order('tick', { ascending: true }).limit(1);
+            pcPrevStats = fallbackRows?.[0] || null;
+        }
     }
 
     const MINISTRY_DISPLAY = {
@@ -1974,6 +2075,87 @@ async function renderParties() {
     // Render default fundraiser panel (always visible, like rally/outreach)
     renderFundraiser();
 }
+
+// ── Ideology Section ──
+async function renderIdeologySection() {
+    const container = document.getElementById('ideology-container');
+    if (!container || !currentNation || !ideologyAllParties) return;
+
+    const ideologies = await loadNationIdeologies(_supabase, currentNation.id);
+    const ideoMap = {};
+    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
+
+    // Build party selector buttons — user's party first
+    const sorted = [...ideologyAllParties].sort((a, b) => {
+        if (a.id === currentFaction.id) return -1;
+        if (b.id === currentFaction.id) return 1;
+        return 0;
+    });
+
+    const selectedId = selectedIdeologyFactionId || currentFaction.id;
+    const btnHtml = sorted.map(p => {
+        const isActive = p.id === selectedId;
+        const color = p.party_color || '#666';
+        const star = p.id === currentFaction.id ? ' \u2605' : '';
+        const activeStyle = isActive
+            ? `border-color:${color}; color:${color};`
+            : '';
+        return `<button class="ideology-party-btn${isActive ? ' active' : ''}" data-fid="${p.id}" style="${activeStyle}">${p.abbreviation || p.faction_name}${star}</button>`;
+    }).join('');
+
+    // Build slider axes for selected faction
+    const ideoRow = ideoMap[selectedId] || {};
+    let axesHtml = '';
+    const leanings = [];
+
+    for (const axis of IDEOLOGY_AXES) {
+        const score = ideoRow[axis.key] || 0;
+        const absScore = Math.abs(score);
+        const pct = ((score + 100) / 200) * 100; // -100→0%, 0→50%, +100→100%
+
+        // Determine marker color: blend toward the side it leans
+        const markerColor = score < 0 ? axis.leftColor : score > 0 ? axis.rightColor : '#888';
+
+        axesHtml += `
+            <div class="ideology-axis-row">
+                <span class="ideology-axis-label ideology-axis-label-left" style="color:${axis.leftColor}">${axis.left}</span>
+                <div class="ideology-track">
+                    <div class="ideology-track-center"></div>
+                    <div class="ideology-marker" style="left:${pct}%;background:${markerColor}">
+                        <span class="ideology-marker-value">${absScore}</span>
+                    </div>
+                </div>
+                <span class="ideology-axis-label ideology-axis-label-right" style="color:${axis.rightColor}">${axis.right}</span>
+            </div>`;
+
+        leanings.push(getIdeologyLabel(score, axis));
+    }
+
+    const leaningsHtml = leanings.map(l =>
+        `<span class="ideology-leaning-item">${l}</span>`
+    ).join(' <span style="color:var(--text-muted,#666)">\u00B7</span> ');
+
+    container.innerHTML = `
+        <div class="ideology-section">
+            <div class="ideology-header">Ideology</div>
+            <div class="ideology-party-selector">${btnHtml}</div>
+            <div class="ideology-axes">${axesHtml}</div>
+            <div class="ideology-leanings">${leaningsHtml}</div>
+        </div>`;
+
+    // Bind party selector clicks
+    container.querySelectorAll('.ideology-party-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            selectedIdeologyFactionId = btn.dataset.fid;
+            renderIdeologySection();
+        });
+    });
+}
+
+// Re-render ideology on tick advance
+window.addEventListener('tick-advanced', () => {
+    renderIdeologySection();
+});
 
 initPage('parties', async (state) => {
     const { nation, faction, shard } = state;

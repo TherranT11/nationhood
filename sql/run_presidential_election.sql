@@ -29,7 +29,6 @@ DECLARE
     v_total_abstentions BIGINT := 0;
     v_total_votes  BIGINT := 0;
     v_results      JSONB;
-    v_election_id  UUID;
     v_candidate_rows JSONB := '[]'::JSONB;
     v_max_votes    BIGINT := -1;
     v_max_approval NUMERIC := -1;
@@ -262,17 +261,6 @@ BEGIN
             THEN ROUND((v_total_votes::NUMERIC / v_nation.eligible_voters) * 100, 2)
             ELSE 0 END
     );
-
-    -- ---- Write election record ----
-    INSERT INTO elections (nation_id, election_tick, election_type, status, results)
-    VALUES (
-        p_nation_id,
-        COALESCE((SELECT current_tick FROM shard WHERE name = 'Alpha Shard'), 0),
-        'presidential',
-        'completed',
-        v_results
-    )
-    RETURNING id INTO v_election_id;
 
     RETURN v_results;
 END;

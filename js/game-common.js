@@ -22,7 +22,7 @@
 export const GAME_CONFIG = {
     TOTAL_SEATS: 120,
     MAJORITY_SEATS: 61,
-    VOTING_WINDOW_TICKS: 3,
+    VOTING_WINDOW_TICKS: 4,
     DRAFT_BILL_AP_COST: 2,
     VETO_APPROVAL_COST: 3,
     NO_CONFIDENCE_AP_COST: 5,
@@ -42,8 +42,806 @@ export const GAME_CONFIG = {
     MINISTER_CONFIRMATION_VOTING_TICKS: 2,
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
     MAX_AP: 20,  // maximum action points a party can accumulate
-    TICKS_PER_YEAR: 12
+    TICKS_PER_YEAR: 12,
+    BUDGET_BILL_VOTING_TICKS: 3,     // budget bill voting window
+    NO_BUDGET_PENALTY_TICKS: 24      // how many ticks without a budget before max penalty
 };
+
+// ==================== TRADE SYSTEM CONSTANTS ====================
+
+export var TRADE_CONFIG = {
+    BASE_TRADE_MULTIPLIER: 50000,          // base dollar value per unit of export capacity
+    BASELINE_GDP: 100000000000,            // 100B — the "average" GDP for scaling
+    HISTORY_TICKS: 24,                     // keep 2 game-years of trade history
+};
+
+/**
+ * Trade sectors — the 8 categories of goods/services that nations trade.
+ *
+ * Each sector defines:
+ *   key         – unique identifier (matches trade_flows.sector column)
+ *   label       – display name
+ *   export_only – if true, cannot be imported (tourism, services)
+ *   export_stat / export_stats – nation stat(s) driving export capacity
+ *   export_threshold – minimum stat value to generate any exports (0-100 scale)
+ */
+export var TRADE_SECTORS = [
+    {
+        key: 'fuel_energy',
+        label: 'Fuel & Energy',
+        export_only: false,
+        export_stat: 'oil_and_gas',
+        export_threshold: 15
+    },
+    {
+        key: 'minerals',
+        label: 'Minerals & Raw Materials',
+        export_only: false,
+        export_stat: 'rare_minerals',
+        export_threshold: 15
+    },
+    {
+        key: 'food_agriculture',
+        label: 'Food & Agriculture',
+        export_only: false,
+        export_stat: 'arable_land',
+        export_threshold: 20
+    },
+    {
+        key: 'manufactured_goods',
+        label: 'Manufactured Goods',
+        export_only: false,
+        export_stats: ['physical_infrastructure', 'higher_education'],
+        export_threshold: 25
+    },
+    {
+        key: 'technology',
+        label: 'Technology & Electronics',
+        export_only: false,
+        export_stats: ['digital_infrastructure', 'higher_education'],
+        export_threshold: 30
+    },
+    {
+        key: 'arms',
+        label: 'Arms & Military Equipment',
+        export_only: false,
+        export_stats: ['physical_infrastructure', 'higher_education'],
+        export_threshold: 30
+    },
+    {
+        key: 'tourism',
+        label: 'Tourism',
+        export_only: true,
+        export_stats: ['happiness', 'stability', 'physical_infrastructure'],
+        export_threshold: 25
+    },
+    {
+        key: 'services_finance',
+        label: 'Services & Finance',
+        export_only: true,
+        export_stats: ['higher_education', 'digital_infrastructure', 'credit'],
+        export_threshold: 35
+    }
+];
+
+export var TRADE_SECTOR_KEYS = [];
+export var TRADE_SECTOR_MAP = {};
+for (var _tsi = 0; _tsi < TRADE_SECTORS.length; _tsi++) {
+    TRADE_SECTOR_KEYS.push(TRADE_SECTORS[_tsi].key);
+    TRADE_SECTOR_MAP[TRADE_SECTORS[_tsi].key] = TRADE_SECTORS[_tsi];
+}
+
+// ==================== TRADE CALCULATION FUNCTIONS (STUBS) ====================
+
+/**
+ * Calculate a nation's export capacity for a given sector.
+ * Returns raw dollar value of potential exports.
+ *
+ * Formulas use 0-20 scale internally (spec baseline). Since codebase stats are
+ * 0-100, scores are normalized by dividing by 5.
+ *
+ * @param {Object} nation    – nation row with all stats (gdp in raw dollars, stats 0-100)
+ * @param {Object} sector    – TRADE_SECTORS entry
+ * @param {Object} [opts]    – optional: { defense_pct } for arms sector (0-100, % of budget)
+ * @returns {number} export capacity in dollars (value side, after currency modifier)
+ */
+export function calculateExportCapacity(nation, sector, opts) {
+    var cfg = TRADE_CONFIG;
+
+    // GDP modifier: bigger economies trade more in absolute terms
+    var gdp = Number(nation.gdp) || 0;
+    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    if (gdpModifier <= 0) return 0;
+
+    // Calculate primary export score from sector stat(s) (0-100 scale)
+    var score = 0;
+    if (sector.export_stat) {
+        score = Number(nation[sector.export_stat]) || 0;
+    } else if (sector.export_stats) {
+        var sum = 0;
+        for (var i = 0; i < sector.export_stats.length; i++) {
+            sum += Number(nation[sector.export_stats[i]]) || 0;
+        }
+        score = sum / sector.export_stats.length;
+    }
+
+    // Threshold check: stat must exceed sector threshold to generate any exports
+    if (score <= (sector.export_threshold || 0)) return 0;
+
+    // Normalize from 0-100 codebase scale to 0-20 spec scale
+    var normalizedScore = score / 5;
+
+    // Base capacity = normalizedScore × BASE_TRADE_MULTIPLIER × gdpModifier
+    var capacity = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+
+    // ── Sector-specific modifiers ──
+
+    // Arms: requires meaningful defense spending to have an arms industry
+    if (sector.key === 'arms') {
+        var defensePct = (opts && opts.defense_pct) || 0;
+        if (defensePct <= 8) return 0;
+        capacity *= (defensePct / 15);  // 15% defense spending = 1.0 multiplier
+    }
+
+    // Tourism: smaller than goods trade + requires stability
+    if (sector.key === 'tourism') {
+        capacity *= 0.5;
+        if ((Number(nation.stability) || 0) <= 25) return 0;
+    }
+
+    // Services & Finance: smaller than goods trade
+    if (sector.key === 'services_finance') {
+        capacity *= 0.7;
+    }
+
+    // ── Currency strength modifier ──
+    // Affects export VALUE (what appears on trade page).
+    // Weak currency = exports are cheaper = lower value per unit.
+    // currency_strength 50 = 1.0 (neutral), 25 = 0.5 (cheap), 75 = 1.5 (premium)
+    var currencyStrength = Number(nation.currency_strength) || 50;
+    var currencyModifier = currencyStrength / 50;
+    capacity *= currencyModifier;
+
+    return Math.round(capacity);
+}
+
+/**
+ * Calculate a nation's import demand for a given sector.
+ * Returns raw dollar value of desired imports (after currency + tariff dampening).
+ *
+ * Each sector has its own demand formula based on what the nation LACKS.
+ * Stats are normalized from 0-100 to 0-20 spec scale (/5) for formula consistency.
+ * Population is normalized from raw to ~0-20 equivalent (/5M).
+ *
+ * @param {Object} nation    – nation row (gdp in raw dollars, stats 0-100, population raw)
+ * @param {Object} sector    – TRADE_SECTORS entry
+ * @param {Object} [opts]    – optional: { defense_budget, has_arms_exports } for arms sector
+ * @returns {number} import demand in dollars
+ */
+export function calculateImportDemand(nation, sector, opts) {
+    // Export-only sectors have no import demand
+    if (sector.export_only) return 0;
+
+    var cfg = TRADE_CONFIG;
+    var gdp = Number(nation.gdp) || 0;
+    var gdpModifier = gdp / cfg.BASELINE_GDP;
+
+    // Normalize stats from 0-100 codebase scale to 0-20 spec scale
+    var SN = 5;   // stat normalizer: divide 0-100 stats by 5
+    var PN = 5000000;  // population normalizer: raw pop / 5M ≈ 0-20 equivalent
+
+    var rawDemand = 0;
+
+    // ── FUEL & ENERGY ──
+    // Import fuel if you don't produce enough domestically.
+    // Driven by inverse of (oil_and_gas + energy_generation).
+    if (sector.key === 'fuel_energy') {
+        var oilGas = (Number(nation.oil_and_gas) || 0) / SN;
+        var energyGen = (Number(nation.energy_generation) || 0) / SN;
+        var domesticEnergy = (oilGas + energyGen) / 2;
+        var deficiency = Math.max(0, 15 - domesticEnergy);
+        rawDemand = deficiency * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+    }
+
+    // ── MINERALS & RAW MATERIALS ──
+    // Import if you lack domestic minerals but have manufacturing that needs inputs.
+    // Manufacturing creates demand for raw material imports.
+    else if (sector.key === 'minerals') {
+        var minerals = (Number(nation.rare_minerals) || 0) / SN;
+        var infra = Number(nation.physical_infrastructure) || 0;
+        var edu = Number(nation.higher_education) || 0;
+        var manufScore = ((infra + edu) / 2) / SN;
+        var deficiency = Math.max(0, 12 - minerals);
+        rawDemand = deficiency * (manufScore / 10) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+    }
+
+    // ── FOOD & AGRICULTURE ──
+    // Everyone needs food. Import based on what you can't grow domestically.
+    // Uses population as scaling factor (not GDP) — even poor nations need to eat.
+    else if (sector.key === 'food_agriculture') {
+        var arableLand = (Number(nation.arable_land) || 0) / SN;
+        var popNorm = (Number(nation.population) || 1) / PN;
+        var sufficiency = arableLand / Math.max(0.1, popNorm * 1.5);
+        var deficit = Math.max(0, 1 - sufficiency);
+        rawDemand = deficit * popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.8;
+    }
+
+    // ── MANUFACTURED GOODS ──
+    // Import what you can't make. Consumer demand (population × standard of living)
+    // minus domestic production capacity.
+    else if (sector.key === 'manufactured_goods') {
+        var popNorm = (Number(nation.population) || 1) / PN;
+        var sol = (Number(nation.standard_of_living) || 50) / SN;
+        var infra = Number(nation.physical_infrastructure) || 0;
+        var edu = Number(nation.higher_education) || 0;
+        var manufScore = ((infra + edu) / 2) / SN;
+        var consumerDemand = popNorm * (sol / 10);
+        var domesticManuf = manufScore / 10;
+        var deficit = Math.max(0, consumerDemand - domesticManuf);
+        rawDemand = deficit * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
+    }
+
+    // ── TECHNOLOGY & ELECTRONICS ──
+    // Digital infrastructure needs minus domestic tech production.
+    else if (sector.key === 'technology') {
+        var popNorm = (Number(nation.population) || 1) / PN;
+        var digi = (Number(nation.digital_infrastructure) || 0) / SN;
+        var edu = Number(nation.higher_education) || 0;
+        var techScore = ((Number(nation.digital_infrastructure) || 0) + edu) / 2 / SN;
+        var techDemand = popNorm * (digi / 10) * 0.5;
+        var domesticTech = techScore / 10;
+        var deficit = Math.max(0, techDemand - domesticTech);
+        rawDemand = deficit * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.5;
+    }
+
+    // ── ARMS & MILITARY EQUIPMENT ──
+    // Driven by defense spending minus domestic arms production.
+    // 15% of defense budget goes to equipment purchases.
+    // Nations with domestic arms industries import less (only 40% of that 15%).
+    else if (sector.key === 'arms') {
+        var defenseBudget = (opts && opts.defense_budget) || 0;
+        var domesticArms = (opts && opts.has_arms_exports) ? 0.6 : 0;
+        rawDemand = defenseBudget * 0.15 * (1 - domesticArms);
+    }
+
+    if (rawDemand <= 0) return 0;
+
+    // ── Currency strength on imports ──
+    // Weak currency makes imports MORE expensive → you can afford LESS.
+    // currency_strength 50 = 1.0, 25 = 0.5 (can only afford half), 75 = 1.5
+    var currencyStrength = Number(nation.currency_strength) || 50;
+    var affordability = currencyStrength / 50;
+    rawDemand *= affordability;
+
+    // ── Tariff dampener ──
+    // Your own tariffs reduce import volume (makes foreign goods more expensive).
+    // tariffs 0 = 1.0 (free trade), 50 = 0.75 (25% reduction), 100 = 0.50 (protectionist)
+    var tariffs = Number(nation.tariffs) || 0;
+    var tariffDampener = 1 - (tariffs / 200);
+    rawDemand *= tariffDampener;
+
+    return Math.round(rawDemand);
+}
+
+/**
+ * Calculate supply/demand price modifier for a sector across all nations.
+ *
+ * price_ratio = totalDemand / totalSupply
+ * Clamped to [0.5, 2.0] to prevent extreme swings:
+ *   0.5 = severe oversupply (prices halved)
+ *   1.0 = balanced market
+ *   2.0 = severe undersupply (prices doubled)
+ *
+ * The caller should apply smoothing against the previous tick's price:
+ *   smoothed = oldPrice * 0.7 + rawPrice * 0.3
+ *
+ * @param {number} totalSupply – aggregate export capacity across all nations
+ * @param {number} totalDemand – aggregate import demand across all nations
+ * @returns {number} price multiplier (0.5–2.0)
+ */
+export function calculatePriceModifier(totalSupply, totalDemand) {
+    if (totalSupply <= 0 && totalDemand <= 0) return 1.0;
+    if (totalSupply <= 0) return 2.0;   // no supply, max price
+    if (totalDemand <= 0) return 0.5;   // no demand, min price
+
+    var ratio = totalDemand / totalSupply;
+    return Math.max(0.5, Math.min(2.0, ratio));
+}
+
+/**
+ * Calculate trade affinity between two nations.
+ * Higher affinity = more likely to trade, and more volume flows between them.
+ *
+ * Components:
+ *   base                  50 (neutral starting point)
+ *   diplomatic_bonus      relation_score * 0.3           → -30 to +30
+ *   trade_agreement       +20 if bilateral trade deal exists
+ *   embargo_penalty       -40 if active embargo/sanctions between nations
+ *   proximity_bonus       +10 if same region (future)
+ *
+ * @param {Object} nationA   – nation row
+ * @param {Object} nationB   – nation row
+ * @param {Object} relation  – diplomatic_relations row { relation_score, active_treaties }
+ * @param {Object} [opts]    – { has_trade_agreement, has_embargo, same_region }
+ * @returns {number} affinity score 0-100
+ */
+export function calculateTradeAffinity(nationA, nationB, relation, opts) {
+    var base = 50;
+
+    // Diplomatic relations: -100 to +100 score → -30 to +30 affinity
+    var relScore = (relation && Number(relation.relation_score)) || 0;
+    var diplomaticBonus = relScore * 0.3;
+
+    // Bilateral trade agreement: significant affinity boost
+    var tradeBonus = (opts && opts.has_trade_agreement) ? 20 : 0;
+
+    // Active embargo/sanctions between these two nations: major penalty
+    var embargoPenalty = (opts && opts.has_embargo) ? -40 : 0;
+
+    // Geographic proximity (future: use region data when available)
+    var proximityBonus = (opts && opts.same_region) ? 10 : 0;
+
+    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus;
+    return Math.round(Math.max(0, Math.min(100, affinity)));
+}
+
+/**
+ * Distribute an exporter's capacity among importing partners.
+ *
+ * Each importer receives a share proportional to their weight:
+ *   weight_i = affinity_i × demand_i
+ *   volume_i = exportCapacity × (weight_i / totalWeight)
+ *
+ * Volume is also capped at each importer's actual demand (can't import
+ * more than you need). Any leftover capacity is redistributed.
+ *
+ * @param {number} exportCapacity – exporter's total capacity in this sector ($)
+ * @param {Array}  importers      – [{ nation_id, demand, affinity }, ...]
+ * @returns {Array} [{ importer_nation_id, volume }, ...] – only entries with volume > 0
+ */
+export function distributeTradeAmongPartners(exportCapacity, importers) {
+    if (!exportCapacity || exportCapacity <= 0 || !importers || importers.length === 0) {
+        return [];
+    }
+
+    // Calculate weights: affinity × demand
+    var weighted = [];
+    var totalWeight = 0;
+    for (var i = 0; i < importers.length; i++) {
+        var imp = importers[i];
+        var aff = Number(imp.affinity) || 0;
+        var dem = Number(imp.demand) || 0;
+        if (aff <= 0 || dem <= 0) continue;
+        var w = aff * dem;
+        weighted.push({ nation_id: imp.nation_id, demand: dem, weight: w });
+        totalWeight += w;
+    }
+
+    if (totalWeight <= 0 || weighted.length === 0) return [];
+
+    // Distribute proportionally, capped at each importer's demand.
+    // Two passes: first pass allocates, second pass redistributes any surplus
+    // from capped importers to remaining partners.
+    var results = [];
+    var remaining = exportCapacity;
+
+    // Sort by weight descending so high-affinity partners fill first
+    weighted.sort(function (a, b) { return b.weight - a.weight; });
+
+    // Pass 1: proportional allocation, capped at demand
+    var uncapped = [];
+    var uncappedWeight = 0;
+    for (var i = 0; i < weighted.length; i++) {
+        var share = exportCapacity * (weighted[i].weight / totalWeight);
+        if (share > weighted[i].demand) {
+            // Capped: this importer only takes what they need
+            results.push({ importer_nation_id: weighted[i].nation_id, volume: Math.round(weighted[i].demand) });
+            remaining -= weighted[i].demand;
+        } else {
+            uncapped.push({ idx: results.length, nation_id: weighted[i].nation_id, demand: weighted[i].demand, weight: weighted[i].weight, share: share });
+            uncappedWeight += weighted[i].weight;
+            results.push({ importer_nation_id: weighted[i].nation_id, volume: 0 }); // placeholder
+        }
+    }
+
+    // Pass 2: distribute remaining capacity among uncapped importers
+    if (uncappedWeight > 0 && remaining > 0) {
+        for (var i = 0; i < uncapped.length; i++) {
+            var alloc = remaining * (uncapped[i].weight / uncappedWeight);
+            alloc = Math.min(alloc, uncapped[i].demand);
+            results[uncapped[i].idx].volume = Math.round(alloc);
+        }
+    }
+
+    // Filter out zero-volume entries
+    return results.filter(function (r) { return r.volume > 0; });
+}
+
+/**
+ * Derive trade_balance stat (0-100) from raw trade surplus/deficit.
+ *
+ * Maps surplus as a ratio of GDP onto a 0-100 index:
+ *   50 = balanced trade (surplus ≈ 0)
+ *   100 = large trade surplus (+10% of GDP or more)
+ *   0 = large trade deficit (-10% of GDP or more)
+ *
+ * Formula: 50 + (tradeSurplus / gdp) * 500
+ * Scaled so ±10% of GDP spans the full 0-100 range.
+ *
+ * @param {number} tradeSurplus – totalExports - totalImports (can be negative)
+ * @param {number} gdp          – nation's GDP in raw dollars
+ * @returns {number} trade balance index 0-100
+ */
+export function deriveTradeBalanceIndex(tradeSurplus, gdp) {
+    if (!gdp || gdp <= 0) return 50;
+    var ratio = tradeSurplus / gdp;
+    var index = 50 + (ratio * 500);
+    return Math.round(Math.max(0, Math.min(100, index)) * 10) / 10;
+}
+
+/**
+ * Calculate tariff revenue from actual import volumes.
+ *
+ * tariff_revenue = totalImports × (tariffRate / 100) × collectionRate
+ *
+ * tariffRate is the nation's tariff stat (0-100).
+ * collectionRate is how efficiently tariffs are collected (0-1),
+ * typically derived from bureaucratic efficiency (~0.7 average).
+ *
+ * @param {number} totalImports    – actual dollar value of all imports this tick
+ * @param {number} tariffRate      – nation's tariff stat (0-100)
+ * @param {number} collectionRate  – collection efficiency 0-1 (default 0.7)
+ * @returns {number} tariff revenue in dollars
+ */
+export function calculateTariffRevenue(totalImports, tariffRate, collectionRate) {
+    if (!totalImports || totalImports <= 0) return 0;
+    var rate = (Number(tariffRate) || 0) / 100;
+    var efficiency = (collectionRate != null) ? Number(collectionRate) : 0.7;
+    return Math.round(totalImports * rate * efficiency);
+}
+
+/**
+ * Main trade engine — runs once per tick for ALL nations simultaneously.
+ *
+ * Pipeline:
+ *   1. Compute per-nation per-sector export capacity + import demand
+ *   2. Aggregate supply/demand per sector → price modifiers (with smoothing)
+ *   3. Fetch diplomatic relations → compute bilateral affinity
+ *   4. For each exporter-sector, distribute capacity among importers (weighted by affinity × demand)
+ *   5. Write trade_flows, trade_partners, trade_summary rows
+ *   6. Update nation trade_balance stat + add tariff revenue
+ *
+ * @param {Object} supabase     – Supabase client
+ * @param {Array}  nationList   – array of nation rows (already fetched)
+ * @param {number} currentTick  – current game tick
+ * @returns {Object} { processed, totalVolume }
+ */
+export async function processTradeFlows(supabase, nationList, currentTick) {
+    if (!nationList || nationList.length < 2) {
+        console.log('[processTradeFlows] Need at least 2 nations for trade, skipping');
+        return { processed: 0, totalVolume: 0 };
+    }
+
+    var cfg = TRADE_CONFIG;
+    var sectors = TRADE_SECTORS;
+    var nationCount = nationList.length;
+
+    // Build nation lookup by id
+    var nationMap = {};
+    for (var ni = 0; ni < nationCount; ni++) {
+        nationMap[nationList[ni].id] = nationList[ni];
+    }
+
+    // ── Step 1: Compute per-nation budget info (for arms sector opts) ──
+    var budgetMap = {};
+    for (var ni = 0; ni < nationCount; ni++) {
+        var n = nationList[ni];
+        budgetMap[n.id] = calculateNationalBudget(n);
+    }
+
+    // ── Step 2: Compute export capacity + import demand for every nation × sector ──
+    // nationFlows[nationId][sectorKey] = { exportCapacity, importDemand }
+    var nationFlows = {};
+    // sectorAgg[sectorKey] = { totalSupply, totalDemand }
+    var sectorAgg = {};
+
+    for (var si = 0; si < sectors.length; si++) {
+        sectorAgg[sectors[si].key] = { totalSupply: 0, totalDemand: 0 };
+    }
+
+    for (var ni = 0; ni < nationCount; ni++) {
+        var n = nationList[ni];
+        nationFlows[n.id] = {};
+
+        for (var si = 0; si < sectors.length; si++) {
+            var sector = sectors[si];
+
+            // Arms sector needs special opts
+            var exportOpts = null;
+            var importOpts = null;
+            if (sector.key === 'arms') {
+                // Estimate defense allocation as 10% of available budget (default assumption)
+                var avail = budgetMap[n.id].availableBudget || 0;
+                var defenseBudget = avail * 0.10;
+                exportOpts = { defense_pct: 10 };
+                importOpts = { defense_budget: defenseBudget, has_arms_exports: false };
+            }
+
+            var expCap = calculateExportCapacity(n, sector, exportOpts);
+            var impDem = calculateImportDemand(n, sector, importOpts);
+
+            // Check if this nation can export arms (for import reduction)
+            if (sector.key === 'arms' && expCap > 0 && importOpts) {
+                importOpts.has_arms_exports = true;
+                impDem = calculateImportDemand(n, sector, importOpts);
+            }
+
+            nationFlows[n.id][sector.key] = { exportCapacity: expCap, importDemand: impDem };
+            sectorAgg[sector.key].totalSupply += expCap;
+            sectorAgg[sector.key].totalDemand += impDem;
+        }
+    }
+
+    // ── Step 3: Price modifiers per sector (with smoothing from previous tick) ──
+    var priceModifiers = {};
+    var prevPrices = {};
+
+    // Fetch previous tick's price modifiers for smoothing
+    var prevTick = currentTick - 1;
+    if (prevTick > 0) {
+        var { data: prevFlows } = await supabase.from('trade_flows')
+            .select('sector, price_modifier')
+            .eq('tick', prevTick)
+            .limit(sectors.length);
+        if (prevFlows) {
+            for (var i = 0; i < prevFlows.length; i++) {
+                prevPrices[prevFlows[i].sector] = Number(prevFlows[i].price_modifier) || 1.0;
+            }
+        }
+    }
+
+    for (var si = 0; si < sectors.length; si++) {
+        var key = sectors[si].key;
+        var rawPrice = calculatePriceModifier(sectorAgg[key].totalSupply, sectorAgg[key].totalDemand);
+        var oldPrice = prevPrices[key] || 1.0;
+        // Smoothing: 70% old price + 30% new signal → prevents wild swings
+        priceModifiers[key] = oldPrice * 0.7 + rawPrice * 0.3;
+    }
+
+    // ── Step 4: Fetch diplomatic relations + proposals for affinity ──
+    var { data: relations } = await supabase.from('diplomatic_relations')
+        .select('nation_a_id, nation_b_id, relation_score, active_treaties, proximity');
+
+    var { data: activeProposals } = await supabase.from('diplomatic_proposals')
+        .select('id, proposal_type, proposing_nation_id, target_nation_id')
+        .eq('status', 'active')
+        .in('proposal_type', ['trade_agreement', 'embargo']);
+
+    // Build relation lookup: relMap["idA|idB"] = { relation_score, active_treaties, proximity }
+    var relMap = {};
+    if (relations) {
+        for (var i = 0; i < relations.length; i++) {
+            var r = relations[i];
+            var k1 = r.nation_a_id + '|' + r.nation_b_id;
+            var k2 = r.nation_b_id + '|' + r.nation_a_id;
+            relMap[k1] = r;
+            relMap[k2] = r;
+        }
+    }
+
+    // Build bilateral flags from active proposals
+    // flagsMap["idA|idB"] = { has_trade_agreement, has_embargo }
+    var flagsMap = {};
+    if (activeProposals) {
+        for (var i = 0; i < activeProposals.length; i++) {
+            var p = activeProposals[i];
+            var k1 = p.proposing_nation_id + '|' + p.target_nation_id;
+            var k2 = p.target_nation_id + '|' + p.proposing_nation_id;
+            if (!flagsMap[k1]) flagsMap[k1] = {};
+            if (!flagsMap[k2]) flagsMap[k2] = {};
+            if (p.proposal_type === 'trade_agreement') {
+                flagsMap[k1].has_trade_agreement = true;
+                flagsMap[k2].has_trade_agreement = true;
+            }
+            if (p.proposal_type === 'embargo') {
+                flagsMap[k1].has_embargo = true;
+                flagsMap[k2].has_embargo = true;
+            }
+        }
+    }
+
+    // Pre-compute all bilateral affinities
+    // affinityMap["exporterId|importerId"] = affinity score 0-100
+    var affinityMap = {};
+    for (var ai = 0; ai < nationCount; ai++) {
+        for (var bi = ai + 1; bi < nationCount; bi++) {
+            var a = nationList[ai];
+            var b = nationList[bi];
+            var pairKey = a.id + '|' + b.id;
+            var rel = relMap[pairKey] || null;
+            var flags = flagsMap[pairKey] || {};
+            if (rel && rel.proximity >= 80) flags.same_region = true;
+            var aff = calculateTradeAffinity(a, b, rel, flags);
+            affinityMap[a.id + '|' + b.id] = aff;
+            affinityMap[b.id + '|' + a.id] = aff;
+        }
+    }
+
+    // ── Step 5: Distribute trade — for each exporter×sector, match to importers ──
+    // Track actual volumes: actualExports[nationId][sector], actualImports[nationId][sector]
+    var actualExports = {};
+    var actualImports = {};
+    for (var ni = 0; ni < nationCount; ni++) {
+        actualExports[nationList[ni].id] = {};
+        actualImports[nationList[ni].id] = {};
+        for (var si = 0; si < sectors.length; si++) {
+            actualExports[nationList[ni].id][sectors[si].key] = 0;
+            actualImports[nationList[ni].id][sectors[si].key] = 0;
+        }
+    }
+
+    var partnerRows = [];
+
+    for (var si = 0; si < sectors.length; si++) {
+        var sector = sectors[si];
+        var priceMod = priceModifiers[sector.key];
+
+        for (var ei = 0; ei < nationCount; ei++) {
+            var exporter = nationList[ei];
+            var expCap = nationFlows[exporter.id][sector.key].exportCapacity;
+            if (expCap <= 0) continue;
+
+            // Apply price modifier to export capacity
+            var adjustedCapacity = Math.round(expCap * priceMod);
+
+            // Build importer list for this exporter (everyone else with demand > 0)
+            var importerList = [];
+            for (var ii = 0; ii < nationCount; ii++) {
+                if (ii === ei) continue;
+                var importer = nationList[ii];
+                var impDem = nationFlows[importer.id][sector.key].importDemand;
+                // Subtract what they've already received from other exporters
+                var remainingDemand = impDem - actualImports[importer.id][sector.key];
+                if (remainingDemand <= 0) continue;
+
+                var aff = affinityMap[exporter.id + '|' + importer.id] || 0;
+                if (aff <= 0) continue;
+
+                importerList.push({
+                    nation_id: importer.id,
+                    demand: remainingDemand,
+                    affinity: aff
+                });
+            }
+
+            if (importerList.length === 0) continue;
+
+            // Distribute this exporter's capacity among importers
+            var allocations = distributeTradeAmongPartners(adjustedCapacity, importerList);
+
+            for (var ai = 0; ai < allocations.length; ai++) {
+                var alloc = allocations[ai];
+                if (alloc.volume <= 0) continue;
+
+                actualExports[exporter.id][sector.key] += alloc.volume;
+                actualImports[alloc.importer_nation_id][sector.key] += alloc.volume;
+
+                partnerRows.push({
+                    tick: currentTick,
+                    exporter_nation_id: exporter.id,
+                    importer_nation_id: alloc.importer_nation_id,
+                    sector: sector.key,
+                    trade_volume: alloc.volume,
+                    affinity_score: affinityMap[exporter.id + '|' + alloc.importer_nation_id] || 0
+                });
+            }
+        }
+    }
+
+    // ── Step 6: Build trade_flows + trade_summary rows, update nation stats ──
+    var flowRows = [];
+    var summaryRows = [];
+    var totalGlobalVolume = 0;
+
+    for (var ni = 0; ni < nationCount; ni++) {
+        var n = nationList[ni];
+        var totalExp = 0;
+        var totalImp = 0;
+        var topExpSector = null;
+        var topExpVal = 0;
+        var topImpSector = null;
+        var topImpVal = 0;
+
+        for (var si = 0; si < sectors.length; si++) {
+            var sKey = sectors[si].key;
+            var expVol = actualExports[n.id][sKey] || 0;
+            var impVol = actualImports[n.id][sKey] || 0;
+            totalExp += expVol;
+            totalImp += impVol;
+
+            if (expVol > topExpVal) { topExpVal = expVol; topExpSector = sKey; }
+            if (impVol > topImpVal) { topImpVal = impVol; topImpSector = sKey; }
+
+            flowRows.push({
+                nation_id: n.id,
+                tick: currentTick,
+                sector: sKey,
+                export_capacity: nationFlows[n.id][sKey].exportCapacity,
+                export_volume: expVol,
+                import_demand: nationFlows[n.id][sKey].importDemand,
+                import_volume: impVol,
+                net_flow: expVol - impVol,
+                price_modifier: priceModifiers[sKey]
+            });
+        }
+
+        var surplus = totalExp - totalImp;
+        var gdp = Number(n.gdp) || 0;
+        var tradeBalanceIdx = deriveTradeBalanceIndex(surplus, gdp);
+
+        // Tariff revenue: based on actual imports
+        var budget = budgetMap[n.id];
+        var tariffRate = Number(n.tariffs) || 0;
+        var collectionRate = budget ? budget.collectionRate : 0.7;
+        var tariffRev = calculateTariffRevenue(totalImp, tariffRate, collectionRate);
+
+        summaryRows.push({
+            nation_id: n.id,
+            tick: currentTick,
+            total_exports: totalExp,
+            total_imports: totalImp,
+            trade_surplus: surplus,
+            trade_balance_index: tradeBalanceIdx,
+            tariff_revenue: tariffRev,
+            top_export_sector: topExpSector,
+            top_import_sector: topImpSector,
+            dependency_alerts: []
+        });
+
+        totalGlobalVolume += totalExp;
+
+        // Update the nation's trade_balance stat
+        await supabase.from('nations')
+            .update({ trade_balance: tradeBalanceIdx })
+            .eq('id', n.id);
+    }
+
+    // ── Step 7: Write to database ──
+    // Insert trade_flows in batches (8 sectors × N nations)
+    if (flowRows.length > 0) {
+        var { error: flowErr } = await supabase.from('trade_flows').upsert(flowRows, {
+            onConflict: 'nation_id,tick,sector'
+        });
+        if (flowErr) console.error('[processTradeFlows] trade_flows upsert error:', flowErr.message);
+    }
+
+    // Insert trade_partners in batches
+    if (partnerRows.length > 0) {
+        // Batch in chunks of 500 to avoid payload limits
+        var BATCH = 500;
+        for (var bi = 0; bi < partnerRows.length; bi += BATCH) {
+            var chunk = partnerRows.slice(bi, bi + BATCH);
+            var { error: partErr } = await supabase.from('trade_partners').upsert(chunk, {
+                onConflict: 'tick,exporter_nation_id,importer_nation_id,sector'
+            });
+            if (partErr) console.error('[processTradeFlows] trade_partners upsert error:', partErr.message);
+        }
+    }
+
+    // Insert trade_summary
+    if (summaryRows.length > 0) {
+        var { error: sumErr } = await supabase.from('trade_summary').upsert(summaryRows, {
+            onConflict: 'nation_id,tick'
+        });
+        if (sumErr) console.error('[processTradeFlows] trade_summary upsert error:', sumErr.message);
+    }
+
+    console.log('[processTradeFlows] tick ' + currentTick + ': ' + nationCount + ' nations, ' +
+        flowRows.length + ' flow rows, ' + partnerRows.length + ' partner rows, ' +
+        'total volume $' + Math.round(totalGlobalVolume).toLocaleString());
+
+    return { processed: nationCount, totalVolume: totalGlobalVolume };
+}
 
 // Canonical government types used by nation state + ministry event template variants.
 export const MINISTRY_EVENT_GOV_TYPES = Object.freeze(['Democracy', 'Autocracy', 'Presidential']);
@@ -218,7 +1016,219 @@ export const DIPLOMACY_CONFIG = {
     // Covert operation success thresholds (0-1, higher = harder)
     COVERT_INTEL_THRESHOLD: 0.45,
     COVERT_PROPAGANDA_THRESHOLD: 0.55,
-    COVERT_BRIBE_THRESHOLD: 0.60
+    COVERT_BRIBE_THRESHOLD: 0.60,
+
+    // Trade negotiation AP costs
+    PROPOSE_TRADE_NEGOTIATION_AP: 1,      // Ambassador or MoT proposes trade negotiations
+    ACCEPT_TRADE_NEGOTIATION_AP: 1,       // Other ambassador or MoT accepts
+    JOIN_NEGOTIATION_PM_AP: 2,            // PM/HoG party joins negotiation
+    JOIN_NEGOTIATION_FM_AP: 1,            // FM party joins
+    JOIN_NEGOTIATION_MOT_AP: 2,           // Minister of Trade joins (required)
+    HOG_DRAFT_INITIATIVE_AP: 3,           // HoG drafting when no ambassador (penalty)
+    MOT_JOIN_DEADLINE_TICKS: 1,           // Ticks before negotiations cancel if MoT hasn't joined
+
+    // Trade negotiation timing
+    NEGOTIATION_DEFAULT_DURATION: 2,      // ticks until negotiation expires
+    NEGOTIATION_EXTENSION_TICKS: 12,      // ticks added per extension (1 month)
+    NEGOTIATION_MAX_EXTENSIONS: 3,        // max times negotiations can be extended
+    TRADE_RATIFICATION_VOTING_TICKS: 4    // ticks for parliament to vote on trade bill
+};
+
+/**
+ * Trade Agreement types that can be negotiated as Diplomatic Initiatives.
+ *
+ * 4 types:
+ *   FTA  — Free Trade Agreement: comprehensive tariff elimination
+ *   PTA  — Preferential Tariff Agreement: sector-specific tariff reduction
+ *   RSC  — Resource Supply Contract: guaranteed purchase commitment
+ *   ES   — Export Subsidy: unilateral, no partner needed
+ */
+export const TRADE_AGREEMENT_TYPES = {
+    fta: {
+        key: 'fta',
+        label: 'Free Trade Agreement',
+        shortLabel: 'FTA',
+        description: 'Comprehensive tariff elimination between two nations. Removes all tariffs across all sectors unless specific exemptions are carved out.',
+        bilateral: true,
+        required_articles: ['duration'],
+        optional_articles: ['sector_exemption', 'text_article'],
+        icon: 'handshake'
+    },
+    pta: {
+        key: 'pta',
+        label: 'Preferential Tariff Agreement',
+        shortLabel: 'PTA',
+        description: 'Sector-specific tariff reduction. Each side can negotiate different reductions for different sectors and directions.',
+        bilateral: true,
+        required_articles: ['tariff_reduction', 'duration'],
+        optional_articles: ['text_article'],
+        icon: 'chart'
+    },
+    resource_supply: {
+        key: 'resource_supply',
+        label: 'Resource Supply Contract',
+        shortLabel: 'RSC',
+        description: 'Guaranteed purchase commitment for raw resources. The buyer commits to purchasing a minimum percentage from the seller.',
+        bilateral: true,
+        required_articles: ['supply_commitment', 'price_terms', 'duration'],
+        optional_articles: ['breach_penalty', 'text_article'],
+        icon: 'truck'
+    },
+    export_subsidy: {
+        key: 'export_subsidy',
+        label: 'Export Subsidy',
+        shortLabel: 'ES',
+        description: 'Unilateral policy — subsidize your own exporters to make goods cheaper on the international market. No partner nation needed.',
+        bilateral: false,
+        required_articles: ['subsidized_sector', 'duration', 'funding_source'],
+        optional_articles: ['text_article'],
+        icon: 'money'
+    }
+};
+
+/**
+ * The 6 tradeable sectors for trade agreements.
+ * Subset of the full 8 TRADE_SECTORS (excludes tourism and services_finance).
+ */
+export const TRADEABLE_SECTORS = [
+    { key: 'fuel_energy',        label: 'Fuel & Energy',            raw_resource: true  },
+    { key: 'minerals',           label: 'Minerals & Raw Materials', raw_resource: true  },
+    { key: 'food_agriculture',   label: 'Food & Agriculture',       raw_resource: true  },
+    { key: 'manufactured_goods', label: 'Manufactured Goods',       raw_resource: false },
+    { key: 'technology',         label: 'Technology & Electronics', raw_resource: false },
+    { key: 'arms',               label: 'Arms & Military Equipment', raw_resource: false }
+];
+
+// Lookup map for tradeable sectors
+export var TRADEABLE_SECTOR_MAP = {};
+for (var _tasi = 0; _tasi < TRADEABLE_SECTORS.length; _tasi++) {
+    TRADEABLE_SECTOR_MAP[TRADEABLE_SECTORS[_tasi].key] = TRADEABLE_SECTORS[_tasi];
+}
+
+/**
+ * Article type definitions for trade agreements.
+ * Each defines the schema of what data the article captures.
+ */
+export const TRADE_ARTICLE_TYPES = {
+    // ── Duration (required for all types) ──
+    duration: {
+        key: 'duration',
+        label: 'Duration',
+        description: 'How long the agreement lasts.',
+        repeatable: false,
+        schema: {
+            duration_type: 'permanent|fixed',   // permanent or fixed term
+            duration_ticks: 'number',           // min 8, max 48 for FTA/PTA; min 8, max 36 for RSC; min 4, max 24 for ES
+            auto_renew: 'boolean',              // only for fixed term
+            withdrawal_notice_ticks: 'number'   // 1-6 ticks notice to withdraw
+        }
+    },
+
+    // ── Sector Exemption (FTA only, optional) ──
+    sector_exemption: {
+        key: 'sector_exemption',
+        label: 'Sector Exemption',
+        description: 'Exempt specific sectors from the FTA.',
+        repeatable: true,
+        applies_to: ['fta'],
+        schema: {
+            sector: 'string',                   // tradeable sector key
+            reason: 'string'                    // optional flavor text
+        }
+    },
+
+    // ── Tariff Reduction (PTA, required, repeatable per sector) ──
+    tariff_reduction: {
+        key: 'tariff_reduction',
+        label: 'Tariff Reduction',
+        description: 'Reduce tariffs on a specific sector.',
+        repeatable: true,
+        applies_to: ['pta'],
+        schema: {
+            sector: 'string',                   // tradeable sector key
+            direction: 'mutual|your_exports|their_exports',
+            reduction_pct: 'number'             // 0-100 (100 = full elimination)
+        }
+    },
+
+    // ── Supply Commitment (RSC, required) ──
+    supply_commitment: {
+        key: 'supply_commitment',
+        label: 'Supply Commitment',
+        description: 'Guaranteed purchase commitment for a raw resource.',
+        repeatable: false,
+        applies_to: ['resource_supply'],
+        schema: {
+            sector: 'string',                   // must be raw_resource sector
+            direction: 'we_buy|we_sell',        // who is buyer vs seller
+            commitment_pct: 'number'            // 10-90%
+        }
+    },
+
+    // ── Price Terms (RSC, required) ──
+    price_terms: {
+        key: 'price_terms',
+        label: 'Price Terms',
+        description: 'How the resource price is determined.',
+        repeatable: false,
+        applies_to: ['resource_supply'],
+        schema: {
+            price_type: 'market|fixed|discounted|premium',
+            modifier_pct: 'number'              // discount/premium percentage (0-25)
+        }
+    },
+
+    // ── Breach Penalty (RSC, optional) ──
+    breach_penalty: {
+        key: 'breach_penalty',
+        label: 'Breach Penalty',
+        description: 'Penalties if either party breaks the contract early.',
+        repeatable: false,
+        applies_to: ['resource_supply'],
+        schema: {
+            relations_penalty: 'number',        // 1-8
+            reputation_penalty: 'number',       // 0-4
+            financial_penalty: 'number'         // 0-500 (in millions)
+        }
+    },
+
+    // ── Subsidized Sector (Export Subsidy, required) ──
+    subsidized_sector: {
+        key: 'subsidized_sector',
+        label: 'Export Subsidy',
+        description: 'Subsidize exports in a specific sector.',
+        repeatable: false,
+        applies_to: ['export_subsidy'],
+        schema: {
+            sector: 'string',                   // any tradeable sector
+            subsidy_pct: 'number'               // 5-30%
+        }
+    },
+
+    // ── Funding Source (Export Subsidy, required) ──
+    funding_source: {
+        key: 'funding_source',
+        label: 'Funding Source',
+        description: 'Where the subsidy money comes from.',
+        repeatable: false,
+        applies_to: ['export_subsidy'],
+        schema: {
+            source: 'general_treasury|ministry_budget'
+        }
+    },
+
+    // ── Text Article (optional for all types) ──
+    text_article: {
+        key: 'text_article',
+        label: 'Text Article',
+        description: 'Free-text article for flavor/RP. No mechanical effect.',
+        repeatable: true,
+        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy'],
+        schema: {
+            title: 'string',
+            body: 'string'
+        }
+    }
 };
 
 /**
@@ -431,9 +1441,12 @@ export const INVERTED_STATS = [
 ];
 
 // Stats stored as raw numbers (not 0-100 indices).
-// GDP and debt are stored as small-scale (value = billions), so no divisor needed.
+// GDP and debt are stored as raw dollars (88B = 88,000,000,000).
+// All other stats (0-100 indices) use the default divisor of 50.
 export const RAW_SCALING_DIVISORS = {
-    population: 1_000_000
+    population: 1_000_000,
+    gdp: 1_000_000_000,
+    debt: 1_000_000_000
 };
 
 // ==================== NATIONAL BUDGET CALCULATION ====================
@@ -476,7 +1489,259 @@ export function calculateNationalBudget(nation) {
     // Available Budget = Revenue - Debt Service
     const availableBudget = grossRevenue - debtService;
 
-    return { grossRevenue, debtService, availableBudget, collectionRate };
+    return {
+        grossRevenue, debtService, availableBudget, collectionRate,
+        incomeRevenue, corpRevenue, salesRevenue, tariffRevenue, oilRevenue
+    };
+}
+
+// ==================== BUDGET BILL HELPERS ====================
+
+/**
+ * Fiscal categories that map 1:1 to ministries.
+ */
+export const FISCAL_CATEGORIES = [
+    'Government Administration', 'Labor', 'Healthcare', 'Education',
+    'Transportation', 'Energy', 'Justice', 'Foreign Ministry', 'Finance', 'Defense'
+];
+
+/**
+ * Compute inflation cost multiplier from the 0-100 inflation stat.
+ * Inflation stat 50 = 0% increase, 100 = +25% increase, 0 = -25% increase.
+ * Applied as (inflation - 50) / 2 percent increase per budget cycle.
+ * e.g. inflation=56 → costs increase by 3%
+ */
+export function getInflationMultiplier(inflationStat) {
+    const pct = (Number(inflationStat || 50) - 50) / 2;
+    return 1 + (pct / 100);
+}
+
+/**
+ * Compute the annualized cost of all active policies for a given fiscal category.
+ * Returns raw dollars. Applies inflation adjustment.
+ */
+export function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
+    let total = 0;
+    const policies = [];
+
+    for (const law of (activeLaws || [])) {
+        if (law.is_reversal) continue;
+        const policy = law.policies;
+        if (!policy || policy.fiscal_category !== fiscalCategory) continue;
+
+        let annualCost = 0;
+        const ongoingBase = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
+        if (ongoingBase > 0) {
+            let scaled = ongoingBase;
+            if (policy.ongoing_scaling_stat && nation[policy.ongoing_scaling_stat] !== undefined) {
+                const statVal = Number(nation[policy.ongoing_scaling_stat]) || 1;
+                const divisor = RAW_SCALING_DIVISORS[policy.ongoing_scaling_stat] || 50;
+                scaled = ongoingBase * (statVal / divisor);
+            }
+            annualCost = scaled * GAME_CONFIG.TICKS_PER_YEAR * 1_000_000;
+        }
+
+        if (annualCost > 0) {
+            policies.push({ policy_id: policy.id, policy_name: policy.policy_name, cost: annualCost });
+            total += annualCost;
+        }
+    }
+
+    // Apply inflation
+    const inflationMult = getInflationMultiplier(nation.inflation);
+    total *= inflationMult;
+    for (const p of policies) p.cost *= inflationMult;
+
+    return { total, policies };
+}
+
+/**
+ * Build full budget data for a nation: revenue, expenditures per ministry, debt service, etc.
+ */
+export function buildBudgetData(nation, activeLaws) {
+    const budget = calculateNationalBudget(nation);
+    const inflationStat = Number(nation.inflation || 50);
+    const inflationPct = (inflationStat - 50) / 2;
+    const reserves = Number(nation.budget_reserves || 0);
+
+    const ministries = {};
+    let totalExpenditure = 0;
+
+    for (const cat of FISCAL_CATEGORIES) {
+        const result = computeMinistryPolicyCost(activeLaws, cat, nation);
+        ministries[cat] = {
+            fulfilledCost: result.total,
+            allocation: result.total,  // default: fulfill
+            policies: result.policies
+        };
+        totalExpenditure += result.total;
+    }
+
+    const available = budget.grossRevenue + reserves - budget.debtService;
+
+    return {
+        ...budget,
+        inflationPct,
+        inflationStat,
+        reserves,
+        ministries,
+        totalExpenditure,
+        available,
+        currentDebt: Number(nation.debt || 0),
+        projectedDebt: Number(nation.debt || 0) + Math.max(0, totalExpenditure - available)
+    };
+}
+
+/**
+ * Auto-generate a budget bill for a nation.
+ * Called at January ticks (tick % 12 === 1, since tick 1 = January after start).
+ */
+export async function generateBudgetBill(supabase, nation, currentTick, activeLaws) {
+    const budgetData = buildBudgetData(nation, activeLaws);
+
+    const gameYear = 2000 + Math.floor(currentTick / 12);
+    const billName = `Budget Act of ${gameYear}`;
+
+    // Find the ruling faction to be the sponsor (PM's party or ruling_faction_id)
+    let sponsorId = nation.ruling_faction_id;
+    if (!sponsorId) {
+        // Fallback: first party faction
+        const { data: parties } = await supabase.from('factions')
+            .select('id').eq('nation_id', nation.id).eq('faction_type', 'party').limit(1);
+        sponsorId = parties?.[0]?.id;
+    }
+    if (!sponsorId) return null;
+
+    const preamble = `Annual budget for the fiscal year ${gameYear}. ` +
+        `This bill allocates $${(budgetData.available / 1e9).toFixed(1)}B in available revenue across all government ministries. ` +
+        (budgetData.inflationPct > 0
+            ? `Inflation (${budgetData.inflationStat.toFixed(0)}/100) has increased all costs by ~${budgetData.inflationPct.toFixed(1)}% since the last budget cycle.`
+            : `Inflation is currently under control.`);
+
+    // Insert the bill
+    const { data: bill, error: billError } = await supabase.from('bills').insert({
+        nation_id: nation.id,
+        proposed_by: sponsorId,
+        proposed_tick: currentTick,
+        bill_name: billName,
+        status: 'floor',
+        preamble,
+        bill_type: 'budget',
+        voting_ends_tick: currentTick + GAME_CONFIG.BUDGET_BILL_VOTING_TICKS
+    }).select('id').single();
+
+    if (billError || !bill) {
+        console.error('[generateBudgetBill] Failed to create budget bill:', billError?.message);
+        return null;
+    }
+
+    // Insert budget allocations per ministry
+    const allocRows = [];
+    for (const cat of FISCAL_CATEGORIES) {
+        const m = budgetData.ministries[cat];
+        allocRows.push({
+            bill_id: bill.id,
+            nation_id: nation.id,
+            fiscal_category: cat,
+            allocation_amount: m.allocation,
+            fulfilled_cost: m.fulfilledCost
+        });
+    }
+
+    const { error: allocError } = await supabase.from('budget_allocations').insert(allocRows);
+    if (allocError) {
+        console.error('[generateBudgetBill] Failed to insert allocations:', allocError.message);
+    }
+
+    console.log(`[generateBudgetBill] Created budget bill "${billName}" for ${nation.name} (bill ${bill.id})`);
+    return bill.id;
+}
+
+/**
+ * Resolve a passed budget bill: adjust debt based on surplus/deficit, update reserves.
+ */
+export async function resolveBudgetBill(supabase, bill, currentTick) {
+    const { data: allocations } = await supabase.from('budget_allocations')
+        .select('*').eq('bill_id', bill.id);
+
+    const { data: nation } = await supabase.from('nations')
+        .select('*').eq('id', bill.nation_id).single();
+    if (!nation) return;
+
+    const budget = calculateNationalBudget(nation);
+    const reserves = Number(nation.budget_reserves || 0);
+    const available = budget.grossRevenue + reserves - budget.debtService;
+
+    let totalSpending = 0;
+    for (const alloc of (allocations || [])) {
+        totalSpending += Number(alloc.allocation_amount || 0);
+    }
+
+    const gap = available - totalSpending;
+    let newDebt = Number(nation.debt || 0);
+    let newReserves = 0;
+
+    if (gap >= 0) {
+        // Surplus: reduce debt (or build reserves if no debt)
+        if (newDebt > 0) {
+            const debtReduction = Math.min(gap, newDebt);
+            newDebt -= debtReduction;
+            newReserves = gap - debtReduction;
+        } else {
+            newReserves = gap;
+        }
+    } else {
+        // Deficit: add to debt
+        newDebt += Math.abs(gap);
+        newReserves = 0;
+    }
+
+    // Update nation
+    await supabase.from('nations').update({
+        debt: newDebt,
+        budget_reserves: newReserves,
+        last_budget_tick: currentTick,
+        last_budget_bill_id: bill.id
+    }).eq('id', nation.id);
+
+    console.log(`[resolveBudgetBill] Nation ${nation.name}: spending=$${(totalSpending/1e9).toFixed(2)}B, gap=$${(gap/1e9).toFixed(2)}B, newDebt=$${(newDebt/1e9).toFixed(2)}B`);
+}
+
+/**
+ * Check if a nation is missing a budget and apply penalties.
+ * Called each tick. If no budget has passed in the current fiscal year, apply penalties.
+ */
+export async function processNoBudgetPenalty(supabase, nation, currentTick) {
+    const lastBudgetTick = nation.last_budget_tick;
+    const ticksSinceLastBudget = lastBudgetTick != null ? (currentTick - lastBudgetTick) : currentTick;
+
+    // Grace period: no penalty in the first year (first 12 ticks)
+    if (currentTick < 12) return null;
+
+    // If budget was passed within the last year, no penalty
+    if (ticksSinceLastBudget <= GAME_CONFIG.TICKS_PER_YEAR) return null;
+
+    // Penalty scales: the longer without a budget, the worse
+    const ticksOverdue = ticksSinceLastBudget - GAME_CONFIG.TICKS_PER_YEAR;
+    const maxPenaltyTicks = GAME_CONFIG.NO_BUDGET_PENALTY_TICKS;
+    const severity = Math.min(ticksOverdue / maxPenaltyTicks, 1.0);
+
+    // Apply penalties: efficiency drops, stability drops, credit drops
+    const effPenalty = -Math.round(severity * 2);  // up to -2/tick
+    const stabPenalty = -Math.round(severity * 1.5);  // up to -1.5/tick
+    const creditPenalty = -Math.round(severity * 1);  // up to -1/tick
+
+    const updates = {};
+    if (effPenalty !== 0) updates.efficiency = Math.max(0, Number(nation.efficiency || 50) + effPenalty);
+    if (stabPenalty !== 0) updates.stability = Math.max(0, Number(nation.stability || 50) + stabPenalty);
+    if (creditPenalty !== 0) updates.credit = Math.max(0, Number(nation.credit || 50) + creditPenalty);
+
+    if (Object.keys(updates).length > 0) {
+        await supabase.from('nations').update(updates).eq('id', nation.id);
+        Object.assign(nation, updates);
+    }
+
+    return { ticksOverdue, severity, effPenalty, stabPenalty, creditPenalty };
 }
 
 // Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -1% to +1% per month
@@ -635,6 +1900,52 @@ export function calculateBillDynamicPenalty(factionIdeology, articles, basePenal
     }
 
     return totalPenalty;
+}
+
+
+// ==================== IDEOLOGY ALIGNMENT (DYNAMIC SCORES) ====================
+
+/**
+ * Compute ideology alignment (0-100) between a faction and a voter bloc
+ * using the faction's dynamic axis scores.
+ *
+ * Returns 50 for a fully centrist party (neutral), >50 for alignment,
+ * <50 for opposition. Axes are weighted by how strongly the party
+ * leans on each axis, so centrist axes are naturally ignored.
+ *
+ * @param {object} factionIdeology - Row from faction_ideology (keys: liberty_equality, etc.)
+ * @param {object} bloc - Voter bloc row with axis_* columns (0-100 scale, 50 = neutral)
+ * @returns {number} 0-100 alignment score
+ */
+export function computeIdeologyAlignment(factionIdeology, bloc) {
+    const AXIS_KEYS = [
+        'liberty_equality', 'tradition_progress', 'security_freedom',
+        'globalism_nationalism', 'individualism_collectivism'
+    ];
+
+    let weightedAlignment = 0;
+    let totalWeight = 0;
+
+    for (const axisKey of AXIS_KEYS) {
+        const partyScore = factionIdeology[axisKey] || 0; // -100 to +100
+        const blocScore = bloc['axis_' + axisKey] ?? 50;  // 0-100
+
+        // How strongly the party leans on this axis (0 = centrist, 1 = extreme)
+        const partyStrength = Math.abs(partyScore) / 100;
+        if (partyStrength < 0.01) continue; // Skip negligible positions
+
+        // Convert party score to 0-100 scale to match bloc
+        const partyNorm = (partyScore + 100) / 2; // -100→0, 0→50, +100→100
+
+        // Alignment = 1 when identical, 0 when at opposite ends
+        const alignment = 1 - Math.abs(partyNorm - blocScore) / 100;
+
+        weightedAlignment += alignment * partyStrength;
+        totalWeight += partyStrength;
+    }
+
+    if (totalWeight === 0) return 50; // Fully centrist → neutral
+    return (weightedAlignment / totalWeight) * 100;
 }
 
 
@@ -1285,7 +2596,7 @@ export async function ensureBlocApprovals(supabase, factionId, nationId) {
 
 // ==================== IDEOLOGY SHIFT PROCESSOR ====================
 
-export async function processIdeologyShifts(supabase, nationId, resolutions) {
+export async function processIdeologyShifts(supabase, nationId, resolutions, currentTick) {
     if (!resolutions || resolutions.length === 0) return;
 
     const billIds = resolutions.map(r => r.billId);
@@ -1299,7 +2610,7 @@ export async function processIdeologyShifts(supabase, nationId, resolutions) {
 
     // Only legislative bills affect ideology
     const legislativeBills = bills.filter(b =>
-        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
+        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override', 'budget'].includes(b.bill_type)
     );
     if (legislativeBills.length === 0) return;
 
@@ -1361,6 +2672,8 @@ export async function processIdeologyShifts(supabase, nationId, resolutions) {
     }
 
     // Apply accumulated shifts to faction_ideology
+    const historyRows = [];
+
     for (const [factionId, axisShifts] of Object.entries(factionShifts)) {
         let ideologyRow = await loadFactionIdeology(supabase, factionId);
         if (!ideologyRow) {
@@ -1385,12 +2698,115 @@ export async function processIdeologyShifts(supabase, nationId, resolutions) {
 
         if (hasChanges) {
             await supabase.from('faction_ideology').update(updateObj).eq('faction_id', factionId);
+
+            // Record snapshot for ideology_history
+            if (typeof currentTick === 'number') {
+                const finalScores = { ...currentScores, ...updateObj };
+                historyRows.push({
+                    faction_id: factionId,
+                    nation_id: nationId,
+                    tick: currentTick,
+                    liberty_equality: finalScores.liberty_equality || 0,
+                    tradition_progress: finalScores.tradition_progress || 0,
+                    security_freedom: finalScores.security_freedom || 0,
+                    globalism_nationalism: finalScores.globalism_nationalism || 0,
+                    individualism_collectivism: finalScores.individualism_collectivism || 0
+                });
+            }
+        }
+    }
+
+    // Batch insert ideology history snapshots
+    if (historyRows.length > 0) {
+        const { error: histErr } = await supabase
+            .from('ideology_history')
+            .insert(historyRows);
+        if (histErr) {
+            console.warn('[processIdeologyShifts] ideology_history insert failed (table may not exist yet):', histErr.message);
         }
     }
 }
 
 
 // ==================== BILL RESOLUTION ENGINE ====================
+
+/**
+ * Get the number of YES seats required for a bill to pass,
+ * based on bill type and current GAME_CONFIG.
+ */
+export function getRequiredSeats(billType) {
+    if (billType === 'foundational')
+        return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD);
+    if (billType === 'veto_override')
+        return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
+    return GAME_CONFIG.MAJORITY_SEATS;
+}
+
+/**
+ * Check all active floor bills for early majority (for or against).
+ * If a definitive majority is detected, lock the outcome and shorten
+ * voting_ends_tick to currentTick + 1 (one grace tick) so the UI can
+ * display the result before resolution.
+ *
+ * Must run BEFORE resolveExpiredVotes each tick.
+ */
+export async function checkEarlyMajority(supabase, nationId) {
+    const { data: shard } = await supabase
+        .from('shard')
+        .select('current_tick')
+        .eq('name', 'Alpha Shard')
+        .single();
+    if (!shard) return [];
+    const currentTick = shard.current_tick;
+
+    // Bills still voting, not yet locked, not yet expired
+    const { data: activeBills, error } = await supabase
+        .from('bills')
+        .select('id, bill_name, bill_type, voting_ends_tick, bill_support(faction_id, stance, seat_count)')
+        .eq('nation_id', nationId)
+        .eq('status', 'floor')
+        .is('early_resolution_status', null)
+        .gt('voting_ends_tick', currentTick);
+
+    if (error || !activeBills || activeBills.length === 0) return [];
+
+    const results = [];
+
+    for (const bill of activeBills) {
+        let yesSeats = 0, noSeats = 0;
+        (bill.bill_support || []).forEach(s => {
+            const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+            if (stance === 'yes') yesSeats += s.seat_count;
+            else if (stance === 'no') noSeats += s.seat_count;
+        });
+
+        const requiredSeats = getRequiredSeats(bill.bill_type);
+        let earlyStatus = null;
+
+        if (yesSeats >= requiredSeats) {
+            earlyStatus = 'majority_reached';
+        } else if (noSeats > GAME_CONFIG.TOTAL_SEATS - requiredSeats) {
+            // Remaining seats can't push YES to threshold
+            earlyStatus = 'majority_opposed';
+        }
+
+        if (earlyStatus) {
+            // Grace tick: resolve one tick from now, but never extend past original deadline
+            const graceEndTick = Math.min(currentTick + 1, bill.voting_ends_tick);
+
+            await supabase.from('bills').update({
+                early_resolution_status: earlyStatus,
+                early_resolution_tick: currentTick,
+                voting_ends_tick: graceEndTick
+            }).eq('id', bill.id);
+
+            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} (YES=${yesSeats}, NO=${noSeats}, required=${requiredSeats}). Resolves tick ${graceEndTick}`);
+            results.push({ billId: bill.id, billName: bill.bill_name, status: earlyStatus, yesSeats, noSeats });
+        }
+    }
+
+    return results;
+}
 
 export async function resolveExpiredVotes(supabase, nationId) {
     const { data: shard } = await supabase
@@ -1429,19 +2845,26 @@ export async function resolveExpiredVotes(supabase, nationId) {
 
         const totalVoted = votesFor + votesAgainst;
 
-        // No-confidence uses simple majority (votesFor > votesAgainst)
-        // Foundational bills and veto overrides require 2/3 supermajority
-        // Normal bills require simple majority (50% + 1)
+        // Determine pass/fail — early-locked outcomes take priority
         const isNoConfidence = bill.bill_type === 'no_confidence';
-        const isFoundational = bill.bill_type === 'foundational';
-        const isVetoOverride = bill.bill_type === 'veto_override';
-        const supermajorityThreshold = isFoundational ? GAME_CONFIG.SUPERMAJORITY_THRESHOLD
-            : isVetoOverride ? GAME_CONFIG.VETO_OVERRIDE_THRESHOLD : null;
-        const passed = isNoConfidence
-            ? (totalVoted > 0 && votesFor > votesAgainst)
-            : supermajorityThreshold
-                ? (totalVoted > 0 && votesFor >= Math.ceil(GAME_CONFIG.TOTAL_SEATS * supermajorityThreshold))
-                : (totalVoted > 0 && votesFor >= GAME_CONFIG.MAJORITY_SEATS);
+        let passed;
+        if (bill.early_resolution_status === 'majority_reached') {
+            passed = true;  // Locked by checkEarlyMajority
+        } else if (bill.early_resolution_status === 'majority_opposed') {
+            passed = false; // Locked by checkEarlyMajority
+        } else {
+            // TIMEOUT: no early majority reached by end of voting window
+            if (totalVoted === 0) {
+                passed = false;
+            } else if (bill.bill_type === 'foundational' || bill.bill_type === 'veto_override') {
+                // Supermajority bills still require their threshold at timeout
+                passed = votesFor >= getRequiredSeats(bill.bill_type);
+            } else {
+                // All other bills (standard, no_confidence, confirmation, minister_confirmation):
+                // Relative majority — YES > NO passes, NO >= YES (including tie) fails
+                passed = votesFor > votesAgainst;
+            }
+        }
 
         if (isNoConfidence) {
             // Handle no-confidence resolution (pass or fail)
@@ -1451,7 +2874,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 await failBill(supabase, bill);
             }
             await resolveNoConfidence(supabase, bill, passed, votesFor, votesAgainst, currentTick);
-            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'no_confidence' });
+            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'no_confidence', earlyResolution: bill.early_resolution_status || null });
         } else if (isFoundational) {
             // Handle foundational bill resolution (electoral makeup, etc.)
             let enacted = false;
@@ -1480,7 +2903,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     article_count: '0'
                 }
             });
-            results.push({ billId: bill.id, billName: bill.bill_name, result: enacted ? 'passed' : 'failed', votesFor, votesAgainst, type: 'foundational' });
+            results.push({ billId: bill.id, billName: bill.bill_name, result: enacted ? 'passed' : 'failed', votesFor, votesAgainst, type: 'foundational', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
             // Ambassador confirmation bill
             if (passed) {
@@ -1524,7 +2947,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     }
                 });
             }
-            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'confirmation' });
+            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'confirmation', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
             // Minister confirmation bill (Presidential systems)
             const mKey = bill.ministry_key;
@@ -1625,7 +3048,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     });
                 } catch (e) { /* non-blocking */ }
             }
-            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'minister_confirmation' });
+            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'minister_confirmation', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'veto_override' && bill.original_bill_id) {
             // Veto override bill (Presidential systems)
             if (passed) {
@@ -1646,7 +3069,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), article_count: '0' }
                     });
                 } catch (e) { /* non-blocking */ }
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'veto_override' });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
             } else {
                 await failBill(supabase, bill);
                 try {
@@ -1657,7 +3080,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
                     });
                 } catch (e) { /* non-blocking */ }
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'veto_override' });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
             }
         } else if (bill.bill_type === 'ratification' && bill.diplomatic_proposal_id) {
             // Diplomatic ratification bill
@@ -1702,7 +3125,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         });
                     } catch (e) { /* non-blocking */ }
                 }
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'ratification' });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
             } else {
                 await failBill(supabase, bill);
                 // Mark proposal as ratification_failed so FM can abandon or retry
@@ -1717,7 +3140,33 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
                     });
                 } catch (e) { /* non-blocking */ }
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'ratification' });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
+            }
+        } else if (bill.bill_type === 'budget') {
+            // Budget bill resolution
+            if (passed) {
+                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+                await resolveBudgetBill(supabase, bill, currentTick);
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_trigger_key: 'bill_passed',
+                        p_nation_id: bill.nation_id,
+                        p_tick: currentTick,
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), article_count: '0' }
+                    });
+                } catch (e) { /* non-blocking */ }
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
+            } else {
+                await failBill(supabase, bill);
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_trigger_key: 'bill_failed',
+                        p_nation_id: bill.nation_id,
+                        p_tick: currentTick,
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
+                    });
+                } catch (e) { /* non-blocking */ }
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
             }
         } else if (passed) {
             // Presidential systems: route regular/repeal bills to president's desk
@@ -1740,7 +3189,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         article_count: String((bill.bill_articles || []).length)
                     }
                 });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'president_desk', votesFor, votesAgainst });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'president_desk', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
             } else {
                 await enactBill(supabase, bill, currentTick);
                 await supabase.rpc('fire_system_event', {
@@ -1756,7 +3205,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         article_count: String((bill.bill_articles || []).length)
                     }
                 });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
             }
         } else {
             await failBill(supabase, bill);
@@ -1772,7 +3221,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     votes_against: String(votesAgainst)
                 }
             });
-            results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst });
+            results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
         }
     }
 
@@ -1830,15 +3279,6 @@ export async function enactBill(supabase, bill, currentTick) {
             if (activeLawError) {
                 console.error(`[enactBill] Failed to insert active_law for policy ${policy.id} (${policy.policy_name}):`, activeLawError.message);
             }
-        }
-    }
-
-    const sponsorFaction = bill.factions;
-    if (sponsorFaction) {
-        const opposed = countOpposedArticles(bill.bill_articles || [], sponsorFaction);
-        if (opposed > 0) {
-            const penalty = calculateIdeologyPenalty('passed', opposed, nation.polarization || 0);
-            await applyIdeologyPenalty(supabase, bill.proposed_by, penalty);
         }
     }
 
@@ -2426,9 +3866,9 @@ for (const key of Object.keys(STAT_DECAY_CONFIG)) {
 export const STAT_TO_MINISTRY = {
     // Finance
     gdp: 'finance', gdp_growth: 'finance', debt: 'finance', debt_growth: 'finance',
-    inflation: 'finance', interest_rates: 'finance', trade_balance: 'finance',
-    currency_strength: 'finance', foreign_investment: 'finance', credit: 'finance',
-    income_tax: 'finance', corporate_tax: 'finance', sales_tax: 'finance', tariffs: 'finance',
+    inflation: 'finance', interest_rates: 'finance',
+    currency_strength: 'finance', credit: 'finance',
+    income_tax: 'finance', corporate_tax: 'finance', sales_tax: 'finance',
     // Healthcare
     healthcare_quality: 'healthcare', healthcare_accessibility: 'healthcare',
     beds_per_100k: 'healthcare', lifespan: 'healthcare', drug_use: 'healthcare',
@@ -2447,15 +3887,19 @@ export const STAT_TO_MINISTRY = {
     // Justice
     corruption: 'justice', judicial_independence: 'justice',
     press_freedom: 'justice', freedom_index: 'justice',
+    // Energy
+    energy_generation: 'energy', renewable_energy_percentage: 'energy',
+    pollution: 'energy', carbon_emissions: 'energy',
     // Transportation
     physical_infrastructure: 'transportation', digital_infrastructure: 'transportation',
     rail_network: 'transportation', urbanization: 'transportation',
-    energy_generation: 'transportation', renewable_energy_percentage: 'transportation',
-    pollution: 'transportation', carbon_emissions: 'transportation',
     // Defense
     terrorism: 'defense', political_violence: 'defense',
+    // Trade
+    trade_balance: 'trade', trade_agreements: 'trade',
+    tariffs: 'trade', foreign_investment: 'trade',
     // Foreign
-    international_reputation: 'foreign', trade_agreements: 'foreign',
+    international_reputation: 'foreign',
     sanctions: 'foreign', emigration: 'foreign',
     // Prime Minister (general governance & quality of life)
     legitimacy: 'prime_minister', efficiency: 'prime_minister', polarization: 'prime_minister',
@@ -3475,6 +4919,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
     const normalizedElectionType = context.electionType || 'parliamentary';
 
     // Use candidate-based voting for presidential elections, party-based for parliamentary
+    let electionResults;
     if (isPresidential && normalizedElectionType === 'presidential') {
         // Ensure candidates exist — generate for parties that have none
         const { data: allParties } = await supabase
@@ -3500,11 +4945,38 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
 
         // Auto-select candidates for any party that hasn't chosen
         await autoSelectPresidentialCandidates(supabase, nation, currentTick);
-        const { error: runError } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id });
+        const { data, error: runError } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id });
         if (runError) throw runError;
+        electionResults = data;
     } else {
-        const { error: runError } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: normalizedElectionType });
+        const { data, error: runError } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: normalizedElectionType });
         if (runError) throw runError;
+        electionResults = data;
+    }
+
+    // Create the election record (SQL RPCs no longer insert their own)
+    const { data: scheduledElection } = await supabase
+        .from('elections')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .eq('election_type', normalizedElectionType)
+        .order('election_tick', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+    if (scheduledElection) {
+        await supabase.from('elections')
+            .update({ status: 'completed', results: electionResults, election_tick: currentTick })
+            .eq('id', scheduledElection.id);
+    } else {
+        await supabase.from('elections').insert({
+            nation_id: nation.id,
+            election_tick: currentTick,
+            election_type: normalizedElectionType,
+            status: 'completed',
+            results: electionResults
+        });
     }
 
     const { data: completedElection, error: electionError } = await supabase
@@ -3526,8 +4998,94 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
             .eq('id', r.party_id);
     }
 
+    // Dissolve legislature — fail all pending bills (new parliament must re-propose)
+    const { data: dissolvedBills } = await supabase.from('bills')
+        .update({ status: 'failed' })
+        .eq('nation_id', nation.id)
+        .in('status', ['committee', 'floor'])
+        .select('id, bill_type, ambassador_id');
+    await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
+
     if (isPresidential && normalizedElectionType === 'presidential') {
+        // Fail bills on president's desk
+        const { data: deskBills } = await supabase.from('bills')
+            .update({ status: 'failed' })
+            .eq('nation_id', nation.id)
+            .eq('status', 'president_desk')
+            .select('id, bill_type, ambassador_id');
+        await syncAmbassadorsForFailedConfirmationBills(supabase, deskBills);
         await processPresidentialElectionResult(supabase, nation, completedElection, currentTick);
+    } else if (isPresidential && normalizedElectionType === 'parliamentary') {
+        // Midterm parliamentary election — seats reshuffled, president stays
+        console.log(`Manual midterm parliamentary election for ${nation.name} — president stays in office`);
+    } else {
+        // Parliamentary democracy: dissolve existing government after election
+        const { data: frozenBills } = await supabase.from('bills')
+            .update({ status: 'failed' })
+            .eq('nation_id', nation.id)
+            .eq('status', 'frozen')
+            .select('id, bill_type, ambassador_id');
+        await syncAmbassadorsForFailedConfirmationBills(supabase, frozenBills);
+
+        let existingGov = null;
+        const { data: govFormation } = await supabase
+            .from('government_formations')
+            .select('id, status')
+            .eq('nation_id', nation.id)
+            .in('status', ['formed', 'caretaker'])
+            .maybeSingle();
+        if (govFormation) {
+            existingGov = govFormation;
+        } else {
+            const { data: legacyGov } = await supabase
+                .from('active_coalitions')
+                .select('id, status')
+                .eq('nation_id', nation.id)
+                .is('dissolved_at', null)
+                .maybeSingle();
+            if (legacyGov) existingGov = legacyGov;
+        }
+
+        if (existingGov) {
+            console.log(`Dissolving government after manual election for ${nation.name}`);
+
+            try {
+                const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+                const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                if (fullNation) {
+                    await closeAdministration(supabase, nation.id, fullNation, 'dissolved', currentTick, shardData?.current_date || '', null);
+                }
+            } catch (adminErr) { console.warn('Could not close administration on manual election:', adminErr); }
+
+            await supabase
+                .from('government_formations')
+                .update({ status: 'dissolved' })
+                .eq('nation_id', nation.id)
+                .in('status', ['formed', 'caretaker']);
+
+            await supabase
+                .from('active_coalitions')
+                .update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
+                .eq('nation_id', nation.id)
+                .is('dissolved_at', null);
+
+            await supabase
+                .from('head_of_government')
+                .update({ active: false })
+                .eq('nation_id', nation.id)
+                .eq('active', true);
+
+            await supabase
+                .from('ministries')
+                .update({
+                    minister_first_name: null,
+                    minister_last_name: null,
+                    minister_age: null,
+                    party_id: null
+                })
+                .eq('nation_id', nation.id)
+                .eq('is_active', true);
+        }
     }
 
     return {
@@ -3618,8 +5176,7 @@ export async function processElections(supabase, nation, currentTick) {
             .update({ status: 'completed', results: data })
             .eq('id', election.id);
 
-        // Sync seats back to factions table (run_election creates a new record, so
-        // look up the latest completed election for this nation to get results)
+        // Sync seats back to factions table from the completed election results
         const { data: completedElection } = await supabase
             .from('elections').select('results')
             .eq('nation_id', nation.id)
@@ -3798,16 +5355,93 @@ export async function processElections(supabase, nation, currentTick) {
  * and inaugurate the winning candidate.
  */
 export async function processPresidentialElectionResult(supabase, nation, completedElection, currentTick) {
-    const candidateResults = completedElection?.results?.presidential_candidates || [];
+    let candidateResults = completedElection?.results?.presidential_candidates || [];
     if (candidateResults.length === 0) {
         console.warn(`No candidate vote data for presidential election in ${nation.name}`);
         return;
     }
 
-    // Winner = candidate marked as winner by SQL, or highest votes as fallback
-    const winner = candidateResults.find(c => c.winner)
-        || candidateResults.reduce((best, c) => (c.votes > best.votes) ? c : best, candidateResults[0]);
+    // Identify the outgoing president BEFORE deactivating (for incumbent win/loss effects)
+    const { data: outgoingPresident } = await supabase
+        .from('presidents')
+        .select('id, faction_id, first_name, last_name, terms_served')
+        .eq('nation_id', nation.id)
+        .eq('is_active', true)
+        .order('elected_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    // === RUNOFF SYSTEM ===
+    // Round 1: Check if any candidate received >50% of total votes
+    const totalVotes = completedElection?.results?.total_votes_cast || 0;
+    const sortedRound1 = [...candidateResults].sort((a, b) => b.votes - a.votes);
+    const topCandidate = sortedRound1[0];
+    const topPct = totalVotes > 0 ? (topCandidate.votes / totalVotes) * 100 : 0;
+
+    let winner;
+    let wasRunoff = false;
+    let runoffResults = null;
+
+    if (topPct > 50 || candidateResults.length <= 2) {
+        // Clear winner with majority — no runoff needed
+        winner = topCandidate;
+        console.log(`Presidential election Round 1 winner: ${winner.candidate_name} (${winner.party_name}) with ${topPct.toFixed(1)}% — majority achieved (${nation.name})`);
+    } else {
+        // === RUNOFF: No majority — top 2 candidates advance ===
+        wasRunoff = true;
+        const runoffCandidates = sortedRound1.slice(0, 2);
+        console.log(`Presidential election RUNOFF triggered for ${nation.name}: ${runoffCandidates[0].candidate_name} vs ${runoffCandidates[1].candidate_name} (top was ${topPct.toFixed(1)}%)`);
+
+        // Delete all non-runoff candidates from pm_candidates so the RPC only sees 2
+        const runoffCandidateIds = new Set(runoffCandidates.map(c => c.candidate_id));
+        const { data: allPresidentialCandidates } = await supabase
+            .from('pm_candidates')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('candidate_type', 'presidential');
+
+        for (const pc of (allPresidentialCandidates || [])) {
+            if (!runoffCandidateIds.has(pc.id)) {
+                await supabase.from('pm_candidates').delete().eq('id', pc.id);
+            }
+        }
+
+        // Run the presidential election RPC again with only the top 2
+        const { data: runoffData, error: runoffErr } = await supabase.rpc('run_presidential_election', { p_nation_id: nation.id });
+
+        if (runoffErr) {
+            console.error(`Runoff RPC failed for ${nation.name}:`, runoffErr);
+            // Fallback: use round 1 winner
+            winner = topCandidate;
+        } else {
+            runoffResults = runoffData?.presidential_candidates || [];
+            const runoffSorted = [...runoffResults].sort((a, b) => b.votes - a.votes);
+            winner = runoffSorted[0] || topCandidate;
+            console.log(`Runoff winner: ${winner.candidate_name} (${winner.party_name}) with ${winner.vote_percentage}% (${nation.name})`);
+
+            // Update the election record with combined round data
+            const combinedResults = {
+                ...completedElection.results,
+                round_1_candidates: candidateResults,
+                runoff_candidates: runoffResults,
+                was_runoff: true
+            };
+            await supabase.from('elections')
+                .update({ results: combinedResults })
+                .eq('nation_id', nation.id)
+                .eq('status', 'completed')
+                .order('created_at', { ascending: false })
+                .limit(1);
+        }
+    }
+
     console.log(`Presidential election winner: ${winner.candidate_name} (${winner.party_name}) with ${winner.votes} votes (${nation.name})`);
+
+    // === INCUMBENT WIN/LOSS DETECTION ===
+    const incumbentFactionId = outgoingPresident?.faction_id;
+    const isIncumbentWin = incumbentFactionId && winner.faction_id === incumbentFactionId;
+    const isIncumbentRunoffLoss = wasRunoff && incumbentFactionId && winner.faction_id !== incumbentFactionId;
+    const isChallengerWin = incumbentFactionId && winner.faction_id !== incumbentFactionId;
 
     // Deactivate previous president
     await supabase
@@ -3821,7 +5455,8 @@ export async function processPresidentialElectionResult(supabase, nation, comple
         const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
         if (fullNation) {
-            await closeAdministration(supabase, nation.id, fullNation, 'election_loss', currentTick, shardData?.current_date || '', null);
+            const endReason = isIncumbentWin ? 'reelection' : 'election_loss';
+            await closeAdministration(supabase, nation.id, fullNation, endReason, currentTick, shardData?.current_date || '', null);
         }
     } catch (adminErr) { console.warn('Could not close administration on presidential election:', adminErr); }
 
@@ -3838,7 +5473,7 @@ export async function processPresidentialElectionResult(supabase, nation, comple
         .maybeSingle();
 
     if (winningCandidate) {
-        await inauguratePresident(supabase, winningCandidate, nation.id, winner.faction_id, currentTick);
+        await inauguratePresident(supabase, winningCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
         console.log(`President inaugurated: ${winner.candidate_name} (${winner.party_name})`);
     } else {
         // Fallback: candidate may have been cleaned up, try by faction
@@ -3853,18 +5488,62 @@ export async function processPresidentialElectionResult(supabase, nation, comple
             .maybeSingle();
 
         if (fallbackCandidate) {
-            await inauguratePresident(supabase, fallbackCandidate, nation.id, winner.faction_id, currentTick);
+            await inauguratePresident(supabase, fallbackCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
             console.log(`President inaugurated (fallback): ${fallbackCandidate.first_name} ${fallbackCandidate.last_name} (${winner.party_name})`);
         } else {
             // No candidates at all — generate one and inaugurate immediately
             console.warn(`No presidential candidate found for winner ${winner.candidate_name} in ${nation.name} — generating emergency candidate`);
             const emergencyCandidates = await generatePresidentCandidates(supabase, nation.id, winner.faction_id, currentTick, 'presidential');
             if (emergencyCandidates && emergencyCandidates.length > 0) {
-                await inauguratePresident(supabase, emergencyCandidates[0], nation.id, winner.faction_id, currentTick);
+                await inauguratePresident(supabase, emergencyCandidates[0], nation.id, winner.faction_id, currentTick, outgoingPresident);
                 console.log(`Emergency president inaugurated: ${emergencyCandidates[0].first_name} ${emergencyCandidates[0].last_name}`);
             }
         }
     }
+
+    // === WINNER/LOSER EFFECTS ===
+    try {
+        const { data: nationStats } = await supabase.from('nations')
+            .select('stability, legitimacy, happiness, civil_unrest')
+            .eq('id', nation.id).single();
+
+        if (nationStats) {
+            const updates = {};
+            if (isIncumbentWin) {
+                // Incumbent wins: +3 legitimacy, +2 stability (mandate renewed)
+                updates.legitimacy = Math.min(100, Math.round(((nationStats.legitimacy || 50) + 3) * 10) / 10);
+                updates.stability = Math.min(100, Math.round(((nationStats.stability || 50) + 2) * 10) / 10);
+                console.log(`Incumbent win effects: +3 legitimacy, +2 stability (${nation.name})`);
+            } else if (isChallengerWin && !wasRunoff) {
+                // Challenger wins (no runoff): transition effects
+                updates.stability = Math.max(0, Math.round(((nationStats.stability || 50) - 2) * 10) / 10);
+                updates.civil_unrest = Math.min(100, Math.round(((nationStats.civil_unrest || 0) + 3) * 10) / 10);
+                updates.happiness = Math.min(100, Math.round(((nationStats.happiness || 50) + 1) * 10) / 10);
+                console.log(`Challenger win effects: -2 stability, +3 civil_unrest, +1 happiness (${nation.name})`);
+            } else if (isIncumbentRunoffLoss) {
+                // Incumbent loses in runoff: extra penalties (contested transition)
+                updates.stability = Math.max(0, Math.round(((nationStats.stability || 50) - 4) * 10) / 10);
+                updates.legitimacy = Math.max(0, Math.round(((nationStats.legitimacy || 50) - 2) * 10) / 10);
+                updates.civil_unrest = Math.min(100, Math.round(((nationStats.civil_unrest || 0) + 5) * 10) / 10);
+                updates.happiness = Math.min(100, Math.round(((nationStats.happiness || 50) + 2) * 10) / 10);
+                console.log(`Incumbent runoff loss effects: -4 stability, -2 legitimacy, +5 civil_unrest, +2 happiness (${nation.name})`);
+            }
+
+            if (Object.keys(updates).length > 0) {
+                await supabase.from('nations').update(updates).eq('id', nation.id);
+            }
+        }
+
+        // Approval effects: incumbent win boosts their faction, challenger win penalizes losing incumbent faction
+        if (isIncumbentWin && incumbentFactionId) {
+            await adjustBlocApproval(supabase, incumbentFactionId, 3);
+            console.log(`Incumbent re-elected: +3 approval to ${winner.party_name}`);
+        } else if (isChallengerWin && incumbentFactionId) {
+            await adjustBlocApproval(supabase, incumbentFactionId, -5);
+            await adjustBlocApproval(supabase, winner.faction_id, 3);
+            console.log(`Challenger wins: -5 approval to outgoing party, +3 to ${winner.party_name}`);
+        }
+    } catch (effectsErr) { console.warn('Could not apply winner/loser effects:', effectsErr); }
 
     // Clean up all presidential candidates after election
     await supabase.from('pm_candidates').delete()
@@ -3887,7 +5566,9 @@ export async function processPresidentialElectionResult(supabase, nation, comple
                 votes: winner.votes,
                 vote_percentage: winner.vote_percentage || '?',
                 runner_up: sorted[1]?.candidate_name || 'N/A',
-                runner_up_party: sorted[1]?.party_name || 'N/A'
+                runner_up_party: sorted[1]?.party_name || 'N/A',
+                was_runoff: wasRunoff ? 'true' : 'false',
+                incumbent_win: isIncumbentWin ? 'true' : 'false'
             }
         });
     } catch (e) { console.warn('Presidential election event fire failed (non-blocking):', e); }
@@ -4417,8 +6098,9 @@ export async function processPresidentDesk(supabase, nation, currentTick) {
 /**
  * Pre-election candidate generation: PRESIDENTIAL_CANDIDATE_LEAD_TICKS (6) ticks
  * before a scheduled presidential election, generate 3 presidential candidates for
- * EVERY party in the nation. The player's party picks their nominee; NPC parties
- * auto-select their first candidate immediately.
+ * each non-incumbent party. The incumbent president is automatically locked in as
+ * their party's candidate (no player choice). Other parties' players pick their
+ * nominee; autoSelectPresidentialCandidates() handles unselected parties on election day.
  *
  * Candidates are stored in pm_candidates with candidate_type = 'presidential'.
  */
@@ -4452,6 +6134,16 @@ export async function triggerPresidentialCandidateSelection(supabase, nation, cu
 
     console.log(`Generating presidential candidates for all parties in ${nation.name} (election at tick ${targetTick})`);
 
+    // Check for active incumbent president
+    const { data: incumbentPresident } = await supabase
+        .from('presidents')
+        .select('id, faction_id, first_name, last_name, age, ideology, trait, trait_upside, trait_downside, terms_served')
+        .eq('nation_id', nation.id)
+        .eq('is_active', true)
+        .order('elected_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
     // Get all parties in this nation
     const { data: allParties } = await supabase
         .from('factions')
@@ -4462,8 +6154,78 @@ export async function triggerPresidentialCandidateSelection(supabase, nation, cu
     if (!allParties || allParties.length === 0) return;
 
     for (const party of allParties) {
-        await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
+        if (incumbentPresident && party.id === incumbentPresident.faction_id) {
+            // === INCUMBENT LOCK-IN: auto-create incumbent as their party's candidate ===
+            // The incumbent president is automatically locked in as their faction's nominee.
+            // No player choice — they must run for re-election. Player must impeach/resign to change.
+            const factionIdeology = await loadFactionIdeology(supabase, incumbentPresident.faction_id);
 
+            // Determine the incumbent's ideology axis from faction ideology
+            // Use the faction's strongest axis as a proxy since we don't store axis on presidents
+            let ideologyAxis = 'tradition_progress';
+            let ideologyDirection = 1;
+            if (factionIdeology) {
+                const axes = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
+                let maxAbs = 0;
+                for (const axis of axes) {
+                    const val = Math.abs(factionIdeology[axis] || 0);
+                    if (val > maxAbs) {
+                        maxAbs = val;
+                        ideologyAxis = axis;
+                        ideologyDirection = (factionIdeology[axis] || 0) >= 0 ? 1 : -1;
+                    }
+                }
+            }
+
+            // Clear any existing unselected presidential candidates for this faction
+            await supabase.from('pm_candidates').delete()
+                .eq('nation_id', nation.id)
+                .eq('faction_id', incumbentPresident.faction_id)
+                .eq('candidate_type', 'presidential')
+                .eq('selected', false);
+
+            // Insert the incumbent as a pre-selected candidate
+            const { error: incumbentErr } = await supabase.from('pm_candidates').insert({
+                nation_id: nation.id,
+                faction_id: incumbentPresident.faction_id,
+                first_name: incumbentPresident.first_name,
+                last_name: incumbentPresident.last_name,
+                age: incumbentPresident.age,
+                ideology: incumbentPresident.ideology || 'PROGRESS',
+                ideology_axis: ideologyAxis,
+                ideology_direction: ideologyDirection,
+                trait_key: incumbentPresident.trait || PM_TRAIT_KEYS[0],
+                created_at_tick: currentTick,
+                candidate_type: 'presidential',
+                selected: true // Auto-selected — locked in
+            });
+
+            if (incumbentErr) {
+                console.error(`Error creating incumbent candidate for ${incumbentPresident.first_name} ${incumbentPresident.last_name}:`, incumbentErr);
+            } else {
+                console.log(`INCUMBENT LOCK-IN: President ${incumbentPresident.first_name} ${incumbentPresident.last_name} auto-locked as ${party.faction_name}'s candidate (${nation.name})`);
+            }
+        } else {
+            // Normal candidate generation for non-incumbent parties
+            await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
+        }
+    }
+
+    // Fire system event for incumbent lock-in
+    if (incumbentPresident) {
+        try {
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: 'incumbent_lockin',
+                p_nation_id: nation.id,
+                p_tick: currentTick,
+                p_placeholders: {
+                    nation: nation.name,
+                    president_name: `${incumbentPresident.first_name} ${incumbentPresident.last_name}`,
+                    election_tick: String(targetTick),
+                    ticks_remaining: String(leadTicks)
+                }
+            });
+        } catch (e) { console.warn('Incumbent lock-in event fire failed (non-blocking):', e); }
     }
 }
 
@@ -4556,44 +6318,12 @@ export async function autoSelectPresidentialCandidates(supabase, nation, current
 }
 
 /**
- * Auto-select presidential nominee if a party hasn't chosen within 3 ticks.
- * In the new pre-election flow, this just marks selected=true so the candidate
- * is ready for election day. Does NOT inaugurate — that happens when the
- * election resolves in processPresidentialElectionResult.
+ * No-op: presidential candidate selection stays open for the full 6-tick window
+ * until election day. autoSelectPresidentialCandidates() handles auto-selection
+ * at election time inside processElections().
  */
 export async function processPresidentCandidateTimeout(supabase, nation, currentTick) {
-    if (!isPresidentialRepublic(nation)) return;
-
-    // Find unselected presidential candidates older than 3 ticks
-    const timeoutTicks = 3;
-    const { data: staleCandidates } = await supabase
-        .from('pm_candidates')
-        .select('*')
-        .eq('nation_id', nation.id)
-        .eq('candidate_type', 'presidential')
-        .eq('selected', false)
-        .lte('created_at_tick', currentTick - timeoutTicks)
-        .order('created_at_tick', { ascending: true });
-
-    if (!staleCandidates || staleCandidates.length === 0) return;
-
-    // Group by faction to auto-select one per party
-    const factionGroups = {};
-    for (const c of staleCandidates) {
-        if (!factionGroups[c.faction_id]) factionGroups[c.faction_id] = [];
-        factionGroups[c.faction_id].push(c);
-    }
-
-    for (const [factionId, candidates] of Object.entries(factionGroups)) {
-        const pick = candidates[0]; // select first candidate
-        console.log(`Auto-selecting presidential nominee for ${nation.name}: ${pick.first_name} ${pick.last_name} — selection timed out after ${timeoutTicks} ticks`);
-
-        try {
-            await selectPresidentCandidate(supabase, pick.id, nation.id, factionId, currentTick);
-        } catch (e) {
-            console.error(`Error auto-selecting presidential nominee for ${nation.name}:`, e);
-        }
-    }
+    return;
 }
 
 /**
@@ -4652,13 +6382,16 @@ export async function processParliamentaryPMTimeout(supabase, nation, currentTic
 
 /**
  * Drift each faction x bloc approval toward an ideology-based target.
- * Base target: 40. If a voter bloc opposes the party's declared
- * ideology, the target drops (minimum 20). Drift rate: 0.5 per tick.
+ * Base target: 40. If a voter bloc opposes the party's dynamic ideology
+ * positions, the target drops (minimum 20). Drift rate: 0.5 per tick.
+ *
+ * Uses dynamic axis scores from faction_ideology (shifted by voting
+ * behavior) rather than the static declared axes.
  */
 export async function processBlocApprovalDecay(supabase, nation) {
     const BASE_TARGET = 40;
     const MIN_TARGET = 20;
-    const MAX_PENALTY_PER_AXIS = 10;
+    const MAX_TOTAL_PENALTY = 20;
     const DRIFT_RATE = 0.5;
 
     // 1. Load all party factions
@@ -4689,10 +6422,10 @@ export async function processBlocApprovalDecay(supabase, nation) {
     const blocMap = {};
     for (const b of voterBlocs) blocMap[b.id] = b;
 
-    // 4. Load faction ideologies (declared axes)
+    // 4. Load faction ideologies (dynamic axis scores)
     const { data: ideologies } = await supabase
         .from('faction_ideology')
-        .select('faction_id, declared_axis_1, declared_direction_1, declared_axis_2, declared_direction_2')
+        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
         .in('faction_id', factionIds);
 
     const ideoMap = {};
@@ -4706,35 +6439,16 @@ export async function processBlocApprovalDecay(supabase, nation) {
         if (!bloc) continue;
 
         const ideo = ideoMap[row.faction_id];
-        let totalPenalty = 0;
 
-        if (ideo) {
-            for (const [axisKey, dirKey] of [
-                ['declared_axis_1', 'declared_direction_1'],
-                ['declared_axis_2', 'declared_direction_2']
-            ]) {
-                const axis = ideo[axisKey];
-                const dir = ideo[dirKey];
-                if (!axis || dir === null || dir === undefined) continue;
+        // Compute ideology alignment using dynamic scores (0-100, 50 = neutral)
+        const alignment = ideo ? computeIdeologyAlignment(ideo, bloc) : 50;
 
-                const blocAxisCol = 'axis_' + axis;
-                const blocScore = bloc[blocAxisCol] ?? 50;
+        // Opposition penalty: alignment < 50 means the party opposes this bloc
+        const penalty = alignment < 50
+            ? Math.floor((50 - alignment) / 50 * MAX_TOTAL_PENALTY)
+            : 0;
 
-                // Opposition: party favors one pole, bloc leans opposite
-                let oppositionStrength = 0;
-                if (dir === -1) {
-                    // Party favors Pole A (low values); bloc opposes if > 50
-                    oppositionStrength = Math.max(0, (blocScore - 50) / 50);
-                } else {
-                    // Party favors Pole B (high values); bloc opposes if < 50
-                    oppositionStrength = Math.max(0, (50 - blocScore) / 50);
-                }
-
-                totalPenalty += Math.floor(oppositionStrength * MAX_PENALTY_PER_AXIS);
-            }
-        }
-
-        const target = Math.max(MIN_TARGET, BASE_TARGET - totalPenalty);
+        const target = Math.max(MIN_TARGET, BASE_TARGET - penalty);
 
         // Drift toward target
         let newApproval = row.approval;
@@ -4885,10 +6599,10 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
     const blocMap = {};
     for (const b of voterBlocs) blocMap[b.id] = b;
 
-    // ── 4. Load faction ideologies (declared axes) ──
+    // ── 4. Load faction ideologies (dynamic axis scores) ──
     const { data: ideologies } = await supabase
         .from('faction_ideology')
-        .select('faction_id, declared_axis_1, declared_direction_1, declared_axis_2, declared_direction_2')
+        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
         .in('faction_id', factionIds);
 
     const ideoMap = {};
@@ -4962,29 +6676,8 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         const ideo = ideoMap[row.faction_id];
 
         // ─── PILLAR 1: Ideology Alignment (0-100) ───
-        let ideoScore = 50; // neutral default
-        if (ideo) {
-            const axisPairs = [
-                [ideo.declared_axis_1, ideo.declared_direction_1],
-                [ideo.declared_axis_2, ideo.declared_direction_2]
-            ];
-            let totalAlignment = 0;
-            let axisCount = 0;
-            for (const [axis, dir] of axisPairs) {
-                if (!axis || dir === null || dir === undefined) continue;
-                const blocVal = bloc['axis_' + axis] ?? 50; // 0-100
-                // dir = -1 → party favors low end; alignment with bloc = (100 - blocVal) / 100
-                // dir = +1 → party favors high end; alignment with bloc = blocVal / 100
-                const alignment = dir === -1
-                    ? (100 - blocVal) / 100
-                    : blocVal / 100;
-                totalAlignment += alignment;
-                axisCount++;
-            }
-            if (axisCount > 0) {
-                ideoScore = (totalAlignment / axisCount) * 100;
-            }
-        }
+        // Uses dynamic axis scores that shift based on voting behavior
+        const ideoScore = ideo ? computeIdeologyAlignment(ideo, bloc) : 50;
 
         // ─── PILLAR 2: Performance Perception (0-100) ───
         // Credit/blame the faction for stats under its ministry control,
@@ -5082,7 +6775,8 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
                 performance_perception: u.performance_perception,
                 momentum: u.momentum,
                 preference_score: u.preference_score,
-                vote_share: u.vote_share
+                vote_share: u.vote_share,
+                approval: Math.round(u.preference_score)
             })
             .eq('id', u.id);
     }
@@ -5524,14 +7218,27 @@ export async function executePressConference(supabase, factionId, nationId, stat
     const { data: nation } = await supabase
         .from('nations').select('*').eq('id', nationId).single();
     let prevStats = null;
+    const PC_TREND_WINDOW = 3;
     if (currentTick > 0) {
+        const lookbackTick = Math.max(0, currentTick - PC_TREND_WINDOW);
         const { data: histRow } = await supabase
             .from('nations_history')
             .select('*')
             .eq('nation_id', nationId)
-            .eq('tick', currentTick - 1)
-            .single();
-        prevStats = histRow;
+            .eq('tick', lookbackTick)
+            .maybeSingle();
+        if (histRow) {
+            prevStats = histRow;
+        } else {
+            const { data: fallbackRows } = await supabase
+                .from('nations_history')
+                .select('*')
+                .eq('nation_id', nationId)
+                .lt('tick', currentTick)
+                .order('tick', { ascending: true })
+                .limit(1);
+            prevStats = fallbackRows?.[0] || null;
+        }
     }
 
     const currentVal = nation ? nation[statKey] : null;

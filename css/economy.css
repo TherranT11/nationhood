@@ -1,0 +1,590 @@
+/* ===== ECONOMY PAGE — FINANCIAL DASHBOARD ===== */
+
+/* Hero Bar */
+.economy-hero {
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+    border-bottom: 3px solid var(--accent);
+    padding: 28px 24px 32px;
+    text-align: center;
+}
+
+.economy-hero-title {
+    color: var(--accent);
+    font-size: 1.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    margin-bottom: 24px;
+    font-family: 'Courier New', monospace;
+}
+
+.economy-hero-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+/* Individual Stat Box */
+.economy-stat-box {
+    background: var(--bg-panel, #1a1a1a);
+    border: 2px solid #2a2a2a;
+    border-radius: 8px;
+    padding: 20px 16px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+}
+
+.economy-stat-box:hover {
+    border-color: var(--accent);
+}
+
+.economy-stat-box::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent) 0%, transparent 100%);
+}
+
+.economy-stat-label {
+    font-size: 0.65rem;
+    color: var(--text-secondary, #888);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.economy-stat-value {
+    font-size: 2rem;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    color: var(--text-primary, #e0e0e0);
+    margin-bottom: 8px;
+    line-height: 1;
+}
+
+.economy-stat-trend {
+    font-size: 0.85rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.economy-stat-trend .trend-up {
+    color: var(--green, #4CAF50);
+}
+
+.economy-stat-trend .trend-down {
+    color: var(--red, #ff4444);
+}
+
+.economy-stat-trend .trend-neutral {
+    color: var(--text-secondary, #888);
+}
+
+/* Rating Label */
+.economy-stat-rating {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-top: 8px;
+}
+
+.economy-stat-rating.rating-excellent { color: #4CAF50; }
+.economy-stat-rating.rating-good      { color: #2196F3; }
+.economy-stat-rating.rating-moderate   { color: #e0e0e0; }
+.economy-stat-rating.rating-poor       { color: #ff9800; }
+.economy-stat-rating.rating-critical   { color: #ff4444; }
+
+/* Inverted stats: up is bad, down is good */
+.economy-stat-trend .trend-up.inverted {
+    color: var(--red, #ff4444);
+}
+
+.economy-stat-trend .trend-down.inverted {
+    color: var(--green, #4CAF50);
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+    .economy-hero-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .economy-hero-title {
+        font-size: 1.3rem;
+        letter-spacing: 3px;
+    }
+}
+
+@media (max-width: 600px) {
+    .economy-hero-stats {
+        grid-template-columns: 1fr;
+        max-width: 320px;
+    }
+
+    .economy-hero {
+        padding: 20px 16px 24px;
+    }
+
+    .economy-hero-title {
+        font-size: 1.1rem;
+        letter-spacing: 2px;
+    }
+
+    .economy-stat-value {
+        font-size: 1.6rem;
+    }
+}
+
+/* Light Mode */
+body.light-mode .economy-hero {
+    background: linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%);
+}
+
+body.light-mode .economy-stat-box {
+    background: #ffffff;
+    border-color: #d0d0d0;
+}
+
+/* ===== ECONOMY PAGE BODY — TWO-COLUMN LAYOUT ===== */
+
+.economy-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.economy-left {
+    padding-right: 12px;
+}
+
+.economy-right {
+    padding-left: 12px;
+    border-left: 1px solid var(--border-light);
+}
+
+/* ===== BUDGET PANEL ===== */
+
+.budget-panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-main);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* --- Header --- */
+.budget-header {
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+    padding: 20px 24px;
+    border-bottom: 2px solid var(--accent);
+    text-align: center;
+}
+
+.budget-title {
+    color: var(--accent);
+    font-size: 1.2rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    font-family: 'Courier New', monospace;
+    margin-bottom: 4px;
+}
+
+.budget-subtitle {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+}
+
+/* --- Summary Row --- */
+.budget-summary {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-main);
+}
+
+.budget-summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.budget-summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.budget-summary-label {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 600;
+}
+
+.budget-summary-value {
+    font-size: 1.3rem;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+/* --- Balance --- */
+.budget-balance {
+    text-align: center;
+    padding: 10px;
+    border-radius: 6px;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    font-size: 1rem;
+}
+
+.budget-balance.surplus {
+    color: var(--green);
+    background: rgba(76, 175, 80, 0.08);
+    border: 1px solid rgba(76, 175, 80, 0.2);
+}
+
+.budget-balance.deficit {
+    color: var(--red);
+    background: rgba(255, 68, 68, 0.08);
+    border: 1px solid rgba(255, 68, 68, 0.2);
+}
+
+.budget-balance-label {
+    font-size: 0.7rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.budget-balance-value {
+    font-size: 1.1rem;
+}
+
+.budget-balance-trend {
+    display: block;
+    margin-top: 4px;
+}
+
+/* --- Two-Column Breakdown --- */
+.budget-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+}
+
+.budget-column {
+    padding: 16px 20px;
+}
+
+.budget-column:first-child {
+    border-right: 1px solid var(--border-light);
+}
+
+.budget-column-header {
+    font-size: 0.68rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-main);
+}
+
+/* --- Line Items --- */
+.budget-line-item {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.budget-line-item:last-child {
+    border-bottom: none;
+}
+
+.budget-line-clickable {
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.budget-line-clickable:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+body.light-mode .budget-line-clickable:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.budget-line-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.budget-line-label {
+    font-size: 0.78rem;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.budget-line-value {
+    font-size: 0.85rem;
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.budget-line-trend {
+    margin-top: 2px;
+    text-align: right;
+}
+
+/* --- Total Line --- */
+.budget-line-total {
+    border-top: 2px solid var(--border-main);
+    border-bottom: none;
+    margin-top: 4px;
+    padding-top: 10px;
+}
+
+.budget-line-total .budget-line-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--accent);
+}
+
+.budget-line-total .budget-line-value {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+/* --- Trend Indicators --- */
+.budget-trend {
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.budget-trend.trend-up {
+    color: var(--green);
+}
+
+.budget-trend.trend-down {
+    color: var(--red);
+}
+
+.budget-trend.trend-neutral {
+    color: var(--text-secondary);
+}
+
+/* ===== RESPONSIVE — Budget Panel ===== */
+@media (max-width: 1100px) {
+    .economy-body {
+        grid-template-columns: 1fr;
+        gap: 24px;
+    }
+
+    .economy-left {
+        padding-right: 0;
+    }
+
+    .economy-right {
+        padding-left: 0;
+        border-left: none;
+        border-top: 1px solid var(--border-light);
+        padding-top: 24px;
+    }
+}
+
+@media (max-width: 600px) {
+    .economy-body {
+        padding: 16px;
+    }
+
+    .budget-columns {
+        grid-template-columns: 1fr;
+    }
+
+    .budget-column:first-child {
+        border-right: none;
+        border-bottom: 1px solid var(--border-light);
+        padding-bottom: 12px;
+    }
+
+    .budget-summary-row {
+        flex-direction: column;
+        gap: 12px;
+        align-items: stretch;
+    }
+
+    .budget-summary-item {
+        text-align: center;
+    }
+
+    .budget-summary-value {
+        font-size: 1.1rem;
+    }
+}
+
+/* ===== Light Mode — Budget Panel ===== */
+body.light-mode .budget-header {
+    background: linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%);
+}
+
+body.light-mode .budget-panel {
+    background: #ffffff;
+    border-color: #d0d0d0;
+}
+
+body.light-mode .budget-balance.surplus {
+    background: rgba(46, 125, 50, 0.06);
+    border-color: rgba(46, 125, 50, 0.2);
+}
+
+body.light-mode .budget-balance.deficit {
+    background: rgba(198, 40, 40, 0.06);
+    border-color: rgba(198, 40, 40, 0.2);
+}
+
+/* ===== MINISTRY DETAIL PANEL ===== */
+
+.ministry-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-main);
+}
+
+.ministry-tab {
+    padding: 6px 12px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border: 1px solid var(--border-main);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+
+.ministry-tab:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.ministry-tab.active {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+}
+
+.ministry-policy-list {
+    padding: 16px 20px;
+}
+
+.ministry-empty {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 32px 16px;
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+/* Light mode */
+body.light-mode .ministry-tab {
+    border-color: #d0d0d0;
+    color: #666;
+}
+
+body.light-mode .ministry-tab:hover {
+    color: #333;
+}
+
+body.light-mode .ministry-tab.active {
+    color: #000;
+}
+
+/* ===== TRADE PANEL ===== */
+
+/* Spacing between budget and trade panels */
+.economy-left .budget-panel + .budget-panel {
+    margin-top: 20px;
+}
+
+/* Trade summary row */
+.trade-summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border-main);
+    gap: 12px;
+}
+
+.trade-summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    text-align: center;
+}
+
+.trade-summary-label {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 600;
+}
+
+.trade-summary-value {
+    font-size: 1.1rem;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+}
+
+.trade-summary-value.exports { color: var(--green); }
+.trade-summary-value.imports { color: var(--red); }
+.trade-summary-value.surplus { color: var(--green); }
+.trade-summary-value.deficit { color: var(--red); }
+
+/* Inverted trend for imports: up = red (costs rising), down = green (costs falling) */
+.trade-inverted .budget-trend.trend-up { color: var(--red); }
+.trade-inverted .budget-trend.trend-down { color: var(--green); }
+
+/* Trade placeholder when no data yet */
+.trade-placeholder {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 32px 16px;
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+/* Light mode */
+body.light-mode .trade-summary-value.exports { color: var(--green); }
+body.light-mode .trade-summary-value.imports { color: var(--red); }
+body.light-mode .trade-summary-value.surplus { color: var(--green); }
+body.light-mode .trade-summary-value.deficit { color: var(--red); }
+body.light-mode .trade-inverted .budget-trend.trend-up { color: var(--red); }
+body.light-mode .trade-inverted .budget-trend.trend-down { color: var(--green); }

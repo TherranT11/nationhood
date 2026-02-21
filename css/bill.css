@@ -190,3 +190,277 @@ html { overflow-y: scroll !important; height: auto !important; }
         .stance-btn.accept-btn.active { background: #388E3C; box-shadow: 0 0 0 2px #ffcc00; }
         .stance-btn.reject-btn { background: #ff4444; color: #fff; }
         .stance-btn.reject-btn.active { background: #cc0000; box-shadow: 0 0 0 2px #ffcc00; }
+
+        /* Strike amendment requests (orange border) */
+        .amendment-request.strike { border-left-color: #ff6600; }
+        .amendment-policy.strike-policy { color: #ff6600; }
+
+        /* Sponsor article action buttons (Edit / Remove on article cards) */
+        .article-sponsor-actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #333; }
+        .article-action-btn { padding: 6px 14px; border: none; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.2s; }
+        .article-action-btn.edit { background: #2196F3; color: white; }
+        .article-action-btn.edit:hover { background: #1976D2; }
+        .article-action-btn.rescind { background: #ff4444; color: white; }
+        .article-action-btn.rescind:hover { background: #cc0000; }
+
+        /* Sponsor article toolbar (Add Article buttons above articles section) */
+        .sponsor-article-toolbar { display: flex; gap: 8px; padding: 12px 24px; background: #1e1e1e; border-bottom: 1px solid #333; }
+        .sponsor-tool-btn { padding: 10px 18px; border: 2px dashed #555; border-radius: 6px; background: transparent; color: #aaa; font-size: 0.8rem; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+        .sponsor-tool-btn:hover { border-color: #ffcc00; color: #ffcc00; background: rgba(255, 204, 0, 0.05); }
+
+        /* Strike button styling in sidebar */
+        .add-strike-btn { flex: 1; padding: 12px; background: #ff6600; border: none; border-radius: 6px; color: white; font-weight: bold; cursor: pointer; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; transition: background 0.2s; }
+        .add-strike-btn:hover { background: #e55b00; }
+
+        /* Vote status badge (bottom-right of bill area) */
+        .bill-main-wrapper { position: relative; }
+        .vote-status-badge {
+            position: sticky;
+            bottom: 16px;
+            float: right;
+            margin-right: 16px;
+            margin-top: -48px;
+            padding: 8px 18px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            z-index: 10;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+        .vote-status-badge.not-voted {
+            background: #333;
+            color: #aaa;
+            border: 2px solid #555;
+        }
+        .vote-status-badge.voted-yes {
+            background: #1B5E20;
+            color: #4CAF50;
+            border: 2px solid #4CAF50;
+        }
+        .vote-status-badge.voted-no {
+            background: #3a1111;
+            color: #ff4444;
+            border: 2px solid #ff4444;
+        }
+        .vote-status-badge.voted-abstain {
+            background: #2a2a2a;
+            color: #888;
+            border: 2px solid #666;
+        }
+
+        /* Early resolution banners */
+        .bill-early-resolution { padding: 12px 16px; border-radius: 8px; font-weight: bold; text-align: center; margin-top: 8px; }
+        .majority-reached { background: linear-gradient(135deg, #1b3a1b, #0d260d); border: 2px solid #4CAF50; color: #4CAF50; }
+        .majority-opposed { background: linear-gradient(135deg, #3a1b1b, #260d0d); border: 2px solid #ff4444; color: #ff4444; }
+
+        /* ===== BUDGET BILL ===== */
+
+        .budget-top-bar {
+            background: linear-gradient(135deg, #1a2a1a, #0d1a0d);
+            border: 2px solid #2E7D32;
+            border-radius: 10px;
+            padding: 14px 20px;
+            margin: 16px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .budget-top-numbers, .budget-top-debt {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            font-size: 0.88rem;
+            color: #ccc;
+        }
+        .budget-top-debt { font-size: 0.82rem; color: #999; }
+        .budget-top-sep { color: #555; margin: 0 4px; }
+        .budget-gap-surplus { color: #4CAF50; }
+        .budget-gap-deficit { color: #ff4444; }
+
+        .budget-section {
+            padding: 0 24px 20px;
+        }
+        .budget-section-header {
+            font-size: 0.8rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #ffcc00;
+            padding: 16px 0 10px;
+            border-bottom: 1px solid #333;
+            margin-bottom: 12px;
+        }
+
+        .budget-revenue-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .budget-rev-line {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 0.88rem;
+            color: #bbb;
+        }
+        .budget-rev-bold { font-weight: bold; color: #fff; }
+        .budget-rev-negative .budget-rev-value { color: #ff6666; }
+        .budget-rev-divider {
+            border-top: 1px solid #444;
+            margin: 4px 0;
+        }
+
+        .budget-inflation-notice {
+            background: #2a2200;
+            border: 1px solid #ff9800;
+            border-radius: 6px;
+            padding: 10px 14px;
+            margin-top: 12px;
+            font-size: 0.82rem;
+            color: #ff9800;
+        }
+
+        /* Ministry tabs */
+        .budget-ministry-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 16px;
+        }
+        .budget-ministry-tab {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            padding: 8px 12px;
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: #aaa;
+            font-size: 0.72rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-width: 80px;
+        }
+        .budget-ministry-tab:hover { border-color: #ffcc00; color: #fff; }
+        .budget-ministry-tab.active {
+            border-color: #ffcc00;
+            background: #2a2200;
+            color: #fff;
+        }
+        .budget-tab-name { font-weight: bold; text-align: center; line-height: 1.2; }
+        .budget-tab-amount { color: #ccc; font-size: 0.75rem; }
+        .budget-tab-pct { font-weight: bold; font-size: 0.7rem; }
+        .funded-full { color: #4CAF50; }
+        .funded-ok { color: #ff9800; }
+        .funded-low { color: #ff4444; }
+
+        /* Allocation controls */
+        .budget-alloc-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding: 12px 0;
+            border-bottom: 1px solid #333;
+        }
+        .budget-alloc-label { color: #888; font-size: 0.85rem; }
+        .budget-alloc-value { font-size: 1.2rem; font-weight: bold; color: #fff; }
+        .budget-alloc-controls { display: flex; gap: 6px; flex-wrap: wrap; }
+        .budget-ctrl-btn {
+            padding: 6px 12px;
+            border: 1px solid #555;
+            border-radius: 4px;
+            background: #2a2a2a;
+            color: #ccc;
+            font-size: 0.78rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .budget-ctrl-btn:hover { border-color: #ffcc00; color: #ffcc00; background: #333; }
+        .budget-ctrl-btn.fulfill {
+            background: #1B5E20;
+            border-color: #4CAF50;
+            color: #4CAF50;
+        }
+        .budget-ctrl-btn.fulfill:hover { background: #2E7D32; color: #fff; }
+
+        /* Ministry status */
+        .budget-ministry-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            padding: 10px 0;
+            font-size: 0.82rem;
+            color: #aaa;
+        }
+        .budget-underfunded-note { color: #ff9800; font-weight: bold; }
+
+        /* Sub-sections (Institutions, Policies) */
+        .budget-sub-section {
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            margin-top: 12px;
+            overflow: hidden;
+        }
+        .budget-sub-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            background: #252525;
+            font-size: 0.78rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #aaa;
+            border-bottom: 1px solid #333;
+        }
+        .budget-locked-badge {
+            background: #555;
+            color: #999;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.65rem;
+        }
+        .budget-info-badge {
+            background: #1B5E20;
+            color: #4CAF50;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.65rem;
+        }
+        .budget-empty-notice {
+            padding: 14px;
+            text-align: center;
+            color: #666;
+            font-size: 0.82rem;
+            font-style: italic;
+        }
+        .budget-policy-line {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 14px;
+            font-size: 0.85rem;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        .budget-policy-line:last-child { border-bottom: none; }
+        .budget-policy-name { color: #ccc; }
+        .budget-policy-cost { color: #aaa; font-weight: bold; }
+        .budget-sub-total {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 14px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            background: #252525;
+            color: #fff;
+            border-top: 1px solid #444;
+        }
