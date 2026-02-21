@@ -1434,6 +1434,84 @@ body.light-mode .ap-bar-track {
     line-height: 1.5;
 }
 
+/* ===== FACTION AP GRID (Autocracy) ===== */
+.faction-ap-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+}
+
+.faction-ap-card {
+    background: var(--bg-panel, #1a1a1a);
+    border: 1px solid var(--border-main, #333);
+    border-left: 4px solid var(--accent);
+    border-radius: 8px;
+    padding: 16px 20px;
+}
+
+.faction-ap-card.faction-ap-yours {
+    background: rgba(255, 204, 0, 0.04);
+}
+
+.faction-ap-name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.faction-ap-logo {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.faction-ap-name {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text-primary, #e0e0e0);
+}
+
+.faction-ap-abbr {
+    font-size: 0.72rem;
+    color: var(--text-muted, #666);
+}
+
+.faction-ap-badge {
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.faction-ap-you {
+    color: var(--accent, #ffcc00);
+    background: rgba(255, 204, 0, 0.12);
+    border: 1px solid rgba(255, 204, 0, 0.3);
+}
+
+.faction-ap-ruler {
+    color: #ff9800;
+    background: rgba(255, 152, 0, 0.12);
+    border: 1px solid rgba(255, 152, 0, 0.3);
+}
+
+@media (max-width: 800px) {
+    .faction-ap-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .faction-ap-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* ===== RALLY PANEL ===== */
 .rally-panel {
     background: var(--bg-panel, #1a1a1a);
