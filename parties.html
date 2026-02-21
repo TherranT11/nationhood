@@ -83,7 +83,121 @@ async function renderParties() {
     const isAutocracy = isGovernmentAutocracy(n);
 
     if (isAutocracy) {
-        el.innerHTML = '<p style="color:var(--text-muted);text-align:center;margin-top:40px;">Autocracy view coming soon.</p>';
+        // ── Autocracy Party Page ──
+
+        // Archetype definitions
+        const ARCHETYPES = {
+            strongman: {
+                label: 'The Strongman',
+                desc: 'Supreme ruler of the nation. All power flows from you.'
+            },
+            general: {
+                label: 'General',
+                desc: 'Commands the armed forces. Loyalty is earned on the battlefield.'
+            },
+            intelligence_chief: {
+                label: 'Intelligence Chief',
+                desc: 'Knows every secret worth knowing. Information is power.'
+            },
+            party_chairman: {
+                label: 'Party Chairman',
+                desc: 'Controls the party apparatus. Bureaucracy bends to your will.'
+            },
+            oligarch: {
+                label: 'Oligarch',
+                desc: 'Wealth buys influence. The economy answers to you.'
+            },
+            security_chief: {
+                label: 'Security Chief',
+                desc: 'Runs the secret police. Fear keeps the regime intact.'
+            },
+            heir_apparent: {
+                label: 'Heir Apparent',
+                desc: 'Next in line — if you survive long enough.'
+            }
+        };
+        const NON_STRONGMAN_KEYS = ['general', 'intelligence_chief', 'party_chairman', 'oligarch', 'security_chief', 'heir_apparent'];
+
+        // Deterministic archetype assignment based on faction ID
+        function getArchetype(factionId, isRuling) {
+            if (isRuling) return ARCHETYPES.strongman;
+            // Simple hash from faction UUID to pick a stable index
+            let hash = 0;
+            for (let i = 0; i < factionId.length; i++) {
+                hash = ((hash << 5) - hash) + factionId.charCodeAt(i);
+                hash |= 0;
+            }
+            const idx = Math.abs(hash) % NON_STRONGMAN_KEYS.length;
+            return ARCHETYPES[NON_STRONGMAN_KEYS[idx]];
+        }
+
+        // Fetch all factions
+        const { data: allFactions } = await _supabase
+            .from('factions')
+            .select('id, faction_name, abbreviation, seats, party_color, party_logo, leader_first_name, leader_last_name, leader_age, founded_tick, ideology_value_1, ideology_value_2, loyalty, action_points, party_funds')
+            .eq('nation_id', n.id)
+            .eq('faction_type', 'party');
+
+        const seatData = await loadSeats(_supabase, n.id, true, allFactions || [], f.id);
+        const mySeats = seatData.currentSeats || 0;
+        const isRuling = n.ruling_faction_id === f.id;
+        const myArchetype = getArchetype(f.id, isRuling);
+
+        // For Strongman, use head-of-state name from nation; for others, use faction leader
+        const leaderFirst = isRuling ? (n.head_of_state_first_name || f.leader_first_name || 'Unknown') : (f.leader_first_name || 'Unknown');
+        const leaderLast = isRuling ? (n.head_of_state_last_name || f.leader_last_name || 'Unknown') : (f.leader_last_name || 'Unknown');
+        const leaderAge = isRuling ? (n.head_of_state_age || f.leader_age || '—') : (f.leader_age || '—');
+        const leaderName = `${leaderFirst} ${leaderLast}`;
+        const partyColor = f.party_color || '#ffcc00';
+        const logoSvg = getPartyIconSVG(f.party_logo, 44, partyColor);
+        const founded = tickToDate(f.founded_tick);
+        const roleBadge = isRuling
+            ? '<span class="role-badge role-badge-gov">Ruling Faction</span>'
+            : '<span class="role-badge role-badge-opp">Opposition</span>';
+        const ideologyTags = buildIdeologyTags(f);
+        const abbr = f.abbreviation ? `<span class="my-party-abbr">(${f.abbreviation})</span>` : '';
+
+        el.innerHTML = `
+        <div class="parties-page">
+        <div class="my-party-card" style="border-left-color:${partyColor}">
+            <div class="my-party-top-row">
+                <div class="my-party-logo" style="color:${partyColor}">
+                    ${logoSvg}
+                </div>
+                <div class="my-party-identity">
+                    <div class="my-party-name-row">
+                        <span class="my-party-name" style="color:${partyColor}">${f.faction_name}</span>
+                        ${abbr}
+                    </div>
+                    <div class="my-party-role-row">
+                        ${roleBadge}
+                    </div>
+                    <div class="my-party-ideology-row">
+                        ${ideologyTags}
+                    </div>
+                </div>
+            </div>
+
+            <div class="my-party-stats" style="flex-direction: column;">
+                <div class="my-party-stat" style="flex: 1 1 100%;">
+                    <div class="stat-label">${myArchetype.label}</div>
+                    <div class="stat-val">${leaderName}, ${leaderAge}</div>
+                    <div class="stat-sublabel">${myArchetype.desc}</div>
+                </div>
+                <div style="display: flex; gap: 28px;">
+                    <div class="my-party-stat">
+                        <div class="stat-label">Seats</div>
+                        <div class="stat-val">${mySeats} / ${GAME_CONFIG.TOTAL_SEATS}</div>
+                    </div>
+                    <div class="my-party-stat">
+                        <div class="stat-label">In Power Since</div>
+                        <div class="stat-val">${founded}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+        `;
         return;
     }
 
