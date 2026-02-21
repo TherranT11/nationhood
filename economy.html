@@ -126,7 +126,7 @@ async function loadPreviousYearData(nationId) {
 async function loadExpenditureData(nationId, nation) {
     var cacheKey = 'expenditure_data_' + nationId;
     var cached = qCache(cacheKey);
-    if (cached) { expenditureData = cached; return; }
+    if (cached) { expenditureData = cached.totals; expenditureDetails = cached.details; return; }
 
     var res = await _supabase.from('active_laws')
         .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat)')
@@ -174,8 +174,7 @@ async function loadExpenditureData(nationId, nation) {
 
     expenditureData = totals;
     expenditureDetails = details;
-    qCacheSet(cacheKey, totals, 2 * 60 * 1000);
-    qCacheSet(cacheKey + '_details', details, 2 * 60 * 1000);
+    qCacheSet(cacheKey, { totals: totals, details: details }, 2 * 60 * 1000);
 }
 
 function scaleCost(baseCost, scalingStat, nation) {
@@ -202,9 +201,14 @@ function renderEconomyPage(nation) {
     // Wire ministry tab clicks
     document.querySelectorAll('.ministry-tab').forEach(function(tab) {
         tab.addEventListener('click', function() {
-            document.querySelectorAll('.ministry-tab').forEach(function(t) { t.classList.remove('active'); });
-            tab.classList.add('active');
-            renderMinistryPolicies(tab.getAttribute('data-category'));
+            selectMinistryCategory(tab.getAttribute('data-category'));
+        });
+    });
+
+    // Wire clickable expenditure lines to ministry tabs
+    document.querySelectorAll('.budget-line-clickable').forEach(function(line) {
+        line.addEventListener('click', function() {
+            selectMinistryCategory(line.getAttribute('data-category'));
         });
     });
 }
@@ -337,7 +341,11 @@ function renderBudgetPanel(nation) {
     ];
     for (var i = 0; i < expenditureItems.length; i++) {
         var catAmount = expenditures[expenditureItems[i]] || 0;
-        h += budgetLineItem(expenditureItems[i], catAmount, null, previousYear);
+        if (expenditureItems[i] !== 'Interest on Debt') {
+            h += budgetLineItemClickable(expenditureItems[i], catAmount, null, previousYear);
+        } else {
+            h += budgetLineItem(expenditureItems[i], catAmount, null, previousYear);
+        }
     }
     h += budgetTotalLine(totalExpenditure);
     h += '</div>';
@@ -378,6 +386,13 @@ function renderMinistryPanel() {
 
     h += '</div>';
     return h;
+}
+
+function selectMinistryCategory(category) {
+    document.querySelectorAll('.ministry-tab').forEach(function(t) { t.classList.remove('active'); });
+    var target = document.querySelector('.ministry-tab[data-category="' + category + '"]');
+    if (target) target.classList.add('active');
+    renderMinistryPolicies(category);
 }
 
 function renderMinistryPolicies(category) {
@@ -441,6 +456,19 @@ function budgetTotalLine(value) {
     h += '<span class="budget-line-label">TOTAL</span>';
     h += '<span class="budget-line-value">' + formatBudgetCurrency(value) + '</span>';
     h += '</div>';
+    h += '</div>';
+    return h;
+}
+
+function budgetLineItemClickable(label, value, prevValue, prevYear) {
+    var h = '<div class="budget-line-item budget-line-clickable" data-category="' + escapeHtml(label) + '">';
+    h += '<div class="budget-line-top">';
+    h += '<span class="budget-line-label">' + escapeHtml(label) + '</span>';
+    h += '<span class="budget-line-value">' + formatBudgetCurrency(value) + '</span>';
+    h += '</div>';
+    if (prevValue !== null && value > 0) {
+        h += '<div class="budget-line-trend">' + budgetTrendHtml(value, prevValue, prevYear) + '</div>';
+    }
     h += '</div>';
     return h;
 }
