@@ -99,7 +99,9 @@ const GAME_CONFIG = {
     MINISTER_CONFIRMATION_VOTING_TICKS: 2,
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
     MAX_AP: 20,  // maximum action points a party can accumulate
-    TICKS_PER_YEAR: 12
+    TICKS_PER_YEAR: 12,
+    BUDGET_BILL_VOTING_TICKS: 3,     // budget bill voting window
+    NO_BUDGET_PENALTY_TICKS: 24      // how many ticks without a budget before max penalty
 };
 
 // Canonical government types used by nation state + ministry event template variants.
@@ -533,7 +535,259 @@ function calculateNationalBudget(nation) {
     // Available Budget = Revenue - Debt Service
     const availableBudget = grossRevenue - debtService;
 
-    return { grossRevenue, debtService, availableBudget, collectionRate };
+    return {
+        grossRevenue, debtService, availableBudget, collectionRate,
+        incomeRevenue, corpRevenue, salesRevenue, tariffRevenue, oilRevenue
+    };
+}
+
+// ==================== BUDGET BILL HELPERS ====================
+
+/**
+ * Fiscal categories that map 1:1 to ministries.
+ */
+const FISCAL_CATEGORIES = [
+    'Government Administration', 'Labor', 'Healthcare', 'Education',
+    'Transportation', 'Energy', 'Justice', 'Foreign Ministry', 'Finance', 'Defense'
+];
+
+/**
+ * Compute inflation cost multiplier from the 0-100 inflation stat.
+ * Inflation stat 50 = 0% increase, 100 = +25% increase, 0 = -25% increase.
+ * Applied as (inflation - 50) / 2 percent increase per budget cycle.
+ * e.g. inflation=56 → costs increase by 3%
+ */
+function getInflationMultiplier(inflationStat) {
+    const pct = (Number(inflationStat || 50) - 50) / 2;
+    return 1 + (pct / 100);
+}
+
+/**
+ * Compute the annualized cost of all active policies for a given fiscal category.
+ * Returns raw dollars. Applies inflation adjustment.
+ */
+function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
+    let total = 0;
+    const policies = [];
+
+    for (const law of (activeLaws || [])) {
+        if (law.is_reversal) continue;
+        const policy = law.policies;
+        if (!policy || policy.fiscal_category !== fiscalCategory) continue;
+
+        let annualCost = 0;
+        const ongoingBase = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
+        if (ongoingBase > 0) {
+            let scaled = ongoingBase;
+            if (policy.ongoing_scaling_stat && nation[policy.ongoing_scaling_stat] !== undefined) {
+                const statVal = Number(nation[policy.ongoing_scaling_stat]) || 1;
+                const divisor = RAW_SCALING_DIVISORS[policy.ongoing_scaling_stat] || 50;
+                scaled = ongoingBase * (statVal / divisor);
+            }
+            annualCost = scaled * GAME_CONFIG.TICKS_PER_YEAR * 1_000_000;
+        }
+
+        if (annualCost > 0) {
+            policies.push({ policy_id: policy.id, policy_name: policy.policy_name, cost: annualCost });
+            total += annualCost;
+        }
+    }
+
+    // Apply inflation
+    const inflationMult = getInflationMultiplier(nation.inflation);
+    total *= inflationMult;
+    for (const p of policies) p.cost *= inflationMult;
+
+    return { total, policies };
+}
+
+/**
+ * Build full budget data for a nation: revenue, expenditures per ministry, debt service, etc.
+ */
+function buildBudgetData(nation, activeLaws) {
+    const budget = calculateNationalBudget(nation);
+    const inflationStat = Number(nation.inflation || 50);
+    const inflationPct = (inflationStat - 50) / 2;
+    const reserves = Number(nation.budget_reserves || 0);
+
+    const ministries = {};
+    let totalExpenditure = 0;
+
+    for (const cat of FISCAL_CATEGORIES) {
+        const result = computeMinistryPolicyCost(activeLaws, cat, nation);
+        ministries[cat] = {
+            fulfilledCost: result.total,
+            allocation: result.total,  // default: fulfill
+            policies: result.policies
+        };
+        totalExpenditure += result.total;
+    }
+
+    const available = budget.grossRevenue + reserves - budget.debtService;
+
+    return {
+        ...budget,
+        inflationPct,
+        inflationStat,
+        reserves,
+        ministries,
+        totalExpenditure,
+        available,
+        currentDebt: Number(nation.debt || 0),
+        projectedDebt: Number(nation.debt || 0) + Math.max(0, totalExpenditure - available)
+    };
+}
+
+/**
+ * Auto-generate a budget bill for a nation.
+ * Called at January ticks (tick % 12 === 1, since tick 1 = January after start).
+ */
+async function generateBudgetBill(supabase, nation, currentTick, activeLaws) {
+    const budgetData = buildBudgetData(nation, activeLaws);
+
+    const gameYear = 2000 + Math.floor(currentTick / 12);
+    const billName = `Budget Act of ${gameYear}`;
+
+    // Find the ruling faction to be the sponsor (PM's party or ruling_faction_id)
+    let sponsorId = nation.ruling_faction_id;
+    if (!sponsorId) {
+        // Fallback: first party faction
+        const { data: parties } = await supabase.from('factions')
+            .select('id').eq('nation_id', nation.id).eq('faction_type', 'party').limit(1);
+        sponsorId = parties?.[0]?.id;
+    }
+    if (!sponsorId) return null;
+
+    const preamble = `Annual budget for the fiscal year ${gameYear}. ` +
+        `This bill allocates $${(budgetData.available / 1e9).toFixed(1)}B in available revenue across all government ministries. ` +
+        (budgetData.inflationPct > 0
+            ? `Inflation (${budgetData.inflationStat.toFixed(0)}/100) has increased all costs by ~${budgetData.inflationPct.toFixed(1)}% since the last budget cycle.`
+            : `Inflation is currently under control.`);
+
+    // Insert the bill
+    const { data: bill, error: billError } = await supabase.from('bills').insert({
+        nation_id: nation.id,
+        proposed_by: sponsorId,
+        proposed_tick: currentTick,
+        bill_name: billName,
+        status: 'floor',
+        preamble,
+        bill_type: 'budget',
+        voting_ends_tick: currentTick + GAME_CONFIG.BUDGET_BILL_VOTING_TICKS
+    }).select('id').single();
+
+    if (billError || !bill) {
+        console.error('[generateBudgetBill] Failed to create budget bill:', billError?.message);
+        return null;
+    }
+
+    // Insert budget allocations per ministry
+    const allocRows = [];
+    for (const cat of FISCAL_CATEGORIES) {
+        const m = budgetData.ministries[cat];
+        allocRows.push({
+            bill_id: bill.id,
+            nation_id: nation.id,
+            fiscal_category: cat,
+            allocation_amount: m.allocation,
+            fulfilled_cost: m.fulfilledCost
+        });
+    }
+
+    const { error: allocError } = await supabase.from('budget_allocations').insert(allocRows);
+    if (allocError) {
+        console.error('[generateBudgetBill] Failed to insert allocations:', allocError.message);
+    }
+
+    console.log(`[generateBudgetBill] Created budget bill "${billName}" for ${nation.name} (bill ${bill.id})`);
+    return bill.id;
+}
+
+/**
+ * Resolve a passed budget bill: adjust debt based on surplus/deficit, update reserves.
+ */
+async function resolveBudgetBill(supabase, bill, currentTick) {
+    const { data: allocations } = await supabase.from('budget_allocations')
+        .select('*').eq('bill_id', bill.id);
+
+    const { data: nation } = await supabase.from('nations')
+        .select('*').eq('id', bill.nation_id).single();
+    if (!nation) return;
+
+    const budget = calculateNationalBudget(nation);
+    const reserves = Number(nation.budget_reserves || 0);
+    const available = budget.grossRevenue + reserves - budget.debtService;
+
+    let totalSpending = 0;
+    for (const alloc of (allocations || [])) {
+        totalSpending += Number(alloc.allocation_amount || 0);
+    }
+
+    const gap = available - totalSpending;
+    let newDebt = Number(nation.debt || 0);
+    let newReserves = 0;
+
+    if (gap >= 0) {
+        // Surplus: reduce debt (or build reserves if no debt)
+        if (newDebt > 0) {
+            const debtReduction = Math.min(gap, newDebt);
+            newDebt -= debtReduction;
+            newReserves = gap - debtReduction;
+        } else {
+            newReserves = gap;
+        }
+    } else {
+        // Deficit: add to debt
+        newDebt += Math.abs(gap);
+        newReserves = 0;
+    }
+
+    // Update nation
+    await supabase.from('nations').update({
+        debt: newDebt,
+        budget_reserves: newReserves,
+        last_budget_tick: currentTick,
+        last_budget_bill_id: bill.id
+    }).eq('id', nation.id);
+
+    console.log(`[resolveBudgetBill] Nation ${nation.name}: spending=$${(totalSpending/1e9).toFixed(2)}B, gap=$${(gap/1e9).toFixed(2)}B, newDebt=$${(newDebt/1e9).toFixed(2)}B`);
+}
+
+/**
+ * Check if a nation is missing a budget and apply penalties.
+ * Called each tick. If no budget has passed in the current fiscal year, apply penalties.
+ */
+async function processNoBudgetPenalty(supabase, nation, currentTick) {
+    const lastBudgetTick = nation.last_budget_tick;
+    const ticksSinceLastBudget = lastBudgetTick != null ? (currentTick - lastBudgetTick) : currentTick;
+
+    // Grace period: no penalty in the first year (first 12 ticks)
+    if (currentTick < 12) return null;
+
+    // If budget was passed within the last year, no penalty
+    if (ticksSinceLastBudget <= GAME_CONFIG.TICKS_PER_YEAR) return null;
+
+    // Penalty scales: the longer without a budget, the worse
+    const ticksOverdue = ticksSinceLastBudget - GAME_CONFIG.TICKS_PER_YEAR;
+    const maxPenaltyTicks = GAME_CONFIG.NO_BUDGET_PENALTY_TICKS;
+    const severity = Math.min(ticksOverdue / maxPenaltyTicks, 1.0);
+
+    // Apply penalties: efficiency drops, stability drops, credit drops
+    const effPenalty = -Math.round(severity * 2);  // up to -2/tick
+    const stabPenalty = -Math.round(severity * 1.5);  // up to -1.5/tick
+    const creditPenalty = -Math.round(severity * 1);  // up to -1/tick
+
+    const updates = {};
+    if (effPenalty !== 0) updates.efficiency = Math.max(0, Number(nation.efficiency || 50) + effPenalty);
+    if (stabPenalty !== 0) updates.stability = Math.max(0, Number(nation.stability || 50) + stabPenalty);
+    if (creditPenalty !== 0) updates.credit = Math.max(0, Number(nation.credit || 50) + creditPenalty);
+
+    if (Object.keys(updates).length > 0) {
+        await supabase.from('nations').update(updates).eq('id', nation.id);
+        Object.assign(nation, updates);
+    }
+
+    return { ticksOverdue, severity, effPenalty, stabPenalty, creditPenalty };
 }
 
 // Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -1% to +1% per month
@@ -1402,7 +1656,7 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
 
     // Only legislative bills affect ideology
     const legislativeBills = bills.filter(b =>
-        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
+        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override', 'budget'].includes(b.bill_type)
     );
     if (legislativeBills.length === 0) return;
 
@@ -1933,6 +2187,32 @@ async function resolveExpiredVotes(supabase, nationId) {
                     });
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
+            }
+        } else if (bill.bill_type === 'budget') {
+            // Budget bill resolution
+            if (passed) {
+                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+                await resolveBudgetBill(supabase, bill, currentTick);
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_trigger_key: 'bill_passed',
+                        p_nation_id: bill.nation_id,
+                        p_tick: currentTick,
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), article_count: '0' }
+                    });
+                } catch (e) { /* non-blocking */ }
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
+            } else {
+                await failBill(supabase, bill);
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_trigger_key: 'bill_failed',
+                        p_nation_id: bill.nation_id,
+                        p_tick: currentTick,
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
+                    });
+                } catch (e) { /* non-blocking */ }
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
             }
         } else if (passed) {
             // Presidential systems: route regular/repeal bills to president's desk
@@ -10691,6 +10971,50 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
     }
 }
 
+// ==================== BUDGET BILL GENERATION (tick-only) ====================
+
+/**
+ * Check if this tick is a January tick (new fiscal year) and generate budget bills.
+ * January tick = when the new month is January, meaning the new date starts with "January".
+ */
+async function maybeGenerateBudgetBills(supabase, nationList, newDate, newTick) {
+    // Only generate on January ticks
+    if (!newDate.startsWith('January')) return [];
+
+    const results = [];
+    for (const nation of nationList) {
+        try {
+            // Check if a budget bill already exists for this year (prevent duplicates)
+            const gameYear = 2000 + Math.floor(newTick / 12);
+            const { data: existing } = await supabase.from('bills')
+                .select('id')
+                .eq('nation_id', nation.id)
+                .eq('bill_type', 'budget')
+                .gte('proposed_tick', newTick - 1)
+                .limit(1);
+
+            if (existing && existing.length > 0) {
+                console.log(`[maybeGenerateBudgetBills] Budget bill already exists for ${nation.name} year ${gameYear}, skipping`);
+                continue;
+            }
+
+            // Load active laws for cost computation
+            const { data: activeLaws } = await supabase
+                .from('active_laws')
+                .select('*, policies(*)')
+                .eq('nation_id', nation.id);
+
+            const billId = await generateBudgetBill(supabase, nation, newTick, activeLaws || []);
+            if (billId) {
+                results.push({ nation: nation.name, billId, year: gameYear });
+            }
+        } catch (err) {
+            console.error(`[maybeGenerateBudgetBills] Failed for ${nation.name}:`, err);
+        }
+    }
+    return results;
+}
+
 // ==================== ADVANCE TICK ====================
 
 async function advanceTick(supabase) {
@@ -10823,6 +11147,17 @@ async function advanceTick(supabase) {
         }
     }
 
+    // 3.5 Generate budget bills on January ticks (before per-nation processing)
+    try {
+        const budgetResults = await maybeGenerateBudgetBills(supabase, nationList, newDate, newTick);
+        if (budgetResults.length > 0) {
+            summary.budgetBills = budgetResults;
+            console.log(`[advanceTick] Generated ${budgetResults.length} budget bill(s)`);
+        }
+    } catch (budgetErr) {
+        console.error('[advanceTick] Budget bill generation failed (non-fatal):', budgetErr);
+    }
+
     // 4. Process each nation
     for (const nation of nationList) {
       try {
@@ -10848,6 +11183,13 @@ async function advanceTick(supabase) {
         if (decayResults.length > 0) {
             summary.decay = summary.decay || [];
             summary.decay.push({ nation: nation.name, effects: decayResults });
+        }
+
+        // No-budget penalty (if nation hasn't passed a budget in over a year)
+        const noBudgetResult = await processNoBudgetPenalty(supabase, nation, newTick);
+        if (noBudgetResult) {
+            summary.noBudgetPenalties = summary.noBudgetPenalties || [];
+            summary.noBudgetPenalties.push({ nation: nation.name, ...noBudgetResult });
         }
 
         // Ongoing costs
