@@ -26,10 +26,12 @@ CREATE INDEX IF NOT EXISTS idx_ideology_history_nation_tick
 -- RLS: allow authenticated users to read, server (service_role) to write
 ALTER TABLE ideology_history ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "ideology_history_select"
+DROP POLICY IF EXISTS "ideology_history_select" ON ideology_history;
+CREATE POLICY "ideology_history_select"
     ON ideology_history FOR SELECT
     USING (true);
 
-CREATE POLICY IF NOT EXISTS "ideology_history_insert"
+DROP POLICY IF EXISTS "ideology_history_insert" ON ideology_history;
+CREATE POLICY "ideology_history_insert"
     ON ideology_history FOR INSERT
     WITH CHECK (true);
