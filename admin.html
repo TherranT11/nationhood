@@ -409,6 +409,7 @@
             <h2>Policy Audit</h2>
             <p style="color:#888; margin-bottom:16px;">Review all active policies across all nations with their computed annual budget costs.</p>
             <button class="btn btn-primary" onclick="runPolicyAudit()">Run Policy Audit</button>
+            <button class="btn btn-primary" onclick="recalculatePolicyCosts()" style="margin-left:8px; background:#e67e22;">Recalculate Policy Costs</button>
             <div id="audit-status" class="status info hidden"></div>
             <div id="audit-results" style="margin-top:20px;"></div>
         </div>
@@ -419,7 +420,7 @@
 <script type="module">
 const { createClient } = supabase;
 import { applyPopulationGrowth } from './js/common.js';
-import { GAME_CONFIG, RAW_SCALING_DIVISORS, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processBlocApprovalDecay, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPartyStandingsJitter, processPMTraitEffects, calculateNationalBudget, markFactionActive, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runManualElectionByGovernmentType, DONOR_DEMANDS } from './js/game-common.js';
+import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, computeMinistryPolicyCost, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processBlocApprovalDecay, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPartyStandingsJitter, processPMTraitEffects, calculateNationalBudget, markFactionActive, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runManualElectionByGovernmentType, DONOR_DEMANDS } from './js/game-common.js';
 const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
     const _supabase = createClient(supabaseUrl, supabaseKey);
@@ -2904,6 +2905,72 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
         }
     }
 
+    async function recalculatePolicyCosts() {
+        const status = document.getElementById('audit-status');
+        status.className = 'status info';
+        status.textContent = 'Recalculating policy costs for all nations...';
+        status.classList.remove('hidden');
+
+        try {
+            // Fetch all nations
+            const { data: allNations, error: nErr } = await _supabase.from('nations').select('*');
+            if (nErr) throw nErr;
+            if (!allNations || allNations.length === 0) {
+                status.className = 'status error';
+                status.textContent = 'No nations found.';
+                return;
+            }
+
+            let updatedCount = 0;
+            let nationCount = 0;
+
+            for (const nation of allNations) {
+                // Find the latest budget bill for this nation
+                const { data: latestBill } = await _supabase.from('bills')
+                    .select('id')
+                    .eq('nation_id', nation.id)
+                    .eq('bill_type', 'budget')
+                    .order('proposed_tick', { ascending: false })
+                    .limit(1)
+                    .single();
+
+                if (!latestBill) continue;
+
+                // Fetch active laws with policy data for this nation
+                const { data: activeLaws, error: lawErr } = await _supabase.from('active_laws')
+                    .select('*, policies(*)')
+                    .eq('nation_id', nation.id);
+                if (lawErr) throw lawErr;
+
+                // Recompute fulfilled_cost per fiscal category using the shared function
+                for (const cat of FISCAL_CATEGORIES) {
+                    const result = computeMinistryPolicyCost(activeLaws || [], cat, nation);
+
+                    const { error: updateErr } = await _supabase.from('budget_allocations')
+                        .update({ fulfilled_cost: result.total, updated_at: new Date().toISOString() })
+                        .eq('bill_id', latestBill.id)
+                        .eq('fiscal_category', cat);
+
+                    if (updateErr) {
+                        console.warn(`[recalculate] Failed to update ${cat} for ${nation.name}:`, updateErr.message);
+                    } else {
+                        updatedCount++;
+                    }
+                }
+                nationCount++;
+            }
+
+            status.className = 'status success';
+            status.textContent = `✅ Recalculation complete — updated ${updatedCount} allocations across ${nationCount} nations. Run the audit to see updated numbers.`;
+
+            // Auto-run the audit to show fresh numbers
+            await runPolicyAudit();
+        } catch (err) {
+            status.className = 'status error';
+            status.textContent = '❌ Error: ' + err.message;
+        }
+    }
+
 // Expose functions for HTML onclick/onchange handlers
 window.authenticate = authenticate;
 window.logout = logout;
@@ -2946,6 +3013,7 @@ window.onDemandTypeChange = onDemandTypeChange;
 window.seedDefaultDemands = seedDefaultDemands;
 window.seedAllDefaultDemands = seedAllDefaultDemands;
 window.runPolicyAudit = runPolicyAudit;
+window.recalculatePolicyCosts = recalculatePolicyCosts;
 </script>
 </body>
 </html>
