@@ -350,11 +350,39 @@ export function calculatePriceModifier(totalSupply, totalDemand) {
 
 /**
  * Calculate trade affinity between two nations.
- * Higher affinity = more likely to trade. Returns 0-100.
+ * Higher affinity = more likely to trade, and more volume flows between them.
+ *
+ * Components:
+ *   base                  50 (neutral starting point)
+ *   diplomatic_bonus      relation_score * 0.3           → -30 to +30
+ *   trade_agreement       +20 if bilateral trade deal exists
+ *   embargo_penalty       -40 if active embargo/sanctions between nations
+ *   proximity_bonus       +10 if same region (future)
+ *
+ * @param {Object} nationA   – nation row
+ * @param {Object} nationB   – nation row
+ * @param {Object} relation  – diplomatic_relations row { relation_score, active_treaties }
+ * @param {Object} [opts]    – { has_trade_agreement, has_embargo, same_region }
+ * @returns {number} affinity score 0-100
  */
-export function calculateTradeAffinity(nationA, nationB, relation) {
-    // STUB — Phase 5 implementation
-    return 50;
+export function calculateTradeAffinity(nationA, nationB, relation, opts) {
+    var base = 50;
+
+    // Diplomatic relations: -100 to +100 score → -30 to +30 affinity
+    var relScore = (relation && Number(relation.relation_score)) || 0;
+    var diplomaticBonus = relScore * 0.3;
+
+    // Bilateral trade agreement: significant affinity boost
+    var tradeBonus = (opts && opts.has_trade_agreement) ? 20 : 0;
+
+    // Active embargo/sanctions between these two nations: major penalty
+    var embargoPenalty = (opts && opts.has_embargo) ? -40 : 0;
+
+    // Geographic proximity (future: use region data when available)
+    var proximityBonus = (opts && opts.same_region) ? 10 : 0;
+
+    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus;
+    return Math.round(Math.max(0, Math.min(100, affinity)));
 }
 
 /**
