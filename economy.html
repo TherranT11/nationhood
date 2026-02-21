@@ -22,12 +22,14 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatCurrency } from './js/common.js';
-import { calculateNationalBudget, GAME_CONFIG } from './js/game-common.js';
+import { calculateNationalBudget, GAME_CONFIG, RAW_SCALING_DIVISORS } from './js/game-common.js';
 
 // ==================== STATE ====================
 var previousTickData = null;
 var previousYearData = null;
 var currentTick = 0;
+var expenditureData = null;
+var currentNation = null;
 
 // ==================== INIT ====================
 initPage('economy', async function(state) {
@@ -43,8 +45,10 @@ initPage('economy', async function(state) {
         return;
     }
 
+    currentNation = nation;
     await loadPreviousTickData(nation.id);
     await loadPreviousYearData(nation.id);
+    await loadExpenditureData(nation.id, nation);
     renderEconomyPage(nation);
 });
 
@@ -117,6 +121,58 @@ async function loadPreviousYearData(nationId) {
     }
 }
 
+// ==================== EXPENDITURE DATA ====================
+async function loadExpenditureData(nationId, nation) {
+    var cacheKey = 'expenditure_data_' + nationId;
+    var cached = qCache(cacheKey);
+    if (cached) { expenditureData = cached; return; }
+
+    var res = await _supabase.from('active_laws')
+        .select('passed_tick, is_reversal, policies(fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat)')
+        .eq('nation_id', nationId);
+
+    if (!res.data || res.data.length === 0) { expenditureData = {}; return; }
+
+    var yearStartTick = Math.floor(currentTick / GAME_CONFIG.TICKS_PER_YEAR) * GAME_CONFIG.TICKS_PER_YEAR;
+    var totals = {};
+
+    for (var i = 0; i < res.data.length; i++) {
+        var law = res.data[i];
+        if (law.is_reversal) continue;
+        var policy = law.policies;
+        if (!policy || !policy.fiscal_category) continue;
+
+        var cat = policy.fiscal_category;
+        if (!totals[cat]) totals[cat] = 0;
+
+        // Ongoing costs: annualized (base per tick × 12)
+        var ongoingBase = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
+        if (ongoingBase > 0) {
+            var ongoingScaled = scaleCost(ongoingBase, policy.ongoing_scaling_stat, nation);
+            totals[cat] += ongoingScaled * GAME_CONFIG.TICKS_PER_YEAR * 1000000;
+        }
+
+        // Upfront costs: only if passed in current budget year
+        if (law.passed_tick >= yearStartTick) {
+            var upfront = policy.upfront_cost || 0;
+            if (upfront > 0) {
+                var upfrontScaled = scaleCost(upfront, policy.upfront_scaling_stat, nation);
+                totals[cat] += upfrontScaled * 1000000;
+            }
+        }
+    }
+
+    expenditureData = totals;
+    qCacheSet(cacheKey, totals, 2 * 60 * 1000);
+}
+
+function scaleCost(baseCost, scalingStat, nation) {
+    if (!scalingStat || !baseCost) return baseCost || 0;
+    var statVal = Number(nation[scalingStat]) || 1;
+    var divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
+    return baseCost * (statVal / divisor);
+}
+
 // ==================== RENDER ====================
 function renderEconomyPage(nation) {
     var h = '';
@@ -182,7 +238,19 @@ function renderBudgetPanel(nation) {
         prevBudget = calculateNationalBudget(previousYearData);
     }
 
-    var totalExpenditure = 0; // placeholder — $0 for now
+    // Build expenditure map from active policy costs + debt service
+    var expenditures = {};
+    if (expenditureData) {
+        for (var key in expenditureData) {
+            expenditures[key] = expenditureData[key];
+        }
+    }
+    expenditures['Interest on Debt'] = budget.debtService;
+
+    var totalExpenditure = 0;
+    for (var key in expenditures) {
+        totalExpenditure += expenditures[key] || 0;
+    }
     var balance = budget.grossRevenue - totalExpenditure;
 
     var h = '<div class="budget-panel">';
@@ -246,7 +314,8 @@ function renderBudgetPanel(nation) {
         'Defense', 'Interest on Debt'
     ];
     for (var i = 0; i < expenditureItems.length; i++) {
-        h += budgetLineItem(expenditureItems[i], 0, null, previousYear);
+        var catAmount = expenditures[expenditureItems[i]] || 0;
+        h += budgetLineItem(expenditureItems[i], catAmount, null, previousYear);
     }
     h += budgetTotalLine(totalExpenditure);
     h += '</div>';
