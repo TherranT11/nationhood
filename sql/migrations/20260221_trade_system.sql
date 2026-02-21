@@ -78,6 +78,26 @@ CREATE TABLE IF NOT EXISTS trade_summary (
 CREATE INDEX IF NOT EXISTS idx_trade_summary_nation_tick
     ON trade_summary(nation_id, tick);
 
+-- ==================== RLS POLICIES ====================
+-- Enable RLS and grant read access to all authenticated users.
+-- Writes happen exclusively through the edge function (service role).
+
+ALTER TABLE trade_flows ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trade_partners ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trade_summary ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "trade_flows_read" ON trade_flows;
+CREATE POLICY "trade_flows_read" ON trade_flows
+    FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "trade_partners_read" ON trade_partners;
+CREATE POLICY "trade_partners_read" ON trade_partners
+    FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "trade_summary_read" ON trade_summary;
+CREATE POLICY "trade_summary_read" ON trade_summary
+    FOR SELECT TO authenticated USING (true);
+
 -- ==================== PROXIMITY ====================
 -- Add geographic proximity to diplomatic_relations for trade affinity.
 -- 0 = distant, 50 = same region (default), 100 = neighboring/bordering.

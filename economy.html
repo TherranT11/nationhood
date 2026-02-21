@@ -203,6 +203,11 @@ async function loadTradeData(nationId) {
         .order('tick', { ascending: false })
         .limit(1);
 
+    if (sumRes.error) {
+        console.error('[loadTradeData] trade_summary query failed:', sumRes.error.message);
+        tradeData = null;
+        return;
+    }
     if (!sumRes.data || sumRes.data.length === 0) { tradeData = null; return; }
     var summary = sumRes.data[0];
 
