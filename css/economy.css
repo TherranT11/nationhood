@@ -317,6 +317,19 @@ body.light-mode .economy-stat-box {
     border-bottom: none;
 }
 
+.budget-line-clickable {
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.budget-line-clickable:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+body.light-mode .budget-line-clickable:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
 .budget-line-top {
     display: flex;
     justify-content: space-between;
