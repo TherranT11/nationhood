@@ -246,7 +246,7 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
     try {
         const { data: allNationAmbassadors, error: ambErr } = await _supabase
             .from('ambassadors')
-            .select('*')
+            .select('*, factions(abbreviation)')
             .eq('nation_id', nation.id)
             .eq('is_active', true)
             .eq('status', 'active');
@@ -278,7 +278,8 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
                     appointed_at_tick: a.appointed_at_tick,
                     term_length: a.term_length || 36,
                     ambassador_first_name: a.ambassador_first_name,
-                    ambassador_last_name: a.ambassador_last_name
+                    ambassador_last_name: a.ambassador_last_name,
+                    factions: a.factions
                 }));
             }
         }
@@ -445,9 +446,9 @@ async function renderRelationsTab() {
             _supabase.from('nations').select('*').order('name'),
             _supabase.from('diplomatic_relations').select('*')
                 .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id),
-            _supabase.from('ambassadors').select('*')
+            _supabase.from('ambassadors').select('*, factions(abbreviation)')
                 .eq('nation_id', currentNation.id).eq('is_active', true).eq('status', 'active'),
-            _supabase.from('ambassadors').select('*')
+            _supabase.from('ambassadors').select('*, factions(abbreviation)')
                 .eq('target_nation_id', currentNation.id).eq('is_active', true).eq('status', 'active'),
             _supabase.from('diplomatic_proposals').select('proposing_nation_id, target_nation_id')
                 .eq('status', 'active')
@@ -505,6 +506,7 @@ async function renderRelationsTab() {
             const ambName = ambassador
                 ? ((ambassador.ambassador_first_name || '') + ' ' + (ambassador.ambassador_last_name || '')).trim()
                 : null;
+            const ambParty = ambassador?.factions?.abbreviation ? ' (' + ambassador.factions.abbreviation + ')' : '';
             const isMyAmbassadorship = ambassador && ambassador.faction_id === currentFaction?.id;
 
             // Find their ambassador to us
@@ -512,6 +514,7 @@ async function renderRelationsTab() {
             const theirAmbName = theirAmb
                 ? ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim()
                 : null;
+            const theirAmbParty = theirAmb?.factions?.abbreviation ? ' (' + theirAmb.factions.abbreviation + ')' : '';
 
             // Count agreements with this nation
             const agreementCount = activeAgreements.filter(a =>
@@ -535,8 +538,8 @@ async function renderRelationsTab() {
                                 ${agreementCount > 0 ? '<span class="nation-card-agreements">' + agreementCount + ' agreement' + (agreementCount > 1 ? 's' : '') + '</span>' : ''}
                             </div>
                             <div class="nation-card-ambassadors">
-                                <span class="nation-card-amb">${ambName ? 'Our Amb: ' + escapeHtml(ambName) + (isMyAmbassadorship ? ' <em>(you)</em>' : '') : '<span style="color:#666;">No Ambassador</span>'}</span>
-                                <span class="nation-card-amb">${theirAmbName ? 'Their Amb: ' + escapeHtml(theirAmbName) : '<span style="color:#666;">No Counterpart</span>'}</span>
+                                <span class="nation-card-amb">${ambName ? 'Our Amb: ' + escapeHtml(ambName) + '<span class="amb-party-tag">' + escapeHtml(ambParty) + '</span>' + (isMyAmbassadorship ? ' <em>(you)</em>' : '') : '<span style="color:#666;">No Ambassador</span>'}</span>
+                                <span class="nation-card-amb">${theirAmbName ? 'Their Amb: ' + escapeHtml(theirAmbName) + '<span class="amb-party-tag">' + escapeHtml(theirAmbParty) + '</span>' : '<span style="color:#666;">No Counterpart</span>'}</span>
                             </div>
                             <div class="relations-bar">
                                 <div class="relations-bar-fill" style="width:${barWidth}%;background:${barColor};"></div>
@@ -1802,6 +1805,7 @@ function renderRelationSection(relType, relClass, embassyStatus, ambassador) {
     const ambName = ambassador
         ? (ambassador.ambassador_first_name || '') + ' ' + (ambassador.ambassador_last_name || '')
         : null;
+    const ambParty = ambassador?.factions?.abbreviation ? ' (' + ambassador.factions.abbreviation + ')' : '';
 
     // Ambassador term info
     let termHTML = '';
@@ -1857,7 +1861,7 @@ function renderRelationSection(relType, relClass, embassyStatus, ambassador) {
             </div>
             <div class="info-row">
                 <span class="info-label">Ambassador</span>
-                <span class="info-value" style="font-size:0.85rem;">${ambName ? ambName.trim() : '<span style="color:#666;">None assigned</span>'}</span>
+                <span class="info-value" style="font-size:0.85rem;">${ambName ? ambName.trim() + '<span class="amb-party-tag">' + escapeHtml(ambParty) + '</span>' : '<span style="color:#666;">None assigned</span>'}</span>
             </div>
             ${termHTML}
         </div>
@@ -1988,13 +1992,15 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
             fmButtons = `<button class="action-btn" disabled style="opacity:0.6;">Appointments suspended — caretaker government</button>`;
         } else if (ambassador && ambassador.status === 'active') {
             const ambName = (ambassador.ambassador_first_name || '') + ' ' + (ambassador.ambassador_last_name || '');
+            const ambPartyFM = ambassador?.factions?.abbreviation ? ' (' + ambassador.factions.abbreviation + ')' : '';
             fmButtons = `
-                <button class="action-btn" disabled style="opacity:0.6;">Ambassador Active: ${ambName.trim()}</button>
+                <button class="action-btn" disabled style="opacity:0.6;">Ambassador Active: ${ambName.trim()}${ambPartyFM}</button>
                 <button class="action-btn" style="margin-top:8px;" onclick="recallAmbassador('${ambassador.id}', '${targetNation.name}')">Recall Ambassador</button>`;
         } else if (pendingAmbassador) {
             const pendName = (pendingAmbassador.ambassador_first_name || '') + ' ' + (pendingAmbassador.ambassador_last_name || '');
+            const pendPartyFM = pendingAmbassador?.factions?.abbreviation ? ' (' + pendingAmbassador.factions.abbreviation + ')' : '';
             fmButtons = `
-                <button class="action-btn" disabled style="opacity:0.6;">Awaiting Confirmation: ${pendName.trim()}</button>
+                <button class="action-btn" disabled style="opacity:0.6;">Awaiting Confirmation: ${pendName.trim()}${pendPartyFM}</button>
                 <button class="action-btn" style="margin-top:8px;" onclick="cancelPendingAmbassador('${pendingAmbassador.id}', '${targetNation.name}')">Cancel Nomination</button>`;
         } else {
             const urlParams = new URLSearchParams(window.location.search);
@@ -2031,7 +2037,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
             const tl = myAmb.term_length || 36;
             const remaining = Math.max(0, tl - (shardTick - myAmb.appointed_at_tick));
             if (remaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && remaining > 0) {
-                const ambFullName = ((myAmb.ambassador_first_name || '') + ' ' + (myAmb.ambassador_last_name || '')).trim();
+                const ambFullName = ((myAmb.ambassador_first_name || '') + ' ' + (myAmb.ambassador_last_name || '')).trim() + (myAmb.factions?.abbreviation ? ' (' + myAmb.factions.abbreviation + ')' : '');
                 ambWarningHTML = `<div style="background:#3a2a00;border:1px solid #ff9800;border-radius:6px;padding:8px 10px;margin-top:8px;font-size:0.78rem;color:#ff9800;">&#9888; Ambassador ${ambFullName} will retire in ${remaining} tick${remaining !== 1 ? 's' : ''}. Conclude any active negotiations.</div>`;
             }
         }
@@ -2116,7 +2122,7 @@ async function fetchAmbassador(myNationId, targetNationId) {
     try {
         const { data } = await _supabase
             .from('ambassadors')
-            .select('*')
+            .select('*, factions(abbreviation)')
             .eq('nation_id', myNationId)
             .eq('target_nation_id', targetNationId)
             .eq('is_active', true)
@@ -2153,7 +2159,7 @@ async function fetchPendingAmbassador(myNationId, targetNationId) {
     try {
         const { data: pendingAmbassador } = await _supabase
             .from('ambassadors')
-            .select('*')
+            .select('*, factions(abbreviation)')
             .eq('nation_id', myNationId)
             .eq('target_nation_id', targetNationId)
             .eq('is_active', true)
@@ -2745,12 +2751,13 @@ async function renderWizardStep1() {
         const flagUrl = FLAG_URLS[nation.name] || null;
         const ambInfo = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === nation.id);
         const ambName = ambInfo ? ((ambInfo.ambassador_first_name || '') + ' ' + (ambInfo.ambassador_last_name || '')).trim() : '';
+        const ambPartyInit = ambInfo?.factions?.abbreviation ? ' (' + ambInfo.factions.abbreviation + ')' : '';
 
         let statusNote = '';
         if (!weHaveAmb && !canSelectAny) statusNote = '<span style="color:#ff9800;">No ambassador posted</span>';
         else if (weHaveAmb && !hasCounter) statusNote = '<span style="color:#ff9800;">No counterpart ambassador</span>';
 
-        const roleLabel = ambName ? 'Your Amb: ' + escapeHtml(ambName) : isHoGOnly ? 'Drafting as HoG' : isMoTOnly ? 'Drafting as Min. of Trade' : 'No ambassador';
+        const roleLabel = ambName ? 'Your Amb: ' + escapeHtml(ambName + ambPartyInit) : isHoGOnly ? 'Drafting as HoG' : isMoTOnly ? 'Drafting as Min. of Trade' : 'No ambassador';
 
         html += `
             <div class="wizard-nation-item ${canSelect ? '' : 'disabled'}" data-nation-id="${nation.id}" onclick="wizardSelectNation('${nation.id}')">
@@ -2951,24 +2958,26 @@ async function renderDiploDraftSection() {
 
     const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
     const ourAmbName = ourAmb ? ((ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '')).trim() : '?';
+    const ourAmbParty = ourAmb?.factions?.abbreviation ? ' (' + ourAmb.factions.abbreviation + ')' : '';
 
     const { data: theirAmb } = await _supabase
         .from('ambassadors')
-        .select('ambassador_first_name, ambassador_last_name')
+        .select('ambassador_first_name, ambassador_last_name, factions(abbreviation)')
         .eq('nation_id', wizardTargetNation)
         .eq('target_nation_id', currentNation.id)
         .eq('is_active', true)
         .eq('status', 'active')
         .maybeSingle();
     const theirAmbName = theirAmb ? ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim() : '?';
+    const theirAmbParty = theirAmb?.factions?.abbreviation ? ' (' + theirAmb.factions.abbreviation + ')' : '';
 
     const classBadge = '<span class="classification-badge classification-' + typeInfo.classification.toLowerCase() + '">' + typeInfo.classification + '</span>';
     const durationOptions = [1,2,3,4,5,6,7].map(y =>
         '<option value="' + y + '">' + y + ' Year' + (y > 1 ? 's' : '') + '</option>'
     ).join('');
 
-    const preamble = 'Ambassador ' + escapeHtml(ourAmbName) + ' of ' + escapeHtml(currentNation.name) +
-        ', in collaboration with Ambassador ' + escapeHtml(theirAmbName) + ' of ' + escapeHtml(targetName) +
+    const preamble = 'Ambassador ' + escapeHtml(ourAmbName + ourAmbParty) + ' of ' + escapeHtml(currentNation.name) +
+        ', in collaboration with Ambassador ' + escapeHtml(theirAmbName + theirAmbParty) + ' of ' + escapeHtml(targetName) +
         ', hereby propose the following ' + escapeHtml(typeInfo.label) + ':';
 
     const relStr = typeInfo.relations > 0 ? '+' + typeInfo.relations + ' Relations' : typeInfo.relations < 0 ? typeInfo.relations + ' Relations' : '';
@@ -3197,7 +3206,7 @@ async function wizardSubmit() {
     // Get their ambassador
     const { data: theirAmb } = await _supabase
         .from('ambassadors')
-        .select('ambassador_first_name, ambassador_last_name')
+        .select('ambassador_first_name, ambassador_last_name, factions(abbreviation)')
         .eq('nation_id', wizardTargetNation)
         .eq('target_nation_id', currentNation.id)
         .eq('is_active', true)
@@ -3208,8 +3217,8 @@ async function wizardSubmit() {
 
     const { data: targetNation } = await _supabase.from('nations').select('name').eq('id', wizardTargetNation).single();
 
-    const ourAmbName = ((ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '')).trim();
-    const theirAmbName = ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim();
+    const ourAmbName = ((ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '')).trim() + (ourAmb.factions?.abbreviation ? ' (' + ourAmb.factions.abbreviation + ')' : '');
+    const theirAmbName = ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim() + (theirAmb.factions?.abbreviation ? ' (' + theirAmb.factions.abbreviation + ')' : '');
 
     // Get current tick
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -4477,8 +4486,8 @@ async function openInitiativeForm() {
     if (!ourAmb) return;
 
     // Fetch our ambassador's full name
-    const ourAmbName = (ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '');
-    const theirAmbName = (theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '');
+    const ourAmbName = ((ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '')).trim() + (ourAmb.factions?.abbreviation ? ' (' + ourAmb.factions.abbreviation + ')' : '');
+    const theirAmbName = ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim() + (theirAmb.factions?.abbreviation ? ' (' + theirAmb.factions.abbreviation + ')' : '');
 
     initiativeArticles = [];
 
@@ -4658,8 +4667,8 @@ function updateInitiativePreview() {
     const target = selectedTargetNation;
     const theirAmb = selectedTheirAmbassador;
     const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === target?.id);
-    const ourAmbName = ourAmb ? ((ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '')).trim() : '?';
-    const theirAmbName = theirAmb ? ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim() : '?';
+    const ourAmbName = ourAmb ? ((ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '')).trim() + (ourAmb.factions?.abbreviation ? ' (' + ourAmb.factions.abbreviation + ')' : '') : '?';
+    const theirAmbName = theirAmb ? ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim() + (theirAmb.factions?.abbreviation ? ' (' + theirAmb.factions.abbreviation + ')' : '') : '?';
 
     const articlesHtml = initiativeArticles.map((art, i) =>
         '<div class="preview-article"><span class="preview-article-num">Article ' + toRoman(i + 1) + '.</span> ' +
@@ -4707,8 +4716,8 @@ async function submitInitiative() {
     const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === target.id);
     if (!ourAmb) { alert('You are not ambassador to this nation.'); return; }
 
-    const ourAmbName = ((ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '')).trim();
-    const theirAmbName = ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim();
+    const ourAmbName = ((ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '')).trim() + (ourAmb.factions?.abbreviation ? ' (' + ourAmb.factions.abbreviation + ')' : '');
+    const theirAmbName = ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim() + (theirAmb.factions?.abbreviation ? ' (' + theirAmb.factions.abbreviation + ')' : '');
 
     // Get current tick
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();

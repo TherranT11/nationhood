@@ -638,6 +638,11 @@
             font-size: 0.68rem;
             color: var(--text-muted);
         }
+        .amb-party-tag {
+            color: #aaa;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
         .nation-card-agreements {
             font-size: 0.62rem;
             color: var(--text-muted);
