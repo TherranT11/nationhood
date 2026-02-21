@@ -354,6 +354,14 @@ body.light-mode .budget-line-clickable:hover {
     text-align: right;
 }
 
+.trade-stat-hint {
+    font-size: 0.65rem;
+    color: var(--text-muted, #999);
+    font-style: italic;
+    margin-top: 1px;
+    letter-spacing: 0.2px;
+}
+
 /* --- Total Line --- */
 .budget-line-total {
     border-top: 2px solid var(--border-main);

@@ -478,7 +478,7 @@ function renderTradePanel(nation) {
         if (expVol <= 0) continue;
         expTotal += expVol;
         var prevVol = tradeData.prevFlows[sKey] ? Number(tradeData.prevFlows[sKey].export_volume) || 0 : null;
-        h += tradeLineItem(TRADE_SECTORS[i].label, expVol, prevVol, false);
+        h += tradeLineItem(TRADE_SECTORS[i].label, expVol, prevVol, false, sKey);
     }
     h += budgetTotalLine(expTotal);
     h += '</div>';
@@ -495,7 +495,7 @@ function renderTradePanel(nation) {
         if (impVol <= 0) continue;
         impTotal += impVol;
         var prevVol = tradeData.prevFlows[sKey] ? Number(tradeData.prevFlows[sKey].import_volume) || 0 : null;
-        h += tradeLineItem(TRADE_SECTORS[i].label, impVol, prevVol, true);
+        h += tradeLineItem(TRADE_SECTORS[i].label, impVol, prevVol, true, sKey);
     }
     h += budgetTotalLine(impTotal);
     h += '</div>';
@@ -505,12 +505,38 @@ function renderTradePanel(nation) {
     return h;
 }
 
-function tradeLineItem(label, value, prevValue, inverted) {
+// Stat hints — shows players what influences each trade sector
+var TRADE_EXPORT_HINTS = {
+    fuel_energy:        'Oil & Gas, Currency Strength',
+    minerals:           'Rare Minerals, Currency Strength',
+    food_agriculture:   'Arable Land, Currency Strength',
+    manufactured_goods: 'Infrastructure, Higher Education',
+    technology:         'Digital Infrastructure, Higher Education',
+    arms:               'Infrastructure, Higher Education, Defense Spending',
+    tourism:            'Happiness, Stability, Infrastructure',
+    services_finance:   'Higher Education, Digital Infrastructure, Credit'
+};
+var TRADE_IMPORT_HINTS = {
+    fuel_energy:        'Low Oil & Gas, Low Energy Generation',
+    minerals:           'Low Rare Minerals, High Manufacturing',
+    food_agriculture:   'Low Arable Land, High Population',
+    manufactured_goods: 'Low Manufacturing, High Std. of Living',
+    technology:         'Low Digital Infrastructure, High Population',
+    arms:               'Defense Budget, Low Domestic Arms Industry'
+};
+
+function tradeLineItem(label, value, prevValue, inverted, sectorKey) {
     var h = '<div class="budget-line-item">';
     h += '<div class="budget-line-top">';
     h += '<span class="budget-line-label">' + escapeHtml(label) + '</span>';
     h += '<span class="budget-line-value">' + formatBudgetCurrency(value) + '</span>';
     h += '</div>';
+    if (sectorKey) {
+        var hint = inverted ? TRADE_IMPORT_HINTS[sectorKey] : TRADE_EXPORT_HINTS[sectorKey];
+        if (hint) {
+            h += '<div class="trade-stat-hint">' + escapeHtml(hint) + '</div>';
+        }
+    }
     if (prevValue !== null && prevValue !== undefined) {
         h += '<div class="budget-line-trend">' + tradeTrendHtml(value, prevValue, inverted) + '</div>';
     }
