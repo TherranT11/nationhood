@@ -51,6 +51,7 @@
             <button class="tab" onclick="showTab('demands')">Demands</button>
             <button class="tab" onclick="showTab('danger')">Danger Zone</button>
             <button class="tab" onclick="showTab('inspector')">Inspector</button>
+            <button class="tab" onclick="showTab('audit')">Policy Audit</button>
         </div>
 
         <!-- ==================== SHARD TAB ==================== -->
@@ -404,13 +405,21 @@
             </div>
         </div>
 
+        <div class="tab-content" id="tab-audit">
+            <h2>Policy Audit</h2>
+            <p style="color:#888; margin-bottom:16px;">Review all active policies across all nations with their computed annual budget costs.</p>
+            <button class="btn btn-primary" onclick="runPolicyAudit()">Run Policy Audit</button>
+            <div id="audit-status" class="status info hidden"></div>
+            <div id="audit-results" style="margin-top:20px;"></div>
+        </div>
+
     </div>
 </div>
 
 <script type="module">
 const { createClient } = supabase;
 import { applyPopulationGrowth } from './js/common.js';
-import { GAME_CONFIG, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processBlocApprovalDecay, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPartyStandingsJitter, processPMTraitEffects, calculateNationalBudget, markFactionActive, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runManualElectionByGovernmentType, DONOR_DEMANDS } from './js/game-common.js';
+import { GAME_CONFIG, RAW_SCALING_DIVISORS, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processBlocApprovalDecay, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPartyStandingsJitter, processPMTraitEffects, calculateNationalBudget, markFactionActive, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runManualElectionByGovernmentType, DONOR_DEMANDS } from './js/game-common.js';
 const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
     const _supabase = createClient(supabaseUrl, supabaseKey);
@@ -2746,6 +2755,155 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     }
 
 
+// ==================== POLICY AUDIT ====================
+    function auditScaleCost(baseCost, scalingStat, nation) {
+        if (!scalingStat || !baseCost) return baseCost || 0;
+        const statVal = Number(nation[scalingStat]) || 1;
+        const divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
+        return baseCost * (statVal / divisor);
+    }
+
+    function auditFormatCurrency(val) {
+        if (val == null) return '$0';
+        val = Number(val);
+        const sign = val < 0 ? '-' : '';
+        const abs = Math.abs(val);
+        if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(1) + 'T';
+        if (abs >= 1e9)  return sign + '$' + (abs / 1e9).toFixed(1) + 'B';
+        if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(1) + 'M';
+        if (abs >= 1e3)  return sign + '$' + (abs / 1e3).toFixed(1) + 'K';
+        return sign + '$' + Math.round(abs);
+    }
+
+    async function runPolicyAudit() {
+        const status = document.getElementById('audit-status');
+        const results = document.getElementById('audit-results');
+        status.className = 'status info';
+        status.textContent = 'Running audit...';
+        status.classList.remove('hidden');
+        results.innerHTML = '';
+
+        try {
+            // Fetch shard tick
+            const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            const currentTick = shard ? shard.current_tick : 0;
+            const yearStartTick = Math.floor(currentTick / GAME_CONFIG.TICKS_PER_YEAR) * GAME_CONFIG.TICKS_PER_YEAR;
+
+            // Fetch all nations
+            const { data: allNations } = await _supabase.from('nations').select('*');
+            if (!allNations || allNations.length === 0) {
+                status.className = 'status error';
+                status.textContent = 'No nations found.';
+                return;
+            }
+
+            // Fetch all active laws with policy data
+            const { data: allLaws, error: lawErr } = await _supabase.from('active_laws')
+                .select('nation_id, passed_tick, is_reversal, policies(policy_name, fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat)');
+
+            if (lawErr) throw lawErr;
+
+            const nationMap = {};
+            for (const n of allNations) nationMap[n.id] = n;
+
+            // Group by nation
+            const byNation = {};
+            let grandTotal = 0;
+            let totalPolicies = 0;
+
+            for (const law of (allLaws || [])) {
+                if (law.is_reversal) continue;
+                const policy = law.policies;
+                if (!policy) continue;
+
+                const nation = nationMap[law.nation_id];
+                if (!nation) continue;
+
+                const cat = policy.fiscal_category || 'Uncategorized';
+                let cost = 0;
+
+                // Ongoing: annualized
+                const ongoingBase = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
+                if (ongoingBase > 0) {
+                    cost += auditScaleCost(ongoingBase, policy.ongoing_scaling_stat, nation) * GAME_CONFIG.TICKS_PER_YEAR * 1000000;
+                }
+
+                // Upfront: only current year
+                if (law.passed_tick >= yearStartTick) {
+                    const upfront = policy.upfront_cost || 0;
+                    if (upfront > 0) {
+                        cost += auditScaleCost(upfront, policy.upfront_scaling_stat, nation) * 1000000;
+                    }
+                }
+
+                if (!byNation[nation.name]) byNation[nation.name] = [];
+                byNation[nation.name].push({
+                    name: policy.policy_name,
+                    category: cat,
+                    cost: cost,
+                    ongoing: ongoingBase,
+                    upfront: policy.upfront_cost || 0,
+                    passedTick: law.passed_tick
+                });
+                grandTotal += cost;
+                totalPolicies++;
+            }
+
+            // Render results
+            let h = '';
+            const nationNames = Object.keys(byNation).sort();
+
+            for (const nationName of nationNames) {
+                const policies = byNation[nationName];
+                policies.sort((a, b) => (a.category || '').localeCompare(b.category || '') || b.cost - a.cost);
+
+                let nationTotal = 0;
+                h += '<div style="background:#111; border:1px solid #333; border-radius:8px; padding:16px; margin-bottom:16px;">';
+                h += '<h3 style="color:#ffcc00; margin:0 0 12px 0; font-size:1rem; letter-spacing:2px; text-transform:uppercase;">' + nationName + '</h3>';
+                h += '<table style="width:100%; border-collapse:collapse; font-size:0.85rem;">';
+                h += '<tr style="border-bottom:1px solid #444; color:#888;">';
+                h += '<th style="text-align:left; padding:6px 8px;">Policy</th>';
+                h += '<th style="text-align:left; padding:6px 8px;">Category</th>';
+                h += '<th style="text-align:right; padding:6px 8px;">Upfront (base)</th>';
+                h += '<th style="text-align:right; padding:6px 8px;">Ongoing (base/mo)</th>';
+                h += '<th style="text-align:right; padding:6px 8px;">Annual Cost</th>';
+                h += '<th style="text-align:right; padding:6px 8px;">Passed Tick</th>';
+                h += '</tr>';
+
+                for (const p of policies) {
+                    nationTotal += p.cost;
+                    const rowColor = p.cost > 1e12 ? '#ff4444' : (p.cost > 0 ? '#e0e0e0' : '#666');
+                    h += '<tr style="border-bottom:1px solid #222; color:' + rowColor + ';">';
+                    h += '<td style="padding:6px 8px;">' + (p.name || '—') + '</td>';
+                    h += '<td style="padding:6px 8px; color:#888;">' + p.category + '</td>';
+                    h += '<td style="padding:6px 8px; text-align:right; font-family:monospace;">' + (p.upfront > 0 ? '$' + p.upfront + 'M' : '—') + '</td>';
+                    h += '<td style="padding:6px 8px; text-align:right; font-family:monospace;">' + (p.ongoing > 0 ? '$' + p.ongoing + 'M' : '—') + '</td>';
+                    h += '<td style="padding:6px 8px; text-align:right; font-family:monospace; font-weight:bold;">' + auditFormatCurrency(p.cost) + '</td>';
+                    h += '<td style="padding:6px 8px; text-align:right; color:#888;">' + p.passedTick + '</td>';
+                    h += '</tr>';
+                }
+
+                h += '<tr style="border-top:2px solid #ffcc00; color:#ffcc00; font-weight:bold;">';
+                h += '<td colspan="4" style="padding:8px; text-align:right; text-transform:uppercase; letter-spacing:1px;">Total</td>';
+                h += '<td style="padding:8px; text-align:right; font-family:monospace;">' + auditFormatCurrency(nationTotal) + '</td>';
+                h += '<td></td>';
+                h += '</tr>';
+                h += '</table></div>';
+            }
+
+            if (nationNames.length === 0) {
+                h = '<div style="color:#888; text-align:center; padding:24px;">No active policies found.</div>';
+            }
+
+            results.innerHTML = h;
+            status.className = 'status success';
+            status.textContent = '✅ Audit complete — ' + totalPolicies + ' active policies across ' + nationNames.length + ' nations. Grand total: ' + auditFormatCurrency(grandTotal);
+        } catch (err) {
+            status.className = 'status error';
+            status.textContent = '❌ Error: ' + err.message;
+        }
+    }
+
 // Expose functions for HTML onclick/onchange handlers
 window.authenticate = authenticate;
 window.logout = logout;
@@ -2787,6 +2945,7 @@ window.toggleDemandTag = toggleDemandTag;
 window.onDemandTypeChange = onDemandTypeChange;
 window.seedDefaultDemands = seedDefaultDemands;
 window.seedAllDefaultDemands = seedAllDefaultDemands;
+window.runPolicyAudit = runPolicyAudit;
 </script>
 </body>
 </html>
