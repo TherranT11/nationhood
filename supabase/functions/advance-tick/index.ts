@@ -104,6 +104,164 @@ const GAME_CONFIG = {
     NO_BUDGET_PENALTY_TICKS: 24      // how many ticks without a budget before max penalty
 };
 
+// ==================== TRADE SYSTEM CONSTANTS ====================
+
+var TRADE_CONFIG = {
+    BASE_TRADE_MULTIPLIER: 50000,          // base dollar value per unit of export capacity
+    BASELINE_GDP: 100000000000,            // 100B — the "average" GDP for scaling
+    HISTORY_TICKS: 24,                     // keep 2 game-years of trade history
+};
+
+/**
+ * Trade sectors — the 8 categories of goods/services that nations trade.
+ *
+ * Each sector defines:
+ *   key         – unique identifier (matches trade_flows.sector column)
+ *   label       – display name
+ *   export_only – if true, cannot be imported (tourism, services)
+ *   export_stat / export_stats – nation stat(s) driving export capacity
+ *   export_threshold – minimum stat value to generate any exports (0-100 scale)
+ */
+var TRADE_SECTORS = [
+    {
+        key: 'fuel_energy',
+        label: 'Fuel & Energy',
+        export_only: false,
+        export_stat: 'oil_and_gas',
+        export_threshold: 15
+    },
+    {
+        key: 'minerals',
+        label: 'Minerals & Raw Materials',
+        export_only: false,
+        export_stat: 'rare_minerals',
+        export_threshold: 15
+    },
+    {
+        key: 'food_agriculture',
+        label: 'Food & Agriculture',
+        export_only: false,
+        export_stat: 'arable_land',
+        export_threshold: 20
+    },
+    {
+        key: 'manufactured_goods',
+        label: 'Manufactured Goods',
+        export_only: false,
+        export_stats: ['physical_infrastructure', 'higher_education'],
+        export_threshold: 25
+    },
+    {
+        key: 'technology',
+        label: 'Technology & Electronics',
+        export_only: false,
+        export_stats: ['digital_infrastructure', 'higher_education'],
+        export_threshold: 30
+    },
+    {
+        key: 'arms',
+        label: 'Arms & Military Equipment',
+        export_only: false,
+        export_stats: ['physical_infrastructure', 'higher_education'],
+        export_threshold: 30
+    },
+    {
+        key: 'tourism',
+        label: 'Tourism',
+        export_only: true,
+        export_stats: ['happiness', 'stability', 'physical_infrastructure'],
+        export_threshold: 25
+    },
+    {
+        key: 'services_finance',
+        label: 'Services & Finance',
+        export_only: true,
+        export_stats: ['higher_education', 'digital_infrastructure', 'credit'],
+        export_threshold: 35
+    }
+];
+
+var TRADE_SECTOR_KEYS = [];
+var TRADE_SECTOR_MAP = {};
+for (var _tsi = 0; _tsi < TRADE_SECTORS.length; _tsi++) {
+    TRADE_SECTOR_KEYS.push(TRADE_SECTORS[_tsi].key);
+    TRADE_SECTOR_MAP[TRADE_SECTORS[_tsi].key] = TRADE_SECTORS[_tsi];
+}
+
+// ==================== TRADE CALCULATION FUNCTIONS (STUBS) ====================
+
+/**
+ * Calculate a nation's export capacity for a given sector.
+ * Returns raw dollar value of potential exports.
+ */
+function calculateExportCapacity(nation, sector) {
+    // STUB — Phase 2 implementation
+    return 0;
+}
+
+/**
+ * Calculate a nation's import demand for a given sector.
+ * Returns raw dollar value of desired imports.
+ */
+function calculateImportDemand(nation, sector) {
+    // STUB — Phase 3 implementation
+    return 0;
+}
+
+/**
+ * Calculate supply/demand price modifier for a sector across all nations.
+ * Returns a multiplier clamped between 0.5 (oversupply) and 2.0 (undersupply).
+ */
+function calculatePriceModifier(totalSupply, totalDemand) {
+    // STUB — Phase 4 implementation
+    return 1.0;
+}
+
+/**
+ * Calculate trade affinity between two nations.
+ * Higher affinity = more likely to trade. Returns 0-100.
+ */
+function calculateTradeAffinity(nationA, nationB, relation) {
+    // STUB — Phase 5 implementation
+    return 50;
+}
+
+/**
+ * Distribute trade among partners based on affinity and demand.
+ * Returns array of { importer_nation_id, volume }.
+ */
+function distributeTradeAmongPartners(exportCapacity, importers) {
+    // STUB — Phase 6 implementation
+    return [];
+}
+
+/**
+ * Derive trade_balance stat (0-100) from raw trade surplus/deficit.
+ */
+function deriveTradeBalanceIndex(tradeSurplus, gdp) {
+    // STUB — Phase 7 implementation
+    return 50;
+}
+
+/**
+ * Calculate tariff revenue from actual import volumes.
+ */
+function calculateTariffRevenue(totalImports, tariffRate, collectionRate) {
+    // STUB — Phase 7 implementation
+    return 0;
+}
+
+/**
+ * Main trade engine — runs once per tick for ALL nations.
+ * Computes export capacity, import demand, prices, affinity, and partner matching.
+ * Writes results to trade_flows, trade_partners, and trade_summary tables.
+ */
+async function processTradeFlows(supabase, nationList, currentTick) {
+    // STUB — Phase 6 implementation
+    console.log('[processTradeFlows] STUB — ' + nationList.length + ' nations, tick ' + currentTick);
+    return { processed: 0 };
+}
+
 // Canonical government types used by nation state + ministry event template variants.
 const MINISTRY_EVENT_GOV_TYPES = Object.freeze(['Democracy', 'Autocracy', 'Presidential']);
 
