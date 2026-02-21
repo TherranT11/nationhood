@@ -391,6 +391,9 @@ function pollForNewTick() {
                     sessionStorage.removeItem(STATE_KEY);
                     qCacheBust('');  // clear all query caches on tick change
 
+                    // Notify any page-level listeners that a tick advanced
+                    window.dispatchEvent(new Event('tick-advanced'));
+
                     // Restart the countdown with the new target
                     startTickCountdown();
                 }
