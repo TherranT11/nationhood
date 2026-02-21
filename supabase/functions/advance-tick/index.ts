@@ -3043,7 +3043,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                         foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
                         finance: 'Ministry of Finance', education: 'Ministry of Education',
                         healthcare: 'Ministry of Healthcare', labor: 'Ministry of Labor',
-                        justice: 'Ministry of Justice', transportation: 'Ministry of Transportation',
+                        justice: 'Ministry of Justice', trade: 'Ministry of Trade',
+                        energy: 'Ministry of Energy', transportation: 'Ministry of Transportation',
                         security: 'Ministry of Security'
                     };
                     await supabase.from('ministries').update({
@@ -5961,7 +5962,8 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
         foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
         finance: 'Ministry of Finance', education: 'Ministry of Education',
         healthcare: 'Ministry of Healthcare', labor: 'Ministry of Labor',
-        justice: 'Ministry of Justice', transportation: 'Ministry of Transportation',
+        justice: 'Ministry of Justice', trade: 'Ministry of Trade',
+        energy: 'Ministry of Energy', transportation: 'Ministry of Transportation',
         security: 'Ministry of Security'
     }[ministryKey] || ministryKey;
 
