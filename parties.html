@@ -245,6 +245,24 @@ async function renderParties() {
             </div>`;
         }
 
+        // ── Action Points (all autocracy players) ──
+        const currentAP = Math.min(f.action_points || 0, GAME_CONFIG.MAX_AP);
+        const maxAP = GAME_CONFIG.MAX_AP;
+        const apPct = Math.round((currentAP / maxAP) * 100);
+        const treasury = f.party_funds || 0;
+        const treasuryFmt = treasury >= 1_000_000
+            ? '$' + (treasury / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
+            : '$' + treasury.toLocaleString();
+
+        let apTip;
+        if (currentAP >= maxAP) {
+            apTip = 'AP is full — spend it before it goes to waste.';
+        } else if (currentAP <= 2) {
+            apTip = 'AP is low. Choose your next move carefully.';
+        } else {
+            apTip = 'Spend AP on purges, decrees, and crackdowns.';
+        }
+
         el.innerHTML = `
         <div class="parties-page">
         <div class="autocracy-top-row">
@@ -284,6 +302,21 @@ async function renderParties() {
             </div>
         </div>
         ${standingHTML}
+        <div class="ap-panel">
+            <div class="ap-header">Action Points</div>
+            <div class="ap-score-row">
+                <span class="ap-value">${currentAP}</span>
+                <span class="ap-max">/ ${maxAP}</span>
+            </div>
+            <div class="ap-bar-track">
+                <div class="ap-bar-fill" style="width:${apPct}%;background:${partyColor}"></div>
+            </div>
+            <div class="ap-tip">${apTip}</div>
+            <div class="ap-treasury">
+                <span class="ap-treasury-label">Treasury</span>
+                <span class="ap-treasury-value">${treasuryFmt}</span>
+            </div>
+        </div>
         </div>
         </div>
         `;
