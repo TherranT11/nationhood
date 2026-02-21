@@ -2811,6 +2811,25 @@ body.light-mode .outreach-bloc-row:hover {
     color: var(--text-secondary, #888);
     margin-bottom: 14px;
 }
+.other-parties-group {
+    margin-bottom: 18px;
+}
+.other-parties-group:last-child {
+    margin-bottom: 0;
+}
+.other-parties-group-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 10px;
+}
+.other-parties-group-gov {
+    color: #4CAF50;
+}
+.other-parties-group-opp {
+    color: #ff4444;
+}
 .other-parties-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
