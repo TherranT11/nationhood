@@ -65,8 +65,8 @@
             <div class="diplo-tab-bar">
                 <button class="diplo-tab active" data-tab="relations" onclick="showDiploTab('relations')">Relations</button>
                 <button class="diplo-tab" data-tab="agreements" onclick="showDiploTab('agreements')">Agreements</button>
-                <button class="diplo-tab" data-tab="initiative" onclick="showDiploTab('initiative')">Initiative</button>
-                <button class="diplo-tab" data-tab="inbox" onclick="showDiploTab('inbox')">Inbox</button>
+                <button class="diplo-tab" data-tab="initiative" onclick="showDiploTab('initiative')">Initiative<span id="initiative-badge" class="diplo-tab-badge" style="background:#d32f2f;"></span></button>
+                <button class="diplo-tab" data-tab="inbox" onclick="showDiploTab('inbox')">Inbox<span id="inbox-badge" class="diplo-tab-badge" style="background:#d32f2f;"></span></button>
             </div>
 
             <!-- Tab Panels -->
@@ -343,6 +343,62 @@ async function renderDiploHeader() {
             ).join('');
     } else {
         dropdown.style.display = 'none';
+    }
+
+    // Refresh tab notification badges
+    updateTabBadges();
+}
+
+// ==================== TAB BADGES ====================
+
+async function updateTabBadges() {
+    if (!currentNation) return;
+    try {
+        // Count items needing action on Initiative tab:
+        // Open trade negotiations where we're the recipient (not yet in participants)
+        const { data: openNegs } = await _supabase
+            .from('trade_negotiations')
+            .select('participants')
+            .eq('status', 'open')
+            .or('nation_a_id.eq.' + currentNation.id + ',nation_b_id.eq.' + currentNation.id);
+
+        let initiativeCount = 0;
+        (openNegs || []).forEach(n => {
+            const participants = n.participants || [];
+            if (!participants.some(p => p.nation_id === currentNation.id)) {
+                initiativeCount++;
+            }
+        });
+
+        const initBadge = document.getElementById('initiative-badge');
+        if (initBadge) initBadge.textContent = initiativeCount > 0 ? initiativeCount : '';
+
+        // Count items needing action on Inbox tab:
+        // Incoming proposals needing our response + revised proposals sent back to us
+        const { data: inboxProposals } = await _supabase
+            .from('diplomatic_proposals')
+            .select('status, proposing_nation_id, target_nation_id')
+            .in('status', ['proposed', 'revised', 'fm_review', 'ratification', 'ratification_failed'])
+            .or('proposing_nation_id.eq.' + currentNation.id + ',target_nation_id.eq.' + currentNation.id);
+
+        let inboxCount = 0;
+        (inboxProposals || []).forEach(p => {
+            const isIncoming = p.target_nation_id === currentNation.id;
+            const isRevised = p.status === 'revised';
+            const revisedByThem = isRevised && p.target_nation_id === currentNation.id;
+            if ((p.status === 'proposed' && isIncoming) || (isRevised && !revisedByThem)) {
+                inboxCount++;
+            } else if (p.status === 'fm_review' && diplomaticRoles.isFM) {
+                inboxCount++;
+            } else if ((p.status === 'ratification' || p.status === 'ratification_failed') && (diplomaticRoles.isFM || diplomaticRoles.isHoG)) {
+                inboxCount++;
+            }
+        });
+
+        const inboxBadge = document.getElementById('inbox-badge');
+        if (inboxBadge) inboxBadge.textContent = inboxCount > 0 ? inboxCount : '';
+    } catch (e) {
+        console.warn('Error updating tab badges:', e);
     }
 }
 
@@ -1156,8 +1212,13 @@ async function acceptTradeNegotiation(proposalId, negotiationId) {
 
     alert('Trade negotiations accepted! The negotiation table is now open.\n\nGo to the Initiative tab to choose an agreement type and begin drafting articles.');
 
-    // Refresh inbox
+    // Refresh inbox and initiative
     await renderInboxTab();
+    // Also refresh initiative tab if it was the source of the action
+    const initPanel = document.getElementById('tab-initiative');
+    if (initPanel && initPanel.style.display !== 'none') {
+        await renderInitiativeWizard();
+    }
     await renderDiploHeader();
 }
 
@@ -1177,6 +1238,11 @@ async function rejectTradeNegotiation(proposalId, negotiationId) {
 
     alert('Trade negotiations rejected.');
     await renderInboxTab();
+    // Also refresh initiative tab if it was the source of the action
+    const initPanel = document.getElementById('tab-initiative');
+    if (initPanel && initPanel.style.display !== 'none') {
+        await renderInitiativeWizard();
+    }
     await renderDiploHeader();
 }
 
@@ -2493,6 +2559,26 @@ async function renderOngoingTradeNegotiations() {
     const nameMap = {};
     (nationNames || []).forEach(n => nameMap[n.id] = n.name);
 
+    // For open negotiations where we're the recipient, fetch the associated proposals
+    const openNegsWeReceived = negotiations.filter(n => {
+        if (n.status !== 'open') return false;
+        const participants = n.participants || [];
+        return !participants.some(p => p.nation_id === currentNation.id);
+    });
+    let proposalMap = {}; // negotiation_id → proposal
+    if (openNegsWeReceived.length > 0) {
+        const { data: proposals } = await _supabase
+            .from('diplomatic_proposals')
+            .select('*')
+            .eq('proposal_type', 'trade_negotiation')
+            .eq('status', 'proposed')
+            .eq('target_nation_id', currentNation.id);
+        (proposals || []).forEach(p => {
+            const negId = p.proposal_data?.negotiation_id;
+            if (negId) proposalMap[negId] = p;
+        });
+    }
+
     let html = '<div class="diplo-section-title">Ongoing Trade Negotiations</div>';
 
     for (const neg of negotiations) {
@@ -2506,15 +2592,32 @@ async function renderOngoingTradeNegotiations() {
         const participants = neg.participants || [];
         const participantRoles = participants.map(p => p.role).join(', ');
 
+        // Determine if we're the recipient of an open negotiation (not yet in participants)
+        const isRecipientOfOpen = neg.status === 'open' && !participants.some(p => p.nation_id === currentNation.id);
+        const linkedProposal = proposalMap[neg.id];
+
         const negTitle = typeInfo
             ? escapeHtml(typeInfo.shortLabel) + ': ' + escapeHtml(neg.agreement_name || 'Unnamed')
             : escapeHtml(neg.agreement_name || 'Unnamed');
-        const negSubtext = neg.status === 'open' ? 'Awaiting acceptance'
+        const negSubtext = neg.status === 'open'
+            ? (isRecipientOfOpen ? 'Awaiting your response' : 'Awaiting acceptance')
             : !typeInfo ? 'Type not yet selected'
             : participantRoles || 'Negotiating';
 
+        // Build action area based on recipient/proposer status
+        let actionHtml = '';
+        if (isRecipientOfOpen && linkedProposal) {
+            const apCost = DIPLOMACY_CONFIG.ACCEPT_TRADE_NEGOTIATION_AP;
+            actionHtml = `
+                <div class="inbox-card-actions" style="margin-top:8px;">
+                    <button class="proposal-accept-btn" onclick="event.stopPropagation(); acceptTradeNegotiation('${linkedProposal.id}', '${neg.id}')">Begin Negotiations (${apCost} AP)</button>
+                    <button class="proposal-reject-btn" onclick="event.stopPropagation(); rejectTradeNegotiation('${linkedProposal.id}', '${neg.id}')">Reject</button>
+                </div>
+            `;
+        }
+
         html += `
-            <div class="trade-neg-status" style="cursor:pointer;" onclick="openTradeNegotiation('${neg.id}')">
+            <div class="trade-neg-status ${isRecipientOfOpen ? 'requires-action' : ''}" style="cursor:pointer;${isRecipientOfOpen ? 'flex-wrap:wrap;' : ''}" onclick="openTradeNegotiation('${neg.id}')">
                 <div>
                     <div style="font-size:0.85rem;font-weight:bold;color:var(--text-primary);">
                         ${negTitle}
@@ -2528,9 +2631,10 @@ async function renderOngoingTradeNegotiations() {
                         ${neg.status === 'open' ? 'PENDING' : ticksLeft + ' ticks left'}
                     </div>
                     <div style="font-size:0.62rem;color:var(--text-dim);text-align:right;">
-                        ${neg.status === 'active' ? '[OPEN NEGOTIATIONS]' : '[VIEW]'}
+                        ${neg.status === 'active' ? '[OPEN NEGOTIATIONS]' : (isRecipientOfOpen ? '' : '[VIEW]')}
                     </div>
                 </div>
+                ${actionHtml}
             </div>
         `;
     }
