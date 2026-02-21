@@ -4,37 +4,156 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Economy | Nationhood Alpha</title>
-    
-    <!-- Supabase SDK -->
-    
-    <!-- Shared Styles -->
     <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/economy.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
- 
-<!-- ===== TOP BAR (rendered by common.js) ===== -->
+
 <div id="top-bar"></div>
 
-<!-- ===== CONTENT AREA ===== -->
 <div id="content-area">
-    <div class="placeholder-panel">
-        <div class="ph-icon">📈</div>
-        <h3>Economy</h3>
-        <p>Trade, taxation, and economic policy — coming soon!</p>
+    <div class="loading-container">
+        <div class="loading-spinner"></div>
+        <div>Loading economic data...</div>
     </div>
 </div>
 
-<!-- Shared Scripts -->
-
-<!-- Page-Specific Script -->
 <script type="module">
-import { initPage } from './js/common.js';
-// Initialize page (just loads top bar and nav)
-initPage('economy', async (state) => {
-    // Placeholder - no content to load yet
-});
-</script>
+import { _supabase } from './js/supabase-client.js';
+import { initPage, qCache, qCacheSet } from './js/common.js';
 
+// ==================== STATE ====================
+var previousTickData = null;
+
+// ==================== INIT ====================
+initPage('economy', async function(state) {
+    var nation = state.nation;
+
+    if (!nation) {
+        document.getElementById('content-area').innerHTML =
+            '<div class="placeholder-panel">' +
+            '<div class="ph-icon">📈</div>' +
+            '<h3>No Nation Selected</h3>' +
+            '<p>Your party is not assigned to a nation yet.</p>' +
+            '</div>';
+        return;
+    }
+
+    await loadPreviousTickData(nation.id);
+    renderEconomyPage(nation);
+});
+
+// ==================== PREVIOUS TICK DATA ====================
+async function loadPreviousTickData(nationId) {
+    var cacheKey = 'prev_tick_econ_' + nationId;
+    var cached = qCache(cacheKey);
+    if (cached) { previousTickData = cached; return; }
+
+    var res = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    if (!res.data) return;
+
+    var previousTick = res.data.current_tick - 1;
+    if (previousTick < 0) return;
+
+    var histRes = await _supabase.from('nations_history')
+        .select('*').eq('nation_id', nationId).eq('tick', previousTick).limit(1);
+
+    if (histRes.data && histRes.data.length > 0) {
+        previousTickData = histRes.data[0];
+        qCacheSet(cacheKey, previousTickData, 5 * 60 * 1000);
+        return;
+    }
+
+    // Fallback: most recent history row before current tick
+    var fbRes = await _supabase.from('nations_history')
+        .select('*').eq('nation_id', nationId).lt('tick', res.data.current_tick)
+        .order('tick', { ascending: false }).limit(1);
+
+    if (fbRes.data && fbRes.data.length > 0) {
+        previousTickData = fbRes.data[0];
+        qCacheSet(cacheKey, previousTickData, 5 * 60 * 1000);
+    }
+}
+
+// ==================== RENDER ====================
+function renderEconomyPage(nation) {
+    var h = '';
+    h += renderHeroBar(nation);
+    document.getElementById('content-area').innerHTML = h;
+}
+
+function renderHeroBar(nation) {
+    var h = '<div class="economy-hero">';
+    h += '<div class="economy-hero-title">ECONOMY OF ' + escapeHtml(nation.name).toUpperCase() + '</div>';
+    h += '<div class="economy-hero-stats">';
+
+    h += renderHeroStat('GDP Growth', nation.gdp_growth, 'gdp_growth', false, true);
+    h += renderHeroStat('Unemployment', nation.unemployment, 'unemployment', true, false);
+    h += renderHeroStat('Inflation', nation.inflation, 'inflation', true, false);
+    h += renderHeroStat('Standard of Living', nation.standard_of_living, 'standard_of_living', false, false);
+
+    h += '</div>';
+    h += '</div>';
+    return h;
+}
+
+function renderHeroStat(label, value, statKey, inverted, isGdpGrowth) {
+    var numValue = Number(value) || 50;
+    var displayValue;
+
+    if (isGdpGrowth) {
+        // 0-100 scale where 50 = 0% growth, 100 = +1%, 0 = -1%
+        var growthPercent = ((numValue - 50) / 50) * 1;
+        displayValue = (growthPercent >= 0 ? '+' : '') + growthPercent.toFixed(2) + '%';
+    } else {
+        displayValue = Math.round(numValue);
+    }
+
+    var trendHtml = getTrendArrow(statKey, numValue, inverted);
+
+    var h = '<div class="economy-stat-box">';
+    h += '<div class="economy-stat-label">' + escapeHtml(label) + '</div>';
+    h += '<div class="economy-stat-value">' + displayValue + '</div>';
+    h += '<div class="economy-stat-trend">' + trendHtml + '</div>';
+    h += '</div>';
+    return h;
+}
+
+// ==================== TREND ARROW ====================
+function getTrendArrow(statKey, currentValue, inverted) {
+    if (!previousTickData || currentValue === null || currentValue === undefined) {
+        return '<span class="trend-neutral">&mdash;</span>';
+    }
+
+    var prevValue = previousTickData[statKey];
+    if (prevValue === null || prevValue === undefined) {
+        return '<span class="trend-neutral">&mdash;</span>';
+    }
+
+    var delta = Number(currentValue) - Number(prevValue);
+    var invertedClass = inverted ? ' inverted' : '';
+
+    if (delta > 0.05) {
+        return '<span class="trend-up' + invertedClass + '">&#9650; +' + formatDelta(delta) + '</span>';
+    } else if (delta < -0.05) {
+        return '<span class="trend-down' + invertedClass + '">&#9660; ' + formatDelta(delta) + '</span>';
+    }
+    return '<span class="trend-neutral">&mdash;</span>';
+}
+
+function formatDelta(d) {
+    var abs = Math.abs(d);
+    if (abs >= 10) return Math.round(abs);
+    return abs.toFixed(1);
+}
+
+// ==================== UTILITIES ====================
+function escapeHtml(t) {
+    var d = document.createElement('div');
+    d.textContent = t || '';
+    return d.innerHTML;
+}
+</script>
 </body>
 </html>
