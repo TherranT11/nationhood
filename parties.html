@@ -315,32 +315,11 @@ async function renderParties() {
             }
         }
 
-        const isRulingFaction = isAutocracy && n.ruling_faction_id === f?.id;
-
-        // Autocracy loyalty thresholds and seize power eligibility
-        let myLoyalty = f?.loyalty ?? 50;
-        let isSuppressed = isAutocracy && myLoyalty < 15;
-        let isDisloyal = isAutocracy && myLoyalty >= 15 && myLoyalty < 30;
-        let isCoupCooldown = false;
-        let cooldownTick = f?.action_lockout_until_tick;
-        let coupTick = 0;
-        if (isAutocracy && f) {
-            const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-            coupTick = shard?.current_tick || 0;
-            isCoupCooldown = cooldownTick && coupTick < cooldownTick;
-        }
-        let canSeizePower = false;
-        if (isAutocracy && !isRulingFaction && f) {
-            const disloyalCount = parties.filter(p => p.id !== f?.id && (p.loyalty ?? 50) < 30).length;
-            canSeizePower = disloyalCount >= 2 && (f?.action_points || 0) >= 15 && !isCoupCooldown;
-        }
-
         // Build campaign actions
         let campaignActionsHTML = '';
         const lastPollData = null;   // TODO: fetch from campaign_actions when poll feature is implemented
         const previousPollData = null;
-        if (!isAutocracy) {
-            campaignActionsHTML = `
+        campaignActionsHTML = `
             <div class="section-header" style="margin-top: 30px;">Your Party Resources</div>
             <div class="stat-grid stat-grid-3col" style="margin-bottom: 12px;">
                 <div class="stat-card"><div class="stat-label">Action Points</div><div class="stat-value" id="party-ap">${f?.action_points || 0}</div></div>
@@ -429,130 +408,6 @@ async function renderParties() {
 
             <div class="section-header" style="margin-top: 20px;">Recent Actions</div>
             <div id="action-log" class="action-log"><div class="action-log-empty">No actions taken yet this campaign.</div></div>`;
-        } else {
-            const loyaltyColor = myLoyalty >= 30 ? '#4CAF50' : myLoyalty >= 15 ? '#ff9800' : '#ff4444';
-            const statusText = myLoyalty >= 30 ? 'LOYAL' : myLoyalty >= 15 ? 'DISLOYAL' : 'SUPPRESSED';
-            const statusColor = loyaltyColor;
-
-            campaignActionsHTML = `
-            <div class="section-header" style="margin-top: 30px;">Your Faction Resources</div>
-            <div class="stat-grid stat-grid-4col" style="margin-bottom: 24px;">
-                <div class="stat-card"><div class="stat-label">Action Points</div><div class="stat-value" id="party-ap">${f?.action_points || 0}</div></div>
-                <div class="stat-card"><div class="stat-label">Seats</div><div class="stat-value" id="party-seats">${f?.seats || 0} / ${GAME_CONFIG.TOTAL_SEATS}</div></div>
-                <div class="stat-card"><div class="stat-label">Faction Loyalty</div><div class="stat-value" id="party-loyalty" style="color:${loyaltyColor}">${myLoyalty}%</div></div>
-                <div class="stat-card"><div class="stat-label">Status</div><div class="stat-value" id="party-status" style="color:${statusColor}">${statusText}</div></div>
-            </div>
-
-            ${isCoupCooldown ? `
-            <div style="background: #3a1a1a; border: 1px solid #ff9800; border-radius: 8px; padding: 16px; text-align: center; margin-bottom: 20px;">
-                <div style="color: #ff9800; font-weight: bold; font-size: 1.1rem;">COUP COOLDOWN</div>
-                <div style="color: #aaa; margin-top: 8px;">Seize Power is unavailable until tick ${cooldownTick} after your failed coup attempt. Other actions still work.</div>
-            </div>` : ''}
-
-            <div class="section-header">Faction Actions</div>
-
-            ${isSuppressed ? `
-            <div style="background: #3a1a1a; border: 1px solid #ff4444; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-                <div style="color: #ff4444; font-weight: bold;">SUPPRESSED</div>
-                <div style="color: #aaa; margin-top: 4px; font-size: 0.85rem;">Low loyalty status only. It no longer drains AP, seats, or ministry positions.</div>
-            </div>` : ''}
-
-            ${isDisloyal ? `
-            <div style="background: #3a2a1a; border: 1px solid #ff9800; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-                <div style="color: #ff9800; font-weight: bold;">DISLOYAL</div>
-                <div style="color: #aaa; margin-top: 4px; font-size: 0.85rem;">Low loyalty status only. It no longer drains AP, seats, or ministry positions.</div>
-            </div>` : ''}
-
-            <div style="margin-bottom:12px;color:#888;font-size:0.82rem;">
-                <strong>Loyalty Thresholds:</strong> Loyal (30+) = status only | Disloyal (15-29) = status only | Suppressed (&lt;15) = status only
-            </div>
-
-            <div class="action-grid" style="grid-template-columns: repeat(2, 1fr);">
-                <!-- RALLY SUPPORT -->
-                <div class="action-card">
-                    <div class="action-header"><div class="action-title">Rally Support</div><div class="action-cost">2 AP</div></div>
-                    <div class="action-desc">
-                        ${isRulingFaction
-                            ? 'Choose: <strong>Celebrate the Regime</strong> (+1D2 approval, +1 loyalty to ALL factions, +1 corruption) or <strong>Denounce Enemies</strong> (pick target, -1D2 loyalty, +1 approval, +1 polarization).'
-                            : 'Pledge loyalty to the regime. Gain <strong>+1D2 loyalty</strong> for your faction.'
-                        }
-                    </div>
-                    ${isRulingFaction ? `
-                    <div style="margin: 10px 0;">
-                        <select id="rally-mode" class="action-select" onchange="toggleDenounceTarget()">
-                            <option value="celebrate">Celebrate the Regime</option>
-                            <option value="denounce">Denounce Enemies</option>
-                        </select>
-                    </div>
-                    <div id="denounce-target-wrap" style="margin: 10px 0; display: none;">
-                        <select id="denounce-target" class="action-select">
-                            <option value="">Select Target Faction...</option>
-                        </select>
-                    </div>` : ''}
-                    <button class="action-btn" onclick="doRallySupport()">
-                        ${isRulingFaction ? 'Rally Support' : 'Pledge Loyalty'}
-                    </button>
-                </div>
-
-                <!-- UNDERMINE -->
-                <div class="action-card">
-                    <div class="action-header"><div class="action-title">Undermine</div><div class="action-cost">3 AP</div></div>
-                    <div class="action-desc">
-                        Target a rival faction: <strong>-1D3 loyalty</strong>, nation <strong>-1 stability</strong>.
-                        <br><span style="color: #ff9800; font-size: 0.78rem;">If target loyalty is below 20, they learn who did it.</span>
-                    </div>
-                    <div style="margin: 10px 0;">
-                        <select id="undermine-target" class="action-select">
-                            <option value="">Select Target Faction...</option>
-                        </select>
-                    </div>
-                    <button class="action-btn action-btn-risk" onclick="doUndermine()">
-                        Undermine
-                    </button>
-                </div>
-
-                ${isRulingFaction ? `
-                <!-- PATRONAGE NETWORK (Ruling Only) -->
-                <div class="action-card">
-                    <div class="action-header"><div class="action-title">Patronage Network</div><div class="action-cost">2 AP</div></div>
-                    <div class="action-desc">
-                        Give <strong>$50,000</strong> from the national treasury to a faction. Target gains <strong>+2 loyalty</strong>. Nation <strong>+1 corruption</strong>.
-                        <br><span style="color: #ff9800; font-size: 0.78rem;">If you pick yourself, all other factions lose 1 loyalty.</span>
-                    </div>
-                    <div style="margin: 10px 0;">
-                        <select id="patronage-target" class="action-select">
-                            <option value="">Select Faction...</option>
-                        </select>
-                    </div>
-                    <button class="action-btn" onclick="doPatronageNetwork()">
-                        Distribute Patronage
-                    </button>
-                </div>` : ''}
-
-                ${!isRulingFaction ? `
-                <!-- SEIZE POWER (Opposition Only) -->
-                <div class="action-card" style="border-left-color: #ff4444;">
-                    <div class="action-header"><div class="action-title" style="color: #ff4444;">Seize Power</div><div class="action-cost">15 AP</div></div>
-                    <div class="action-desc">
-                        Attempt to overthrow the ruling faction. Requires <strong>2+ factions with loyalty below 30</strong>.
-                        <br><br>
-                        Factions pick sides based on loyalty. Side with more seats wins.
-                        <br><br>
-                        <strong style="color: #4CAF50;">WIN:</strong> You become ruler. Old ruler becomes opposition at 50 loyalty.
-                        <br><strong style="color: #ff4444;">FAIL:</strong> -25 seats, -20 approval, loyalty=0, purged from ministries. Seize Power blocked for 6 ticks.
-                    </div>
-                    <button class="action-btn" style="background: ${canSeizePower ? '#ff4444' : '#555'};"
-                        onclick="doSeizePower()"
-                        ${(!canSeizePower || isCoupCooldown) ? 'disabled' : ''}
-                        ${isCoupCooldown ? 'title="Coup cooldown active"' : !canSeizePower ? 'title="Need 2+ factions with loyalty below 30 and 15 AP"' : ''}>
-                        ${isCoupCooldown ? 'Coup Cooldown' : canSeizePower ? 'Seize Power' : 'Cannot Seize (Need 2+ disloyal)'}
-                    </button>
-                </div>` : ''}
-            </div>
-            <div class="section-header" style="margin-top: 30px;">Recent Actions</div>
-            <div id="action-log" class="action-log"><div class="action-log-empty">No actions taken yet.</div></div>`;
-        }
-    }
 
     // Build Performance Credit HTML
     let perfCreditHtml = '';
