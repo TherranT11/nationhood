@@ -190,3 +190,24 @@ html { overflow-y: scroll !important; height: auto !important; }
         .stance-btn.accept-btn.active { background: #388E3C; box-shadow: 0 0 0 2px #ffcc00; }
         .stance-btn.reject-btn { background: #ff4444; color: #fff; }
         .stance-btn.reject-btn.active { background: #cc0000; box-shadow: 0 0 0 2px #ffcc00; }
+
+        /* Strike amendment requests (orange border) */
+        .amendment-request.strike { border-left-color: #ff6600; }
+        .amendment-policy.strike-policy { color: #ff6600; }
+
+        /* Sponsor article action buttons (Edit / Remove on article cards) */
+        .article-sponsor-actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #333; }
+        .article-action-btn { padding: 6px 14px; border: none; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.2s; }
+        .article-action-btn.edit { background: #2196F3; color: white; }
+        .article-action-btn.edit:hover { background: #1976D2; }
+        .article-action-btn.rescind { background: #ff4444; color: white; }
+        .article-action-btn.rescind:hover { background: #cc0000; }
+
+        /* Sponsor article toolbar (Add Article buttons above articles section) */
+        .sponsor-article-toolbar { display: flex; gap: 8px; padding: 12px 24px; background: #1e1e1e; border-bottom: 1px solid #333; }
+        .sponsor-tool-btn { padding: 10px 18px; border: 2px dashed #555; border-radius: 6px; background: transparent; color: #aaa; font-size: 0.8rem; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+        .sponsor-tool-btn:hover { border-color: #ffcc00; color: #ffcc00; background: rgba(255, 204, 0, 0.05); }
+
+        /* Strike button styling in sidebar */
+        .add-strike-btn { flex: 1; padding: 12px; background: #ff6600; border: none; border-radius: 6px; color: white; font-weight: bold; cursor: pointer; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; transition: background 0.2s; }
+        .add-strike-btn:hover { background: #e55b00; }
