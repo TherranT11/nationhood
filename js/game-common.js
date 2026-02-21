@@ -325,11 +325,27 @@ export function calculateImportDemand(nation, sector, opts) {
 
 /**
  * Calculate supply/demand price modifier for a sector across all nations.
- * Returns a multiplier clamped between 0.5 (oversupply) and 2.0 (undersupply).
+ *
+ * price_ratio = totalDemand / totalSupply
+ * Clamped to [0.5, 2.0] to prevent extreme swings:
+ *   0.5 = severe oversupply (prices halved)
+ *   1.0 = balanced market
+ *   2.0 = severe undersupply (prices doubled)
+ *
+ * The caller should apply smoothing against the previous tick's price:
+ *   smoothed = oldPrice * 0.7 + rawPrice * 0.3
+ *
+ * @param {number} totalSupply – aggregate export capacity across all nations
+ * @param {number} totalDemand – aggregate import demand across all nations
+ * @returns {number} price multiplier (0.5–2.0)
  */
 export function calculatePriceModifier(totalSupply, totalDemand) {
-    // STUB — Phase 4 implementation
-    return 1.0;
+    if (totalSupply <= 0 && totalDemand <= 0) return 1.0;
+    if (totalSupply <= 0) return 2.0;   // no supply, max price
+    if (totalDemand <= 0) return 0.5;   // no demand, min price
+
+    var ratio = totalDemand / totalSupply;
+    return Math.max(0.5, Math.min(2.0, ratio));
 }
 
 /**
