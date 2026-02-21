@@ -607,6 +607,110 @@ body.light-mode .ministry-tab.active {
     font-style: italic;
 }
 
+/* --- Derived Trade Scores --- */
+.trade-scores-section {
+    border-top: 2px solid var(--border-main);
+    padding: 20px 20px 16px;
+}
+
+.trade-scores-header {
+    font-size: 0.72rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 2.5px;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.trade-scores-subtitle {
+    font-size: 0.65rem;
+    color: var(--text-muted, #888);
+    font-style: italic;
+    margin-bottom: 14px;
+}
+
+.trade-scores-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.trade-score-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    padding: 12px 14px;
+}
+
+.trade-score-name {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+}
+
+.trade-score-value {
+    font-size: 1.4rem;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 6px;
+}
+
+.trade-score-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.trade-score-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s;
+}
+
+.trade-score-formula {
+    font-size: 0.6rem;
+    color: var(--text-muted, #888);
+    font-family: 'Courier New', monospace;
+    margin-bottom: 6px;
+    letter-spacing: 0.3px;
+}
+
+.trade-score-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+}
+
+.trade-score-stat {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+}
+
+.trade-score-stat strong {
+    font-family: 'Courier New', monospace;
+}
+
+/* Light mode */
+body.light-mode .trade-score-card {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+body.light-mode .trade-score-bar {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+@media (max-width: 600px) {
+    .trade-scores-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* --- Partner Cards --- */
 .partner-card {
     border: 1px solid var(--border-main);
