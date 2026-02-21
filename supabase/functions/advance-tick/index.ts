@@ -10115,7 +10115,7 @@ async function processCrises(supabase, nation, currentTick) {
 
                 if (pmMinistry) {
                     const currentVal = pmMinistry.minister_approval ?? 50;
-                    const newVal = clampWithFloor(currentVal, currentVal + changePT);
+                    const newVal = Math.round(clampWithFloor(currentVal, currentVal + changePT));
                     const { error: pmUpdErr } = await supabase.from('ministries')
                         .update({ minister_approval: newVal })
                         .eq('nation_id', nation.id)
@@ -10153,7 +10153,7 @@ async function processCrises(supabase, nation, currentTick) {
 
                 if (ministry) {
                     const currentVal = ministry.minister_approval ?? 50;
-                    const newVal = clampWithFloor(currentVal, currentVal + changePT);
+                    const newVal = Math.round(clampWithFloor(currentVal, currentVal + changePT));
                     const { error: minUpdErr } = await supabase.from('ministries')
                         .update({ minister_approval: newVal })
                         .eq('nation_id', nation.id)
@@ -10554,16 +10554,17 @@ async function processMinistryInboxEvents(supabase, nation, currentTick) {
     dbg(`Loaded ${templates.length} active template(s): [${templates.map(t => t.event_key).join(', ')}]`);
 
     // --- 3. Filter by government type ---
+    const govTypeRaw = nation.government_type || '';
     const govType = getCanonicalGovernmentType(nation);
     const eligible = templates.filter(t => (t.gov_types || []).includes(govType));
     if (eligible.length === 0) {
-        dbg(`BLOCKED: 0/${templates.length} templates match gov_type raw="${govTypeRaw}" canonical="${govTypeCanonical}". Template gov_types: ${templates.map(t => {
+        dbg(`BLOCKED: 0/${templates.length} templates match gov_type raw="${govTypeRaw}" canonical="${govType}". Template gov_types: ${templates.map(t => {
             const matchInfo = templateSupportsNationGovType(t.gov_types, govTypeRaw);
             return `${t.event_key}=raw:${JSON.stringify(matchInfo.templateGovTypesRaw)} canonical:${JSON.stringify(matchInfo.templateGovTypesCanonical)}`;
         }).join(', ')}. Canonical source of truth: ${JSON.stringify(canonicalNationGovTypes)}.`);
         return firedEvents;
     }
-    dbg(`${eligible.length}/${templates.length} template(s) match gov_type raw="${govTypeRaw}" canonical="${govTypeCanonical}": [${eligible.map(t => t.event_key).join(', ')}]`);
+    dbg(`${eligible.length}/${templates.length} template(s) match gov_type raw="${govTypeRaw}" canonical="${govType}": [${eligible.map(t => t.event_key).join(', ')}]`);
 
     // --- 4. Load active ministries for this nation ---
     const { data: ministries } = await supabase
