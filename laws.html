@@ -752,6 +752,7 @@ function renderArchiveBill(bill) {
         : bill.bill_type === 'ratification' ? ' <span class="archive-type-badge" style="background:#00695C;">Ratification</span>'
         : bill.bill_type === 'minister_confirmation' ? ' <span class="archive-type-badge" style="background:#E65100;">Cabinet Confirmation</span>'
         : bill.bill_type === 'confirmation' ? ' <span class="archive-type-badge" style="background:#1a5276;">Confirmation</span>'
+        : bill.bill_type === 'budget' ? ' <span class="archive-type-badge" style="background:#1B5E20;">Budget</span>'
         : '';
 
     return `
