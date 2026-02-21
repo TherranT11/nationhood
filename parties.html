@@ -158,9 +158,65 @@ async function renderParties() {
         const ideologyTags = buildIdeologyTags(f);
         const abbr = f.abbreviation ? `<span class="my-party-abbr">(${f.abbreviation})</span>` : '';
 
+        // ── Standing box: Grip (Strongman) or Loyalty + Ambition (others) ──
+        function getGripLevel(val) {
+            if (val >= 90) return { label: 'ABSOLUTE', desc: 'You are untouchable. For now.', color: '#4CAF50' };
+            if (val >= 75) return { label: 'FIRM', desc: 'Stable. No immediate threats.', color: '#4CAF50' };
+            if (val >= 60) return { label: 'SECURE', desc: 'Manageable but watch the cracks.', color: '#8BC34A' };
+            if (val >= 45) return { label: 'SHAKY', desc: 'Multiple brokers are unhappy. Act now.', color: '#ff9800' };
+            if (val >= 30) return { label: 'FRAGILE', desc: 'Coup is being actively planned.', color: '#ff5722' };
+            return { label: 'CRUMBLING', desc: 'You will be overthrown within 1\u20133 ticks.', color: '#ff4444' };
+        }
+        function getLoyaltyLevel(val) {
+            if (val >= 90) return { label: 'DEVOTED', desc: 'Will die for you. Probably.', color: '#4CAF50' };
+            if (val >= 75) return { label: 'LOYAL', desc: 'Reliable. Keep rewarding.', color: '#4CAF50' };
+            if (val >= 60) return { label: 'CONTENT', desc: 'No complaints. Could change.', color: '#8BC34A' };
+            if (val >= 40) return { label: 'WAVERING', desc: 'Unhappy. Looking at options. Act soon.', color: '#ff9800' };
+            if (val >= 20) return { label: 'HOSTILE', desc: 'Actively plotting. Purge or appease immediately.', color: '#ff5722' };
+            return { label: 'MUTINOUS', desc: 'Will join any coup attempt. May lead one.', color: '#ff4444' };
+        }
+        function getAmbitionLevel(val) {
+            if (val >= 76) return { label: 'DANGEROUS', desc: 'Actively wants your job. Will create opportunity.', color: '#ff4444' };
+            if (val >= 51) return { label: 'SCHEMING', desc: 'Would take your job if the opportunity arose.', color: '#ff9800' };
+            if (val >= 26) return { label: 'WATCHFUL', desc: 'Keeping their options open.', color: '#8BC34A' };
+            return { label: 'CONTENT', desc: 'No interest in your job. Safe.', color: '#4CAF50' };
+        }
+
+        let standingHTML = '';
+        if (isRuling) {
+            const grip = getGripLevel(f.grip ?? 75);
+            standingHTML = `
+            <div class="standing-box">
+                <div class="standing-header">Your Standing</div>
+                <div class="standing-row">
+                    <div class="standing-label">Grip on Power</div>
+                    <div class="standing-value" style="color:${grip.color}">${grip.label}</div>
+                </div>
+                <div class="standing-desc">${grip.desc}</div>
+            </div>`;
+        } else {
+            const loyalty = getLoyaltyLevel(f.loyalty ?? 75);
+            const ambition = getAmbitionLevel(f.ambition ?? 15);
+            standingHTML = `
+            <div class="standing-box">
+                <div class="standing-header">Your Standing</div>
+                <div class="standing-row">
+                    <div class="standing-label">Loyalty</div>
+                    <div class="standing-value" style="color:${loyalty.color}">${loyalty.label}</div>
+                </div>
+                <div class="standing-desc">${loyalty.desc}</div>
+                <div class="standing-row" style="margin-top: 12px;">
+                    <div class="standing-label">Ambition</div>
+                    <div class="standing-value" style="color:${ambition.color}">${ambition.label}</div>
+                </div>
+                <div class="standing-desc">${ambition.desc}</div>
+            </div>`;
+        }
+
         el.innerHTML = `
         <div class="parties-page">
-        <div class="my-party-card" style="border-left-color:${partyColor}; max-width: 420px;">
+        <div class="autocracy-top-row">
+        <div class="my-party-card" style="border-left-color:${partyColor}; max-width: 420px; flex: 1 1 0;">
             <div class="my-party-top-row">
                 <div class="my-party-logo" style="color:${partyColor}">
                     ${logoSvg}
@@ -194,6 +250,8 @@ async function renderParties() {
                     <div class="stat-val">${founded}</div>
                 </div>
             </div>
+        </div>
+        ${standingHTML}
         </div>
         </div>
         `;
