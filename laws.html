@@ -603,6 +603,7 @@ function renderRecentBills() {
             const isPassed = bill.status === 'passed';
             const statusColor = isPassed ? '#4CAF50' : '#ff4444';
             const statusText = isPassed ? 'PASSED' : 'FAILED';
+            const statusClass = isPassed ? '' : 'recent-failed';
             const typeLabel = bill.bill_type === 'foundational'
                 ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Foundational</span>'
                 : (bill.bill_type === 'no_confidence'
@@ -611,13 +612,13 @@ function renderRecentBills() {
                         ? ' <span style="background:#00695C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Ratification</span>'
                         : ''));
             return `
-                <div class="floor-bill clickable-bill" onclick="window.location.href='bill.html?id=${bill.id}'" style="opacity:0.7;">
+                <div class="floor-bill clickable-bill ${statusClass}" onclick="window.location.href='bill.html?id=${bill.id}'" style="opacity:0.7;">
                     <div class="committee-bill-header">
                         <div>
-                            <div class="floor-bill-name">${bill.bill_name || 'Unnamed Bill'}${typeLabel}</div>
+                            <div class="floor-bill-name" style="color:${statusColor};">${bill.bill_name || 'Unnamed Bill'}${typeLabel}</div>
                             <div class="committee-bill-sponsor">Proposed by ${bill.factions?.faction_name || 'Unknown'}</div>
                         </div>
-                        <div class="floor-status" style="color:${statusColor};font-weight:bold;">${statusText}</div>
+                        <div class="floor-status ${isPassed ? '' : 'failed-status'}" style="font-weight:bold;">${statusText}</div>
                     </div>
                 </div>`;
         }).join('') +
@@ -756,7 +757,7 @@ function renderArchiveBill(bill) {
         : '';
 
     return `
-        <div class="archive-bill clickable-bill" onclick="window.location.href='bill.html?id=${bill.id}'">
+        <div class="archive-bill clickable-bill ${isPassed ? 'archive-passed' : 'archive-failed'}" onclick="window.location.href='bill.html?id=${bill.id}'">
             <div class="archive-bill-header">
                 <div class="archive-bill-title">
                     <span class="archive-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${typeLabel}</span>
