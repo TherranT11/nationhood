@@ -1592,10 +1592,21 @@ async function toggleNationCard(nationId) {
         c.classList.remove('highlighted');
     });
 
+    // Clear map highlight
+    document.querySelectorAll('.land').forEach(l => l.classList.remove('selected-nation'));
+
     if (!isExpanded) {
         body.style.display = '';
         body.innerHTML = '<p style="color:#888;font-style:italic;font-size:0.82rem;padding:8px 0;">Loading details...</p>';
         card.classList.add('expanded');
+
+        // Highlight corresponding nation on the map
+        const nationName = card.getAttribute('data-nation-name');
+        if (nationName) {
+            const mapPath = document.querySelector('.land[data-nation-name="' + nationName + '"]');
+            if (mapPath) mapPath.classList.add('selected-nation');
+        }
+
         await renderNationCardBody(nationId);
     }
 }
