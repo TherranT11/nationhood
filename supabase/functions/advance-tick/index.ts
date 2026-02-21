@@ -104,6 +104,802 @@ const GAME_CONFIG = {
     NO_BUDGET_PENALTY_TICKS: 24      // how many ticks without a budget before max penalty
 };
 
+// ==================== TRADE SYSTEM CONSTANTS ====================
+
+var TRADE_CONFIG = {
+    BASE_TRADE_MULTIPLIER: 50000,          // base dollar value per unit of export capacity
+    BASELINE_GDP: 100000000000,            // 100B — the "average" GDP for scaling
+    HISTORY_TICKS: 24,                     // keep 2 game-years of trade history
+};
+
+/**
+ * Trade sectors — the 8 categories of goods/services that nations trade.
+ *
+ * Each sector defines:
+ *   key         – unique identifier (matches trade_flows.sector column)
+ *   label       – display name
+ *   export_only – if true, cannot be imported (tourism, services)
+ *   export_stat / export_stats – nation stat(s) driving export capacity
+ *   export_threshold – minimum stat value to generate any exports (0-100 scale)
+ */
+var TRADE_SECTORS = [
+    {
+        key: 'fuel_energy',
+        label: 'Fuel & Energy',
+        export_only: false,
+        export_stat: 'oil_and_gas',
+        export_threshold: 15
+    },
+    {
+        key: 'minerals',
+        label: 'Minerals & Raw Materials',
+        export_only: false,
+        export_stat: 'rare_minerals',
+        export_threshold: 15
+    },
+    {
+        key: 'food_agriculture',
+        label: 'Food & Agriculture',
+        export_only: false,
+        export_stat: 'arable_land',
+        export_threshold: 20
+    },
+    {
+        key: 'manufactured_goods',
+        label: 'Manufactured Goods',
+        export_only: false,
+        export_stats: ['physical_infrastructure', 'higher_education'],
+        export_threshold: 25
+    },
+    {
+        key: 'technology',
+        label: 'Technology & Electronics',
+        export_only: false,
+        export_stats: ['digital_infrastructure', 'higher_education'],
+        export_threshold: 30
+    },
+    {
+        key: 'arms',
+        label: 'Arms & Military Equipment',
+        export_only: false,
+        export_stats: ['physical_infrastructure', 'higher_education'],
+        export_threshold: 30
+    },
+    {
+        key: 'tourism',
+        label: 'Tourism',
+        export_only: true,
+        export_stats: ['happiness', 'stability', 'physical_infrastructure'],
+        export_threshold: 25
+    },
+    {
+        key: 'services_finance',
+        label: 'Services & Finance',
+        export_only: true,
+        export_stats: ['higher_education', 'digital_infrastructure', 'credit'],
+        export_threshold: 35
+    }
+];
+
+var TRADE_SECTOR_KEYS = [];
+var TRADE_SECTOR_MAP = {};
+for (var _tsi = 0; _tsi < TRADE_SECTORS.length; _tsi++) {
+    TRADE_SECTOR_KEYS.push(TRADE_SECTORS[_tsi].key);
+    TRADE_SECTOR_MAP[TRADE_SECTORS[_tsi].key] = TRADE_SECTORS[_tsi];
+}
+
+// ==================== TRADE CALCULATION FUNCTIONS (STUBS) ====================
+
+/**
+ * Calculate a nation's export capacity for a given sector.
+ * Returns raw dollar value of potential exports.
+ *
+ * Formulas use 0-20 scale internally (spec baseline). Since codebase stats are
+ * 0-100, scores are normalized by dividing by 5.
+ *
+ * @param {Object} nation    – nation row with all stats (gdp in raw dollars, stats 0-100)
+ * @param {Object} sector    – TRADE_SECTORS entry
+ * @param {Object} [opts]    – optional: { defense_pct } for arms sector (0-100, % of budget)
+ * @returns {number} export capacity in dollars (value side, after currency modifier)
+ */
+function calculateExportCapacity(nation, sector, opts) {
+    var cfg = TRADE_CONFIG;
+
+    // GDP modifier: bigger economies trade more in absolute terms
+    var gdp = Number(nation.gdp) || 0;
+    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    if (gdpModifier <= 0) return 0;
+
+    // Calculate primary export score from sector stat(s) (0-100 scale)
+    var score = 0;
+    if (sector.export_stat) {
+        score = Number(nation[sector.export_stat]) || 0;
+    } else if (sector.export_stats) {
+        var sum = 0;
+        for (var i = 0; i < sector.export_stats.length; i++) {
+            sum += Number(nation[sector.export_stats[i]]) || 0;
+        }
+        score = sum / sector.export_stats.length;
+    }
+
+    // Threshold check: stat must exceed sector threshold to generate any exports
+    if (score <= (sector.export_threshold || 0)) return 0;
+
+    // Normalize from 0-100 codebase scale to 0-20 spec scale
+    var normalizedScore = score / 5;
+
+    // Base capacity = normalizedScore × BASE_TRADE_MULTIPLIER × gdpModifier
+    var capacity = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+
+    // ── Sector-specific modifiers ──
+
+    // Arms: requires meaningful defense spending to have an arms industry
+    if (sector.key === 'arms') {
+        var defensePct = (opts && opts.defense_pct) || 0;
+        if (defensePct <= 8) return 0;
+        capacity *= (defensePct / 15);  // 15% defense spending = 1.0 multiplier
+    }
+
+    // Tourism: smaller than goods trade + requires stability
+    if (sector.key === 'tourism') {
+        capacity *= 0.5;
+        if ((Number(nation.stability) || 0) <= 25) return 0;
+    }
+
+    // Services & Finance: smaller than goods trade
+    if (sector.key === 'services_finance') {
+        capacity *= 0.7;
+    }
+
+    // ── Currency strength modifier ──
+    // Affects export VALUE (what appears on trade page).
+    // Weak currency = exports are cheaper = lower value per unit.
+    // currency_strength 50 = 1.0 (neutral), 25 = 0.5 (cheap), 75 = 1.5 (premium)
+    var currencyStrength = Number(nation.currency_strength) || 50;
+    var currencyModifier = currencyStrength / 50;
+    capacity *= currencyModifier;
+
+    return Math.round(capacity);
+}
+
+/**
+ * Calculate a nation's import demand for a given sector.
+ * Returns raw dollar value of desired imports (after currency + tariff dampening).
+ *
+ * Each sector has its own demand formula based on what the nation LACKS.
+ * Stats are normalized from 0-100 to 0-20 spec scale (/5) for formula consistency.
+ * Population is normalized from raw to ~0-20 equivalent (/5M).
+ *
+ * @param {Object} nation    – nation row (gdp in raw dollars, stats 0-100, population raw)
+ * @param {Object} sector    – TRADE_SECTORS entry
+ * @param {Object} [opts]    – optional: { defense_budget, has_arms_exports } for arms sector
+ * @returns {number} import demand in dollars
+ */
+function calculateImportDemand(nation, sector, opts) {
+    // Export-only sectors have no import demand
+    if (sector.export_only) return 0;
+
+    var cfg = TRADE_CONFIG;
+    var gdp = Number(nation.gdp) || 0;
+    var gdpModifier = gdp / cfg.BASELINE_GDP;
+
+    // Normalize stats from 0-100 codebase scale to 0-20 spec scale
+    var SN = 5;   // stat normalizer: divide 0-100 stats by 5
+    var PN = 5000000;  // population normalizer: raw pop / 5M ≈ 0-20 equivalent
+
+    var rawDemand = 0;
+
+    // ── FUEL & ENERGY ──
+    // Import fuel if you don't produce enough domestically.
+    // Driven by inverse of (oil_and_gas + energy_generation).
+    if (sector.key === 'fuel_energy') {
+        var oilGas = (Number(nation.oil_and_gas) || 0) / SN;
+        var energyGen = (Number(nation.energy_generation) || 0) / SN;
+        var domesticEnergy = (oilGas + energyGen) / 2;
+        var deficiency = Math.max(0, 15 - domesticEnergy);
+        rawDemand = deficiency * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+    }
+
+    // ── MINERALS & RAW MATERIALS ──
+    // Import if you lack domestic minerals but have manufacturing that needs inputs.
+    // Manufacturing creates demand for raw material imports.
+    else if (sector.key === 'minerals') {
+        var minerals = (Number(nation.rare_minerals) || 0) / SN;
+        var infra = Number(nation.physical_infrastructure) || 0;
+        var edu = Number(nation.higher_education) || 0;
+        var manufScore = ((infra + edu) / 2) / SN;
+        var deficiency = Math.max(0, 12 - minerals);
+        rawDemand = deficiency * (manufScore / 10) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+    }
+
+    // ── FOOD & AGRICULTURE ──
+    // Everyone needs food. Import based on what you can't grow domestically.
+    // Uses population as scaling factor (not GDP) — even poor nations need to eat.
+    else if (sector.key === 'food_agriculture') {
+        var arableLand = (Number(nation.arable_land) || 0) / SN;
+        var popNorm = (Number(nation.population) || 1) / PN;
+        var sufficiency = arableLand / Math.max(0.1, popNorm * 1.5);
+        var deficit = Math.max(0, 1 - sufficiency);
+        rawDemand = deficit * popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.8;
+    }
+
+    // ── MANUFACTURED GOODS ──
+    // Import what you can't make. Consumer demand (population × standard of living)
+    // minus domestic production capacity.
+    else if (sector.key === 'manufactured_goods') {
+        var popNorm = (Number(nation.population) || 1) / PN;
+        var sol = (Number(nation.standard_of_living) || 50) / SN;
+        var infra = Number(nation.physical_infrastructure) || 0;
+        var edu = Number(nation.higher_education) || 0;
+        var manufScore = ((infra + edu) / 2) / SN;
+        var consumerDemand = popNorm * (sol / 10);
+        var domesticManuf = manufScore / 10;
+        var deficit = Math.max(0, consumerDemand - domesticManuf);
+        rawDemand = deficit * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
+    }
+
+    // ── TECHNOLOGY & ELECTRONICS ──
+    // Digital infrastructure needs minus domestic tech production.
+    else if (sector.key === 'technology') {
+        var popNorm = (Number(nation.population) || 1) / PN;
+        var digi = (Number(nation.digital_infrastructure) || 0) / SN;
+        var edu = Number(nation.higher_education) || 0;
+        var techScore = ((Number(nation.digital_infrastructure) || 0) + edu) / 2 / SN;
+        var techDemand = popNorm * (digi / 10) * 0.5;
+        var domesticTech = techScore / 10;
+        var deficit = Math.max(0, techDemand - domesticTech);
+        rawDemand = deficit * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.5;
+    }
+
+    // ── ARMS & MILITARY EQUIPMENT ──
+    // Driven by defense spending minus domestic arms production.
+    // 15% of defense budget goes to equipment purchases.
+    // Nations with domestic arms industries import less (only 40% of that 15%).
+    else if (sector.key === 'arms') {
+        var defenseBudget = (opts && opts.defense_budget) || 0;
+        var domesticArms = (opts && opts.has_arms_exports) ? 0.6 : 0;
+        rawDemand = defenseBudget * 0.15 * (1 - domesticArms);
+    }
+
+    if (rawDemand <= 0) return 0;
+
+    // ── Currency strength on imports ──
+    // Weak currency makes imports MORE expensive → you can afford LESS.
+    // currency_strength 50 = 1.0, 25 = 0.5 (can only afford half), 75 = 1.5
+    var currencyStrength = Number(nation.currency_strength) || 50;
+    var affordability = currencyStrength / 50;
+    rawDemand *= affordability;
+
+    // ── Tariff dampener ──
+    // Your own tariffs reduce import volume (makes foreign goods more expensive).
+    // tariffs 0 = 1.0 (free trade), 50 = 0.75 (25% reduction), 100 = 0.50 (protectionist)
+    var tariffs = Number(nation.tariffs) || 0;
+    var tariffDampener = 1 - (tariffs / 200);
+    rawDemand *= tariffDampener;
+
+    return Math.round(rawDemand);
+}
+
+/**
+ * Calculate supply/demand price modifier for a sector across all nations.
+ *
+ * price_ratio = totalDemand / totalSupply
+ * Clamped to [0.5, 2.0] to prevent extreme swings:
+ *   0.5 = severe oversupply (prices halved)
+ *   1.0 = balanced market
+ *   2.0 = severe undersupply (prices doubled)
+ *
+ * The caller should apply smoothing against the previous tick's price:
+ *   smoothed = oldPrice * 0.7 + rawPrice * 0.3
+ *
+ * @param {number} totalSupply – aggregate export capacity across all nations
+ * @param {number} totalDemand – aggregate import demand across all nations
+ * @returns {number} price multiplier (0.5–2.0)
+ */
+function calculatePriceModifier(totalSupply, totalDemand) {
+    if (totalSupply <= 0 && totalDemand <= 0) return 1.0;
+    if (totalSupply <= 0) return 2.0;   // no supply, max price
+    if (totalDemand <= 0) return 0.5;   // no demand, min price
+
+    var ratio = totalDemand / totalSupply;
+    return Math.max(0.5, Math.min(2.0, ratio));
+}
+
+/**
+ * Calculate trade affinity between two nations.
+ * Higher affinity = more likely to trade, and more volume flows between them.
+ *
+ * Components:
+ *   base                  50 (neutral starting point)
+ *   diplomatic_bonus      relation_score * 0.3           → -30 to +30
+ *   trade_agreement       +20 if bilateral trade deal exists
+ *   embargo_penalty       -40 if active embargo/sanctions between nations
+ *   proximity_bonus       +10 if same region (future)
+ *
+ * @param {Object} nationA   – nation row
+ * @param {Object} nationB   – nation row
+ * @param {Object} relation  – diplomatic_relations row { relation_score, active_treaties }
+ * @param {Object} [opts]    – { has_trade_agreement, has_embargo, same_region }
+ * @returns {number} affinity score 0-100
+ */
+function calculateTradeAffinity(nationA, nationB, relation, opts) {
+    var base = 50;
+
+    // Diplomatic relations: -100 to +100 score → -30 to +30 affinity
+    var relScore = (relation && Number(relation.relation_score)) || 0;
+    var diplomaticBonus = relScore * 0.3;
+
+    // Bilateral trade agreement: significant affinity boost
+    var tradeBonus = (opts && opts.has_trade_agreement) ? 20 : 0;
+
+    // Active embargo/sanctions between these two nations: major penalty
+    var embargoPenalty = (opts && opts.has_embargo) ? -40 : 0;
+
+    // Geographic proximity (future: use region data when available)
+    var proximityBonus = (opts && opts.same_region) ? 10 : 0;
+
+    var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus;
+    return Math.round(Math.max(0, Math.min(100, affinity)));
+}
+
+/**
+ * Distribute an exporter's capacity among importing partners.
+ *
+ * Each importer receives a share proportional to their weight:
+ *   weight_i = affinity_i × demand_i
+ *   volume_i = exportCapacity × (weight_i / totalWeight)
+ *
+ * Volume is also capped at each importer's actual demand (can't import
+ * more than you need). Any leftover capacity is redistributed.
+ *
+ * @param {number} exportCapacity – exporter's total capacity in this sector ($)
+ * @param {Array}  importers      – [{ nation_id, demand, affinity }, ...]
+ * @returns {Array} [{ importer_nation_id, volume }, ...] – only entries with volume > 0
+ */
+function distributeTradeAmongPartners(exportCapacity, importers) {
+    if (!exportCapacity || exportCapacity <= 0 || !importers || importers.length === 0) {
+        return [];
+    }
+
+    // Calculate weights: affinity × demand
+    var weighted = [];
+    var totalWeight = 0;
+    for (var i = 0; i < importers.length; i++) {
+        var imp = importers[i];
+        var aff = Number(imp.affinity) || 0;
+        var dem = Number(imp.demand) || 0;
+        if (aff <= 0 || dem <= 0) continue;
+        var w = aff * dem;
+        weighted.push({ nation_id: imp.nation_id, demand: dem, weight: w });
+        totalWeight += w;
+    }
+
+    if (totalWeight <= 0 || weighted.length === 0) return [];
+
+    // Distribute proportionally, capped at each importer's demand.
+    // Two passes: first pass allocates, second pass redistributes any surplus
+    // from capped importers to remaining partners.
+    var results = [];
+    var remaining = exportCapacity;
+
+    // Sort by weight descending so high-affinity partners fill first
+    weighted.sort(function (a, b) { return b.weight - a.weight; });
+
+    // Pass 1: proportional allocation, capped at demand
+    var uncapped = [];
+    var uncappedWeight = 0;
+    for (var i = 0; i < weighted.length; i++) {
+        var share = exportCapacity * (weighted[i].weight / totalWeight);
+        if (share > weighted[i].demand) {
+            // Capped: this importer only takes what they need
+            results.push({ importer_nation_id: weighted[i].nation_id, volume: Math.round(weighted[i].demand) });
+            remaining -= weighted[i].demand;
+        } else {
+            uncapped.push({ idx: results.length, nation_id: weighted[i].nation_id, demand: weighted[i].demand, weight: weighted[i].weight, share: share });
+            uncappedWeight += weighted[i].weight;
+            results.push({ importer_nation_id: weighted[i].nation_id, volume: 0 }); // placeholder
+        }
+    }
+
+    // Pass 2: distribute remaining capacity among uncapped importers
+    if (uncappedWeight > 0 && remaining > 0) {
+        for (var i = 0; i < uncapped.length; i++) {
+            var alloc = remaining * (uncapped[i].weight / uncappedWeight);
+            alloc = Math.min(alloc, uncapped[i].demand);
+            results[uncapped[i].idx].volume = Math.round(alloc);
+        }
+    }
+
+    // Filter out zero-volume entries
+    return results.filter(function (r) { return r.volume > 0; });
+}
+
+/**
+ * Derive trade_balance stat (0-100) from raw trade surplus/deficit.
+ *
+ * Maps surplus as a ratio of GDP onto a 0-100 index:
+ *   50 = balanced trade (surplus ≈ 0)
+ *   100 = large trade surplus (+10% of GDP or more)
+ *   0 = large trade deficit (-10% of GDP or more)
+ *
+ * Formula: 50 + (tradeSurplus / gdp) * 500
+ * Scaled so ±10% of GDP spans the full 0-100 range.
+ *
+ * @param {number} tradeSurplus – totalExports - totalImports (can be negative)
+ * @param {number} gdp          – nation's GDP in raw dollars
+ * @returns {number} trade balance index 0-100
+ */
+function deriveTradeBalanceIndex(tradeSurplus, gdp) {
+    if (!gdp || gdp <= 0) return 50;
+    var ratio = tradeSurplus / gdp;
+    var index = 50 + (ratio * 500);
+    return Math.round(Math.max(0, Math.min(100, index)) * 10) / 10;
+}
+
+/**
+ * Calculate tariff revenue from actual import volumes.
+ *
+ * tariff_revenue = totalImports × (tariffRate / 100) × collectionRate
+ *
+ * tariffRate is the nation's tariff stat (0-100).
+ * collectionRate is how efficiently tariffs are collected (0-1),
+ * typically derived from bureaucratic efficiency (~0.7 average).
+ *
+ * @param {number} totalImports    – actual dollar value of all imports this tick
+ * @param {number} tariffRate      – nation's tariff stat (0-100)
+ * @param {number} collectionRate  – collection efficiency 0-1 (default 0.7)
+ * @returns {number} tariff revenue in dollars
+ */
+function calculateTariffRevenue(totalImports, tariffRate, collectionRate) {
+    if (!totalImports || totalImports <= 0) return 0;
+    var rate = (Number(tariffRate) || 0) / 100;
+    var efficiency = (collectionRate != null) ? Number(collectionRate) : 0.7;
+    return Math.round(totalImports * rate * efficiency);
+}
+
+/**
+ * Main trade engine — runs once per tick for ALL nations simultaneously.
+ *
+ * Pipeline:
+ *   1. Compute per-nation per-sector export capacity + import demand
+ *   2. Aggregate supply/demand per sector → price modifiers (with smoothing)
+ *   3. Fetch diplomatic relations → compute bilateral affinity
+ *   4. For each exporter-sector, distribute capacity among importers (weighted by affinity × demand)
+ *   5. Write trade_flows, trade_partners, trade_summary rows
+ *   6. Update nation trade_balance stat + add tariff revenue
+ *
+ * @param {Object} supabase     – Supabase client
+ * @param {Array}  nationList   – array of nation rows (already fetched)
+ * @param {number} currentTick  – current game tick
+ * @returns {Object} { processed, totalVolume }
+ */
+async function processTradeFlows(supabase, nationList, currentTick) {
+    if (!nationList || nationList.length < 2) {
+        console.log('[processTradeFlows] Need at least 2 nations for trade, skipping');
+        return { processed: 0, totalVolume: 0 };
+    }
+
+    var cfg = TRADE_CONFIG;
+    var sectors = TRADE_SECTORS;
+    var nationCount = nationList.length;
+
+    // Build nation lookup by id
+    var nationMap = {};
+    for (var ni = 0; ni < nationCount; ni++) {
+        nationMap[nationList[ni].id] = nationList[ni];
+    }
+
+    // ── Step 1: Compute per-nation budget info (for arms sector opts) ──
+    var budgetMap = {};
+    for (var ni = 0; ni < nationCount; ni++) {
+        var n = nationList[ni];
+        budgetMap[n.id] = calculateNationalBudget(n);
+    }
+
+    // ── Step 2: Compute export capacity + import demand for every nation × sector ──
+    // nationFlows[nationId][sectorKey] = { exportCapacity, importDemand }
+    var nationFlows = {};
+    // sectorAgg[sectorKey] = { totalSupply, totalDemand }
+    var sectorAgg = {};
+
+    for (var si = 0; si < sectors.length; si++) {
+        sectorAgg[sectors[si].key] = { totalSupply: 0, totalDemand: 0 };
+    }
+
+    for (var ni = 0; ni < nationCount; ni++) {
+        var n = nationList[ni];
+        nationFlows[n.id] = {};
+
+        for (var si = 0; si < sectors.length; si++) {
+            var sector = sectors[si];
+
+            // Arms sector needs special opts
+            var exportOpts = null;
+            var importOpts = null;
+            if (sector.key === 'arms') {
+                // Estimate defense allocation as 10% of available budget (default assumption)
+                var avail = budgetMap[n.id].availableBudget || 0;
+                var defenseBudget = avail * 0.10;
+                exportOpts = { defense_pct: 10 };
+                importOpts = { defense_budget: defenseBudget, has_arms_exports: false };
+            }
+
+            var expCap = calculateExportCapacity(n, sector, exportOpts);
+            var impDem = calculateImportDemand(n, sector, importOpts);
+
+            // Check if this nation can export arms (for import reduction)
+            if (sector.key === 'arms' && expCap > 0 && importOpts) {
+                importOpts.has_arms_exports = true;
+                impDem = calculateImportDemand(n, sector, importOpts);
+            }
+
+            nationFlows[n.id][sector.key] = { exportCapacity: expCap, importDemand: impDem };
+            sectorAgg[sector.key].totalSupply += expCap;
+            sectorAgg[sector.key].totalDemand += impDem;
+        }
+    }
+
+    // ── Step 3: Price modifiers per sector (with smoothing from previous tick) ──
+    var priceModifiers = {};
+    var prevPrices = {};
+
+    // Fetch previous tick's price modifiers for smoothing
+    var prevTick = currentTick - 1;
+    if (prevTick > 0) {
+        var { data: prevFlows } = await supabase.from('trade_flows')
+            .select('sector, price_modifier')
+            .eq('tick', prevTick)
+            .limit(sectors.length);
+        if (prevFlows) {
+            for (var i = 0; i < prevFlows.length; i++) {
+                prevPrices[prevFlows[i].sector] = Number(prevFlows[i].price_modifier) || 1.0;
+            }
+        }
+    }
+
+    for (var si = 0; si < sectors.length; si++) {
+        var key = sectors[si].key;
+        var rawPrice = calculatePriceModifier(sectorAgg[key].totalSupply, sectorAgg[key].totalDemand);
+        var oldPrice = prevPrices[key] || 1.0;
+        // Smoothing: 70% old price + 30% new signal → prevents wild swings
+        priceModifiers[key] = oldPrice * 0.7 + rawPrice * 0.3;
+    }
+
+    // ── Step 4: Fetch diplomatic relations + proposals for affinity ──
+    var { data: relations } = await supabase.from('diplomatic_relations')
+        .select('nation_a_id, nation_b_id, relation_score, active_treaties, proximity');
+
+    var { data: activeProposals } = await supabase.from('diplomatic_proposals')
+        .select('id, proposal_type, proposing_nation_id, target_nation_id')
+        .eq('status', 'active')
+        .in('proposal_type', ['trade_agreement', 'embargo']);
+
+    // Build relation lookup: relMap["idA|idB"] = { relation_score, active_treaties, proximity }
+    var relMap = {};
+    if (relations) {
+        for (var i = 0; i < relations.length; i++) {
+            var r = relations[i];
+            var k1 = r.nation_a_id + '|' + r.nation_b_id;
+            var k2 = r.nation_b_id + '|' + r.nation_a_id;
+            relMap[k1] = r;
+            relMap[k2] = r;
+        }
+    }
+
+    // Build bilateral flags from active proposals
+    // flagsMap["idA|idB"] = { has_trade_agreement, has_embargo }
+    var flagsMap = {};
+    if (activeProposals) {
+        for (var i = 0; i < activeProposals.length; i++) {
+            var p = activeProposals[i];
+            var k1 = p.proposing_nation_id + '|' + p.target_nation_id;
+            var k2 = p.target_nation_id + '|' + p.proposing_nation_id;
+            if (!flagsMap[k1]) flagsMap[k1] = {};
+            if (!flagsMap[k2]) flagsMap[k2] = {};
+            if (p.proposal_type === 'trade_agreement') {
+                flagsMap[k1].has_trade_agreement = true;
+                flagsMap[k2].has_trade_agreement = true;
+            }
+            if (p.proposal_type === 'embargo') {
+                flagsMap[k1].has_embargo = true;
+                flagsMap[k2].has_embargo = true;
+            }
+        }
+    }
+
+    // Pre-compute all bilateral affinities
+    // affinityMap["exporterId|importerId"] = affinity score 0-100
+    var affinityMap = {};
+    for (var ai = 0; ai < nationCount; ai++) {
+        for (var bi = ai + 1; bi < nationCount; bi++) {
+            var a = nationList[ai];
+            var b = nationList[bi];
+            var pairKey = a.id + '|' + b.id;
+            var rel = relMap[pairKey] || null;
+            var flags = flagsMap[pairKey] || {};
+            if (rel && rel.proximity >= 80) flags.same_region = true;
+            var aff = calculateTradeAffinity(a, b, rel, flags);
+            affinityMap[a.id + '|' + b.id] = aff;
+            affinityMap[b.id + '|' + a.id] = aff;
+        }
+    }
+
+    // ── Step 5: Distribute trade — for each exporter×sector, match to importers ──
+    // Track actual volumes: actualExports[nationId][sector], actualImports[nationId][sector]
+    var actualExports = {};
+    var actualImports = {};
+    for (var ni = 0; ni < nationCount; ni++) {
+        actualExports[nationList[ni].id] = {};
+        actualImports[nationList[ni].id] = {};
+        for (var si = 0; si < sectors.length; si++) {
+            actualExports[nationList[ni].id][sectors[si].key] = 0;
+            actualImports[nationList[ni].id][sectors[si].key] = 0;
+        }
+    }
+
+    var partnerRows = [];
+
+    for (var si = 0; si < sectors.length; si++) {
+        var sector = sectors[si];
+        var priceMod = priceModifiers[sector.key];
+
+        for (var ei = 0; ei < nationCount; ei++) {
+            var exporter = nationList[ei];
+            var expCap = nationFlows[exporter.id][sector.key].exportCapacity;
+            if (expCap <= 0) continue;
+
+            // Apply price modifier to export capacity
+            var adjustedCapacity = Math.round(expCap * priceMod);
+
+            // Build importer list for this exporter (everyone else with demand > 0)
+            var importerList = [];
+            for (var ii = 0; ii < nationCount; ii++) {
+                if (ii === ei) continue;
+                var importer = nationList[ii];
+                var impDem = nationFlows[importer.id][sector.key].importDemand;
+                // Subtract what they've already received from other exporters
+                var remainingDemand = impDem - actualImports[importer.id][sector.key];
+                if (remainingDemand <= 0) continue;
+
+                var aff = affinityMap[exporter.id + '|' + importer.id] || 0;
+                if (aff <= 0) continue;
+
+                importerList.push({
+                    nation_id: importer.id,
+                    demand: remainingDemand,
+                    affinity: aff
+                });
+            }
+
+            if (importerList.length === 0) continue;
+
+            // Distribute this exporter's capacity among importers
+            var allocations = distributeTradeAmongPartners(adjustedCapacity, importerList);
+
+            for (var ai = 0; ai < allocations.length; ai++) {
+                var alloc = allocations[ai];
+                if (alloc.volume <= 0) continue;
+
+                actualExports[exporter.id][sector.key] += alloc.volume;
+                actualImports[alloc.importer_nation_id][sector.key] += alloc.volume;
+
+                partnerRows.push({
+                    tick: currentTick,
+                    exporter_nation_id: exporter.id,
+                    importer_nation_id: alloc.importer_nation_id,
+                    sector: sector.key,
+                    trade_volume: alloc.volume,
+                    affinity_score: affinityMap[exporter.id + '|' + alloc.importer_nation_id] || 0
+                });
+            }
+        }
+    }
+
+    // ── Step 6: Build trade_flows + trade_summary rows, update nation stats ──
+    var flowRows = [];
+    var summaryRows = [];
+    var totalGlobalVolume = 0;
+
+    for (var ni = 0; ni < nationCount; ni++) {
+        var n = nationList[ni];
+        var totalExp = 0;
+        var totalImp = 0;
+        var topExpSector = null;
+        var topExpVal = 0;
+        var topImpSector = null;
+        var topImpVal = 0;
+
+        for (var si = 0; si < sectors.length; si++) {
+            var sKey = sectors[si].key;
+            var expVol = actualExports[n.id][sKey] || 0;
+            var impVol = actualImports[n.id][sKey] || 0;
+            totalExp += expVol;
+            totalImp += impVol;
+
+            if (expVol > topExpVal) { topExpVal = expVol; topExpSector = sKey; }
+            if (impVol > topImpVal) { topImpVal = impVol; topImpSector = sKey; }
+
+            flowRows.push({
+                nation_id: n.id,
+                tick: currentTick,
+                sector: sKey,
+                export_capacity: nationFlows[n.id][sKey].exportCapacity,
+                export_volume: expVol,
+                import_demand: nationFlows[n.id][sKey].importDemand,
+                import_volume: impVol,
+                net_flow: expVol - impVol,
+                price_modifier: priceModifiers[sKey]
+            });
+        }
+
+        var surplus = totalExp - totalImp;
+        var gdp = Number(n.gdp) || 0;
+        var tradeBalanceIdx = deriveTradeBalanceIndex(surplus, gdp);
+
+        // Tariff revenue: based on actual imports
+        var budget = budgetMap[n.id];
+        var tariffRate = Number(n.tariffs) || 0;
+        var collectionRate = budget ? budget.collectionRate : 0.7;
+        var tariffRev = calculateTariffRevenue(totalImp, tariffRate, collectionRate);
+
+        summaryRows.push({
+            nation_id: n.id,
+            tick: currentTick,
+            total_exports: totalExp,
+            total_imports: totalImp,
+            trade_surplus: surplus,
+            trade_balance_index: tradeBalanceIdx,
+            tariff_revenue: tariffRev,
+            top_export_sector: topExpSector,
+            top_import_sector: topImpSector,
+            dependency_alerts: []
+        });
+
+        totalGlobalVolume += totalExp;
+
+        // Update the nation's trade_balance stat
+        await supabase.from('nations')
+            .update({ trade_balance: tradeBalanceIdx })
+            .eq('id', n.id);
+    }
+
+    // ── Step 7: Write to database ──
+    // Insert trade_flows in batches (8 sectors × N nations)
+    if (flowRows.length > 0) {
+        var { error: flowErr } = await supabase.from('trade_flows').upsert(flowRows, {
+            onConflict: 'nation_id,tick,sector'
+        });
+        if (flowErr) console.error('[processTradeFlows] trade_flows upsert error:', flowErr.message);
+    }
+
+    // Insert trade_partners in batches
+    if (partnerRows.length > 0) {
+        // Batch in chunks of 500 to avoid payload limits
+        var BATCH = 500;
+        for (var bi = 0; bi < partnerRows.length; bi += BATCH) {
+            var chunk = partnerRows.slice(bi, bi + BATCH);
+            var { error: partErr } = await supabase.from('trade_partners').upsert(chunk, {
+                onConflict: 'tick,exporter_nation_id,importer_nation_id,sector'
+            });
+            if (partErr) console.error('[processTradeFlows] trade_partners upsert error:', partErr.message);
+        }
+    }
+
+    // Insert trade_summary
+    if (summaryRows.length > 0) {
+        var { error: sumErr } = await supabase.from('trade_summary').upsert(summaryRows, {
+            onConflict: 'nation_id,tick'
+        });
+        if (sumErr) console.error('[processTradeFlows] trade_summary upsert error:', sumErr.message);
+    }
+
+    console.log('[processTradeFlows] tick ' + currentTick + ': ' + nationCount + ' nations, ' +
+        flowRows.length + ' flow rows, ' + partnerRows.length + ' partner rows, ' +
+        'total volume $' + Math.round(totalGlobalVolume).toLocaleString());
+
+    return { processed: nationCount, totalVolume: totalGlobalVolume };
+}
+
 // Canonical government types used by nation state + ministry event template variants.
 const MINISTRY_EVENT_GOV_TYPES = Object.freeze(['Democracy', 'Autocracy', 'Presidential']);
 
@@ -11159,6 +11955,17 @@ async function advanceTick(supabase) {
         }
     } catch (budgetErr) {
         console.error('[advanceTick] Budget bill generation failed (non-fatal):', budgetErr);
+    }
+
+    // 3.6 Trade engine — runs across ALL nations simultaneously
+    try {
+        const tradeResult = await processTradeFlows(supabase, nationList, newTick);
+        if (tradeResult.processed > 0) {
+            summary.trade = tradeResult;
+            console.log(`[advanceTick] Trade: ${tradeResult.processed} nations, $${Math.round(tradeResult.totalVolume).toLocaleString()} volume`);
+        }
+    } catch (tradeErr) {
+        console.error('[advanceTick] Trade processing failed (non-fatal):', tradeErr);
     }
 
     // 4. Process each nation
