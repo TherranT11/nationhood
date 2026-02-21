@@ -1734,7 +1734,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                     const articles = pd.articles || [];
                     const struckIndices = new Set(pd.struck_articles || []);
                     let totalRel = 0;
-                    articles.forEach((art: any, i: number) => {
+                    articles.forEach((art, i) => {
                         if (!struckIndices.has(i)) totalRel += art.relations || 0;
                     });
                     if (totalRel !== 0) {
@@ -2259,9 +2259,9 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
  *
  * CANONICAL STAT KEY REFERENCE:
  *   --- Economic ---
- *   gdp                        GDP (raw dollars: 88B = 88000000000)
+ *   gdp                        GDP ($B)
  *   gdp_growth                 Annual economic growth rate
- *   debt                       Government debt (raw dollars: 83B = 83000000000)
+ *   debt                       Government debt obligations ($B)
  *   debt_growth                Rate of debt accumulation
  *   inflation                  Rate of price increases
  *   interest_rates             Central bank lending rate
@@ -4123,15 +4123,18 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
         if (nationStats) {
             const updates = {};
             if (isIncumbentWin) {
+                // Incumbent wins: +3 legitimacy, +2 stability (mandate renewed)
                 updates.legitimacy = Math.min(100, Math.round(((nationStats.legitimacy || 50) + 3) * 10) / 10);
                 updates.stability = Math.min(100, Math.round(((nationStats.stability || 50) + 2) * 10) / 10);
                 console.log(`Incumbent win effects: +3 legitimacy, +2 stability (${nation.name})`);
             } else if (isChallengerWin && !wasRunoff) {
+                // Challenger wins (no runoff): transition effects
                 updates.stability = Math.max(0, Math.round(((nationStats.stability || 50) - 2) * 10) / 10);
                 updates.civil_unrest = Math.min(100, Math.round(((nationStats.civil_unrest || 0) + 3) * 10) / 10);
                 updates.happiness = Math.min(100, Math.round(((nationStats.happiness || 50) + 1) * 10) / 10);
                 console.log(`Challenger win effects: -2 stability, +3 civil_unrest, +1 happiness (${nation.name})`);
             } else if (isIncumbentRunoffLoss) {
+                // Incumbent loses in runoff: extra penalties (contested transition)
                 updates.stability = Math.max(0, Math.round(((nationStats.stability || 50) - 4) * 10) / 10);
                 updates.legitimacy = Math.max(0, Math.round(((nationStats.legitimacy || 50) - 2) * 10) / 10);
                 updates.civil_unrest = Math.min(100, Math.round(((nationStats.civil_unrest || 0) + 5) * 10) / 10);
@@ -4144,7 +4147,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
             }
         }
 
-        // Approval effects
+        // Approval effects: incumbent win boosts their faction, challenger win penalizes losing incumbent faction
         if (isIncumbentWin && incumbentFactionId) {
             await adjustBlocApproval(supabase, incumbentFactionId, 3);
             console.log(`Incumbent re-elected: +3 approval to ${winner.party_name}`);
@@ -8337,6 +8340,42 @@ async function snapshotNationHistory(supabase, nation, currentTick) {
     }
 }
 
+async function snapshotIdeologyHistory(supabase, nationId, currentTick) {
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+
+    if (!factions || factions.length === 0) return;
+
+    const factionIds = factions.map(f => f.id);
+    const { data: ideoRows } = await supabase
+        .from('faction_ideology')
+        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+        .in('faction_id', factionIds);
+
+    if (!ideoRows || ideoRows.length === 0) return;
+
+    const snapshots = ideoRows.map(row => ({
+        faction_id: row.faction_id,
+        tick: currentTick,
+        liberty_equality: row.liberty_equality || 0,
+        tradition_progress: row.tradition_progress || 0,
+        security_freedom: row.security_freedom || 0,
+        globalism_nationalism: row.globalism_nationalism || 0,
+        individualism_collectivism: row.individualism_collectivism || 0
+    }));
+
+    const { error } = await supabase
+        .from('ideology_history')
+        .upsert(snapshots, { onConflict: 'faction_id,tick' });
+
+    if (error) {
+        console.error('[snapshotIdeologyHistory] FAILED:', error.message);
+    }
+}
+
 
 // ==================== EVENT TICK PROCESSOR ====================
 
@@ -10353,7 +10392,7 @@ async function runElectionPreview(supabase, nationId) {
 // ===== END GAME LOGIC =====
 
 
-// ===== TICK-ONLY HELPERS (not needed by browser pages) =====
+// ===== TICK-ONLY HELPERS (edge-function-only — not in game-common.js) =====
 
 async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
     if (!isPresidentialRepublic(nation)) return;
@@ -10579,6 +10618,7 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
 // ==================== ADVANCE TICK ====================
 
 async function advanceTick(supabase) {
+    // 1. Pre-compute next tick metadata
     const { data: shard } = await supabase
         .from('shard')
         .select('current_tick, tick_interval_hours, current_date, next_tick_at')
@@ -10599,6 +10639,7 @@ async function advanceTick(supabase) {
     }
     const newDate = advanceMonth(shard.current_date || 'January, 2000');
 
+    // 2. Load all nations
     const { data: nations } = await supabase.from('nations').select('*');
     const nationList = nations || [];
 
@@ -10684,7 +10725,7 @@ async function advanceTick(supabase) {
         return summary;
     }
 
-    // Commit shard tick/date after critical AP phase succeeds
+    // 3. Commit shard tick/date after critical AP phase succeeds
     await supabase.from('shard').update({
         current_tick: newTick,
         next_tick_at: nextTickAt.toISOString(),
@@ -10706,9 +10747,10 @@ async function advanceTick(supabase) {
         }
     }
 
-    // Process each nation
+    // 4. Process each nation
     for (const nation of nationList) {
       try {
+        // Set correct seat count for this nation (affects supermajority thresholds, etc.)
         initGameConfigForNation(nation);
 
         // Stat effects (from passed bills/active laws)
@@ -10739,14 +10781,14 @@ async function advanceTick(supabase) {
         // PM trait effects
         await processPMTraitEffects(supabase, nation, newTick);
 
-        // Elections
+        // Elections (democracy only)
         const electionResults = await processElections(supabase, nation, newTick);
         if (electionResults.length > 0) {
             summary.elections = summary.elections || [];
             summary.elections.push({ nation: nation.name, elections: electionResults });
         }
 
-        // Government vacancy penalties
+        // Government vacancy penalties (democracy only)
         const vacancyResult = await processGovernmentVacancy(supabase, nation, newTick);
         if (vacancyResult) {
             summary.vacancies = summary.vacancies || [];
@@ -10770,7 +10812,7 @@ async function advanceTick(supabase) {
         await processPresidentCandidateTimeout(supabase, nation, newTick);
         await processParliamentaryPMTimeout(supabase, nation, newTick);
 
-        // Incumbent campaign bonuses (presidential systems, 6-tick pre-election window)
+        // Incumbent campaign bonuses (+2 approval/tick during pre-election window)
         await processIncumbentCampaignBonuses(supabase, nation, newTick);
 
         // Ideology shifts from resolved bills
@@ -10800,7 +10842,7 @@ async function advanceTick(supabase) {
             await autoResolveStaleShakeups(supabase, nation.id, newTick);
         }
 
-        // Re-fetch nation with post-effect values
+        // Re-fetch nation with post-effect values for remaining processors
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (freshNation) Object.assign(nation, freshNation);
 
@@ -10836,9 +10878,10 @@ async function advanceTick(supabase) {
             summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
         }
 
-        // Final snapshot to nation history (after all effects applied)
+        // Final snapshot — capture everything that happened this tick
         const { data: finalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         await snapshotNationHistory(supabase, finalNation || nation, newTick);
+        await snapshotIdeologyHistory(supabase, nation.id, newTick);
       } catch (nationErr) {
         console.error(`[advanceTick] FAILED processing nation ${nation.id} (${nation.name}):`, nationErr);
         summary.errors = summary.errors || [];

@@ -2947,3 +2947,183 @@ body.light-mode .other-party-logo {
         flex: 1 1 calc(50% - 14px);
     }
 }
+
+/* ===== IDEOLOGY TRACKER ===== */
+.ideology-tracker {
+    background: var(--bg-panel, #1a1a1a);
+    border: 1px solid var(--border-main, #333);
+    border-radius: 8px;
+    padding: 20px 24px;
+    width: 100%;
+}
+
+.ideology-tracker-header {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary, #e0e0e0);
+    margin-bottom: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+}
+
+/* ---- Party toggle buttons ---- */
+.ideology-party-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.ideology-party-toggle {
+    padding: 5px 14px;
+    border-radius: 4px;
+    border: 2px solid var(--party-color, #666);
+    background: transparent;
+    color: var(--party-color, #666);
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ideology-party-toggle:hover {
+    background: color-mix(in srgb, var(--party-color, #666) 15%, transparent);
+}
+
+.ideology-party-toggle.active {
+    background: var(--party-color, #666);
+    color: #fff;
+}
+
+/* ---- Axis rows ---- */
+.ideology-axes {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.ideology-axis-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.ideology-axis-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    min-width: 100px;
+    white-space: nowrap;
+}
+
+.ideology-axis-label-left {
+    text-align: right;
+}
+
+.ideology-axis-label-right {
+    text-align: left;
+}
+
+.ideology-axis-bar {
+    flex: 1;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-main, #333);
+    border-radius: 4px;
+    position: relative;
+    min-width: 0;
+}
+body.light-mode .ideology-axis-bar {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.ideology-axis-center {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.15);
+}
+body.light-mode .ideology-axis-center {
+    background: rgba(0, 0, 0, 0.15);
+}
+
+/* ---- Markers ---- */
+.ideology-axis-marker {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    z-index: 1;
+    cursor: default;
+}
+body.light-mode .ideology-axis-marker {
+    border-color: rgba(0, 0, 0, 0.3);
+}
+
+.ideology-marker-label {
+    position: absolute;
+    top: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: var(--text-primary, #e0e0e0);
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+/* ---- Changes footer ---- */
+.ideology-changes-footer {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-main, #333);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 0.82rem;
+}
+
+.ideology-changes-label {
+    color: var(--text-muted, #888);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 0.72rem;
+}
+
+.ideology-changes-list {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.ideology-change-sep {
+    color: var(--text-muted, #888);
+    font-size: 0.7rem;
+}
+
+.ideology-no-changes {
+    color: var(--text-muted, #888);
+    font-style: italic;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 600px) {
+    .ideology-axis-label {
+        min-width: 60px;
+        font-size: 0.62rem;
+    }
+    .ideology-tracker {
+        padding: 14px 12px;
+    }
+}

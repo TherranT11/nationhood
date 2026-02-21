@@ -8283,6 +8283,42 @@ export async function snapshotNationHistory(supabase, nation, currentTick) {
     }
 }
 
+export async function snapshotIdeologyHistory(supabase, nationId, currentTick) {
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+
+    if (!factions || factions.length === 0) return;
+
+    const factionIds = factions.map(f => f.id);
+    const { data: ideoRows } = await supabase
+        .from('faction_ideology')
+        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+        .in('faction_id', factionIds);
+
+    if (!ideoRows || ideoRows.length === 0) return;
+
+    const snapshots = ideoRows.map(row => ({
+        faction_id: row.faction_id,
+        tick: currentTick,
+        liberty_equality: row.liberty_equality || 0,
+        tradition_progress: row.tradition_progress || 0,
+        security_freedom: row.security_freedom || 0,
+        globalism_nationalism: row.globalism_nationalism || 0,
+        individualism_collectivism: row.individualism_collectivism || 0
+    }));
+
+    const { error } = await supabase
+        .from('ideology_history')
+        .upsert(snapshots, { onConflict: 'faction_id,tick' });
+
+    if (error) {
+        console.error('[snapshotIdeologyHistory] FAILED:', error.message);
+    }
+}
+
 
 // ==================== EVENT TICK PROCESSOR ====================
 

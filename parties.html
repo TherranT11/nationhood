@@ -19,7 +19,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser, loadNationIdeologies, getFullIdeologyProfile } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -116,6 +116,17 @@ async function renderParties() {
         .select('id, bloc_name, population_weight, priority_issues, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
         .eq('nation_id', n.id)
         .eq('is_active', true);
+
+    // Fetch ideology data for all parties (for Ideology Tracker)
+    const allIdeologies = await loadNationIdeologies(_supabase, n.id);
+
+    // Fetch ideology history for last tick to compute deltas
+    const prevTick = (currentShard?.current_tick || 1) - 1;
+    const { data: prevIdeologyRows } = await _supabase
+        .from('ideology_history')
+        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+        .in('faction_id', allPartyIds)
+        .eq('tick', prevTick);
 
     const blocWeights = {};
     for (const b of (blocs || [])) blocWeights[b.id] = b.population_weight || 1;
@@ -857,8 +868,106 @@ async function renderParties() {
 
         ${otherPartiesHtml}
 
+        <div class="ideology-tracker" id="ideology-tracker"></div>
+
         </div>
     `;
+
+    // ── Ideology Tracker ──
+    const ideoTrackerSelectedParties = new Set([f.id]);
+    const ideoLookup = {};
+    for (const row of (allIdeologies || [])) ideoLookup[row.faction_id] = row;
+    const prevIdeoLookup = {};
+    for (const row of (prevIdeologyRows || [])) prevIdeoLookup[row.faction_id] = row;
+
+    function renderIdeologyTracker() {
+        const container = document.getElementById('ideology-tracker');
+        if (!container) return;
+
+        // Build party toggle buttons
+        const togglesHtml = (allParties || []).map(p => {
+            const color = p.party_color || '#666';
+            const active = ideoTrackerSelectedParties.has(p.id);
+            const label = p.abbreviation || p.faction_name;
+            return `<button class="ideology-party-toggle${active ? ' active' : ''}" data-party-id="${p.id}" style="--party-color:${color}">${label}</button>`;
+        }).join('');
+
+        // Build axis bars
+        let axesHtml = '';
+        for (const axis of IDEOLOGY_AXES) {
+            // Build markers for selected parties
+            let markersHtml = '';
+            for (const pid of ideoTrackerSelectedParties) {
+                const ideoRow = ideoLookup[pid];
+                if (!ideoRow) continue;
+                const score = ideoRow[axis.key] || 0;
+                const pct = ((score + 100) / 200) * 100; // -100→0%, 0→50%, +100→100%
+                const party = (allParties || []).find(p => p.id === pid);
+                const color = party?.party_color || '#666';
+                const label = party?.abbreviation || '?';
+                markersHtml += `<div class="ideology-axis-marker" style="left:${pct}%;background:${color}" title="${label}: ${score > 0 ? '+' : ''}${score}"><span class="ideology-marker-label">${label}</span></div>`;
+            }
+
+            axesHtml += `
+                <div class="ideology-axis-row">
+                    <span class="ideology-axis-label ideology-axis-label-left" style="color:${axis.leftColor}">${axis.leftLabel}</span>
+                    <div class="ideology-axis-bar">
+                        <div class="ideology-axis-center"></div>
+                        ${markersHtml}
+                    </div>
+                    <span class="ideology-axis-label ideology-axis-label-right" style="color:${axis.rightColor}">${axis.rightLabel}</span>
+                </div>`;
+        }
+
+        // Build "Changes last tick" footer
+        let changesHtml = '';
+        const selectedIds = [...ideoTrackerSelectedParties];
+        if (selectedIds.length > 0) {
+            const changeItems = [];
+            for (const axis of IDEOLOGY_AXES) {
+                for (const pid of selectedIds) {
+                    const current = ideoLookup[pid]?.[axis.key] || 0;
+                    const prev = prevIdeoLookup[pid]?.[axis.key] || 0;
+                    const delta = current - prev;
+                    if (delta !== 0) {
+                        const party = (allParties || []).find(p => p.id === pid);
+                        const tag = delta > 0 ? axis.right : axis.left;
+                        const tagColor = delta > 0 ? axis.rightColor : axis.leftColor;
+                        const prefix = selectedIds.length > 1 ? `<span style="color:${party?.party_color || '#666'}">${party?.abbreviation || '?'}</span> ` : '';
+                        changeItems.push(`${prefix}<span style="color:${tagColor};font-weight:700">${tag} ${delta > 0 ? '+' : ''}${delta}</span>`);
+                    }
+                }
+            }
+            changesHtml = changeItems.length > 0
+                ? changeItems.join('<span class="ideology-change-sep">&bull;</span>')
+                : '<span class="ideology-no-changes">No changes last tick</span>';
+        }
+
+        container.innerHTML = `
+            <div class="ideology-tracker-header">Ideology Tracker</div>
+            <div class="ideology-party-toggles">${togglesHtml}</div>
+            <div class="ideology-axes">${axesHtml}</div>
+            <div class="ideology-changes-footer">
+                <span class="ideology-changes-label">Changes last tick:</span>
+                <span class="ideology-changes-list">${changesHtml || '\u2014'}</span>
+            </div>
+        `;
+
+        // Attach toggle listeners
+        container.querySelectorAll('.ideology-party-toggle').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const pid = btn.dataset.partyId;
+                if (ideoTrackerSelectedParties.has(pid)) {
+                    ideoTrackerSelectedParties.delete(pid);
+                } else {
+                    ideoTrackerSelectedParties.add(pid);
+                }
+                renderIdeologyTracker();
+            });
+        });
+    }
+
+    renderIdeologyTracker();
 
     // ── Rally UI ──
     let rallyScreen = 'select'; // 'select' | 'preview' | 'results'

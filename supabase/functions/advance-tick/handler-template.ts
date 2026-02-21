@@ -549,6 +549,7 @@ async function advanceTick(supabase) {
         // Final snapshot — capture everything that happened this tick
         const { data: finalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         await snapshotNationHistory(supabase, finalNation || nation, newTick);
+        await snapshotIdeologyHistory(supabase, nation.id, newTick);
       } catch (nationErr) {
         console.error(`[advanceTick] FAILED processing nation ${nation.id} (${nation.name}):`, nationErr);
         summary.errors = summary.errors || [];
