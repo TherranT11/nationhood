@@ -173,7 +173,7 @@ function renderHeroStat(label, value, statKey, inverted, isGdpGrowth) {
 // ==================== BUDGET PANEL ====================
 function renderBudgetPanel(nation) {
     var budget = calculateNationalBudget(nation);
-    var currentYear = Math.floor(currentTick / GAME_CONFIG.TICKS_PER_YEAR) + 1;
+    var currentYear = new Date().getFullYear();
     var previousYear = currentYear - 1;
 
     // Compute previous year budget for YoY comparison
@@ -234,6 +234,7 @@ function renderBudgetPanel(nation) {
     h += budgetLineItem('Sales Tax', budget.salesRevenue, prevBudget ? prevBudget.salesRevenue : null, previousYear);
     h += budgetLineItem('Trade & Tariffs', budget.tariffRevenue, prevBudget ? prevBudget.tariffRevenue : null, previousYear);
     h += budgetLineItem('State Enterprises', budget.oilRevenue, prevBudget ? prevBudget.oilRevenue : null, previousYear);
+    h += budgetTotalLine(budget.grossRevenue);
     h += '</div>';
 
     // --- Right column: Expenditures ---
@@ -241,11 +242,13 @@ function renderBudgetPanel(nation) {
     h += '<div class="budget-column-header">Expenditure Breakdown</div>';
     var expenditureItems = [
         'Government Administration', 'Labor', 'Healthcare', 'Education',
-        'Transportation', 'Justice', 'Foreign Ministry', 'Finance'
+        'Transportation', 'Justice', 'Foreign Ministry', 'Finance',
+        'Defense', 'Interest on Debt'
     ];
     for (var i = 0; i < expenditureItems.length; i++) {
         h += budgetLineItem(expenditureItems[i], 0, null, previousYear);
     }
+    h += budgetTotalLine(totalExpenditure);
     h += '</div>';
 
     h += '</div>'; // .budget-columns
@@ -280,6 +283,16 @@ function budgetTrendHtml(current, previous, prevYear) {
         return '<span class="budget-trend trend-up">&#9650; ' + pctChange.toFixed(1) + '% since Year ' + prevYear + '</span>';
     }
     return '<span class="budget-trend trend-down">&#9660; ' + Math.abs(pctChange).toFixed(1) + '% since Year ' + prevYear + '</span>';
+}
+
+function budgetTotalLine(value) {
+    var h = '<div class="budget-line-item budget-line-total">';
+    h += '<div class="budget-line-top">';
+    h += '<span class="budget-line-label">TOTAL</span>';
+    h += '<span class="budget-line-value">' + formatBudgetCurrency(value) + '</span>';
+    h += '</div>';
+    h += '</div>';
+    return h;
 }
 
 function budgetLineItem(label, value, prevValue, prevYear) {
