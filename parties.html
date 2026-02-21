@@ -162,7 +162,7 @@ async function renderParties() {
         function getGripLevel(val) {
             if (val >= 90) return { label: 'ABSOLUTE', desc: 'You are untouchable. For now.', color: '#4CAF50' };
             if (val >= 75) return { label: 'FIRM', desc: 'Stable. No immediate threats.', color: '#4CAF50' };
-            if (val >= 60) return { label: 'SECURE', desc: 'Manageable but watch the cracks.', color: '#8BC34A' };
+            if (val >= 60) return { label: 'SECURE', desc: 'Manageable but watch the cracks.', color: '#4CAF50' };
             if (val >= 45) return { label: 'SHAKY', desc: 'Multiple brokers are unhappy. Act now.', color: '#ff9800' };
             if (val >= 30) return { label: 'FRAGILE', desc: 'Coup is being actively planned.', color: '#ff5722' };
             return { label: 'CRUMBLING', desc: 'You will be overthrown within 1\u20133 ticks.', color: '#ff4444' };
@@ -170,7 +170,7 @@ async function renderParties() {
         function getLoyaltyLevel(val) {
             if (val >= 90) return { label: 'DEVOTED', desc: 'Will die for you. Probably.', color: '#4CAF50' };
             if (val >= 75) return { label: 'LOYAL', desc: 'Reliable. Keep rewarding.', color: '#4CAF50' };
-            if (val >= 60) return { label: 'CONTENT', desc: 'No complaints. Could change.', color: '#8BC34A' };
+            if (val >= 60) return { label: 'CONTENT', desc: 'No complaints. Could change.', color: '#4CAF50' };
             if (val >= 40) return { label: 'WAVERING', desc: 'Unhappy. Looking at options. Act soon.', color: '#ff9800' };
             if (val >= 20) return { label: 'HOSTILE', desc: 'Actively plotting. Purge or appease immediately.', color: '#ff5722' };
             return { label: 'MUTINOUS', desc: 'Will join any coup attempt. May lead one.', color: '#ff4444' };
@@ -178,7 +178,7 @@ async function renderParties() {
         function getAmbitionLevel(val) {
             if (val >= 76) return { label: 'DANGEROUS', desc: 'Actively wants your job. Will create opportunity.', color: '#ff4444' };
             if (val >= 51) return { label: 'SCHEMING', desc: 'Would take your job if the opportunity arose.', color: '#ff9800' };
-            if (val >= 26) return { label: 'WATCHFUL', desc: 'Keeping their options open.', color: '#8BC34A' };
+            if (val >= 26) return { label: 'WATCHFUL', desc: 'Keeping their options open.', color: '#4CAF50' };
             return { label: 'CONTENT', desc: 'No interest in your job. Safe.', color: '#4CAF50' };
         }
 
