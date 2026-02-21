@@ -1234,11 +1234,46 @@ async function refreshFormButton(assignments) {
 async function onMinistryChange(ministryKey, partyId) {
     if (!activeFormationId) return;
     try {
-        const { data, error } = await _supabase.rpc('assign_ministry', {
-            p_formation_id: activeFormationId, p_ministry_key: ministryKey, p_party_id: partyId || ''
-        });
-        if (error) throw error;
-        if (!data.success) alert('❌ ' + data.message);
+        if (ministryKey === 'prime_minister') {
+            // PM assignment: direct JSONB update (the assign_ministry RPC does not handle PM)
+            const { data: formation } = await _supabase.from('government_formations')
+                .select('ministry_assignments, minister_names')
+                .eq('id', activeFormationId).single();
+            const assignments = formation?.ministry_assignments || {};
+            const ministerNames = formation?.minister_names || {};
+
+            if (partyId) {
+                assignments.prime_minister = partyId;
+                // Fetch party leader for minister_names
+                const { data: party } = await _supabase.from('factions')
+                    .select('leader_first_name, leader_last_name, leader_age')
+                    .eq('id', partyId).single();
+                if (party?.leader_first_name) {
+                    ministerNames.prime_minister = {
+                        first_name: party.leader_first_name,
+                        last_name: party.leader_last_name,
+                        age: party.leader_age
+                    };
+                } else {
+                    delete ministerNames.prime_minister;
+                }
+            } else {
+                delete assignments.prime_minister;
+                delete ministerNames.prime_minister;
+            }
+
+            const { error } = await _supabase.from('government_formations')
+                .update({ ministry_assignments: assignments, minister_names: ministerNames })
+                .eq('id', activeFormationId);
+            if (error) throw error;
+            refreshFormButton(assignments);
+        } else {
+            const { data, error } = await _supabase.rpc('assign_ministry', {
+                p_formation_id: activeFormationId, p_ministry_key: ministryKey, p_party_id: partyId || ''
+            });
+            if (error) throw error;
+            if (!data.success) alert('❌ ' + data.message);
+        }
     } catch (err) { alert('❌ Error: ' + err.message); }
 }
 
