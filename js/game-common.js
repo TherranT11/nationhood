@@ -476,7 +476,10 @@ export function calculateNationalBudget(nation) {
     // Available Budget = Revenue - Debt Service
     const availableBudget = grossRevenue - debtService;
 
-    return { grossRevenue, debtService, availableBudget, collectionRate };
+    return {
+        grossRevenue, debtService, availableBudget, collectionRate,
+        incomeRevenue, corpRevenue, salesRevenue, tariffRevenue, oilRevenue
+    };
 }
 
 // Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -1% to +1% per month
