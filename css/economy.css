@@ -176,6 +176,20 @@ body.light-mode .economy-stat-box {
     border-left: 1px solid var(--border-light);
 }
 
+/* ===== TRADE ROW — Side-by-Side Trade + Partners ===== */
+.economy-trade-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    padding: 0 24px 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.economy-trade-col .budget-panel {
+    height: 100%;
+}
+
 /* ===== BUDGET PANEL ===== */
 
 .budget-panel {
@@ -419,6 +433,10 @@ body.light-mode .budget-line-clickable:hover {
         border-top: 1px solid var(--border-light);
         padding-top: 24px;
     }
+
+    .economy-trade-row {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 600px) {
@@ -535,8 +553,8 @@ body.light-mode .ministry-tab.active {
 
 /* ===== TRADE PANEL ===== */
 
-/* Spacing between budget and trade panels */
-.economy-left .budget-panel + .budget-panel {
+/* Spacing between stacked panels */
+.budget-panel + .budget-panel {
     margin-top: 20px;
 }
 
