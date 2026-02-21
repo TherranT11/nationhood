@@ -5930,9 +5930,18 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
     }
 
     // Create confirmation bill (goes straight to floor vote)
+    const ministerTitle = {
+        prime_minister: 'Prime Minister', interior: 'Minister of the Interior',
+        foreign: 'Minister of Foreign Affairs', defense: 'Minister of Defense',
+        finance: 'Minister of Finance', education: 'Minister of Education',
+        healthcare: 'Minister of Healthcare', labor: 'Minister of Labor',
+        justice: 'Minister of Justice', trade: 'Minister of Trade',
+        energy: 'Minister of Energy', transportation: 'Minister of Transportation',
+        security: 'Minister of Security'
+    }[ministryKey] || ministryDisplayName;
 
-    const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministryDisplayName}`;
-    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as head of the ${ministryDisplayName}. A simple majority (${GAME_CONFIG.MAJORITY_SEATS} of ${GAME_CONFIG.TOTAL_SEATS} seats) is required for confirmation.`;
+    const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministerTitle}`;
+    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${GAME_CONFIG.MAJORITY_SEATS} of ${GAME_CONFIG.TOTAL_SEATS} seats) is required for confirmation.`;
 
     const { data: bill, error: billErr } = await supabase.from('bills').insert({
         nation_id: nationId,

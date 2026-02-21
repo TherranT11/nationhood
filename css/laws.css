@@ -76,14 +76,17 @@
         .stance-btn.veto { background:linear-gradient(135deg,#ff4444 0%,#cc0000 100%); color:#fff; font-weight:bold; text-transform:uppercase; letter-spacing:1px; }
         .floor-bill { background:#1a1a1a; border:2px solid #4CAF50; border-radius:8px; padding:20px; margin-bottom:16px; }
         .floor-bill.vetoed { border-color:#ff4444; opacity:0.6; }
+        .floor-bill.recent-failed { border-color:#ff4444; }
         .floor-bill-name { font-size:1.2rem; font-weight:bold; color:#4CAF50; margin-bottom:4px; }
         .floor-status { background:#4CAF50; color:#fff; padding:4px 12px; border-radius:4px; font-size:0.75rem; font-weight:bold; }
         .floor-status.vetoed-status { background:#ff4444; }
+        .floor-status.failed-status { background:#ff4444; }
         .floor-votes { display:flex; gap:24px; margin-top:12px; }
         .votes-for { color:#4CAF50; font-weight:bold; }
         .votes-against { color:#ff4444; font-weight:bold; }
         .clickable-bill { cursor:pointer; transition:transform 0.2s,box-shadow 0.2s; }
         .floor-bill.clickable-bill:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(76,175,80,0.3); }
+        .floor-bill.recent-failed.clickable-bill:hover { box-shadow:0 6px 20px rgba(255,68,68,0.3); }
         .committee-bill.clickable-bill:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(255,152,0,0.3); }
         .click-hint { text-align:right; font-size:0.8rem; color:#4CAF50; margin-top:12px; opacity:0.7; }
         .clickable-bill:hover .click-hint { opacity:1; }
@@ -190,8 +193,13 @@
         .archive-summary-stat.passed { background:#1a2a1a; color:#4CAF50; border:1px solid #4CAF50; }
         .archive-summary-stat.failed { background:#2a1a1a; color:#ff4444; border:1px solid #ff4444; }
         .archive-summary-stat.total { background:#1a1a2a; color:#aaa; border:1px solid #555; }
-        .archive-bill { background:#1a1a1a; border:1px solid #333; border-radius:8px; padding:16px; margin-bottom:12px; transition:transform 0.2s,box-shadow 0.2s,border-color 0.2s; }
+        .archive-bill { background:#1a1a1a; border:1px solid #333; border-left:4px solid #333; border-radius:8px; padding:16px; margin-bottom:12px; transition:transform 0.2s,box-shadow 0.2s,border-color 0.2s; }
+        .archive-bill.archive-passed { border-left-color:#4CAF50; }
+        .archive-bill.archive-failed { border-left-color:#ff4444; }
+        .archive-bill.archive-failed .archive-bill-name { color:#ccc; }
         .archive-bill:hover { transform:translateY(-2px); box-shadow:0 4px 16px rgba(0,0,0,0.4); border-color:#555; }
+        .archive-bill.archive-passed:hover { border-left-color:#4CAF50; box-shadow:0 4px 16px rgba(76,175,80,0.2); }
+        .archive-bill.archive-failed:hover { border-left-color:#ff4444; box-shadow:0 4px 16px rgba(255,68,68,0.2); }
         .archive-bill-header { margin-bottom:10px; }
         .archive-bill-title { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:6px; }
         .archive-bill-name { font-size:1.05rem; font-weight:bold; color:#e0e0e0; }

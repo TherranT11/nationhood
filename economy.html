@@ -551,7 +551,85 @@ function renderTradePanel(nation) {
     h += '</div>';
 
     h += '</div>'; // .budget-columns
+
+    // Derived Trade Scores
+    h += renderTradeScores(nation);
+
     h += '</div>'; // .budget-panel
+    return h;
+}
+
+function renderTradeScores(nation) {
+    var n = nation;
+    var scores = [
+        {
+            name: 'Manufacturing',
+            value: ((Number(n.physical_infrastructure) || 0) + (Number(n.higher_education) || 0)) / 2,
+            formula: '( Physical Infrastructure + Higher Education ) / 2',
+            stats: [
+                { label: 'Physical Infrastructure', value: Number(n.physical_infrastructure) || 0 },
+                { label: 'Higher Education', value: Number(n.higher_education) || 0 }
+            ]
+        },
+        {
+            name: 'Technology',
+            value: ((Number(n.digital_infrastructure) || 0) + (Number(n.higher_education) || 0)) / 2,
+            formula: '( Digital Infrastructure + Higher Education ) / 2',
+            stats: [
+                { label: 'Digital Infrastructure', value: Number(n.digital_infrastructure) || 0 },
+                { label: 'Higher Education', value: Number(n.higher_education) || 0 }
+            ]
+        },
+        {
+            name: 'Tourism',
+            value: ((Number(n.happiness) || 0) + (Number(n.stability) || 0) + (Number(n.physical_infrastructure) || 0)) / 3,
+            formula: '( Happiness + Stability + Physical Infrastructure ) / 3',
+            stats: [
+                { label: 'Happiness', value: Number(n.happiness) || 0 },
+                { label: 'Stability', value: Number(n.stability) || 0 },
+                { label: 'Physical Infrastructure', value: Number(n.physical_infrastructure) || 0 }
+            ]
+        },
+        {
+            name: 'Services & Finance',
+            value: ((Number(n.higher_education) || 0) + (Number(n.digital_infrastructure) || 0) + (Number(n.credit) || 0)) / 3,
+            formula: '( Higher Education + Digital Infrastructure + Credit ) / 3',
+            stats: [
+                { label: 'Higher Education', value: Number(n.higher_education) || 0 },
+                { label: 'Digital Infrastructure', value: Number(n.digital_infrastructure) || 0 },
+                { label: 'Credit', value: Number(n.credit) || 0 }
+            ]
+        }
+    ];
+
+    var h = '<div class="trade-scores-section">';
+    h += '<div class="trade-scores-header">Derived Trade Scores</div>';
+    h += '<div class="trade-scores-subtitle">These composite scores determine your export capacity in key sectors.</div>';
+    h += '<div class="trade-scores-grid">';
+
+    for (var i = 0; i < scores.length; i++) {
+        var s = scores[i];
+        var rounded = Math.round(s.value * 10) / 10;
+        var pct = Math.min(100, Math.round(s.value));
+        var color = pct >= 70 ? 'var(--green, #4CAF50)' : pct >= 40 ? 'var(--accent, #ffcc00)' : 'var(--red, #f44336)';
+
+        h += '<div class="trade-score-card">';
+        h += '<div class="trade-score-name">' + escapeHtml(s.name) + '</div>';
+        h += '<div class="trade-score-value" style="color:' + color + '">' + rounded.toFixed(1) + '</div>';
+        h += '<div class="trade-score-bar"><div class="trade-score-bar-fill" style="width:' + pct + '%;background:' + color + '"></div></div>';
+        h += '<div class="trade-score-formula">' + escapeHtml(s.formula) + '</div>';
+        h += '<div class="trade-score-stats">';
+        for (var j = 0; j < s.stats.length; j++) {
+            var st = s.stats[j];
+            var stColor = st.value >= 70 ? 'var(--green, #4CAF50)' : st.value >= 40 ? 'var(--text-primary)' : 'var(--red, #f44336)';
+            h += '<span class="trade-score-stat">' + escapeHtml(st.label) + ': <strong style="color:' + stColor + '">' + Math.round(st.value) + '</strong></span>';
+        }
+        h += '</div>';
+        h += '</div>';
+    }
+
+    h += '</div>'; // .trade-scores-grid
+    h += '</div>'; // .trade-scores-section
     return h;
 }
 
