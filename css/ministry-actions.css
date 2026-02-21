@@ -2,6 +2,134 @@
         body { overflow-y: auto !important; height: auto !important; }
         #top-bar { position: sticky; top: 0; z-index: 100; }
 
+        /* ===== MINISTRY SELECTOR BAR ===== */
+        .ministry-selector-bar {
+            background: #111;
+            border-bottom: 1px solid #222;
+            position: sticky;
+            top: 48px; /* below top-bar */
+            z-index: 90;
+        }
+
+        .ministry-selector-scroll {
+            display: flex;
+            gap: 2px;
+            padding: 8px 16px;
+            overflow-x: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #333 transparent;
+        }
+        .ministry-selector-scroll::-webkit-scrollbar { height: 4px; }
+        .ministry-selector-scroll::-webkit-scrollbar-track { background: transparent; }
+        .ministry-selector-scroll::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+        .msb-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            color: #666;
+            font-family: inherit;
+            font-size: 0.78rem;
+            font-weight: 600;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .msb-btn:hover {
+            color: #bbb;
+            background: #1a1a1a;
+            border-color: #333;
+        }
+        .msb-btn.active {
+            color: var(--accent, #c8aa6e);
+            background: #1a1a1a;
+            border-color: var(--accent, #c8aa6e);
+        }
+        .msb-btn.mine {
+            border-bottom: 2px solid var(--accent, #c8aa6e);
+        }
+        .msb-btn.mine.active {
+            border-bottom-color: var(--accent, #c8aa6e);
+        }
+
+        .msb-icon { font-size: 1rem; line-height: 1; }
+        .msb-label { letter-spacing: 0.3px; }
+
+        .msb-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .msb-dot.filled { background: var(--green, #4CAF50); }
+        .msb-dot.vacant { background: #555; }
+
+        /* Mobile dropdown */
+        .ministry-selector-mobile { display: none; }
+
+        @media (max-width: 768px) {
+            .ministry-selector-scroll { display: none; }
+            .ministry-selector-mobile {
+                display: block;
+                padding: 10px 16px;
+            }
+        }
+
+        /* ===== MINISTRY CONTENT AREA ===== */
+        .ministry-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px 20px;
+        }
+
+        /* Placeholder for unbuilt panels */
+        .ministry-detail-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            text-align: center;
+        }
+        .mdp-icon { font-size: 3rem; margin-bottom: 12px; }
+        .mdp-name {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--accent, #c8aa6e);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+        }
+        .mdp-minister {
+            font-size: 1rem;
+            color: var(--text-primary, #e0e0e0);
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .mdp-approval {
+            font-size: 0.85rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+        .mdp-approval.high { color: var(--green, #4CAF50); }
+        .mdp-approval.mid  { color: var(--orange, #ff9800); }
+        .mdp-approval.low  { color: var(--red, #ff4444); }
+        .mdp-vacant {
+            font-size: 0.9rem;
+            color: #555;
+            font-style: italic;
+            margin-bottom: 16px;
+        }
+        .mdp-coming {
+            font-size: 0.8rem;
+            color: #444;
+            margin-top: 8px;
+        }
+
         /* ===== MINISTRY HEADER ===== */
         .ministry-header {
             background: linear-gradient(180deg, #1a1a1a 0%, #121212 100%);

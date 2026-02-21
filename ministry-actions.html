@@ -5,19 +5,187 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ministry Actions | Nationhood Alpha</title>
     <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/ministry-actions.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div id="top-bar"></div>
-<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;color:#888;text-align:center;padding:40px;">
-    <div style="font-size:3rem;margin-bottom:16px;">🚧</div>
-    <div style="font-size:1.4rem;color:#ccc;font-weight:bold;margin-bottom:8px;">Coming Soon</div>
-    <div style="font-size:0.9rem;color:#666;">The Ministry Actions page is being rebuilt from scratch.</div>
+<div id="content-area">
+    <div class="loading-container"><div class="loading-spinner"></div><div>Loading ministries...</div></div>
 </div>
 
 <script type="module">
+import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
-initPage('ministry-actions', async () => {});
+import { isGovernmentPresidential, isGovernmentAutocracy } from './js/game-common.js';
+
+const MINISTRY_KEYS = [
+    'prime_minister',
+    'interior','foreign','defense','finance',
+    'education','healthcare','labor','justice',
+    'trade','energy','transportation'
+];
+
+const MINISTRY_LABELS = {
+    prime_minister: 'Prime Minister',
+    interior:      'Interior',
+    foreign:       'Foreign Affairs',
+    defense:       'Defense',
+    finance:       'Finance',
+    education:     'Education',
+    healthcare:    'Healthcare',
+    labor:         'Labor',
+    justice:       'Justice',
+    trade:         'Trade',
+    energy:        'Energy',
+    transportation:'Transport'
+};
+
+const MINISTRY_ICONS = {
+    prime_minister: '\u{1F3DB}',
+    interior:      '\u{1F3E0}',
+    foreign:       '\u{1F30D}',
+    defense:       '\u{1F6E1}',
+    finance:       '\u{1F4B0}',
+    education:     '\u{1F393}',
+    healthcare:    '\u{2695}',
+    labor:         '\u{1F528}',
+    justice:       '\u{2696}',
+    trade:         '\u{1F4E6}',
+    energy:        '\u26A1',
+    transportation:'\u{1F6E4}'
+};
+
+let currentNation = null;
+let currentFaction = null;
+let isPresidential = false;
+let ministryData = [];
+let selectedMinistryKey = null;
+
+initPage('ministry-actions', async (state) => {
+    currentNation = state.nation;
+    currentFaction = state.faction;
+    isPresidential = isGovernmentPresidential(currentNation);
+
+    // Fetch all active ministries
+    const { data } = await _supabase.from('ministries')
+        .select('*, factions(faction_name, party_color, party_logo)')
+        .eq('nation_id', currentNation.id)
+        .eq('is_active', true);
+    ministryData = data || [];
+
+    renderPage();
+});
+
+function renderPage() {
+    const area = document.getElementById('content-area');
+
+    // Build the ministry key list — swap prime_minister for president label in presidential systems
+    const keys = isPresidential
+        ? MINISTRY_KEYS.filter(k => k !== 'prime_minister')
+        : MINISTRY_KEYS;
+
+    // Default selection: first ministry
+    if (!selectedMinistryKey || !keys.includes(selectedMinistryKey)) {
+        selectedMinistryKey = keys[0];
+    }
+
+    let h = '';
+
+    // ===== MINISTRY SELECTOR BAR =====
+    h += '<div class="ministry-selector-bar">';
+
+    // Desktop: scrollable button row
+    h += '<div class="ministry-selector-scroll">';
+    for (const key of keys) {
+        const label = getButtonLabel(key);
+        const icon = MINISTRY_ICONS[key] || '';
+        const isActive = key === selectedMinistryKey;
+        const ministry = ministryData.find(m => m.ministry_key === key);
+        const isFilled = ministry && ministry.minister_first_name;
+        const isMyMinistry = ministry && ministry.party_id === currentFaction?.id;
+
+        let statusDot = '';
+        if (isFilled) {
+            statusDot = '<span class="msb-dot filled"></span>';
+        } else {
+            statusDot = '<span class="msb-dot vacant"></span>';
+        }
+
+        h += `<button class="msb-btn${isActive ? ' active' : ''}${isMyMinistry ? ' mine' : ''}" data-key="${key}" onclick="selectMinistry('${key}')">`;
+        h += `<span class="msb-icon">${icon}</span>`;
+        h += `<span class="msb-label">${label}</span>`;
+        h += statusDot;
+        h += '</button>';
+    }
+    h += '</div>';
+
+    // Mobile: dropdown
+    h += '<div class="ministry-selector-mobile">';
+    h += '<select class="ministry-dropdown" onchange="selectMinistry(this.value)">';
+    for (const key of keys) {
+        const label = getButtonLabel(key);
+        const ministry = ministryData.find(m => m.ministry_key === key);
+        const isFilled = ministry && ministry.minister_first_name;
+        const marker = isFilled ? '\u25CF' : '\u25CB';
+        const sel = key === selectedMinistryKey ? ' selected' : '';
+        h += `<option value="${key}"${sel}>${marker} ${label}</option>`;
+    }
+    h += '</select>';
+    h += '</div>';
+
+    h += '</div>'; // .ministry-selector-bar
+
+    // ===== CONTENT AREA (placeholder for now) =====
+    h += '<div id="ministry-content" class="ministry-content">';
+    h += renderMinistryContent(selectedMinistryKey);
+    h += '</div>';
+
+    area.innerHTML = h;
+}
+
+function getButtonLabel(key) {
+    if (key === 'prime_minister') {
+        return isPresidential ? 'President' : 'Prime Minister';
+    }
+    return MINISTRY_LABELS[key] || key;
+}
+
+function renderMinistryContent(key) {
+    const ministry = ministryData.find(m => m.ministry_key === key);
+    const label = getButtonLabel(key);
+    const icon = MINISTRY_ICONS[key] || '';
+
+    let h = '<div class="ministry-detail-placeholder">';
+    h += `<div class="mdp-icon">${icon}</div>`;
+    if (ministry && ministry.minister_first_name) {
+        h += `<div class="mdp-name">${label}</div>`;
+        h += `<div class="mdp-minister">${ministry.minister_first_name} ${ministry.minister_last_name}</div>`;
+        const approval = ministry.minister_approval ?? 50;
+        const cls = approval < 35 ? 'low' : approval < 50 ? 'mid' : 'high';
+        h += `<div class="mdp-approval ${cls}">${approval}% Approval</div>`;
+    } else {
+        h += `<div class="mdp-name">${label}</div>`;
+        h += '<div class="mdp-vacant">Vacant</div>';
+    }
+    h += '<div class="mdp-coming">Ministry detail panels coming soon.</div>';
+    h += '</div>';
+    return h;
+}
+
+window.selectMinistry = function(key) {
+    selectedMinistryKey = key;
+    // Update button states without full re-render
+    document.querySelectorAll('.msb-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.key === key);
+    });
+    // Update dropdown
+    const dd = document.querySelector('.ministry-dropdown');
+    if (dd) dd.value = key;
+    // Re-render content
+    const content = document.getElementById('ministry-content');
+    if (content) content.innerHTML = renderMinistryContent(key);
+};
 </script>
 </body>
 </html>
