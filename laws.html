@@ -108,7 +108,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust } from './js/common.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats } from './js/game-common.js';
 (function () {
     'use strict';
 let currentNation = null, currentFaction = null, currentSeats = 0;
@@ -181,11 +181,15 @@ initPage('laws', async (state) => {
         // Reload data after resolutions
         await loadLawsData();
         // Show notification
-        const msgs = resolutions.map(r =>
-            r.result === 'passed'
-                ? '✅ ' + r.billName + ' PASSED (' + r.votesFor + ' for / ' + r.votesAgainst + ' against)'
-                : '❌ ' + r.billName + ' FAILED (' + r.votesFor + ' for / ' + r.votesAgainst + ' against)'
-        );
+        const msgs = resolutions.map(r => {
+            const earlyTag = r.earlyResolution === 'majority_reached' ? ' (Early Majority)'
+                : r.earlyResolution === 'majority_opposed' ? ' (Majority Opposed)' : '';
+            return r.result === 'passed'
+                ? '✅ ' + r.billName + ' PASSED' + earlyTag + ' (' + r.votesFor + ' for / ' + r.votesAgainst + ' against)'
+                : r.result === 'failed'
+                    ? '❌ ' + r.billName + ' FAILED' + earlyTag + ' (' + r.votesFor + ' for / ' + r.votesAgainst + ' against)'
+                    : '📋 ' + r.billName + ' — ' + r.result + ' (' + r.votesFor + ' for / ' + r.votesAgainst + ' against)';
+        });
         setTimeout(() => { alert('Vote Results:\n\n' + msgs.join('\n')); }, 500);
     }
 
@@ -546,7 +550,10 @@ function renderFloorBill(bill, isVetoed) {
                     <div class="floor-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'no_confidence' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚡ No Confidence</span>' : (bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : (bill.bill_type === 'foundational' ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>' : (bill.bill_type === 'confirmation' ? ' <span style="background:#1a5276;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Confirmation</span>' : (bill.bill_type === 'minister_confirmation' ? ' <span style="background:#E65100;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Cabinet Confirmation</span>' : (bill.bill_type === 'veto_override' ? ' <span style="background:#B71C1C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Veto Override</span>' : (bill.bill_type === 'ratification' ? ' <span style="background:#00695C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🌐 Ratification</span>' : ''))))))}</div>
                     <div class="committee-bill-sponsor">${bill.bill_type === 'no_confidence' ? 'Filed' : 'Proposed'} by ${bill.factions?.faction_name || 'Unknown'}</div>
                 </div>
-                ${isVetoed ? `<div class="floor-status vetoed-status">VETOED</div>` : `<div class="floor-status">VOTING — Ends Tick ${bill.voting_ends_tick}</div>`}
+                ${isVetoed ? `<div class="floor-status vetoed-status">VETOED</div>`
+                    : bill.early_resolution_status === 'majority_reached' ? `<div class="floor-status" style="color:#4CAF50;border-color:#4CAF50;">MAJORITY REACHED — Passes Next Tick</div>`
+                    : bill.early_resolution_status === 'majority_opposed' ? `<div class="floor-status" style="color:#ff4444;border-color:#ff4444;">MAJORITY OPPOSED — Fails Next Tick</div>`
+                    : `<div class="floor-status">VOTING — ${bill.votes_for || 0} YES / ${bill.votes_against || 0} NO</div>`}
             </div>
             <div class="bill-articles">
                 ${bill.bill_type === 'no_confidence' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">⚡ Motion to dissolve the current government</span><div class="article-desc">Requires simple majority (YES > NO) to pass.</div></div></div>' :
@@ -565,7 +572,7 @@ function renderFloorBill(bill, isVetoed) {
                 }).join('')))))))}
             </div>
             ${isVetoed ? `<div class="vetoed-stamp">${isPresidential ? '⛔ VETOED BY PRESIDENT' : '⛔ VETOED BY HEAD FACTION'}</div>` : `
-                <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span></div>
+                <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span><span style="color:var(--text-secondary);font-size:0.75rem;margin-left:8px;">${GAME_CONFIG.TOTAL_SEATS - (bill.votes_for || 0) - (bill.votes_against || 0)} undeclared</span></div>
                 ${lawsIsAutocracy && isHeadFaction ? `<div class="veto-banner"><div><div class="veto-banner-text">⚠ You may veto this ${termBill.toLowerCase()}</div><div style="font-size:0.75rem;color:#888;">Costs -${GAME_CONFIG.VETO_APPROVAL_COST} Approval</div></div><button class="stance-btn veto" onclick="event.stopPropagation(); vetoDecree('${bill.id}')">VETO</button></div>` : ''}
             `}
             ${!isVetoed ? `<div class="click-hint">Click to view full ${termBill.toLowerCase()} & vote →</div>` : ''}

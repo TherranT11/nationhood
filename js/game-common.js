@@ -22,7 +22,7 @@
 export const GAME_CONFIG = {
     TOTAL_SEATS: 120,
     MAJORITY_SEATS: 61,
-    VOTING_WINDOW_TICKS: 3,
+    VOTING_WINDOW_TICKS: 4,
     DRAFT_BILL_AP_COST: 2,
     VETO_APPROVAL_COST: 3,
     NO_CONFIDENCE_AP_COST: 5,
@@ -1465,6 +1465,84 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
 
 // ==================== BILL RESOLUTION ENGINE ====================
 
+/**
+ * Get the number of YES seats required for a bill to pass,
+ * based on bill type and current GAME_CONFIG.
+ */
+export function getRequiredSeats(billType) {
+    if (billType === 'foundational')
+        return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD);
+    if (billType === 'veto_override')
+        return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
+    return GAME_CONFIG.MAJORITY_SEATS;
+}
+
+/**
+ * Check all active floor bills for early majority (for or against).
+ * If a definitive majority is detected, lock the outcome and shorten
+ * voting_ends_tick to currentTick + 1 (one grace tick) so the UI can
+ * display the result before resolution.
+ *
+ * Must run BEFORE resolveExpiredVotes each tick.
+ */
+export async function checkEarlyMajority(supabase, nationId) {
+    const { data: shard } = await supabase
+        .from('shard')
+        .select('current_tick')
+        .eq('name', 'Alpha Shard')
+        .single();
+    if (!shard) return [];
+    const currentTick = shard.current_tick;
+
+    // Bills still voting, not yet locked, not yet expired
+    const { data: activeBills, error } = await supabase
+        .from('bills')
+        .select('id, bill_name, bill_type, voting_ends_tick, bill_support(faction_id, stance, seat_count)')
+        .eq('nation_id', nationId)
+        .eq('status', 'floor')
+        .is('early_resolution_status', null)
+        .gt('voting_ends_tick', currentTick);
+
+    if (error || !activeBills || activeBills.length === 0) return [];
+
+    const results = [];
+
+    for (const bill of activeBills) {
+        let yesSeats = 0, noSeats = 0;
+        (bill.bill_support || []).forEach(s => {
+            const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+            if (stance === 'yes') yesSeats += s.seat_count;
+            else if (stance === 'no') noSeats += s.seat_count;
+        });
+
+        const requiredSeats = getRequiredSeats(bill.bill_type);
+        let earlyStatus = null;
+
+        if (yesSeats >= requiredSeats) {
+            earlyStatus = 'majority_reached';
+        } else if (noSeats > GAME_CONFIG.TOTAL_SEATS - requiredSeats) {
+            // Remaining seats can't push YES to threshold
+            earlyStatus = 'majority_opposed';
+        }
+
+        if (earlyStatus) {
+            // Grace tick: resolve one tick from now, but never extend past original deadline
+            const graceEndTick = Math.min(currentTick + 1, bill.voting_ends_tick);
+
+            await supabase.from('bills').update({
+                early_resolution_status: earlyStatus,
+                early_resolution_tick: currentTick,
+                voting_ends_tick: graceEndTick
+            }).eq('id', bill.id);
+
+            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} (YES=${yesSeats}, NO=${noSeats}, required=${requiredSeats}). Resolves tick ${graceEndTick}`);
+            results.push({ billId: bill.id, billName: bill.bill_name, status: earlyStatus, yesSeats, noSeats });
+        }
+    }
+
+    return results;
+}
+
 export async function resolveExpiredVotes(supabase, nationId) {
     const { data: shard } = await supabase
         .from('shard')
@@ -1502,19 +1580,26 @@ export async function resolveExpiredVotes(supabase, nationId) {
 
         const totalVoted = votesFor + votesAgainst;
 
-        // No-confidence uses simple majority (votesFor > votesAgainst)
-        // Foundational bills and veto overrides require 2/3 supermajority
-        // Normal bills require simple majority (50% + 1)
+        // Determine pass/fail — early-locked outcomes take priority
         const isNoConfidence = bill.bill_type === 'no_confidence';
-        const isFoundational = bill.bill_type === 'foundational';
-        const isVetoOverride = bill.bill_type === 'veto_override';
-        const supermajorityThreshold = isFoundational ? GAME_CONFIG.SUPERMAJORITY_THRESHOLD
-            : isVetoOverride ? GAME_CONFIG.VETO_OVERRIDE_THRESHOLD : null;
-        const passed = isNoConfidence
-            ? (totalVoted > 0 && votesFor > votesAgainst)
-            : supermajorityThreshold
-                ? (totalVoted > 0 && votesFor >= Math.ceil(GAME_CONFIG.TOTAL_SEATS * supermajorityThreshold))
-                : (totalVoted > 0 && votesFor >= GAME_CONFIG.MAJORITY_SEATS);
+        let passed;
+        if (bill.early_resolution_status === 'majority_reached') {
+            passed = true;  // Locked by checkEarlyMajority
+        } else if (bill.early_resolution_status === 'majority_opposed') {
+            passed = false; // Locked by checkEarlyMajority
+        } else {
+            // TIMEOUT: no early majority reached by end of voting window
+            if (totalVoted === 0) {
+                passed = false;
+            } else if (bill.bill_type === 'foundational' || bill.bill_type === 'veto_override') {
+                // Supermajority bills still require their threshold at timeout
+                passed = votesFor >= getRequiredSeats(bill.bill_type);
+            } else {
+                // All other bills (standard, no_confidence, confirmation, minister_confirmation):
+                // Relative majority — YES > NO passes, NO >= YES (including tie) fails
+                passed = votesFor > votesAgainst;
+            }
+        }
 
         if (isNoConfidence) {
             // Handle no-confidence resolution (pass or fail)
@@ -1524,7 +1609,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 await failBill(supabase, bill);
             }
             await resolveNoConfidence(supabase, bill, passed, votesFor, votesAgainst, currentTick);
-            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'no_confidence' });
+            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'no_confidence', earlyResolution: bill.early_resolution_status || null });
         } else if (isFoundational) {
             // Handle foundational bill resolution (electoral makeup, etc.)
             let enacted = false;
@@ -1553,7 +1638,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     article_count: '0'
                 }
             });
-            results.push({ billId: bill.id, billName: bill.bill_name, result: enacted ? 'passed' : 'failed', votesFor, votesAgainst, type: 'foundational' });
+            results.push({ billId: bill.id, billName: bill.bill_name, result: enacted ? 'passed' : 'failed', votesFor, votesAgainst, type: 'foundational', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
             // Ambassador confirmation bill
             if (passed) {
@@ -1597,7 +1682,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     }
                 });
             }
-            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'confirmation' });
+            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'confirmation', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
             // Minister confirmation bill (Presidential systems)
             const mKey = bill.ministry_key;
@@ -1698,7 +1783,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     });
                 } catch (e) { /* non-blocking */ }
             }
-            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'minister_confirmation' });
+            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'minister_confirmation', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'veto_override' && bill.original_bill_id) {
             // Veto override bill (Presidential systems)
             if (passed) {
@@ -1719,7 +1804,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), article_count: '0' }
                     });
                 } catch (e) { /* non-blocking */ }
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'veto_override' });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
             } else {
                 await failBill(supabase, bill);
                 try {
@@ -1730,7 +1815,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
                     });
                 } catch (e) { /* non-blocking */ }
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'veto_override' });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
             }
         } else if (bill.bill_type === 'ratification' && bill.diplomatic_proposal_id) {
             // Diplomatic ratification bill
@@ -1775,7 +1860,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         });
                     } catch (e) { /* non-blocking */ }
                 }
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'ratification' });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
             } else {
                 await failBill(supabase, bill);
                 // Mark proposal as ratification_failed so FM can abandon or retry
@@ -1790,7 +1875,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
                     });
                 } catch (e) { /* non-blocking */ }
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'ratification' });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
             }
         } else if (passed) {
             // Presidential systems: route regular/repeal bills to president's desk
@@ -1813,7 +1898,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         article_count: String((bill.bill_articles || []).length)
                     }
                 });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'president_desk', votesFor, votesAgainst });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'president_desk', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
             } else {
                 await enactBill(supabase, bill, currentTick);
                 await supabase.rpc('fire_system_event', {
@@ -1829,7 +1914,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         article_count: String((bill.bill_articles || []).length)
                     }
                 });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst });
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
             }
         } else {
             await failBill(supabase, bill);
@@ -1845,7 +1930,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     votes_against: String(votesAgainst)
                 }
             });
-            results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst });
+            results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
         }
     }
 

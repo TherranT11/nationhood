@@ -463,7 +463,14 @@ async function advanceTick(supabase) {
             summary.vacancies.push(vacancyResult);
         }
 
-        // Resolve expired votes for this nation
+        // Check for early majority on active floor bills (lock outcome + set grace tick)
+        const earlyResults = await checkEarlyMajority(supabase, nation.id);
+        if (earlyResults.length > 0) {
+            summary.earlyMajority = summary.earlyMajority || [];
+            summary.earlyMajority.push({ nation: nation.name, bills: earlyResults });
+        }
+
+        // Resolve expired votes (includes early-locked bills whose grace tick ended)
         const resolutions = await resolveExpiredVotes(supabase, nation.id);
         if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
 

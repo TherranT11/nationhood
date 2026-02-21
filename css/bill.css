@@ -211,3 +211,8 @@ html { overflow-y: scroll !important; height: auto !important; }
         /* Strike button styling in sidebar */
         .add-strike-btn { flex: 1; padding: 12px; background: #ff6600; border: none; border-radius: 6px; color: white; font-weight: bold; cursor: pointer; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; transition: background 0.2s; }
         .add-strike-btn:hover { background: #e55b00; }
+
+        /* Early resolution banners */
+        .bill-early-resolution { padding: 12px 16px; border-radius: 8px; font-weight: bold; text-align: center; margin-top: 8px; }
+        .majority-reached { background: linear-gradient(135deg, #1b3a1b, #0d260d); border: 2px solid #4CAF50; color: #4CAF50; }
+        .majority-opposed { background: linear-gradient(135deg, #3a1b1b, #260d0d); border: 2px solid #ff4444; color: #ff4444; }
