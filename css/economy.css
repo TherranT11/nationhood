@@ -20,9 +20,9 @@
 
 .economy-hero-stats {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
-    max-width: 1000px;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+    max-width: 1200px;
     margin: 0 auto;
 }
 
@@ -114,8 +114,45 @@
     color: var(--green, #4CAF50);
 }
 
+/* Financial stat boxes (Balance / Debt) */
+.economy-stat-financial.hero-surplus {
+    border-color: rgba(76, 175, 80, 0.3);
+}
+.economy-stat-financial.hero-deficit {
+    border-color: rgba(255, 68, 68, 0.3);
+}
+.economy-stat-financial.hero-surplus::before {
+    background: linear-gradient(90deg, var(--green, #4CAF50) 0%, transparent 100%);
+}
+.economy-stat-financial.hero-deficit::before {
+    background: linear-gradient(90deg, var(--red, #ff4444) 0%, transparent 100%);
+}
+.economy-stat-value.hero-surplus { color: var(--green, #4CAF50); }
+.economy-stat-value.hero-deficit { color: var(--red, #ff4444); }
+
+.economy-stat-breakdown {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    font-size: 0.68rem;
+    font-family: 'Courier New', monospace;
+    margin-top: 6px;
+    color: var(--text-secondary, #888);
+}
+.breakdown-revenue { color: var(--green, #4CAF50); }
+.breakdown-expense { color: var(--red, #ff4444); }
+.breakdown-sep { color: #555; }
+.breakdown-ratio { color: var(--text-secondary, #888); }
+
 /* Responsive */
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
+    .economy-hero-stats {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
     .economy-hero-stats {
         grid-template-columns: repeat(2, 1fr);
     }
@@ -126,7 +163,7 @@
     }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 480px) {
     .economy-hero-stats {
         grid-template-columns: 1fr;
         max-width: 320px;
