@@ -90,6 +90,21 @@
     color: var(--text-secondary, #888);
 }
 
+/* Rating Label */
+.economy-stat-rating {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-top: 8px;
+}
+
+.economy-stat-rating.rating-excellent { color: #4CAF50; }
+.economy-stat-rating.rating-good      { color: #2196F3; }
+.economy-stat-rating.rating-moderate   { color: #e0e0e0; }
+.economy-stat-rating.rating-poor       { color: #ff9800; }
+.economy-stat-rating.rating-critical   { color: #ff4444; }
+
 /* Inverted stats: up is bad, down is good */
 .economy-stat-trend .trend-up.inverted {
     color: var(--red, #ff4444);

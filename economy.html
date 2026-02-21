@@ -111,11 +111,13 @@ function renderHeroStat(label, value, statKey, inverted, isGdpGrowth) {
     }
 
     var trendHtml = getTrendArrow(statKey, numValue, inverted);
+    var rating = getRating(numValue, inverted);
 
     var h = '<div class="economy-stat-box">';
     h += '<div class="economy-stat-label">' + escapeHtml(label) + '</div>';
     h += '<div class="economy-stat-value">' + displayValue + '</div>';
     h += '<div class="economy-stat-trend">' + trendHtml + '</div>';
+    h += '<div class="economy-stat-rating rating-' + rating.cls + '">' + rating.label + '</div>';
     h += '</div>';
     return h;
 }
@@ -146,6 +148,17 @@ function formatDelta(d) {
     var abs = Math.abs(d);
     if (abs >= 10) return Math.round(abs);
     return abs.toFixed(1);
+}
+
+// ==================== RATING ====================
+function getRating(value, inverted) {
+    // For inverted stats (unemployment, inflation), lower is better
+    var effective = inverted ? (100 - value) : value;
+    if (effective >= 80) return { label: 'Excellent', cls: 'excellent' };
+    if (effective >= 60) return { label: 'Good', cls: 'good' };
+    if (effective >= 40) return { label: 'Moderate', cls: 'moderate' };
+    if (effective >= 20) return { label: 'Poor', cls: 'poor' };
+    return { label: 'Critical', cls: 'critical' };
 }
 
 // ==================== UTILITIES ====================
