@@ -19,7 +19,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser, loadNationIdeologies, getIdeologyLabel } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser, getFullIdeologyProfile, loadNationIdeologies } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -93,6 +93,13 @@ async function renderParties() {
         .select('id, faction_name, abbreviation, seats, national_vote_share, party_color, party_logo, leader_first_name, leader_last_name, leader_age, founded_tick, ideology_value_1, ideology_value_2')
         .eq('nation_id', n.id)
         .eq('faction_type', 'party');
+
+    // Load ideology data for all parties
+    const nationIdeologies = await loadNationIdeologies(_supabase, n.id);
+    const ideoByFaction = {};
+    for (const row of (nationIdeologies || [])) {
+        ideoByFaction[row.faction_id] = row;
+    }
 
     const seatData = await loadSeats(_supabase, n.id, false, allParties || [], f.id);
     const mySeats = seatData.currentSeats || 0;
@@ -742,6 +749,67 @@ async function renderParties() {
         </div>`;
     }
 
+    // === Build Ideology Comparison Section ===
+    let ideologyComparisonHtml = '';
+    if (allParties && allParties.length > 0) {
+        let chipHtml = '';
+        for (const p of (allParties || [])) {
+            const isMe = p.id === f.id;
+            const color = p.party_color || '#666';
+            const chipClass = isMe ? 'ideology-party-chip your-chip selected' : 'ideology-party-chip';
+            chipHtml += `<div class="${chipClass}" style="--chip-color:${color}" data-faction-id="${p.id}">${p.faction_name}</div>`;
+        }
+
+        const myIdeo = ideoByFaction[f.id];
+        let axesHtml = '';
+        let leaningSummaryHtml = '';
+
+        if (myIdeo) {
+            for (const axis of IDEOLOGY_AXES) {
+                const score = myIdeo[axis.key] || 0;
+                const position = 50 + (score / 2);
+                axesHtml += `
+                <div class="ideo-axis">
+                    <div class="ideo-axis-label left">${axis.leftLabel}</div>
+                    <div class="ideo-axis-track" data-axis-key="${axis.key}">
+                        <div class="ideo-axis-center"></div>
+                        <div class="ideo-dot" style="left:${position}%;background:${partyColor}" data-faction-id="${f.id}">
+                            <div class="ideo-dot-tooltip">${f.faction_name}: ${score > 0 ? '+' : ''}${score}</div>
+                        </div>
+                    </div>
+                    <div class="ideo-axis-label right">${axis.rightLabel}</div>
+                </div>`;
+            }
+
+            const profile = getFullIdeologyProfile(myIdeo);
+            const nonCentrist = profile.filter(p => p.label !== 'Centrist');
+            if (nonCentrist.length > 0) {
+                leaningSummaryHtml = `
+                <div class="ideology-label-summary" id="ideology-label-summary">
+                    <div class="ideology-label-row">
+                        <div class="ideology-label-swatch" style="background:${partyColor}"></div>
+                        <span class="ideology-label-name">${f.faction_name}</span>
+                        <span class="ideology-label-text">${nonCentrist.map(p => p.label).join(', ')}</span>
+                    </div>
+                </div>`;
+            }
+        } else {
+            axesHtml = '<div class="ideology-chart-empty">No ideology data available.</div>';
+        }
+
+        ideologyComparisonHtml = `
+        <div class="ideology-section" id="ideology-section">
+            <div class="ideology-section-header">Ideology Comparison</div>
+            <div class="ideology-party-selector" id="ideology-party-selector">
+                ${chipHtml}
+            </div>
+            <div class="ideology-chart" id="ideology-chart">
+                ${axesHtml}
+                ${leaningSummaryHtml}
+            </div>
+        </div>`;
+    }
+
     el.innerHTML = `
         <div class="parties-page">
         <div class="parties-top-panels">
@@ -859,15 +927,85 @@ async function renderParties() {
 
         ${otherPartiesHtml}
 
-        <div id="ideology-container"></div>
+        ${ideologyComparisonHtml}
 
         </div>
     `;
 
-    // ── Ideology Section ──
-    ideologyAllParties = allParties;
-    selectedIdeologyFactionId = f.id;
-    await renderIdeologySection();
+    // ── Ideology Comparison: chip toggle logic ──
+    const ideoSection = document.getElementById('ideology-section');
+    if (ideoSection) {
+        const selector = document.getElementById('ideology-party-selector');
+        const chartEl = document.getElementById('ideology-chart');
+
+        function rebuildIdeologyChart() {
+            const selectedChips = selector.querySelectorAll('.ideology-party-chip.selected');
+            const selectedIds = [...selectedChips].map(c => c.dataset.factionId);
+
+            let axesHtml = '';
+            for (const axis of IDEOLOGY_AXES) {
+                let dotsHtml = '<div class="ideo-axis-center"></div>';
+
+                for (const fid of selectedIds) {
+                    const ideo = ideoByFaction[fid];
+                    if (!ideo) continue;
+                    const party = (allParties || []).find(p => p.id === fid);
+                    if (!party) continue;
+                    const score = ideo[axis.key] || 0;
+                    const position = 50 + (score / 2);
+                    const color = party.party_color || '#666';
+                    const isMe = fid === f.id;
+
+                    dotsHtml += `
+                        <div class="ideo-dot" style="left:${position}%;background:${color};${isMe ? 'z-index:5;' : ''}" data-faction-id="${fid}">
+                            <div class="ideo-dot-tooltip">${party.faction_name}: ${score > 0 ? '+' : ''}${score}</div>
+                        </div>`;
+                }
+
+                axesHtml += `
+                <div class="ideo-axis">
+                    <div class="ideo-axis-label left">${axis.leftLabel}</div>
+                    <div class="ideo-axis-track" data-axis-key="${axis.key}">
+                        ${dotsHtml}
+                    </div>
+                    <div class="ideo-axis-label right">${axis.rightLabel}</div>
+                </div>`;
+            }
+
+            let summaryHtml = '';
+            for (const fid of selectedIds) {
+                const ideo = ideoByFaction[fid];
+                if (!ideo) continue;
+                const party = (allParties || []).find(p => p.id === fid);
+                if (!party) continue;
+
+                const profile = getFullIdeologyProfile(ideo);
+                const nonCentrist = profile.filter(p => p.label !== 'Centrist');
+                if (nonCentrist.length === 0) continue;
+
+                summaryHtml += `
+                    <div class="ideology-label-row">
+                        <div class="ideology-label-swatch" style="background:${party.party_color || '#666'}"></div>
+                        <span class="ideology-label-name">${party.faction_name}</span>
+                        <span class="ideology-label-text">${nonCentrist.map(p => p.label).join(', ')}</span>
+                    </div>`;
+            }
+
+            if (summaryHtml) {
+                summaryHtml = `<div class="ideology-label-summary">${summaryHtml}</div>`;
+            }
+
+            chartEl.innerHTML = axesHtml + summaryHtml;
+        }
+
+        selector.addEventListener('click', (e) => {
+            const chip = e.target.closest('.ideology-party-chip');
+            if (!chip) return;
+            if (chip.dataset.factionId === f.id) return;
+            chip.classList.toggle('selected');
+            rebuildIdeologyChart();
+        });
+    }
 
     // ── Rally UI ──
     let rallyScreen = 'select'; // 'select' | 'preview' | 'results'
