@@ -524,3 +524,67 @@ body.light-mode .ministry-tab:hover {
 body.light-mode .ministry-tab.active {
     color: #000;
 }
+
+/* ===== TRADE PANEL ===== */
+
+/* Spacing between budget and trade panels */
+.economy-left .budget-panel + .budget-panel {
+    margin-top: 20px;
+}
+
+/* Trade summary row */
+.trade-summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border-main);
+    gap: 12px;
+}
+
+.trade-summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    text-align: center;
+}
+
+.trade-summary-label {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 600;
+}
+
+.trade-summary-value {
+    font-size: 1.1rem;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+}
+
+.trade-summary-value.exports { color: var(--green); }
+.trade-summary-value.imports { color: var(--red); }
+.trade-summary-value.surplus { color: var(--green); }
+.trade-summary-value.deficit { color: var(--red); }
+
+/* Inverted trend for imports: up = red (costs rising), down = green (costs falling) */
+.trade-inverted .budget-trend.trend-up { color: var(--red); }
+.trade-inverted .budget-trend.trend-down { color: var(--green); }
+
+/* Trade placeholder when no data yet */
+.trade-placeholder {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 32px 16px;
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+/* Light mode */
+body.light-mode .trade-summary-value.exports { color: var(--green); }
+body.light-mode .trade-summary-value.imports { color: var(--red); }
+body.light-mode .trade-summary-value.surplus { color: var(--green); }
+body.light-mode .trade-summary-value.deficit { color: var(--red); }
+body.light-mode .trade-inverted .budget-trend.trend-up { color: var(--red); }
+body.light-mode .trade-inverted .budget-trend.trend-down { color: var(--green); }
