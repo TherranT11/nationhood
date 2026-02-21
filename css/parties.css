@@ -10,6 +10,57 @@
     align-items: stretch;
 }
 
+/* ===== AUTOCRACY TOP ROW ===== */
+.autocracy-top-row {
+    display: flex;
+    gap: 20px;
+    align-items: stretch;
+}
+
+/* ===== STANDING BOX ===== */
+.standing-box {
+    background: var(--bg-panel, #1a1a1a);
+    border: 1px solid var(--border-main, #333);
+    border-radius: 8px;
+    padding: 20px 24px;
+    flex: 0 1 220px;
+    min-width: 180px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.standing-header {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 700;
+    color: var(--text-secondary, #888);
+    margin-bottom: 8px;
+}
+.standing-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+.standing-label {
+    font-size: 0.78rem;
+    color: var(--text-secondary, #888);
+    font-weight: 600;
+}
+.standing-value {
+    font-size: 0.95rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.standing-desc {
+    font-size: 0.72rem;
+    color: var(--text-muted, #666);
+    font-style: italic;
+    line-height: 1.4;
+}
+
 /* ===== MY PARTY CARD ===== */
 .my-party-card {
     background: var(--bg-panel, #1a1a1a);
