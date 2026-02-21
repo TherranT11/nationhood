@@ -204,7 +204,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats } from './js/game-common.js';
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
@@ -351,7 +351,7 @@ function renderBill() {
 
     document.getElementById('bill-sponsor').textContent = 'Filed by ' + (bill.factions?.faction_name || 'Unknown');
 
-    if (isFloor && bill.voting_ends_tick) {
+    if (isFloor && bill.voting_ends_tick && !bill.early_resolution_status) {
         document.getElementById('bill-voting-ends').style.display = 'block';
         document.getElementById('voting-ends-date').textContent = tickToDate(bill.voting_ends_tick);
     }
@@ -371,6 +371,30 @@ function renderBill() {
         renderArticles();
         renderSidebar();
         return; // No voting, no sponsor actions
+    }
+
+    // Early resolution banner — majority locked, resolves next tick
+    if (isFloor && bill.early_resolution_status) {
+        const earlyBanner = document.createElement('div');
+        const isMajReached = bill.early_resolution_status === 'majority_reached';
+        earlyBanner.className = 'bill-early-resolution ' + (isMajReached ? 'majority-reached' : 'majority-opposed');
+        // Tally current votes for display
+        let earlyYes = 0, earlyNo = 0;
+        (billSupport || []).forEach(s => {
+            const st = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+            if (st === 'yes') earlyYes += s.seat_count;
+            else if (st === 'no') earlyNo += s.seat_count;
+        });
+        const reqSeats = getRequiredSeats(bill.bill_type);
+        if (isMajReached) {
+            earlyBanner.innerHTML = `<div style="font-size:1rem;text-transform:uppercase;letter-spacing:1.5px;">Majority Reached</div>
+                <div style="font-size:0.85rem;margin-top:6px;color:var(--text-secondary);">${earlyYes} YES of ${reqSeats} needed &mdash; Passes next tick</div>`;
+        } else {
+            earlyBanner.innerHTML = `<div style="font-size:1rem;text-transform:uppercase;letter-spacing:1.5px;">Majority Opposed</div>
+                <div style="font-size:0.85rem;margin-top:6px;color:var(--text-secondary);">${earlyNo} NO seats block passage &mdash; Fails next tick</div>`;
+        }
+        const header = document.getElementById('bill-header');
+        header.parentNode.insertBefore(earlyBanner, header.nextSibling);
     }
 
     // President's desk — show sign/veto actions
@@ -404,6 +428,17 @@ function renderBill() {
     if (isFloor) {
         document.getElementById('voting-section').style.display = 'block';
         renderCurrentVote();
+        // Grace period notice when outcome is locked
+        if (bill.early_resolution_status) {
+            let graceNotice = document.getElementById('early-grace-notice');
+            if (!graceNotice) {
+                graceNotice = document.createElement('div');
+                graceNotice.id = 'early-grace-notice';
+                graceNotice.style.cssText = 'color:var(--text-secondary);font-size:0.8rem;text-align:center;margin-top:8px;font-style:italic;';
+                document.getElementById('voting-section').appendChild(graceNotice);
+            }
+            graceNotice.textContent = 'Outcome is locked. Your vote will be recorded for the historical record.';
+        }
     } else if (isCommittee) {
         const el = document.getElementById('sponsor-actions');
         if (isAutocracy) {
@@ -429,6 +464,19 @@ function renderBill() {
 
     el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">Send to Floor</button><button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>` + reason;
 }
+    }
+
+    // Unvoted warning for resolved bills
+    const resolvedStatuses = ['passed', 'failed', 'enacted', 'vetoed'];
+    if (resolvedStatuses.includes(bill.status) && currentFaction) {
+        const myVoteRecord = (bill.bill_support || []).find(s => s.faction_id === currentFaction.id);
+        if (!myVoteRecord) {
+            const warnDiv = document.createElement('div');
+            warnDiv.style.cssText = 'background:linear-gradient(135deg,#2a1f00,#1a1400);border:2px solid #ff9800;border-radius:8px;padding:12px 16px;margin:16px 0;text-align:center;color:#ff9800;font-size:0.85rem;font-weight:bold;';
+            warnDiv.textContent = `Your party did not vote on "${bill.bill_name}" before it resolved.`;
+            const header = document.getElementById('bill-header');
+            header.parentNode.insertBefore(warnDiv, header.nextSibling);
+        }
     }
 }
 
@@ -907,18 +955,27 @@ function renderSidebar() {
 
         const isFoundationalBill = bill.bill_type === 'foundational';
         const isNoConfidenceBill = bill.bill_type === 'no_confidence';
-        const requiredSeats = isNoConfidenceBill
-            ? Math.floor(GAME_CONFIG.TOTAL_SEATS / 2) + 1
-            : isFoundationalBill
-                ? Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD)
-                : GAME_CONFIG.MAJORITY_SEATS;
-        const thresholdLabel = isNoConfidenceBill ? 'Simple Majority' : isFoundationalBill ? '2/3 Supermajority' : 'Simple Majority';
+        const requiredSeats = getRequiredSeats(bill.bill_type);
+        const thresholdLabel = isFoundationalBill ? '2/3 Supermajority' : 'Simple Majority';
+        const undeclared = GAME_CONFIG.TOTAL_SEATS - f - a - ab;
+
+        // Cosmetic early-majority hint (client-side check before server confirms)
+        const noBlocksPassage = a > (GAME_CONFIG.TOTAL_SEATS - requiredSeats);
+        const earlyHint = bill.early_resolution_status
+            ? '' // Server already confirmed — banner handles it
+            : f >= requiredSeats
+                ? '<div style="color:#4CAF50;font-size:0.78rem;margin-top:6px;text-align:center;">Majority threshold met</div>'
+                : noBlocksPassage
+                    ? '<div style="color:#ff4444;font-size:0.78rem;margin-top:6px;text-align:center;">Passage blocked by opposition</div>'
+                    : '';
 
         html = `<div class="vote-tally"><div class="vote-tally-header"><div class="vote-tally-title">Current Tally</div></div><div class="vote-tally-content">
             <div class="vote-tally-row"><span class="vote-tally-label">For</span><span class="vote-tally-value for">${f} seats</span></div>
             <div class="vote-tally-row"><span class="vote-tally-label">Against</span><span class="vote-tally-value against">${a} seats</span></div>
             <div class="vote-tally-row"><span class="vote-tally-label">Abstain</span><span class="vote-tally-value abstain">${ab} seats</span></div>
+            <div class="vote-tally-row"><span class="vote-tally-label">Undeclared</span><span class="vote-tally-value" style="color:var(--text-secondary);">${undeclared} seats</span></div>
             <div class="vote-tally-row" style="border-top:1px solid #444;padding-top:8px;"><span class="vote-tally-label">${thresholdLabel}</span><span class="vote-tally-value" style="color:${f >= requiredSeats ? '#4CAF50' : '#9C27B0'};">${requiredSeats} needed</span></div>
+            ${earlyHint}
         </div>
         <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Party Votes</div></div>
         <div class="party-votes-list">${partyVotesHTML}</div>
