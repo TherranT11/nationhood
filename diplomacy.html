@@ -1464,6 +1464,9 @@ async function renderNationCardBody(nationId) {
             html += renderPendingProposals(pendingDiploProposals, targetNation);
         }
 
+        // Ongoing trade negotiations with this nation
+        html += await renderNationTradeNegotiations(targetNation.id);
+
         // Action panel
         html += renderActionPanel(targetNation, diplomaticRoles, ambassador, pendingAmbassador, theirAmbassador);
 
@@ -1659,6 +1662,63 @@ function renderActiveProposals(proposals) {
     `;
 }
 
+// ==================== TRADE NEGOTIATIONS ON NATION CARD ====================
+
+async function renderNationTradeNegotiations(targetNationId) {
+    if (!currentNation) return '';
+
+    try {
+        // Canonical ordering
+        const aId = currentNation.id < targetNationId ? currentNation.id : targetNationId;
+        const bId = currentNation.id < targetNationId ? targetNationId : currentNation.id;
+
+        const { data: negotiations } = await _supabase
+            .from('trade_negotiations')
+            .select('id, agreement_type, agreement_name, status, expires_at_tick, participants')
+            .in('status', ['open', 'active'])
+            .eq('nation_a_id', aId)
+            .eq('nation_b_id', bId);
+
+        if (!negotiations || negotiations.length === 0) return '';
+
+        let html = '<div class="diplo-section-title">Trade Negotiations</div>';
+
+        for (const neg of negotiations) {
+            const typeInfo = TRADE_AGREEMENT_TYPES[neg.agreement_type];
+            const ticksLeft = neg.expires_at_tick - shardTick;
+            const statusClass = ticksLeft <= 2 ? 'expiring' : 'active';
+            const iconHtml = typeInfo ? (TRADE_TYPE_ICONS[typeInfo.icon] || '') : '';
+
+            html += `
+                <div class="trade-neg-status" style="cursor:pointer;margin-bottom:8px;" onclick="showDiploTab('initiative');setTimeout(()=>openTradeNegotiation('${neg.id}'),100)">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        ${typeInfo ? '<div class="trade-type-icon ' + typeInfo.icon + '" style="width:22px;height:22px;font-size:0.75rem;">' + iconHtml + '</div>' : ''}
+                        <div>
+                            <div style="font-size:0.82rem;font-weight:bold;color:var(--text-primary);">
+                                ${escapeHtml(neg.agreement_name || 'Unnamed')}
+                            </div>
+                            <div style="font-size:0.65rem;color:var(--text-muted);">
+                                ${typeInfo ? escapeHtml(typeInfo.shortLabel) : ''} &middot; ${neg.status === 'open' ? 'Awaiting acceptance' : 'Negotiating'}
+                            </div>
+                        </div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div class="trade-neg-status-value ${statusClass}" style="font-size:0.75rem;">
+                            ${neg.status === 'open' ? 'PENDING' : ticksLeft + 't left'}
+                        </div>
+                        <div style="font-size:0.58rem;color:var(--accent);font-weight:bold;">OPEN</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        return html;
+    } catch (e) {
+        console.warn('Error loading nation trade negotiations:', e);
+        return '';
+    }
+}
+
 // ==================== ACTION PANEL (role-based) ====================
 
 function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, theirAmbassador) {
@@ -1744,12 +1804,10 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
                 </div>
                 <p class="action-desc">As Ambassador to ${targetNation.name}, you can negotiate directly.</p>
                 ${ambWarningHTML}
-                <button class="action-btn" ${initiativeDisabled} onclick="openInitiativeForm()">Diplomatic Initiative</button>
-                ${initiativeHint}
+                <button class="action-btn" onclick="showDiploTab('initiative')">New Initiative</button>
                 <button class="action-btn" style="margin-top:8px;" disabled>Gather Intel (Coming Soon)</button>
                 <button class="action-btn" style="margin-top:8px;background:#5a1a1a;border-color:#8b3030;" onclick="resignAmbassador('${myAmb?.id}', '${escapeHtml(targetNation.name)}')">Resign as Ambassador</button>
             </div>
-            <div id="initiative-form-container"></div>
         `;
     }
 
