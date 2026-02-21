@@ -116,6 +116,91 @@
     </div>
 </div>
 
+<!-- Strike Article Modal -->
+<div class="modal-overlay" id="strike-amendment-modal">
+    <div class="modal-content" style="border-color: #ff6600;">
+        <div class="modal-header">
+            <div class="modal-title" style="color: #ff6600;">Request Article Removal</div>
+            <button class="modal-close" onclick="closeStrikeAmendmentModal()">&times;</button>
+        </div>
+        <p style="color: #aaa; margin-bottom: 16px; font-size: 0.9rem;">Select an article you want removed from this bill. Your support will be conditional on the sponsor removing it.</p>
+        <div id="strike-article-list"></div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeStrikeAmendmentModal()">Cancel</button>
+            <button class="btn-submit" id="submit-strike-btn" disabled onclick="submitStrikeAmendment()" style="background: #ff6600;">Request Removal</button>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Text Article Modal -->
+<div class="modal-overlay" id="edit-article-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title">Edit Text Article</div>
+            <button class="modal-close" onclick="closeEditArticleModal()">&times;</button>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Article Title</label>
+            <input type="text" class="form-input" id="edit-article-title" placeholder="e.g., Transitional Provisions">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Article Text</label>
+            <textarea class="text-article-input" id="edit-article-body" placeholder="Write the full text of this article..."></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeEditArticleModal()">Cancel</button>
+            <button class="btn-submit" onclick="submitEditArticle()">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<!-- Sponsor Add Policy Article Modal -->
+<div class="modal-overlay" id="sponsor-add-article-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title">Add Article to Bill</div>
+            <button class="modal-close" onclick="closeSponsorAddModal()">&times;</button>
+        </div>
+        <p style="color: #aaa; margin-bottom: 16px; font-size: 0.9rem;">Select a policy to add as a new article to your bill.</p>
+        <div class="form-group">
+            <label class="form-label">Select Sector</label>
+            <select class="form-select" id="sponsor-add-sector" onchange="onSponsorAddSectorChange()">
+                <option value="">-- Choose a sector --</option>
+            </select>
+        </div>
+        <div class="form-group" id="sponsor-add-policy-group" style="display: none;">
+            <label class="form-label">Select Policy</label>
+            <div id="sponsor-add-policies"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeSponsorAddModal()">Cancel</button>
+            <button class="btn-submit" id="sponsor-add-btn" disabled onclick="submitSponsorAddArticle()">Add Article</button>
+        </div>
+    </div>
+</div>
+
+<!-- Sponsor Add Text Article Modal -->
+<div class="modal-overlay" id="sponsor-add-text-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title">Add Text Article</div>
+            <button class="modal-close" onclick="closeSponsorAddTextModal()">&times;</button>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Article Title</label>
+            <input type="text" class="form-input" id="sponsor-text-title" placeholder="e.g., Transitional Provisions">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Article Text</label>
+            <textarea class="text-article-input" id="sponsor-text-body" placeholder="Write the full text of this article..."></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeSponsorAddTextModal()">Cancel</button>
+            <button class="btn-submit" onclick="submitSponsorAddTextArticle()">Add Article</button>
+        </div>
+    </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
@@ -126,6 +211,10 @@ let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, 
 let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
 let factionIdeology = null; // Dynamic ideology scores for current player
 let isNoGovernment = false;
+let selectedStrikeArticleId = null;
+let editingArticleId = null;
+let sponsorSelectedPolicy = null;
+const SPECIAL_BILL_TYPES = ['no_confidence', 'confirmation', 'minister_confirmation', 'veto_override', 'repeal'];
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const urlParams = new URLSearchParams(window.location.search);
@@ -345,6 +434,22 @@ function renderBill() {
 
 function renderArticles() {
     const bill = currentBill;
+    const isSponsor = bill.proposed_by === currentFaction?.id;
+    const isCommittee = bill.status === 'committee';
+    const canEditArticles = isSponsor && isCommittee && !SPECIAL_BILL_TYPES.includes(bill.bill_type);
+
+    // Render sponsor article toolbar (Add Article buttons above articles)
+    document.querySelector('.sponsor-article-toolbar')?.remove();
+    if (canEditArticles) {
+        const toolbar = document.createElement('div');
+        toolbar.className = 'sponsor-article-toolbar';
+        toolbar.innerHTML = `
+            <button class="sponsor-tool-btn" onclick="openSponsorAddModal()">+ Add Policy Article</button>
+            <button class="sponsor-tool-btn" onclick="openSponsorAddTextModal()">+ Add Text Article</button>
+        `;
+        const billArticlesEl = document.getElementById('bill-articles');
+        billArticlesEl.parentNode.insertBefore(toolbar, billArticlesEl);
+    }
 
     // No-confidence motions show a special notice instead of articles
     if (bill.bill_type === 'no_confidence') {
@@ -477,11 +582,16 @@ function renderArticles() {
             const p = art.policies;
             if (!p) {
                 // Text-only article
+                const textActions = canEditArticles ? '<div class="article-sponsor-actions">' +
+                    '<button class="article-action-btn edit" onclick="openEditArticleModal(\'' + art.id + '\')">Edit</button>' +
+                    '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
+                '</div>' : '';
                 return '<div class="article" style="border-left:3px solid #2196F3;">' +
                     '<div class="article-number">Article ' + art.article_number + ' <span style="color:#2196F3;font-size:0.7rem;">TEXT</span></div>' +
                     '<div class="article-title">' + (art.article_title || 'Untitled Provision') + '</div>' +
                     '<div class="article-description" style="white-space:pre-wrap;">' + (art.article_text || '') + '</div>' +
                     '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
+                    textActions +
                 '</div>';
             }
             totalUpfront += p.upfront_cost || 0;
@@ -512,6 +622,10 @@ function renderArticles() {
             const upCost = p.upfront_cost || 0;
             const onCost = p.ongoing_cost_per_tick || p.ongoing_base_cost || p.ongoing_cost || 0;
 
+            const policyActions = canEditArticles ? '<div class="article-sponsor-actions">' +
+                '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
+            '</div>' : '';
+
             return '<div class="article">' +
                 '<div class="article-number">Article ' + art.article_number + '</div>' +
                 '<div class="article-title">' + (p.policy_name || '') + ' ' + ideoHTML + '</div>' +
@@ -522,6 +636,7 @@ function renderArticles() {
                     '<div class="cost-item"><span class="cost-label">Ongoing:</span> <span class="cost-value ' + (onCost < 0 ? 'negative' : '') + '">' + formatCurrency(onCost) + '/mo</span></div>' +
                 '</div>' +
                 '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
+                policyActions +
             '</div>';
         }).join('')}`;
     document.getElementById('bill-articles').innerHTML = html;
@@ -680,17 +795,29 @@ function renderSidebar() {
             ${amendmentRequests.length > 0 ? `
                 <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div>
                 <div class="support-box-content">
-                    ${amendmentRequests.map(req => `<div class="amendment-request">
-                        <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
-                        <div style="color:#2196F3;font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you agree to add the following:</div>
-                        ${req.policy_id ? `<div class="amendment-policy">📎 ${req.policies?.policy_name || "Unknown"}</div>` : `<div class="amendment-policy">📎 ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
-                        ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
-                    </div>`).join('')}
+                    ${amendmentRequests.map(req => {
+                        if (req.request_type === 'strike') {
+                            const targetArt = (currentBill.bill_articles || []).find(a => a.id === req.target_article_id);
+                            const artLabel = targetArt ? (targetArt.policies?.policy_name || targetArt.article_title || 'Article ' + targetArt.article_number) : 'Unknown Article';
+                            return `<div class="amendment-request strike">
+                                <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
+                                <div style="color:#ff6600;font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you <strong>REMOVE</strong>:</div>
+                                <div class="amendment-policy strike-policy">✂ ${artLabel}</div>
+                                ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
+                            </div>`;
+                        }
+                        return `<div class="amendment-request">
+                            <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
+                            <div style="color:#2196F3;font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you agree to add the following:</div>
+                            ${req.policy_id ? `<div class="amendment-policy">📎 ${req.policies?.policy_name || "Unknown"}</div>` : `<div class="amendment-policy">📎 ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
+                            ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
+                        </div>`;
+                    }).join('')}
                 </div>` : `
                 <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div>
                 <div class="no-amendments">No conditional support offers</div>
             `}
-            ${!isSponsor ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button></div>` : ''}
+            ${!isSponsor ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button><button class="add-strike-btn" onclick="openStrikeAmendmentModal()">✂ Strike Article</button></div>` : ''}
         </div>`;
 
     } else if (isCommittee) {
@@ -728,14 +855,26 @@ function renderSidebar() {
             ${amendmentRequests.length > 0 ? `
                 <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div>
                 <div class="support-box-content">
-                    ${amendmentRequests.map(req => `<div class="amendment-request">
-                        <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
-                        <div style="color:#2196F3;font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you agree to add the following:</div>
-                        ${req.policy_id ? `<div class="amendment-policy">📎 ${req.policies?.policy_name || "Unknown"}</div>` : `<div class="amendment-policy">📎 ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
-                        ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
-                    </div>`).join('')}
+                    ${amendmentRequests.map(req => {
+                        if (req.request_type === 'strike') {
+                            const targetArt = (currentBill.bill_articles || []).find(a => a.id === req.target_article_id);
+                            const artLabel = targetArt ? (targetArt.policies?.policy_name || targetArt.article_title || 'Article ' + targetArt.article_number) : 'Unknown Article';
+                            return `<div class="amendment-request strike">
+                                <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
+                                <div style="color:#ff6600;font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you <strong>REMOVE</strong>:</div>
+                                <div class="amendment-policy strike-policy">✂ ${artLabel}</div>
+                                ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
+                            </div>`;
+                        }
+                        return `<div class="amendment-request">
+                            <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
+                            <div style="color:#2196F3;font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you agree to add the following:</div>
+                            ${req.policy_id ? `<div class="amendment-policy">📎 ${req.policies?.policy_name || "Unknown"}</div>` : `<div class="amendment-policy">📎 ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
+                            ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
+                        </div>`;
+                    }).join('')}
                 </div>` : (!isSponsor ? `<div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div><div class="no-amendments">No conditional support offers</div>` : '')}
-            ${!isSponsor && bill.bill_type !== 'foundational' && bill.bill_type !== 'confirmation' && bill.bill_type !== 'minister_confirmation' && bill.bill_type !== 'veto_override' ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button></div>` : ''}
+            ${!isSponsor && bill.bill_type !== 'foundational' && bill.bill_type !== 'confirmation' && bill.bill_type !== 'minister_confirmation' && bill.bill_type !== 'veto_override' ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button><button class="add-strike-btn" onclick="openStrikeAmendmentModal()">✂ Strike Article</button></div>` : ''}
         </div>`;
 
     } else if (isFloor) {
@@ -1001,11 +1140,28 @@ async function respondToAmendment(reqId, response) {
         const req = amendmentRequests.find(r => r.id === reqId);
         await _supabase.from('bill_amendment_requests').update({ status: response }).eq('id', reqId);
         if (response === 'accepted') {
-            const maxArt = Math.max(...(currentBill.bill_articles || []).map(a => a.article_number), 1);
-            if (req.policy_id) {
-                await _supabase.from('bill_articles').insert({ bill_id: billId, policy_id: req.policy_id, article_number: maxArt + 1, added_by: req.faction_id });
+            if (req.request_type === 'strike' && req.target_article_id) {
+                // Strike accepted — remove the targeted article
+                const articleCount = (currentBill.bill_articles || []).length;
+                if (articleCount <= 1) {
+                    if (!confirm('This is the last article in the bill. Removing it will leave the bill with only a preamble. Continue?')) {
+                        // Revert the status update
+                        await _supabase.from('bill_amendment_requests').update({ status: 'pending' }).eq('id', reqId);
+                        return;
+                    }
+                }
+                await _supabase.from('bill_articles').delete().eq('id', req.target_article_id);
+                await renumberArticles(billId);
+                // Clean up orphaned conditional supporters whose strike amendments were cascade-deleted
+                await cleanupOrphanedConditionalSupport();
             } else {
-                await _supabase.from('bill_articles').insert({ bill_id: billId, policy_id: null, article_number: maxArt + 1, added_by: req.faction_id, article_title: req.article_title, article_text: req.article_text });
+                // Add amendment — existing logic
+                const maxArt = Math.max(...(currentBill.bill_articles || []).map(a => a.article_number), 1);
+                if (req.policy_id) {
+                    await _supabase.from('bill_articles').insert({ bill_id: billId, policy_id: req.policy_id, article_number: maxArt + 1, added_by: req.faction_id });
+                } else {
+                    await _supabase.from('bill_articles').insert({ bill_id: billId, policy_id: null, article_number: maxArt + 1, added_by: req.faction_id, article_title: req.article_title, article_text: req.article_text });
+                }
             }
             // Amendment accepted — upgrade conditional support to full accept
             await _supabase.from('bill_support').upsert({ bill_id: billId, faction_id: req.faction_id, stance: 'accept', seat_count: allPartySeats[req.faction_id] || 0 }, { onConflict: 'bill_id,faction_id' });
@@ -1042,6 +1198,245 @@ async function submitTextAmendment() {
         closeTextAmendmentModal();
         await loadBillData();
         alert('Conditional support proposed! The bill sponsor can accept or reject your amendment.');
+    } catch (e) { console.error(e); alert('Error: ' + e.message); }
+}
+
+// ==================== STRIKE ARTICLE AMENDMENT ====================
+
+function openStrikeAmendmentModal() {
+    selectedStrikeArticleId = null;
+    document.getElementById('submit-strike-btn').disabled = true;
+    const articles = (currentBill.bill_articles || []).sort((a, b) => a.article_number - b.article_number);
+    const listEl = document.getElementById('strike-article-list');
+    if (articles.length === 0) {
+        listEl.innerHTML = '<div class="no-amendments">This bill has no articles to strike.</div>';
+        document.getElementById('strike-amendment-modal').classList.add('active');
+        return;
+    }
+    listEl.innerHTML = articles.map(art => {
+        const p = art.policies;
+        const label = p ? (p.policy_name || 'Unknown Policy') : (art.article_title || 'Untitled Provision');
+        const typeTag = p ? '' : ' <span style="color:#2196F3;font-size:0.7rem;">TEXT</span>';
+        return `<div class="policy-option" data-strike-id="${art.id}" onclick="selectStrikeArticle('${art.id}')">
+            <div class="policy-option-name">Article ${art.article_number}${typeTag}</div>
+            <div class="policy-option-desc">${label}</div>
+        </div>`;
+    }).join('');
+    document.getElementById('strike-amendment-modal').classList.add('active');
+}
+
+function closeStrikeAmendmentModal() {
+    document.getElementById('strike-amendment-modal').classList.remove('active');
+}
+
+function selectStrikeArticle(articleId) {
+    selectedStrikeArticleId = articleId;
+    document.querySelectorAll('#strike-article-list .policy-option').forEach(e => e.classList.remove('selected'));
+    document.querySelector(`[data-strike-id="${articleId}"]`)?.classList.add('selected');
+    document.getElementById('submit-strike-btn').disabled = false;
+}
+
+async function submitStrikeAmendment() {
+    if (!selectedStrikeArticleId || !currentFaction) return;
+    try {
+        const { error } = await _supabase.from('bill_amendment_requests').insert({
+            bill_id: billId,
+            faction_id: currentFaction.id,
+            policy_id: null,
+            request_type: 'strike',
+            status: 'pending',
+            target_article_id: selectedStrikeArticleId
+        });
+        if (error) throw error;
+        await _supabase.from('bill_support').upsert({
+            bill_id: billId, faction_id: currentFaction.id,
+            stance: 'conditional', seat_count: currentSeats
+        }, { onConflict: 'bill_id,faction_id' });
+        closeStrikeAmendmentModal();
+        await loadBillData();
+        alert('Conditional support proposed! The sponsor can accept or reject your removal request.');
+    } catch (e) { console.error(e); alert('Error: ' + e.message); }
+}
+
+// ==================== SPONSOR ARTICLE MANAGEMENT ====================
+
+async function renumberArticles(targetBillId) {
+    const { data: articles, error } = await _supabase
+        .from('bill_articles')
+        .select('id, article_number')
+        .eq('bill_id', targetBillId)
+        .order('article_number', { ascending: true });
+    if (error) throw error;
+    for (let i = 0; i < articles.length; i++) {
+        const expected = i + 2; // Article I is the virtual preamble
+        if (articles[i].article_number !== expected) {
+            await _supabase.from('bill_articles')
+                .update({ article_number: expected })
+                .eq('id', articles[i].id);
+        }
+    }
+}
+
+async function cleanupOrphanedConditionalSupport() {
+    // After an article deletion (rescind or accepted strike), some factions may have
+    // had their only strike amendment cascade-deleted, leaving them stuck at 'conditional'.
+    const { data: remainingAmendments } = await _supabase
+        .from('bill_amendment_requests')
+        .select('faction_id')
+        .eq('bill_id', billId)
+        .eq('status', 'pending');
+    const factionIdsWithAmendments = new Set((remainingAmendments || []).map(r => r.faction_id));
+
+    const conditionalSupporters = (currentBill.bill_support || [])
+        .filter(s => s.stance === 'conditional' && !factionIdsWithAmendments.has(s.faction_id));
+    for (const s of conditionalSupporters) {
+        await _supabase.from('bill_support')
+            .delete()
+            .eq('bill_id', billId)
+            .eq('faction_id', s.faction_id)
+            .eq('stance', 'conditional');
+    }
+}
+
+async function rescindArticle(articleId) {
+    if (!currentFaction || currentBill.proposed_by !== currentFaction.id) return;
+    if (currentBill.status !== 'committee') return;
+
+    const targetArt = (currentBill.bill_articles || []).find(a => a.id === articleId);
+    const artLabel = targetArt?.policies?.policy_name || targetArt?.article_title || 'this article';
+    const articleCount = (currentBill.bill_articles || []).length;
+
+    if (articleCount <= 1) {
+        if (!confirm(`This is the last article in the bill. Removing "${artLabel}" will leave the bill with only a preamble. Continue?`)) return;
+    } else {
+        if (!confirm(`Remove "${artLabel}" from the bill? This cannot be undone.`)) return;
+    }
+
+    try {
+        await _supabase.from('bill_articles').delete().eq('id', articleId);
+        await renumberArticles(billId);
+        await cleanupOrphanedConditionalSupport();
+        await loadBillData();
+    } catch (e) { console.error(e); alert('Error: ' + e.message); }
+}
+
+// ==================== EDIT TEXT ARTICLE ====================
+
+function openEditArticleModal(articleId) {
+    const art = (currentBill.bill_articles || []).find(a => a.id === articleId);
+    if (!art || art.policy_id) return; // Only text articles can be edited
+    editingArticleId = articleId;
+    document.getElementById('edit-article-title').value = art.article_title || '';
+    document.getElementById('edit-article-body').value = art.article_text || '';
+    document.getElementById('edit-article-modal').classList.add('active');
+}
+
+function closeEditArticleModal() {
+    document.getElementById('edit-article-modal').classList.remove('active');
+    editingArticleId = null;
+}
+
+async function submitEditArticle() {
+    if (!editingArticleId) return;
+    const title = document.getElementById('edit-article-title').value.trim();
+    const body = document.getElementById('edit-article-body').value.trim();
+    if (!body) { alert('Article text cannot be empty.'); return; }
+    try {
+        const { error } = await _supabase.from('bill_articles').update({
+            article_title: title || 'Untitled Provision',
+            article_text: body
+        }).eq('id', editingArticleId);
+        if (error) throw error;
+        closeEditArticleModal();
+        await loadBillData();
+    } catch (e) { console.error(e); alert('Error: ' + e.message); }
+}
+
+// ==================== SPONSOR ADD ARTICLE ====================
+
+function openSponsorAddModal() {
+    sponsorSelectedPolicy = null;
+    document.getElementById('sponsor-add-btn').disabled = true;
+    const sel = document.getElementById('sponsor-add-sector');
+    sel.innerHTML = '<option value="">-- Choose a sector --</option>';
+    MAJOR_SECTORS.forEach(s => {
+        if (_getCompatiblePolicies(s.key).length > 0)
+            sel.innerHTML += `<option value="${s.key}">${s.label}</option>`;
+    });
+    document.getElementById('sponsor-add-policy-group').style.display = 'none';
+    document.getElementById('sponsor-add-article-modal').classList.add('active');
+}
+
+function closeSponsorAddModal() {
+    document.getElementById('sponsor-add-article-modal').classList.remove('active');
+}
+
+function onSponsorAddSectorChange() {
+    const sector = document.getElementById('sponsor-add-sector').value;
+    if (!sector) { document.getElementById('sponsor-add-policy-group').style.display = 'none'; return; }
+    const policies = _getCompatiblePolicies(sector);
+    document.getElementById('sponsor-add-policies').innerHTML = policies.map(p => {
+        const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
+        const ideoHTML = ideos.map(i => {
+            const colorClass = getIdeologyChipClass(i);
+            return `<span class="article-ideology ${colorClass}">${i}</span>`;
+        }).join(' ');
+        const opposedClass = p.isOpposed ? ' opposed' : '';
+        const opposedBadge = p.isOpposed ? ' <span style="display:inline-block;background:#ff4444;color:#fff;padding:2px 7px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Opposed</span>' : '';
+        return `<div class="policy-option${opposedClass}" data-sponsor-policy-id="${p.id}" onclick="selectSponsorPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name} ${ideoHTML}${opposedBadge}</div><div class="policy-option-desc">${p.description || ''}</div></div>`;
+    }).join('');
+    document.getElementById('sponsor-add-policy-group').style.display = 'block';
+}
+
+function selectSponsorPolicy(id) {
+    sponsorSelectedPolicy = allPolicies.find(p => p.id === id);
+    document.querySelectorAll('#sponsor-add-policies .policy-option').forEach(e => e.classList.remove('selected'));
+    document.querySelector(`[data-sponsor-policy-id="${id}"]`)?.classList.add('selected');
+    document.getElementById('sponsor-add-btn').disabled = false;
+}
+
+async function submitSponsorAddArticle() {
+    if (!sponsorSelectedPolicy || !currentFaction) return;
+    try {
+        const { data: existingArticles } = await _supabase.from('bill_articles')
+            .select('article_number').eq('bill_id', billId)
+            .order('article_number', { ascending: false }).limit(1);
+        const nextNum = (existingArticles?.[0]?.article_number || 1) + 1;
+        await _supabase.from('bill_articles').insert({
+            bill_id: billId, policy_id: sponsorSelectedPolicy.id,
+            article_number: nextNum, added_by: currentFaction.id
+        });
+        closeSponsorAddModal();
+        await loadBillData();
+    } catch (e) { console.error(e); alert('Error: ' + e.message); }
+}
+
+// Sponsor Add Text Article
+function openSponsorAddTextModal() {
+    document.getElementById('sponsor-text-title').value = '';
+    document.getElementById('sponsor-text-body').value = '';
+    document.getElementById('sponsor-add-text-modal').classList.add('active');
+}
+function closeSponsorAddTextModal() {
+    document.getElementById('sponsor-add-text-modal').classList.remove('active');
+}
+
+async function submitSponsorAddTextArticle() {
+    const title = document.getElementById('sponsor-text-title').value.trim();
+    const body = document.getElementById('sponsor-text-body').value.trim();
+    if (!body) { alert('Please enter article text.'); return; }
+    try {
+        const { data: existingArticles } = await _supabase.from('bill_articles')
+            .select('article_number').eq('bill_id', billId)
+            .order('article_number', { ascending: false }).limit(1);
+        const nextNum = (existingArticles?.[0]?.article_number || 1) + 1;
+        await _supabase.from('bill_articles').insert({
+            bill_id: billId, policy_id: null, article_number: nextNum,
+            added_by: currentFaction.id, article_title: title || 'Untitled Provision',
+            article_text: body
+        });
+        closeSponsorAddTextModal();
+        await loadBillData();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
@@ -1119,6 +1514,24 @@ window.sendToFloor = sendToFloor;
 window.respondToAmendment = respondToAmendment;
 window.setCommitteeStance = setCommitteeStance;
 window.selectAmendmentPolicy = selectAmendmentPolicy;
+// Strike article
+window.openStrikeAmendmentModal = openStrikeAmendmentModal;
+window.closeStrikeAmendmentModal = closeStrikeAmendmentModal;
+window.selectStrikeArticle = selectStrikeArticle;
+window.submitStrikeAmendment = submitStrikeAmendment;
+// Sponsor article management
+window.rescindArticle = rescindArticle;
+window.openEditArticleModal = openEditArticleModal;
+window.closeEditArticleModal = closeEditArticleModal;
+window.submitEditArticle = submitEditArticle;
+window.openSponsorAddModal = openSponsorAddModal;
+window.closeSponsorAddModal = closeSponsorAddModal;
+window.onSponsorAddSectorChange = onSponsorAddSectorChange;
+window.selectSponsorPolicy = selectSponsorPolicy;
+window.submitSponsorAddArticle = submitSponsorAddArticle;
+window.openSponsorAddTextModal = openSponsorAddTextModal;
+window.closeSponsorAddTextModal = closeSponsorAddTextModal;
+window.submitSponsorAddTextArticle = submitSponsorAddTextArticle;
 </script>
 </body>
 </html>
