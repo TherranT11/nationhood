@@ -443,12 +443,75 @@ function calculateTradeAffinity(nationA, nationB, relation, opts) {
 }
 
 /**
- * Distribute trade among partners based on affinity and demand.
- * Returns array of { importer_nation_id, volume }.
+ * Distribute an exporter's capacity among importing partners.
+ *
+ * Each importer receives a share proportional to their weight:
+ *   weight_i = affinity_i × demand_i
+ *   volume_i = exportCapacity × (weight_i / totalWeight)
+ *
+ * Volume is also capped at each importer's actual demand (can't import
+ * more than you need). Any leftover capacity is redistributed.
+ *
+ * @param {number} exportCapacity – exporter's total capacity in this sector ($)
+ * @param {Array}  importers      – [{ nation_id, demand, affinity }, ...]
+ * @returns {Array} [{ importer_nation_id, volume }, ...] – only entries with volume > 0
  */
 function distributeTradeAmongPartners(exportCapacity, importers) {
-    // STUB — Phase 6 implementation
-    return [];
+    if (!exportCapacity || exportCapacity <= 0 || !importers || importers.length === 0) {
+        return [];
+    }
+
+    // Calculate weights: affinity × demand
+    var weighted = [];
+    var totalWeight = 0;
+    for (var i = 0; i < importers.length; i++) {
+        var imp = importers[i];
+        var aff = Number(imp.affinity) || 0;
+        var dem = Number(imp.demand) || 0;
+        if (aff <= 0 || dem <= 0) continue;
+        var w = aff * dem;
+        weighted.push({ nation_id: imp.nation_id, demand: dem, weight: w });
+        totalWeight += w;
+    }
+
+    if (totalWeight <= 0 || weighted.length === 0) return [];
+
+    // Distribute proportionally, capped at each importer's demand.
+    // Two passes: first pass allocates, second pass redistributes any surplus
+    // from capped importers to remaining partners.
+    var results = [];
+    var remaining = exportCapacity;
+
+    // Sort by weight descending so high-affinity partners fill first
+    weighted.sort(function (a, b) { return b.weight - a.weight; });
+
+    // Pass 1: proportional allocation, capped at demand
+    var uncapped = [];
+    var uncappedWeight = 0;
+    for (var i = 0; i < weighted.length; i++) {
+        var share = exportCapacity * (weighted[i].weight / totalWeight);
+        if (share > weighted[i].demand) {
+            // Capped: this importer only takes what they need
+            results.push({ importer_nation_id: weighted[i].nation_id, volume: Math.round(weighted[i].demand) });
+            remaining -= weighted[i].demand;
+        } else {
+            uncapped.push({ idx: results.length, nation_id: weighted[i].nation_id, demand: weighted[i].demand, weight: weighted[i].weight, share: share });
+            uncappedWeight += weighted[i].weight;
+            results.push({ importer_nation_id: weighted[i].nation_id, volume: 0 }); // placeholder
+        }
+    }
+
+    // Pass 2: distribute remaining capacity among uncapped importers
+    if (uncappedWeight > 0 && remaining > 0) {
+        for (var i = 0; i < uncapped.length; i++) {
+            var alloc = remaining * (uncapped[i].weight / uncappedWeight);
+            alloc = Math.min(alloc, uncapped[i].demand);
+            results[uncapped[i].idx].volume = Math.round(alloc);
+        }
+    }
+
+    // Filter out zero-volume entries
+    return results.filter(function (r) { return r.volume > 0; });
 }
 
 /**
