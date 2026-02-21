@@ -21,10 +21,13 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { initPage, qCache, qCacheSet } from './js/common.js';
+import { initPage, qCache, qCacheSet, formatCurrency } from './js/common.js';
+import { calculateNationalBudget, GAME_CONFIG } from './js/game-common.js';
 
 // ==================== STATE ====================
 var previousTickData = null;
+var previousYearData = null;
+var currentTick = 0;
 
 // ==================== INIT ====================
 initPage('economy', async function(state) {
@@ -41,6 +44,7 @@ initPage('economy', async function(state) {
     }
 
     await loadPreviousTickData(nation.id);
+    await loadPreviousYearData(nation.id);
     renderEconomyPage(nation);
 });
 
@@ -53,7 +57,8 @@ async function loadPreviousTickData(nationId) {
     var res = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     if (!res.data) return;
 
-    var previousTick = res.data.current_tick - 1;
+    currentTick = res.data.current_tick;
+    var previousTick = currentTick - 1;
     if (previousTick < 0) return;
 
     var histRes = await _supabase.from('nations_history')
@@ -67,7 +72,7 @@ async function loadPreviousTickData(nationId) {
 
     // Fallback: most recent history row before current tick
     var fbRes = await _supabase.from('nations_history')
-        .select('*').eq('nation_id', nationId).lt('tick', res.data.current_tick)
+        .select('*').eq('nation_id', nationId).lt('tick', currentTick)
         .order('tick', { ascending: false }).limit(1);
 
     if (fbRes.data && fbRes.data.length > 0) {
@@ -76,10 +81,53 @@ async function loadPreviousTickData(nationId) {
     }
 }
 
+// ==================== PREVIOUS YEAR DATA ====================
+async function loadPreviousYearData(nationId) {
+    var cacheKey = 'prev_year_econ_' + nationId;
+    var cached = qCache(cacheKey);
+    if (cached) { previousYearData = cached.data; currentTick = cached.tick; return; }
+
+    // If loadPreviousTickData already set currentTick, use it; otherwise fetch
+    if (!currentTick) {
+        var res = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        if (!res.data) return;
+        currentTick = res.data.current_tick;
+    }
+
+    var previousYearTick = currentTick - GAME_CONFIG.TICKS_PER_YEAR;
+    if (previousYearTick < 0) return;
+
+    var histRes = await _supabase.from('nations_history')
+        .select('*').eq('nation_id', nationId).eq('tick', previousYearTick).limit(1);
+
+    if (histRes.data && histRes.data.length > 0) {
+        previousYearData = histRes.data[0];
+        qCacheSet(cacheKey, { data: previousYearData, tick: currentTick }, 5 * 60 * 1000);
+        return;
+    }
+
+    // Fallback: closest row before target tick
+    var fbRes = await _supabase.from('nations_history')
+        .select('*').eq('nation_id', nationId).lte('tick', previousYearTick)
+        .order('tick', { ascending: false }).limit(1);
+
+    if (fbRes.data && fbRes.data.length > 0) {
+        previousYearData = fbRes.data[0];
+        qCacheSet(cacheKey, { data: previousYearData, tick: currentTick }, 5 * 60 * 1000);
+    }
+}
+
 // ==================== RENDER ====================
 function renderEconomyPage(nation) {
     var h = '';
     h += renderHeroBar(nation);
+    h += '<div class="economy-body">';
+    h += '<div class="economy-left">';
+    h += renderBudgetPanel(nation);
+    h += '</div>';
+    h += '<div class="economy-right">';
+    h += '</div>';
+    h += '</div>';
     document.getElementById('content-area').innerHTML = h;
 }
 
@@ -118,6 +166,131 @@ function renderHeroStat(label, value, statKey, inverted, isGdpGrowth) {
     h += '<div class="economy-stat-value">' + displayValue + '</div>';
     h += '<div class="economy-stat-trend">' + trendHtml + '</div>';
     h += '<div class="economy-stat-rating rating-' + rating.cls + '">' + rating.label + '</div>';
+    h += '</div>';
+    return h;
+}
+
+// ==================== BUDGET PANEL ====================
+function renderBudgetPanel(nation) {
+    var budget = calculateNationalBudget(nation);
+    var currentYear = Math.floor(currentTick / GAME_CONFIG.TICKS_PER_YEAR) + 1;
+    var previousYear = currentYear - 1;
+
+    // Compute previous year budget for YoY comparison
+    var prevBudget = null;
+    if (previousYearData) {
+        prevBudget = calculateNationalBudget(previousYearData);
+    }
+
+    var totalExpenditure = 0; // placeholder — $0 for now
+    var balance = budget.grossRevenue - totalExpenditure;
+
+    var h = '<div class="budget-panel">';
+
+    // === Header ===
+    h += '<div class="budget-header">';
+    h += '<div class="budget-title">YEARLY BUDGET</div>';
+    h += '<div class="budget-subtitle">Budget of ' + escapeHtml(nation.name) + ' &mdash; Year ' + currentYear + '</div>';
+    h += '</div>';
+
+    // === Summary Row ===
+    h += '<div class="budget-summary">';
+    h += '<div class="budget-summary-row">';
+    h += '<div class="budget-summary-item">';
+    h += '<span class="budget-summary-label">Revenue</span>';
+    h += '<span class="budget-summary-value">' + formatBudgetCurrency(budget.grossRevenue) + '</span>';
+    h += '</div>';
+    h += '<div class="budget-summary-item">';
+    h += '<span class="budget-summary-label">Expenditures</span>';
+    h += '<span class="budget-summary-value">' + formatBudgetCurrency(totalExpenditure) + '</span>';
+    h += '</div>';
+    h += '</div>';
+
+    // Balance line
+    var balanceClass = balance >= 0 ? 'surplus' : 'deficit';
+    var balanceLabel = balance >= 0 ? 'SURPLUS' : 'DEFICIT';
+    var balanceSign = balance >= 0 ? '+' : '';
+    h += '<div class="budget-balance ' + balanceClass + '">';
+    h += '<span class="budget-balance-label">' + balanceLabel + ':</span> ';
+    h += '<span class="budget-balance-value">' + balanceSign + formatBudgetCurrency(balance) + '</span>';
+
+    // YoY trend for balance
+    if (prevBudget) {
+        var prevBalance = prevBudget.grossRevenue - 0; // expenditures were $0 last year too
+        h += '<span class="budget-balance-trend">' + budgetTrendHtml(balance, prevBalance, previousYear) + '</span>';
+    }
+    h += '</div>';
+
+    h += '</div>'; // .budget-summary
+
+    // === Two-Column Breakdown ===
+    h += '<div class="budget-columns">';
+
+    // --- Left column: Revenue ---
+    h += '<div class="budget-column">';
+    h += '<div class="budget-column-header">Revenue Breakdown</div>';
+    h += budgetLineItem('Income Tax', budget.incomeRevenue, prevBudget ? prevBudget.incomeRevenue : null, previousYear);
+    h += budgetLineItem('Corporate Tax', budget.corpRevenue, prevBudget ? prevBudget.corpRevenue : null, previousYear);
+    h += budgetLineItem('Sales Tax', budget.salesRevenue, prevBudget ? prevBudget.salesRevenue : null, previousYear);
+    h += budgetLineItem('Trade & Tariffs', budget.tariffRevenue, prevBudget ? prevBudget.tariffRevenue : null, previousYear);
+    h += budgetLineItem('State Enterprises', budget.oilRevenue, prevBudget ? prevBudget.oilRevenue : null, previousYear);
+    h += '</div>';
+
+    // --- Right column: Expenditures ---
+    h += '<div class="budget-column">';
+    h += '<div class="budget-column-header">Expenditure Breakdown</div>';
+    var expenditureItems = [
+        'Government Administration', 'Labor', 'Healthcare', 'Education',
+        'Transportation', 'Justice', 'Foreign Ministry', 'Finance'
+    ];
+    for (var i = 0; i < expenditureItems.length; i++) {
+        h += budgetLineItem(expenditureItems[i], 0, null, previousYear);
+    }
+    h += '</div>';
+
+    h += '</div>'; // .budget-columns
+    h += '</div>'; // .budget-panel
+    return h;
+}
+
+// ==================== BUDGET HELPERS ====================
+function formatBudgetCurrency(val) {
+    if (val == null) return '$0';
+    val = Number(val);
+    var sign = val < 0 ? '-' : '';
+    var abs = Math.abs(val);
+    if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(1) + ' Trillion';
+    if (abs >= 1e9)  return sign + '$' + (abs / 1e9).toFixed(1) + ' Billion';
+    if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(1) + ' Million';
+    if (abs >= 1e3)  return sign + '$' + (abs / 1e3).toFixed(1) + 'K';
+    return sign + '$' + Math.round(abs).toLocaleString();
+}
+
+function budgetTrendHtml(current, previous, prevYear) {
+    if (previous === null || previous === undefined) return '';
+    if (previous === 0 && current === 0) return '';
+    if (previous === 0) {
+        return '<span class="budget-trend trend-up">&#9650; New</span>';
+    }
+    var pctChange = ((current - previous) / Math.abs(previous)) * 100;
+    if (Math.abs(pctChange) < 0.1) {
+        return '<span class="budget-trend trend-neutral">&mdash; 0.0% since Year ' + prevYear + '</span>';
+    }
+    if (pctChange > 0) {
+        return '<span class="budget-trend trend-up">&#9650; ' + pctChange.toFixed(1) + '% since Year ' + prevYear + '</span>';
+    }
+    return '<span class="budget-trend trend-down">&#9660; ' + Math.abs(pctChange).toFixed(1) + '% since Year ' + prevYear + '</span>';
+}
+
+function budgetLineItem(label, value, prevValue, prevYear) {
+    var h = '<div class="budget-line-item">';
+    h += '<div class="budget-line-top">';
+    h += '<span class="budget-line-label">' + escapeHtml(label) + '</span>';
+    h += '<span class="budget-line-value">' + formatBudgetCurrency(value) + '</span>';
+    h += '</div>';
+    if (prevValue !== null && value > 0) {
+        h += '<div class="budget-line-trend">' + budgetTrendHtml(value, prevValue, prevYear) + '</div>';
+    }
     h += '</div>';
     return h;
 }
