@@ -674,7 +674,19 @@ body.light-mode .bloc-bar-track {
 
 /* ===== IDEOLOGY COMPARISON SECTION ===== */
 .ideology-section {
-    margin-top: 30px;
+    background: var(--bg-panel, #1a1a1a);
+    border: 1px solid var(--border-main, #333);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-top: 24px;
+}
+.ideology-section-header {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-secondary, #888);
+    margin-bottom: 16px;
 }
 
 .ideology-party-selector {
@@ -713,10 +725,7 @@ body.light-mode .bloc-bar-track {
 }
 
 .ideology-chart {
-    background: var(--bg-panel);
-    border-radius: 8px;
-    padding: 24px;
-    border: 1px solid var(--border-main);
+    padding: 0;
 }
 .ideology-chart-empty {
     text-align: center;
@@ -853,6 +862,9 @@ body.light-mode .ideo-dot-tooltip {
 .ideology-label-text {
     color: var(--text-secondary);
     font-style: italic;
+}
+body.light-mode .ideology-label-swatch {
+    border-color: rgba(0, 0, 0, 0.15);
 }
 
 /* ===== POLL PANEL ===== */
