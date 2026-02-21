@@ -76,6 +76,7 @@ async function renderParties() {
     const n = currentNation;
 
     if (!f || !n) {
+        console.warn('[parties] Missing faction or nation:', { faction: f, nation: n });
         el.innerHTML = '<p style="color:var(--text-muted);text-align:center;margin-top:40px;">No party data available.</p>';
         return;
     }
@@ -159,7 +160,7 @@ async function renderParties() {
 
         el.innerHTML = `
         <div class="parties-page">
-        <div class="my-party-card" style="border-left-color:${partyColor}">
+        <div class="my-party-card" style="border-left-color:${partyColor}; max-width: 420px;">
             <div class="my-party-top-row">
                 <div class="my-party-logo" style="color:${partyColor}">
                     ${logoSvg}
@@ -178,21 +179,19 @@ async function renderParties() {
                 </div>
             </div>
 
-            <div class="my-party-stats" style="flex-direction: column;">
-                <div class="my-party-stat" style="flex: 1 1 100%;">
+            <div class="my-party-stats">
+                <div class="my-party-stat">
                     <div class="stat-label">${myArchetype.label}</div>
                     <div class="stat-val">${leaderName}, ${leaderAge}</div>
                     <div class="stat-sublabel">${myArchetype.desc}</div>
                 </div>
-                <div style="display: flex; gap: 28px;">
-                    <div class="my-party-stat">
-                        <div class="stat-label">Seats</div>
-                        <div class="stat-val">${mySeats} / ${GAME_CONFIG.TOTAL_SEATS}</div>
-                    </div>
-                    <div class="my-party-stat">
-                        <div class="stat-label">In Power Since</div>
-                        <div class="stat-val">${founded}</div>
-                    </div>
+                <div class="my-party-stat">
+                    <div class="stat-label">Seats</div>
+                    <div class="stat-val">${mySeats} / ${GAME_CONFIG.TOTAL_SEATS}</div>
+                </div>
+                <div class="my-party-stat">
+                    <div class="stat-label">In Power Since</div>
+                    <div class="stat-val">${founded}</div>
                 </div>
             </div>
         </div>
