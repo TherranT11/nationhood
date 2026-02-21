@@ -695,6 +695,52 @@ function calculateBillDynamicPenalty(factionIdeology, articles, basePenalty = 2)
 }
 
 
+// ==================== IDEOLOGY ALIGNMENT (DYNAMIC SCORES) ====================
+
+/**
+ * Compute ideology alignment (0-100) between a faction and a voter bloc
+ * using the faction's dynamic axis scores.
+ *
+ * Returns 50 for a fully centrist party (neutral), >50 for alignment,
+ * <50 for opposition. Axes are weighted by how strongly the party
+ * leans on each axis, so centrist axes are naturally ignored.
+ *
+ * @param {object} factionIdeology - Row from faction_ideology (keys: liberty_equality, etc.)
+ * @param {object} bloc - Voter bloc row with axis_* columns (0-100 scale, 50 = neutral)
+ * @returns {number} 0-100 alignment score
+ */
+function computeIdeologyAlignment(factionIdeology, bloc) {
+    const AXIS_KEYS = [
+        'liberty_equality', 'tradition_progress', 'security_freedom',
+        'globalism_nationalism', 'individualism_collectivism'
+    ];
+
+    let weightedAlignment = 0;
+    let totalWeight = 0;
+
+    for (const axisKey of AXIS_KEYS) {
+        const partyScore = factionIdeology[axisKey] || 0; // -100 to +100
+        const blocScore = bloc['axis_' + axisKey] ?? 50;  // 0-100
+
+        // How strongly the party leans on this axis (0 = centrist, 1 = extreme)
+        const partyStrength = Math.abs(partyScore) / 100;
+        if (partyStrength < 0.01) continue; // Skip negligible positions
+
+        // Convert party score to 0-100 scale to match bloc
+        const partyNorm = (partyScore + 100) / 2; // -100→0, 0→50, +100→100
+
+        // Alignment = 1 when identical, 0 when at opposite ends
+        const alignment = 1 - Math.abs(partyNorm - blocScore) / 100;
+
+        weightedAlignment += alignment * partyStrength;
+        totalWeight += partyStrength;
+    }
+
+    if (totalWeight === 0) return 50; // Fully centrist → neutral
+    return (weightedAlignment / totalWeight) * 100;
+}
+
+
 // ==================== IDEOLOGY DATABASE HELPERS ====================
 
 async function loadFactionIdeology(supabase, factionId) {
@@ -1342,7 +1388,7 @@ async function ensureBlocApprovals(supabase, factionId, nationId) {
 
 // ==================== IDEOLOGY SHIFT PROCESSOR ====================
 
-async function processIdeologyShifts(supabase, nationId, resolutions) {
+async function processIdeologyShifts(supabase, nationId, resolutions, currentTick) {
     if (!resolutions || resolutions.length === 0) return;
 
     const billIds = resolutions.map(r => r.billId);
@@ -1418,6 +1464,8 @@ async function processIdeologyShifts(supabase, nationId, resolutions) {
     }
 
     // Apply accumulated shifts to faction_ideology
+    const historyRows = [];
+
     for (const [factionId, axisShifts] of Object.entries(factionShifts)) {
         let ideologyRow = await loadFactionIdeology(supabase, factionId);
         if (!ideologyRow) {
@@ -1442,6 +1490,31 @@ async function processIdeologyShifts(supabase, nationId, resolutions) {
 
         if (hasChanges) {
             await supabase.from('faction_ideology').update(updateObj).eq('faction_id', factionId);
+
+            // Record snapshot for ideology_history
+            if (typeof currentTick === 'number') {
+                const finalScores = { ...currentScores, ...updateObj };
+                historyRows.push({
+                    faction_id: factionId,
+                    nation_id: nationId,
+                    tick: currentTick,
+                    liberty_equality: finalScores.liberty_equality || 0,
+                    tradition_progress: finalScores.tradition_progress || 0,
+                    security_freedom: finalScores.security_freedom || 0,
+                    globalism_nationalism: finalScores.globalism_nationalism || 0,
+                    individualism_collectivism: finalScores.individualism_collectivism || 0
+                });
+            }
+        }
+    }
+
+    // Batch insert ideology history snapshots
+    if (historyRows.length > 0) {
+        const { error: histErr } = await supabase
+            .from('ideology_history')
+            .insert(historyRows);
+        if (histErr) {
+            console.warn('[processIdeologyShifts] ideology_history insert failed (table may not exist yet):', histErr.message);
         }
     }
 }
@@ -1734,7 +1807,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                     const articles = pd.articles || [];
                     const struckIndices = new Set(pd.struck_articles || []);
                     let totalRel = 0;
-                    articles.forEach((art: any, i: number) => {
+                    articles.forEach((art, i) => {
                         if (!struckIndices.has(i)) totalRel += art.relations || 0;
                     });
                     if (totalRel !== 0) {
@@ -1887,15 +1960,6 @@ async function enactBill(supabase, bill, currentTick) {
             if (activeLawError) {
                 console.error(`[enactBill] Failed to insert active_law for policy ${policy.id} (${policy.policy_name}):`, activeLawError.message);
             }
-        }
-    }
-
-    const sponsorFaction = bill.factions;
-    if (sponsorFaction) {
-        const opposed = countOpposedArticles(bill.bill_articles || [], sponsorFaction);
-        if (opposed > 0) {
-            const penalty = calculateIdeologyPenalty('passed', opposed, nation.polarization || 0);
-            await applyIdeologyPenalty(supabase, bill.proposed_by, penalty);
         }
     }
 
@@ -2259,9 +2323,9 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
  *
  * CANONICAL STAT KEY REFERENCE:
  *   --- Economic ---
- *   gdp                        GDP (raw dollars: 88B = 88000000000)
+ *   gdp                        GDP ($B)
  *   gdp_growth                 Annual economic growth rate
- *   debt                       Government debt (raw dollars: 83B = 83000000000)
+ *   debt                       Government debt obligations ($B)
  *   debt_growth                Rate of debt accumulation
  *   inflation                  Rate of price increases
  *   interest_rates             Central bank lending rate
@@ -4123,15 +4187,18 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
         if (nationStats) {
             const updates = {};
             if (isIncumbentWin) {
+                // Incumbent wins: +3 legitimacy, +2 stability (mandate renewed)
                 updates.legitimacy = Math.min(100, Math.round(((nationStats.legitimacy || 50) + 3) * 10) / 10);
                 updates.stability = Math.min(100, Math.round(((nationStats.stability || 50) + 2) * 10) / 10);
                 console.log(`Incumbent win effects: +3 legitimacy, +2 stability (${nation.name})`);
             } else if (isChallengerWin && !wasRunoff) {
+                // Challenger wins (no runoff): transition effects
                 updates.stability = Math.max(0, Math.round(((nationStats.stability || 50) - 2) * 10) / 10);
                 updates.civil_unrest = Math.min(100, Math.round(((nationStats.civil_unrest || 0) + 3) * 10) / 10);
                 updates.happiness = Math.min(100, Math.round(((nationStats.happiness || 50) + 1) * 10) / 10);
                 console.log(`Challenger win effects: -2 stability, +3 civil_unrest, +1 happiness (${nation.name})`);
             } else if (isIncumbentRunoffLoss) {
+                // Incumbent loses in runoff: extra penalties (contested transition)
                 updates.stability = Math.max(0, Math.round(((nationStats.stability || 50) - 4) * 10) / 10);
                 updates.legitimacy = Math.max(0, Math.round(((nationStats.legitimacy || 50) - 2) * 10) / 10);
                 updates.civil_unrest = Math.min(100, Math.round(((nationStats.civil_unrest || 0) + 5) * 10) / 10);
@@ -4144,7 +4211,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
             }
         }
 
-        // Approval effects
+        // Approval effects: incumbent win boosts their faction, challenger win penalizes losing incumbent faction
         if (isIncumbentWin && incumbentFactionId) {
             await adjustBlocApproval(supabase, incumbentFactionId, 3);
             console.log(`Incumbent re-elected: +3 approval to ${winner.party_name}`);
@@ -4992,13 +5059,16 @@ async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
 
 /**
  * Drift each faction x bloc approval toward an ideology-based target.
- * Base target: 40. If a voter bloc opposes the party's declared
- * ideology, the target drops (minimum 20). Drift rate: 0.5 per tick.
+ * Base target: 40. If a voter bloc opposes the party's dynamic ideology
+ * positions, the target drops (minimum 20). Drift rate: 0.5 per tick.
+ *
+ * Uses dynamic axis scores from faction_ideology (shifted by voting
+ * behavior) rather than the static declared axes.
  */
 async function processBlocApprovalDecay(supabase, nation) {
     const BASE_TARGET = 40;
     const MIN_TARGET = 20;
-    const MAX_PENALTY_PER_AXIS = 10;
+    const MAX_TOTAL_PENALTY = 20;
     const DRIFT_RATE = 0.5;
 
     // 1. Load all party factions
@@ -5029,10 +5099,10 @@ async function processBlocApprovalDecay(supabase, nation) {
     const blocMap = {};
     for (const b of voterBlocs) blocMap[b.id] = b;
 
-    // 4. Load faction ideologies (declared axes)
+    // 4. Load faction ideologies (dynamic axis scores)
     const { data: ideologies } = await supabase
         .from('faction_ideology')
-        .select('faction_id, declared_axis_1, declared_direction_1, declared_axis_2, declared_direction_2')
+        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
         .in('faction_id', factionIds);
 
     const ideoMap = {};
@@ -5046,35 +5116,16 @@ async function processBlocApprovalDecay(supabase, nation) {
         if (!bloc) continue;
 
         const ideo = ideoMap[row.faction_id];
-        let totalPenalty = 0;
 
-        if (ideo) {
-            for (const [axisKey, dirKey] of [
-                ['declared_axis_1', 'declared_direction_1'],
-                ['declared_axis_2', 'declared_direction_2']
-            ]) {
-                const axis = ideo[axisKey];
-                const dir = ideo[dirKey];
-                if (!axis || dir === null || dir === undefined) continue;
+        // Compute ideology alignment using dynamic scores (0-100, 50 = neutral)
+        const alignment = ideo ? computeIdeologyAlignment(ideo, bloc) : 50;
 
-                const blocAxisCol = 'axis_' + axis;
-                const blocScore = bloc[blocAxisCol] ?? 50;
+        // Opposition penalty: alignment < 50 means the party opposes this bloc
+        const penalty = alignment < 50
+            ? Math.floor((50 - alignment) / 50 * MAX_TOTAL_PENALTY)
+            : 0;
 
-                // Opposition: party favors one pole, bloc leans opposite
-                let oppositionStrength = 0;
-                if (dir === -1) {
-                    // Party favors Pole A (low values); bloc opposes if > 50
-                    oppositionStrength = Math.max(0, (blocScore - 50) / 50);
-                } else {
-                    // Party favors Pole B (high values); bloc opposes if < 50
-                    oppositionStrength = Math.max(0, (50 - blocScore) / 50);
-                }
-
-                totalPenalty += Math.floor(oppositionStrength * MAX_PENALTY_PER_AXIS);
-            }
-        }
-
-        const target = Math.max(MIN_TARGET, BASE_TARGET - totalPenalty);
+        const target = Math.max(MIN_TARGET, BASE_TARGET - penalty);
 
         // Drift toward target
         let newApproval = row.approval;
@@ -5225,10 +5276,10 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
     const blocMap = {};
     for (const b of voterBlocs) blocMap[b.id] = b;
 
-    // ── 4. Load faction ideologies (declared axes) ──
+    // ── 4. Load faction ideologies (dynamic axis scores) ──
     const { data: ideologies } = await supabase
         .from('faction_ideology')
-        .select('faction_id, declared_axis_1, declared_direction_1, declared_axis_2, declared_direction_2')
+        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
         .in('faction_id', factionIds);
 
     const ideoMap = {};
@@ -5302,29 +5353,8 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
         const ideo = ideoMap[row.faction_id];
 
         // ─── PILLAR 1: Ideology Alignment (0-100) ───
-        let ideoScore = 50; // neutral default
-        if (ideo) {
-            const axisPairs = [
-                [ideo.declared_axis_1, ideo.declared_direction_1],
-                [ideo.declared_axis_2, ideo.declared_direction_2]
-            ];
-            let totalAlignment = 0;
-            let axisCount = 0;
-            for (const [axis, dir] of axisPairs) {
-                if (!axis || dir === null || dir === undefined) continue;
-                const blocVal = bloc['axis_' + axis] ?? 50; // 0-100
-                // dir = -1 → party favors low end; alignment with bloc = (100 - blocVal) / 100
-                // dir = +1 → party favors high end; alignment with bloc = blocVal / 100
-                const alignment = dir === -1
-                    ? (100 - blocVal) / 100
-                    : blocVal / 100;
-                totalAlignment += alignment;
-                axisCount++;
-            }
-            if (axisCount > 0) {
-                ideoScore = (totalAlignment / axisCount) * 100;
-            }
-        }
+        // Uses dynamic axis scores that shift based on voting behavior
+        const ideoScore = ideo ? computeIdeologyAlignment(ideo, bloc) : 50;
 
         // ─── PILLAR 2: Performance Perception (0-100) ───
         // Credit/blame the faction for stats under its ministry control,
@@ -10353,7 +10383,7 @@ async function runElectionPreview(supabase, nationId) {
 // ===== END GAME LOGIC =====
 
 
-// ===== TICK-ONLY HELPERS (not needed by browser pages) =====
+// ===== TICK-ONLY HELPERS (edge-function-only — not in game-common.js) =====
 
 async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
     if (!isPresidentialRepublic(nation)) return;
@@ -10579,6 +10609,7 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
 // ==================== ADVANCE TICK ====================
 
 async function advanceTick(supabase) {
+    // 1. Pre-compute next tick metadata
     const { data: shard } = await supabase
         .from('shard')
         .select('current_tick, tick_interval_hours, current_date, next_tick_at')
@@ -10599,6 +10630,7 @@ async function advanceTick(supabase) {
     }
     const newDate = advanceMonth(shard.current_date || 'January, 2000');
 
+    // 2. Load all nations
     const { data: nations } = await supabase.from('nations').select('*');
     const nationList = nations || [];
 
@@ -10684,7 +10716,7 @@ async function advanceTick(supabase) {
         return summary;
     }
 
-    // Commit shard tick/date after critical AP phase succeeds
+    // 3. Commit shard tick/date after critical AP phase succeeds
     await supabase.from('shard').update({
         current_tick: newTick,
         next_tick_at: nextTickAt.toISOString(),
@@ -10706,9 +10738,10 @@ async function advanceTick(supabase) {
         }
     }
 
-    // Process each nation
+    // 4. Process each nation
     for (const nation of nationList) {
       try {
+        // Set correct seat count for this nation (affects supermajority thresholds, etc.)
         initGameConfigForNation(nation);
 
         // Stat effects (from passed bills/active laws)
@@ -10739,14 +10772,14 @@ async function advanceTick(supabase) {
         // PM trait effects
         await processPMTraitEffects(supabase, nation, newTick);
 
-        // Elections
+        // Elections (democracy only)
         const electionResults = await processElections(supabase, nation, newTick);
         if (electionResults.length > 0) {
             summary.elections = summary.elections || [];
             summary.elections.push({ nation: nation.name, elections: electionResults });
         }
 
-        // Government vacancy penalties
+        // Government vacancy penalties (democracy only)
         const vacancyResult = await processGovernmentVacancy(supabase, nation, newTick);
         if (vacancyResult) {
             summary.vacancies = summary.vacancies || [];
@@ -10770,11 +10803,11 @@ async function advanceTick(supabase) {
         await processPresidentCandidateTimeout(supabase, nation, newTick);
         await processParliamentaryPMTimeout(supabase, nation, newTick);
 
-        // Incumbent campaign bonuses (presidential systems, 6-tick pre-election window)
+        // Incumbent campaign bonuses (+2 approval/tick during pre-election window)
         await processIncumbentCampaignBonuses(supabase, nation, newTick);
 
         // Ideology shifts from resolved bills
-        await processIdeologyShifts(supabase, nation.id, resolutions);
+        await processIdeologyShifts(supabase, nation.id, resolutions, newTick);
 
         // Purge approval decay (autocracy scapegoat mechanic)
         if (isGovernmentAutocracy(nation)) {
@@ -10800,7 +10833,7 @@ async function advanceTick(supabase) {
             await autoResolveStaleShakeups(supabase, nation.id, newTick);
         }
 
-        // Re-fetch nation with post-effect values
+        // Re-fetch nation with post-effect values for remaining processors
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (freshNation) Object.assign(nation, freshNation);
 
@@ -10836,7 +10869,7 @@ async function advanceTick(supabase) {
             summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
         }
 
-        // Final snapshot to nation history (after all effects applied)
+        // Final snapshot — capture everything that happened this tick
         const { data: finalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         await snapshotNationHistory(supabase, finalNation || nation, newTick);
       } catch (nationErr) {
