@@ -292,6 +292,7 @@ function renderEconomyPage(nation) {
     h += '<div class="economy-left">';
     h += renderBudgetPanel(nation);
     h += renderTradePanel(nation);
+    h += renderTradePartnersPanel();
     h += '</div>';
     h += '<div class="economy-right">';
     h += renderMinistryPanel();
@@ -310,13 +311,6 @@ function renderEconomyPage(nation) {
     document.querySelectorAll('.budget-line-clickable').forEach(function(line) {
         line.addEventListener('click', function() {
             selectMinistryCategory(line.getAttribute('data-category'));
-        });
-    });
-
-    // Wire trade tab clicks (Overview / Partners)
-    document.querySelectorAll('.trade-tab').forEach(function(tab) {
-        tab.addEventListener('click', function() {
-            selectTradeView(tab.getAttribute('data-trade-view'));
         });
     });
 }
@@ -474,40 +468,19 @@ function renderBudgetPanel(nation) {
 function renderTradePanel(nation) {
     var h = '<div class="budget-panel trade-panel">';
 
-    // Header with tabs
-    h += '<div class="budget-header trade-header-tabbed">';
-    h += '<div>';
+    // Header
+    h += '<div class="budget-header">';
     h += '<div class="budget-title">TRADE</div>';
     h += '<div class="budget-subtitle">Exports &amp; Imports &mdash; Per Tick</div>';
     h += '</div>';
-    if (tradeData && tradeData.summary) {
-        h += '<div class="trade-tabs">';
-        h += '<button class="trade-tab active" data-trade-view="overview">Overview</button>';
-        h += '<button class="trade-tab" data-trade-view="partners">Partners</button>';
-        h += '</div>';
-    }
-    h += '</div>';
 
-    // Content containers
-    h += '<div id="trade-overview-content">';
-    h += renderTradeOverview();
-    h += '</div>';
-
-    h += '<div id="trade-partners-content" style="display:none;">';
-    h += renderTradePartners();
-    h += '</div>';
-
-    h += '</div>'; // .budget-panel
-    return h;
-}
-
-function renderTradeOverview() {
     // No data fallback
     if (!tradeData || !tradeData.summary) {
-        return '<div class="trade-placeholder">Trade data will appear after the next tick.</div>';
+        h += '<div class="trade-placeholder">Trade data will appear after the next tick.</div>';
+        h += '</div>';
+        return h;
     }
 
-    var h = '';
     var summary = tradeData.summary;
     var totalExports = Number(summary.total_exports) || 0;
     var totalImports = Number(summary.total_imports) || 0;
@@ -572,10 +545,22 @@ function renderTradeOverview() {
     h += '</div>';
 
     h += '</div>'; // .budget-columns
+    h += '</div>'; // .budget-panel
     return h;
 }
 
-// ==================== TRADE PARTNERS TAB ====================
+// ==================== TRADE PARTNERS PANEL ====================
+function renderTradePartnersPanel() {
+    var h = '<div class="budget-panel trade-panel">';
+    h += '<div class="budget-header">';
+    h += '<div class="budget-title">TRADING PARTNERS</div>';
+    h += '<div class="budget-subtitle">Bilateral Trade &mdash; Per Tick</div>';
+    h += '</div>';
+    h += renderTradePartners();
+    h += '</div>';
+    return h;
+}
+
 function renderTradePartners() {
     if (!tradeData || !tradeData.partners) {
         return '<div class="trade-placeholder">Partner data will appear after the next tick.</div>';
@@ -672,16 +657,6 @@ function renderTradePartners() {
     }
 
     return h;
-}
-
-function selectTradeView(view) {
-    document.querySelectorAll('.trade-tab').forEach(function(t) { t.classList.remove('active'); });
-    var target = document.querySelector('.trade-tab[data-trade-view="' + view + '"]');
-    if (target) target.classList.add('active');
-    var overview = document.getElementById('trade-overview-content');
-    var partners = document.getElementById('trade-partners-content');
-    if (overview) overview.style.display = view === 'overview' ? '' : 'none';
-    if (partners) partners.style.display = view === 'partners' ? '' : 'none';
 }
 
 // Stat hints — shows players what influences each trade sector
