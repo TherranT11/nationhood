@@ -264,11 +264,120 @@ function calculateExportCapacity(nation, sector, opts) {
 
 /**
  * Calculate a nation's import demand for a given sector.
- * Returns raw dollar value of desired imports.
+ * Returns raw dollar value of desired imports (after currency + tariff dampening).
+ *
+ * Each sector has its own demand formula based on what the nation LACKS.
+ * Stats are normalized from 0-100 to 0-20 spec scale (/5) for formula consistency.
+ * Population is normalized from raw to ~0-20 equivalent (/5M).
+ *
+ * @param {Object} nation    – nation row (gdp in raw dollars, stats 0-100, population raw)
+ * @param {Object} sector    – TRADE_SECTORS entry
+ * @param {Object} [opts]    – optional: { defense_budget, has_arms_exports } for arms sector
+ * @returns {number} import demand in dollars
  */
-function calculateImportDemand(nation, sector) {
-    // STUB — Phase 3 implementation
-    return 0;
+function calculateImportDemand(nation, sector, opts) {
+    // Export-only sectors have no import demand
+    if (sector.export_only) return 0;
+
+    var cfg = TRADE_CONFIG;
+    var gdp = Number(nation.gdp) || 0;
+    var gdpModifier = gdp / cfg.BASELINE_GDP;
+
+    // Normalize stats from 0-100 codebase scale to 0-20 spec scale
+    var SN = 5;   // stat normalizer: divide 0-100 stats by 5
+    var PN = 5000000;  // population normalizer: raw pop / 5M ≈ 0-20 equivalent
+
+    var rawDemand = 0;
+
+    // ── FUEL & ENERGY ──
+    // Import fuel if you don't produce enough domestically.
+    // Driven by inverse of (oil_and_gas + energy_generation).
+    if (sector.key === 'fuel_energy') {
+        var oilGas = (Number(nation.oil_and_gas) || 0) / SN;
+        var energyGen = (Number(nation.energy_generation) || 0) / SN;
+        var domesticEnergy = (oilGas + energyGen) / 2;
+        var deficiency = Math.max(0, 15 - domesticEnergy);
+        rawDemand = deficiency * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+    }
+
+    // ── MINERALS & RAW MATERIALS ──
+    // Import if you lack domestic minerals but have manufacturing that needs inputs.
+    // Manufacturing creates demand for raw material imports.
+    else if (sector.key === 'minerals') {
+        var minerals = (Number(nation.rare_minerals) || 0) / SN;
+        var infra = Number(nation.physical_infrastructure) || 0;
+        var edu = Number(nation.higher_education) || 0;
+        var manufScore = ((infra + edu) / 2) / SN;
+        var deficiency = Math.max(0, 12 - minerals);
+        rawDemand = deficiency * (manufScore / 10) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+    }
+
+    // ── FOOD & AGRICULTURE ──
+    // Everyone needs food. Import based on what you can't grow domestically.
+    // Uses population as scaling factor (not GDP) — even poor nations need to eat.
+    else if (sector.key === 'food_agriculture') {
+        var arableLand = (Number(nation.arable_land) || 0) / SN;
+        var popNorm = (Number(nation.population) || 1) / PN;
+        var sufficiency = arableLand / Math.max(0.1, popNorm * 1.5);
+        var deficit = Math.max(0, 1 - sufficiency);
+        rawDemand = deficit * popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.8;
+    }
+
+    // ── MANUFACTURED GOODS ──
+    // Import what you can't make. Consumer demand (population × standard of living)
+    // minus domestic production capacity.
+    else if (sector.key === 'manufactured_goods') {
+        var popNorm = (Number(nation.population) || 1) / PN;
+        var sol = (Number(nation.standard_of_living) || 50) / SN;
+        var infra = Number(nation.physical_infrastructure) || 0;
+        var edu = Number(nation.higher_education) || 0;
+        var manufScore = ((infra + edu) / 2) / SN;
+        var consumerDemand = popNorm * (sol / 10);
+        var domesticManuf = manufScore / 10;
+        var deficit = Math.max(0, consumerDemand - domesticManuf);
+        rawDemand = deficit * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
+    }
+
+    // ── TECHNOLOGY & ELECTRONICS ──
+    // Digital infrastructure needs minus domestic tech production.
+    else if (sector.key === 'technology') {
+        var popNorm = (Number(nation.population) || 1) / PN;
+        var digi = (Number(nation.digital_infrastructure) || 0) / SN;
+        var edu = Number(nation.higher_education) || 0;
+        var techScore = ((Number(nation.digital_infrastructure) || 0) + edu) / 2 / SN;
+        var techDemand = popNorm * (digi / 10) * 0.5;
+        var domesticTech = techScore / 10;
+        var deficit = Math.max(0, techDemand - domesticTech);
+        rawDemand = deficit * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.5;
+    }
+
+    // ── ARMS & MILITARY EQUIPMENT ──
+    // Driven by defense spending minus domestic arms production.
+    // 15% of defense budget goes to equipment purchases.
+    // Nations with domestic arms industries import less (only 40% of that 15%).
+    else if (sector.key === 'arms') {
+        var defenseBudget = (opts && opts.defense_budget) || 0;
+        var domesticArms = (opts && opts.has_arms_exports) ? 0.6 : 0;
+        rawDemand = defenseBudget * 0.15 * (1 - domesticArms);
+    }
+
+    if (rawDemand <= 0) return 0;
+
+    // ── Currency strength on imports ──
+    // Weak currency makes imports MORE expensive → you can afford LESS.
+    // currency_strength 50 = 1.0, 25 = 0.5 (can only afford half), 75 = 1.5
+    var currencyStrength = Number(nation.currency_strength) || 50;
+    var affordability = currencyStrength / 50;
+    rawDemand *= affordability;
+
+    // ── Tariff dampener ──
+    // Your own tariffs reduce import volume (makes foreign goods more expensive).
+    // tariffs 0 = 1.0 (free trade), 50 = 0.75 (25% reduction), 100 = 0.50 (protectionist)
+    var tariffs = Number(nation.tariffs) || 0;
+    var tariffDampener = 1 - (tariffs / 200);
+    rawDemand *= tariffDampener;
+
+    return Math.round(rawDemand);
 }
 
 /**
