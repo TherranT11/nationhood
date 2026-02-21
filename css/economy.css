@@ -589,6 +589,171 @@ body.light-mode .ministry-tab.active {
     font-style: italic;
 }
 
+/* --- Trade Panel Tabs --- */
+.trade-header-tabbed {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.trade-tabs {
+    display: flex;
+    gap: 4px;
+}
+
+.trade-tab {
+    background: transparent;
+    border: 1px solid var(--border-main);
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Courier New', monospace;
+}
+
+.trade-tab:first-child { border-radius: 4px 0 0 4px; }
+.trade-tab:last-child { border-radius: 0 4px 4px 0; }
+
+.trade-tab:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+}
+
+.trade-tab.active {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+}
+
+/* --- Partner Cards --- */
+.partner-card {
+    border: 1px solid var(--border-main);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin: 10px 0;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.partner-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.partner-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.partner-affinity {
+    font-size: 0.7rem;
+    color: var(--text-muted, #888);
+    font-style: italic;
+}
+
+.partner-stats {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.partner-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+}
+
+.partner-stat-label {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+}
+
+.partner-stat-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.partner-stat-value.exports { color: var(--green, #4CAF50); }
+.partner-stat-value.imports { color: var(--red, #f44336); }
+.partner-stat-value.surplus { color: var(--green, #4CAF50); }
+.partner-stat-value.deficit { color: var(--red, #f44336); }
+
+/* Volume bar */
+.partner-bar-container {
+    margin: 8px 0 6px;
+}
+
+.partner-bar {
+    display: flex;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.05);
+    gap: 2px;
+}
+
+.partner-bar-exports {
+    background: var(--green, #4CAF50);
+    border-radius: 4px 0 0 4px;
+    min-width: 2px;
+}
+
+.partner-bar-imports {
+    background: var(--red, #f44336);
+    border-radius: 0 4px 4px 0;
+    min-width: 2px;
+}
+
+.partner-bar-legend {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.6rem;
+    color: var(--text-muted, #888);
+    margin-top: 3px;
+}
+
+.partner-legend-exports { color: var(--green, #4CAF50); }
+.partner-legend-imports { color: var(--red, #f44336); }
+
+/* Sector breakdown */
+.partner-sectors {
+    border-top: 1px solid var(--border-main);
+    margin-top: 8px;
+    padding-top: 8px;
+}
+
+.partner-sector-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 0;
+}
+
+.partner-sector-name {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+}
+
+.partner-sector-detail {
+    font-size: 0.7rem;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
 /* Light mode */
 body.light-mode .trade-summary-value.exports { color: var(--green); }
 body.light-mode .trade-summary-value.imports { color: var(--red); }
@@ -596,3 +761,5 @@ body.light-mode .trade-summary-value.surplus { color: var(--green); }
 body.light-mode .trade-summary-value.deficit { color: var(--red); }
 body.light-mode .trade-inverted .budget-trend.trend-up { color: var(--red); }
 body.light-mode .trade-inverted .budget-trend.trend-down { color: var(--green); }
+body.light-mode .partner-card { background: rgba(0, 0, 0, 0.02); }
+body.light-mode .trade-tab.active { color: #fff; }
