@@ -589,46 +589,6 @@ body.light-mode .ministry-tab.active {
     font-style: italic;
 }
 
-/* --- Trade Panel Tabs --- */
-.trade-header-tabbed {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.trade-tabs {
-    display: flex;
-    gap: 4px;
-}
-
-.trade-tab {
-    background: transparent;
-    border: 1px solid var(--border-main);
-    color: var(--text-secondary);
-    font-size: 0.7rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    padding: 6px 14px;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-family: 'Courier New', monospace;
-}
-
-.trade-tab:first-child { border-radius: 4px 0 0 4px; }
-.trade-tab:last-child { border-radius: 0 4px 4px 0; }
-
-.trade-tab:hover {
-    color: var(--text-primary);
-    border-color: var(--accent);
-}
-
-.trade-tab.active {
-    background: var(--accent);
-    color: #000;
-    border-color: var(--accent);
-}
-
 /* --- Partner Cards --- */
 .partner-card {
     border: 1px solid var(--border-main);
@@ -762,4 +722,3 @@ body.light-mode .trade-summary-value.deficit { color: var(--red); }
 body.light-mode .trade-inverted .budget-trend.trend-up { color: var(--red); }
 body.light-mode .trade-inverted .budget-trend.trend-down { color: var(--green); }
 body.light-mode .partner-card { background: rgba(0, 0, 0, 0.02); }
-body.light-mode .trade-tab.active { color: #fff; }
