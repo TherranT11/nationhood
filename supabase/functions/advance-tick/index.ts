@@ -1073,7 +1073,217 @@ const DIPLOMACY_CONFIG = {
     // Covert operation success thresholds (0-1, higher = harder)
     COVERT_INTEL_THRESHOLD: 0.45,
     COVERT_PROPAGANDA_THRESHOLD: 0.55,
-    COVERT_BRIBE_THRESHOLD: 0.60
+    COVERT_BRIBE_THRESHOLD: 0.60,
+
+    // Trade negotiation AP costs
+    PROPOSE_TRADE_NEGOTIATION_AP: 1,      // Ambassador proposes trade negotiations
+    ACCEPT_TRADE_NEGOTIATION_AP: 1,       // Other ambassador accepts
+    JOIN_NEGOTIATION_PM_AP: 2,            // PM party joins negotiation
+    JOIN_NEGOTIATION_FM_AP: 1,            // FM party joins (required)
+    HOG_DRAFT_INITIATIVE_AP: 3,           // HoG drafting when no ambassador (penalty)
+
+    // Trade negotiation timing
+    NEGOTIATION_DEFAULT_DURATION: 12,     // ticks until negotiation expires (1 year)
+    NEGOTIATION_EXTENSION_TICKS: 12,      // ticks added per extension (1 month)
+    NEGOTIATION_MAX_EXTENSIONS: 3,        // max times negotiations can be extended
+    TRADE_RATIFICATION_VOTING_TICKS: 4    // ticks for parliament to vote on trade bill
+};
+
+/**
+ * Trade Agreement types that can be negotiated as Diplomatic Initiatives.
+ *
+ * 4 types:
+ *   FTA  — Free Trade Agreement: comprehensive tariff elimination
+ *   PTA  — Preferential Tariff Agreement: sector-specific tariff reduction
+ *   RSC  — Resource Supply Contract: guaranteed purchase commitment
+ *   ES   — Export Subsidy: unilateral, no partner needed
+ */
+const TRADE_AGREEMENT_TYPES = {
+    fta: {
+        key: 'fta',
+        label: 'Free Trade Agreement',
+        shortLabel: 'FTA',
+        description: 'Comprehensive tariff elimination between two nations. Removes all tariffs across all sectors unless specific exemptions are carved out.',
+        bilateral: true,
+        required_articles: ['duration'],
+        optional_articles: ['sector_exemption', 'text_article'],
+        icon: 'handshake'
+    },
+    pta: {
+        key: 'pta',
+        label: 'Preferential Tariff Agreement',
+        shortLabel: 'PTA',
+        description: 'Sector-specific tariff reduction. Each side can negotiate different reductions for different sectors and directions.',
+        bilateral: true,
+        required_articles: ['tariff_reduction', 'duration'],
+        optional_articles: ['text_article'],
+        icon: 'chart'
+    },
+    resource_supply: {
+        key: 'resource_supply',
+        label: 'Resource Supply Contract',
+        shortLabel: 'RSC',
+        description: 'Guaranteed purchase commitment for raw resources. The buyer commits to purchasing a minimum percentage from the seller.',
+        bilateral: true,
+        required_articles: ['supply_commitment', 'price_terms', 'duration'],
+        optional_articles: ['breach_penalty', 'text_article'],
+        icon: 'truck'
+    },
+    export_subsidy: {
+        key: 'export_subsidy',
+        label: 'Export Subsidy',
+        shortLabel: 'ES',
+        description: 'Unilateral policy — subsidize your own exporters to make goods cheaper on the international market. No partner nation needed.',
+        bilateral: false,
+        required_articles: ['subsidized_sector', 'duration', 'funding_source'],
+        optional_articles: ['text_article'],
+        icon: 'money'
+    }
+};
+
+/**
+ * The 6 tradeable sectors for trade agreements.
+ * Subset of the full 8 TRADE_SECTORS (excludes tourism and services_finance).
+ */
+const TRADEABLE_SECTORS = [
+    { key: 'fuel_energy',        label: 'Fuel & Energy',            raw_resource: true  },
+    { key: 'minerals',           label: 'Minerals & Raw Materials', raw_resource: true  },
+    { key: 'food_agriculture',   label: 'Food & Agriculture',       raw_resource: true  },
+    { key: 'manufactured_goods', label: 'Manufactured Goods',       raw_resource: false },
+    { key: 'technology',         label: 'Technology & Electronics', raw_resource: false },
+    { key: 'arms',               label: 'Arms & Military Equipment', raw_resource: false }
+];
+
+// Lookup map for tradeable sectors
+var TRADEABLE_SECTOR_MAP = {};
+for (var _tasi = 0; _tasi < TRADEABLE_SECTORS.length; _tasi++) {
+    TRADEABLE_SECTOR_MAP[TRADEABLE_SECTORS[_tasi].key] = TRADEABLE_SECTORS[_tasi];
+}
+
+/**
+ * Article type definitions for trade agreements.
+ * Each defines the schema of what data the article captures.
+ */
+const TRADE_ARTICLE_TYPES = {
+    // ── Duration (required for all types) ──
+    duration: {
+        key: 'duration',
+        label: 'Duration',
+        description: 'How long the agreement lasts.',
+        repeatable: false,
+        schema: {
+            duration_type: 'permanent|fixed',   // permanent or fixed term
+            duration_ticks: 'number',           // min 8, max 48 for FTA/PTA; min 8, max 36 for RSC; min 4, max 24 for ES
+            auto_renew: 'boolean',              // only for fixed term
+            withdrawal_notice_ticks: 'number'   // 1-6 ticks notice to withdraw
+        }
+    },
+
+    // ── Sector Exemption (FTA only, optional) ──
+    sector_exemption: {
+        key: 'sector_exemption',
+        label: 'Sector Exemption',
+        description: 'Exempt specific sectors from the FTA.',
+        repeatable: true,
+        applies_to: ['fta'],
+        schema: {
+            sector: 'string',                   // tradeable sector key
+            reason: 'string'                    // optional flavor text
+        }
+    },
+
+    // ── Tariff Reduction (PTA, required, repeatable per sector) ──
+    tariff_reduction: {
+        key: 'tariff_reduction',
+        label: 'Tariff Reduction',
+        description: 'Reduce tariffs on a specific sector.',
+        repeatable: true,
+        applies_to: ['pta'],
+        schema: {
+            sector: 'string',                   // tradeable sector key
+            direction: 'mutual|your_exports|their_exports',
+            reduction_pct: 'number'             // 0-100 (100 = full elimination)
+        }
+    },
+
+    // ── Supply Commitment (RSC, required) ──
+    supply_commitment: {
+        key: 'supply_commitment',
+        label: 'Supply Commitment',
+        description: 'Guaranteed purchase commitment for a raw resource.',
+        repeatable: false,
+        applies_to: ['resource_supply'],
+        schema: {
+            sector: 'string',                   // must be raw_resource sector
+            direction: 'we_buy|we_sell',        // who is buyer vs seller
+            commitment_pct: 'number'            // 10-90%
+        }
+    },
+
+    // ── Price Terms (RSC, required) ──
+    price_terms: {
+        key: 'price_terms',
+        label: 'Price Terms',
+        description: 'How the resource price is determined.',
+        repeatable: false,
+        applies_to: ['resource_supply'],
+        schema: {
+            price_type: 'market|fixed|discounted|premium',
+            modifier_pct: 'number'              // discount/premium percentage (0-25)
+        }
+    },
+
+    // ── Breach Penalty (RSC, optional) ──
+    breach_penalty: {
+        key: 'breach_penalty',
+        label: 'Breach Penalty',
+        description: 'Penalties if either party breaks the contract early.',
+        repeatable: false,
+        applies_to: ['resource_supply'],
+        schema: {
+            relations_penalty: 'number',        // 1-8
+            reputation_penalty: 'number',       // 0-4
+            financial_penalty: 'number'         // 0-500 (in millions)
+        }
+    },
+
+    // ── Subsidized Sector (Export Subsidy, required) ──
+    subsidized_sector: {
+        key: 'subsidized_sector',
+        label: 'Export Subsidy',
+        description: 'Subsidize exports in a specific sector.',
+        repeatable: false,
+        applies_to: ['export_subsidy'],
+        schema: {
+            sector: 'string',                   // any tradeable sector
+            subsidy_pct: 'number'               // 5-30%
+        }
+    },
+
+    // ── Funding Source (Export Subsidy, required) ──
+    funding_source: {
+        key: 'funding_source',
+        label: 'Funding Source',
+        description: 'Where the subsidy money comes from.',
+        repeatable: false,
+        applies_to: ['export_subsidy'],
+        schema: {
+            source: 'general_treasury|ministry_budget'
+        }
+    },
+
+    // ── Text Article (optional for all types) ──
+    text_article: {
+        key: 'text_article',
+        label: 'Text Article',
+        description: 'Free-text article for flavor/RP. No mechanical effect.',
+        repeatable: true,
+        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy'],
+        schema: {
+            title: 'string',
+            body: 'string'
+        }
+    }
 };
 
 /**
