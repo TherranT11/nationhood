@@ -60,48 +60,25 @@
     font-style: italic;
     line-height: 1.4;
 }
-
-/* ===== COUP RISK PANEL (Strongman only) ===== */
-.coup-risk-panel {
-    background: var(--bg-panel, #1a1a1a);
-    border: 1px solid var(--border-main, #333);
-    border-radius: 8px;
-    padding: 18px 24px;
-    margin-top: 20px;
-    max-width: 420px;
-}
-.coup-risk-header {
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    font-weight: 700;
-    color: var(--text-secondary, #888);
-    margin-bottom: 10px;
-}
-.coup-risk-row {
+.standing-columns {
     display: flex;
-    align-items: baseline;
-    gap: 10px;
-    margin-bottom: 8px;
+    gap: 24px;
 }
-.coup-risk-pct {
-    font-size: 1.6rem;
-    font-weight: 800;
-    line-height: 1;
+.standing-col {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
-.coup-risk-label {
-    font-size: 0.85rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
+
+/* ===== COUP RISK BAR ===== */
 .coup-risk-bar-track {
     width: 100%;
     height: 6px;
     background: rgba(255, 255, 255, 0.08);
     border-radius: 3px;
     overflow: hidden;
-    margin-bottom: 10px;
+    margin: 4px 0;
 }
 body.light-mode .coup-risk-bar-track {
     background: rgba(0, 0, 0, 0.08);
@@ -110,11 +87,6 @@ body.light-mode .coup-risk-bar-track {
     height: 100%;
     border-radius: 3px;
     transition: width 0.3s ease;
-}
-.coup-risk-plots {
-    font-size: 0.78rem;
-    color: var(--text-muted, #666);
-    font-style: italic;
 }
 
 /* ===== MY PARTY CARD ===== */
