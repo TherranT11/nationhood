@@ -661,22 +661,22 @@ function renderTradePartners() {
 
 // Stat hints — shows players what influences each trade sector
 var TRADE_EXPORT_HINTS = {
-    fuel_energy:        'Oil & Gas, Currency Strength',
-    minerals:           'Rare Minerals, Currency Strength',
-    food_agriculture:   'Arable Land, Currency Strength',
-    manufactured_goods: 'Infrastructure, Higher Education',
-    technology:         'Digital Infrastructure, Higher Education',
-    arms:               'Infrastructure, Higher Education, Defense Spending',
-    tourism:            'Happiness, Stability, Infrastructure',
-    services_finance:   'Higher Education, Digital Infrastructure, Credit'
+    fuel_energy:        'Driven by: Oil & Gas',
+    minerals:           'Driven by: Rare Minerals',
+    food_agriculture:   'Driven by: Arable Land',
+    manufactured_goods: 'Driven by: Physical Infrastructure + Higher Education',
+    technology:         'Driven by: Digital Infrastructure + Higher Education',
+    arms:               'Driven by: Manufacturing + Defense Spending %',
+    tourism:            'Driven by: Happiness + Stability + Physical Infrastructure',
+    services_finance:   'Driven by: Higher Education + Digital Infrastructure + Credit'
 };
 var TRADE_IMPORT_HINTS = {
-    fuel_energy:        'Low Oil & Gas, Low Energy Generation',
-    minerals:           'Low Rare Minerals, High Manufacturing',
-    food_agriculture:   'Low Arable Land, High Population',
-    manufactured_goods: 'Low Manufacturing, High Std. of Living',
-    technology:         'Low Digital Infrastructure, High Population',
-    arms:               'Defense Budget, Low Domestic Arms Industry'
+    fuel_energy:        'Driven by: Low Oil & Gas + Low Energy Generation',
+    minerals:           'Driven by: Low Rare Minerals × Manufacturing Need',
+    food_agriculture:   'Driven by: Population vs. Arable Land',
+    manufactured_goods: 'Driven by: Consumer Demand (Pop × Std. of Living) minus Manufacturing',
+    technology:         'Driven by: Digital Need (Pop × Digital Infra) minus Tech Capacity',
+    arms:               'Driven by: Defense Budget minus Domestic Arms Capacity'
 };
 
 function tradeLineItem(label, value, prevValue, inverted, sectorKey) {
