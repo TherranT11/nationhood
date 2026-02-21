@@ -2959,3 +2959,168 @@ body.light-mode .other-party-logo {
         flex: 1 1 calc(50% - 14px);
     }
 }
+
+/* ===== Ideology Section ===== */
+.ideology-section {
+    background: var(--card-bg, #1a1a2e);
+    border: 1px solid var(--border-main, #333);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-top: 18px;
+}
+body.light-mode .ideology-section {
+    background: #fff;
+    border-color: #e0e0e0;
+}
+
+.ideology-header {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-secondary, #888);
+    margin-bottom: 14px;
+}
+
+/* ---- Party selector ---- */
+.ideology-party-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+.ideology-party-btn {
+    padding: 5px 14px;
+    border-radius: 6px;
+    border: 2px solid var(--border-main, #444);
+    background: transparent;
+    color: var(--text-primary, #e0e0e0);
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    letter-spacing: 0.5px;
+}
+body.light-mode .ideology-party-btn {
+    color: #333;
+    border-color: #ccc;
+}
+.ideology-party-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+body.light-mode .ideology-party-btn:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+.ideology-party-btn.active {
+    background: rgba(255, 255, 255, 0.08);
+}
+body.light-mode .ideology-party-btn.active {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+/* ---- Axis rows ---- */
+.ideology-axes {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.ideology-axis-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.ideology-axis-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    width: 110px;
+    flex-shrink: 0;
+}
+.ideology-axis-label-left {
+    text-align: right;
+}
+.ideology-axis-label-right {
+    text-align: left;
+}
+
+/* ---- Track ---- */
+.ideology-track {
+    flex: 1;
+    height: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 5px;
+    position: relative;
+    overflow: visible;
+}
+body.light-mode .ideology-track {
+    background: rgba(0, 0, 0, 0.07);
+}
+.ideology-track-center {
+    position: absolute;
+    left: 50%;
+    top: -1px;
+    bottom: -1px;
+    width: 2px;
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateX(-50%);
+    border-radius: 1px;
+}
+body.light-mode .ideology-track-center {
+    background: rgba(0, 0, 0, 0.12);
+}
+
+/* ---- Marker ---- */
+.ideology-marker {
+    position: absolute;
+    top: 50%;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    border: 2px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    z-index: 2;
+}
+body.light-mode .ideology-marker {
+    border-color: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.ideology-marker-value {
+    position: absolute;
+    top: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--text-primary, #e0e0e0);
+    white-space: nowrap;
+}
+
+/* ---- Leanings summary ---- */
+.ideology-leanings {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-main, #333);
+    font-size: 0.78rem;
+    color: var(--text-secondary, #888);
+    line-height: 1.6;
+}
+.ideology-leaning-item {
+    font-weight: 600;
+    color: var(--text-primary, #e0e0e0);
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 600px) {
+    .ideology-section {
+        padding: 16px;
+    }
+    .ideology-axis-label {
+        width: 75px;
+        font-size: 0.6rem;
+    }
+    .ideology-axis-row {
+        gap: 8px;
+    }
+}
