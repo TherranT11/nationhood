@@ -484,7 +484,7 @@ async function advanceTick(supabase) {
         await processIncumbentCampaignBonuses(supabase, nation, newTick);
 
         // Ideology shifts from resolved bills
-        await processIdeologyShifts(supabase, nation.id, resolutions);
+        await processIdeologyShifts(supabase, nation.id, resolutions, newTick);
 
         // Purge approval decay (autocracy scapegoat mechanic)
         if (isGovernmentAutocracy(nation)) {
