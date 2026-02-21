@@ -70,6 +70,60 @@ function buildIdeologyTags(f) {
     return html;
 }
 
+async function renderAutocracyParties(el, f, n) {
+    // Fetch all factions for this nation
+    const { data: allFactions } = await _supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, party_color, party_logo, action_points, loyalty, seats')
+        .eq('nation_id', n.id)
+        .eq('faction_type', 'party')
+        .order('seats', { ascending: false });
+
+    const maxAP = GAME_CONFIG.MAX_AP;
+    const rulingId = n.ruling_faction_id;
+
+    let factionAPCards = '';
+    for (const faction of (allFactions || [])) {
+        const ap = Math.min(faction.action_points || 0, maxAP);
+        const apPct = Math.round((ap / maxAP) * 100);
+        const color = faction.party_color || '#ffcc00';
+        const logo = getPartyIconSVG(faction.party_logo, 28, color);
+        const isYou = faction.id === f.id;
+        const isRuler = faction.id === rulingId;
+        const name = faction.faction_name;
+        const abbr = faction.abbreviation ? `<span class="faction-ap-abbr">(${faction.abbreviation})</span>` : '';
+
+        let badge = '';
+        if (isRuler) badge = '<span class="faction-ap-badge faction-ap-ruler">RULER</span>';
+        else if (isYou) badge = '<span class="faction-ap-badge faction-ap-you">YOU</span>';
+
+        factionAPCards += `
+            <div class="faction-ap-card${isYou ? ' faction-ap-yours' : ''}" style="border-left-color:${color}">
+                <div class="faction-ap-name-row">
+                    <span class="faction-ap-logo" style="color:${color}">${logo}</span>
+                    <span class="faction-ap-name" style="color:${color}">${name}</span>
+                    ${abbr}
+                    ${badge}
+                </div>
+                <div class="ap-score-row">
+                    <span class="ap-value">${ap}</span>
+                    <span class="ap-max">/ ${maxAP}</span>
+                </div>
+                <div class="ap-bar-track">
+                    <div class="ap-bar-fill" style="width:${apPct}%;background:${color}"></div>
+                </div>
+            </div>`;
+    }
+
+    el.innerHTML = `
+        <div class="parties-page">
+            <div class="section-header" style="margin-bottom:16px;">Faction Action Points</div>
+            <div class="faction-ap-grid">
+                ${factionAPCards}
+            </div>
+        </div>`;
+}
+
 async function renderParties() {
     const el = document.getElementById('content-area');
     const f = currentFaction;
@@ -84,209 +138,7 @@ async function renderParties() {
     const isAutocracy = isGovernmentAutocracy(n);
 
     if (isAutocracy) {
-        // ── Autocracy Party Page ──
-
-        // Archetype definitions
-        const ARCHETYPES = {
-            strongman: {
-                label: 'The Strongman',
-                desc: 'Supreme ruler of the nation. All power flows from you.'
-            },
-            general: {
-                label: 'General',
-                desc: 'Commands the armed forces. Loyalty is earned on the battlefield.'
-            },
-            intelligence_chief: {
-                label: 'Intelligence Chief',
-                desc: 'Knows every secret worth knowing. Information is power.'
-            },
-            party_chairman: {
-                label: 'Party Chairman',
-                desc: 'Controls the party apparatus. Bureaucracy bends to your will.'
-            },
-            oligarch: {
-                label: 'Oligarch',
-                desc: 'Wealth buys influence. The economy answers to you.'
-            },
-            security_chief: {
-                label: 'Security Chief',
-                desc: 'Runs the secret police. Fear keeps the regime intact.'
-            },
-            heir_apparent: {
-                label: 'Heir Apparent',
-                desc: 'Next in line — if you survive long enough.'
-            }
-        };
-        const NON_STRONGMAN_KEYS = ['general', 'intelligence_chief', 'party_chairman', 'oligarch', 'security_chief', 'heir_apparent'];
-
-        // Deterministic archetype assignment based on faction ID
-        function getArchetype(factionId, isRuling) {
-            if (isRuling) return ARCHETYPES.strongman;
-            // Simple hash from faction UUID to pick a stable index
-            let hash = 0;
-            for (let i = 0; i < factionId.length; i++) {
-                hash = ((hash << 5) - hash) + factionId.charCodeAt(i);
-                hash |= 0;
-            }
-            const idx = Math.abs(hash) % NON_STRONGMAN_KEYS.length;
-            return ARCHETYPES[NON_STRONGMAN_KEYS[idx]];
-        }
-
-        // Fetch all factions
-        const { data: allFactions } = await _supabase
-            .from('factions')
-            .select('id, faction_name, abbreviation, seats, party_color, party_logo, leader_first_name, leader_last_name, leader_age, founded_tick, ideology_value_1, ideology_value_2, loyalty, action_points, party_funds')
-            .eq('nation_id', n.id)
-            .eq('faction_type', 'party');
-
-        const seatData = await loadSeats(_supabase, n.id, true, allFactions || [], f.id);
-        const mySeats = seatData.currentSeats || 0;
-        const isRuling = n.ruling_faction_id === f.id;
-        const myArchetype = getArchetype(f.id, isRuling);
-
-        // For Strongman, use head-of-state name from nation; for others, use faction leader
-        const leaderFirst = isRuling ? (n.head_of_state_first_name || f.leader_first_name || 'Unknown') : (f.leader_first_name || 'Unknown');
-        const leaderLast = isRuling ? (n.head_of_state_last_name || f.leader_last_name || 'Unknown') : (f.leader_last_name || 'Unknown');
-        const leaderAge = isRuling ? (n.head_of_state_age || f.leader_age || '—') : (f.leader_age || '—');
-        const leaderName = `${leaderFirst} ${leaderLast}`;
-        const partyColor = f.party_color || '#ffcc00';
-        const logoSvg = getPartyIconSVG(f.party_logo, 44, partyColor);
-        const founded = tickToDate(f.founded_tick);
-        const roleBadge = isRuling
-            ? '<span class="role-badge role-badge-gov">Ruling Faction</span>'
-            : '<span class="role-badge role-badge-opp">Opposition</span>';
-        const ideologyTags = buildIdeologyTags(f);
-        const abbr = f.abbreviation ? `<span class="my-party-abbr">(${f.abbreviation})</span>` : '';
-
-        // ── Standing box: Grip (Strongman) or Loyalty + Ambition (others) ──
-        function getGripLevel(val) {
-            if (val >= 90) return { label: 'ABSOLUTE', desc: 'You are untouchable. For now.', color: '#4CAF50' };
-            if (val >= 75) return { label: 'FIRM', desc: 'Stable. No immediate threats.', color: '#4CAF50' };
-            if (val >= 60) return { label: 'SECURE', desc: 'Manageable but watch the cracks.', color: '#4CAF50' };
-            if (val >= 45) return { label: 'SHAKY', desc: 'Multiple brokers are unhappy. Act now.', color: '#ff9800' };
-            if (val >= 30) return { label: 'FRAGILE', desc: 'Coup is being actively planned.', color: '#ff5722' };
-            return { label: 'CRUMBLING', desc: 'You will be overthrown within 1\u20133 ticks.', color: '#ff4444' };
-        }
-        function getLoyaltyLevel(val) {
-            if (val >= 90) return { label: 'DEVOTED', desc: 'Will die for you. Probably.', color: '#4CAF50' };
-            if (val >= 75) return { label: 'LOYAL', desc: 'Reliable. Keep rewarding.', color: '#4CAF50' };
-            if (val >= 60) return { label: 'CONTENT', desc: 'No complaints. Could change.', color: '#4CAF50' };
-            if (val >= 40) return { label: 'WAVERING', desc: 'Unhappy. Looking at options. Act soon.', color: '#ff9800' };
-            if (val >= 20) return { label: 'HOSTILE', desc: 'Actively plotting. Purge or appease immediately.', color: '#ff5722' };
-            return { label: 'MUTINOUS', desc: 'Will join any coup attempt. May lead one.', color: '#ff4444' };
-        }
-        function getAmbitionLevel(val) {
-            if (val >= 76) return { label: 'DANGEROUS', desc: 'Actively wants your job. Will create opportunity.', color: '#ff4444' };
-            if (val >= 51) return { label: 'SCHEMING', desc: 'Would take your job if the opportunity arose.', color: '#ff9800' };
-            if (val >= 26) return { label: 'WATCHFUL', desc: 'Keeping their options open.', color: '#4CAF50' };
-            return { label: 'CONTENT', desc: 'No interest in your job. Safe.', color: '#4CAF50' };
-        }
-
-        let standingHTML = '';
-        if (isRuling) {
-            const grip = getGripLevel(f.grip ?? 75);
-
-            const unrest = n.civil_unrest ?? 0;
-            const violence = n.political_violence ?? 0;
-            const stability = n.stability ?? 100;
-            const raw = (unrest * 0.35) + (violence * 0.35) + ((100 - stability) * 0.30);
-            const coupPct = Math.round(Math.max(0, Math.min(100, raw)));
-
-            let coupLabel, coupColor;
-            if (coupPct >= 75) { coupLabel = 'CRITICAL'; coupColor = '#ff4444'; }
-            else if (coupPct >= 50) { coupLabel = 'HIGH'; coupColor = '#ff5722'; }
-            else if (coupPct >= 30) { coupLabel = 'ELEVATED'; coupColor = '#ff9800'; }
-            else if (coupPct >= 15) { coupLabel = 'LOW'; coupColor = '#4CAF50'; }
-            else { coupLabel = 'MINIMAL'; coupColor = '#4CAF50'; }
-
-            const plotMsg = coupPct >= 50
-                ? 'Active plots detected. Factions are mobilizing.'
-                : 'No active plots detected.';
-
-            standingHTML = `
-            <div class="standing-box">
-                <div class="standing-header">Your Standing</div>
-                <div class="standing-columns">
-                    <div class="standing-col">
-                        <div class="standing-row">
-                            <div class="standing-label">Grip on Power</div>
-                            <div class="standing-value" style="color:${grip.color}">${grip.label}</div>
-                        </div>
-                        <div class="standing-desc">${grip.desc}</div>
-                    </div>
-                    <div class="standing-col">
-                        <div class="standing-row">
-                            <div class="standing-label">Coup Risk</div>
-                            <div class="standing-value" style="color:${coupColor}">${coupPct}%</div>
-                        </div>
-                        <div class="coup-risk-bar-track">
-                            <div class="coup-risk-bar-fill" style="width:${coupPct}%;background:${coupColor}"></div>
-                        </div>
-                        <div class="standing-desc">${plotMsg}</div>
-                    </div>
-                </div>
-            </div>`;
-        } else {
-            const loyalty = getLoyaltyLevel(f.loyalty ?? 75);
-            const ambition = getAmbitionLevel(f.ambition ?? 15);
-            standingHTML = `
-            <div class="standing-box">
-                <div class="standing-header">Your Standing</div>
-                <div class="standing-row">
-                    <div class="standing-label">Loyalty</div>
-                    <div class="standing-value" style="color:${loyalty.color}">${loyalty.label}</div>
-                </div>
-                <div class="standing-desc">${loyalty.desc}</div>
-                <div class="standing-row" style="margin-top: 12px;">
-                    <div class="standing-label">Ambition</div>
-                    <div class="standing-value" style="color:${ambition.color}">${ambition.label}</div>
-                </div>
-                <div class="standing-desc">${ambition.desc}</div>
-            </div>`;
-        }
-
-        el.innerHTML = `
-        <div class="parties-page">
-        <div class="autocracy-top-row">
-        <div class="my-party-card" style="border-left-color:${partyColor}; max-width: 420px; flex: 1 1 0;">
-            <div class="my-party-top-row">
-                <div class="my-party-logo" style="color:${partyColor}">
-                    ${logoSvg}
-                </div>
-                <div class="my-party-identity">
-                    <div class="my-party-name-row">
-                        <span class="my-party-name" style="color:${partyColor}">${f.faction_name}</span>
-                        ${abbr}
-                    </div>
-                    <div class="my-party-role-row">
-                        ${roleBadge}
-                    </div>
-                    <div class="my-party-ideology-row">
-                        ${ideologyTags}
-                    </div>
-                </div>
-            </div>
-
-            <div class="my-party-stats">
-                <div class="my-party-stat">
-                    <div class="stat-label">${myArchetype.label}</div>
-                    <div class="stat-val">${leaderName}, ${leaderAge}</div>
-                    <div class="stat-sublabel">${myArchetype.desc}</div>
-                </div>
-                <div class="my-party-stat">
-                    <div class="stat-label">Seats</div>
-                    <div class="stat-val">${mySeats} / ${GAME_CONFIG.TOTAL_SEATS}</div>
-                </div>
-                <div class="my-party-stat">
-                    <div class="stat-label">In Power Since</div>
-                    <div class="stat-val">${founded}</div>
-                </div>
-            </div>
-        </div>
-        ${standingHTML}
-        </div>
-        </div>
-        `;
+        await renderAutocracyParties(el, f, n);
         return;
     }
 
