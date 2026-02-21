@@ -470,6 +470,17 @@ async function advanceTick(supabase) {
         console.error('[advanceTick] Budget bill generation failed (non-fatal):', budgetErr);
     }
 
+    // 3.6 Trade engine — runs across ALL nations simultaneously
+    try {
+        const tradeResult = await processTradeFlows(supabase, nationList, newTick);
+        if (tradeResult.processed > 0) {
+            summary.trade = tradeResult;
+            console.log(`[advanceTick] Trade: ${tradeResult.processed} nations, $${Math.round(tradeResult.totalVolume).toLocaleString()} volume`);
+        }
+    } catch (tradeErr) {
+        console.error('[advanceTick] Trade processing failed (non-fatal):', tradeErr);
+    }
+
     // 4. Process each nation
     for (const nation of nationList) {
       try {
