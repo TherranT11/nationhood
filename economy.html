@@ -29,6 +29,7 @@ var previousTickData = null;
 var previousYearData = null;
 var currentTick = 0;
 var expenditureData = null;
+var expenditureDetails = null;
 var currentNation = null;
 
 // ==================== INIT ====================
@@ -128,13 +129,14 @@ async function loadExpenditureData(nationId, nation) {
     if (cached) { expenditureData = cached; return; }
 
     var res = await _supabase.from('active_laws')
-        .select('passed_tick, is_reversal, policies(fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat)')
+        .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat)')
         .eq('nation_id', nationId);
 
-    if (!res.data || res.data.length === 0) { expenditureData = {}; return; }
+    if (!res.data || res.data.length === 0) { expenditureData = {}; expenditureDetails = {}; return; }
 
     var yearStartTick = Math.floor(currentTick / GAME_CONFIG.TICKS_PER_YEAR) * GAME_CONFIG.TICKS_PER_YEAR;
     var totals = {};
+    var details = {};
 
     for (var i = 0; i < res.data.length; i++) {
         var law = res.data[i];
@@ -144,12 +146,15 @@ async function loadExpenditureData(nationId, nation) {
 
         var cat = policy.fiscal_category;
         if (!totals[cat]) totals[cat] = 0;
+        if (!details[cat]) details[cat] = [];
+
+        var policyCost = 0;
 
         // Ongoing costs: annualized (base per tick × 12)
         var ongoingBase = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
         if (ongoingBase > 0) {
             var ongoingScaled = scaleCost(ongoingBase, policy.ongoing_scaling_stat, nation);
-            totals[cat] += ongoingScaled * GAME_CONFIG.TICKS_PER_YEAR * 1000000;
+            policyCost += ongoingScaled * GAME_CONFIG.TICKS_PER_YEAR * 1000000;
         }
 
         // Upfront costs: only if passed in current budget year
@@ -157,13 +162,20 @@ async function loadExpenditureData(nationId, nation) {
             var upfront = policy.upfront_cost || 0;
             if (upfront > 0) {
                 var upfrontScaled = scaleCost(upfront, policy.upfront_scaling_stat, nation);
-                totals[cat] += upfrontScaled * 1000000;
+                policyCost += upfrontScaled * 1000000;
             }
+        }
+
+        totals[cat] += policyCost;
+        if (policyCost > 0) {
+            details[cat].push({ name: policy.policy_name, cost: policyCost });
         }
     }
 
     expenditureData = totals;
+    expenditureDetails = details;
     qCacheSet(cacheKey, totals, 2 * 60 * 1000);
+    qCacheSet(cacheKey + '_details', details, 2 * 60 * 1000);
 }
 
 function scaleCost(baseCost, scalingStat, nation) {
@@ -182,9 +194,19 @@ function renderEconomyPage(nation) {
     h += renderBudgetPanel(nation);
     h += '</div>';
     h += '<div class="economy-right">';
+    h += renderMinistryPanel();
     h += '</div>';
     h += '</div>';
     document.getElementById('content-area').innerHTML = h;
+
+    // Wire ministry tab clicks
+    document.querySelectorAll('.ministry-tab').forEach(function(tab) {
+        tab.addEventListener('click', function() {
+            document.querySelectorAll('.ministry-tab').forEach(function(t) { t.classList.remove('active'); });
+            tab.classList.add('active');
+            renderMinistryPolicies(tab.getAttribute('data-category'));
+        });
+    });
 }
 
 function renderHeroBar(nation) {
@@ -310,7 +332,7 @@ function renderBudgetPanel(nation) {
     h += '<div class="budget-column-header">Expenditure Breakdown</div>';
     var expenditureItems = [
         'Government Administration', 'Labor', 'Healthcare', 'Education',
-        'Transportation', 'Justice', 'Foreign Ministry', 'Finance',
+        'Transportation', 'Energy', 'Justice', 'Foreign Ministry', 'Finance',
         'Defense', 'Interest on Debt'
     ];
     for (var i = 0; i < expenditureItems.length; i++) {
@@ -322,6 +344,65 @@ function renderBudgetPanel(nation) {
 
     h += '</div>'; // .budget-columns
     h += '</div>'; // .budget-panel
+    return h;
+}
+
+// ==================== MINISTRY DETAIL PANEL ====================
+var MINISTRY_CATEGORIES = [
+    'Government Administration', 'Labor', 'Healthcare', 'Education',
+    'Transportation', 'Energy', 'Justice', 'Foreign Ministry', 'Finance', 'Defense'
+];
+
+function renderMinistryPanel() {
+    var h = '<div class="ministry-panel budget-panel">';
+
+    // Header
+    h += '<div class="budget-header">';
+    h += '<div class="budget-title">MINISTRY DETAIL</div>';
+    h += '<div class="budget-subtitle">Expenditures by Ministry</div>';
+    h += '</div>';
+
+    // Category tabs
+    h += '<div class="ministry-tabs">';
+    for (var i = 0; i < MINISTRY_CATEGORIES.length; i++) {
+        var cat = MINISTRY_CATEGORIES[i];
+        var activeClass = i === 0 ? ' active' : '';
+        h += '<button class="ministry-tab' + activeClass + '" data-category="' + escapeHtml(cat) + '">' + escapeHtml(cat) + '</button>';
+    }
+    h += '</div>';
+
+    // Policy list (rendered for first category by default)
+    h += '<div id="ministry-policy-list">';
+    h += renderMinistryPoliciesHtml(MINISTRY_CATEGORIES[0]);
+    h += '</div>';
+
+    h += '</div>';
+    return h;
+}
+
+function renderMinistryPolicies(category) {
+    var el = document.getElementById('ministry-policy-list');
+    if (el) el.innerHTML = renderMinistryPoliciesHtml(category);
+}
+
+function renderMinistryPoliciesHtml(category) {
+    var policies = (expenditureDetails && expenditureDetails[category]) ? expenditureDetails[category] : [];
+    var h = '';
+
+    if (policies.length === 0) {
+        h += '<div class="ministry-empty">No active policies</div>';
+        h += budgetTotalLine(0);
+        return h;
+    }
+
+    h += '<div class="ministry-policy-list">';
+    var total = 0;
+    for (var i = 0; i < policies.length; i++) {
+        total += policies[i].cost;
+        h += budgetLineItem(policies[i].name, policies[i].cost, null, null);
+    }
+    h += budgetTotalLine(total);
+    h += '</div>';
     return h;
 }
 
