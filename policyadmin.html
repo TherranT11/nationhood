@@ -117,6 +117,21 @@
             <option value="lever">🔄 Lever — Toggle on/off, pays upfront each activation</option>
         </select>
     </div>
+    <div class="form-field">
+        <label>Fiscal Category</label>
+        <select id="b-fiscal-category">
+            <option value="">-- None (no budget impact) --</option>
+            <option value="Government Administration">🏛️ Government Administration</option>
+            <option value="Labor">👷 Labor</option>
+            <option value="Healthcare">🏥 Healthcare</option>
+            <option value="Education">📚 Education</option>
+            <option value="Transportation">🚄 Transportation</option>
+            <option value="Justice">⚖️ Justice</option>
+            <option value="Foreign Ministry">🌐 Foreign Ministry</option>
+            <option value="Finance">💰 Finance</option>
+            <option value="Defense">🛡️ Defense</option>
+        </select>
+    </div>
 </div>
                 </div>
 
@@ -515,6 +530,9 @@ function loadPolicyIntoBuilder(p) {
         wrapper.style.display = 'block';
         newInput.value = lawCatVal;
     }
+
+    // Fiscal category
+    document.getElementById('b-fiscal-category').value = p.fiscal_category || '';
 
     // Ideologies
     const loadedIdeos = p.ideologies || (p.ideology ? [p.ideology] : []);
@@ -973,6 +991,7 @@ async function savePolicy() {
         major_sector: sector,
         minor_sector: lawCategory, // keep for backward compat
         law_category: lawCategory,
+        fiscal_category: document.getElementById('b-fiscal-category').value || null,
         ideology: ideologiesArr[0] || 'Agnostic', // keep for backward compat; column is NOT NULL
         ideologies: ideologiesArr,
         upfront_cost: parseFloat(document.getElementById('b-upfront').value) || 0,
@@ -1012,11 +1031,13 @@ async function savePolicy() {
             // Create nation_policies records for starting nations
             if (startingNations.size > 0 && inserted) {
                 const totalDuration = Math.max(...normalizedEffects.map(e => (e.delay_ticks || 0) + (e.duration_ticks || 12)));
+                const fiscalCat = document.getElementById('b-fiscal-category').value || null;
                 const records = [...startingNations].map(nationId => ({
                     nation_id: nationId,
                     policy_id: inserted.id,
                     major_sector: sector,
                     law_category: lawCategory,
+                    fiscal_category: fiscalCat,
                     status: 'active',
                     activated_at_tick: 0,
                     effects_started: true,
@@ -1073,6 +1094,7 @@ function resetBuilder() {
     document.getElementById('b-law-category-select').innerHTML = '<option value="">-- Select sector first --</option>';
     document.getElementById('b-law-category-new').value = '';
     document.getElementById('new-category-wrapper').style.display = 'none';
+    document.getElementById('b-fiscal-category').value = '';
     selectedIdeologies = new Set();
     isAgnostic = false;
     renderIdeologyChips();
