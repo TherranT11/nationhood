@@ -59,6 +59,7 @@ const MINISTRY_NAMES = {
     labor: 'Ministry of Labor',
     justice: 'Ministry of Justice',
     trade: 'Ministry of Trade',
+    energy: 'Ministry of Energy',
     transportation: 'Ministry of Transportation',
     security: 'Ministry of Security'
 };
@@ -66,7 +67,7 @@ const MINISTRY_NAMES = {
 const MINISTRY_KEYS_CABINET = [
     'prime_minister',
     'interior','foreign','defense','finance',
-    'education','healthcare','labor','justice','trade','transportation'
+    'education','healthcare','labor','justice','trade','energy','transportation'
 ];
 
 const FIRST_NAMES_POOL = [
@@ -1260,6 +1261,7 @@ async function confirmAssign() {
             labor: { title: "Welcome to the Ministry of Labor", sender: "Minister of Labor", body: "Workers' rights, employment policy, and labor market regulation are now your responsibility. You must balance the interests of employers and employees while keeping unemployment low and wages fair. The economy's backbone depends on a healthy labor force." },
             justice: { title: "Welcome to the Ministry of Justice", sender: "Minister of Justice", body: "The rule of law is now your charge. You oversee the courts, law enforcement policy, and the criminal justice system. Judicial independence, crime reduction, and civil liberties must be balanced carefully. Justice must be both firm and fair." },
             trade: { title: "Welcome to the Ministry of Trade", sender: "Minister of Trade", body: "International commerce, trade agreements, tariff policy, and economic partnerships are now your responsibility. You must negotiate favorable terms for your nation while maintaining productive relationships with trading partners. Every deal shapes the economic landscape for years to come." },
+            energy: { title: "Welcome to the Ministry of Energy", sender: "Minister of Energy", body: "Power generation, renewable energy development, emissions regulation, and environmental policy are now under your authority. The nation depends on reliable, affordable energy — but the planet demands cleaner sources. Balancing economic growth with environmental stewardship will define your tenure." },
             transportation: { title: "Welcome to the Ministry of Transportation", sender: "Minister of Transportation", body: "Roads, railways, ports, and public transit systems are now under your management. Transportation infrastructure drives economic growth and connects communities. Aging systems need maintenance, growing cities need expansion — and budgets are always tight." },
             security: { title: "Welcome to the Ministry of Security", sender: "Minister of Security", body: "National security, intelligence operations, counter-terrorism, and cybersecurity are now your domain. You walk a fine line between protecting citizens and preserving civil liberties. Threats are constant and often invisible — vigilance is your greatest asset." }
         };

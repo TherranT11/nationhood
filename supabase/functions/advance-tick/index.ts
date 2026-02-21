@@ -1152,7 +1152,7 @@ const DIPLOMACY_CONFIG = {
     MOT_JOIN_DEADLINE_TICKS: 1,           // Ticks before negotiations cancel if MoT hasn't joined
 
     // Trade negotiation timing
-    NEGOTIATION_DEFAULT_DURATION: 12,     // ticks until negotiation expires (1 year)
+    NEGOTIATION_DEFAULT_DURATION: 2,      // ticks until negotiation expires
     NEGOTIATION_EXTENSION_TICKS: 12,      // ticks added per extension (1 month)
     NEGOTIATION_MAX_EXTENSIONS: 3,        // max times negotiations can be extended
     TRADE_RATIFICATION_VOTING_TICKS: 4    // ticks for parliament to vote on trade bill
@@ -3110,7 +3110,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                         foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
                         finance: 'Ministry of Finance', education: 'Ministry of Education',
                         healthcare: 'Ministry of Healthcare', labor: 'Ministry of Labor',
-                        justice: 'Ministry of Justice', transportation: 'Ministry of Transportation',
+                        justice: 'Ministry of Justice', trade: 'Ministry of Trade',
+                        energy: 'Ministry of Energy', transportation: 'Ministry of Transportation',
                         security: 'Ministry of Security'
                     };
                     await supabase.from('ministries').update({
@@ -4011,11 +4012,12 @@ const STAT_TO_MINISTRY = {
     // Justice
     corruption: 'justice', judicial_independence: 'justice',
     press_freedom: 'justice', freedom_index: 'justice',
+    // Energy
+    energy_generation: 'energy', renewable_energy_percentage: 'energy',
+    pollution: 'energy', carbon_emissions: 'energy',
     // Transportation
     physical_infrastructure: 'transportation', digital_infrastructure: 'transportation',
     rail_network: 'transportation', urbanization: 'transportation',
-    energy_generation: 'transportation', renewable_energy_percentage: 'transportation',
-    pollution: 'transportation', carbon_emissions: 'transportation',
     // Defense
     terrorism: 'defense', political_violence: 'defense',
     // Trade
@@ -6027,7 +6029,8 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
         foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
         finance: 'Ministry of Finance', education: 'Ministry of Education',
         healthcare: 'Ministry of Healthcare', labor: 'Ministry of Labor',
-        justice: 'Ministry of Justice', transportation: 'Ministry of Transportation',
+        justice: 'Ministry of Justice', trade: 'Ministry of Trade',
+        energy: 'Ministry of Energy', transportation: 'Ministry of Transportation',
         security: 'Ministry of Security'
     }[ministryKey] || ministryKey;
 
