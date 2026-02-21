@@ -326,12 +326,60 @@ function renderHeroBar(nation) {
     h += '<div class="economy-hero-title">ECONOMY OF ' + escapeHtml(nation.name).toUpperCase() + '</div>';
     h += '<div class="economy-hero-stats">';
 
+    // Compute balance (revenue - expenditures) and debt
+    var heroBudget = calculateNationalBudget(nation);
+    var heroExpTotal = 0;
+    if (expenditureData) {
+        for (var ek in expenditureData) heroExpTotal += expenditureData[ek] || 0;
+    }
+    heroExpTotal += heroBudget.debtService || 0;
+    var heroBalance = heroBudget.grossRevenue - heroExpTotal;
+    var heroDebt = Number(nation.debt) || 0;
+
+    h += renderHeroFinancial('Balance', heroBalance, heroBudget.grossRevenue, heroExpTotal);
     h += renderHeroStat('GDP Growth', nation.gdp_growth, 'gdp_growth', false, true);
     h += renderHeroStat('Unemployment', nation.unemployment, 'unemployment', true, false);
     h += renderHeroStat('Inflation', nation.inflation, 'inflation', true, false);
     h += renderHeroStat('Standard of Living', nation.standard_of_living, 'standard_of_living', false, false);
+    h += renderHeroDebt(heroDebt, heroBudget.grossRevenue);
 
     h += '</div>';
+    h += '</div>';
+    return h;
+}
+
+function renderHeroFinancial(label, balance, revenue, expenditures) {
+    var isPositive = balance >= 0;
+    var cls = isPositive ? 'hero-surplus' : 'hero-deficit';
+    var sign = isPositive ? '+' : '';
+
+    var h = '<div class="economy-stat-box economy-stat-financial ' + cls + '">';
+    h += '<div class="economy-stat-label">' + escapeHtml(label) + '</div>';
+    h += '<div class="economy-stat-value ' + cls + '">' + sign + formatBudgetCurrency(balance) + '</div>';
+    h += '<div class="economy-stat-breakdown">';
+    h += '<span class="breakdown-revenue">' + formatBudgetCurrency(revenue) + '</span>';
+    h += '<span class="breakdown-sep">&minus;</span>';
+    h += '<span class="breakdown-expense">' + formatBudgetCurrency(expenditures) + '</span>';
+    h += '</div>';
+    h += '</div>';
+    return h;
+}
+
+function renderHeroDebt(debt, revenue) {
+    var debtToRevenue = revenue > 0 ? (debt / revenue) : 0;
+    var rating, ratingCls;
+    if (debtToRevenue <= 0.5) { rating = 'LOW'; ratingCls = 'rating-excellent'; }
+    else if (debtToRevenue <= 1.5) { rating = 'MODERATE'; ratingCls = 'rating-moderate'; }
+    else if (debtToRevenue <= 3) { rating = 'HIGH'; ratingCls = 'rating-poor'; }
+    else { rating = 'CRITICAL'; ratingCls = 'rating-critical'; }
+
+    var h = '<div class="economy-stat-box economy-stat-debt">';
+    h += '<div class="economy-stat-label">National Debt</div>';
+    h += '<div class="economy-stat-value">' + formatBudgetCurrency(debt) + '</div>';
+    h += '<div class="economy-stat-breakdown">';
+    h += '<span class="breakdown-ratio">' + (debtToRevenue * 100).toFixed(0) + '% of Revenue</span>';
+    h += '</div>';
+    h += '<div class="economy-stat-rating ' + ratingCls + '">' + rating + '</div>';
     h += '</div>';
     return h;
 }
