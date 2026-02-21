@@ -151,15 +151,19 @@ ALTER TABLE trade_negotiations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trade_agreements ENABLE ROW LEVEL SECURITY;
 
 -- Read access for all authenticated users
-CREATE POLICY IF NOT EXISTS "trade_negotiations_read" ON trade_negotiations
+DROP POLICY IF EXISTS "trade_negotiations_read" ON trade_negotiations;
+CREATE POLICY "trade_negotiations_read" ON trade_negotiations
     FOR SELECT TO authenticated USING (true);
 
 -- Write access for all authenticated users (authorization checked in application code)
-CREATE POLICY IF NOT EXISTS "trade_negotiations_write" ON trade_negotiations
+DROP POLICY IF EXISTS "trade_negotiations_write" ON trade_negotiations;
+CREATE POLICY "trade_negotiations_write" ON trade_negotiations
     FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "trade_agreements_read" ON trade_agreements
+DROP POLICY IF EXISTS "trade_agreements_read" ON trade_agreements;
+CREATE POLICY "trade_agreements_read" ON trade_agreements
     FOR SELECT TO authenticated USING (true);
 
-CREATE POLICY IF NOT EXISTS "trade_agreements_write" ON trade_agreements
+DROP POLICY IF EXISTS "trade_agreements_write" ON trade_agreements;
+CREATE POLICY "trade_agreements_write" ON trade_agreements
     FOR ALL TO authenticated USING (true) WITH CHECK (true);
