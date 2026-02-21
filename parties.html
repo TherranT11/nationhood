@@ -19,12 +19,14 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser, loadNationIdeologies, getIdeologyLabel } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 
 let currentFaction = null;
 let currentNation = null;
 let currentShard = null;
+let selectedIdeologyFactionId = null;
+let ideologyAllParties = null;
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 function tickToDate(tick) {
@@ -857,8 +859,15 @@ async function renderParties() {
 
         ${otherPartiesHtml}
 
+        <div id="ideology-container"></div>
+
         </div>
     `;
+
+    // ── Ideology Section ──
+    ideologyAllParties = allParties;
+    selectedIdeologyFactionId = f.id;
+    await renderIdeologySection();
 
     // ── Rally UI ──
     let rallyScreen = 'select'; // 'select' | 'preview' | 'results'
@@ -2017,6 +2026,87 @@ async function renderParties() {
     // Render default fundraiser panel (always visible, like rally/outreach)
     renderFundraiser();
 }
+
+// ── Ideology Section ──
+async function renderIdeologySection() {
+    const container = document.getElementById('ideology-container');
+    if (!container || !currentNation || !ideologyAllParties) return;
+
+    const ideologies = await loadNationIdeologies(_supabase, currentNation.id);
+    const ideoMap = {};
+    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
+
+    // Build party selector buttons — user's party first
+    const sorted = [...ideologyAllParties].sort((a, b) => {
+        if (a.id === currentFaction.id) return -1;
+        if (b.id === currentFaction.id) return 1;
+        return 0;
+    });
+
+    const selectedId = selectedIdeologyFactionId || currentFaction.id;
+    const btnHtml = sorted.map(p => {
+        const isActive = p.id === selectedId;
+        const color = p.party_color || '#666';
+        const star = p.id === currentFaction.id ? ' \u2605' : '';
+        const activeStyle = isActive
+            ? `border-color:${color}; color:${color};`
+            : '';
+        return `<button class="ideology-party-btn${isActive ? ' active' : ''}" data-fid="${p.id}" style="${activeStyle}">${p.abbreviation || p.faction_name}${star}</button>`;
+    }).join('');
+
+    // Build slider axes for selected faction
+    const ideoRow = ideoMap[selectedId] || {};
+    let axesHtml = '';
+    const leanings = [];
+
+    for (const axis of IDEOLOGY_AXES) {
+        const score = ideoRow[axis.key] || 0;
+        const absScore = Math.abs(score);
+        const pct = ((score + 100) / 200) * 100; // -100→0%, 0→50%, +100→100%
+
+        // Determine marker color: blend toward the side it leans
+        const markerColor = score < 0 ? axis.leftColor : score > 0 ? axis.rightColor : '#888';
+
+        axesHtml += `
+            <div class="ideology-axis-row">
+                <span class="ideology-axis-label ideology-axis-label-left" style="color:${axis.leftColor}">${axis.left}</span>
+                <div class="ideology-track">
+                    <div class="ideology-track-center"></div>
+                    <div class="ideology-marker" style="left:${pct}%;background:${markerColor}">
+                        <span class="ideology-marker-value">${absScore}</span>
+                    </div>
+                </div>
+                <span class="ideology-axis-label ideology-axis-label-right" style="color:${axis.rightColor}">${axis.right}</span>
+            </div>`;
+
+        leanings.push(getIdeologyLabel(score, axis));
+    }
+
+    const leaningsHtml = leanings.map(l =>
+        `<span class="ideology-leaning-item">${l}</span>`
+    ).join(' <span style="color:var(--text-muted,#666)">\u00B7</span> ');
+
+    container.innerHTML = `
+        <div class="ideology-section">
+            <div class="ideology-header">Ideology</div>
+            <div class="ideology-party-selector">${btnHtml}</div>
+            <div class="ideology-axes">${axesHtml}</div>
+            <div class="ideology-leanings">${leaningsHtml}</div>
+        </div>`;
+
+    // Bind party selector clicks
+    container.querySelectorAll('.ideology-party-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            selectedIdeologyFactionId = btn.dataset.fid;
+            renderIdeologySection();
+        });
+    });
+}
+
+// Re-render ideology on tick advance
+window.addEventListener('tick-advanced', () => {
+    renderIdeologySection();
+});
 
 initPage('parties', async (state) => {
     const { nation, faction, shard } = state;
