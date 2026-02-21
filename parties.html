@@ -126,14 +126,26 @@ async function renderAutocracyParties(el, f, n) {
 
 async function renderParties() {
     const el = document.getElementById('content-area');
-    const f = currentFaction;
     const n = currentNation;
 
-    if (!f || !n) {
-        console.warn('[parties] Missing faction or nation:', { faction: f, nation: n });
+    if (!currentFaction || !n) {
+        console.warn('[parties] Missing faction or nation:', { faction: currentFaction, nation: n });
         el.innerHTML = '<p style="color:var(--text-muted);text-align:center;margin-top:40px;">No party data available.</p>';
         return;
     }
+
+    // Refresh faction data so AP and funds are up to date
+    const { data: freshFaction } = await _supabase.from('factions')
+        .select('action_points, party_funds, approval_rating, loyalty, seats')
+        .eq('id', currentFaction.id).single();
+    if (freshFaction) {
+        currentFaction.action_points = freshFaction.action_points;
+        currentFaction.party_funds = freshFaction.party_funds;
+        currentFaction.approval_rating = freshFaction.approval_rating;
+        currentFaction.loyalty = freshFaction.loyalty;
+        currentFaction.seats = freshFaction.seats;
+    }
+    const f = currentFaction;
 
     const isAutocracy = isGovernmentAutocracy(n);
 
