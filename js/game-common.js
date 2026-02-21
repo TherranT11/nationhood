@@ -1019,14 +1019,16 @@ export const DIPLOMACY_CONFIG = {
     COVERT_BRIBE_THRESHOLD: 0.60,
 
     // Trade negotiation AP costs
-    PROPOSE_TRADE_NEGOTIATION_AP: 1,      // Ambassador proposes trade negotiations
-    ACCEPT_TRADE_NEGOTIATION_AP: 1,       // Other ambassador accepts
-    JOIN_NEGOTIATION_PM_AP: 2,            // PM party joins negotiation
-    JOIN_NEGOTIATION_FM_AP: 1,            // FM party joins (required)
+    PROPOSE_TRADE_NEGOTIATION_AP: 1,      // Ambassador or MoT proposes trade negotiations
+    ACCEPT_TRADE_NEGOTIATION_AP: 1,       // Other ambassador or MoT accepts
+    JOIN_NEGOTIATION_PM_AP: 2,            // PM/HoG party joins negotiation
+    JOIN_NEGOTIATION_FM_AP: 1,            // FM party joins
+    JOIN_NEGOTIATION_MOT_AP: 2,           // Minister of Trade joins (required)
     HOG_DRAFT_INITIATIVE_AP: 3,           // HoG drafting when no ambassador (penalty)
+    MOT_JOIN_DEADLINE_TICKS: 1,           // Ticks before negotiations cancel if MoT hasn't joined
 
     // Trade negotiation timing
-    NEGOTIATION_DEFAULT_DURATION: 12,     // ticks until negotiation expires (1 year)
+    NEGOTIATION_DEFAULT_DURATION: 2,      // ticks until negotiation expires
     NEGOTIATION_EXTENSION_TICKS: 12,      // ticks added per extension (1 month)
     NEGOTIATION_MAX_EXTENSIONS: 3,        // max times negotiations can be extended
     TRADE_RATIFICATION_VOTING_TICKS: 4    // ticks for parliament to vote on trade bill
@@ -3864,9 +3866,9 @@ for (const key of Object.keys(STAT_DECAY_CONFIG)) {
 export const STAT_TO_MINISTRY = {
     // Finance
     gdp: 'finance', gdp_growth: 'finance', debt: 'finance', debt_growth: 'finance',
-    inflation: 'finance', interest_rates: 'finance', trade_balance: 'finance',
-    currency_strength: 'finance', foreign_investment: 'finance', credit: 'finance',
-    income_tax: 'finance', corporate_tax: 'finance', sales_tax: 'finance', tariffs: 'finance',
+    inflation: 'finance', interest_rates: 'finance',
+    currency_strength: 'finance', credit: 'finance',
+    income_tax: 'finance', corporate_tax: 'finance', sales_tax: 'finance',
     // Healthcare
     healthcare_quality: 'healthcare', healthcare_accessibility: 'healthcare',
     beds_per_100k: 'healthcare', lifespan: 'healthcare', drug_use: 'healthcare',
@@ -3885,15 +3887,19 @@ export const STAT_TO_MINISTRY = {
     // Justice
     corruption: 'justice', judicial_independence: 'justice',
     press_freedom: 'justice', freedom_index: 'justice',
+    // Energy
+    energy_generation: 'energy', renewable_energy_percentage: 'energy',
+    pollution: 'energy', carbon_emissions: 'energy',
     // Transportation
     physical_infrastructure: 'transportation', digital_infrastructure: 'transportation',
     rail_network: 'transportation', urbanization: 'transportation',
-    energy_generation: 'transportation', renewable_energy_percentage: 'transportation',
-    pollution: 'transportation', carbon_emissions: 'transportation',
     // Defense
     terrorism: 'defense', political_violence: 'defense',
+    // Trade
+    trade_balance: 'trade', trade_agreements: 'trade',
+    tariffs: 'trade', foreign_investment: 'trade',
     // Foreign
-    international_reputation: 'foreign', trade_agreements: 'foreign',
+    international_reputation: 'foreign',
     sanctions: 'foreign', emigration: 'foreign',
     // Prime Minister (general governance & quality of life)
     legitimacy: 'prime_minister', efficiency: 'prime_minister', polarization: 'prime_minister',

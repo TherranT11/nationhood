@@ -212,6 +212,45 @@ html { overflow-y: scroll !important; height: auto !important; }
         .add-strike-btn { flex: 1; padding: 12px; background: #ff6600; border: none; border-radius: 6px; color: white; font-weight: bold; cursor: pointer; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; transition: background 0.2s; }
         .add-strike-btn:hover { background: #e55b00; }
 
+        /* Vote status badge (bottom-right of bill area) */
+        .bill-main-wrapper { position: relative; }
+        .vote-status-badge {
+            position: sticky;
+            bottom: 16px;
+            float: right;
+            margin-right: 16px;
+            margin-top: -48px;
+            padding: 8px 18px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            z-index: 10;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+        .vote-status-badge.not-voted {
+            background: #333;
+            color: #aaa;
+            border: 2px solid #555;
+        }
+        .vote-status-badge.voted-yes {
+            background: #1B5E20;
+            color: #4CAF50;
+            border: 2px solid #4CAF50;
+        }
+        .vote-status-badge.voted-no {
+            background: #3a1111;
+            color: #ff4444;
+            border: 2px solid #ff4444;
+        }
+        .vote-status-badge.voted-abstain {
+            background: #2a2a2a;
+            color: #888;
+            border: 2px solid #666;
+        }
+
         /* Early resolution banners */
         .bill-early-resolution { padding: 12px 16px; border-radius: 8px; font-weight: bold; text-align: center; margin-top: 8px; }
         .majority-reached { background: linear-gradient(135deg, #1b3a1b, #0d260d); border: 2px solid #4CAF50; color: #4CAF50; }

@@ -900,6 +900,73 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     return { processed: nationCount, totalVolume: totalGlobalVolume };
 }
 
+/**
+ * Cancel active trade negotiations where Minister of Trade hasn't joined within the deadline.
+ * Both nations' MoT must join within MOT_JOIN_DEADLINE_TICKS of the negotiation becoming 'active'.
+ * If an Ambassador proposed and MoT hasn't joined after the deadline, the negotiation is cancelled.
+ * If the MoT proposed directly (role = 'trade_minister'), that counts as their nation's MoT joining.
+ */
+async function processTradeNegotiationMoTDeadline(supabase: any, currentTick: number) {
+    const deadline = DIPLOMACY_CONFIG.MOT_JOIN_DEADLINE_TICKS;
+    let cancelled = 0;
+
+    // Fetch all 'active' trade negotiations
+    const { data: activeNegs, error } = await supabase
+        .from('trade_negotiations')
+        .select('id, nation_a_id, nation_b_id, participants, opened_at_tick, agreement_name')
+        .eq('status', 'active');
+
+    if (error || !activeNegs) return { cancelled: 0 };
+
+    for (const neg of activeNegs) {
+        const ticksSinceActive = currentTick - (neg.opened_at_tick || 0);
+        if (ticksSinceActive < deadline) continue; // Still within grace period
+
+        const participants = neg.participants || [];
+
+        // Check if MoT has joined for each nation
+        const nationAMoT = participants.some((p: any) => p.nation_id === neg.nation_a_id && p.role === 'trade_minister');
+        const nationBMoT = participants.some((p: any) => p.nation_id === neg.nation_b_id && p.role === 'trade_minister');
+
+        if (nationAMoT && nationBMoT) continue; // Both MoTs present, all good
+
+        // Cancel the negotiation
+        await supabase.from('trade_negotiations').update({
+            status: 'cancelled',
+            concluded_at_tick: currentTick
+        }).eq('id', neg.id);
+
+        // Also cancel the associated diplomatic proposal if still active
+        await supabase.from('diplomatic_proposals')
+            .update({ status: 'rejected' })
+            .eq('proposal_type', 'trade_negotiation')
+            .eq('status', 'active')
+            .or('proposing_nation_id.eq.' + neg.nation_a_id + ',proposing_nation_id.eq.' + neg.nation_b_id)
+            .or('target_nation_id.eq.' + neg.nation_a_id + ',target_nation_id.eq.' + neg.nation_b_id);
+
+        // Fire event for both nations
+        const missingMsg = !nationAMoT && !nationBMoT
+            ? 'Neither nation\'s Minister of Trade joined'
+            : !nationAMoT ? 'Nation A\'s Minister of Trade did not join'
+            : 'Nation B\'s Minister of Trade did not join';
+
+        for (const nationId of [neg.nation_a_id, neg.nation_b_id]) {
+            await supabase.from('event_log').insert({
+                nation_id: nationId,
+                event_name: 'Trade Negotiations Cancelled',
+                category: 'Trade',
+                description_chosen: `Trade negotiations "${neg.agreement_name || 'Unnamed'}" have been cancelled. ${missingMsg} within the required ${deadline} tick deadline.`,
+                fired_at_tick: currentTick
+            });
+        }
+
+        cancelled++;
+        console.log(`[MoT Deadline] Cancelled negotiation ${neg.id} ("${neg.agreement_name}") — MoT not joined after ${deadline} tick(s)`);
+    }
+
+    return { cancelled };
+}
+
 // Canonical government types used by nation state + ministry event template variants.
 const MINISTRY_EVENT_GOV_TYPES = Object.freeze(['Democracy', 'Autocracy', 'Presidential']);
 
@@ -1076,14 +1143,16 @@ const DIPLOMACY_CONFIG = {
     COVERT_BRIBE_THRESHOLD: 0.60,
 
     // Trade negotiation AP costs
-    PROPOSE_TRADE_NEGOTIATION_AP: 1,      // Ambassador proposes trade negotiations
-    ACCEPT_TRADE_NEGOTIATION_AP: 1,       // Other ambassador accepts
+    PROPOSE_TRADE_NEGOTIATION_AP: 1,      // Ambassador or MoT proposes trade negotiations
+    ACCEPT_TRADE_NEGOTIATION_AP: 1,       // Other ambassador or MoT accepts
     JOIN_NEGOTIATION_PM_AP: 2,            // PM party joins negotiation
-    JOIN_NEGOTIATION_FM_AP: 1,            // FM party joins (required)
+    JOIN_NEGOTIATION_FM_AP: 1,            // FM party joins
+    JOIN_NEGOTIATION_MOT_AP: 2,           // Minister of Trade joins (required)
     HOG_DRAFT_INITIATIVE_AP: 3,           // HoG drafting when no ambassador (penalty)
+    MOT_JOIN_DEADLINE_TICKS: 1,           // Ticks before negotiations cancel if MoT hasn't joined
 
     // Trade negotiation timing
-    NEGOTIATION_DEFAULT_DURATION: 12,     // ticks until negotiation expires (1 year)
+    NEGOTIATION_DEFAULT_DURATION: 2,      // ticks until negotiation expires
     NEGOTIATION_EXTENSION_TICKS: 12,      // ticks added per extension (1 month)
     NEGOTIATION_MAX_EXTENSIONS: 3,        // max times negotiations can be extended
     TRADE_RATIFICATION_VOTING_TICKS: 4    // ticks for parliament to vote on trade bill
@@ -3041,7 +3110,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                         foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
                         finance: 'Ministry of Finance', education: 'Ministry of Education',
                         healthcare: 'Ministry of Healthcare', labor: 'Ministry of Labor',
-                        justice: 'Ministry of Justice', transportation: 'Ministry of Transportation',
+                        justice: 'Ministry of Justice', trade: 'Ministry of Trade',
+                        energy: 'Ministry of Energy', transportation: 'Ministry of Transportation',
                         security: 'Ministry of Security'
                     };
                     await supabase.from('ministries').update({
@@ -3921,9 +3991,9 @@ for (const key of Object.keys(STAT_DECAY_CONFIG)) {
 const STAT_TO_MINISTRY = {
     // Finance
     gdp: 'finance', gdp_growth: 'finance', debt: 'finance', debt_growth: 'finance',
-    inflation: 'finance', interest_rates: 'finance', trade_balance: 'finance',
-    currency_strength: 'finance', foreign_investment: 'finance', credit: 'finance',
-    income_tax: 'finance', corporate_tax: 'finance', sales_tax: 'finance', tariffs: 'finance',
+    inflation: 'finance', interest_rates: 'finance',
+    currency_strength: 'finance', credit: 'finance',
+    income_tax: 'finance', corporate_tax: 'finance', sales_tax: 'finance',
     // Healthcare
     healthcare_quality: 'healthcare', healthcare_accessibility: 'healthcare',
     beds_per_100k: 'healthcare', lifespan: 'healthcare', drug_use: 'healthcare',
@@ -3942,15 +4012,19 @@ const STAT_TO_MINISTRY = {
     // Justice
     corruption: 'justice', judicial_independence: 'justice',
     press_freedom: 'justice', freedom_index: 'justice',
+    // Energy
+    energy_generation: 'energy', renewable_energy_percentage: 'energy',
+    pollution: 'energy', carbon_emissions: 'energy',
     // Transportation
     physical_infrastructure: 'transportation', digital_infrastructure: 'transportation',
     rail_network: 'transportation', urbanization: 'transportation',
-    energy_generation: 'transportation', renewable_energy_percentage: 'transportation',
-    pollution: 'transportation', carbon_emissions: 'transportation',
     // Defense
     terrorism: 'defense', political_violence: 'defense',
+    // Trade
+    trade_balance: 'trade', trade_agreements: 'trade',
+    tariffs: 'trade', foreign_investment: 'trade',
     // Foreign
-    international_reputation: 'foreign', trade_agreements: 'foreign',
+    international_reputation: 'foreign',
     sanctions: 'foreign', emigration: 'foreign',
     // Prime Minister (general governance & quality of life)
     legitimacy: 'prime_minister', efficiency: 'prime_minister', polarization: 'prime_minister',
@@ -5955,7 +6029,8 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
         foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
         finance: 'Ministry of Finance', education: 'Ministry of Education',
         healthcare: 'Ministry of Healthcare', labor: 'Ministry of Labor',
-        justice: 'Ministry of Justice', transportation: 'Ministry of Transportation',
+        justice: 'Ministry of Justice', trade: 'Ministry of Trade',
+        energy: 'Ministry of Energy', transportation: 'Ministry of Transportation',
         security: 'Ministry of Security'
     }[ministryKey] || ministryKey;
 
@@ -12176,6 +12251,17 @@ async function advanceTick(supabase) {
         }
     } catch (tradeErr) {
         console.error('[advanceTick] Trade processing failed (non-fatal):', tradeErr);
+    }
+
+    // 3.7 Trade negotiation MoT enforcement — cancel active negotiations where MoT hasn't joined after deadline
+    try {
+        const motResults = await processTradeNegotiationMoTDeadline(supabase, newTick);
+        if (motResults.cancelled > 0) {
+            summary.tradeNegMoTCancelled = motResults.cancelled;
+            console.log(`[advanceTick] Cancelled ${motResults.cancelled} trade negotiation(s) — Minister of Trade did not join within deadline`);
+        }
+    } catch (motErr) {
+        console.error('[advanceTick] MoT deadline processing failed (non-fatal):', motErr);
     }
 
     // 4. Process each nation

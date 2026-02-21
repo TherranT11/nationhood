@@ -1354,12 +1354,22 @@ async function submitCommitteeArticle() {
 }
 
 async function sendToFloor(billId) {
+    const bill = committeeBills.find(b => b.id === billId);
+    // Prompt to rename the bill before sending to floor
+    const newName = prompt('Rename this Bill?', bill?.bill_name || '');
+    if (newName === null) return; // User cancelled
+
     try {
+        const updateFields = { status: 'floor' };
+        const trimmed = newName.trim();
+        if (trimmed && trimmed !== bill?.bill_name) {
+            updateFields.bill_name = trimmed;
+        }
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        await _supabase.from('bills').update({ status: 'floor', voting_ends_tick: (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS }).eq('id', billId);
+        updateFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
+        await _supabase.from('bills').update(updateFields).eq('id', billId);
 
         // Apply dynamic ideology penalty to sponsor
-        const bill = committeeBills.find(b => b.id === billId);
         if (bill && factionIdeology) {
             const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, bill.bill_articles || []);
             if (dynamicPenalty < 0) {

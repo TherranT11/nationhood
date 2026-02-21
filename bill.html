@@ -48,6 +48,7 @@
             </div>
             <div class="sponsor-actions" id="sponsor-actions" style="display: none;"></div>
         </div>
+        <div class="vote-status-badge" id="vote-status-badge" style="display:none;"></div>
     </div>
     <div class="bill-sidebar">
         <div id="sidebar-top"></div>
@@ -490,6 +491,53 @@ function renderBill() {
             header.parentNode.insertBefore(warnDiv, header.nextSibling);
         }
     }
+
+    // Vote status badge (bottom-right corner)
+    renderVoteStatusBadge(bill);
+}
+
+function renderVoteStatusBadge(bill) {
+    const badge = document.getElementById('vote-status-badge');
+    if (!badge || !currentFaction) { if (badge) badge.style.display = 'none'; return; }
+
+    const activeStatuses = ['committee', 'floor'];
+    if (!activeStatuses.includes(bill.status)) {
+        badge.style.display = 'none';
+        return;
+    }
+
+    if (bill.status === 'committee') {
+        const stance = myVote; // 'accept', 'reject', or null
+        if (!stance) {
+            badge.className = 'vote-status-badge not-voted';
+            badge.textContent = 'NOT VOTED';
+        } else if (stance === 'accept') {
+            badge.className = 'vote-status-badge voted-yes';
+            badge.textContent = 'ACCEPTED';
+        } else if (stance === 'reject') {
+            badge.className = 'vote-status-badge voted-no';
+            badge.textContent = 'REJECTED';
+        } else {
+            badge.className = 'vote-status-badge not-voted';
+            badge.textContent = stance.toUpperCase();
+        }
+    } else if (bill.status === 'floor') {
+        if (!myVote) {
+            badge.className = 'vote-status-badge not-voted';
+            badge.textContent = 'NOT VOTED';
+        } else if (myVote === 'yes') {
+            badge.className = 'vote-status-badge voted-yes';
+            badge.textContent = 'VOTED YES';
+        } else if (myVote === 'no') {
+            badge.className = 'vote-status-badge voted-no';
+            badge.textContent = 'VOTED NO';
+        } else if (myVote === 'abstain') {
+            badge.className = 'vote-status-badge voted-abstain';
+            badge.textContent = 'ABSTAINED';
+        }
+    }
+
+    badge.style.display = 'block';
 }
 
 function renderArticles() {
@@ -1097,9 +1145,20 @@ async function enactDecree() {
 async function sendToFloor() {
     if (!currentFaction || currentBill.proposed_by !== currentFaction.id) return;
     if (isNoGovernment) { alert('Legislature is suspended. A new government must be formed before bills can advance.'); return; }
+
+    // Prompt to rename the bill before sending to floor
+    const newName = prompt('Rename this Bill?', currentBill.bill_name || '');
+    if (newName === null) return; // User cancelled
+
     try {
+        const updateFields = { status: 'floor' };
+        const trimmed = newName.trim();
+        if (trimmed && trimmed !== currentBill.bill_name) {
+            updateFields.bill_name = trimmed;
+        }
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const { error } = await _supabase.from('bills').update({ status: 'floor', voting_ends_tick: (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS }).eq('id', billId);
+        updateFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
+        const { error } = await _supabase.from('bills').update(updateFields).eq('id', billId);
         if (error) throw error;
 
         // Apply dynamic ideology penalty to sponsor (replaces static penalty)
