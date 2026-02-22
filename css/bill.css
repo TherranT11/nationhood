@@ -485,6 +485,39 @@ html { overflow-y: scroll !important; height: auto !important; }
         .budget-policy-line:last-child { border-bottom: none; }
         .budget-policy-name { color: #ccc; }
         .budget-policy-cost { color: #aaa; font-weight: bold; }
+
+        /* Per-line-item budget display */
+        .budget-line-item {
+            padding: 10px 14px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        .budget-line-item:last-of-type { border-bottom: none; }
+        .budget-line-name {
+            color: #ccc;
+            font-size: 0.85rem;
+            margin-bottom: 6px;
+        }
+        .budget-line-stats {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .budget-line-stat {
+            font-size: 0.78rem;
+            color: #bbb;
+        }
+        .budget-line-stat-label {
+            color: #777;
+            font-size: 0.68rem;
+            font-weight: bold;
+            letter-spacing: 0.04em;
+            margin-right: 4px;
+        }
+        .budget-line-pct {
+            font-size: 0.78rem;
+            font-weight: bold;
+            margin-left: auto;
+        }
         .budget-sub-total {
             display: flex;
             justify-content: space-between;
