@@ -214,6 +214,7 @@ let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
 let factionIdeology = null; // Dynamic ideology scores for current player
 let isNoGovernment = false;
 let coalitionPartyIds = []; // For budget bill editing permissions
+let coalitionLeadPartyId = null; // PM's party in parliamentary systems
 let budgetAllocations = []; // Budget allocation rows for budget bills
 let budgetItemAllocations = []; // Per-item (institution/policy) allocation rows
 let budgetActiveLaws = [];  // Active laws for computing ministry costs
@@ -250,6 +251,7 @@ initPage('laws', async (state) => {
         const coalition = await fetchActiveCoalition(_supabase, nation.id);
         isNoGovernment = !coalition;
         coalitionPartyIds = coalition?.party_ids || [];
+        coalitionLeadPartyId = coalition?.lead_party_id || null;
     }
     if (!billId) {
         document.getElementById('loading-state').innerHTML = '<div style="text-align:center;color:#ff4444;"><h2>No Bill Selected</h2><p>Please select a bill from the <a href="laws.html" style="color:#ffcc00;">Laws</a> page.</p></div>';
@@ -456,7 +458,7 @@ function renderBill() {
         const isBudgetBill = bill.bill_type === 'budget';
         const isHeadOfGov = isAutocracy ? isHeadFaction
             : isPresidential ? (presidentFactionId && currentFaction?.id === presidentFactionId)
-            : (budgetNation?.ruling_faction_id && currentFaction?.id === budgetNation?.ruling_faction_id);
+            : (coalitionLeadPartyId && currentFaction?.id === coalitionLeadPartyId);
         const canActOnBill = isSponsor || (isBudgetBill && isHeadOfGov);
         if (isAutocracy) {
             if (isHeadFaction || isSponsor) {
@@ -1124,7 +1126,7 @@ async function sendToFloor() {
     const isBudgetHeadOfGov = currentBill.bill_type === 'budget' && (
         isAutocracy ? isHeadFaction
         : isPresidential ? (presidentFactionId && currentFaction?.id === presidentFactionId)
-        : (budgetNation?.ruling_faction_id && currentFaction?.id === budgetNation?.ruling_faction_id)
+        : (coalitionLeadPartyId && currentFaction?.id === coalitionLeadPartyId)
     );
     if (!currentFaction || (currentBill.proposed_by !== currentFaction.id && !isBudgetHeadOfGov)) return;
     if (isNoGovernment) { alert('Legislature is suspended. A new government must be formed before bills can advance.'); return; }
@@ -1696,7 +1698,8 @@ async function loadBudgetData(bill) {
 }
 
 function isBudgetEditable() {
-    if (!currentBill || (currentBill.status !== 'floor' && currentBill.status !== 'committee')) return false;
+    // Only editable while in committee — once on the floor, allocations are locked
+    if (!currentBill || currentBill.status !== 'committee') return false;
     if (currentBill.early_resolution_status) return false;
     if (!currentFaction) return false;
     if (currentSeats < 1) return false;
@@ -1774,6 +1777,11 @@ function renderBudgetBillUI() {
     h += '<span>Projected Debt: <strong>' + fmtBudgetCurrency(totals.projectedDebt) + '</strong></span>';
     h += '</div>';
     h += '</div>';
+
+    // Show locked notice when on the floor
+    if (currentBill.status === 'floor' && !editable) {
+        h += '<div class="budget-locked-notice">Allocations are locked while the budget bill is on the floor for voting.</div>';
+    }
 
     // === REVENUE SECTION ===
     h += '<div class="budget-section">';
@@ -1886,7 +1894,7 @@ function renderBudgetBillUI() {
     // Retract Budget Bill — only head of government can retract
     const isPMParty = isAutocracy ? isHeadFaction
         : isPresidential ? (presidentFactionId && currentFaction?.id === presidentFactionId)
-        : (budgetNation?.ruling_faction_id && currentFaction?.id === budgetNation.ruling_faction_id);
+        : (coalitionLeadPartyId && currentFaction?.id === coalitionLeadPartyId);
     if (isPMParty && (currentBill.status === 'committee' || currentBill.status === 'floor')) {
         h += '<div class="budget-retract-section">';
         h += '<button class="budget-retract-btn" onclick="retractBudgetBill()">Retract Budget Bill</button>';
@@ -2111,6 +2119,7 @@ function wireBudgetControls() {
     // Institution +/- and fulfill buttons
     document.querySelectorAll('.budget-item-btn').forEach(function(btn) {
         btn.addEventListener('click', async function() {
+            if (!isBudgetEditable()) return; // Guard: no edits once on the floor
             const action = btn.getAttribute('data-action');
             const cat = btn.getAttribute('data-cat');
             const itemId = btn.getAttribute('data-item');
@@ -2186,6 +2195,7 @@ function wireBudgetControls() {
     // Policy CUT/FUND toggle
     document.querySelectorAll('.budget-cut-btn').forEach(function(btn) {
         btn.addEventListener('click', async function() {
+            if (!isBudgetEditable()) return; // Guard: no edits once on the floor
             const cat = btn.getAttribute('data-cat');
             const policyId = btn.getAttribute('data-item');
 
