@@ -554,6 +554,7 @@ let currentFaction = null;
 let isPresidential = false;
 let ministryData = [];
 let budgetAllocations = {};
+let budgetItemAllocations = {};  // { itemId: { allocated, needed } } from budget_item_allocations
 let selectedMinistryKey = null;
 let activeDetailTab = 'institutions';
 let policyUsage = {};     // { action_key: count }
@@ -583,6 +584,20 @@ initPage('ministry-actions', async (state) => {
                     allocated: Number(a.allocation_amount) || 0,
                     needed: Number(a.fulfilled_cost) || 0,
                     discretionary: Number(a.discretionary_amount) || 0
+                };
+            }
+        }
+
+        // Fetch per-institution allocations from budget_item_allocations
+        const { data: itemAllocs } = await _supabase.from('budget_item_allocations')
+            .select('item_id, allocation_amount, needed_amount')
+            .eq('bill_id', currentNation.last_budget_bill_id)
+            .eq('item_type', 'institution');
+        if (itemAllocs) {
+            for (const ia of itemAllocs) {
+                budgetItemAllocations[ia.item_id] = {
+                    allocated: Number(ia.allocation_amount) || 0,
+                    needed: Number(ia.needed_amount) || 0
                 };
             }
         }
@@ -797,17 +812,24 @@ function renderInstitutionsTab(ministryKey, institutions, alloc) {
     }
 
     for (const inst of institutions) {
-        // Calculate this institution's needed cost from population/GDP, or fall back to budget share
-        const instAllocated = alloc.allocated * inst.costShare;
-        let instNeeded;
-        if (inst.baseCostPerCapita) {
-            if (inst.scalingType === 'gdp') {
-                instNeeded = (inst.baseCostPerCapita / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0);
-            } else {
-                instNeeded = inst.baseCostPerCapita * (currentNation.population || 0);
-            }
+        // Use actual per-institution allocations from budget_item_allocations if available
+        const itemAlloc = budgetItemAllocations[inst.id];
+        let instAllocated, instNeeded;
+        if (itemAlloc) {
+            instAllocated = itemAlloc.allocated;
+            instNeeded = itemAlloc.needed;
         } else {
-            instNeeded = alloc.needed * inst.costShare;
+            // Fallback: estimate from ministry-level allocation × costShare
+            instAllocated = alloc.allocated * inst.costShare;
+            if (inst.baseCostPerCapita) {
+                if (inst.scalingType === 'gdp') {
+                    instNeeded = (inst.baseCostPerCapita / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0);
+                } else {
+                    instNeeded = inst.baseCostPerCapita * (currentNation.population || 0);
+                }
+            } else {
+                instNeeded = alloc.needed * inst.costShare;
+            }
         }
         const pct = instNeeded > 0 ? Math.round((instAllocated / instNeeded) * 100) : 0;
         const funding = getFundingLabel(pct);
