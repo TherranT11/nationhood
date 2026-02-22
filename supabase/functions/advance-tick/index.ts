@@ -916,6 +916,7 @@ function initGameConfigForNation(nation) {
 }
 
 const FORMATION_DEADLINE_TICKS = 6; // ticks before snap election when no government
+const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 8 — if two elections are this close, it's a snap cycle
 
 /**
  * Atomic AP deduction via database RPC.
@@ -4750,7 +4751,30 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
     };
 
     // ===== SNAP ELECTION CHECK =====
+    // Doom-loop guard: if the two most recent completed elections happened within
+    // SNAP_COOLDOWN_GAP ticks of each other, the last one was a snap election.
+    // Block further snap elections to prevent an infinite cycle.
+    let snapBlocked = false;
     if (ticksElapsed >= FORMATION_DEADLINE_TICKS) {
+        const { data: recentElections } = await supabase
+            .from('elections')
+            .select('id, election_tick')
+            .eq('nation_id', nation.id)
+            .eq('status', 'completed')
+            .not('results', 'is', null)
+            .order('election_tick', { ascending: false })
+            .limit(2);
+
+        if (recentElections && recentElections.length >= 2) {
+            const gap = recentElections[0].election_tick - recentElections[1].election_tick;
+            if (gap <= SNAP_COOLDOWN_GAP) {
+                snapBlocked = true;
+                console.log(`SNAP ELECTION COOLDOWN for ${nation.name} — last two elections were ${gap} ticks apart (snap cycle detected). Continuing penalties only.`);
+            }
+        }
+    }
+
+    if (ticksElapsed >= FORMATION_DEADLINE_TICKS && !snapBlocked) {
         console.log(`SNAP ELECTION triggered for ${nation.name} — ${ticksElapsed} ticks without government`);
 
         // Get all parties sorted by seats for penalty targeting
@@ -4843,6 +4867,20 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
     nation.stability = newStability;
 
     console.log(`Government vacancy: ${nation.name} tick ${ticksElapsed}/${FORMATION_DEADLINE_TICKS} — all parties -2 approval, nation -1 stability (→ ${newStability})`);
+
+    if (snapBlocked) {
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'SNAP_ELECTION_COOLDOWN',
+            description_used: `Snap election cooldown in ${nation.name}. ${ticksElapsed} ticks without government; previous snap too recent.`,
+            category: 'POLITICAL',
+            effects_applied: { ticks_without_gov: ticksElapsed, snap_blocked: true },
+            fired_at_tick: currentTick
+        }).then(({ error }) => {
+            if (error) console.warn('Snap cooldown event log failed:', error.message);
+        });
+        result.snapBlocked = true;
+    }
 
     return result;
 }
