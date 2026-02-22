@@ -23,6 +23,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
+import { escapeHtml } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, fetchActiveCoalition, runElectionPreview, getPartyAlignment, distributeVotes, allocateSeatsByVotes, dissolveCoalition, generatePMCandidates, rolloverAdministration } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 (function () {
@@ -1082,13 +1083,6 @@ function renderChatMessage(msg) {
             <div class="chat-msg-time">${time}</div>
         </div>`;
 }
-
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-}
-
 
 // ===================================================================
 // REALTIME SUBSCRIPTIONS

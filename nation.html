@@ -32,6 +32,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatNumber, scaleRawToDollars } from './js/common.js';
+import { formatCurrencyShort } from './js/utils.js';
 import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, INVERTED_STATS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
 /**
  * Nation Page - Comprehensive Stats Display
@@ -466,9 +467,9 @@ async function renderNationPage(nation) {
     h += '<div class="overview-grid">';
     h += '<div class="overview-item"><div class="overview-label">Capital</div><div class="overview-value">' + (nation.capital || '—') + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">Government</div><div class="overview-value">' + (isPresidentialRepublic(nation) ? 'Presidential Republic' : (getCanonicalGovernmentType(nation, nation.government_type || '—'))) + '</div></div>';
-    h += '<div class="overview-item"><div class="overview-label">Population</div><div class="overview-value">' + formatPopulation(nation.population) + '</div></div>';
+    h += '<div class="overview-item"><div class="overview-label">Population</div><div class="overview-value">' + formatNumber(nation.population) + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">National Approval</div><div class="overview-value gold">' + (nation.national_approval || 50) + '%</div></div>';
-    h += '<div class="overview-item"><div class="overview-label">GDP</div><div class="overview-value gold">' + formatGDP(scaleRawToDollars(nation.gdp)) + '</div></div>';
+    h += '<div class="overview-item"><div class="overview-label">GDP</div><div class="overview-value gold">' + formatCurrencyShort(scaleRawToDollars(nation.gdp)) + '</div></div>';
     h += '</div></div>';
 
     // Revolution banner (above crises)
@@ -721,26 +722,6 @@ function renderStatBox(name, statKey, value, description, format, inverted, disp
     '</div>';
 }
 
-function formatPopulation(pop) {
-    if (!pop) return 'N/A';
-    return Number(pop).toLocaleString();
-}
-
-function formatCurrencyShort(val) {
-    if (val == null) return 'N/A';
-    val = Number(val);
-    var sign = val < 0 ? '-' : '';
-    var abs = Math.abs(val);
-    if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(1) + ' Trillion';
-    if (abs >= 1e9)  return sign + '$' + (abs / 1e9).toFixed(1) + ' Billion';
-    if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(1) + ' Million';
-    return sign + '$' + abs.toLocaleString();
-}
-
-function formatGDP(gdp) {
-    if (!gdp) return 'N/A';
-    return formatCurrencyShort(gdp);
-}
 </script>
 
 </body>

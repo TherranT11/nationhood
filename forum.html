@@ -48,6 +48,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber, scaleRawToDollars } from './js/common.js';
+import { escapeHtml, truncate } from './js/utils.js';
 
 /**
  * Forum Page
@@ -802,18 +803,6 @@ window.toggleInternal = async function(threadId, isInternal) {
         alert('Failed to update: ' + error.message);
     }
 };
-
-// ===== UTILITIES =====
-
-function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function truncate(str, max) {
-    if (!str) return '';
-    return str.length > max ? str.slice(0, max) + '...' : str;
-}
 
 // ===== ROUTER =====
 
