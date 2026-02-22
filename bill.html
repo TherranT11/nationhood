@@ -215,6 +215,7 @@ let factionIdeology = null; // Dynamic ideology scores for current player
 let isNoGovernment = false;
 let coalitionPartyIds = []; // For budget bill editing permissions
 let budgetAllocations = []; // Budget allocation rows for budget bills
+let budgetItemAllocations = []; // Per-item (institution/policy) allocation rows
 let budgetActiveLaws = [];  // Active laws for computing ministry costs
 let budgetNation = null;    // Full nation data for budget calculations
 let budgetTradeTariffRevenue = null; // Trade engine tariff revenue for budget display
@@ -1189,6 +1190,7 @@ async function retractBill() {
 async function retractBudgetBill() {
     if (!confirm('Retract this budget bill? This cannot be undone.')) return;
     try {
+        await _supabase.from('budget_item_allocations').delete().eq('bill_id', billId);
         await _supabase.from('budget_allocations').delete().eq('bill_id', billId);
         await _supabase.from('bill_comments').delete().eq('bill_id', billId);
         await _supabase.from('bill_amendment_requests').delete().eq('bill_id', billId);
@@ -1673,8 +1675,13 @@ async function loadBudgetData(bill) {
 
     // Load institution config for cost breakdown
     const { data: instRows } = await _supabase.from('ministry_institution_config')
-        .select('ministry_key, institution_name, base_cost_per_capita, cost_share');
+        .select('id, ministry_key, institution_name, base_cost_per_capita, cost_share');
     budgetInstitutions = instRows || [];
+
+    // Load per-item allocations
+    const { data: itemAllocs } = await _supabase.from('budget_item_allocations')
+        .select('*').eq('bill_id', bill.id);
+    budgetItemAllocations = itemAllocs || [];
 }
 
 function isBudgetEditable() {
@@ -1698,8 +1705,15 @@ function getBudgetTotals() {
     const available = budget.grossRevenue + reserves - budget.debtService;
 
     let totalSpending = 0;
-    for (const alloc of budgetAllocations) {
-        totalSpending += Number(alloc.allocation_amount || 0);
+    const hasAnyItems = budgetItemAllocations.length > 0;
+    if (hasAnyItems) {
+        for (const cat of FISCAL_CATEGORIES) {
+            totalSpending += computeMinistryAllocTotal(cat);
+        }
+    } else {
+        for (const alloc of budgetAllocations) {
+            totalSpending += Number(alloc.allocation_amount || 0);
+        }
     }
 
     const gap = available - totalSpending;
@@ -1797,8 +1811,8 @@ function renderBudgetBillUI() {
     h += '</span></div>';
     h += '<div class="budget-ministry-tabs" id="budget-ministry-tabs">';
     for (const cat of FISCAL_CATEGORIES) {
-        const alloc = budgetAllocations.find(a => a.fiscal_category === cat);
-        const allocAmt = Number(alloc?.allocation_amount || 0);
+        const hasItems = budgetItemAllocations.some(ia => ia.fiscal_category === cat);
+        const allocAmt = hasItems ? computeMinistryAllocTotal(cat) : Number(budgetAllocations.find(a => a.fiscal_category === cat)?.allocation_amount || 0);
         // Compute live needed cost
         const catPolicies = computeMinistryPolicyCost(budgetActiveLaws, cat, budgetNation);
         const catInstitutions = computeMinistryInstitutionCost(budgetInstitutions, cat, budgetNation);
@@ -1897,19 +1911,55 @@ function budgetRevLine(label, value, isBold, isNegative) {
         '</div>';
 }
 
+// Helper: compute ministry total from per-item allocations
+function computeMinistryAllocTotal(category) {
+    const alloc = budgetAllocations.find(a => a.fiscal_category === category);
+    const ministryPolicies = computeMinistryPolicyCost(budgetActiveLaws, category, budgetNation);
+    const ministryInstitutions = computeMinistryInstitutionCost(budgetInstitutions, category, budgetNation);
+    const itemAllocs = budgetItemAllocations.filter(ia => ia.fiscal_category === category);
+
+    let total = 0;
+
+    // Sum institution allocations
+    for (const inst of ministryInstitutions.institutions) {
+        const ia = itemAllocs.find(i => i.item_type === 'institution' && i.item_id === inst.id);
+        total += ia ? Number(ia.allocation_amount) : inst.cost;
+    }
+
+    // Sum non-cut policy costs
+    for (const p of ministryPolicies.policies) {
+        const ia = itemAllocs.find(i => i.item_type === 'policy' && i.item_id === p.policy_id);
+        if (!(ia && ia.is_cut)) total += p.cost;
+    }
+
+    // Add discretionary
+    total += Number(alloc?.discretionary_amount || 0);
+
+    return total;
+}
+
 function renderBudgetMinistryDetail(category, editable) {
     const alloc = budgetAllocations.find(a => a.fiscal_category === category);
-    const allocAmt = Number(alloc?.allocation_amount || 0);
+    const discretionary = Number(alloc?.discretionary_amount || 0);
 
     // Compute live costs for this ministry
     const ministryPolicies = computeMinistryPolicyCost(budgetActiveLaws, category, budgetNation);
     const ministryInstitutions = computeMinistryInstitutionCost(budgetInstitutions, category, budgetNation);
     const liveTotalCost = ministryPolicies.total + ministryInstitutions.total;
 
+    // Get per-item allocations for this ministry
+    const itemAllocs = budgetItemAllocations.filter(ia => ia.fiscal_category === category);
+    function getItemAlloc(type, id) {
+        return itemAllocs.find(ia => ia.item_type === type && ia.item_id === id);
+    }
+
+    // Compute actual total budgeted from items
+    const allocAmt = computeMinistryAllocTotal(category);
+
     let h = '';
 
     // Allocation header with BUDGETED / NEEDED / Percentage
-    const detailPctFunded = liveTotalCost > 0 ? Math.round((allocAmt / liveTotalCost) * 100) : 100;
+    const detailPctFunded = liveTotalCost > 0 ? Math.round((allocAmt / liveTotalCost) * 100) : (allocAmt > 0 ? 999 : 100);
     const detailPctClass = detailPctFunded >= 100 ? 'funded-full' : detailPctFunded >= 80 ? 'funded-ok' : 'funded-low';
     h += '<div class="budget-alloc-summary">';
     h += '<div class="budget-alloc-item">';
@@ -1922,44 +1972,32 @@ function renderBudgetMinistryDetail(category, editable) {
     h += '</div>';
     h += '<div class="budget-alloc-item">';
     h += '<span class="budget-alloc-label">FUNDED</span>';
-    h += '<span class="budget-alloc-value ' + detailPctClass + '">' + detailPctFunded + '%</span>';
+    h += '<span class="budget-alloc-value ' + detailPctClass + '">' + Math.min(detailPctFunded, 999) + '%</span>';
     h += '</div>';
     h += '</div>';
-
-    // Allocation controls
-    if (editable) {
-        h += '<div class="budget-alloc-row">';
-        h += '<div class="budget-alloc-controls">';
-        h += '<button class="budget-ctrl-btn fulfill" data-cat="' + escapeHtml(category) + '" data-action="fulfill" title="Set allocation to match true cost">Fulfill ' + fmtBudgetCurrency(liveTotalCost) + '</button>';
-        h += '<button class="budget-ctrl-btn" data-cat="' + escapeHtml(category) + '" data-action="dec5">-5%</button>';
-        h += '<button class="budget-ctrl-btn" data-cat="' + escapeHtml(category) + '" data-action="dec1">-1%</button>';
-        h += '<button class="budget-ctrl-btn" data-cat="' + escapeHtml(category) + '" data-action="inc1">+1%</button>';
-        h += '<button class="budget-ctrl-btn" data-cat="' + escapeHtml(category) + '" data-action="inc5">+5%</button>';
-        h += '</div>';
-        h += '</div>';
-    }
 
     // Funding status
     if (detailPctFunded < 100) {
         h += '<div class="budget-ministry-status">';
-        h += '<span class="budget-underfunded-note">⚠ Underfunded — effects run at ' + detailPctFunded + '% capacity</span>';
+        h += '<span class="budget-underfunded-note">Underfunded — effects run at ' + detailPctFunded + '% capacity</span>';
         h += '</div>';
     }
 
-    // Proportional funding ratio for per-item budgeted amounts
-    const fundingRatio = liveTotalCost > 0 ? Math.min(1, allocAmt / liveTotalCost) : 1;
-
-    // Institutions section
+    // ===== Institutions section =====
     h += '<div class="budget-sub-section">';
     h += '<div class="budget-sub-header">INSTITUTIONS</div>';
+    let instSubtotal = 0;
     if (ministryInstitutions.institutions.length === 0) {
         h += '<div class="budget-empty-notice">No institutions in this ministry.</div>';
     } else {
         for (const inst of ministryInstitutions.institutions) {
+            const ia = getItemAlloc('institution', inst.id);
             const itemNeeded = inst.cost;
-            const itemBudgeted = itemNeeded * fundingRatio;
+            const itemBudgeted = ia ? Number(ia.allocation_amount) : itemNeeded;
+            instSubtotal += itemBudgeted;
             const itemPct = itemNeeded > 0 ? Math.round((itemBudgeted / itemNeeded) * 100) : 100;
             const itemPctClass = itemPct >= 100 ? 'funded-full' : itemPct >= 80 ? 'funded-ok' : 'funded-low';
+
             h += '<div class="budget-line-item">';
             h += '<div class="budget-line-name">' + escapeHtml(inst.institution_name) + '</div>';
             h += '<div class="budget-line-stats">';
@@ -1967,81 +2005,206 @@ function renderBudgetMinistryDetail(category, editable) {
             h += '<span class="budget-line-stat"><span class="budget-line-stat-label">NEEDED</span> ' + fmtBudgetCurrency(itemNeeded) + '</span>';
             h += '<span class="budget-line-pct ' + itemPctClass + '">' + itemPct + '%</span>';
             h += '</div>';
+            if (editable) {
+                h += '<div class="budget-item-controls">';
+                h += '<button class="budget-item-btn fulfill" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-fulfill">Fulfill</button>';
+                h += '<button class="budget-item-btn" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-dec5">-5%</button>';
+                h += '<button class="budget-item-btn" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-dec1">-1%</button>';
+                h += '<button class="budget-item-btn" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-inc1">+1%</button>';
+                h += '<button class="budget-item-btn" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-inc5">+5%</button>';
+                h += '</div>';
+            }
             h += '</div>';
         }
     }
-    h += '<div class="budget-sub-total"><span>Institution Subtotal</span><span>' + fmtBudgetCurrency(ministryInstitutions.total) + '</span></div>';
+    h += '<div class="budget-sub-total"><span>Institution Subtotal</span><span>' + fmtBudgetCurrency(instSubtotal) + '</span></div>';
     h += '</div>';
 
-    // Policies section
+    // ===== Policies section =====
     h += '<div class="budget-sub-section">';
     h += '<div class="budget-sub-header">POLICIES</div>';
+    let policySubtotal = 0;
     if (ministryPolicies.policies.length === 0) {
         h += '<div class="budget-empty-notice">No active policies in this ministry.</div>';
     } else {
         for (const p of ministryPolicies.policies) {
+            const ia = getItemAlloc('policy', p.policy_id);
+            const isCut = ia ? ia.is_cut : false;
             const itemNeeded = p.cost;
-            const itemBudgeted = itemNeeded * fundingRatio;
-            const itemPct = itemNeeded > 0 ? Math.round((itemBudgeted / itemNeeded) * 100) : 100;
-            const itemPctClass = itemPct >= 100 ? 'funded-full' : itemPct >= 80 ? 'funded-ok' : 'funded-low';
-            h += '<div class="budget-line-item">';
-            h += '<div class="budget-line-name">' + escapeHtml(p.policy_name) + '</div>';
+            if (!isCut) policySubtotal += itemNeeded;
+
+            h += '<div class="budget-line-item' + (isCut ? ' budget-item-cut' : '') + '">';
+            h += '<div class="budget-line-name-row">';
+            h += '<span class="budget-line-name' + (isCut ? ' budget-cut-name' : '') + '">' + escapeHtml(p.policy_name) + '</span>';
+            if (editable) {
+                h += '<button class="budget-cut-btn ' + (isCut ? 'is-cut' : '') + '" data-type="policy" data-item="' + escapeHtml(p.policy_id) + '" data-cat="' + escapeHtml(category) + '" data-action="policy-cut">' + (isCut ? 'FUND' : 'CUT') + '</button>';
+            } else if (isCut) {
+                h += '<span class="budget-cut-badge">CUT</span>';
+            }
+            h += '</div>';
             h += '<div class="budget-line-stats">';
-            h += '<span class="budget-line-stat"><span class="budget-line-stat-label">BUDGETED</span> ' + fmtBudgetCurrency(itemBudgeted) + '</span>';
-            h += '<span class="budget-line-stat"><span class="budget-line-stat-label">NEEDED</span> ' + fmtBudgetCurrency(itemNeeded) + '</span>';
-            h += '<span class="budget-line-pct ' + itemPctClass + '">' + itemPct + '%</span>';
+            if (isCut) {
+                h += '<span class="budget-line-stat budget-cut-text"><span class="budget-line-stat-label">BUDGETED</span> $0</span>';
+                h += '<span class="budget-line-stat budget-cut-text"><span class="budget-line-stat-label">NEEDED</span> ' + fmtBudgetCurrency(itemNeeded) + '</span>';
+                h += '<span class="budget-line-pct funded-low">0%</span>';
+            } else {
+                h += '<span class="budget-line-stat"><span class="budget-line-stat-label">BUDGETED</span> ' + fmtBudgetCurrency(itemNeeded) + '</span>';
+                h += '<span class="budget-line-stat"><span class="budget-line-stat-label">NEEDED</span> ' + fmtBudgetCurrency(itemNeeded) + '</span>';
+                h += '<span class="budget-line-pct funded-full">100%</span>';
+            }
             h += '</div>';
             h += '</div>';
         }
     }
-    h += '<div class="budget-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetCurrency(ministryPolicies.total) + '</span></div>';
+    h += '<div class="budget-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetCurrency(policySubtotal) + '</span></div>';
+    h += '</div>';
+
+    // ===== Discretionary section =====
+    h += '<div class="budget-sub-section">';
+    h += '<div class="budget-sub-header">DISCRETIONARY</div>';
+    h += '<div class="budget-line-item budget-disc-item">';
+    h += '<div class="budget-line-name">Discretionary Funds</div>';
+    h += '<div class="budget-line-stats">';
+    h += '<span class="budget-line-stat"><span class="budget-line-stat-label">ALLOCATED</span> ' + fmtBudgetCurrency(discretionary) + '</span>';
+    h += '</div>';
+    if (editable) {
+        h += '<div class="budget-item-controls">';
+        h += '<button class="budget-item-btn" data-cat="' + escapeHtml(category) + '" data-action="disc-dec5">-5%</button>';
+        h += '<button class="budget-item-btn" data-cat="' + escapeHtml(category) + '" data-action="disc-dec1">-1%</button>';
+        h += '<button class="budget-item-btn" data-cat="' + escapeHtml(category) + '" data-action="disc-inc1">+1%</button>';
+        h += '<button class="budget-item-btn" data-cat="' + escapeHtml(category) + '" data-action="disc-inc5">+5%</button>';
+        h += '</div>';
+    }
+    h += '</div>';
     h += '</div>';
 
     // MINISTRY TOTAL
-    const ministryTotal = ministryInstitutions.total + ministryPolicies.total;
+    const ministryTotal = instSubtotal + policySubtotal + discretionary;
     h += '<div class="budget-ministry-total"><span>MINISTRY TOTAL</span><span>' + fmtBudgetCurrency(ministryTotal) + '</span></div>';
 
     return h;
 }
 
+// Sync ministry allocation_amount from per-item totals
+async function syncMinistryAllocation(category) {
+    const alloc = budgetAllocations.find(a => a.fiscal_category === category);
+    if (!alloc) return;
+    const total = computeMinistryAllocTotal(category);
+    alloc.allocation_amount = total;
+    await _supabase.from('budget_allocations')
+        .update({ allocation_amount: total, updated_at: new Date().toISOString() })
+        .eq('id', alloc.id);
+}
+
 function wireBudgetControls() {
-    document.querySelectorAll('.budget-ctrl-btn').forEach(function(btn) {
+    // Institution +/- and fulfill buttons
+    document.querySelectorAll('.budget-item-btn').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+            const action = btn.getAttribute('data-action');
+            const cat = btn.getAttribute('data-cat');
+            const itemId = btn.getAttribute('data-item');
+            const itemType = btn.getAttribute('data-type');
+
+            if (action.startsWith('inst-')) {
+                // Institution allocation change
+                let ia = budgetItemAllocations.find(i => i.item_type === 'institution' && i.item_id === itemId && i.fiscal_category === cat);
+
+                // Compute needed cost for this institution
+                const ministryInst = computeMinistryInstitutionCost(budgetInstitutions, cat, budgetNation);
+                const instData = ministryInst.institutions.find(i => i.id === itemId);
+                const neededCost = instData ? instData.cost : 0;
+
+                if (!ia) {
+                    // Create row if missing (legacy budget bill)
+                    const instName = instData ? instData.institution_name : itemId;
+                    const newRow = {
+                        bill_id: currentBill.id, nation_id: currentBill.nation_id,
+                        fiscal_category: cat, item_type: 'institution', item_id: itemId,
+                        item_name: instName, allocation_amount: neededCost, needed_amount: neededCost, is_cut: false
+                    };
+                    const { data } = await _supabase.from('budget_item_allocations').insert(newRow).select('*').single();
+                    if (data) { budgetItemAllocations.push(data); ia = data; }
+                    else return;
+                }
+
+                let amt = Number(ia.allocation_amount);
+                const step = neededCost; // base for percentage
+                if (action === 'inst-fulfill') amt = neededCost;
+                else if (action === 'inst-inc1') amt += step * 0.01;
+                else if (action === 'inst-inc5') amt += step * 0.05;
+                else if (action === 'inst-dec1') amt -= step * 0.01;
+                else if (action === 'inst-dec5') amt -= step * 0.05;
+
+                amt = Math.max(0, amt);
+                ia.allocation_amount = amt;
+                await _supabase.from('budget_item_allocations')
+                    .update({ allocation_amount: amt, updated_at: new Date().toISOString() })
+                    .eq('id', ia.id);
+
+                await syncMinistryAllocation(cat);
+                renderBudgetBillUI();
+
+            } else if (action.startsWith('disc-')) {
+                // Discretionary change
+                const alloc = budgetAllocations.find(a => a.fiscal_category === cat);
+                if (!alloc) return;
+
+                const ministryPol = computeMinistryPolicyCost(budgetActiveLaws, cat, budgetNation);
+                const ministryInst = computeMinistryInstitutionCost(budgetInstitutions, cat, budgetNation);
+                const totalNeeded = ministryPol.total + ministryInst.total;
+                const step = totalNeeded > 0 ? totalNeeded : 1000000; // base for percentage
+
+                let disc = Number(alloc.discretionary_amount || 0);
+                if (action === 'disc-inc1') disc += step * 0.01;
+                else if (action === 'disc-inc5') disc += step * 0.05;
+                else if (action === 'disc-dec1') disc -= step * 0.01;
+                else if (action === 'disc-dec5') disc -= step * 0.05;
+
+                disc = Math.max(0, disc);
+                alloc.discretionary_amount = disc;
+                await _supabase.from('budget_allocations')
+                    .update({ discretionary_amount: disc, updated_at: new Date().toISOString() })
+                    .eq('id', alloc.id);
+
+                await syncMinistryAllocation(cat);
+                renderBudgetBillUI();
+            }
+        });
+    });
+
+    // Policy CUT/FUND toggle
+    document.querySelectorAll('.budget-cut-btn').forEach(function(btn) {
         btn.addEventListener('click', async function() {
             const cat = btn.getAttribute('data-cat');
-            const action = btn.getAttribute('data-action');
-            const alloc = budgetAllocations.find(a => a.fiscal_category === cat);
-            if (!alloc) return;
+            const policyId = btn.getAttribute('data-item');
 
-            let currentAmt = Number(alloc.allocation_amount || 0);
-            // Compute live total cost (institutions + policies) for fulfill action
-            const polCost = computeMinistryPolicyCost(budgetActiveLaws, cat, budgetNation);
-            const instCost = computeMinistryInstitutionCost(budgetInstitutions, cat, budgetNation);
-            const liveTotalCost = polCost.total + instCost.total;
+            let ia = budgetItemAllocations.find(i => i.item_type === 'policy' && i.item_id === policyId && i.fiscal_category === cat);
 
-            if (action === 'fulfill') {
-                currentAmt = liveTotalCost;
-            } else if (action === 'inc1') {
-                currentAmt = currentAmt * 1.01;
-            } else if (action === 'inc5') {
-                currentAmt = currentAmt * 1.05;
-            } else if (action === 'dec1') {
-                currentAmt = currentAmt * 0.99;
-            } else if (action === 'dec5') {
-                currentAmt = currentAmt * 0.95;
+            // Compute needed cost
+            const ministryPol = computeMinistryPolicyCost(budgetActiveLaws, cat, budgetNation);
+            const polData = ministryPol.policies.find(p => p.policy_id === policyId);
+            const neededCost = polData ? polData.cost : 0;
+
+            if (!ia) {
+                // Create row if missing (legacy budget bill)
+                const polName = polData ? polData.policy_name : policyId;
+                const newRow = {
+                    bill_id: currentBill.id, nation_id: currentBill.nation_id,
+                    fiscal_category: cat, item_type: 'policy', item_id: policyId,
+                    item_name: polName, allocation_amount: neededCost, needed_amount: neededCost, is_cut: false
+                };
+                const { data } = await _supabase.from('budget_item_allocations').insert(newRow).select('*').single();
+                if (data) { budgetItemAllocations.push(data); ia = data; }
+                else return;
             }
 
-            // Clamp to zero minimum
-            currentAmt = Math.max(0, currentAmt);
+            // Toggle cut
+            ia.is_cut = !ia.is_cut;
+            await _supabase.from('budget_item_allocations')
+                .update({ is_cut: ia.is_cut, updated_at: new Date().toISOString() })
+                .eq('id', ia.id);
 
-            // Update local state
-            alloc.allocation_amount = currentAmt;
-
-            // Save to DB
-            await _supabase.from('budget_allocations')
-                .update({ allocation_amount: currentAmt, updated_at: new Date().toISOString() })
-                .eq('id', alloc.id);
-
-            // Re-render the whole budget UI
+            await syncMinistryAllocation(cat);
             renderBudgetBillUI();
         });
     });

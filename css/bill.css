@@ -495,7 +495,13 @@ html { overflow-y: scroll !important; height: auto !important; }
         .budget-line-name {
             color: #ccc;
             font-size: 0.85rem;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
+        }
+        .budget-line-name-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 4px;
         }
         .budget-line-stats {
             display: flex;
@@ -517,6 +523,87 @@ html { overflow-y: scroll !important; height: auto !important; }
             font-size: 0.78rem;
             font-weight: bold;
             margin-left: auto;
+        }
+
+        /* Per-item controls */
+        .budget-item-controls {
+            display: flex;
+            gap: 4px;
+            margin-top: 6px;
+        }
+        .budget-item-btn {
+            background: #2a2a2a;
+            color: #aaa;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 0.7rem;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .budget-item-btn:hover {
+            background: #3a3a3a;
+            color: #fff;
+        }
+        .budget-item-btn.fulfill {
+            background: #1a3a2a;
+            border-color: #2a6a4a;
+            color: #6c6;
+        }
+        .budget-item-btn.fulfill:hover {
+            background: #2a5a3a;
+        }
+
+        /* Policy CUT/FUND toggle */
+        .budget-cut-btn {
+            background: #3a2a1a;
+            color: #c93;
+            border: 1px solid #664;
+            border-radius: 4px;
+            padding: 2px 10px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            cursor: pointer;
+            letter-spacing: 0.05em;
+            transition: background 0.15s;
+        }
+        .budget-cut-btn:hover {
+            background: #4a3a2a;
+        }
+        .budget-cut-btn.is-cut {
+            background: #1a3a2a;
+            color: #6c6;
+            border-color: #2a6a4a;
+        }
+        .budget-cut-btn.is-cut:hover {
+            background: #2a5a3a;
+        }
+        .budget-cut-badge {
+            background: #5a2a1a;
+            color: #e66;
+            border-radius: 4px;
+            padding: 1px 8px;
+            font-size: 0.65rem;
+            font-weight: bold;
+            letter-spacing: 0.05em;
+        }
+
+        /* Cut item styling */
+        .budget-item-cut {
+            opacity: 0.6;
+        }
+        .budget-cut-name {
+            text-decoration: line-through;
+            color: #888 !important;
+        }
+        .budget-cut-text {
+            color: #666 !important;
+        }
+
+        /* Discretionary */
+        .budget-disc-item {
+            background: #1a1a2a;
+            border-left: 3px solid #446;
         }
         .budget-sub-total {
             display: flex;
