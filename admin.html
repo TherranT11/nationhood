@@ -53,6 +53,7 @@
             <button class="tab" onclick="showTab('inspector')">Inspector</button>
             <button class="tab" onclick="showTab('audit')">Policy Audit</button>
             <button class="tab" onclick="showTab('ministries')">Ministries</button>
+            <button class="tab" onclick="showTab('statconnect')">Stat Connector</button>
         </div>
 
         <!-- ==================== SHARD TAB ==================== -->
@@ -424,6 +425,60 @@
             <div id="ministry-config-body" style="margin-top:12px;">Loading...</div>
         </div>
 
+        <!-- ==================== STAT CONNECTOR TAB ==================== -->
+        <div class="tab-content" id="tab-statconnect">
+            <h2>Stat Connector</h2>
+            <p style="color:#888; margin-bottom:8px;">Define how stats influence each other. When a source stat crosses a threshold, the target stat is nudged each tick. Changes are saved to the database and processed by the tick engine.</p>
+
+            <!-- Overview stats -->
+            <div id="sc-overview" class="sc-overview-grid"></div>
+
+            <!-- Sub-tabs -->
+            <div class="sc-tabs">
+                <button class="sc-tab active" onclick="showScTab('connections')">CONNECTIONS <span id="sc-tab-count" style="color:#555;font-size:0.8em;"></span></button>
+                <button class="sc-tab" onclick="showScTab('cascade')">CASCADE MAP</button>
+                <button class="sc-tab" onclick="showScTab('safety')">LOOP DETECTOR</button>
+            </div>
+
+            <!-- Connections sub-tab -->
+            <div class="sc-subtab active" id="sc-sub-connections">
+                <div class="sc-toolbar">
+                    <div class="sc-filters">
+                        <div class="sc-filter-group">
+                            <label>CATEGORY</label>
+                            <select id="sc-filter-cat" onchange="renderScConnections()">
+                                <option value="all">All Categories</option>
+                                <option value="economic">ECONOMIC</option>
+                                <option value="governance">GOVERNANCE</option>
+                                <option value="stability">STABILITY</option>
+                                <option value="social">SOCIAL &amp; SERVICES</option>
+                            </select>
+                        </div>
+                        <div class="sc-filter-group">
+                            <label>STAT</label>
+                            <select id="sc-filter-stat" onchange="renderScConnections()">
+                                <option value="">All Stats</option>
+                            </select>
+                        </div>
+                        <button class="btn-secondary" style="padding:6px 12px; font-size:0.75rem;" onclick="document.getElementById('sc-filter-cat').value='all'; document.getElementById('sc-filter-stat').value=''; renderScConnections();">CLEAR</button>
+                        <span id="sc-filter-info" style="color:#666; font-size:0.8rem; margin-left:auto;"></span>
+                    </div>
+                    <button class="btn-success" style="padding:8px 16px; font-size:0.8rem; white-space:nowrap;" onclick="addScConnection()">+ NEW CONNECTION</button>
+                </div>
+                <div id="sc-connection-list"></div>
+            </div>
+
+            <!-- Cascade sub-tab -->
+            <div class="sc-subtab" id="sc-sub-cascade">
+                <div id="sc-cascade-body"></div>
+            </div>
+
+            <!-- Safety sub-tab -->
+            <div class="sc-subtab" id="sc-sub-safety">
+                <div id="sc-safety-body"></div>
+            </div>
+        </div>
+
         <!-- Budget Preview Modal -->
         <div id="budget-preview-modal" class="bp-modal-overlay" style="display:none;" onclick="if(event.target===this)closeBudgetPreview()">
             <div class="bp-modal">
@@ -441,7 +496,7 @@
 <script type="module">
 const { createClient } = supabase;
 import { fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPMTraitEffects, calculateNationalBudget, markFactionActive, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runManualElectionByGovernmentType, DONOR_DEMANDS } from './js/game-common.js';
+import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPMTraitEffects, calculateNationalBudget, markFactionActive, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runManualElectionByGovernmentType, DONOR_DEMANDS, formatStatName } from './js/game-common.js';
 const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
     const _supabase = createClient(supabaseUrl, supabaseKey);
@@ -3492,6 +3547,503 @@ function closeBudgetPreview() {
 
 window.previewBudgetBill = previewBudgetBill;
 window.closeBudgetPreview = closeBudgetPreview;
+
+// ==================== STAT CONNECTOR ====================
+
+const SC_STAT_CATEGORIES = {
+    'Economic': ['gdp', 'gdp_growth', 'debt', 'debt_growth', 'inflation', 'interest_rates', 'trade_balance', 'currency_strength', 'foreign_investment', 'credit'],
+    'Taxation': ['income_tax', 'corporate_tax', 'sales_tax', 'tariffs'],
+    'Labor': ['unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength', 'poverty_rate', 'income_inequality'],
+    'Demographics': ['population', 'population_growth', 'birth_rate', 'death_rate', 'median_age', 'ethnic_diversity'],
+    'Healthcare': ['healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use'],
+    'Education': ['literacy', 'higher_education', 'education_accessibility', 'academic_immigration'],
+    'Infrastructure': ['physical_infrastructure', 'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage'],
+    'Resources': ['arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices'],
+    'Environment': ['pollution', 'carbon_emissions'],
+    'Social': ['standard_of_living', 'happiness', 'religious', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate'],
+    'Governance': ['stability', 'legitimacy', 'efficiency', 'corruption', 'press_freedom', 'judicial_independence', 'freedom_index', 'polarization'],
+    'Security': ['civil_unrest', 'terrorism', 'political_violence'],
+    'Immigration': ['immigration', 'illegal_immigration', 'emigration'],
+    'International': ['international_reputation', 'trade_agreements', 'sanctions'],
+};
+const SC_ALL_STATS = Object.values(SC_STAT_CATEGORIES).flat();
+const SC_DELAY_OPTIONS = [
+    { value: 0, label: 'Immediate', desc: 'Same tick', detail: 'Direct mechanical effects. Tax rate changes, institutional outputs.' },
+    { value: 2, label: 'Short', desc: '2 ticks', detail: 'Quick economic responses. Market reactions, employment shifts.' },
+    { value: 5, label: 'Medium', desc: '5 ticks', detail: 'Behavioral changes. Migration, education outcomes, social shifts.' },
+    { value: 8, label: 'Long', desc: '8 ticks', detail: 'Generational effects. Demographics, deep structural changes.' },
+];
+const SC_CAT_COLORS = {
+    economic: '#facc15', governance: '#c084fc', stability: '#ef4444', social: '#60a5fa'
+};
+const SC_CAT_LABELS = {
+    economic: 'ECONOMIC', governance: 'GOVERNANCE', stability: 'STABILITY', social: 'SOCIAL & SERVICES'
+};
+
+let scConnections = [];
+let scNextTempId = 90000;
+
+function escSc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function buildStatOptionGroups() {
+    let h = '<option value="">— select —</option>';
+    for (const [cat, stats] of Object.entries(SC_STAT_CATEGORIES)) {
+        h += '<optgroup label="' + escSc(cat) + '">';
+        for (const s of stats) h += '<option value="' + escSc(s) + '">' + escSc(formatStatName(s)) + '</option>';
+        h += '</optgroup>';
+    }
+    return h;
+}
+
+function populateScFilterStat() {
+    const sel = document.getElementById('sc-filter-stat');
+    sel.innerHTML = '<option value="">All Stats</option>';
+    for (const [cat, stats] of Object.entries(SC_STAT_CATEGORIES)) {
+        const grp = document.createElement('optgroup');
+        grp.label = cat;
+        for (const s of stats) {
+            const opt = document.createElement('option');
+            opt.value = s;
+            opt.textContent = formatStatName(s);
+            grp.appendChild(opt);
+        }
+        sel.appendChild(grp);
+    }
+}
+
+async function loadStatConnections() {
+    const { data, error } = await _supabase.from('stat_connections').select('*').order('created_at', { ascending: true });
+    if (error) { console.error('Failed to load stat connections:', error); return; }
+    scConnections = data || [];
+    populateScFilterStat();
+    renderScOverview();
+    renderScConnections();
+}
+
+function showScTab(tabName) {
+    document.querySelectorAll('.sc-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.sc-subtab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelector('.sc-tab[onclick="showScTab(\'' + tabName + '\')"]').classList.add('active');
+    document.getElementById('sc-sub-' + tabName).classList.add('active');
+    if (tabName === 'cascade') renderScCascade();
+    if (tabName === 'safety') renderScSafety();
+}
+
+// ── Overview stats ──
+function renderScOverview() {
+    var enabled = scConnections.filter(function(c) { return c.enabled; });
+    var sources = new Set(enabled.map(function(c) { return c.source_stat; }));
+    var targets = new Set(enabled.map(function(c) { return c.target_stat; }));
+    var connected = new Set([].concat(Array.from(sources), Array.from(targets)));
+    var orphans = SC_ALL_STATS.filter(function(s) { return !connected.has(s); });
+    var catCounts = {};
+    enabled.forEach(function(c) { catCounts[c.category] = (catCounts[c.category] || 0) + 1; });
+
+    var h = '';
+    h += '<div class="sc-overview-card" style="border-top-color:#ffcc00;">';
+    h += '<div class="sc-overview-label">TOTAL CONNECTIONS</div>';
+    h += '<div class="sc-overview-value">' + enabled.length + '</div>';
+    h += '<div class="sc-overview-sub">' + (scConnections.length - enabled.length) + ' disabled</div></div>';
+
+    h += '<div class="sc-overview-card" style="border-top-color:#4CAF50;">';
+    h += '<div class="sc-overview-label">STATS CONNECTED</div>';
+    h += '<div class="sc-overview-value" style="color:#4CAF50;">' + connected.size + '</div>';
+    h += '<div class="sc-overview-sub">of ' + SC_ALL_STATS.length + ' total</div></div>';
+
+    h += '<div class="sc-overview-card" style="border-top-color:#f97316;">';
+    h += '<div class="sc-overview-label">ORPHAN STATS</div>';
+    h += '<div class="sc-overview-value" style="color:' + (orphans.length > 30 ? '#f97316' : '#facc15') + ';">' + orphans.length + '</div>';
+    h += '<div class="sc-overview-sub">no connections</div></div>';
+
+    h += '<div class="sc-overview-card" style="border-top-color:#c084fc;">';
+    h += '<div class="sc-overview-label">BY CATEGORY</div>';
+    for (var k in catCounts) {
+        h += '<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:2px;">';
+        h += '<span style="color:' + (SC_CAT_COLORS[k] || '#888') + ';">' + (SC_CAT_LABELS[k] || k) + '</span>';
+        h += '<span style="color:#e0e0e0;font-weight:bold;">' + catCounts[k] + '</span></div>';
+    }
+    h += '</div>';
+
+    document.getElementById('sc-overview').innerHTML = h;
+}
+
+// ── Connection list ──
+function renderScConnections() {
+    var filterCat = document.getElementById('sc-filter-cat').value;
+    var filterStat = document.getElementById('sc-filter-stat').value;
+    var filtered = scConnections.filter(function(c) {
+        if (filterCat !== 'all' && c.category !== filterCat) return false;
+        if (filterStat && c.source_stat !== filterStat && c.target_stat !== filterStat) return false;
+        return true;
+    });
+    document.getElementById('sc-tab-count').textContent = scConnections.length;
+    document.getElementById('sc-filter-info').textContent = 'Showing ' + filtered.length + ' of ' + scConnections.length;
+
+    var optionsHtml = buildStatOptionGroups();
+    var h = '';
+    for (var i = 0; i < filtered.length; i++) {
+        h += renderScCard(filtered[i], optionsHtml);
+    }
+    if (filtered.length === 0) {
+        h = '<div class="sc-empty">No connections match current filters.</div>';
+    }
+    document.getElementById('sc-connection-list').innerHTML = h;
+}
+
+function renderScCard(conn, optionsHtml) {
+    var id = conn.id;
+    var isInverse = conn.target_dir === 'down';
+    var srcColor = SC_CAT_COLORS[conn.category] || '#facc15';
+    var tgtColor = isInverse ? '#ef4444' : '#22c55e';
+    var dirArrow = conn.target_dir === 'up' ? '&#9650;' : '&#9660;';
+    var dirClass = conn.target_dir === 'up' ? 'sc-dir-up' : 'sc-dir-down';
+    var condClass = conn.source_dir === 'above' ? 'sc-cond-above' : 'sc-cond-below';
+
+    var h = '<div class="sc-card ' + (conn.enabled ? '' : 'disabled ') + 'cat-' + escSc(conn.category) + '" data-id="' + escSc(id) + '">';
+
+    // Sentence
+    h += '<div class="sc-sentence">';
+    h += '<span class="sc-muted">When </span>';
+    h += '<span class="sc-src" style="color:' + srcColor + ';">' + (conn.source_stat ? escSc(formatStatName(conn.source_stat)) : '___') + '</span>';
+    h += '<span class="sc-muted"> is </span>';
+    h += '<span class="sc-cond ' + condClass + '">' + escSc(conn.source_dir) + ' ' + conn.threshold + '</span>';
+    h += '<span class="sc-muted"> then </span>';
+    h += '<span class="sc-tgt" style="color:' + tgtColor + ';">' + (conn.target_stat ? escSc(formatStatName(conn.target_stat)) : '___') + '</span>';
+    h += '<span class="sc-muted"> moves </span>';
+    h += '<span class="' + dirClass + '">' + dirArrow + ' ' + escSc(conn.target_dir) + '</span>';
+    h += '<span class="sc-muted"> by </span>';
+    h += '<span class="sc-mag">' + conn.magnitude + '</span>';
+    h += '<span class="sc-muted">/tick</span>';
+    if (conn.delay_ticks > 0) {
+        h += '<span class="sc-muted"> after </span>';
+        h += '<span class="sc-delay">' + conn.delay_ticks + ' ticks</span>';
+    }
+    h += '</div>';
+
+    // Editable fields
+    h += '<div class="sc-fields">';
+    h += scSelectField('SOURCE STAT', 'source_stat', id, conn.source_stat, optionsHtml, 180);
+    h += scSimpleSelect('CONDITION', 'source_dir', id, conn.source_dir, [['above','is above'],['below','is below']], 100);
+    h += scNumberField('THRESHOLD', 'threshold', id, conn.threshold, 0, 100, 1, 65);
+    h += '<div class="sc-field-arrow">&rarr;</div>';
+    h += scSelectField('TARGET STAT', 'target_stat', id, conn.target_stat, optionsHtml, 180);
+    h += scSimpleSelect('DIRECTION', 'target_dir', id, conn.target_dir, [['up','&#9650; Increases'],['down','&#9660; Decreases']], 110);
+    h += scNumberField('MAGNITUDE', 'magnitude', id, conn.magnitude, 0.01, 2, 0.05, 65);
+    h += '</div>';
+
+    // Bottom row
+    h += '<div class="sc-bottom">';
+    h += '<div class="sc-bottom-left">';
+    h += scSimpleSelect('DELAY', 'delay_ticks', id, conn.delay_ticks,
+        SC_DELAY_OPTIONS.map(function(d) { return [d.value, d.label + ' (' + d.desc + ')']; }), 160);
+    h += '<div class="sc-field"><label>DAMPENING</label>';
+    h += '<button class="sc-toggle ' + (conn.dampening ? 'on' : '') + '" onclick="toggleScField(\'' + id + '\',\'dampening\')">' + (conn.dampening ? 'ENABLED' : 'DISABLED') + '</button></div>';
+    h += scSimpleSelect('CATEGORY', 'category', id, conn.category,
+        Object.entries(SC_CAT_LABELS).map(function(e) { return [e[0], e[1]]; }), 140);
+    h += '<div class="sc-field"><label>ACTIVE</label>';
+    h += '<button class="sc-toggle ' + (conn.enabled ? 'on' : '') + '" onclick="toggleScField(\'' + id + '\',\'enabled\')">' + (conn.enabled ? 'ON' : 'OFF') + '</button></div>';
+    h += '</div>';
+    h += '<div class="sc-bottom-right">';
+    h += '<button class="sc-btn-dup" onclick="duplicateScConnection(\'' + id + '\')">DUPLICATE</button>';
+    h += '<button class="sc-btn-del" onclick="deleteScConnection(\'' + id + '\')">DELETE</button>';
+    h += '</div>';
+    h += '</div>';
+
+    h += '</div>';
+    return h;
+}
+
+function scSelectField(label, field, id, val, optionsHtml, w) {
+    return '<div class="sc-field" style="width:' + w + 'px;">' +
+        '<label>' + label + '</label>' +
+        '<select onchange="updateScField(\'' + id + '\',\'' + field + '\',this.value)" style="width:100%;">' +
+        optionsHtml.replace('value="' + escSc(val) + '"', 'value="' + escSc(val) + '" selected') +
+        '</select></div>';
+}
+
+function scSimpleSelect(label, field, id, val, options, w) {
+    var h = '<div class="sc-field" style="width:' + w + 'px;"><label>' + label + '</label><select onchange="updateScField(\'' + id + '\',\'' + field + '\',this.value)" style="width:100%;">';
+    for (var i = 0; i < options.length; i++) {
+        var ov = options[i][0], ol = options[i][1];
+        h += '<option value="' + escSc(ov) + '"' + (String(val) === String(ov) ? ' selected' : '') + '>' + ol + '</option>';
+    }
+    h += '</select></div>';
+    return h;
+}
+
+function scNumberField(label, field, id, val, min, max, step, w) {
+    return '<div class="sc-field"><label>' + label + '</label>' +
+        '<input type="number" value="' + val + '" min="' + min + '" max="' + max + '" step="' + step + '"' +
+        ' style="width:' + w + 'px;" onchange="updateScField(\'' + id + '\',\'' + field + '\',parseFloat(this.value)||0)">' +
+        '</div>';
+}
+
+// ── CRUD operations ──
+var _scSaveTimer = null;
+function scheduleScSave(conn) {
+    // Debounce: save 500ms after last edit
+    clearTimeout(_scSaveTimer);
+    _scSaveTimer = setTimeout(function() { saveScConnection(conn); }, 500);
+}
+
+async function saveScConnection(conn) {
+    var payload = {
+        source_stat: conn.source_stat,
+        source_dir: conn.source_dir,
+        threshold: conn.threshold,
+        target_stat: conn.target_stat,
+        target_dir: conn.target_dir,
+        magnitude: conn.magnitude,
+        delay_ticks: conn.delay_ticks,
+        dampening: conn.dampening,
+        category: conn.category,
+        enabled: conn.enabled,
+        updated_at: new Date().toISOString()
+    };
+
+    if (conn._isNew) {
+        var { data, error } = await _supabase.from('stat_connections').insert(payload).select().single();
+        if (error) { console.error('Failed to insert stat connection:', error); return; }
+        // Replace temp id with real id
+        var idx = scConnections.findIndex(function(c) { return c.id === conn.id; });
+        if (idx >= 0) {
+            scConnections[idx] = data;
+        }
+    } else {
+        var { error } = await _supabase.from('stat_connections').update(payload).eq('id', conn.id);
+        if (error) { console.error('Failed to update stat connection:', error); return; }
+    }
+    renderScOverview();
+}
+
+function getScConn(id) {
+    return scConnections.find(function(c) { return c.id === id; });
+}
+
+function updateScField(id, field, value) {
+    var conn = getScConn(id);
+    if (!conn) return;
+    if (field === 'delay_ticks' || field === 'threshold') value = parseFloat(value) || 0;
+    if (field === 'magnitude') value = parseFloat(value) || 0.1;
+    conn[field] = value;
+    scheduleScSave(conn);
+    renderScConnections();
+}
+
+function toggleScField(id, field) {
+    var conn = getScConn(id);
+    if (!conn) return;
+    conn[field] = !conn[field];
+    scheduleScSave(conn);
+    renderScConnections();
+}
+
+async function addScConnection() {
+    var tempId = '_temp_' + (scNextTempId++);
+    var conn = {
+        id: tempId,
+        source_stat: '',
+        source_dir: 'above',
+        threshold: 20,
+        target_stat: '',
+        target_dir: 'up',
+        magnitude: 0.1,
+        delay_ticks: 0,
+        dampening: true,
+        category: 'economic',
+        enabled: false,
+        _isNew: true
+    };
+    scConnections.push(conn);
+    await saveScConnection(conn);
+    renderScOverview();
+    renderScConnections();
+    // Scroll to bottom
+    var list = document.getElementById('sc-connection-list');
+    list.lastElementChild && list.lastElementChild.scrollIntoView({ behavior: 'smooth' });
+}
+
+async function duplicateScConnection(id) {
+    var orig = getScConn(id);
+    if (!orig) return;
+    var tempId = '_temp_' + (scNextTempId++);
+    var conn = {
+        id: tempId,
+        source_stat: orig.source_stat,
+        source_dir: orig.source_dir,
+        threshold: orig.threshold,
+        target_stat: orig.target_stat,
+        target_dir: orig.target_dir,
+        magnitude: orig.magnitude,
+        delay_ticks: orig.delay_ticks,
+        dampening: orig.dampening,
+        category: orig.category,
+        enabled: false,
+        _isNew: true
+    };
+    scConnections.push(conn);
+    await saveScConnection(conn);
+    renderScOverview();
+    renderScConnections();
+}
+
+async function deleteScConnection(id) {
+    if (!confirm('Delete this connection?')) return;
+    var conn = getScConn(id);
+    if (conn && !conn._isNew) {
+        var { error } = await _supabase.from('stat_connections').delete().eq('id', id);
+        if (error) { console.error('Failed to delete stat connection:', error); return; }
+    }
+    scConnections = scConnections.filter(function(c) { return c.id !== id; });
+    renderScOverview();
+    renderScConnections();
+}
+
+// ── Cascade map ──
+function renderScCascade() {
+    var enabled = scConnections.filter(function(c) { return c.enabled; });
+    var statsMap = {};
+    for (var i = 0; i < SC_ALL_STATS.length; i++) {
+        var s = SC_ALL_STATS[i];
+        var outgoing = enabled.filter(function(c) { return c.source_stat === s; });
+        var incoming = enabled.filter(function(c) { return c.target_stat === s; });
+        if (outgoing.length + incoming.length > 0) {
+            statsMap[s] = { name: s, outgoing: outgoing, incoming: incoming, total: outgoing.length + incoming.length };
+        }
+    }
+
+    var sorted = Object.values(statsMap).sort(function(a, b) { return b.total - a.total; }).slice(0, 12);
+    if (sorted.length === 0) {
+        document.getElementById('sc-cascade-body').innerHTML = '<div class="sc-empty">No enabled connections to visualize.</div>';
+        return;
+    }
+
+    var maxTotal = sorted[0].total;
+    var h = '<div style="font-size:0.7rem;color:#666;text-transform:uppercase;letter-spacing:1px;font-weight:bold;margin-bottom:14px;">CASCADE MAP — Most Connected Stats</div>';
+    h += '<div class="sc-cascade-grid">';
+    for (var i = 0; i < sorted.length; i++) {
+        var s = sorted[i];
+        var intensity = s.total / maxTotal;
+        var bg = 'rgba(250,204,21,' + (0.02 + intensity * 0.06).toFixed(3) + ')';
+        var border = 'rgba(250,204,21,' + (0.05 + intensity * 0.12).toFixed(3) + ')';
+        h += '<div class="sc-cascade-card" style="background:' + bg + ';border-color:' + border + ';">';
+        h += '<div class="sc-cascade-name">' + escSc(formatStatName(s.name)) + '</div>';
+        h += '<div class="sc-cascade-counts">';
+        h += '<div><span class="sc-cascade-count-label">OUT </span><span class="sc-cascade-count-val sc-cascade-out">' + s.outgoing.length + '</span></div>';
+        h += '<div><span class="sc-cascade-count-label">IN </span><span class="sc-cascade-count-val sc-cascade-in">' + s.incoming.length + '</span></div>';
+        h += '</div>';
+        for (var j = 0; j < Math.min(s.outgoing.length, 3); j++) {
+            var c = s.outgoing[j];
+            h += '<div class="sc-cascade-link">&rarr; ' + escSc(formatStatName(c.target_stat)) +
+                ' <span style="color:' + (c.target_dir === 'up' ? '#22c55e' : '#ef4444') + ';">' +
+                (c.target_dir === 'up' ? '&#9650;' : '&#9660;') + c.magnitude + '</span></div>';
+        }
+        for (var j = 0; j < Math.min(s.incoming.length, 2); j++) {
+            var c = s.incoming[j];
+            h += '<div class="sc-cascade-link">&larr; ' + escSc(formatStatName(c.source_stat)) +
+                ' <span style="color:' + (c.target_dir === 'up' ? '#22c55e' : '#ef4444') + ';">' +
+                (c.target_dir === 'up' ? '&#9650;' : '&#9660;') + c.magnitude + '</span></div>';
+        }
+        h += '</div>';
+    }
+    h += '</div>';
+    document.getElementById('sc-cascade-body').innerHTML = h;
+}
+
+// ── Loop detector ──
+function renderScSafety() {
+    var enabled = scConnections.filter(function(c) { return c.enabled; });
+
+    // 2-hop loop detection
+    var loops = [];
+    for (var i = 0; i < enabled.length; i++) {
+        for (var j = i + 1; j < enabled.length; j++) {
+            var a = enabled[i], b = enabled[j];
+            if (a.target_stat === b.source_stat && b.target_stat === a.source_stat) {
+                loops.push({ a: a, b: b });
+            }
+        }
+    }
+
+    var h = '';
+    if (loops.length === 0) {
+        h += '<div class="sc-loop-ok">&#10003; No feedback loops detected in current connections.</div>';
+    } else {
+        h += '<div class="sc-loop-warn">';
+        h += '<div class="sc-loop-title">&#9888; FEEDBACK LOOPS DETECTED — ' + loops.length + ' loop' + (loops.length > 1 ? 's' : '') + '</div>';
+        for (var i = 0; i < loops.length; i++) {
+            var lp = loops[i];
+            var reinforcing = (lp.a.target_dir === lp.b.target_dir);
+            h += '<div class="sc-loop-item">';
+            h += '<span class="sc-loop-label">' + escSc(formatStatName(lp.a.source_stat)) + '</span>';
+            h += '<span class="sc-loop-arrow"> ' + (lp.a.target_dir === 'up' ? '&#9650;' : '&#9660;') + ' &rarr; </span>';
+            h += '<span class="sc-loop-label">' + escSc(formatStatName(lp.a.target_stat)) + '</span>';
+            h += '<span class="sc-loop-arrow"> ' + (lp.b.target_dir === 'up' ? '&#9650;' : '&#9660;') + ' &rarr; </span>';
+            h += '<span class="sc-loop-label">' + escSc(formatStatName(lp.b.target_stat)) + '</span>';
+            h += '<span class="sc-loop-cycle">&#8635; CYCLE</span>';
+            if (reinforcing) {
+                h += '<div class="sc-loop-reinforcing">&#9888; REINFORCING — this loop will spiral. Ensure dampening is on for both connections.</div>';
+            } else {
+                h += '<div class="sc-loop-balancing">&#10003; BALANCING — this loop is self-correcting. Generally safe.</div>';
+            }
+            h += '</div>';
+        }
+        h += '<div class="sc-loop-hint">Reinforcing loops cause death spirals or runaway growth. Enable dampening and use delays to slow them. Balancing loops are natural and self-stabilizing.</div>';
+        h += '</div>';
+    }
+
+    // Dampening explainer
+    h += '<div class="sc-explainer">';
+    h += '<div class="sc-explainer-title">HOW DAMPENING WORKS</div>';
+    h += '<div class="sc-explainer-body">';
+    h += '<div class="em">Without dampening:</div>';
+    h += '<div>actual_change = magnitude</div>';
+    h += '<div class="dim">Same effect regardless of current value. Causes runaway spirals.</div>';
+    h += '<div class="em">With dampening (stat moving UP):</div>';
+    h += '<div>actual_change = magnitude &times; (1 - current_value / 100)</div>';
+    h += '<div class="dim">Effect weakens as stat approaches 100. Crime at 10 &rarr; strong push. Crime at 80 &rarr; weak push.</div>';
+    h += '<div class="em">With dampening (stat moving DOWN):</div>';
+    h += '<div>actual_change = magnitude &times; (current_value / 100)</div>';
+    h += '<div class="dim">Effect weakens as stat approaches 0. Can\'t drain what\'s already empty.</div>';
+    h += '</div></div>';
+
+    // Delay explainer
+    h += '<div class="sc-explainer">';
+    h += '<div class="sc-explainer-title">DELAY TIERS</div>';
+    h += '<div class="sc-delay-grid">';
+    for (var i = 0; i < SC_DELAY_OPTIONS.length; i++) {
+        var d = SC_DELAY_OPTIONS[i];
+        h += '<div class="sc-delay-card">';
+        h += '<div class="sc-delay-name">' + escSc(d.label) + '</div>';
+        h += '<div class="sc-delay-ticks">' + escSc(d.desc) + '</div>';
+        h += '<div class="sc-delay-desc">' + escSc(d.detail) + '</div>';
+        h += '</div>';
+    }
+    h += '</div></div>';
+
+    document.getElementById('sc-safety-body').innerHTML = h;
+}
+
+// Load on tab switch
+var _scLoaded = false;
+var _origShowTab = showTab;
+showTab = function(tabName) {
+    _origShowTab(tabName);
+    if (tabName === 'statconnect' && !_scLoaded) {
+        _scLoaded = true;
+        loadStatConnections();
+    }
+};
+window.showTab = showTab;
+
+// Expose to onclick handlers
+window.showScTab = showScTab;
+window.renderScConnections = renderScConnections;
+window.updateScField = updateScField;
+window.toggleScField = toggleScField;
+window.addScConnection = addScConnection;
+window.duplicateScConnection = duplicateScConnection;
+window.deleteScConnection = deleteScConnection;
 </script>
 </body>
 </html>
