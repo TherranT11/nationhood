@@ -232,3 +232,112 @@
             text-transform: uppercase;
         }
         .mc-save-btn:hover { background: #45a049; }
+
+        /* ===== Budget Preview Modal ===== */
+        .bp-modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+            z-index: 9999; display: flex; align-items: center; justify-content: center;
+        }
+        .bp-modal {
+            background: #1a1a1a; border: 1px solid #444; border-radius: 12px;
+            width: 95vw; max-width: 900px; max-height: 90vh;
+            display: flex; flex-direction: column; overflow: hidden;
+        }
+        .bp-modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 16px 24px; border-bottom: 1px solid #333;
+            font-size: 1.1rem; font-weight: bold; color: #ffcc00;
+        }
+        .bp-modal-close {
+            background: none; border: none; color: #888; font-size: 1.8rem;
+            cursor: pointer; line-height: 1; padding: 0 4px;
+        }
+        .bp-modal-close:hover { color: #fff; }
+        .bp-modal-body { overflow-y: auto; padding-bottom: 20px; }
+
+        /* Reuse bill.css budget classes inside the modal */
+        .bp-modal .budget-top-bar {
+            background: linear-gradient(135deg, #1a2a1a, #0d1a0d);
+            border: 2px solid #2E7D32; border-radius: 10px;
+            padding: 14px 20px; margin: 16px 24px;
+            display: flex; flex-direction: column; gap: 6px;
+        }
+        .bp-modal .budget-top-numbers, .bp-modal .budget-top-debt {
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+            font-size: 0.88rem; color: #ccc;
+        }
+        .bp-modal .budget-top-debt { font-size: 0.82rem; color: #999; }
+        .bp-modal .budget-top-sep { color: #555; margin: 0 4px; }
+        .bp-modal .budget-gap-surplus { color: #4CAF50; }
+        .bp-modal .budget-gap-deficit { color: #ff4444; }
+        .bp-modal .budget-section { padding: 0 24px 20px; }
+        .bp-modal .budget-section-header {
+            font-size: 0.8rem; font-weight: bold; text-transform: uppercase;
+            letter-spacing: 1.5px; color: #ffcc00;
+            padding: 16px 0 10px; border-bottom: 1px solid #333; margin-bottom: 12px;
+        }
+        .bp-modal .budget-revenue-grid { display: flex; flex-direction: column; gap: 2px; }
+        .bp-modal .budget-rev-line {
+            display: flex; justify-content: space-between;
+            padding: 6px 0; font-size: 0.88rem; color: #bbb;
+        }
+        .bp-modal .budget-rev-bold { font-weight: bold; color: #fff; }
+        .bp-modal .budget-rev-negative .budget-rev-value { color: #ff6666; }
+        .bp-modal .budget-rev-divider { border-top: 1px solid #444; margin: 4px 0; }
+        .bp-modal .budget-inflation-notice {
+            background: #2a2200; border: 1px solid #ff9800; border-radius: 6px;
+            padding: 10px 14px; margin-top: 12px; font-size: 0.82rem; color: #ff9800;
+        }
+        .bp-modal .budget-ministry-tabs {
+            display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px;
+        }
+        .bp-modal .budget-ministry-tab {
+            display: flex; flex-direction: column; align-items: center; gap: 2px;
+            padding: 8px 12px; background: #222; border: 1px solid #444;
+            border-radius: 6px; color: #aaa; font-size: 0.72rem;
+            cursor: pointer; transition: all 0.2s; min-width: 80px;
+        }
+        .bp-modal .budget-ministry-tab:hover { border-color: #ffcc00; color: #fff; }
+        .bp-modal .budget-ministry-tab.active {
+            border-color: #ffcc00; background: #2a2200; color: #fff;
+        }
+        .bp-modal .budget-tab-name { font-weight: bold; text-align: center; line-height: 1.2; }
+        .bp-modal .budget-tab-amount { color: #ccc; font-size: 0.75rem; }
+        .bp-modal .budget-ministry-status {
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+            padding: 10px 0; font-size: 0.82rem; color: #aaa;
+        }
+        .bp-modal .budget-sub-section {
+            background: #1e1e1e; border: 1px solid #333; border-radius: 8px;
+            margin-top: 12px; overflow: hidden;
+        }
+        .bp-modal .budget-sub-header {
+            display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+            background: #252525; font-size: 0.78rem; font-weight: bold;
+            text-transform: uppercase; letter-spacing: 1px; color: #aaa;
+            border-bottom: 1px solid #333;
+        }
+        .bp-modal .budget-locked-badge {
+            background: #555; color: #999; padding: 2px 8px;
+            border-radius: 3px; font-size: 0.65rem;
+        }
+        .bp-modal .budget-info-badge {
+            background: #1B5E20; color: #4CAF50; padding: 2px 8px;
+            border-radius: 3px; font-size: 0.65rem;
+        }
+        .bp-modal .budget-empty-notice {
+            padding: 14px; text-align: center; color: #666;
+            font-size: 0.82rem; font-style: italic;
+        }
+        .bp-modal .budget-policy-line {
+            display: flex; justify-content: space-between;
+            padding: 8px 14px; font-size: 0.85rem; border-bottom: 1px solid #2a2a2a;
+        }
+        .bp-modal .budget-policy-line:last-child { border-bottom: none; }
+        .bp-modal .budget-policy-name { color: #ccc; }
+        .bp-modal .budget-policy-cost { color: #aaa; font-weight: bold; }
+        .bp-modal .budget-sub-total {
+            display: flex; justify-content: space-between; padding: 10px 14px;
+            font-size: 0.85rem; font-weight: bold; background: #252525;
+            color: #fff; border-top: 1px solid #444;
+        }
