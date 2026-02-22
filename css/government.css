@@ -137,43 +137,39 @@
         .coalition-party-tag .seats { color: var(--green); font-weight: bold; margin-left: 6px; }
         .coalition-divider { color: var(--text-dim); font-size: 1.2rem; padding: 0 4px; display: flex; align-items: center; }
         .ministry-grid {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
             margin-top: 16px;
         }
         .ministry-card {
             background: var(--bg-panel);
             border-radius: 8px;
             padding: 0;
-            border-left: 4px solid var(--accent);
+            border-top: 3px solid var(--accent);
+            border-left: none;
             position: relative;
         }
-        .ministry-card.vacant { border-left-color: var(--text-dim); }
+        .ministry-card.vacant { border-top-color: var(--text-dim); }
         .ministry-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 16px;
+            padding: 10px 12px 4px;
             cursor: pointer;
             user-select: none;
         }
-        .ministry-header:hover { background: rgba(255,255,255,0.03); border-radius: 8px; }
-        .ministry-title { font-size: 0.8rem; font-weight: bold; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0; }
-        .ministry-header-right { font-size: 0.75rem; color: var(--text-dim); display: flex; align-items: center; gap: 8px; }
-        .ministry-header-right .minister-status { color: var(--text-secondary); }
-        .ministry-header-right .minister-status.vacant-label { color: var(--text-dim); font-style: italic; }
-        .ministry-expand-arrow { font-size: 0.6rem; color: var(--text-dim); transition: transform 0.2s; }
-        .ministry-card.expanded .ministry-expand-arrow { transform: rotate(90deg); }
+        .ministry-header:hover { background: rgba(255,255,255,0.03); border-radius: 8px 8px 0 0; }
+        .ministry-title { font-size: 0.68rem; font-weight: bold; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0; }
+        .ministry-header-right { display: none; }
+        .ministry-expand-arrow { display: none; }
+        .ministry-card.expanded .ministry-expand-arrow { display: none; }
         .ministry-body {
-            display: none;
-            padding: 0 16px 14px 16px;
+            display: block;
+            padding: 4px 12px 10px 12px;
         }
         .ministry-card.expanded .ministry-body { display: block; }
-        .minister-name { font-size: 1rem; color: var(--text-primary); font-weight: bold; margin-bottom: 4px; }
-        .minister-details { font-size: 0.8rem; color: var(--text-secondary); }
+        .minister-name { font-size: 0.82rem; color: var(--text-primary); font-weight: bold; margin-bottom: 2px; }
+        .minister-details { font-size: 0.72rem; color: var(--text-secondary); }
         .minister-party { color: var(--green); }
-        .minister-approval { font-size: 0.75rem; margin-top: 4px; color: var(--text-secondary); }
+        .minister-approval { font-size: 0.68rem; margin-top: 4px; color: var(--text-secondary); }
         .minister-approval .high { color: var(--green); font-weight: bold; }
         .minister-approval .mid { color: var(--orange); font-weight: bold; }
         .minister-approval .low { color: var(--red); font-weight: bold; }
@@ -183,11 +179,11 @@
 
         /* Ministry action buttons */
         .ministry-actions {
-            display: flex; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-main);
+            display: flex; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-main);
             flex-wrap: wrap; align-items: center;
         }
         .ministry-btn {
-            padding: 6px 14px; border: none; border-radius: 4px; font-size: 0.75rem;
+            padding: 4px 10px; border: none; border-radius: 4px; font-size: 0.68rem;
             font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;
             transition: all 0.2s; display: inline-flex; align-items: center; gap: 4px;
         }
@@ -425,6 +421,7 @@
         @media (max-width: 768px) {
             .administration-content { grid-template-columns: 1fr; }
             .admin-chat-section { max-height: 260px; }
+            .ministry-grid { grid-template-columns: repeat(2, 1fr); }
             .formation-penalties { grid-template-columns: 1fr; }
             .snap-warning { flex-direction: column; text-align: center; }
             .formation-header { padding: 18px 16px 14px; }
