@@ -652,11 +652,6 @@ function renderPage() {
         h += `<button class="msb-btn${isActive ? ' active' : ''}${isMyMinistry ? ' mine' : ''}" data-key="${key}" onclick="selectMinistry('${key}')">`;
         h += `<span class="msb-icon">${icon}</span>`;
         h += `<span class="msb-label">${label}</span>`;
-        if (pName && isFilled) {
-            h += `<span class="msb-party" style="color:${pColor}">${esc(pName)}</span>`;
-        } else {
-            h += '<span class="msb-party vacant">Vacant</span>';
-        }
         h += dot;
         h += '</button>';
     }
