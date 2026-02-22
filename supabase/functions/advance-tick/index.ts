@@ -1082,10 +1082,10 @@ const DIPLOMACY_CONFIG = {
     JOIN_NEGOTIATION_FM_AP: 1,            // FM party joins
     JOIN_NEGOTIATION_MOT_AP: 2,           // Minister of Trade joins (required)
     HOG_DRAFT_INITIATIVE_AP: 3,           // HoG drafting when no ambassador (penalty)
-    MOT_JOIN_DEADLINE_TICKS: 1,           // Ticks before negotiations cancel if MoT hasn't joined
+    MOT_JOIN_DEADLINE_TICKS: 4,           // Ticks before negotiations cancel if MoT hasn't joined
 
     // Trade negotiation timing
-    NEGOTIATION_DEFAULT_DURATION: 2,      // ticks until negotiation expires
+    NEGOTIATION_DEFAULT_DURATION: 4,      // ticks until negotiation expires
     NEGOTIATION_EXTENSION_TICKS: 12,      // ticks added per extension (1 month)
     NEGOTIATION_MAX_EXTENSIONS: 3,        // max times negotiations can be extended
     TRADE_RATIFICATION_VOTING_TICKS: 4    // ticks for parliament to vote on trade bill
