@@ -930,15 +930,10 @@ export const GOVERNMENT_TYPE_ALIASES = Object.freeze({
     'executive presidency': CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC
 });
 
-export function normalizeGovernmentType(governmentType, fallbackType = CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY) {
-    if (typeof governmentType !== 'string') return fallbackType;
-    const normalized = governmentType.trim().toLowerCase();
-    return GOVERNMENT_TYPE_ALIASES[normalized] || fallbackType;
-}
-
 export function getCanonicalGovernmentType(input, fallbackType = CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY) {
     const govType = typeof input === 'string' ? input : input?.government_type;
-    return normalizeGovernmentType(govType, fallbackType);
+    if (typeof govType !== 'string') return fallbackType;
+    return GOVERNMENT_TYPE_ALIASES[govType.trim().toLowerCase()] || fallbackType;
 }
 
 export function isAutocracy(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.AUTOCRACY; }
@@ -1910,16 +1905,6 @@ export function getFullIdeologyProfile(ideologyRow) {
     });
 }
 
-export function getIdeologySummary(ideologyRow) {
-    const profile = getFullIdeologyProfile(ideologyRow);
-    return profile.map(p => {
-        if (p.label === 'Centrist') {
-            return `Centrist (${p.axisDef.leftLabel}/${p.axisDef.rightLabel})`;
-        }
-        return p.label;
-    }).join(' • ');
-}
-
 
 // ==================== DYNAMIC OPPOSITION PENALTY ====================
 
@@ -2449,34 +2434,6 @@ export async function applyEnactmentApproval(supabase, approvalDeltas) {
 
 // ==================== STATIC IDEOLOGY PENALTY (LEGACY) ====================
 
-export function countOpposedArticles(articles, sponsor) {
-    const ideo1 = (sponsor?.ideology_value_1 || '').toUpperCase();
-    const ideo2 = (sponsor?.ideology_value_2 || '').toUpperCase();
-    const factionIdeos = [ideo1, ideo2].filter(Boolean);
-
-    if (factionIdeos.length === 0) return 0;
-
-    const factionOpposites = new Set(
-        factionIdeos.map(fi => IDEOLOGY_OPPOSITES[fi]).filter(Boolean)
-    );
-
-    let opposed = 0;
-    for (const art of articles) {
-        const p = art.policies || art;
-        if (!p || !p.policy_name) continue;
-
-        const policyIdeos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
-            ? p.ideologies.map(i => i.toUpperCase())
-            : (p.ideology ? [p.ideology.toUpperCase()] : []);
-
-        if (policyIdeos.length === 0) continue;
-
-        const hasOpposite = policyIdeos.some(pi => factionOpposites.has(pi));
-        if (hasOpposite) opposed++;
-    }
-    return opposed;
-}
-
 export function calculateIdeologyPenalty(stage, opposedCount, polarization) {
     if (opposedCount === 0) return 0;
 
@@ -2497,11 +2454,6 @@ export function calculateIdeologyPenalty(stage, opposedCount, polarization) {
     }
 
     return penalty;
-}
-
-export async function applyIdeologyPenalty(supabase, sponsorId, penalty) {
-    if (penalty === 0 || !sponsorId) return;
-    await adjustBlocApproval(supabase, sponsorId, penalty);
 }
 
 
@@ -6667,7 +6619,7 @@ export async function processPartyStandingsJitter(supabase, nation) {
  * @param {number} currentTick - The tick just committed
  */
 export async function calculateThreePillarPreferences(supabase, nation, currentTick) {
-    if (isGovernmentAutocracy(nation)) return;
+    if (isAutocracy(nation)) return;
 
     // ── 1. Load all party factions ──
     const { data: factions } = await supabase
@@ -8263,38 +8215,6 @@ function randInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-/**
- * Select a donor bloc weighted by preference × population.
- * Blocs with preference below 20 are excluded (they won't fund you).
- * Returns the selected bloc object or null if nobody wants to fund you.
- */
-export function selectDonorBloc(blocs, approvalRows) {
-    const approvalByBloc = {};
-    for (const row of approvalRows) approvalByBloc[row.bloc_id] = row;
-
-    const eligible = [];
-    let totalWeight = 0;
-
-    for (const bloc of blocs) {
-        const approval = approvalByBloc[bloc.id];
-        if (!approval) continue;
-        const pref = Number(approval.preference_score ?? 0);
-        if (pref < 20) continue; // bloc that hates you won't fund you
-        const weight = pref * (bloc.population_weight || 0);
-        if (weight <= 0) continue;
-        eligible.push({ bloc, approval, weight });
-        totalWeight += weight;
-    }
-
-    if (eligible.length === 0) return null;
-
-    let roll = Math.random() * totalWeight;
-    for (const entry of eligible) {
-        roll -= entry.weight;
-        if (roll <= 0) return entry.bloc;
-    }
-    return eligible[eligible.length - 1].bloc;
-}
 
 /**
  * Generate a fundraiser offer for a given bloc.
@@ -9190,7 +9110,7 @@ export async function processLoyaltyTick(supabase, nation) {
     const rulingId = nation.ruling_faction_id;
     if (!rulingId) return;
 
-    const isAutocracy = isGovernmentAutocracy(nation);
+    const isAutocracy = isAutocracy(nation);
 
     const { data: factions } = await supabase
         .from('factions')

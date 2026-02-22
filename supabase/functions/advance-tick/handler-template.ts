@@ -567,7 +567,7 @@ async function advanceTick(supabase) {
         await processIdeologyShifts(supabase, nation.id, resolutions, newTick);
 
         // Purge approval decay (autocracy scapegoat mechanic)
-        if (isGovernmentAutocracy(nation)) {
+        if (isAutocracy(nation)) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
@@ -581,12 +581,12 @@ async function advanceTick(supabase) {
         await calculateThreePillarPreferences(supabase, nation, newTick);
 
         // Faction loyalty (autocracy)
-        if (isGovernmentAutocracy(nation)) {
+        if (isAutocracy(nation)) {
             await processLoyaltyTick(supabase, nation);
         }
 
         // Auto-resolve shakeups that are 1+ ticks old
-        if (isGovernmentAutocracy(nation)) {
+        if (isAutocracy(nation)) {
             await autoResolveStaleShakeups(supabase, nation.id, newTick);
         }
 
@@ -611,6 +611,13 @@ async function advanceTick(supabase) {
         // Random events
         const eventResults = await processEvents(supabase, nation, newTick);
         if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
+
+        // Process active fundraiser promises
+        const promiseResults = await processPromiseTick(supabase, nation, newTick);
+        if (promiseResults.length > 0) {
+            summary.promises = summary.promises || [];
+            summary.promises.push({ nation: nation.name, promises: promiseResults });
+        }
 
         // Ministry inbox events (fire from templates + expire overdue)
         const ministryEventResults = await processMinistryInboxEvents(supabase, freshNation || nation, newTick);

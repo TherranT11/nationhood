@@ -12,12 +12,12 @@ const imports = {
   'world.html': [
     `import { _supabase } from './js/supabase-client.js';`,
     `import { initPage, formatNumber } from './js/common.js';`,
-    `import { isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, loadSeats, CANONICAL_GOVERNMENT_TYPES, GAME_CONFIG } from './js/game-common.js';`,
+    `import { isGovernmentAutocracy, isGovernmentPresidential, getCanonicalGovernmentType, loadSeats, CANONICAL_GOVERNMENT_TYPES, GAME_CONFIG } from './js/game-common.js';`,
   ],
   'nation.html': [
     `import { _supabase } from './js/supabase-client.js';`,
     `import { initPage, qCache, qCacheSet, formatNumber, scaleRawToDollars } from './js/common.js';`,
-    `import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, INVERTED_STATS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER } from './js/game-common.js';`,
+    `import { CANONICAL_GOVERNMENT_TYPES, isGovernmentAutocracy, isGovernmentPresidential, getCanonicalGovernmentType, INVERTED_STATS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER } from './js/game-common.js';`,
   ],
   'government.html': [
     `import { _supabase } from './js/supabase-client.js';`,
