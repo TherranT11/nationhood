@@ -12,10 +12,10 @@ Nationhood is an ambitious browser-based political simulation game with ~150 fil
 
 | Severity | Count |
 |----------|-------|
-| Critical | 3 |
-| High | 2 |
-| Medium | 5 |
-| Low | 4 |
+| Critical | 4 |
+| High | 3 |
+| Medium | 8 |
+| Low | 6 |
 
 ---
 
@@ -308,6 +308,121 @@ TypeScript checking is disabled entirely. Since the file is auto-generated from 
 
 ---
 
+## SQL Schema & Database Issues
+
+### 15. Missing Foreign Key on `active_crises.nation_id` (Critical)
+
+**File:** `sql/create_crisis_tables.sql:56-60`
+
+```sql
+CREATE TABLE IF NOT EXISTS active_crises (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    crisis_id       UUID NOT NULL REFERENCES crisis_templates(id) ON DELETE CASCADE,
+    nation_id       UUID NOT NULL,  -- NO FOREIGN KEY to nations(id)
+    started_at_tick INT NOT NULL,
+    ...
+);
+```
+
+**Impact:** If a nation is deleted, orphaned crisis records persist with no cascading delete and no referential integrity. Queries joining on non-existent nations will silently return incomplete results.
+
+**Recommendation:** Add `REFERENCES nations(id) ON DELETE CASCADE` to the `nation_id` column.
+
+---
+
+### 16. Race Condition in Election Seat Sync (High)
+
+**File:** `sql/run_election.sql:261-267`
+
+The election function updates faction seats without row-level locking:
+
+```sql
+FOR v_party IN SELECT * FROM jsonb_array_elements(v_seat_rows)
+LOOP
+    UPDATE factions
+    SET seats = (v_party.value->>'seats')::INT
+    WHERE id = (v_party.value->>'party_id')::UUID;
+END LOOP;
+```
+
+Neither `run_election.sql` nor `run_presidential_election.sql` use `SELECT ... FOR UPDATE` when reading voter and faction data that determines seat allocation. If two election processes run concurrently for the same nation, the second UPDATE would overwrite the first (lost update).
+
+**Recommendation:** Wrap the function body in a transaction with `SELECT ... FOR UPDATE` on factions, or add mutual exclusion via advisory locks.
+
+---
+
+### 17. Ministry Institution Config Allows Non-Admin Writes (Medium)
+
+**File:** `sql/migrations/20260222_ministry_institution_config.sql:63-66`
+
+```sql
+CREATE POLICY "Anyone can update ministry_institution_config" ON ministry_institution_config
+    FOR UPDATE USING (true);
+CREATE POLICY "Anyone can insert ministry_institution_config" ON ministry_institution_config
+    FOR INSERT WITH CHECK (true);
+```
+
+This table stores shared game configuration (base costs, stat mappings) labeled as "admin-editable," but the RLS policy allows any authenticated user to modify it.
+
+**Recommendation:** Restrict UPDATE/INSERT to admin users only.
+
+---
+
+### 18. `auth.uid() = faction_id` Assumption (Medium)
+
+**Files:** `sql/migrations/20260222_create_admin_chat.sql:23`, `sql/migrations/20260219_create_forum_tables.sql:124-140`
+
+Multiple RLS policies assume `auth.uid()` (Supabase JWT user ID) directly equals `faction_id`:
+
+```sql
+CREATE POLICY "admin_chat_insert" ON admin_chat FOR INSERT TO authenticated
+    WITH CHECK (faction_id = auth.uid());
+```
+
+This 1:1 mapping assumption means:
+- A user can never control multiple factions
+- If the mapping changes, all policies break silently
+- No validation that the auth user actually owns the referenced faction
+
+**Recommendation:** Create a `user_faction_mapping` table and validate the relationship in policies, or document the 1:1 constraint explicitly as a design invariant.
+
+---
+
+### 19. Forum Thread Delete Race Condition (Medium)
+
+**File:** `sql/migrations/20260219_create_forum_tables.sql:131-132`
+
+```sql
+CREATE POLICY "forum_threads_delete" ON forum_threads FOR DELETE TO authenticated
+    USING (faction_id = auth.uid() AND reply_count = 0);
+```
+
+The `reply_count = 0` check in the USING clause is evaluated at policy evaluation time. A reply could be added between policy evaluation and the actual DELETE execution, resulting in a thread being deleted despite having replies.
+
+**Recommendation:** Use a trigger-based check instead of relying on the USING clause for this invariant.
+
+---
+
+### 20. Non-Idempotent Forum Policy Migrations (Low)
+
+**File:** `sql/migrations/20260219_create_forum_tables.sql:117-140`
+
+All `CREATE POLICY` statements use bare `CREATE POLICY` without `IF NOT EXISTS` guards. Re-running this migration will fail with "policy already exists."
+
+**Recommendation:** Use `DROP POLICY IF EXISTS ... ; CREATE POLICY ...` pattern for safe re-runs.
+
+---
+
+### 21. Missing Index on `trade_negotiations.initiating_proposal_id` (Low)
+
+**File:** `sql/migrations/20260221_trade_agreements.sql:75-80`
+
+The migration creates indexes on `(nation_a_id, nation_b_id)`, `status`, and `expires_at_tick`, but not on the `initiating_proposal_id` FK column. Queries joining/filtering on this column will be O(n).
+
+**Recommendation:** Add `CREATE INDEX IF NOT EXISTS idx_trade_negotiations_proposal ON trade_negotiations(initiating_proposal_id);`
+
+---
+
 ## Architecture Notes (Non-Issues)
 
 These are observations, not problems:
@@ -323,9 +438,9 @@ These are observations, not problems:
 
 ## Recommended Priority
 
-1. **Immediately:** Fix RLS policies (#1) — this is exploitable now by any authenticated player
+1. **Immediately:** Fix RLS policies (#1) and missing FK constraint (#15) — exploitable now by any authenticated player
 2. **Immediately:** Add admin authorization check (#2) — trivial to exploit
 3. **Soon:** Fix XSS vulnerabilities (#3) — requires player interaction but high impact
-4. **Soon:** Secure edge function (#4) and AP functions (#5)
-5. **Next sprint:** Fix routing (#6), error handling (#7), credential dedup (#8)
-6. **Backlog:** Code quality items (#9-14)
+4. **Soon:** Secure edge function (#4), AP functions (#5), and election race condition (#16)
+5. **Next sprint:** Fix routing (#6), error handling (#7), credential dedup (#8), ministry config RLS (#17)
+6. **Backlog:** Code quality items (#9-14), schema improvements (#18-21)
