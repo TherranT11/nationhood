@@ -14,6 +14,24 @@
     <div class="loading-container"><div class="loading-spinner"></div><div>Loading ministries...</div></div>
 </div>
 
+<!-- Cost Tuner FAB -->
+<button class="cost-tuner-fab" id="cost-tuner-fab" title="Cost Tuner">&#9881;</button>
+
+<!-- Cost Tuner Overlay -->
+<div class="cost-tuner-overlay hidden" id="cost-tuner-overlay">
+    <div class="cost-tuner-panel">
+        <div class="ct-header">
+            <h2>&#9881; Institution Cost Tuner</h2>
+            <button class="ct-close" id="ct-close">&times;</button>
+        </div>
+        <div class="ct-grand-total">
+            <span>Grand Total (all institutions): <strong id="ct-grand-total">--</strong></span>
+            <span class="ct-pop-info" id="ct-pop-info"></span>
+        </div>
+        <div class="ct-body" id="ct-body"></div>
+    </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
@@ -1016,6 +1034,134 @@ window.enactPolicy = async function(policyId, ministryKey) {
     const content = document.getElementById('ministry-content');
     if (content) content.innerHTML = renderMinistryContent(selectedMinistryKey);
 };
+
+// ==================== COST TUNER ====================
+
+function getPerCapitaCost(inst) {
+    if (inst.baseCostPerCapita != null) return inst.baseCostPerCapita;
+    const m = inst.baseCostFormula?.match(/\$([\d.]+)/);
+    return m ? parseFloat(m[1]) : 0;
+}
+
+function setPerCapitaCost(inst, val) {
+    inst.baseCostPerCapita = val;
+    inst.baseCostFormula = `$${val} \u00D7 population`;
+}
+
+function fmtShort(n) {
+    if (n >= 1e12) return (n / 1e12).toFixed(1) + 'T';
+    if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(0) + 'K';
+    return String(Math.round(n));
+}
+
+function renderCostTuner() {
+    const pop = currentNation?.population || 0;
+    const body = document.getElementById('ct-body');
+    const popInfo = document.getElementById('ct-pop-info');
+    if (!body) return;
+
+    popInfo.textContent = `Population: ${pop.toLocaleString()}`;
+
+    let html = '';
+    html += '<div class="ct-col-header"><span>Institution</span><span style="text-align:right">$/capita</span><span style="text-align:right">Total</span></div>';
+
+    let grandTotal = 0;
+
+    // Order: ministries that have institutions
+    const ministryOrder = ['healthcare','education','defense','labor','justice','energy','transportation','finance','foreign','interior','trade'];
+
+    for (const mk of ministryOrder) {
+        const insts = MINISTRY_INSTITUTIONS[mk];
+        if (!insts || insts.length === 0) continue;
+
+        let ministryTotal = 0;
+        let rows = '';
+
+        for (const inst of insts) {
+            const pc = getPerCapitaCost(inst);
+            const total = pc * pop;
+            ministryTotal += total;
+
+            rows += `<div class="ct-row">`;
+            rows += `<span class="ct-inst-name"><span class="ct-inst-icon">${inst.icon}</span>${esc(inst.name)}</span>`;
+            rows += `<input class="ct-input" type="number" step="0.05" min="0" value="${pc}" data-ministry="${mk}" data-inst="${inst.id}">`;
+            rows += `<span class="ct-computed" data-total-for="${mk}_${inst.id}">${fmtShort(total)}</span>`;
+            rows += `</div>`;
+        }
+
+        grandTotal += ministryTotal;
+
+        const label = MINISTRY_LABELS[mk] || mk;
+        html += `<div class="ct-ministry-group">`;
+        html += `<div class="ct-ministry-label"><span>${MINISTRY_ICONS[mk] || ''} ${label}</span><span class="ct-ministry-subtotal" data-subtotal="${mk}">${fmtShort(ministryTotal)}</span></div>`;
+        html += rows;
+        html += `</div>`;
+    }
+
+    body.innerHTML = html;
+    document.getElementById('ct-grand-total').textContent = fmtShort(grandTotal);
+
+    // Attach input listeners
+    body.querySelectorAll('.ct-input').forEach(inp => {
+        inp.addEventListener('input', onCostInput);
+    });
+}
+
+function onCostInput(e) {
+    const inp = e.target;
+    const mk = inp.dataset.ministry;
+    const instId = inp.dataset.inst;
+    const val = parseFloat(inp.value) || 0;
+    const pop = currentNation?.population || 0;
+
+    // Update the institution data
+    const insts = MINISTRY_INSTITUTIONS[mk];
+    if (!insts) return;
+    const inst = insts.find(i => i.id === instId);
+    if (!inst) return;
+    setPerCapitaCost(inst, val);
+
+    // Update this row's total
+    const totalEl = document.querySelector(`[data-total-for="${mk}_${instId}"]`);
+    if (totalEl) totalEl.textContent = fmtShort(val * pop);
+
+    // Update ministry subtotal
+    let ministryTotal = 0;
+    for (const i of insts) ministryTotal += getPerCapitaCost(i) * pop;
+    const subEl = document.querySelector(`[data-subtotal="${mk}"]`);
+    if (subEl) subEl.textContent = fmtShort(ministryTotal);
+
+    // Update grand total
+    let grandTotal = 0;
+    for (const mkey of Object.keys(MINISTRY_INSTITUTIONS)) {
+        for (const i of MINISTRY_INSTITUTIONS[mkey]) {
+            grandTotal += getPerCapitaCost(i) * pop;
+        }
+    }
+    document.getElementById('ct-grand-total').textContent = fmtShort(grandTotal);
+
+    // Re-render the ministry detail if it's currently displayed
+    if (selectedMinistryKey === mk) {
+        const contentEl = document.getElementById('ministry-content');
+        if (contentEl) contentEl.innerHTML = renderMinistryContent(selectedMinistryKey);
+    }
+}
+
+// Wire up FAB and overlay
+document.getElementById('cost-tuner-fab').addEventListener('click', () => {
+    document.getElementById('cost-tuner-overlay').classList.remove('hidden');
+    renderCostTuner();
+});
+document.getElementById('ct-close').addEventListener('click', () => {
+    document.getElementById('cost-tuner-overlay').classList.add('hidden');
+});
+document.getElementById('cost-tuner-overlay').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) {
+        document.getElementById('cost-tuner-overlay').classList.add('hidden');
+    }
+});
 </script>
 </body>
 </html>
