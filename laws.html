@@ -107,7 +107,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { initPage, qCache, qCacheSet, qCacheBust } from './js/common.js';
+import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier } from './js/game-common.js';
 (function () {
     'use strict';
@@ -175,6 +175,11 @@ initPage('laws', async (state) => {
     }
 
     await loadLawsData();
+
+    // Mark all current floor bills as "seen" so the nav badge clears
+    const seenFloorIds = (floorBills || []).filter(b => b.status === 'floor').map(b => b.id);
+    markBillsSeen(seenFloorIds);
+    cleanSeenBills(seenFloorIds);
 
     // Auto-resolve any floor bills whose voting window has expired
     const resolutions = await resolveExpiredVotes(_supabase, currentNation.id);
