@@ -7,7 +7,7 @@
             background: #111;
             border-bottom: 1px solid #222;
             position: sticky;
-            top: 48px; /* below top-bar */
+            top: 88px; /* below top-bar + nav tabs */
             z-index: 90;
         }
 
