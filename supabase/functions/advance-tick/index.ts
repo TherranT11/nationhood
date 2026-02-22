@@ -9953,29 +9953,61 @@ async function processCrises(supabase, nation, currentTick) {
     const nationUpdates = {};
     const statBounds = {}; // { stat_key: { floor: highestFloor, ceiling: lowestCeiling } }
 
+    // 2b. Pre-fetch budget funding ratios for ministry crises (keyed by fiscal_category)
+    const fundingRatios: Record<string, number> = {};
+    const hasMinistryTemplates = crisisTemplates.some(t => t.crisis_type === 'ministry');
+    if (hasMinistryTemplates && nation.last_budget_bill_id) {
+        const { data: budgetRows } = await supabase
+            .from('budget_allocations')
+            .select('fiscal_category, allocation_amount, fulfilled_cost')
+            .eq('bill_id', nation.last_budget_bill_id);
+        for (const row of (budgetRows || [])) {
+            const fulfilled = Number(row.fulfilled_cost) || 0;
+            if (fulfilled > 0) {
+                fundingRatios[row.fiscal_category] = (Number(row.allocation_amount) / fulfilled) * 100;
+            } else {
+                fundingRatios[row.fiscal_category] = 100; // no cost = fully funded
+            }
+        }
+    }
+
     // 3. Check inactive crises for activation
     for (const template of crisisTemplates) {
         if (activeMap[template.id]) continue; // already active
 
-        const triggers = template.crisis_triggers || [];
-        if (triggers.length === 0) continue;
+        let allTriggersMet = false;
 
-        let allTriggersMet = true;
-        for (const trigger of triggers) {
-            const resolvedKey = normalizeNationStatKey(trigger.stat_key) || trigger.stat_key;
-            const statValue = nation[resolvedKey];
-            if (statValue === null || statValue === undefined) {
-                allTriggersMet = false;
-                break;
-            }
-            const val = Number(statValue);
-            if (trigger.operator === 'gte' && val < Number(trigger.threshold)) {
-                allTriggersMet = false;
-                break;
-            }
-            if (trigger.operator === 'lte' && val > Number(trigger.threshold)) {
-                allTriggersMet = false;
-                break;
+        if (template.crisis_type === 'ministry') {
+            // Ministry crisis: activate when funding ratio drops below threshold
+            const fc = template.fiscal_category;
+            const threshold = Number(template.funding_threshold_pct) || 50;
+            if (!fc) continue;
+            if (!nation.last_budget_bill_id) continue; // no budget yet
+            const ratio = fundingRatios[fc];
+            if (ratio === undefined) continue; // no budget row for this ministry
+            allTriggersMet = ratio < threshold;
+        } else {
+            // Stat crisis: all stat-based triggers must be met
+            const triggers = template.crisis_triggers || [];
+            if (triggers.length === 0) continue;
+
+            allTriggersMet = true;
+            for (const trigger of triggers) {
+                const resolvedKey = normalizeNationStatKey(trigger.stat_key) || trigger.stat_key;
+                const statValue = nation[resolvedKey];
+                if (statValue === null || statValue === undefined) {
+                    allTriggersMet = false;
+                    break;
+                }
+                const val = Number(statValue);
+                if (trigger.operator === 'gte' && val < Number(trigger.threshold)) {
+                    allTriggersMet = false;
+                    break;
+                }
+                if (trigger.operator === 'lte' && val > Number(trigger.threshold)) {
+                    allTriggersMet = false;
+                    break;
+                }
             }
         }
 
@@ -10206,24 +10238,35 @@ async function processCrises(supabase, nation, currentTick) {
         }
 
         // 4c. Check end / recovery triggers AFTER effects applied (prevents flicker)
-        const endTriggers = template.crisis_end_triggers || [];
-        let allEndConditionsMet = endTriggers.length > 0;
+        let allEndConditionsMet = false;
 
-        for (const endTrigger of endTriggers) {
-            const resolvedEndKey = normalizeNationStatKey(endTrigger.stat_key) || endTrigger.stat_key;
-            const statValue = nation[resolvedEndKey];
-            if (statValue === null || statValue === undefined) {
-                allEndConditionsMet = false;
-                break;
-            }
-            const val = Number(statValue);
-            if (endTrigger.operator === 'gte' && val < Number(endTrigger.threshold)) {
-                allEndConditionsMet = false;
-                break;
-            }
-            if (endTrigger.operator === 'lte' && val > Number(endTrigger.threshold)) {
-                allEndConditionsMet = false;
-                break;
+        if (template.crisis_type === 'ministry') {
+            // Ministry crisis: recovers when funding ratio >= recovery_threshold_pct
+            const fc = template.fiscal_category;
+            const recoveryPct = Number(template.recovery_threshold_pct) || 75;
+            const ratio = fc ? (fundingRatios[fc] ?? 100) : 100;
+            allEndConditionsMet = ratio >= recoveryPct;
+        } else {
+            // Stat crisis: all end triggers must be met
+            const endTriggers = template.crisis_end_triggers || [];
+            allEndConditionsMet = endTriggers.length > 0;
+
+            for (const endTrigger of endTriggers) {
+                const resolvedEndKey = normalizeNationStatKey(endTrigger.stat_key) || endTrigger.stat_key;
+                const statValue = nation[resolvedEndKey];
+                if (statValue === null || statValue === undefined) {
+                    allEndConditionsMet = false;
+                    break;
+                }
+                const val = Number(statValue);
+                if (endTrigger.operator === 'gte' && val < Number(endTrigger.threshold)) {
+                    allEndConditionsMet = false;
+                    break;
+                }
+                if (endTrigger.operator === 'lte' && val > Number(endTrigger.threshold)) {
+                    allEndConditionsMet = false;
+                    break;
+                }
             }
         }
 
