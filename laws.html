@@ -108,7 +108,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, generateBudgetBill } from './js/game-common.js';
 (function () {
     'use strict';
 let currentNation = null, currentFaction = null, currentSeats = 0;
@@ -571,10 +571,33 @@ function renderBudgetMinistryPanel(tab, instByMinistry, budgetLaws, nation) {
 async function renderBudgetBillContent() {
     const panel = document.getElementById('budget-bill-panel');
     try {
-        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const { data: shard } = await _supabase.from('shard').select('current_tick, "current_date"').eq('name', 'Alpha Shard').single();
         const currentTick = shard?.current_tick || 0;
         const nextJanTick = Math.ceil((currentTick + 1) / 12) * 12;
         const gameYear = 2000 + Math.floor(nextJanTick / 12);
+
+        // Check 12-tick cooldown: find the most recent passed budget bill
+        const lastBudgetTick = Number(currentNation.last_budget_tick || 0);
+        const ticksSinceBudget = currentTick - lastBudgetTick;
+        const budgetOnCooldown = lastBudgetTick > 0 && ticksSinceBudget < 12;
+        const cooldownRemaining = budgetOnCooldown ? 12 - ticksSinceBudget : 0;
+
+        // Check if a budget bill is already on the floor
+        const { data: existingBudget } = await _supabase.from('bills')
+            .select('id, status')
+            .eq('nation_id', currentNation.id)
+            .eq('bill_type', 'budget')
+            .in('status', ['committee', 'floor'])
+            .limit(1);
+        const hasPendingBudget = existingBudget && existingBudget.length > 0;
+
+        // Check if player is in government (coalition member or ruling faction)
+        const coalition = await fetchActiveCoalition(_supabase, currentNation.id);
+        const coalitionPartyIds = new Set([
+            ...(coalition?.party_ids || []),
+            currentNation.ruling_faction_id
+        ].filter(Boolean));
+        const playerInGovernment = currentFaction && coalitionPartyIds.has(currentFaction.id);
 
         const { data: laws } = await _supabase.from('active_laws')
             .select('*, policies(id, policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat)')
@@ -711,6 +734,22 @@ async function renderBudgetBillContent() {
             h += '</div></div>';
         }
 
+        // === SUBMIT BUDGET BILL BUTTON ===
+        if (hasPendingBudget) {
+            h += '<div style="text-align:center;padding:20px;color:#ff9800;border:1px solid #ff9800;border-radius:8px;margin-top:16px;">A budget bill is already pending in ' + (existingBudget[0].status === 'committee' ? 'committee' : 'floor vote') + '.</div>';
+        } else if (budgetOnCooldown) {
+            h += '<div style="text-align:center;padding:20px;color:#888;border:1px solid #333;border-radius:8px;margin-top:16px;">Budget cooldown: ' + cooldownRemaining + ' tick(s) remaining before a new budget can be submitted.</div>';
+        } else if (!playerInGovernment) {
+            h += '<div style="text-align:center;padding:20px;color:#888;border:1px solid #333;border-radius:8px;margin-top:16px;">Only government coalition members can submit a budget bill.</div>';
+        } else if (isCaretaker || isNoGovernment) {
+            h += '<div style="text-align:center;padding:20px;color:#888;border:1px solid #333;border-radius:8px;margin-top:16px;">Cannot submit budget bills while the legislature is dissolved.</div>';
+        } else {
+            h += '<div style="text-align:center;margin-top:16px;">';
+            h += '<button id="submit-budget-btn" class="btn btn-primary" style="padding:12px 32px;font-size:1rem;">Put Budget Bill to Floor</button>';
+            h += '</div>';
+        }
+        h += '<div id="budget-submit-status" style="text-align:center;padding:10px;display:none;margin-top:8px;"></div>';
+
         panel.innerHTML = h;
 
         // Wire ministry tab clicks via event delegation
@@ -726,9 +765,46 @@ async function renderBudgetBillContent() {
                 if (detail) detail.innerHTML = renderBudgetMinistryPanel(BUDGET_MINISTRY_TABS[idx], instByMinistry, budgetLaws, currentNation);
             });
         }
+
+        // Wire submit budget button
+        var submitBtn = document.getElementById('submit-budget-btn');
+        if (submitBtn) {
+            submitBtn.addEventListener('click', async function() {
+                await submitBudgetBill(currentTick, budgetLaws);
+            });
+        }
     } catch (err) {
         console.error('Budget bill preview error:', err);
         panel.innerHTML = `<button class="all-laws-back" onclick="toggleBudgetBill()">\u2190 Back to ${termBills}</button><div style="color:#ff4444;text-align:center;padding:40px;">Error loading budget data: ${err.message || err}</div>`;
+    }
+}
+
+async function submitBudgetBill(currentTick, budgetLaws) {
+    const statusEl = document.getElementById('budget-submit-status');
+    const btn = document.getElementById('submit-budget-btn');
+    statusEl.style.display = 'block';
+    statusEl.style.color = '#888';
+    statusEl.textContent = 'Submitting budget bill...';
+    if (btn) btn.disabled = true;
+
+    try {
+        const billId = await generateBudgetBill(_supabase, currentNation, currentTick, budgetLaws || []);
+
+        if (!billId) {
+            statusEl.style.color = '#ff4444';
+            statusEl.textContent = 'Failed to create budget bill. Check console for details.';
+            if (btn) btn.disabled = false;
+            return;
+        }
+
+        statusEl.style.color = '#4CAF50';
+        statusEl.textContent = 'Budget bill submitted! Redirecting...';
+        setTimeout(function() { window.location.href = 'bill.html?id=' + billId; }, 1000);
+    } catch (err) {
+        console.error('Submit budget bill error:', err);
+        statusEl.style.color = '#ff4444';
+        statusEl.textContent = 'Error: ' + (err.message || err);
+        if (btn) btn.disabled = false;
     }
 }
 

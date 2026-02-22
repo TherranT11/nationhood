@@ -283,50 +283,6 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
     }
 }
 
-// ==================== BUDGET BILL GENERATION (tick-only) ====================
-
-/**
- * Check if this tick is a January tick (new fiscal year) and generate budget bills.
- * January tick = when the new month is January, meaning the new date starts with "January".
- */
-async function maybeGenerateBudgetBills(supabase, nationList, newDate, newTick) {
-    // Only generate on January ticks
-    if (!newDate.startsWith('January')) return [];
-
-    const results = [];
-    for (const nation of nationList) {
-        try {
-            // Check if a budget bill already exists for this year (prevent duplicates)
-            const gameYear = 2000 + Math.floor(newTick / 12);
-            const { data: existing } = await supabase.from('bills')
-                .select('id')
-                .eq('nation_id', nation.id)
-                .eq('bill_type', 'budget')
-                .gte('proposed_tick', newTick - 1)
-                .limit(1);
-
-            if (existing && existing.length > 0) {
-                console.log(`[maybeGenerateBudgetBills] Budget bill already exists for ${nation.name} year ${gameYear}, skipping`);
-                continue;
-            }
-
-            // Load active laws for cost computation
-            const { data: activeLaws } = await supabase
-                .from('active_laws')
-                .select('*, policies(*)')
-                .eq('nation_id', nation.id);
-
-            const billId = await generateBudgetBill(supabase, nation, newTick, activeLaws || []);
-            if (billId) {
-                results.push({ nation: nation.name, billId, year: gameYear });
-            }
-        } catch (err) {
-            console.error(`[maybeGenerateBudgetBills] Failed for ${nation.name}:`, err);
-        }
-    }
-    return results;
-}
-
 // ==================== ADVANCE TICK ====================
 
 async function advanceTick(supabase) {
@@ -459,18 +415,7 @@ async function advanceTick(supabase) {
         }
     }
 
-    // 3.5 Generate budget bills on January ticks (before per-nation processing)
-    try {
-        const budgetResults = await maybeGenerateBudgetBills(supabase, nationList, newDate, newTick);
-        if (budgetResults.length > 0) {
-            summary.budgetBills = budgetResults;
-            console.log(`[advanceTick] Generated ${budgetResults.length} budget bill(s)`);
-        }
-    } catch (budgetErr) {
-        console.error('[advanceTick] Budget bill generation failed (non-fatal):', budgetErr);
-    }
-
-    // 3.6 Trade engine — runs across ALL nations simultaneously
+    // 3.5 Trade engine — runs across ALL nations simultaneously
     try {
         const tradeResult = await processTradeFlows(supabase, nationList, newTick);
         if (tradeResult.processed > 0) {
