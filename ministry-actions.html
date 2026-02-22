@@ -17,7 +17,9 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
-import { isGovernmentPresidential, isGovernmentAutocracy } from './js/game-common.js';
+import { isGovernmentPresidential, isGovernmentAutocracy, calculateNationalBudget, GAME_CONFIG } from './js/game-common.js';
+
+// ==================== CONSTANTS ====================
 
 const MINISTRY_KEYS = [
     'prime_minister',
@@ -41,6 +43,21 @@ const MINISTRY_LABELS = {
     transportation:'Transport'
 };
 
+const MINISTRY_FULL_NAMES = {
+    prime_minister: 'Office of the Prime Minister',
+    interior:      'Ministry of the Interior',
+    foreign:       'Foreign Ministry',
+    defense:       'Ministry of Defense',
+    finance:       'Ministry of Finance',
+    education:     'Ministry of Education',
+    healthcare:    'Ministry of Healthcare',
+    labor:         'Ministry of Labor',
+    justice:       'Ministry of Justice',
+    trade:         'Ministry of Trade',
+    energy:        'Ministry of Energy',
+    transportation:'Ministry of Transportation'
+};
+
 const MINISTRY_ICONS = {
     prime_minister: '\u{1F3DB}',
     interior:      '\u{1F3E0}',
@@ -48,20 +65,467 @@ const MINISTRY_ICONS = {
     defense:       '\u{1F6E1}',
     finance:       '\u{1F4B0}',
     education:     '\u{1F393}',
-    healthcare:    '\u{2695}',
+    healthcare:    '\u2695',
     labor:         '\u{1F528}',
-    justice:       '\u{2696}',
+    justice:       '\u2696',
     trade:         '\u{1F4E6}',
     energy:        '\u26A1',
     transportation:'\u{1F6E4}'
 };
 
+// Map ministry_key -> fiscal_category name in budget_allocations
+const MINISTRY_FISCAL_MAP = {
+    prime_minister: 'Government Administration',
+    interior:      'Government Administration',
+    foreign:       'Foreign Ministry',
+    defense:       'Defense',
+    finance:       'Finance',
+    education:     'Education',
+    healthcare:    'Healthcare',
+    labor:         'Labor',
+    justice:       'Justice',
+    trade:         'Government Administration',
+    energy:        'Energy',
+    transportation:'Transportation'
+};
+
+// ==================== INSTITUTION DEFINITIONS ====================
+// Each ministry has institutions that need funding via the budget bill.
+// Institutions MAINTAIN stats — they prevent decay. Policies IMPROVE stats.
+
+const MINISTRY_INSTITUTIONS = {
+    healthcare: [
+        {
+            id: 'hospitals',
+            name: 'Public Hospital Network',
+            icon: '\u{1F3E5}',
+            description: 'Buildings, beds, equipment, ERs, operating rooms, ambulances.',
+            baseCostFormula: '$0.8 \u00D7 population',
+            costShare: 0.38,
+            primaryStat: { key: 'healthcare_accessibility', label: 'Healthcare Access' },
+            secondaryStat: { key: 'happiness', label: 'Happiness' }
+        },
+        {
+            id: 'workforce',
+            name: 'Medical Workforce',
+            icon: '\u{1F469}\u200D\u2695\uFE0F',
+            description: 'Doctors, nurses, surgeons, specialists, paramedics.',
+            baseCostFormula: '$1.0 \u00D7 population',
+            costShare: 0.47,
+            primaryStat: { key: 'healthcare_quality', label: 'Healthcare Quality' },
+            secondaryStat: { key: 'happiness', label: 'Happiness' }
+        },
+        {
+            id: 'prevention',
+            name: 'Public Health & Disease Prevention',
+            icon: '\u{1F6E1}\uFE0F',
+            description: 'Vaccinations, disease surveillance, clean water, epidemic prep.',
+            baseCostFormula: '$0.3 \u00D7 population',
+            costShare: 0.15,
+            primaryStat: { key: 'healthcare_quality', label: 'Healthcare Quality' },
+            secondaryStat: { key: 'stability', label: 'Stability' }
+        }
+    ],
+    education: [
+        {
+            id: 'primary_schools',
+            name: 'Primary & Secondary Schools',
+            icon: '\u{1F3EB}',
+            description: 'Public schools, teachers, textbooks, school infrastructure.',
+            baseCostFormula: '$1.2 \u00D7 population',
+            costShare: 0.50,
+            primaryStat: { key: 'primary_education', label: 'Primary Education' },
+            secondaryStat: { key: 'happiness', label: 'Happiness' }
+        },
+        {
+            id: 'universities',
+            name: 'Universities & Research',
+            icon: '\u{1F393}',
+            description: 'Higher education, research grants, labs, academic institutions.',
+            baseCostFormula: '$0.8 \u00D7 population',
+            costShare: 0.35,
+            primaryStat: { key: 'higher_education', label: 'Higher Education' },
+            secondaryStat: { key: 'digital_infrastructure', label: 'Digital Infrastructure' }
+        },
+        {
+            id: 'vocational',
+            name: 'Vocational Training',
+            icon: '\u{1F527}',
+            description: 'Trade schools, apprenticeships, workforce development programs.',
+            baseCostFormula: '$0.3 \u00D7 population',
+            costShare: 0.15,
+            primaryStat: { key: 'primary_education', label: 'Primary Education' },
+            secondaryStat: { key: 'unemployment', label: 'Unemployment' }
+        }
+    ],
+    defense: [
+        {
+            id: 'military',
+            name: 'Armed Forces',
+            icon: '\u{1F3AF}',
+            description: 'Army, navy, air force personnel, equipment, bases.',
+            baseCostFormula: '$1.5 \u00D7 population',
+            costShare: 0.60,
+            primaryStat: { key: 'military', label: 'Military Strength' },
+            secondaryStat: { key: 'stability', label: 'Stability' }
+        },
+        {
+            id: 'intelligence',
+            name: 'Intelligence & Cybersecurity',
+            icon: '\u{1F575}\uFE0F',
+            description: 'Intelligence agencies, cyber defense, counter-terrorism.',
+            baseCostFormula: '$0.4 \u00D7 population',
+            costShare: 0.25,
+            primaryStat: { key: 'digital_infrastructure', label: 'Digital Infrastructure' },
+            secondaryStat: { key: 'stability', label: 'Stability' }
+        },
+        {
+            id: 'veterans',
+            name: 'Veterans Affairs',
+            icon: '\u{1F396}\uFE0F',
+            description: 'Veteran healthcare, pensions, rehabilitation services.',
+            baseCostFormula: '$0.2 \u00D7 population',
+            costShare: 0.15,
+            primaryStat: { key: 'happiness', label: 'Happiness' },
+            secondaryStat: { key: 'stability', label: 'Stability' }
+        }
+    ],
+    labor: [
+        {
+            id: 'employment_services',
+            name: 'Employment Services',
+            icon: '\u{1F4BC}',
+            description: 'Job centers, unemployment benefits, retraining programs.',
+            baseCostFormula: '$0.6 \u00D7 population',
+            costShare: 0.45,
+            primaryStat: { key: 'unemployment', label: 'Unemployment' },
+            secondaryStat: { key: 'happiness', label: 'Happiness' }
+        },
+        {
+            id: 'worker_safety',
+            name: 'Worker Safety & Standards',
+            icon: '\u{1F6E1}\uFE0F',
+            description: 'Workplace safety inspections, labor law enforcement.',
+            baseCostFormula: '$0.3 \u00D7 population',
+            costShare: 0.30,
+            primaryStat: { key: 'stability', label: 'Stability' },
+            secondaryStat: { key: 'happiness', label: 'Happiness' }
+        },
+        {
+            id: 'social_security',
+            name: 'Social Security & Pensions',
+            icon: '\u{1F9D3}',
+            description: 'Retirement pensions, disability benefits, social safety net.',
+            baseCostFormula: '$0.4 \u00D7 population',
+            costShare: 0.25,
+            primaryStat: { key: 'happiness', label: 'Happiness' },
+            secondaryStat: { key: 'stability', label: 'Stability' }
+        }
+    ],
+    justice: [
+        {
+            id: 'courts',
+            name: 'Courts & Legal System',
+            icon: '\u{1F3DB}\uFE0F',
+            description: 'Courthouses, judges, prosecutors, public defenders.',
+            baseCostFormula: '$0.5 \u00D7 population',
+            costShare: 0.40,
+            primaryStat: { key: 'rule_of_law', label: 'Rule of Law' },
+            secondaryStat: { key: 'stability', label: 'Stability' }
+        },
+        {
+            id: 'corrections',
+            name: 'Corrections & Prisons',
+            icon: '\u{1F3E2}',
+            description: 'Prisons, rehabilitation, parole systems.',
+            baseCostFormula: '$0.4 \u00D7 population',
+            costShare: 0.35,
+            primaryStat: { key: 'stability', label: 'Stability' },
+            secondaryStat: { key: 'rule_of_law', label: 'Rule of Law' }
+        },
+        {
+            id: 'law_enforcement',
+            name: 'Law Enforcement',
+            icon: '\u{1F46E}',
+            description: 'Police force, crime prevention, investigations.',
+            baseCostFormula: '$0.4 \u00D7 population',
+            costShare: 0.25,
+            primaryStat: { key: 'stability', label: 'Stability' },
+            secondaryStat: { key: 'happiness', label: 'Happiness' }
+        }
+    ],
+    energy: [
+        {
+            id: 'power_grid',
+            name: 'Power Grid & Distribution',
+            icon: '\u26A1',
+            description: 'Electrical grid, substations, power distribution networks.',
+            baseCostFormula: '$0.7 \u00D7 population',
+            costShare: 0.50,
+            primaryStat: { key: 'physical_infrastructure', label: 'Physical Infrastructure' },
+            secondaryStat: { key: 'digital_infrastructure', label: 'Digital Infrastructure' }
+        },
+        {
+            id: 'generation',
+            name: 'Power Generation',
+            icon: '\u{1F3ED}',
+            description: 'Power plants, renewable energy, fuel procurement.',
+            baseCostFormula: '$0.5 \u00D7 population',
+            costShare: 0.35,
+            primaryStat: { key: 'physical_infrastructure', label: 'Physical Infrastructure' },
+            secondaryStat: { key: 'environment', label: 'Environment' }
+        },
+        {
+            id: 'regulation',
+            name: 'Energy Regulation',
+            icon: '\u{1F4CB}',
+            description: 'Price controls, safety standards, environmental compliance.',
+            baseCostFormula: '$0.1 \u00D7 population',
+            costShare: 0.15,
+            primaryStat: { key: 'environment', label: 'Environment' },
+            secondaryStat: { key: 'stability', label: 'Stability' }
+        }
+    ],
+    transportation: [
+        {
+            id: 'roads',
+            name: 'Roads & Highways',
+            icon: '\u{1F6E3}\uFE0F',
+            description: 'Road construction, maintenance, bridges, tunnels.',
+            baseCostFormula: '$1.0 \u00D7 population',
+            costShare: 0.50,
+            primaryStat: { key: 'physical_infrastructure', label: 'Physical Infrastructure' },
+            secondaryStat: { key: 'happiness', label: 'Happiness' }
+        },
+        {
+            id: 'public_transit',
+            name: 'Public Transit',
+            icon: '\u{1F68C}',
+            description: 'Buses, metro, rail, ferries, transit infrastructure.',
+            baseCostFormula: '$0.6 \u00D7 population',
+            costShare: 0.35,
+            primaryStat: { key: 'physical_infrastructure', label: 'Physical Infrastructure' },
+            secondaryStat: { key: 'environment', label: 'Environment' }
+        },
+        {
+            id: 'aviation',
+            name: 'Ports & Aviation',
+            icon: '\u2708\uFE0F',
+            description: 'Airports, seaports, customs facilities.',
+            baseCostFormula: '$0.3 \u00D7 population',
+            costShare: 0.15,
+            primaryStat: { key: 'physical_infrastructure', label: 'Physical Infrastructure' },
+            secondaryStat: { key: 'credit', label: 'Credit' }
+        }
+    ],
+    finance: [
+        {
+            id: 'tax_admin',
+            name: 'Tax Administration',
+            icon: '\u{1F4CA}',
+            description: 'Tax collection, auditing, compliance enforcement.',
+            baseCostFormula: '$0.4 \u00D7 population',
+            costShare: 0.40,
+            primaryStat: { key: 'credit', label: 'Credit' },
+            secondaryStat: { key: 'rule_of_law', label: 'Rule of Law' }
+        },
+        {
+            id: 'central_bank',
+            name: 'Central Bank & Monetary Policy',
+            icon: '\u{1F3E6}',
+            description: 'Interest rates, currency stability, banking regulation.',
+            baseCostFormula: '$0.3 \u00D7 population',
+            costShare: 0.35,
+            primaryStat: { key: 'inflation', label: 'Inflation' },
+            secondaryStat: { key: 'credit', label: 'Credit' }
+        },
+        {
+            id: 'development_bank',
+            name: 'Development & Investment',
+            icon: '\u{1F4C8}',
+            description: 'Development loans, infrastructure investment, economic zones.',
+            baseCostFormula: '$0.2 \u00D7 population',
+            costShare: 0.25,
+            primaryStat: { key: 'gdp_growth', label: 'GDP Growth' },
+            secondaryStat: { key: 'unemployment', label: 'Unemployment' }
+        }
+    ],
+    foreign: [
+        {
+            id: 'embassies',
+            name: 'Embassies & Consulates',
+            icon: '\u{1F3E2}',
+            description: 'Diplomatic missions, foreign service officers.',
+            baseCostFormula: '$0.3 \u00D7 population',
+            costShare: 0.45,
+            primaryStat: { key: 'diplomacy', label: 'Diplomacy' },
+            secondaryStat: { key: 'stability', label: 'Stability' }
+        },
+        {
+            id: 'foreign_aid',
+            name: 'Foreign Aid Programs',
+            icon: '\u{1F91D}',
+            description: 'Humanitarian aid, development assistance, disaster relief.',
+            baseCostFormula: '$0.2 \u00D7 population',
+            costShare: 0.30,
+            primaryStat: { key: 'diplomacy', label: 'Diplomacy' },
+            secondaryStat: { key: 'happiness', label: 'Happiness' }
+        },
+        {
+            id: 'trade_missions',
+            name: 'Trade Missions',
+            icon: '\u{1F4E6}',
+            description: 'Trade negotiations, export promotion, trade agreements.',
+            baseCostFormula: '$0.1 \u00D7 population',
+            costShare: 0.25,
+            primaryStat: { key: 'credit', label: 'Credit' },
+            secondaryStat: { key: 'gdp_growth', label: 'GDP Growth' }
+        }
+    ],
+    interior: [
+        {
+            id: 'civil_service',
+            name: 'Civil Service',
+            icon: '\u{1F3DB}\uFE0F',
+            description: 'Public administration, government offices, civil servants.',
+            baseCostFormula: '$0.5 \u00D7 population',
+            costShare: 0.40,
+            primaryStat: { key: 'government_capacity', label: 'Govt. Capacity' },
+            secondaryStat: { key: 'rule_of_law', label: 'Rule of Law' }
+        },
+        {
+            id: 'emergency_services',
+            name: 'Emergency Services',
+            icon: '\u{1F6A8}',
+            description: 'Fire departments, disaster response, emergency management.',
+            baseCostFormula: '$0.4 \u00D7 population',
+            costShare: 0.35,
+            primaryStat: { key: 'stability', label: 'Stability' },
+            secondaryStat: { key: 'happiness', label: 'Happiness' }
+        },
+        {
+            id: 'census',
+            name: 'Census & Statistics',
+            icon: '\u{1F4CB}',
+            description: 'Population data, economic surveys, national statistics.',
+            baseCostFormula: '$0.1 \u00D7 population',
+            costShare: 0.25,
+            primaryStat: { key: 'government_capacity', label: 'Govt. Capacity' },
+            secondaryStat: { key: 'credit', label: 'Credit' }
+        }
+    ],
+    trade: [
+        {
+            id: 'customs',
+            name: 'Customs & Border Trade',
+            icon: '\u{1F6C3}',
+            description: 'Customs enforcement, tariff collection, trade compliance.',
+            baseCostFormula: '$0.3 \u00D7 population',
+            costShare: 0.40,
+            primaryStat: { key: 'credit', label: 'Credit' },
+            secondaryStat: { key: 'rule_of_law', label: 'Rule of Law' }
+        },
+        {
+            id: 'export_promotion',
+            name: 'Export Promotion Agency',
+            icon: '\u{1F4E6}',
+            description: 'Export incentives, trade shows, market access programs.',
+            baseCostFormula: '$0.2 \u00D7 population',
+            costShare: 0.35,
+            primaryStat: { key: 'gdp_growth', label: 'GDP Growth' },
+            secondaryStat: { key: 'credit', label: 'Credit' }
+        },
+        {
+            id: 'competition',
+            name: 'Competition & Consumer Protection',
+            icon: '\u{1F6E1}\uFE0F',
+            description: 'Anti-monopoly enforcement, consumer rights, market fairness.',
+            baseCostFormula: '$0.1 \u00D7 population',
+            costShare: 0.25,
+            primaryStat: { key: 'rule_of_law', label: 'Rule of Law' },
+            secondaryStat: { key: 'happiness', label: 'Happiness' }
+        }
+    ]
+};
+
+// ==================== POLICY DEFINITIONS ====================
+const MINISTRY_POLICIES = {
+    healthcare: [
+        {
+            id: 'recruitment_drive',
+            name: 'Medical Recruitment Drive',
+            icon: '\u{1F4E2}',
+            description: 'Launch a campaign to recruit doctors and nurses from abroad and incentivize medical school enrollment.',
+            affects: [
+                { stat: 'Healthcare Quality', change: '+2.5', diminished: '+1.8' },
+                { stat: 'Happiness', change: '+0.3', diminished: '+0.1' }
+            ],
+            cost: '\u00A71.2B',
+            cooldown: '3 ticks',
+            timesUsed: 1,
+            maxEffective: 4
+        },
+        {
+            id: 'hospital_expansion',
+            name: 'Hospital Expansion Program',
+            icon: '\u{1F3D7}\uFE0F',
+            description: 'Build new hospital wings and rural clinics to increase bed capacity and reduce ER wait times.',
+            affects: [
+                { stat: 'Healthcare Access', change: '+4', diminished: '+2.5' },
+                { stat: 'Healthcare Quality', change: '+3', diminished: '+1.5' }
+            ],
+            cost: '\u00A72.8B',
+            cooldown: '5 ticks',
+            timesUsed: 0,
+            maxEffective: 3
+        },
+        {
+            id: 'vaccination_campaign',
+            name: 'National Vaccination Campaign',
+            icon: '\u{1F489}',
+            description: 'Mass immunization push targeting undervaccinated regions. Reduces disease outbreak risk.',
+            affects: [
+                { stat: 'Healthcare Quality', change: '+1.5', diminished: '+0.8' },
+                { stat: 'Happiness', change: '+1', diminished: '+0.4' }
+            ],
+            cost: '\u00A70.6B',
+            cooldown: '2 ticks',
+            timesUsed: 3,
+            maxEffective: 5
+        }
+    ]
+};
+
+// ==================== DECAY TABLE ====================
+// Funding % -> decay per tick (your adjusted version: <100% starts losing)
+function getDecayRate(pct) {
+    if (pct >= 100) return null;
+    if (pct >= 90)  return { primary: '-0.3/tick', secondary: null };
+    if (pct >= 75)  return { primary: '-0.5/tick', secondary: '-0.2/tick' };
+    if (pct >= 50)  return { primary: '-0.9/tick', secondary: '-0.5/tick' };
+    if (pct >= 25)  return { primary: '-1.7/tick', secondary: '-0.9/tick' };
+    return { primary: '-2.7/tick', secondary: '-1.7/tick' };
+}
+
+function getFundingLabel(pct) {
+    if (pct >= 100) return { label: 'FULLY FUNDED', color: '#22c55e', bg: 'rgba(34,197,94,0.1)' };
+    if (pct >= 90)  return { label: 'STRETCHED',    color: '#a3e635', bg: 'rgba(163,230,53,0.08)' };
+    if (pct >= 75)  return { label: 'STRAINED',     color: '#facc15', bg: 'rgba(250,204,21,0.08)' };
+    if (pct >= 50)  return { label: 'UNDERFUNDED',   color: '#f97316', bg: 'rgba(249,115,22,0.08)' };
+    if (pct >= 25)  return { label: 'CRITICAL',      color: '#ef4444', bg: 'rgba(239,68,68,0.1)' };
+    return { label: 'COLLAPSED', color: '#dc2626', bg: 'rgba(220,38,38,0.15)' };
+}
+
+// ==================== STATE ====================
 let currentNation = null;
 let currentFaction = null;
 let isPresidential = false;
 let ministryData = [];
+let budgetAllocations = {};
 let selectedMinistryKey = null;
+let activeDetailTab = 'institutions';
 
+// ==================== INIT ====================
 initPage('ministry-actions', async (state) => {
     currentNation = state.nation;
     currentFaction = state.faction;
@@ -74,18 +538,49 @@ initPage('ministry-actions', async (state) => {
         .eq('is_active', true);
     ministryData = data || [];
 
+    // Fetch current budget allocations (from last passed budget bill)
+    if (currentNation.last_budget_bill_id) {
+        const { data: allocs } = await _supabase.from('budget_allocations')
+            .select('fiscal_category, allocation_amount, fulfilled_cost')
+            .eq('bill_id', currentNation.last_budget_bill_id);
+        if (allocs) {
+            for (const a of allocs) {
+                budgetAllocations[a.fiscal_category] = {
+                    allocated: Number(a.allocation_amount) || 0,
+                    needed: Number(a.fulfilled_cost) || 0
+                };
+            }
+        }
+    }
+
     renderPage();
 });
 
+// ==================== FORMAT HELPERS ====================
+function fmtCurrency(val) {
+    if (val == null) return '$0';
+    val = Number(val);
+    const sign = val < 0 ? '-' : '';
+    const abs = Math.abs(val);
+    if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(1) + 'T';
+    if (abs >= 1e9)  return sign + '$' + (abs / 1e9).toFixed(1) + 'B';
+    if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(1) + 'M';
+    return sign + '$' + Math.round(abs).toLocaleString();
+}
+
+function esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+// ==================== RENDER PAGE ====================
 function renderPage() {
     const area = document.getElementById('content-area');
-
-    // Build the ministry key list — swap prime_minister for president label in presidential systems
     const keys = isPresidential
         ? MINISTRY_KEYS.filter(k => k !== 'prime_minister')
         : MINISTRY_KEYS;
 
-    // Default selection: first ministry
     if (!selectedMinistryKey || !keys.includes(selectedMinistryKey)) {
         selectedMinistryKey = keys[0];
     }
@@ -94,8 +589,6 @@ function renderPage() {
 
     // ===== MINISTRY SELECTOR BAR =====
     h += '<div class="ministry-selector-bar">';
-
-    // Desktop: scrollable button row
     h += '<div class="ministry-selector-scroll">';
     for (const key of keys) {
         const label = getButtonLabel(key);
@@ -104,23 +597,17 @@ function renderPage() {
         const ministry = ministryData.find(m => m.ministry_key === key);
         const isFilled = ministry && ministry.minister_first_name;
         const isMyMinistry = ministry && ministry.party_id === currentFaction?.id;
-
-        let statusDot = '';
-        if (isFilled) {
-            statusDot = '<span class="msb-dot filled"></span>';
-        } else {
-            statusDot = '<span class="msb-dot vacant"></span>';
-        }
+        const dot = isFilled ? '<span class="msb-dot filled"></span>' : '<span class="msb-dot vacant"></span>';
 
         h += `<button class="msb-btn${isActive ? ' active' : ''}${isMyMinistry ? ' mine' : ''}" data-key="${key}" onclick="selectMinistry('${key}')">`;
         h += `<span class="msb-icon">${icon}</span>`;
         h += `<span class="msb-label">${label}</span>`;
-        h += statusDot;
+        h += dot;
         h += '</button>';
     }
     h += '</div>';
 
-    // Mobile: dropdown
+    // Mobile dropdown
     h += '<div class="ministry-selector-mobile">';
     h += '<select class="ministry-dropdown" onchange="selectMinistry(this.value)">';
     for (const key of keys) {
@@ -133,11 +620,10 @@ function renderPage() {
     }
     h += '</select>';
     h += '</div>';
+    h += '</div>';
 
-    h += '</div>'; // .ministry-selector-bar
-
-    // ===== CONTENT AREA (placeholder for now) =====
-    h += '<div id="ministry-content" class="ministry-content">';
+    // ===== CONTENT =====
+    h += '<div id="ministry-content">';
     h += renderMinistryContent(selectedMinistryKey);
     h += '</div>';
 
@@ -145,46 +631,271 @@ function renderPage() {
 }
 
 function getButtonLabel(key) {
-    if (key === 'prime_minister') {
-        return isPresidential ? 'President' : 'Prime Minister';
-    }
+    if (key === 'prime_minister') return isPresidential ? 'President' : 'Prime Minister';
     return MINISTRY_LABELS[key] || key;
 }
 
+// ==================== MINISTRY CONTENT ====================
 function renderMinistryContent(key) {
     const ministry = ministryData.find(m => m.ministry_key === key);
-    const label = getButtonLabel(key);
+    const fullName = MINISTRY_FULL_NAMES[key] || getButtonLabel(key);
     const icon = MINISTRY_ICONS[key] || '';
+    const fiscalCat = MINISTRY_FISCAL_MAP[key];
+    const alloc = budgetAllocations[fiscalCat] || { allocated: 0, needed: 0 };
+    const overallPct = alloc.needed > 0 ? Math.round((alloc.allocated / alloc.needed) * 100) : 0;
+    const overallFunding = getFundingLabel(overallPct);
+    const institutions = MINISTRY_INSTITUTIONS[key] || [];
+    const policies = MINISTRY_POLICIES[key] || [];
+    const activeCrises = 0; // placeholder for future
 
-    let h = '<div class="ministry-detail-placeholder">';
-    h += `<div class="mdp-icon">${icon}</div>`;
+    let h = '';
+
+    // ===== MINISTRY HEADER =====
+    h += '<div class="mdet-header">';
+    h += '<div class="mdet-header-inner">';
+    h += '<div class="mdet-header-left">';
+    h += '<div class="mdet-header-label">MINISTRY OF</div>';
+    h += `<div class="mdet-header-name">${esc(fullName.replace('Ministry of ', '').replace('Ministry of the ', ''))}</div>`;
+    h += '<div class="mdet-header-meta">';
     if (ministry && ministry.minister_first_name) {
-        h += `<div class="mdp-name">${label}</div>`;
-        h += `<div class="mdp-minister">${ministry.minister_first_name} ${ministry.minister_last_name}</div>`;
-        const approval = ministry.minister_approval ?? 50;
-        const cls = approval < 35 ? 'low' : approval < 50 ? 'mid' : 'high';
-        h += `<div class="mdp-approval ${cls}">${approval}% Approval</div>`;
+        const pColor = ministry.factions?.party_color || '#888';
+        const pName = ministry.factions?.faction_name || 'Unknown';
+        h += `<span>Minister: <strong>${esc(ministry.minister_first_name)} ${esc(ministry.minister_last_name)}</strong></span>`;
+        h += '<span class="mdet-sep">|</span>';
+        h += `<span>Party: <strong style="color:${pColor}">${esc(pName)}</strong></span>`;
+        const appr = ministry.minister_approval ?? 50;
+        const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
+        h += '<span class="mdet-sep">|</span>';
+        h += `<span>Approval: <strong class="mdet-appr-${apprCls}">${appr}%</strong></span>`;
     } else {
-        h += `<div class="mdp-name">${label}</div>`;
-        h += '<div class="mdp-vacant">Vacant</div>';
+        h += '<span class="mdet-vacant-label">No minister appointed</span>';
     }
-    h += '<div class="mdp-coming">Ministry detail panels coming soon.</div>';
     h += '</div>';
+    h += '</div>';
+
+    // Budget summary (right side)
+    h += '<div class="mdet-header-right">';
+    h += '<div class="mdet-budget-label">MINISTRY BUDGET</div>';
+    h += `<div class="mdet-budget-value" style="color:${overallFunding.color}">${fmtCurrency(alloc.allocated)}</div>`;
+    h += `<div class="mdet-budget-sub">of ${fmtCurrency(alloc.needed)} needed &mdash; <span style="color:${overallFunding.color};font-weight:700">${overallPct}% funded</span></div>`;
+    h += '</div>';
+
+    h += '</div>'; // .mdet-header-inner
+    h += '</div>'; // .mdet-header
+
+    // ===== TAB NAVIGATION =====
+    h += '<div class="mdet-tabs">';
+    const tabs = [
+        { key: 'institutions', label: 'INSTITUTIONS', count: institutions.length },
+        { key: 'policies', label: 'POLICIES', count: policies.length },
+        { key: 'crises', label: 'CRISIS EVENTS', count: activeCrises }
+    ];
+    for (const tab of tabs) {
+        const isActive = activeDetailTab === tab.key;
+        const badge = tab.key === 'crises' && tab.count > 0
+            ? `<span class="mdet-tab-badge-alert">${tab.count}</span>`
+            : `<span class="mdet-tab-count">${tab.count}</span>`;
+        h += `<button class="mdet-tab${isActive ? ' active' : ''}" onclick="switchDetailTab('${tab.key}')">${tab.label} ${badge}</button>`;
+    }
+    h += '</div>';
+
+    // ===== TAB CONTENT =====
+    h += '<div class="mdet-body">';
+
+    if (activeDetailTab === 'institutions') {
+        h += renderInstitutionsTab(key, institutions, alloc);
+    } else if (activeDetailTab === 'policies') {
+        h += renderPoliciesTab(policies);
+    } else if (activeDetailTab === 'crises') {
+        h += renderCrisesTab();
+    }
+
+    h += '</div>'; // .mdet-body
     return h;
 }
 
+// ==================== INSTITUTIONS TAB ====================
+function renderInstitutionsTab(ministryKey, institutions, alloc) {
+    let h = '';
+    h += '<div class="mdet-tab-intro">Institutions maintain stats &mdash; they prevent decay but don\'t improve anything. Fund them at 100% to hold steady. Below that, stats rot. The lower the funding, the faster the decline.</div>';
+
+    if (institutions.length === 0) {
+        h += '<div class="mdet-empty">No institution data available for this ministry yet.</div>';
+        return h;
+    }
+
+    for (const inst of institutions) {
+        // Calculate this institution's share of the allocation
+        const instAllocated = alloc.allocated * inst.costShare;
+        const instNeeded = alloc.needed * inst.costShare;
+        const pct = instNeeded > 0 ? Math.round((instAllocated / instNeeded) * 100) : 0;
+        const funding = getFundingLabel(pct);
+        const decay = getDecayRate(pct);
+
+        // Get live stat values from the nation
+        const priVal = currentNation[inst.primaryStat.key] != null ? Math.round(Number(currentNation[inst.primaryStat.key])) : '?';
+        const secVal = currentNation[inst.secondaryStat.key] != null ? Math.round(Number(currentNation[inst.secondaryStat.key])) : '?';
+
+        h += `<div class="inst-card" style="border-left-color:${funding.color}">`;
+
+        // Top: name + funding badge
+        h += '<div class="inst-card-top">';
+        h += '<div class="inst-card-info">';
+        h += `<div class="inst-card-title"><span class="inst-icon">${inst.icon}</span> ${esc(inst.name)}</div>`;
+        h += `<div class="inst-card-desc">${esc(inst.description)}</div>`;
+        h += '</div>';
+        h += '<div class="inst-card-funding">';
+        h += `<span class="inst-funding-badge" style="color:${funding.color};background:${funding.bg}">${funding.label}</span>`;
+        h += `<div class="inst-funding-pct" style="color:${funding.color}">${pct}%</div>`;
+        h += '</div>';
+        h += '</div>';
+
+        // Funding bar
+        h += '<div class="inst-bar-track">';
+        h += `<div class="inst-bar-fill" style="width:${Math.min(pct, 100)}%;background:${funding.color};box-shadow:0 0 8px ${funding.color}44"></div>`;
+        h += '</div>';
+
+        // Budget line
+        h += '<div class="inst-budget-line">';
+        h += `<span>${fmtCurrency(instAllocated)} allocated / ${fmtCurrency(instNeeded)} needed</span>`;
+        h += `<span>Base: ${esc(inst.baseCostFormula)}</span>`;
+        h += '</div>';
+
+        // Stat pills
+        h += '<div class="inst-stat-pills">';
+        h += renderStatPill(inst.primaryStat.label, priVal, decay?.primary, true);
+        h += renderStatPill(inst.secondaryStat.label, secVal, decay?.secondary, false);
+        h += '</div>';
+
+        h += '</div>'; // .inst-card
+    }
+
+    // Decay reference table
+    h += '<div class="decay-table">';
+    h += '<div class="decay-table-title">DECAY REFERENCE TABLE</div>';
+    h += '<div class="decay-table-grid">';
+    h += '<span class="decay-hdr">Funding</span><span class="decay-hdr">Status</span><span class="decay-hdr">Primary</span><span class="decay-hdr">Secondary</span>';
+
+    const rows = [
+        { range: '100%', status: 'Fully Funded', color: '#22c55e', pri: 'No decay', sec: 'No decay' },
+        { range: '90-99%', status: 'Stretched', color: '#a3e635', pri: '-0.3/tick', sec: '\u2014' },
+        { range: '75-89%', status: 'Strained', color: '#facc15', pri: '-0.5/tick', sec: '-0.2/tick' },
+        { range: '50-74%', status: 'Underfunded', color: '#f97316', pri: '-0.9/tick', sec: '-0.5/tick' },
+        { range: '25-49%', status: 'Critical', color: '#ef4444', pri: '-1.7/tick', sec: '-0.9/tick' },
+        { range: '0-24%', status: 'Collapsed', color: '#dc2626', pri: '-2.7/tick', sec: '-1.7/tick' }
+    ];
+    for (const r of rows) {
+        h += `<span style="color:${r.color}">${r.range}</span>`;
+        h += `<span style="color:${r.color}">${r.status}</span>`;
+        h += `<span style="color:${r.pri.includes('-') ? r.color : '#6b6a5e'}">${r.pri}</span>`;
+        h += `<span style="color:${r.sec.includes('-') ? r.color : '#6b6a5e'}">${r.sec}</span>`;
+    }
+    h += '</div></div>';
+
+    return h;
+}
+
+function renderStatPill(label, value, decayStr, isPrimary) {
+    const isDecaying = decayStr && decayStr !== '\u2014' && decayStr != null;
+    const bgCls = isDecaying ? 'stat-pill-decay' : 'stat-pill-normal';
+
+    let h = `<div class="stat-pill ${bgCls}">`;
+    h += `<div class="stat-pill-label">${isPrimary ? '\u25B8 ' : ''}${esc(label)}</div>`;
+    h += '<div class="stat-pill-row">';
+    h += `<span class="stat-pill-value">${value}</span>`;
+    if (isDecaying) {
+        h += `<span class="stat-pill-decay-rate">${decayStr}</span>`;
+    }
+    h += '</div></div>';
+    return h;
+}
+
+// ==================== POLICIES TAB ====================
+function renderPoliciesTab(policies) {
+    let h = '';
+    h += '<div class="mdet-tab-intro">Policies actively improve stats &mdash; but each use yields less return. Institutions maintain; policies push forward. Choose wisely, Minister.</div>';
+
+    if (policies.length === 0) {
+        h += '<div class="mdet-empty">No policies available for this ministry yet.</div>';
+        return h;
+    }
+
+    for (const policy of policies) {
+        const isExhausted = policy.timesUsed >= policy.maxEffective;
+
+        h += `<div class="pol-card${isExhausted ? ' exhausted' : ''}">`;
+
+        h += '<div class="pol-card-top">';
+        h += '<div class="pol-card-info">';
+        h += `<div class="pol-card-title"><span class="pol-icon">${policy.icon}</span> ${esc(policy.name)}</div>`;
+        h += `<div class="pol-card-desc">${esc(policy.description)}</div>`;
+
+        // Stat effects
+        h += '<div class="pol-effects">';
+        for (const a of policy.affects) {
+            const val = policy.timesUsed > 0 ? a.diminished : a.change;
+            const wasStr = policy.timesUsed > 0 ? ` <span class="pol-was">(was ${a.change})</span>` : '';
+            h += `<span class="pol-effect-pill"><span class="pol-effect-stat">${esc(a.stat)}:</span> <span class="pol-effect-val">${val}</span>${wasStr}</span>`;
+        }
+        h += '</div>';
+        h += '</div>';
+
+        // Right: cost + button
+        h += '<div class="pol-card-right">';
+        h += `<div class="pol-cost">${policy.cost}</div>`;
+        h += `<div class="pol-cooldown">\u23F1 ${policy.cooldown}</div>`;
+        h += `<button class="pol-enact-btn${isExhausted ? ' disabled' : ''}" ${isExhausted ? 'disabled' : ''}>${isExhausted ? 'EXHAUSTED' : 'ENACT'}</button>`;
+        h += '</div>';
+
+        h += '</div>'; // .pol-card-top
+
+        // Diminishing returns bar
+        h += '<div class="pol-diminishing">';
+        h += '<div class="pol-dim-header">';
+        h += '<span>DIMINISHING RETURNS</span>';
+        h += `<span>${policy.timesUsed}/${policy.maxEffective} uses</span>`;
+        h += '</div>';
+        h += '<div class="pol-dim-bar">';
+        for (let i = 0; i < policy.maxEffective; i++) {
+            const filled = i < policy.timesUsed;
+            const isLast = i >= policy.maxEffective - 1 && filled;
+            const color = filled ? (isLast ? '#ef4444' : '#a3e635') : 'rgba(255,255,255,0.06)';
+            const opacity = filled ? (1 - i * 0.15) : 1;
+            h += `<div class="pol-dim-seg" style="background:${color};opacity:${opacity}"></div>`;
+        }
+        h += '</div></div>';
+
+        h += '</div>'; // .pol-card
+    }
+
+    return h;
+}
+
+// ==================== CRISES TAB ====================
+function renderCrisesTab() {
+    let h = '';
+    h += '<div class="mdet-tab-intro">Crises emerge when institutions decay past critical thresholds. They inflict immediate stat damage and persist until the underlying funding is restored.</div>';
+    h += '<div class="mdet-empty">No active crises. Crisis events will be generated by the system when institution funding drops to critical levels.</div>';
+    return h;
+}
+
+// ==================== GLOBAL HANDLERS ====================
 window.selectMinistry = function(key) {
     selectedMinistryKey = key;
-    // Update button states without full re-render
+    activeDetailTab = 'institutions'; // reset tab on ministry switch
     document.querySelectorAll('.msb-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.key === key);
     });
-    // Update dropdown
     const dd = document.querySelector('.ministry-dropdown');
     if (dd) dd.value = key;
-    // Re-render content
     const content = document.getElementById('ministry-content');
     if (content) content.innerHTML = renderMinistryContent(key);
+};
+
+window.switchDetailTab = function(tab) {
+    activeDetailTab = tab;
+    const content = document.getElementById('ministry-content');
+    if (content) content.innerHTML = renderMinistryContent(selectedMinistryKey);
 };
 </script>
 </body>

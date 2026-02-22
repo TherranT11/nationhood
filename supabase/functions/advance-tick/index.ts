@@ -9953,29 +9953,61 @@ async function processCrises(supabase, nation, currentTick) {
     const nationUpdates = {};
     const statBounds = {}; // { stat_key: { floor: highestFloor, ceiling: lowestCeiling } }
 
+    // 2b. Pre-fetch budget funding ratios for ministry crises (keyed by fiscal_category)
+    const fundingRatios: Record<string, number> = {};
+    const hasMinistryTemplates = crisisTemplates.some(t => t.crisis_type === 'ministry');
+    if (hasMinistryTemplates && nation.last_budget_bill_id) {
+        const { data: budgetRows } = await supabase
+            .from('budget_allocations')
+            .select('fiscal_category, allocation_amount, fulfilled_cost')
+            .eq('bill_id', nation.last_budget_bill_id);
+        for (const row of (budgetRows || [])) {
+            const fulfilled = Number(row.fulfilled_cost) || 0;
+            if (fulfilled > 0) {
+                fundingRatios[row.fiscal_category] = (Number(row.allocation_amount) / fulfilled) * 100;
+            } else {
+                fundingRatios[row.fiscal_category] = 100; // no cost = fully funded
+            }
+        }
+    }
+
     // 3. Check inactive crises for activation
     for (const template of crisisTemplates) {
         if (activeMap[template.id]) continue; // already active
 
-        const triggers = template.crisis_triggers || [];
-        if (triggers.length === 0) continue;
+        let allTriggersMet = false;
 
-        let allTriggersMet = true;
-        for (const trigger of triggers) {
-            const resolvedKey = normalizeNationStatKey(trigger.stat_key) || trigger.stat_key;
-            const statValue = nation[resolvedKey];
-            if (statValue === null || statValue === undefined) {
-                allTriggersMet = false;
-                break;
-            }
-            const val = Number(statValue);
-            if (trigger.operator === 'gte' && val < Number(trigger.threshold)) {
-                allTriggersMet = false;
-                break;
-            }
-            if (trigger.operator === 'lte' && val > Number(trigger.threshold)) {
-                allTriggersMet = false;
-                break;
+        if (template.crisis_type === 'ministry') {
+            // Ministry crisis: activate when funding ratio drops below threshold
+            const fc = template.fiscal_category;
+            const threshold = Number(template.funding_threshold_pct) || 50;
+            if (!fc) continue;
+            if (!nation.last_budget_bill_id) continue; // no budget yet
+            const ratio = fundingRatios[fc];
+            if (ratio === undefined) continue; // no budget row for this ministry
+            allTriggersMet = ratio < threshold;
+        } else {
+            // Stat crisis: all stat-based triggers must be met
+            const triggers = template.crisis_triggers || [];
+            if (triggers.length === 0) continue;
+
+            allTriggersMet = true;
+            for (const trigger of triggers) {
+                const resolvedKey = normalizeNationStatKey(trigger.stat_key) || trigger.stat_key;
+                const statValue = nation[resolvedKey];
+                if (statValue === null || statValue === undefined) {
+                    allTriggersMet = false;
+                    break;
+                }
+                const val = Number(statValue);
+                if (trigger.operator === 'gte' && val < Number(trigger.threshold)) {
+                    allTriggersMet = false;
+                    break;
+                }
+                if (trigger.operator === 'lte' && val > Number(trigger.threshold)) {
+                    allTriggersMet = false;
+                    break;
+                }
             }
         }
 
@@ -10206,24 +10238,35 @@ async function processCrises(supabase, nation, currentTick) {
         }
 
         // 4c. Check end / recovery triggers AFTER effects applied (prevents flicker)
-        const endTriggers = template.crisis_end_triggers || [];
-        let allEndConditionsMet = endTriggers.length > 0;
+        let allEndConditionsMet = false;
 
-        for (const endTrigger of endTriggers) {
-            const resolvedEndKey = normalizeNationStatKey(endTrigger.stat_key) || endTrigger.stat_key;
-            const statValue = nation[resolvedEndKey];
-            if (statValue === null || statValue === undefined) {
-                allEndConditionsMet = false;
-                break;
-            }
-            const val = Number(statValue);
-            if (endTrigger.operator === 'gte' && val < Number(endTrigger.threshold)) {
-                allEndConditionsMet = false;
-                break;
-            }
-            if (endTrigger.operator === 'lte' && val > Number(endTrigger.threshold)) {
-                allEndConditionsMet = false;
-                break;
+        if (template.crisis_type === 'ministry') {
+            // Ministry crisis: recovers when funding ratio >= recovery_threshold_pct
+            const fc = template.fiscal_category;
+            const recoveryPct = Number(template.recovery_threshold_pct) || 75;
+            const ratio = fc ? (fundingRatios[fc] ?? 100) : 100;
+            allEndConditionsMet = ratio >= recoveryPct;
+        } else {
+            // Stat crisis: all end triggers must be met
+            const endTriggers = template.crisis_end_triggers || [];
+            allEndConditionsMet = endTriggers.length > 0;
+
+            for (const endTrigger of endTriggers) {
+                const resolvedEndKey = normalizeNationStatKey(endTrigger.stat_key) || endTrigger.stat_key;
+                const statValue = nation[resolvedEndKey];
+                if (statValue === null || statValue === undefined) {
+                    allEndConditionsMet = false;
+                    break;
+                }
+                const val = Number(statValue);
+                if (endTrigger.operator === 'gte' && val < Number(endTrigger.threshold)) {
+                    allEndConditionsMet = false;
+                    break;
+                }
+                if (endTrigger.operator === 'lte' && val > Number(endTrigger.threshold)) {
+                    allEndConditionsMet = false;
+                    break;
+                }
             }
         }
 
@@ -10274,6 +10317,110 @@ async function processCrises(supabase, nation, currentTick) {
     }
 
     return crisisEvents;
+}
+
+
+// ==================== POPULATION GROWTH ====================
+/**
+ * Computes population_growth from birth_rate, death_rate, immigration, emigration
+ * with a standard-of-living demographic-transition modifier.
+ * Then applies the growth score to update population, eligible_voters, and voter blocs.
+ *
+ * Formula:
+ *   natural  = birth_rate - death_rate       (60% weight)
+ *   migration = immigration - emigration     (40% weight)
+ *   solMod   = ((50 - standard_of_living) / 50) * 5   (~5pt max drag/boost)
+ *   population_growth = clamp(50 + raw/4 + solMod, 0, 100)
+ *   monthlyRate = ((population_growth - 50) / 50) * 0.01   (+/- 1% max per tick)
+ */
+async function processPopulation(supabase: any, nation: any) {
+    // Re-fetch to get post-effect stat values
+    const { data: fresh } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+    if (fresh) Object.assign(nation, fresh);
+
+    const birthRate = Number(nation.birth_rate ?? 50);
+    const deathRate = Number(nation.death_rate ?? 50);
+    const immigration = Number(nation.immigration ?? 50);
+    const emigration = Number(nation.emigration ?? 50);
+    const sol = Number(nation.standard_of_living ?? 50);
+    const population = Number(nation.population ?? 0);
+
+    if (population <= 0) return null;
+
+    // Component deltas (each -100 to +100)
+    const natural = birthRate - deathRate;
+    const migration = immigration - emigration;
+
+    // Weighted blend: 60% natural, 40% migration
+    const raw = natural * 0.6 + migration * 0.4;
+
+    // Standard-of-living modifier: demographic transition
+    // At SoL 50 = no effect. At SoL 80 = -3pt drag. At SoL 20 = +3pt boost.
+    const solModifier = ((50 - sol) / 50) * 5;
+
+    // Map to 0-100 scale (/4 keeps values in playable range)
+    const growthScore = Math.round(Math.max(0, Math.min(100, 50 + (raw / 4) + solModifier)));
+
+    // Compute actual population change (+/- 1% max per tick)
+    const monthlyRate = ((growthScore - 50) / 50) * 0.01;
+    const popChange = Math.round(population * monthlyRate);
+    const newPopulation = Math.max(0, population + popChange);
+
+    // Scale eligible voters proportionally
+    const voterRatio = population > 0 ? (Number(nation.eligible_voters ?? 0) / population) : 0;
+    const newEligibleVoters = Math.round(newPopulation * voterRatio);
+
+    // Scale ideology voter blocs proportionally
+    const ideologyKeys = [
+        'progressive_voters', 'liberal_voters', 'moderate_voters',
+        'conservative_voters', 'nationalist_voters'
+    ];
+    let totalVoters = 0;
+    const currentVoters: Record<string, number> = {};
+    for (const key of ideologyKeys) {
+        const v = Number(nation[key] ?? 0);
+        currentVoters[key] = v;
+        totalVoters += v;
+    }
+    const updatedVoters: Record<string, number> = {};
+    for (const key of ideologyKeys) {
+        if (totalVoters > 0) {
+            const share = currentVoters[key] / totalVoters;
+            updatedVoters[key] = Math.round(currentVoters[key] + (popChange * share));
+        } else {
+            updatedVoters[key] = currentVoters[key];
+        }
+    }
+
+    // Build update payload
+    const updates: Record<string, number> = {
+        population_growth: growthScore,
+        population: newPopulation,
+        eligible_voters: newEligibleVoters,
+        ...updatedVoters
+    };
+
+    const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
+    if (error) {
+        console.error(`[processPopulation] Update failed for ${nation.name}:`, error.message);
+        return null;
+    }
+
+    // Sync in-memory nation object
+    Object.assign(nation, updates);
+
+    console.log(`[processPopulation] ${nation.name}: growth=${growthScore} (birth=${birthRate} death=${deathRate} imm=${immigration} emi=${emigration} sol=${sol}) pop ${population} -> ${newPopulation} (${popChange >= 0 ? '+' : ''}${popChange})`);
+
+    return {
+        population_growth: growthScore,
+        population: newPopulation,
+        population_change: popChange,
+        birth_rate: birthRate,
+        death_rate: deathRate,
+        immigration: immigration,
+        emigration: emigration,
+        standard_of_living: sol
+    };
 }
 
 
@@ -12330,6 +12477,13 @@ async function advanceTick(supabase) {
         if (retirementResults.length > 0) {
             summary.ambassadorRetirements = summary.ambassadorRetirements || [];
             summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
+        }
+
+        // Population growth (computed from birth_rate, death_rate, immigration, emigration)
+        const popResult = await processPopulation(supabase, nation);
+        if (popResult) {
+            summary.population = summary.population || [];
+            summary.population.push({ nation: nation.name, ...popResult });
         }
 
         // Final snapshot — capture everything that happened this tick

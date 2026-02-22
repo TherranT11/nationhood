@@ -15,7 +15,9 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { NATION_STAT_COLUMNS, formatStatName } from './js/game-common.js';
+
 // ==================== STATE ====================
+var activeTab = 'stat'; // 'stat' or 'ministry'
 var allCrises = [];
 var currentCrisis = null;
 var isNewCrisis = false;
@@ -25,6 +27,13 @@ var editorEndTriggers = [];
 var deletedTriggerIds = [];
 var deletedEffectIds = [];
 var deletedEndTriggerIds = [];
+
+// Ministry crisis state
+var allMinistryCrises = [];
+var currentMinistryCrisis = null;
+var isNewMinistryCrisis = false;
+var mcEditorEffects = [];
+var mcDeletedEffectIds = [];
 
 // ==================== CONSTANTS ====================
 var NATION_STATS = [
@@ -95,10 +104,92 @@ var EFFECT_TARGETS = [
     { key: 'coalition_approval', label: 'Coalition Party Approval' }
 ];
 
+// Fiscal categories that match budget_allocations
+var FISCAL_CATEGORIES = [
+    { key: 'Government Administration', label: 'Government Administration', icon: '🏛️' },
+    { key: 'Labor', label: 'Labor', icon: '👷' },
+    { key: 'Healthcare', label: 'Healthcare', icon: '🏥' },
+    { key: 'Education', label: 'Education', icon: '📚' },
+    { key: 'Transportation', label: 'Transportation', icon: '🚄' },
+    { key: 'Energy', label: 'Energy', icon: '⚡' },
+    { key: 'Justice', label: 'Justice', icon: '⚖️' },
+    { key: 'Foreign Ministry', label: 'Foreign Ministry', icon: '🌐' },
+    { key: 'Finance', label: 'Finance', icon: '💰' },
+    { key: 'Defense', label: 'Defense', icon: '🛡️' }
+];
+
+// Map fiscal categories to ministry institution keys
+var FISCAL_TO_MINISTRY_KEY = {
+    'Healthcare': 'healthcare',
+    'Education': 'education',
+    'Defense': 'defense',
+    'Labor': 'labor',
+    'Justice': 'justice',
+    'Energy': 'energy',
+    'Transportation': 'transportation',
+    'Finance': 'finance',
+    'Foreign Ministry': 'foreign',
+    'Government Administration': 'interior'
+};
+
+// Ministry institutions (mirrors ministry-actions.html MINISTRY_INSTITUTIONS)
+var MINISTRY_INSTITUTIONS = {
+    healthcare: [
+        { id: 'hospitals', name: 'Public Hospital Network', icon: '🏥', costShare: 0.38 },
+        { id: 'workforce', name: 'Medical Workforce', icon: '👩‍⚕️', costShare: 0.47 },
+        { id: 'prevention', name: 'Public Health & Disease Prevention', icon: '🛡️', costShare: 0.15 }
+    ],
+    education: [
+        { id: 'primary_schools', name: 'Primary & Secondary Schools', icon: '🏫', costShare: 0.50 },
+        { id: 'universities', name: 'Universities & Research', icon: '🎓', costShare: 0.35 },
+        { id: 'vocational', name: 'Vocational Training', icon: '🔧', costShare: 0.15 }
+    ],
+    defense: [
+        { id: 'military', name: 'Armed Forces', icon: '🎯', costShare: 0.60 },
+        { id: 'intelligence', name: 'Intelligence & Cybersecurity', icon: '🕵️', costShare: 0.25 },
+        { id: 'veterans', name: 'Veterans Affairs', icon: '🎖️', costShare: 0.15 }
+    ],
+    labor: [
+        { id: 'employment_services', name: 'Employment Services', icon: '💼', costShare: 0.45 },
+        { id: 'worker_safety', name: 'Worker Safety & Standards', icon: '🛡️', costShare: 0.30 },
+        { id: 'social_security', name: 'Social Security & Pensions', icon: '🧓', costShare: 0.25 }
+    ],
+    justice: [
+        { id: 'courts', name: 'Courts & Legal System', icon: '🏛️', costShare: 0.40 },
+        { id: 'corrections', name: 'Corrections & Prisons', icon: '🏢', costShare: 0.35 },
+        { id: 'law_enforcement', name: 'Law Enforcement', icon: '👮', costShare: 0.25 }
+    ],
+    energy: [
+        { id: 'power_grid', name: 'Power Grid & Distribution', icon: '⚡', costShare: 0.50 },
+        { id: 'generation', name: 'Power Generation', icon: '🏭', costShare: 0.35 },
+        { id: 'regulation', name: 'Energy Regulation', icon: '📋', costShare: 0.15 }
+    ],
+    transportation: [
+        { id: 'roads', name: 'Roads & Highways', icon: '🛣️', costShare: 0.50 },
+        { id: 'public_transit', name: 'Public Transit', icon: '🚌', costShare: 0.35 },
+        { id: 'aviation', name: 'Ports & Aviation', icon: '✈️', costShare: 0.15 }
+    ],
+    finance: [
+        { id: 'tax_admin', name: 'Tax Administration', icon: '📊', costShare: 0.40 },
+        { id: 'central_bank', name: 'Central Bank & Monetary Policy', icon: '🏦', costShare: 0.35 },
+        { id: 'development_bank', name: 'Development & Investment', icon: '📈', costShare: 0.25 }
+    ],
+    foreign: [
+        { id: 'embassies', name: 'Embassies & Consulates', icon: '🏢', costShare: 0.45 },
+        { id: 'foreign_aid', name: 'Foreign Aid Programs', icon: '🤝', costShare: 0.30 },
+        { id: 'trade_missions', name: 'Trade Missions', icon: '📦', costShare: 0.25 }
+    ],
+    interior: [
+        { id: 'civil_service', name: 'Civil Service', icon: '🏛️', costShare: 0.40 },
+        { id: 'emergency_services', name: 'Emergency Services', icon: '🚨', costShare: 0.35 },
+        { id: 'census', name: 'Census & Statistics', icon: '📋', costShare: 0.25 }
+    ]
+};
+
 // ==================== INIT ====================
 (async function() {
     await loadAllCrises();
-    renderListView();
+    renderTabView();
 })();
 
 async function loadAllCrises() {
@@ -106,10 +197,36 @@ async function loadAllCrises() {
         .from('crisis_templates')
         .select('*, crisis_triggers(*), crisis_effects(*), crisis_end_triggers(*)')
         .order('created_at', { ascending: false });
-    allCrises = (r.error ? [] : r.data) || [];
+    var data = (r.error ? [] : r.data) || [];
+    allCrises = data.filter(function(c) { return c.crisis_type !== 'ministry'; });
+    allMinistryCrises = data.filter(function(c) { return c.crisis_type === 'ministry'; });
 }
 
-// ==================== LIST VIEW ====================
+// ==================== TABS ====================
+function renderTabBar() {
+    var statCount = allCrises.length;
+    var mcCount = allMinistryCrises.length;
+    return '<div class="tab-bar">' +
+        '<button class="tab-btn ' + (activeTab === 'stat' ? 'active' : '') + '" onclick="switchTab(\'stat\')">' +
+            'Stat Crises <span class="tab-count">' + statCount + '</span>' +
+        '</button>' +
+        '<button class="tab-btn ' + (activeTab === 'ministry' ? 'active' : '') + '" onclick="switchTab(\'ministry\')">' +
+            'Ministry Crises <span class="tab-count">' + mcCount + '</span>' +
+        '</button>' +
+    '</div>';
+}
+
+function switchTab(tab) {
+    activeTab = tab;
+    renderTabView();
+}
+
+function renderTabView() {
+    if (activeTab === 'stat') renderListView();
+    else renderMCListView();
+}
+
+// ==================== STAT CRISIS LIST VIEW ====================
 function renderListView() {
     currentCrisis = null;
     var c = document.getElementById('content-area');
@@ -120,6 +237,7 @@ function renderListView() {
         '</div><div class="admin-actions">' +
             '<button class="btn btn-primary" onclick="createNewCrisis()">+ New Crisis</button>' +
         '</div></div>' +
+        renderTabBar() +
         '<div class="filters">' +
             '<input type="text" id="filter-search" placeholder="Search crises..." oninput="applyFilters()">' +
             '<select id="filter-status" onchange="applyFilters()"><option value="">All Status</option><option value="active">Active</option><option value="inactive">Inactive</option></select>' +
@@ -132,7 +250,7 @@ function renderListView() {
 function renderCrisisList(crises) {
     var c = document.getElementById('crisis-list');
     if (!crises.length) {
-        c.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🛡️</div>No crises found. Create one to get started.</div>';
+        c.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🛡️</div>No stat crises found. Create one to get started.</div>';
         return;
     }
     c.innerHTML = crises.map(function(cr) {
@@ -169,7 +287,7 @@ function applyFilters() {
     renderCrisisList(filtered);
 }
 
-// ==================== CREATE / EDIT ====================
+// ==================== STAT CRISIS CREATE / EDIT ====================
 function createNewCrisis() {
     isNewCrisis = true;
     currentCrisis = { name: '', description: '', is_active: true };
@@ -196,7 +314,7 @@ function editCrisis(id) {
     renderEditor();
 }
 
-// ==================== EDITOR ====================
+// ==================== STAT CRISIS EDITOR ====================
 function renderEditor() {
     var c = document.getElementById('content-area');
     var title = isNewCrisis ? 'Create New Crisis' : 'Edit Crisis';
@@ -385,7 +503,7 @@ function removeEndTrigger(i) {
     document.getElementById('end-triggers-list').innerHTML = renderEndTriggers();
 }
 
-// ==================== SYNC FORM ====================
+// ==================== STAT CRISIS SYNC FORM ====================
 function syncForm() {
     var n = document.getElementById('cr-name');
     if (n) currentCrisis.name = n.value;
@@ -395,7 +513,7 @@ function syncForm() {
     if (a) currentCrisis.is_active = a.checked;
 }
 
-// ==================== SAVE ====================
+// ==================== STAT CRISIS SAVE ====================
 async function saveCrisis() {
     syncForm();
     var name = (currentCrisis.name || '').trim();
@@ -427,7 +545,8 @@ async function saveCrisis() {
         var payload = {
             name: name,
             description: (currentCrisis.description || '').trim(),
-            is_active: currentCrisis.is_active
+            is_active: currentCrisis.is_active,
+            crisis_type: 'stat'
         };
 
         if (isNewCrisis) {
@@ -482,11 +601,10 @@ async function saveCrisis() {
     }
 }
 
-// ==================== DELETE ====================
+// ==================== STAT CRISIS DELETE ====================
 async function deleteCrisis(id) {
     if (!confirm('Delete this crisis and all its data? This cannot be undone.')) return;
     try {
-        // CASCADE handles triggers/effects/end_triggers, but also clean up active records
         await _supabase.from('active_crises').delete().eq('crisis_id', id);
         var r = await _supabase.from('crisis_templates').delete().eq('id', id);
         if (r.error) throw r.error;
@@ -499,11 +617,394 @@ async function deleteCrisis(id) {
     }
 }
 
+// =====================================================================
+// ==================== MINISTRY CRISIS TAB ============================
+// =====================================================================
+
+function renderMCListView() {
+    currentMinistryCrisis = null;
+    var c = document.getElementById('content-area');
+    c.innerHTML =
+        '<div class="admin-header"><div>' +
+            '<div class="admin-title" style="color:#ff9800;">Ministry Crises</div>' +
+            '<div class="admin-subtitle">Budget-linked crises that activate when ministry funding drops below a threshold</div>' +
+        '</div><div class="admin-actions">' +
+            '<button class="btn btn-primary" style="background:linear-gradient(135deg,#ff9800,#e68900);" onclick="createNewMC()">+ New Ministry Crisis</button>' +
+        '</div></div>' +
+        renderTabBar() +
+        '<div class="filters">' +
+            '<input type="text" id="mc-filter-search" placeholder="Search ministry crises..." oninput="applyMCFilters()">' +
+            '<select id="mc-filter-ministry" onchange="applyMCFilters()"><option value="">All Ministries</option>' +
+                FISCAL_CATEGORIES.map(function(fc) { return '<option value="' + fc.key + '">' + fc.icon + ' ' + fc.label + '</option>'; }).join('') +
+            '</select>' +
+            '<select id="mc-filter-status" onchange="applyMCFilters()"><option value="">All Status</option><option value="active">Active</option><option value="inactive">Inactive</option></select>' +
+            '<span class="event-count" id="mc-count">' + allMinistryCrises.length + ' crises</span>' +
+        '</div>' +
+        '<div id="mc-list"></div>';
+    renderMCList(allMinistryCrises);
+}
+
+function renderMCList(crises) {
+    var c = document.getElementById('mc-list');
+    if (!crises.length) {
+        c.innerHTML = '<div class="empty-state"><div class="empty-state-icon">💰</div>No ministry crises found. Create one to get started.</div>';
+        return;
+    }
+    c.innerHTML = crises.map(function(cr) {
+        var fxCount = (cr.crisis_effects || []).length;
+        var fc = FISCAL_CATEGORIES.find(function(f) { return f.key === cr.fiscal_category; });
+        var fcLabel = fc ? fc.icon + ' ' + fc.label : cr.fiscal_category || 'Unknown';
+        var instIds = cr.institution_ids || [];
+        var desc = (cr.description || '').substring(0, 80);
+        return '<div class="crisis-card mc-card ' + (cr.is_active ? 'active' : 'inactive') + '" onclick="editMC(\'' + cr.id + '\')">' +
+            '<div class="crisis-card-left">' +
+                '<div class="crisis-card-name" style="color:#ff9800;">' + escapeHtml(cr.name) + '</div>' +
+                '<div class="crisis-card-meta">' +
+                    '<span class="tag tag-ministry">' + fcLabel + '</span>' +
+                    '<span class="tag tag-funding">Below ' + (cr.funding_threshold_pct || 0) + '%</span>' +
+                    '<span class="tag tag-effect">' + fxCount + ' effect' + (fxCount !== 1 ? 's' : '') + '</span>' +
+                    (instIds.length ? '<span class="tag tag-inst">' + instIds.length + ' inst.</span>' : '') +
+                    (desc ? '<span style="color:#666;">' + escapeHtml(desc) + '</span>' : '') +
+                '</div>' +
+            '</div>' +
+            '<div class="crisis-card-right">' +
+                '<span class="tag ' + (cr.is_active ? 'tag-active' : 'tag-inactive') + '">' + (cr.is_active ? 'ACTIVE' : 'INACTIVE') + '</span>' +
+            '</div></div>';
+    }).join('');
+}
+
+function applyMCFilters() {
+    var search = (document.getElementById('mc-filter-search').value || '').toLowerCase();
+    var ministry = document.getElementById('mc-filter-ministry').value;
+    var status = document.getElementById('mc-filter-status').value;
+    var filtered = allMinistryCrises.filter(function(cr) {
+        if (search && cr.name.toLowerCase().indexOf(search) === -1 && (cr.description || '').toLowerCase().indexOf(search) === -1) return false;
+        if (ministry && cr.fiscal_category !== ministry) return false;
+        if (status === 'active' && !cr.is_active) return false;
+        if (status === 'inactive' && cr.is_active) return false;
+        return true;
+    });
+    document.getElementById('mc-count').textContent = filtered.length + ' crises';
+    renderMCList(filtered);
+}
+
+// ==================== MINISTRY CRISIS CREATE / EDIT ====================
+function createNewMC() {
+    isNewMinistryCrisis = true;
+    currentMinistryCrisis = {
+        name: '', description: '', is_active: true,
+        fiscal_category: '', funding_threshold_pct: 50,
+        recovery_threshold_pct: 75, institution_ids: []
+    };
+    mcEditorEffects = [];
+    mcDeletedEffectIds = [];
+    renderMCEditor();
+}
+
+function editMC(id) {
+    var cr = allMinistryCrises.find(function(c) { return c.id === id; });
+    if (!cr) return;
+    isNewMinistryCrisis = false;
+    currentMinistryCrisis = Object.assign({}, cr, {
+        institution_ids: cr.institution_ids || []
+    });
+    mcEditorEffects = (cr.crisis_effects || []).map(function(e) { return Object.assign({}, e, { isNew: false }); });
+    mcDeletedEffectIds = [];
+    renderMCEditor();
+}
+
+// ==================== MINISTRY CRISIS EDITOR ====================
+function renderMCEditor() {
+    var c = document.getElementById('content-area');
+    var title = isNewMinistryCrisis ? 'Create Ministry Crisis' : 'Edit Ministry Crisis';
+    var mc = currentMinistryCrisis;
+    var ministryKey = FISCAL_TO_MINISTRY_KEY[mc.fiscal_category] || '';
+    var institutions = ministryKey ? (MINISTRY_INSTITUTIONS[ministryKey] || []) : [];
+
+    c.innerHTML =
+        '<button class="btn-back" onclick="cancelMCEditor()">&#8592; Back to Ministry Crises</button>' +
+        '<div class="editor mc-editor">' +
+            '<div class="editor-header" style="border-bottom-color:#ff9800;"><div class="editor-title" style="color:#ff9800;">' + title + '</div>' +
+                (!isNewMinistryCrisis ? '<button class="btn btn-danger btn-small" onclick="deleteMC(\'' + mc.id + '\')">Delete</button>' : '') +
+            '</div>' +
+            '<div class="editor-body">' +
+
+                // Name + Status
+                '<div class="form-row">' +
+                    '<div class="form-group"><label class="form-label">Crisis Name</label>' +
+                        '<input type="text" class="form-input" id="mc-name" value="' + escapeAttr(mc.name || '') + '" placeholder="e.g., Hospital Funding Crisis">' +
+                    '</div>' +
+                    '<div class="form-group"><label class="form-label">Status</label>' +
+                        '<div class="toggle-wrapper" style="margin-top:8px;">' +
+                            '<label class="toggle"><input type="checkbox" id="mc-active" ' + (mc.is_active ? 'checked' : '') + '><span class="toggle-slider" style="background:#555;"></span></label>' +
+                            '<span class="toggle-label" id="mc-active-label">' + (mc.is_active ? 'Active' : 'Inactive') + '</span>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+
+                // Description
+                '<div class="form-group"><label class="form-label">Description</label>' +
+                    '<textarea class="form-textarea" id="mc-description" placeholder="What happens when this ministry is underfunded...">' + escapeHtml(mc.description || '') + '</textarea>' +
+                '</div>' +
+
+                // Ministry + Threshold section
+                '<div class="editor-section" style="border-color:#ff9800;">' +
+                    '<div class="editor-section-title" style="color:#ff9800;margin-bottom:12px;">Funding Trigger</div>' +
+                    '<div class="form-hint" style="margin-bottom:16px;">Crisis activates when the ministry\'s budget allocation / fulfilled cost ratio drops below the activation threshold. Resolves when funding is restored above the recovery threshold.</div>' +
+
+                    '<div class="form-row" style="grid-template-columns:1fr 1fr 1fr;">' +
+                        '<div class="form-group"><label class="form-label">Ministry</label>' +
+                            '<select class="form-select" id="mc-fiscal-cat" onchange="onMCMinistryChange(this.value)">' +
+                                '<option value="">-- Select Ministry --</option>' +
+                                FISCAL_CATEGORIES.map(function(fc) {
+                                    return '<option value="' + fc.key + '"' + (mc.fiscal_category === fc.key ? ' selected' : '') + '>' + fc.icon + ' ' + fc.label + '</option>';
+                                }).join('') +
+                            '</select>' +
+                        '</div>' +
+                        '<div class="form-group"><label class="form-label">Activates Below</label>' +
+                            '<div class="threshold-input"><input type="number" class="form-input" id="mc-threshold" value="' + (mc.funding_threshold_pct || 50) + '" min="1" max="99" step="1"><span class="threshold-suffix">%</span></div>' +
+                            '<div class="form-hint">Crisis fires when funding ratio is below this</div>' +
+                        '</div>' +
+                        '<div class="form-group"><label class="form-label">Recovers Above</label>' +
+                            '<div class="threshold-input"><input type="number" class="form-input" id="mc-recovery" value="' + (mc.recovery_threshold_pct || 75) + '" min="1" max="100" step="1"><span class="threshold-suffix">%</span></div>' +
+                            '<div class="form-hint">Crisis ends when funding ratio reaches this</div>' +
+                        '</div>' +
+                    '</div>' +
+
+                    // Institution checkboxes
+                    '<div id="mc-institutions-area">' + renderMCInstitutions(ministryKey, mc.institution_ids || []) + '</div>' +
+                '</div>' +
+
+                '<div class="section-divider" style="color:#ff9800;">when active, every tick applies</div>' +
+
+                // Effects
+                '<div class="editor-section">' +
+                    '<div class="editor-section-header">' +
+                        '<div class="editor-section-title">Effects Per Tick</div>' +
+                        '<button class="btn btn-ghost btn-small" onclick="addMCEffect()">+ Add Effect</button>' +
+                    '</div>' +
+                    '<div class="form-hint" style="margin-bottom:12px;">Applied EVERY tick while this ministry crisis is active. Maximum 7 effects.</div>' +
+                    '<div id="mc-effects-list">' + renderMCEffects() + '</div>' +
+                '</div>' +
+
+            '</div>' +
+            '<div class="editor-footer">' +
+                '<button class="btn btn-ghost" onclick="cancelMCEditor()">Cancel</button>' +
+                '<button class="btn btn-primary" style="background:linear-gradient(135deg,#ff9800,#e68900);" onclick="saveMC()">Save Ministry Crisis</button>' +
+            '</div>' +
+        '</div>';
+
+    // Bind toggle
+    var at = document.getElementById('mc-active');
+    if (at) at.onchange = function() { document.getElementById('mc-active-label').textContent = this.checked ? 'Active' : 'Inactive'; };
+}
+
+function cancelMCEditor() { renderMCListView(); }
+
+function onMCMinistryChange(fiscalCat) {
+    currentMinistryCrisis.fiscal_category = fiscalCat;
+    currentMinistryCrisis.institution_ids = [];
+    var mk = FISCAL_TO_MINISTRY_KEY[fiscalCat] || '';
+    document.getElementById('mc-institutions-area').innerHTML = renderMCInstitutions(mk, []);
+}
+
+function renderMCInstitutions(ministryKey, selectedIds) {
+    if (!ministryKey) return '<div class="form-hint" style="padding:8px 0;">Select a ministry to see its institutions.</div>';
+    var insts = MINISTRY_INSTITUTIONS[ministryKey] || [];
+    if (!insts.length) return '';
+    return '<div style="margin-top:12px;"><label class="form-label">Institutions (optional context)</label>' +
+        '<div class="form-hint" style="margin-bottom:8px;">Select specific institutions this crisis represents. Leave empty to apply to the whole ministry.</div>' +
+        '<div class="institution-grid">' +
+        insts.map(function(inst) {
+            var checked = selectedIds.indexOf(inst.id) !== -1;
+            return '<label class="institution-check' + (checked ? ' checked' : '') + '">' +
+                '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="toggleMCInstitution(\'' + inst.id + '\',this.checked,this.parentElement)">' +
+                '<span class="inst-icon">' + inst.icon + '</span>' +
+                '<span class="inst-name">' + inst.name + '</span>' +
+                '<span class="inst-share">' + Math.round(inst.costShare * 100) + '% share</span>' +
+            '</label>';
+        }).join('') +
+        '</div></div>';
+}
+
+function toggleMCInstitution(instId, checked, label) {
+    var ids = currentMinistryCrisis.institution_ids || [];
+    if (checked && ids.indexOf(instId) === -1) ids.push(instId);
+    else if (!checked) ids = ids.filter(function(x) { return x !== instId; });
+    currentMinistryCrisis.institution_ids = ids;
+    if (label) {
+        if (checked) label.classList.add('checked');
+        else label.classList.remove('checked');
+    }
+}
+
+// ==================== MINISTRY CRISIS EFFECTS ====================
+function renderMCEffects() {
+    if (!mcEditorEffects.length) return '<div class="empty-state" style="padding:12px;">No effects. Add at least one.</div>';
+    return mcEditorEffects.map(function(e, i) {
+        var secondCol = '';
+        if (e.target === 'nation') {
+            secondCol = '<select class="form-select" onchange="mcEditorEffects[' + i + '].stat_key=this.value"><option value="">-- Select Stat --</option>' +
+                NATION_STATS.map(function(s) { return '<option value="' + s.key + '"' + (e.stat_key === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
+            '</select>';
+        } else if (e.target === 'minister_approval') {
+            secondCol = '<select class="form-select" onchange="mcEditorEffects[' + i + '].minister_key=this.value"><option value="">-- Select Minister --</option>' +
+                MINISTRIES.map(function(m) { return '<option value="' + m.key + '"' + (e.minister_key === m.key ? ' selected' : '') + '>' + m.label + '</option>'; }).join('') +
+            '</select>';
+        } else if (e.target === 'pm_approval') {
+            secondCol = '<span style="color:#888;font-size:0.8rem;padding:10px;">Applies to PM</span>';
+        } else {
+            secondCol = '<span style="color:#888;font-size:0.8rem;padding:10px;">All coalition parties</span>';
+        }
+        var floorLabel = (e.change_per_tick < 0) ? 'Floor' : 'Ceiling';
+        return '<div class="effect-item">' +
+            '<select class="form-select" onchange="updateMCEffectTarget(' + i + ',this.value)">' +
+                EFFECT_TARGETS.map(function(t) { return '<option value="' + t.key + '"' + (e.target === t.key ? ' selected' : '') + '>' + t.label + '</option>'; }).join('') +
+            '</select>' +
+            secondCol +
+            '<input type="number" class="form-input" value="' + (e.change_per_tick != null ? e.change_per_tick : 0) + '" placeholder="+/- per tick" step="0.1" onchange="mcEditorEffects[' + i + '].change_per_tick=Number(this.value);document.getElementById(\'mc-floor-label-' + i + '\').textContent=this.value<0?\'Floor\':\'Ceiling\'">' +
+            '<div style="position:relative;"><span id="mc-floor-label-' + i + '" style="position:absolute;top:-14px;left:2px;font-size:0.6rem;color:#666;text-transform:uppercase;letter-spacing:0.5px;">' + floorLabel + '</span><input type="number" class="form-input" value="' + (e.stat_floor != null ? e.stat_floor : '') + '" placeholder="None" step="1" min="0" max="100" onchange="mcEditorEffects[' + i + '].stat_floor=this.value===\'\'?null:Number(this.value)"></div>' +
+            '<button class="btn-icon" onclick="removeMCEffect(' + i + ')">&#10005;</button>' +
+        '</div>';
+    }).join('');
+}
+
+function updateMCEffectTarget(i, v) {
+    mcEditorEffects[i].target = v;
+    mcEditorEffects[i].stat_key = '';
+    mcEditorEffects[i].minister_key = '';
+    document.getElementById('mc-effects-list').innerHTML = renderMCEffects();
+}
+
+function addMCEffect() {
+    if (mcEditorEffects.length >= 7) { alert('Maximum 7 effects.'); return; }
+    mcEditorEffects.push({ id: null, target: 'nation', stat_key: '', minister_key: '', change_per_tick: 0, stat_floor: null, isNew: true });
+    document.getElementById('mc-effects-list').innerHTML = renderMCEffects();
+}
+
+function removeMCEffect(i) {
+    var e = mcEditorEffects[i];
+    if (e.id && !e.isNew) mcDeletedEffectIds.push(e.id);
+    mcEditorEffects.splice(i, 1);
+    document.getElementById('mc-effects-list').innerHTML = renderMCEffects();
+}
+
+// ==================== MINISTRY CRISIS SAVE ====================
+async function saveMC() {
+    var mc = currentMinistryCrisis;
+    // Sync form values
+    var nameEl = document.getElementById('mc-name');
+    if (nameEl) mc.name = nameEl.value;
+    var descEl = document.getElementById('mc-description');
+    if (descEl) mc.description = descEl.value;
+    var activeEl = document.getElementById('mc-active');
+    if (activeEl) mc.is_active = activeEl.checked;
+    var fcEl = document.getElementById('mc-fiscal-cat');
+    if (fcEl) mc.fiscal_category = fcEl.value;
+    var threshEl = document.getElementById('mc-threshold');
+    if (threshEl) mc.funding_threshold_pct = Number(threshEl.value);
+    var recEl = document.getElementById('mc-recovery');
+    if (recEl) mc.recovery_threshold_pct = Number(recEl.value);
+
+    // Validate
+    var name = (mc.name || '').trim();
+    if (!name) { alert('Crisis name is required.'); return; }
+    if (!mc.fiscal_category) { alert('Select a ministry.'); return; }
+    if (!mc.funding_threshold_pct || mc.funding_threshold_pct < 1 || mc.funding_threshold_pct > 99) {
+        alert('Activation threshold must be between 1% and 99%.'); return;
+    }
+    if (!mc.recovery_threshold_pct || mc.recovery_threshold_pct < 1 || mc.recovery_threshold_pct > 100) {
+        alert('Recovery threshold must be between 1% and 100%.'); return;
+    }
+    if (mc.recovery_threshold_pct <= mc.funding_threshold_pct) {
+        alert('Recovery threshold must be higher than activation threshold (hysteresis).'); return;
+    }
+
+    var validEffects = mcEditorEffects.filter(function(e) {
+        if (e.target === 'nation') return e.stat_key;
+        if (e.target === 'minister_approval') return e.minister_key;
+        return true;
+    });
+    if (!validEffects.length) { alert('Add at least one effect.'); return; }
+
+    for (var ei = 0; ei < validEffects.length; ei++) {
+        var eff = validEffects[ei];
+        if (eff.target === 'nation' && !eff.stat_key) { alert('Effect #' + (ei + 1) + ': Select a nation stat.'); return; }
+        if (eff.target === 'minister_approval' && !eff.minister_key) { alert('Effect #' + (ei + 1) + ': Select a minister.'); return; }
+        if (!eff.change_per_tick || eff.change_per_tick === 0) { alert('Effect #' + (ei + 1) + ': Change per tick must be non-zero.'); return; }
+    }
+
+    try {
+        var crisisId;
+        var payload = {
+            name: name,
+            description: (mc.description || '').trim(),
+            is_active: mc.is_active,
+            crisis_type: 'ministry',
+            fiscal_category: mc.fiscal_category,
+            funding_threshold_pct: mc.funding_threshold_pct,
+            recovery_threshold_pct: mc.recovery_threshold_pct,
+            institution_ids: mc.institution_ids || []
+        };
+
+        if (isNewMinistryCrisis) {
+            var r = await _supabase.from('crisis_templates').insert(payload).select().single();
+            if (r.error) throw r.error;
+            crisisId = r.data.id;
+        } else {
+            crisisId = mc.id;
+            var r2 = await _supabase.from('crisis_templates').update(payload).eq('id', crisisId);
+            if (r2.error) throw r2.error;
+        }
+
+        // Delete removed effects
+        if (mcDeletedEffectIds.length) await _supabase.from('crisis_effects').delete().in('id', mcDeletedEffectIds);
+
+        // Upsert effects
+        for (var e of validEffects) {
+            var ep = {
+                crisis_id: crisisId,
+                target: e.target,
+                stat_key: (e.target === 'nation') ? e.stat_key : null,
+                minister_key: (e.target === 'minister_approval') ? e.minister_key : (e.target === 'pm_approval' ? 'prime_minister' : null),
+                change_per_tick: e.change_per_tick || 0,
+                stat_floor: (e.stat_floor != null && e.stat_floor !== '') ? e.stat_floor : null
+            };
+            if (e.isNew || !e.id) await _supabase.from('crisis_effects').insert(ep);
+            else await _supabase.from('crisis_effects').update(ep).eq('id', e.id);
+        }
+
+        alert(isNewMinistryCrisis ? 'Ministry crisis created!' : 'Ministry crisis saved!');
+        await loadAllCrises();
+        renderMCListView();
+    } catch (err) {
+        console.error('Save error:', err);
+        alert('Error: ' + err.message);
+    }
+}
+
+// ==================== MINISTRY CRISIS DELETE ====================
+async function deleteMC(id) {
+    if (!confirm('Delete this ministry crisis? This cannot be undone.')) return;
+    try {
+        await _supabase.from('active_crises').delete().eq('crisis_id', id);
+        var r = await _supabase.from('crisis_templates').delete().eq('id', id);
+        if (r.error) throw r.error;
+        alert('Ministry crisis deleted.');
+        await loadAllCrises();
+        renderMCListView();
+    } catch (err) {
+        console.error('Delete error:', err);
+        alert('Error: ' + err.message);
+    }
+}
+
 // ==================== HELPERS ====================
 function escapeHtml(t) { var d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
 function escapeAttr(t) { return (t || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
 // Expose functions for HTML onclick/onchange handlers
+window.switchTab = switchTab;
 window.createNewCrisis = createNewCrisis;
 window.applyFilters = applyFilters;
 window.editCrisis = editCrisis;
@@ -516,6 +1017,18 @@ window.saveCrisis = saveCrisis;
 window.removeTrigger = removeTrigger;
 window.removeEffect = removeEffect;
 window.removeEndTrigger = removeEndTrigger;
+// Ministry crisis
+window.createNewMC = createNewMC;
+window.editMC = editMC;
+window.cancelMCEditor = cancelMCEditor;
+window.deleteMC = deleteMC;
+window.applyMCFilters = applyMCFilters;
+window.onMCMinistryChange = onMCMinistryChange;
+window.toggleMCInstitution = toggleMCInstitution;
+window.addMCEffect = addMCEffect;
+window.removeMCEffect = removeMCEffect;
+window.updateMCEffectTarget = updateMCEffectTarget;
+window.saveMC = saveMC;
 </script>
 </body>
 </html>
