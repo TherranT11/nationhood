@@ -313,6 +313,7 @@ async function advanceTick(supabase) {
 
     // Lazy-loaded once per tick for all nations
     let _statConnections = null;
+    let _institutionConfig = null;
 
     const summary = {
         tick: newTick,
@@ -449,8 +450,20 @@ async function advanceTick(supabase) {
         // Apply GDP growth rate
         await applyGdpGrowth(supabase, nation);
 
-        // Stat decay (equilibrium drift + erosion)
-        const decayResults = await processStatDecay(supabase, nation);
+        // Stat decay (equilibrium drift + erosion, modified by institution funding)
+        if (!_institutionConfig) {
+            const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
+            _institutionConfig = icRows || [];
+        }
+        let statInstMap = null;
+        if (nation.last_budget_bill_id && _institutionConfig.length > 0) {
+            const { data: itemAllocs } = await supabase.from('budget_item_allocations')
+                .select('item_type, item_id, allocation_amount, needed_amount')
+                .eq('bill_id', nation.last_budget_bill_id)
+                .eq('item_type', 'institution');
+            statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs);
+        }
+        const decayResults = await processStatDecay(supabase, nation, statInstMap);
         if (decayResults.length > 0) {
             summary.decay = summary.decay || [];
             summary.decay.push({ nation: nation.name, effects: decayResults });

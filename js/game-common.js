@@ -3976,6 +3976,86 @@ for (const key of Object.keys(STAT_DECAY_CONFIG)) {
     }
 }
 
+// ==================== INSTITUTION FUNDING DECAY TIERS ====================
+// Institutions counteract natural stat decay. At 100% funding, decay is fully
+// blocked. Below 100%, the rates below REPLACE the natural decay rate for stats
+// covered by that institution. When multiple institutions cover the same stat,
+// their rates are averaged.
+
+export const INSTITUTION_DECAY_TIERS = [
+    { minPct: 100, primary: 0,    secondary: 0    },  // Fully Funded
+    { minPct: 90,  primary: 0.3,  secondary: 0    },  // Stretched
+    { minPct: 75,  primary: 0.5,  secondary: 0.2  },  // Strained
+    { minPct: 50,  primary: 0.9,  secondary: 0.5  },  // Underfunded
+    { minPct: 25,  primary: 1.7,  secondary: 0.9  },  // Critical
+    { minPct: 0,   primary: 2.7,  secondary: 1.7  },  // Collapsed
+];
+
+/**
+ * Look up the institution decay rate for a given funding percentage.
+ * @param {number} fundingPct - 0-100 funding percentage
+ * @param {'primary'|'secondary'} role - whether this stat is the institution's primary or secondary
+ * @returns {number} decay rate per tick (0 = no decay)
+ */
+export function getInstitutionDecayRate(fundingPct, role) {
+    for (const tier of INSTITUTION_DECAY_TIERS) {
+        if (fundingPct >= tier.minPct) return tier[role];
+    }
+    return INSTITUTION_DECAY_TIERS[INSTITUTION_DECAY_TIERS.length - 1][role];
+}
+
+/**
+ * Build a map of statKey → array of { institutionId, role, fundingPct } from
+ * institution config rows and budget_item_allocations for the active budget.
+ *
+ * @param {Array} instConfig - rows from ministry_institution_config
+ * @param {Array} itemAllocations - rows from budget_item_allocations for the active bill
+ * @returns {Object} e.g. { healthcare_quality: [{ id: 'workforce', role: 'primary', fundingPct: 85 }, ...] }
+ */
+export function buildStatInstitutionMap(instConfig, itemAllocations) {
+    const allocMap = {};
+    for (const row of (itemAllocations || [])) {
+        if (row.item_type === 'institution') {
+            allocMap[row.item_id] = {
+                allocated: Number(row.allocation_amount || 0),
+                needed: Number(row.needed_amount || 0)
+            };
+        }
+    }
+
+    const statMap = {};
+    for (const inst of (instConfig || [])) {
+        const alloc = allocMap[inst.id];
+        const fundingPct = alloc && alloc.needed > 0
+            ? Math.min(100, Math.round((alloc.allocated / alloc.needed) * 100))
+            : 0;  // no allocation row = unfunded
+
+        for (const role of ['primary', 'secondary']) {
+            const statKey = inst[`${role}_stat`];
+            if (!statKey) continue;
+            if (!statMap[statKey]) statMap[statKey] = [];
+            statMap[statKey].push({ id: inst.id, role, fundingPct });
+        }
+    }
+    return statMap;
+}
+
+/**
+ * For a given stat, compute the effective institution decay rate by averaging
+ * all institutions that cover it (as primary or secondary).
+ *
+ * @param {Array} institutions - entries from buildStatInstitutionMap()[statKey]
+ * @returns {number|null} averaged decay rate, or null if no institutions cover this stat
+ */
+export function getAveragedInstitutionDecay(institutions) {
+    if (!institutions || institutions.length === 0) return null;
+    let total = 0;
+    for (const inst of institutions) {
+        total += getInstitutionDecayRate(inst.fundingPct, inst.role);
+    }
+    return total / institutions.length;
+}
+
 // ==================== THREE-PILLAR VOTING SYSTEM MAPPINGS ====================
 
 /**
@@ -6843,11 +6923,17 @@ export async function adjustMomentum(supabase, factionId, delta) {
  * Apply natural stat decay for a nation. Each tick, configured stats drift
  * toward their target (equilibrium or erosion).
  *
+ * Institution funding modifies decay: fully-funded institutions block decay on
+ * their primary/secondary stats entirely. Underfunded institutions let decay
+ * through (or worsen it). When multiple institutions cover the same stat, their
+ * rates are averaged. Stats not covered by any institution decay at natural rates.
+ *
  * @param {object} supabase - Supabase client
  * @param {object} nation   - Full nation row (in-memory, mutated on success)
+ * @param {Object|null} statInstitutionMap - from buildStatInstitutionMap(), or null to use natural rates
  * @returns {Array<object>}  Applied decay descriptors for tick summary
  */
-export async function processStatDecay(supabase, nation) {
+export async function processStatDecay(supabase, nation, statInstitutionMap) {
     const appliedDecay = [];
     const nationUpdates = {};
 
@@ -6856,9 +6942,17 @@ export async function processStatDecay(supabase, nation) {
 
         const currentVal = nation[statKey] !== undefined && nation[statKey] !== null
             ? Number(nation[statKey]) : 50;
-        const { target, speed } = config;
+        const { target } = config;
 
         if (currentVal === target) continue;
+
+        // Determine effective decay speed: institution-modified or natural
+        const instDecay = statInstitutionMap
+            ? getAveragedInstitutionDecay(statInstitutionMap[statKey])
+            : null;
+        const speed = instDecay !== null ? instDecay : config.speed;
+
+        if (speed === 0) continue;  // fully funded institutions block all decay
 
         let newVal;
         if (currentVal > target) {
@@ -6877,7 +6971,8 @@ export async function processStatDecay(supabase, nation) {
                 previousValue: Math.round(currentVal * 10) / 10,
                 newValue: newVal,
                 target,
-                speed
+                speed,
+                institutionModified: instDecay !== null
             });
         }
     }
@@ -6894,7 +6989,8 @@ export async function processStatDecay(supabase, nation) {
             return [];
         }
 
-        console.log(`[processStatDecay] Decay applied for ${nation.name}: ${appliedDecay.length} stat(s)`);
+        const instCount = appliedDecay.filter(d => d.institutionModified).length;
+        console.log(`[processStatDecay] Decay applied for ${nation.name}: ${appliedDecay.length} stat(s)${instCount > 0 ? ` (${instCount} institution-modified)` : ''}`);
         Object.assign(nation, nationUpdates);
     }
 
