@@ -571,12 +571,6 @@ async function advanceTick(supabase) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
-        // Bloc approval decay toward ideology-based targets
-        await processBlocApprovalDecay(supabase, nation);
-
-        // Random ±1D3% jitter to party standings (democracies only)
-        await processPartyStandingsJitter(supabase, nation);
-
         // Three-pillar voter preference recalculation
         await calculateThreePillarPreferences(supabase, nation, newTick);
 

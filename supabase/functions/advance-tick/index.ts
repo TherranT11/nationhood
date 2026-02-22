@@ -1705,7 +1705,23 @@ function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions) {
  * Called at January ticks (tick % 12 === 1, since tick 1 = January after start).
  */
 async function generateBudgetBill(supabase, nation, currentTick, activeLaws) {
-    const budgetData = buildBudgetData(nation, activeLaws);
+    // Fetch latest trade summary for tariff revenue (matches Economy page)
+    let tradeTariffRevenue = null;
+    try {
+        const { data: tradeSummary } = await supabase.from('trade_summary')
+            .select('tariff_revenue')
+            .eq('nation_id', nation.id)
+            .order('tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (tradeSummary) tradeTariffRevenue = Number(tradeSummary.tariff_revenue);
+    } catch (e) { /* no trade data yet — use formula fallback */ }
+
+    // Load institution config for cost calculations
+    const { data: instRows } = await supabase.from('ministry_institution_config')
+        .select('ministry_key, institution_name, base_cost_per_capita, cost_share');
+
+    const budgetData = buildBudgetData(nation, activeLaws, tradeTariffRevenue, instRows || []);
 
     const gameYear = 2000 + Math.floor(currentTick / 12);
     const billName = `Budget Act of ${gameYear}`;
@@ -1777,6 +1793,20 @@ async function resolveBudgetBill(supabase, bill, currentTick) {
     if (!nation) return;
 
     const budget = calculateNationalBudget(nation);
+
+    // Override tariff revenue with real trade engine data
+    let tradeTariffRevenue = null;
+    try {
+        const { data: tradeSummary } = await supabase.from('trade_summary')
+            .select('tariff_revenue')
+            .eq('nation_id', nation.id)
+            .order('tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (tradeSummary) tradeTariffRevenue = Number(tradeSummary.tariff_revenue);
+    } catch (e) { /* no trade data yet */ }
+    applyTradeTariffOverride(budget, tradeTariffRevenue);
+
     const reserves = Number(nation.budget_reserves || 0);
     const available = budget.grossRevenue + reserves - budget.debtService;
 
@@ -1930,6 +1960,22 @@ for (const axis of IDEOLOGY_AXES) {
     IDEOLOGY_TO_AXIS[axis.right] = { axisKey: axis.key, direction: +1 };
 }
 
+
+/**
+ * Return an alignment CSS class ('aligned', 'opposed', 'neutral') for
+ * an ideology tag relative to a faction's ideology scores.
+ */
+function getIdeologyChipClass(ideologyTag, factionIdeology) {
+    if (!factionIdeology) return 'neutral';
+    const tag = (ideologyTag || '').toUpperCase();
+    const mapping = IDEOLOGY_TO_AXIS[tag];
+    if (!mapping) return 'neutral';
+    const score = factionIdeology[mapping.axisKey] || 0;
+    const alignment = score * mapping.direction;
+    if (alignment > 10) return 'aligned';
+    if (alignment < -10) return 'opposed';
+    return 'neutral';
+}
 
 // ==================== IDEOLOGY LABELS ====================
 
@@ -2943,6 +2989,7 @@ async function resolveExpiredVotes(supabase, nationId) {
 
         // Determine pass/fail — early-locked outcomes take priority
         const isNoConfidence = bill.bill_type === 'no_confidence';
+        const isFoundational = bill.bill_type === 'foundational';
         let passed;
         if (bill.early_resolution_status === 'majority_reached') {
             passed = true;  // Locked by checkEarlyMajority
@@ -6522,180 +6569,6 @@ async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
 
 // Tick lock and tick mutation are intentionally Edge Function only.
 
-// ==================== BLOC APPROVAL DECAY ====================
-
-/**
- * Drift each faction x bloc approval toward an ideology-based target.
- * Base target: 40. If a voter bloc opposes the party's dynamic ideology
- * positions, the target drops (minimum 20). Drift rate: 0.5 per tick.
- *
- * Uses dynamic axis scores from faction_ideology (shifted by voting
- * behavior) rather than the static declared axes.
- */
-async function processBlocApprovalDecay(supabase, nation) {
-    const BASE_TARGET = 40;
-    const MIN_TARGET = 20;
-    const MAX_TOTAL_PENALTY = 20;
-    const DRIFT_RATE = 0.5;
-
-    // 1. Load all party factions
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('faction_type', 'party');
-    if (!factions || factions.length === 0) return;
-
-    const factionIds = factions.map(f => f.id);
-
-    // 2. Load all faction_bloc_approval rows
-    const { data: allBlocRows } = await supabase
-        .from('faction_bloc_approval')
-        .select('id, faction_id, bloc_id, approval')
-        .in('faction_id', factionIds);
-    if (!allBlocRows || allBlocRows.length === 0) return;
-
-    // 3. Load voter blocs with ideology axes
-    const { data: voterBlocs } = await supabase
-        .from('voter_blocs')
-        .select('id, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
-        .eq('nation_id', nation.id)
-        .eq('is_active', true);
-    if (!voterBlocs || voterBlocs.length === 0) return;
-
-    const blocMap = {};
-    for (const b of voterBlocs) blocMap[b.id] = b;
-
-    // 4. Load faction ideologies (dynamic axis scores)
-    const { data: ideologies } = await supabase
-        .from('faction_ideology')
-        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-        .in('faction_id', factionIds);
-
-    const ideoMap = {};
-    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
-
-    // 5. Process each faction x bloc pair
-    const updates = [];
-
-    for (const row of allBlocRows) {
-        const bloc = blocMap[row.bloc_id];
-        if (!bloc) continue;
-
-        const ideo = ideoMap[row.faction_id];
-
-        // Compute ideology alignment using dynamic scores (0-100, 50 = neutral)
-        const alignment = ideo ? computeIdeologyAlignment(ideo, bloc) : 50;
-
-        // Opposition penalty: alignment < 50 means the party opposes this bloc
-        const penalty = alignment < 50
-            ? Math.floor((50 - alignment) / 50 * MAX_TOTAL_PENALTY)
-            : 0;
-
-        const target = Math.max(MIN_TARGET, BASE_TARGET - penalty);
-
-        // Drift toward target
-        let newApproval = row.approval;
-        if (row.approval > target) {
-            newApproval = Math.round(Math.max(target, row.approval - DRIFT_RATE));
-        } else if (row.approval < target) {
-            newApproval = Math.round(Math.min(target, row.approval + DRIFT_RATE));
-        }
-
-        if (newApproval !== row.approval) {
-            row.approval = newApproval;
-            updates.push({ id: row.id, approval: newApproval });
-        }
-    }
-
-    // 6. Batch update changed rows
-    for (const u of updates) {
-        await supabase.from('faction_bloc_approval')
-            .update({ approval: u.approval })
-            .eq('id', u.id);
-    }
-
-    // 7. Recalculate derived approval for affected factions
-    if (updates.length > 0) {
-        const affectedFactions = [...new Set(
-            allBlocRows
-                .filter(r => updates.some(u => u.id === r.id))
-                .map(r => r.faction_id)
-        )];
-        for (const fId of affectedFactions) {
-            const factionBlocRows = allBlocRows.filter(r => r.faction_id === fId);
-            await recalcDerivedApproval(supabase, fId, factionBlocRows);
-        }
-    }
-}
-
-
-// ==================== PARTY STANDINGS JITTER ====================
-
-/**
- * Each tick, every party's bloc approvals shift by a random ±1D3%.
- * This creates natural public-opinion fluctuation on top of the ideology-based drift.
- * The ideology decay system anchors values so jitter doesn't accumulate.
- */
-async function processPartyStandingsJitter(supabase, nation) {
-    // Only for democracies
-    if (isAutocracy(nation)) return;
-
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('faction_type', 'party');
-    if (!factions || factions.length === 0) return;
-
-    const factionIds = factions.map(f => f.id);
-
-    const { data: allBlocRows } = await supabase
-        .from('faction_bloc_approval')
-        .select('id, faction_id, bloc_id, approval')
-        .in('faction_id', factionIds);
-    if (!allBlocRows || allBlocRows.length === 0) return;
-
-    // Group by faction
-    const factionGroups = {};
-    for (const row of allBlocRows) {
-        if (!factionGroups[row.faction_id]) factionGroups[row.faction_id] = [];
-        factionGroups[row.faction_id].push(row);
-    }
-
-    const updates = [];
-
-    for (const factionId of Object.keys(factionGroups)) {
-        const rows = factionGroups[factionId];
-        // Roll 1D3: random 1-3, then randomly positive or negative
-        const delta = (Math.floor(Math.random() * 3) + 1) * (Math.random() < 0.5 ? -1 : 1);
-
-        for (const row of rows) {
-            const newApproval = Math.max(0, Math.min(100, row.approval + delta));
-            if (newApproval !== row.approval) {
-                row.approval = newApproval;
-                updates.push({ id: row.id, approval: newApproval });
-            }
-        }
-    }
-
-    // Batch update changed rows
-    for (const u of updates) {
-        await supabase.from('faction_bloc_approval')
-            .update({ approval: u.approval })
-            .eq('id', u.id);
-    }
-
-    // Recalculate derived approval for all factions
-    for (const factionId of Object.keys(factionGroups)) {
-        const factionBlocRows = factionGroups[factionId];
-        await recalcDerivedApproval(supabase, factionId, factionBlocRows);
-    }
-
-    console.log(`[Standings Jitter] Applied random ±1-3% jitter to ${Object.keys(factionGroups).length} parties, ${updates.length} rows updated`);
-}
-
-
 // ==================== THREE-PILLAR PREFERENCE ENGINE ====================
 
 /**
@@ -9205,7 +9078,7 @@ async function processLoyaltyTick(supabase, nation) {
     const rulingId = nation.ruling_faction_id;
     if (!rulingId) return;
 
-    const isAutocracy = isAutocracy(nation);
+    const nationIsAutocracy = isAutocracy(nation);
 
     const { data: factions } = await supabase
         .from('factions')
@@ -9233,7 +9106,7 @@ async function processLoyaltyTick(supabase, nation) {
         let seats = faction.seats || 0;
 
         if (faction.id === rulingId) {
-            if (isAutocracy) {
+            if (nationIsAutocracy) {
                 // Autocracy ruling faction: dynamic loyalty drifting toward 80
                 const ministryCount = ministryCounts[faction.id] || 0;
                 if (loyalty > 80) loyalty -= 1;
@@ -12329,12 +12202,6 @@ async function advanceTick(supabase) {
         if (isAutocracy(nation)) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
-
-        // Bloc approval decay toward ideology-based targets
-        await processBlocApprovalDecay(supabase, nation);
-
-        // Random ±1D3% jitter to party standings (democracies only)
-        await processPartyStandingsJitter(supabase, nation);
 
         // Three-pillar voter preference recalculation
         await calculateThreePillarPreferences(supabase, nation, newTick);
