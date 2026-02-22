@@ -205,7 +205,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, calculateNationalBudget, FISCAL_CATEGORIES, getInflationMultiplier, computeMinistryPolicyCost, RAW_SCALING_DIVISORS } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, getInflationMultiplier, computeMinistryPolicyCost, RAW_SCALING_DIVISORS } from './js/game-common.js';
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
@@ -216,6 +216,7 @@ let coalitionPartyIds = []; // For budget bill editing permissions
 let budgetAllocations = []; // Budget allocation rows for budget bills
 let budgetActiveLaws = [];  // Active laws for computing ministry costs
 let budgetNation = null;    // Full nation data for budget calculations
+let budgetTradeTariffRevenue = null; // Trade engine tariff revenue for budget display
 let selectedStrikeArticleId = null;
 let editingArticleId = null;
 let sponsorSelectedPolicy = null;
@@ -1675,6 +1676,15 @@ async function loadBudgetData(bill) {
         .select('*, policies(id, policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat)')
         .eq('nation_id', bill.nation_id);
     budgetActiveLaws = (laws || []).filter(l => !l.is_reversal);
+
+    // Load latest trade summary for tariff revenue (matches Economy page)
+    const { data: tradeSummary } = await _supabase.from('trade_summary')
+        .select('tariff_revenue')
+        .eq('nation_id', bill.nation_id)
+        .order('tick', { ascending: false })
+        .limit(1)
+        .single();
+    budgetTradeTariffRevenue = tradeSummary ? Number(tradeSummary.tariff_revenue) : null;
 }
 
 function isBudgetEditable() {
@@ -1691,6 +1701,7 @@ function getBudgetTotals() {
     if (!nation) return { grossRevenue: 0, debtService: 0, available: 0, reserves: 0, totalSpending: 0, gap: 0, currentDebt: 0, projectedDebt: 0 };
 
     const budget = calculateNationalBudget(nation);
+    applyTradeTariffOverride(budget, budgetTradeTariffRevenue);
     const reserves = Number(nation.budget_reserves || 0);
     const available = budget.grossRevenue + reserves - budget.debtService;
 
@@ -1732,6 +1743,7 @@ function renderBudgetBillUI() {
     }
 
     const budget = calculateNationalBudget(nation);
+    applyTradeTariffOverride(budget, budgetTradeTariffRevenue);
     const inflationStat = Number(nation.inflation || 50);
     const inflationPct = (inflationStat - 50) / 2;
     const totals = getBudgetTotals();

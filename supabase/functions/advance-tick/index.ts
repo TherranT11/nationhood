@@ -1556,6 +1556,20 @@ function calculateNationalBudget(nation) {
 // ==================== BUDGET BILL HELPERS ====================
 
 /**
+ * Override formula-based tariff revenue with real trade engine data.
+ * Mutates the budget object in place and returns it.
+ */
+function applyTradeTariffOverride(budget, tradeTariffRevenue) {
+    if (tradeTariffRevenue != null && Number(tradeTariffRevenue) > 0) {
+        const oldTariff = budget.tariffRevenue;
+        budget.tariffRevenue = Number(tradeTariffRevenue);
+        budget.grossRevenue = budget.grossRevenue - oldTariff + budget.tariffRevenue;
+        budget.availableBudget = budget.grossRevenue - budget.debtService;
+    }
+    return budget;
+}
+
+/**
  * Fiscal categories that map 1:1 to ministries.
  */
 const FISCAL_CATEGORIES = [
@@ -1616,8 +1630,9 @@ function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
 /**
  * Build full budget data for a nation: revenue, expenditures per ministry, debt service, etc.
  */
-function buildBudgetData(nation, activeLaws) {
+function buildBudgetData(nation, activeLaws, tradeTariffRevenue?) {
     const budget = calculateNationalBudget(nation);
+    applyTradeTariffOverride(budget, tradeTariffRevenue);
     const inflationStat = Number(nation.inflation || 50);
     const inflationPct = (inflationStat - 50) / 2;
     const reserves = Number(nation.budget_reserves || 0);
@@ -1655,7 +1670,16 @@ function buildBudgetData(nation, activeLaws) {
  * Called at January ticks (tick % 12 === 1, since tick 1 = January after start).
  */
 async function generateBudgetBill(supabase, nation, currentTick, activeLaws) {
-    const budgetData = buildBudgetData(nation, activeLaws);
+    // Fetch latest trade summary for tariff revenue (matches Economy page)
+    const { data: tradeSummary } = await supabase.from('trade_summary')
+        .select('tariff_revenue')
+        .eq('nation_id', nation.id)
+        .order('tick', { ascending: false })
+        .limit(1)
+        .single();
+    const tradeTariffRevenue = tradeSummary ? Number(tradeSummary.tariff_revenue) : null;
+
+    const budgetData = buildBudgetData(nation, activeLaws, tradeTariffRevenue);
 
     const gameYear = 2000 + Math.floor(currentTick / 12);
     const billName = `Budget Act of ${gameYear}`;
@@ -1727,6 +1751,16 @@ async function resolveBudgetBill(supabase, bill, currentTick) {
     if (!nation) return;
 
     const budget = calculateNationalBudget(nation);
+
+    // Override tariff revenue with real trade engine data (matches Economy page)
+    const { data: tradeSummary } = await supabase.from('trade_summary')
+        .select('tariff_revenue')
+        .eq('nation_id', nation.id)
+        .order('tick', { ascending: false })
+        .limit(1)
+        .single();
+    applyTradeTariffOverride(budget, tradeSummary ? Number(tradeSummary.tariff_revenue) : null);
+
     const reserves = Number(nation.budget_reserves || 0);
     const available = budget.grossRevenue + reserves - budget.debtService;
 

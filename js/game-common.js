@@ -1496,6 +1496,20 @@ export function calculateNationalBudget(nation) {
     };
 }
 
+/**
+ * Override formula-based tariff revenue with real trade engine data.
+ * Mutates the budget object in place and returns it.
+ */
+export function applyTradeTariffOverride(budget, tradeTariffRevenue) {
+    if (tradeTariffRevenue != null && Number(tradeTariffRevenue) > 0) {
+        const oldTariff = budget.tariffRevenue;
+        budget.tariffRevenue = Number(tradeTariffRevenue);
+        budget.grossRevenue = budget.grossRevenue - oldTariff + budget.tariffRevenue;
+        budget.availableBudget = budget.grossRevenue - budget.debtService;
+    }
+    return budget;
+}
+
 // ==================== BUDGET BILL HELPERS ====================
 
 /**
@@ -1559,8 +1573,9 @@ export function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
 /**
  * Build full budget data for a nation: revenue, expenditures per ministry, debt service, etc.
  */
-export function buildBudgetData(nation, activeLaws) {
+export function buildBudgetData(nation, activeLaws, tradeTariffRevenue) {
     const budget = calculateNationalBudget(nation);
+    applyTradeTariffOverride(budget, tradeTariffRevenue);
     const inflationStat = Number(nation.inflation || 50);
     const inflationPct = (inflationStat - 50) / 2;
     const reserves = Number(nation.budget_reserves || 0);
