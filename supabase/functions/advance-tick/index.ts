@@ -1573,7 +1573,7 @@ function applyTradeTariffOverride(budget, tradeTariffRevenue) {
  * Fiscal categories that map 1:1 to ministries.
  */
 const FISCAL_CATEGORIES = [
-    'Government Administration', 'Labor', 'Healthcare', 'Education',
+    'Interior', 'Labor', 'Healthcare', 'Education',
     'Transportation', 'Energy', 'Justice', 'Foreign Ministry', 'Finance', 'Defense'
 ];
 
