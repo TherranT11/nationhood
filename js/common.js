@@ -452,34 +452,40 @@ export function showLoading(containerId = 'content-area') {
 
 
 // ===== POPULATION GROWTH CALCULATION =====
+//
+// Population growth is derived from two components:
+//   1. Natural growth:  birth_rate - death_rate   (60% weight)
+//   2. Migration:       immigration - emigration  (40% weight)
+//
+// A standard-of-living modifier applies a slight demographic-transition
+// drag (high SoL = slower growth, low SoL = faster growth, ~5pt max).
+//
+// population_growth is a 0-100 stat where 50 = equilibrium.
+// It then drives actual population change at up to +/- 1% per tick.
 
 export function calculatePopulationGrowth(nation) {
-    const factors = [
-        { key: 'birth_rate', weight: 3.0, invert: false },
-        { key: 'immigration', weight: 2.0, invert: false },
-        { key: 'healthcare_quality', weight: 1.5, invert: false },
-        { key: 'lifespan', weight: 1.5, invert: false },
-        { key: 'standard_of_living', weight: 1.0, invert: false },
-        { key: 'happiness', weight: 1.0, invert: false },
-        { key: 'death_rate', weight: 3.0, invert: true },
-        { key: 'emigration', weight: 2.0, invert: true },
-        { key: 'poverty_rate', weight: 1.0, invert: true },
-        { key: 'pollution', weight: 0.5, invert: true },
-        { key: 'crime_rate', weight: 0.5, invert: true },
-        { key: 'political_violence', weight: 0.75, invert: true },
-        { key: 'civil_unrest', weight: 0.75, invert: true },
-        { key: 'drug_use', weight: 0.5, invert: true },
-        { key: 'terrorism', weight: 0.5, invert: true }
-    ];
-    
-    let totalWeight = 0, totalScore = 0;
-    for (const factor of factors) {
-        const rawValue = nation[factor.key] ?? 50;
-        const value = factor.invert ? (100 - rawValue) : rawValue;
-        totalScore += value * factor.weight;
-        totalWeight += factor.weight;
-    }
-    return Math.round(totalScore / totalWeight);
+    const birthRate = Number(nation.birth_rate ?? 50);
+    const deathRate = Number(nation.death_rate ?? 50);
+    const immigration = Number(nation.immigration ?? 50);
+    const emigration = Number(nation.emigration ?? 50);
+    const sol = Number(nation.standard_of_living ?? 50);
+
+    // Component deltas: each ranges -100 to +100
+    const natural = birthRate - deathRate;
+    const migration = immigration - emigration;
+
+    // Weighted blend (60% natural, 40% migration)
+    const raw = natural * 0.6 + migration * 0.4;
+
+    // Standard-of-living modifier: demographic transition effect
+    // At SoL 50 = no effect. At SoL 80 = -3pt drag. At SoL 20 = +3pt boost.
+    const solModifier = ((50 - sol) / 50) * 5;
+
+    // Map to 0-100 scale. Divide by 4 to keep values in a playable range:
+    // e.g. birth=80, death=20 (delta=60) -> 50 + (60*0.6)/4 = 59
+    const growth = 50 + (raw / 4) + solModifier;
+
+    return Math.round(Math.max(0, Math.min(100, growth)));
 }
 
 export function calculatePopulationChange(population, growthScore, maxRate = 0.01) {
@@ -490,13 +496,13 @@ export function calculatePopulationChange(population, growthScore, maxRate = 0.0
 export function applyPopulationGrowth(nation) {
     const growthScore = calculatePopulationGrowth(nation);
     const popChange = calculatePopulationChange(nation.population, growthScore);
-    const newPopulation = nation.population + popChange;
-    
+    const newPopulation = Math.max(0, nation.population + popChange);
+
     const ideologyKeys = [
         'progressive_voters', 'liberal_voters', 'moderate_voters',
         'conservative_voters', 'nationalist_voters'
     ];
-    
+
     let totalVoters = 0;
     const currentVoters = {};
     for (const key of ideologyKeys) {
@@ -504,7 +510,7 @@ export function applyPopulationGrowth(nation) {
         currentVoters[key] = value;
         totalVoters += value;
     }
-    
+
     const updatedVoters = {};
     for (const key of ideologyKeys) {
         if (totalVoters > 0) {
@@ -514,10 +520,10 @@ export function applyPopulationGrowth(nation) {
             updatedVoters[key] = currentVoters[key];
         }
     }
-    
-    const voterRatio = nation.eligible_voters / nation.population;
+
+    const voterRatio = nation.population > 0 ? (nation.eligible_voters / nation.population) : 0;
     const newEligibleVoters = Math.round(newPopulation * voterRatio);
-    
+
     return {
         population_growth: growthScore,
         population: newPopulation,

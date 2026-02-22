@@ -10320,6 +10320,110 @@ async function processCrises(supabase, nation, currentTick) {
 }
 
 
+// ==================== POPULATION GROWTH ====================
+/**
+ * Computes population_growth from birth_rate, death_rate, immigration, emigration
+ * with a standard-of-living demographic-transition modifier.
+ * Then applies the growth score to update population, eligible_voters, and voter blocs.
+ *
+ * Formula:
+ *   natural  = birth_rate - death_rate       (60% weight)
+ *   migration = immigration - emigration     (40% weight)
+ *   solMod   = ((50 - standard_of_living) / 50) * 5   (~5pt max drag/boost)
+ *   population_growth = clamp(50 + raw/4 + solMod, 0, 100)
+ *   monthlyRate = ((population_growth - 50) / 50) * 0.01   (+/- 1% max per tick)
+ */
+async function processPopulation(supabase: any, nation: any) {
+    // Re-fetch to get post-effect stat values
+    const { data: fresh } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+    if (fresh) Object.assign(nation, fresh);
+
+    const birthRate = Number(nation.birth_rate ?? 50);
+    const deathRate = Number(nation.death_rate ?? 50);
+    const immigration = Number(nation.immigration ?? 50);
+    const emigration = Number(nation.emigration ?? 50);
+    const sol = Number(nation.standard_of_living ?? 50);
+    const population = Number(nation.population ?? 0);
+
+    if (population <= 0) return null;
+
+    // Component deltas (each -100 to +100)
+    const natural = birthRate - deathRate;
+    const migration = immigration - emigration;
+
+    // Weighted blend: 60% natural, 40% migration
+    const raw = natural * 0.6 + migration * 0.4;
+
+    // Standard-of-living modifier: demographic transition
+    // At SoL 50 = no effect. At SoL 80 = -3pt drag. At SoL 20 = +3pt boost.
+    const solModifier = ((50 - sol) / 50) * 5;
+
+    // Map to 0-100 scale (/4 keeps values in playable range)
+    const growthScore = Math.round(Math.max(0, Math.min(100, 50 + (raw / 4) + solModifier)));
+
+    // Compute actual population change (+/- 1% max per tick)
+    const monthlyRate = ((growthScore - 50) / 50) * 0.01;
+    const popChange = Math.round(population * monthlyRate);
+    const newPopulation = Math.max(0, population + popChange);
+
+    // Scale eligible voters proportionally
+    const voterRatio = population > 0 ? (Number(nation.eligible_voters ?? 0) / population) : 0;
+    const newEligibleVoters = Math.round(newPopulation * voterRatio);
+
+    // Scale ideology voter blocs proportionally
+    const ideologyKeys = [
+        'progressive_voters', 'liberal_voters', 'moderate_voters',
+        'conservative_voters', 'nationalist_voters'
+    ];
+    let totalVoters = 0;
+    const currentVoters: Record<string, number> = {};
+    for (const key of ideologyKeys) {
+        const v = Number(nation[key] ?? 0);
+        currentVoters[key] = v;
+        totalVoters += v;
+    }
+    const updatedVoters: Record<string, number> = {};
+    for (const key of ideologyKeys) {
+        if (totalVoters > 0) {
+            const share = currentVoters[key] / totalVoters;
+            updatedVoters[key] = Math.round(currentVoters[key] + (popChange * share));
+        } else {
+            updatedVoters[key] = currentVoters[key];
+        }
+    }
+
+    // Build update payload
+    const updates: Record<string, number> = {
+        population_growth: growthScore,
+        population: newPopulation,
+        eligible_voters: newEligibleVoters,
+        ...updatedVoters
+    };
+
+    const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
+    if (error) {
+        console.error(`[processPopulation] Update failed for ${nation.name}:`, error.message);
+        return null;
+    }
+
+    // Sync in-memory nation object
+    Object.assign(nation, updates);
+
+    console.log(`[processPopulation] ${nation.name}: growth=${growthScore} (birth=${birthRate} death=${deathRate} imm=${immigration} emi=${emigration} sol=${sol}) pop ${population} -> ${newPopulation} (${popChange >= 0 ? '+' : ''}${popChange})`);
+
+    return {
+        population_growth: growthScore,
+        population: newPopulation,
+        population_change: popChange,
+        birth_rate: birthRate,
+        death_rate: deathRate,
+        immigration: immigration,
+        emigration: emigration,
+        standard_of_living: sol
+    };
+}
+
+
 // ==================== DEMOCRATIC REVOLUTION ====================
 
 /**
@@ -12373,6 +12477,13 @@ async function advanceTick(supabase) {
         if (retirementResults.length > 0) {
             summary.ambassadorRetirements = summary.ambassadorRetirements || [];
             summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
+        }
+
+        // Population growth (computed from birth_rate, death_rate, immigration, emigration)
+        const popResult = await processPopulation(supabase, nation);
+        if (popResult) {
+            summary.population = summary.population || [];
+            summary.population.push({ nation: nation.name, ...popResult });
         }
 
         // Final snapshot — capture everything that happened this tick
