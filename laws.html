@@ -757,7 +757,7 @@ async function renderBudgetBillContent() {
             h += '<div style="text-align:center;padding:20px;color:#ff9800;border:1px solid #ff9800;border-radius:8px;margin-top:16px;">A budget bill is already pending in ' + (existingBudget[0].status === 'committee' ? 'committee' : 'floor vote') + '.</div>';
         } else if (budgetOnCooldown) {
             h += '<div style="text-align:center;padding:20px;color:#888;border:1px solid #333;border-radius:8px;margin-top:16px;">Budget cooldown: ' + cooldownRemaining + ' tick(s) remaining before a new budget can be submitted.</div>';
-        } else if (!playerInGovernment) {
+        } else if (!playerInGovernment && !isPresidential) {
             h += '<div style="text-align:center;padding:20px;color:#888;border:1px solid #333;border-radius:8px;margin-top:16px;">Only government coalition members can submit a budget bill.</div>';
         } else if (isCaretaker || isNoGovernment) {
             h += '<div style="text-align:center;padding:20px;color:#888;border:1px solid #333;border-radius:8px;margin-top:16px;">Cannot submit budget bills while the legislature is dissolved.</div>';
