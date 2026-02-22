@@ -499,10 +499,13 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     async function setTickInterval(hours) {
         const status = document.getElementById('interval-status');
         try {
-            const { error } = await _supabase.from('shard').update({ tick_interval_hours: hours }).eq('name', 'Alpha Shard');
+            // Recalculate next_tick_at from NOW + new interval
+            const nextTickAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+            const { error } = await _supabase.from('shard').update({ tick_interval_hours: hours, next_tick_at: nextTickAt }).eq('name', 'Alpha Shard');
             if (error) throw error;
             currentTickInterval = hours; updateIntervalButtons();
-            status.className = 'status success'; status.textContent = `✅ Tick interval set to ${hours} hour${hours > 1 ? 's' : ''}`; status.classList.remove('hidden');
+            await loadShardInfo();
+            status.className = 'status success'; status.textContent = `✅ Tick interval set to ${hours} hour${hours > 1 ? 's' : ''} — next tick in ${hours}h`; status.classList.remove('hidden');
             setTimeout(() => status.classList.add('hidden'), 3000);
         } catch (error) { status.className = 'status error'; status.textContent = '❌ Error: ' + error.message; status.classList.remove('hidden'); }
     }

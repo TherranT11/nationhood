@@ -67,6 +67,17 @@
         }
         .msb-dot.filled { background: var(--green, #4CAF50); }
         .msb-dot.vacant { background: #555; }
+        .msb-party {
+            font-size: 0.55rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            margin-top: -2px;
+        }
+        .msb-party.vacant {
+            color: #555;
+            font-style: italic;
+            font-weight: 400;
+        }
 
         /* Mobile dropdown */
         .ministry-selector-mobile { display: none; }
@@ -133,7 +144,7 @@
         /* ===== MINISTRY DETAIL HEADER ===== */
         .mdet-header {
             border-bottom: 1px solid rgba(255,255,255,0.06);
-            padding: 28px 36px 20px;
+            padding: 20px 36px 16px;
             background: linear-gradient(180deg, rgba(200,170,110,0.03) 0%, transparent 100%);
         }
         .mdet-header-inner {
@@ -176,24 +187,32 @@
         .mdet-appr-low  { color: var(--red, #ff4444); }
         .mdet-vacant-label { color: #555; font-style: italic; }
 
-        .mdet-header-right { text-align: right; flex-shrink: 0; }
+        .mdet-header-right {
+            text-align: right;
+            flex-shrink: 0;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 6px;
+            padding: 10px 16px;
+            background: rgba(0,0,0,0.15);
+        }
         .mdet-budget-label {
             font-family: monospace;
             font-size: 0.62rem;
             color: #6b6a5e;
             letter-spacing: 0.1em;
-            margin-bottom: 4px;
+            margin-bottom: 2px;
         }
         .mdet-budget-value {
             font-family: monospace;
             font-size: 1.6rem;
             font-weight: 700;
+            line-height: 1.2;
         }
         .mdet-budget-sub {
             font-family: monospace;
             font-size: 0.68rem;
             color: #6b6a5e;
-            margin-top: 2px;
+            margin-top: 1px;
         }
 
         /* ===== DETAIL TABS ===== */
@@ -413,6 +432,9 @@
             background: rgba(255,255,255,0.01);
             border-color: rgba(255,255,255,0.04);
             opacity: 0.5;
+        }
+        .pol-card.no-budget {
+            border-color: rgba(239,68,68,0.15);
         }
         .pol-card-top {
             display: flex;
@@ -856,4 +878,173 @@
             .email-header { padding: 16px; }
             .email-body { padding: 16px; }
             .response-section { padding: 16px; }
+        }
+
+        /* ===== COST TUNER PANEL ===== */
+        .cost-tuner-fab.hidden { display: none; }
+        .cost-tuner-fab {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 500;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 1px solid var(--accent, #c8aa6e);
+            background: #1a1a1a;
+            color: var(--accent, #c8aa6e);
+            font-size: 1.3rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 16px rgba(0,0,0,.5);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .cost-tuner-fab:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 24px rgba(0,0,0,.7);
+        }
+
+        .cost-tuner-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 600;
+            background: rgba(0,0,0,.65);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .cost-tuner-overlay.hidden { display: none; }
+
+        .cost-tuner-panel {
+            background: #161616;
+            border: 1px solid #333;
+            border-radius: 12px;
+            width: 720px;
+            max-width: 95vw;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 12px 48px rgba(0,0,0,.7);
+        }
+
+        .ct-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid #222;
+        }
+        .ct-header h2 {
+            margin: 0;
+            font-size: 1rem;
+            color: var(--accent, #c8aa6e);
+            font-weight: 700;
+        }
+        .ct-close {
+            background: none;
+            border: none;
+            color: #666;
+            font-size: 1.2rem;
+            cursor: pointer;
+        }
+        .ct-close:hover { color: #ccc; }
+
+        .ct-grand-total {
+            padding: 10px 20px;
+            background: #111;
+            border-bottom: 1px solid #222;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+        .ct-grand-total strong {
+            color: #fff;
+            font-size: 1rem;
+        }
+        .ct-pop-info { color: #666; font-size: 0.78rem; }
+
+        .ct-body {
+            overflow-y: auto;
+            padding: 12px 20px 20px;
+            flex: 1;
+        }
+
+        .ct-ministry-group {
+            margin-bottom: 16px;
+        }
+        .ct-ministry-label {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .ct-ministry-subtotal {
+            font-weight: 600;
+            color: #aaa;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
+        .ct-row {
+            display: grid;
+            grid-template-columns: 1fr 100px 110px;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 0;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        .ct-row:last-child { border-bottom: none; }
+
+        .ct-inst-name {
+            font-size: 0.82rem;
+            color: #ccc;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .ct-inst-icon { margin-right: 4px; }
+
+        .ct-input {
+            width: 100%;
+            padding: 4px 8px;
+            background: #0d0d0d;
+            border: 1px solid #333;
+            border-radius: 4px;
+            color: #fff;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+            text-align: right;
+        }
+        .ct-input:focus {
+            outline: none;
+            border-color: var(--accent, #c8aa6e);
+        }
+
+        .ct-computed {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            color: #888;
+            text-align: right;
+        }
+
+        .ct-col-header {
+            display: grid;
+            grid-template-columns: 1fr 100px 110px;
+            gap: 8px;
+            padding: 0 0 6px;
+            font-size: 0.7rem;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid #222;
+            margin-bottom: 4px;
         }

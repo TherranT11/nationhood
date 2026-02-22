@@ -22,7 +22,8 @@
 export const GAME_CONFIG = {
     TOTAL_SEATS: 120,
     MAJORITY_SEATS: 61,
-    VOTING_WINDOW_TICKS: 4,
+    VOTING_WINDOW_TICKS: 7,
+    COMMITTEE_EXPIRY_TICKS: 4,
     DRAFT_BILL_AP_COST: 2,
     VETO_APPROVAL_COST: 3,
     NO_CONFIDENCE_AP_COST: 5,
@@ -1025,10 +1026,10 @@ export const DIPLOMACY_CONFIG = {
     JOIN_NEGOTIATION_FM_AP: 1,            // FM party joins
     JOIN_NEGOTIATION_MOT_AP: 2,           // Minister of Trade joins (required)
     HOG_DRAFT_INITIATIVE_AP: 3,           // HoG drafting when no ambassador (penalty)
-    MOT_JOIN_DEADLINE_TICKS: 1,           // Ticks before negotiations cancel if MoT hasn't joined
+    MOT_JOIN_DEADLINE_TICKS: 4,           // Ticks before negotiations cancel if MoT hasn't joined
 
     // Trade negotiation timing
-    NEGOTIATION_DEFAULT_DURATION: 2,      // ticks until negotiation expires
+    NEGOTIATION_DEFAULT_DURATION: 4,      // ticks until negotiation expires
     NEGOTIATION_EXTENSION_TICKS: 12,      // ticks added per extension (1 month)
     NEGOTIATION_MAX_EXTENSIONS: 3,        // max times negotiations can be extended
     TRADE_RATIFICATION_VOTING_TICKS: 4    // ticks for parliament to vote on trade bill
@@ -2740,6 +2741,37 @@ export function getRequiredSeats(billType) {
     if (billType === 'veto_override')
         return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
     return GAME_CONFIG.MAJORITY_SEATS;
+}
+
+/**
+ * Auto-expire committee bills that have been sitting for COMMITTEE_EXPIRY_TICKS
+ * without being sent to the floor. Sets status to 'failed'.
+ */
+export async function expireCommitteeBills(supabase, nationId, currentTick) {
+    const deadline = currentTick - GAME_CONFIG.COMMITTEE_EXPIRY_TICKS;
+    const { data: expired, error } = await supabase
+        .from('bills')
+        .select('id, bill_name, proposed_by')
+        .eq('nation_id', nationId)
+        .eq('status', 'committee')
+        .lte('proposed_tick', deadline);
+
+    if (error || !expired || expired.length === 0) return [];
+
+    const results = [];
+    for (const bill of expired) {
+        await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
+        const { data: nation } = await supabase.from('nations').select('name').eq('id', nationId).single();
+        await supabase.rpc('insert_news_event', {
+            p_nation_id: nationId,
+            p_trigger_key: 'bill_failed',
+            p_tick: currentTick,
+            p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, reason: 'expired in committee' }
+        });
+        console.log(`[expireCommitteeBills] ${bill.bill_name} expired in committee after ${GAME_CONFIG.COMMITTEE_EXPIRY_TICKS} ticks`);
+        results.push({ billId: bill.id, billName: bill.bill_name, result: 'expired_committee' });
+    }
+    return results;
 }
 
 /**
