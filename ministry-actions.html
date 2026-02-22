@@ -587,6 +587,22 @@ initPage('ministry-actions', async (state) => {
         }
     }
 
+    // Load admin-configured institution overrides from DB
+    const { data: instConfig, error: instConfigErr } = await _supabase.from('ministry_institution_config').select('*');
+    if (!instConfigErr && instConfig && instConfig.length > 0) {
+        for (const row of instConfig) {
+            const insts = MINISTRY_INSTITUTIONS[row.ministry_key];
+            if (!insts) continue;
+            const inst = insts.find(i => i.id === row.id);
+            if (!inst) continue;
+            inst.baseCostPerCapita = Number(row.base_cost_per_capita) || inst.baseCostPerCapita;
+            inst.baseCostFormula = '$' + inst.baseCostPerCapita + ' \u00D7 population';
+            inst.costShare = Number(row.cost_share) || inst.costShare;
+            if (row.primary_stat) inst.primaryStat = { key: row.primary_stat, label: row.primary_stat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) };
+            if (row.secondary_stat) inst.secondaryStat = { key: row.secondary_stat, label: row.secondary_stat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) };
+        }
+    }
+
     // Fetch policy usage counts from ministry_action_log
     const { data: actionLogs } = await _supabase.from('ministry_action_log')
         .select('action_key, applied_at_tick, processed')

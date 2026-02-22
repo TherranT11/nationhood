@@ -52,6 +52,7 @@
             <button class="tab" onclick="showTab('danger')">Danger Zone</button>
             <button class="tab" onclick="showTab('inspector')">Inspector</button>
             <button class="tab" onclick="showTab('audit')">Policy Audit</button>
+            <button class="tab" onclick="showTab('ministries')">Ministries</button>
         </div>
 
         <!-- ==================== SHARD TAB ==================== -->
@@ -414,6 +415,14 @@
             <div id="audit-results" style="margin-top:20px;"></div>
         </div>
 
+        <!-- ==================== MINISTRIES TAB ==================== -->
+        <div class="tab-content" id="tab-ministries">
+            <h2>Ministry Institution Config</h2>
+            <p style="color:#888; margin-bottom:16px;">Set the base cost per capita and stat attachments for each ministry institution. Changes are saved to the database and apply immediately.</p>
+            <div id="ministry-config-status" class="status success hidden"></div>
+            <div id="ministry-config-body" style="margin-top:12px;">Loading...</div>
+        </div>
+
     </div>
 </div>
 
@@ -465,6 +474,7 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
         await loadVoterNations();
         await loadDemandBlocs();
         await loadInspectorNations();
+        await loadMinistryConfig();
     }
 
     // ==================== SHARD TAB ====================
@@ -2758,6 +2768,123 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     }
 
 
+// ==================== MINISTRY INSTITUTION CONFIG ====================
+
+    const MINISTRY_ORDER = [
+        'interior', 'foreign', 'defense', 'finance',
+        'education', 'healthcare', 'labor', 'justice',
+        'trade', 'energy', 'transportation'
+    ];
+    const MINISTRY_DISPLAY_NAMES = {
+        interior: 'Interior', foreign: 'Foreign Affairs', defense: 'Defense',
+        finance: 'Finance', education: 'Education', healthcare: 'Healthcare',
+        labor: 'Labor', justice: 'Justice', trade: 'Trade',
+        energy: 'Energy', transportation: 'Transportation'
+    };
+
+    let ministryConfigData = []; // rows from DB
+
+    async function loadMinistryConfig() {
+        try {
+            const { data, error } = await _supabase
+                .from('ministry_institution_config')
+                .select('*')
+                .order('ministry_key');
+            if (error) throw error;
+            ministryConfigData = data || [];
+            renderMinistryConfig();
+        } catch (err) {
+            console.error('loadMinistryConfig error:', err);
+            document.getElementById('ministry-config-body').innerHTML = '<div style="color:#ff4444;">Error loading config: ' + err.message + '</div>';
+        }
+    }
+
+    function renderMinistryConfig() {
+        const body = document.getElementById('ministry-config-body');
+        if (!ministryConfigData.length) {
+            body.innerHTML = '<div style="color:#888;">No institution config found. Run the migration first.</div>';
+            return;
+        }
+
+        // Group by ministry
+        const grouped = {};
+        for (const row of ministryConfigData) {
+            if (!grouped[row.ministry_key]) grouped[row.ministry_key] = [];
+            grouped[row.ministry_key].push(row);
+        }
+
+        let html = '';
+        for (const mk of MINISTRY_ORDER) {
+            const insts = grouped[mk];
+            if (!insts) continue;
+            html += '<div class="mc-ministry">';
+            html += '<div class="mc-ministry-header" onclick="this.parentElement.classList.toggle(\'expanded\')">';
+            html += '<span class="mc-ministry-name">' + (MINISTRY_DISPLAY_NAMES[mk] || mk) + '</span>';
+            html += '<span class="mc-ministry-arrow">&#9654;</span>';
+            html += '</div>';
+            html += '<div class="mc-ministry-body">';
+            html += '<table class="mc-table"><thead><tr><th>Institution</th><th>Base $/capita</th><th>Cost Share</th><th>Primary Stat</th><th>Secondary Stat</th><th></th></tr></thead><tbody>';
+            for (const inst of insts) {
+                html += '<tr data-id="' + inst.id + '">';
+                html += '<td class="mc-inst-name">' + escHtml(inst.institution_name) + '</td>';
+                html += '<td><input type="number" step="0.01" min="0" class="mc-input" data-id="' + inst.id + '" data-field="base_cost_per_capita" value="' + (inst.base_cost_per_capita || 0) + '"></td>';
+                html += '<td><input type="number" step="0.01" min="0" max="1" class="mc-input mc-input-sm" data-id="' + inst.id + '" data-field="cost_share" value="' + (inst.cost_share || 0) + '"></td>';
+                html += '<td>' + renderStatSelect(inst.id, 'primary_stat', inst.primary_stat) + '</td>';
+                html += '<td>' + renderStatSelect(inst.id, 'secondary_stat', inst.secondary_stat) + '</td>';
+                html += '<td><button class="mc-save-btn" onclick="saveInstitutionRow(\'' + inst.id + '\')">Save</button></td>';
+                html += '</tr>';
+            }
+            html += '</tbody></table>';
+            html += '</div></div>';
+        }
+
+        body.innerHTML = html;
+    }
+
+    function renderStatSelect(instId, field, currentValue) {
+        const stats = NATION_STAT_COLUMNS;
+        let h = '<select class="mc-select" data-id="' + instId + '" data-field="' + field + '">';
+        h += '<option value="">-- none --</option>';
+        for (const s of stats) {
+            const label = s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            h += '<option value="' + s + '"' + (s === currentValue ? ' selected' : '') + '>' + label + '</option>';
+        }
+        h += '</select>';
+        return h;
+    }
+
+    async function saveInstitutionRow(instId) {
+        const row = document.querySelector('tr[data-id="' + instId + '"]');
+        if (!row) return;
+        const costInput = row.querySelector('input[data-field="base_cost_per_capita"]');
+        const shareInput = row.querySelector('input[data-field="cost_share"]');
+        const primarySelect = row.querySelector('select[data-field="primary_stat"]');
+        const secondarySelect = row.querySelector('select[data-field="secondary_stat"]');
+
+        const updates = {
+            base_cost_per_capita: parseFloat(costInput.value) || 0,
+            cost_share: parseFloat(shareInput.value) || 0,
+            primary_stat: primarySelect.value || null,
+            secondary_stat: secondarySelect.value || null,
+            updated_at: new Date().toISOString()
+        };
+
+        try {
+            const { error } = await _supabase.from('ministry_institution_config').update(updates).eq('id', instId);
+            if (error) throw error;
+            const status = document.getElementById('ministry-config-status');
+            status.textContent = 'Saved ' + instId;
+            status.className = 'status success';
+            status.classList.remove('hidden');
+            setTimeout(() => status.classList.add('hidden'), 2000);
+        } catch (err) {
+            alert('Error saving: ' + err.message);
+        }
+    }
+
+    function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+
 // ==================== POLICY AUDIT ====================
     function auditScaleCost(baseCost, scalingStat, nation) {
         if (!scalingStat || !baseCost) return baseCost || 0;
@@ -3016,6 +3143,7 @@ window.seedDefaultDemands = seedDefaultDemands;
 window.seedAllDefaultDemands = seedAllDefaultDemands;
 window.runPolicyAudit = runPolicyAudit;
 window.recalculatePolicyCosts = recalculatePolicyCosts;
+window.saveInstitutionRow = saveInstitutionRow;
 </script>
 </body>
 </html>
