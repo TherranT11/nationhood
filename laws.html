@@ -118,6 +118,7 @@ let lawsIsAutocracy = false, isHeadFaction = false, headFactionId = null;
 let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
 let isCaretaker = false;
 let isNoGovernment = false;
+let showBudgetBadge = false;
 let draftArticles = [], selectedPolicy = null;
 let committeeSelectedPolicy = null, currentCommitteeBillId = null;
 let pendingPolicyIds = new Set();
@@ -203,6 +204,23 @@ initPage('laws', async (state) => {
         const hf = await detectHeadFaction(_supabase, currentNation.id, allParties, allPartySeats, currentFaction?.id);
         headFactionId = hf.headFactionId; isHeadFaction = hf.isHeadFaction;
     }
+
+    // Check if budget bill badge should show (no passed budget and not on cooldown)
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shard?.current_tick || 0;
+        const lastBudgetTick = Number(nation.last_budget_tick || 0);
+        const onCooldown = lastBudgetTick > 0 && (tick - lastBudgetTick) < 12;
+        const { data: pendingBudget } = await _supabase.from('bills')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('bill_type', 'budget')
+            .in('status', ['committee', 'floor'])
+            .limit(1);
+        const hasPending = pendingBudget && pendingBudget.length > 0;
+        showBudgetBadge = !onCooldown && !hasPending;
+    } catch (e) { showBudgetBadge = false; }
+
     renderLawsPage();
 });
 
@@ -307,7 +325,7 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
                 <div class="section-header" style="margin-bottom:0;border-bottom:none;">${pageTitle}</div>
                 <div class="laws-header-buttons">
                     <button class="passed-laws-btn" onclick="togglePassedLaws()">📜 Passed Laws</button>
-                    <button class="budget-bill-btn" onclick="toggleBudgetBill()">💰 Budget Bill</button>
+                    <button class="budget-bill-btn" onclick="toggleBudgetBill()">💰 Budget Bill${showBudgetBadge ? '<span class="budget-badge">1</span>' : ''}</button>
                     <button class="all-laws-btn" onclick="toggleAllLaws()">📋 All Laws</button>
                     <button class="draft-btn ${lawsIsAutocracy ? 'autocracy-btn' : ''}" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'} ${noSeatsTitle}>
                         ${termPropose} <span class="ap-cost">${GAME_CONFIG.DRAFT_BILL_AP_COST} AP</span>

@@ -190,8 +190,9 @@
         .passed-laws-panel.active { display:block; }
 
         /* Budget Bill Preview */
-        .budget-bill-btn { background:linear-gradient(135deg,#1B5E20 0%,#2E7D32 100%); border:none; border-radius:6px; padding:12px 24px; color:#fff; font-weight:bold; font-size:0.9rem; cursor:pointer; transition:transform 0.2s,box-shadow 0.2s; }
+        .budget-bill-btn { background:linear-gradient(135deg,#1B5E20 0%,#2E7D32 100%); border:none; border-radius:6px; padding:12px 24px; color:#fff; font-weight:bold; font-size:0.9rem; cursor:pointer; transition:transform 0.2s,box-shadow 0.2s; position:relative; }
         .budget-bill-btn:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(76,175,80,0.4); }
+        .budget-badge { position:absolute; top:-6px; right:-6px; background:#e53935; color:#fff; font-size:0.65rem; font-weight:bold; width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; line-height:1; box-shadow:0 1px 4px rgba(0,0,0,0.5); }
         .budget-bill-panel { display:none; }
         .budget-bill-panel.active { display:block; }
         .bp-summary-bar { display:flex; gap:16px; margin-bottom:24px; flex-wrap:wrap; }
