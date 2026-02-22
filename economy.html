@@ -23,7 +23,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatCurrency } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import { calculateNationalBudget, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS } from './js/game-common.js';
+import { calculateNationalBudget, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY } from './js/game-common.js';
 
 // ==================== STATE ====================
 var previousTickData = null;
@@ -135,17 +135,17 @@ async function loadExpenditureData(nationId, nation) {
     var cached = qCache(cacheKey);
     if (cached) { expenditureData = cached.totals; expenditureDetails = cached.details; return; }
 
+    var totals = {};
+    var details = {};
+
+    // --- Policy costs from active laws ---
     var res = await _supabase.from('active_laws')
         .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat)')
         .eq('nation_id', nationId);
 
-    if (!res.data || res.data.length === 0) { expenditureData = {}; expenditureDetails = {}; return; }
-
     var yearStartTick = Math.floor(currentTick / GAME_CONFIG.TICKS_PER_YEAR) * GAME_CONFIG.TICKS_PER_YEAR;
-    var totals = {};
-    var details = {};
 
-    for (var i = 0; i < res.data.length; i++) {
+    for (var i = 0; i < (res.data || []).length; i++) {
         var law = res.data[i];
         if (law.is_reversal) continue;
         var policy = law.policies;
@@ -175,7 +175,59 @@ async function loadExpenditureData(nationId, nation) {
 
         totals[cat] += policyCost;
         if (policyCost > 0) {
-            details[cat].push({ name: policy.policy_name, cost: policyCost });
+            details[cat].push({ name: policy.policy_name, cost: policyCost, type: 'policy' });
+        }
+    }
+
+    // --- Institution costs from last passed budget ---
+    if (nation.last_budget_bill_id) {
+        var instRes = await _supabase.from('budget_item_allocations')
+            .select('fiscal_category, item_name, allocation_amount, needed_amount')
+            .eq('bill_id', nation.last_budget_bill_id)
+            .eq('item_type', 'institution');
+
+        for (var j = 0; j < (instRes.data || []).length; j++) {
+            var inst = instRes.data[j];
+            var instCat = inst.fiscal_category;
+            var instCost = Number(inst.allocation_amount || 0);
+            if (!totals[instCat]) totals[instCat] = 0;
+            if (!details[instCat]) details[instCat] = [];
+            totals[instCat] += instCost;
+            if (instCost > 0) {
+                details[instCat].push({
+                    name: inst.item_name,
+                    cost: instCost,
+                    type: 'institution',
+                    needed: Number(inst.needed_amount || 0)
+                });
+            }
+        }
+    } else {
+        // No budget passed yet — show institution needed costs so the page isn't empty
+        var configRes = await _supabase.from('ministry_institution_config').select('*');
+        var population = Number(nation.population || 0);
+        var gdp = Number(nation.gdp || 0);
+        for (var k = 0; k < (configRes.data || []).length; k++) {
+            var cfg = configRes.data[k];
+            var mKey = cfg.ministry_key;
+            var fCat = null;
+            for (var fc in FISCAL_TO_MINISTRY_KEY) {
+                if (FISCAL_TO_MINISTRY_KEY[fc] === mKey) { fCat = fc; break; }
+            }
+            if (!fCat) continue;
+            var baseVal = Number(cfg.base_cost_per_capita || 0);
+            var instNeeded = cfg.scaling_type === 'gdp' ? (baseVal / 100) * gdp : baseVal * population;
+            if (!totals[fCat]) totals[fCat] = 0;
+            if (!details[fCat]) details[fCat] = [];
+            totals[fCat] += instNeeded;
+            if (instNeeded > 0) {
+                details[fCat].push({
+                    name: cfg.institution_name,
+                    cost: instNeeded,
+                    type: 'institution',
+                    needed: instNeeded
+                });
+            }
         }
     }
 
@@ -501,7 +553,7 @@ function renderBudgetPanel(nation) {
     var expenditureItems = [
         'Interior', 'Labor', 'Healthcare', 'Education',
         'Transportation', 'Energy', 'Justice', 'Foreign Ministry', 'Finance',
-        'Defense', 'Interest on Debt'
+        'Defense', 'Trade', 'Interest on Debt'
     ];
     for (var i = 0; i < expenditureItems.length; i++) {
         var catAmount = expenditures[expenditureItems[i]] || 0;
@@ -852,7 +904,7 @@ function tradeTrendHtml(current, previous, inverted) {
 // ==================== MINISTRY DETAIL PANEL ====================
 var MINISTRY_CATEGORIES = [
     'Interior', 'Labor', 'Healthcare', 'Education',
-    'Transportation', 'Energy', 'Justice', 'Foreign Ministry', 'Finance', 'Defense'
+    'Transportation', 'Energy', 'Justice', 'Foreign Ministry', 'Finance', 'Defense', 'Trade'
 ];
 
 function renderMinistryPanel() {
@@ -895,21 +947,47 @@ function renderMinistryPolicies(category) {
 }
 
 function renderMinistryPoliciesHtml(category) {
-    var policies = (expenditureDetails && expenditureDetails[category]) ? expenditureDetails[category] : [];
+    var items = (expenditureDetails && expenditureDetails[category]) ? expenditureDetails[category] : [];
     var h = '';
 
-    if (policies.length === 0) {
-        h += '<div class="ministry-empty">No active policies</div>';
+    if (items.length === 0) {
+        h += '<div class="ministry-empty">No expenditures</div>';
         h += budgetTotalLine(0);
         return h;
     }
 
-    h += '<div class="ministry-policy-list">';
-    var total = 0;
-    for (var i = 0; i < policies.length; i++) {
-        total += policies[i].cost;
-        h += budgetLineItem(policies[i].name, policies[i].cost, null, null);
+    // Separate institutions and policies
+    var institutions = [];
+    var policies = [];
+    for (var i = 0; i < items.length; i++) {
+        if (items[i].type === 'institution') {
+            institutions.push(items[i]);
+        } else {
+            policies.push(items[i]);
+        }
     }
+
+    var total = 0;
+    h += '<div class="ministry-policy-list">';
+
+    // Institutions first
+    if (institutions.length > 0) {
+        h += '<div class="ministry-section-label" style="font-size:0.7rem;color:#8b8a7e;text-transform:uppercase;letter-spacing:0.05em;margin:0.4rem 0 0.2rem;padding-left:0.3rem">Institutions</div>';
+        for (var j = 0; j < institutions.length; j++) {
+            total += institutions[j].cost;
+            h += budgetLineItem(institutions[j].name, institutions[j].cost, null, null);
+        }
+    }
+
+    // Then policies
+    if (policies.length > 0) {
+        h += '<div class="ministry-section-label" style="font-size:0.7rem;color:#8b8a7e;text-transform:uppercase;letter-spacing:0.05em;margin:0.4rem 0 0.2rem;padding-left:0.3rem">Policies</div>';
+        for (var k = 0; k < policies.length; k++) {
+            total += policies[k].cost;
+            h += budgetLineItem(policies[k].name, policies[k].cost, null, null);
+        }
+    }
+
     h += budgetTotalLine(total);
     h += '</div>';
     return h;
