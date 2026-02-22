@@ -1186,6 +1186,20 @@ async function retractBill() {
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
+async function retractBudgetBill() {
+    if (!confirm('Retract this budget bill? This cannot be undone.')) return;
+    try {
+        await _supabase.from('budget_allocations').delete().eq('bill_id', billId);
+        await _supabase.from('bill_comments').delete().eq('bill_id', billId);
+        await _supabase.from('bill_amendment_requests').delete().eq('bill_id', billId);
+        await _supabase.from('bill_support').delete().eq('bill_id', billId);
+        await _supabase.from('bill_articles').delete().eq('bill_id', billId);
+        await _supabase.from('bills').delete().eq('id', billId);
+        alert('Budget bill retracted.');
+        window.location.href = 'laws.html';
+    } catch (e) { console.error(e); alert('Error: ' + e.message); }
+}
+
 // ==================== AMENDMENTS ====================
 
 function openAmendmentModal() {
@@ -1603,6 +1617,7 @@ window.signBillAction = signBillAction;
 window.vetoBillAction = vetoBillAction;
 window.enactDecree = enactDecree;
 window.retractBill = retractBill;
+window.retractBudgetBill = retractBudgetBill;
 window.sendToFloor = sendToFloor;
 window.respondToAmendment = respondToAmendment;
 window.setCommitteeStance = setCommitteeStance;
@@ -1839,6 +1854,17 @@ function renderBudgetBillUI() {
     h += '</div>';
 
     h += '</div>'; // close budget-section
+
+    // Retract Budget Bill — only head of government can retract
+    const isPMParty = isAutocracy ? isHeadFaction
+        : isPresidential ? (presidentFactionId && currentFaction?.id === presidentFactionId)
+        : (budgetNation?.ruling_faction_id && currentFaction?.id === budgetNation.ruling_faction_id);
+    if (isPMParty && (currentBill.status === 'committee' || currentBill.status === 'floor')) {
+        h += '<div class="budget-retract-section">';
+        h += '<button class="budget-retract-btn" onclick="retractBudgetBill()">Retract Budget Bill</button>';
+        h += '<div class="budget-retract-note">Only the head of government can retract a budget bill.</div>';
+        h += '</div>';
+    }
 
     articlesEl.innerHTML = h;
 
