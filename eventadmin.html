@@ -15,6 +15,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { GAME_CONFIG, MINISTRY_EVENT_GOV_TYPES, MAJOR_SECTORS, NATION_STAT_COLUMNS, formatStatName, normalizeNationStatKey, templateSupportsNationGovType, canonicalNationGovTypes } from './js/game-common.js';
+import { escapeHtml, escapeAttr } from './js/utils.js';
 // ==================== STATE ====================
 var allEvents = [];
 var allMinistryTemplates = [];
@@ -1126,10 +1127,6 @@ async function deleteMinistryEvent(id) {
 
 function cancelMinistryEditor() { renderModeTabs(); }
 
-
-// ==================== UTILITIES ====================
-function escapeHtml(t) { var d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
-function escapeAttr(t) { return (t || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
 // Expose functions for HTML onclick/onchange handlers
 window.switchMode = switchMode;

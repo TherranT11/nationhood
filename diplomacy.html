@@ -84,6 +84,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
+import { escapeHtml } from './js/utils.js';
 import { isGovernmentAutocracy, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustBlocApproval, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES } from './js/game-common.js';
 /**
  * Diplomacy Page
@@ -2436,12 +2437,6 @@ async function renderChatSection(targetNation, roles, ourAmbassador, theirAmbass
         <div class="diplo-chat-box" id="diplo-chat-box">${msgsHTML}</div>
         ${inputHTML}
     `;
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }
 
 async function sendDiploMessage(targetNationId, targetNationName) {

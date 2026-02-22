@@ -22,6 +22,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatCurrency } from './js/common.js';
+import { escapeHtml } from './js/utils.js';
 import { calculateNationalBudget, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS } from './js/game-common.js';
 
 // ==================== STATE ====================
@@ -1018,12 +1019,6 @@ function getRating(value, inverted) {
     return { label: 'Critical', cls: 'critical' };
 }
 
-// ==================== UTILITIES ====================
-function escapeHtml(t) {
-    var d = document.createElement('div');
-    d.textContent = t || '';
-    return d.innerHTML;
-}
 </script>
 </body>
 </html>

@@ -15,6 +15,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { NATION_STAT_COLUMNS, formatStatName } from './js/game-common.js';
+import { escapeHtml, escapeAttr } from './js/utils.js';
 
 // ==================== STATE ====================
 var activeTab = 'stat'; // 'stat' or 'ministry'
@@ -1000,10 +1001,6 @@ async function deleteMC(id) {
         alert('Error: ' + err.message);
     }
 }
-
-// ==================== HELPERS ====================
-function escapeHtml(t) { var d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
-function escapeAttr(t) { return (t || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
 // Expose functions for HTML onclick/onchange handlers
 window.switchTab = switchTab;
