@@ -903,10 +903,14 @@ function renderCabinet(ministries, coalition) {
     const demCards = demKeys.map(function(key) {
         var m = ministryMap[key];
         var vacant = !m || !m.minister_first_name || !m.minister_last_name;
+        var title = MINISTRY_NAMES[key] || key;
 
         if (vacant) {
             var appointBtn = canAppoint ? '<div class="ministry-actions"><button class="ministry-btn assign" onclick="openAssignModal(\'' + key + '\')">✦ Appoint</button></div>' : '';
-            return '<div class="ministry-card vacant"><div class="ministry-title">' + (MINISTRY_NAMES[key] || key) + '</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>' + appointBtn + '</div>';
+            return '<div class="ministry-card vacant" onclick="this.classList.toggle(\'expanded\')">'
+                + '<div class="ministry-header"><div class="ministry-title">' + title + '</div>'
+                + '<div class="ministry-header-right"><span class="minister-status vacant-label">Vacant</span><span class="ministry-expand-arrow">▶</span></div></div>'
+                + '<div class="ministry-body"><div class="minister-name" style="color:var(--text-muted);">Vacant</div>' + appointBtn + '</div></div>';
         }
 
         var partyName = m.factions?.faction_name || 'Unknown';
@@ -915,10 +919,17 @@ function renderCabinet(ministries, coalition) {
         var mLogoHtml = mLogo ? '<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">' + getPartyIconSVG(mLogo, 16, mColor) + '</span>' : '';
         var name = m.minister_first_name + ' ' + m.minister_last_name;
         var isMyMinistry = currentFaction && m.party_id === currentFaction.id;
-        var resignBtn = (isMyMinistry && !isCaretaker) ? '<div class="ministry-actions"><button class="ministry-btn purge" onclick="resignMinistry(\'' + m.ministry_key + '\')">📋 Resign Ministry</button></div>' : '';
+        var resignBtn = (isMyMinistry && !isCaretaker) ? '<div class="ministry-actions"><button class="ministry-btn purge" onclick="event.stopPropagation();resignMinistry(\'' + m.ministry_key + '\')">📋 Resign Ministry</button></div>' : '';
         var appr = m.minister_approval ?? 50;
         var apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
-        return '<div class="ministry-card" style="border-top:3px solid ' + mColor + ';"><div class="ministry-title">' + (m.ministry_name || MINISTRY_NAMES[key]) + '</div><div class="minister-name">' + name + '</div><div class="minister-details">' + (m.minister_age ? 'Age ' + m.minister_age + ' • ' : '') + '<span class="minister-party" style="color:' + mColor + ';">' + mLogoHtml + partyName + '</span></div><div class="minister-approval">Approval: <span class="' + apprCls + '">' + appr + '%</span></div>' + resignBtn + '</div>';
+        return '<div class="ministry-card" style="border-left-color:' + mColor + ';" onclick="this.classList.toggle(\'expanded\')">'
+            + '<div class="ministry-header"><div class="ministry-title">' + (m.ministry_name || title) + '</div>'
+            + '<div class="ministry-header-right"><span class="minister-status">' + name + '</span><span class="ministry-expand-arrow">▶</span></div></div>'
+            + '<div class="ministry-body">'
+            + '<div class="minister-name">' + name + '</div>'
+            + '<div class="minister-details">' + (m.minister_age ? 'Age ' + m.minister_age + ' &bull; ' : '') + '<span class="minister-party" style="color:' + mColor + ';">' + mLogoHtml + partyName + '</span></div>'
+            + '<div class="minister-approval">Approval: <span class="' + apprCls + '">' + appr + '%</span></div>'
+            + resignBtn + '</div></div>';
     }).join('');
     return '<div class="ministry-grid">' + demCards + '</div>';
 }

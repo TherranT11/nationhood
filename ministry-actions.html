@@ -15,7 +15,12 @@
 </div>
 
 <!-- Cost Tuner FAB (dev only — append ?dev=1 to URL) -->
-<button class="cost-tuner-fab hidden" id="cost-tuner-fab" title="Cost Tuner">&#9881;</button>
+<button class="cost-tuner-fab" id="cost-tuner-fab" title="Cost Tuner" style="display:none;">&#9881;</button>
+<script>
+if (new URLSearchParams(window.location.search).get('dev') === '1') {
+    document.getElementById('cost-tuner-fab').style.display = '';
+}
+</script>
 
 <!-- Cost Tuner Overlay -->
 <div class="cost-tuner-overlay hidden" id="cost-tuner-overlay">
@@ -1149,10 +1154,8 @@ function onCostInput(e) {
     }
 }
 
-// Wire up FAB and overlay — only in dev mode (?dev=1)
+// Wire up FAB and overlay click handlers — only in dev mode (?dev=1)
 if (new URLSearchParams(window.location.search).get('dev') === '1') {
-    document.getElementById('cost-tuner-fab').classList.remove('hidden');
-
     document.getElementById('cost-tuner-fab').addEventListener('click', () => {
         document.getElementById('cost-tuner-overlay').classList.remove('hidden');
         renderCostTuner();
