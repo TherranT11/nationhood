@@ -1741,16 +1741,15 @@ async function generateBudgetBill(supabase, nation, currentTick, activeLaws) {
             ? `Inflation (${budgetData.inflationStat.toFixed(0)}/100) has increased all costs by ~${budgetData.inflationPct.toFixed(1)}% since the last budget cycle.`
             : `Inflation is currently under control.`);
 
-    // Insert the bill
+    // Insert the bill into committee (voting_ends_tick set when sent to floor)
     const { data: bill, error: billError } = await supabase.from('bills').insert({
         nation_id: nation.id,
         proposed_by: sponsorId,
         proposed_tick: currentTick,
         bill_name: billName,
-        status: 'floor',
+        status: 'committee',
         preamble,
-        bill_type: 'budget',
-        voting_ends_tick: currentTick + GAME_CONFIG.BUDGET_BILL_VOTING_TICKS
+        bill_type: 'budget'
     }).select('id').single();
 
     if (billError || !bill) {

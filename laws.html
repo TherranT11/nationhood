@@ -753,20 +753,20 @@ async function renderBudgetBillContent() {
         }
 
         // === SUBMIT BUDGET BILL BUTTON ===
+        h += '<div class="bp-submit-section">';
         if (hasPendingBudget) {
-            h += '<div style="text-align:center;padding:20px;color:#ff9800;border:1px solid #ff9800;border-radius:8px;margin-top:16px;">A budget bill is already pending in ' + (existingBudget[0].status === 'committee' ? 'committee' : 'floor vote') + '.</div>';
+            h += '<div class="bp-submit-notice bp-submit-warning">A budget bill is already pending in ' + (existingBudget[0].status === 'committee' ? 'committee' : 'floor vote') + '.</div>';
         } else if (budgetOnCooldown) {
-            h += '<div style="text-align:center;padding:20px;color:#888;border:1px solid #333;border-radius:8px;margin-top:16px;">Budget cooldown: ' + cooldownRemaining + ' tick(s) remaining before a new budget can be submitted.</div>';
+            h += '<div class="bp-submit-notice bp-submit-disabled">Budget cooldown: ' + cooldownRemaining + ' tick(s) remaining before a new budget can be submitted.</div>';
         } else if (!playerInGovernment && !isPresidential) {
-            h += '<div style="text-align:center;padding:20px;color:#888;border:1px solid #333;border-radius:8px;margin-top:16px;">Only government coalition members can submit a budget bill.</div>';
+            h += '<div class="bp-submit-notice bp-submit-disabled">Only government coalition members can submit a budget bill.</div>';
         } else if (isCaretaker || isNoGovernment) {
-            h += '<div style="text-align:center;padding:20px;color:#888;border:1px solid #333;border-radius:8px;margin-top:16px;">Cannot submit budget bills while the legislature is dissolved.</div>';
+            h += '<div class="bp-submit-notice bp-submit-disabled">Cannot submit budget bills while the legislature is dissolved.</div>';
         } else {
-            h += '<div style="text-align:center;margin-top:16px;">';
-            h += '<button id="submit-budget-btn" class="btn btn-primary" style="padding:12px 32px;font-size:1rem;">Put Budget Bill to Floor</button>';
-            h += '</div>';
+            h += '<button id="submit-budget-btn" class="bp-submit-btn">Send Budget Bill to Committee</button>';
         }
-        h += '<div id="budget-submit-status" style="text-align:center;padding:10px;display:none;margin-top:8px;"></div>';
+        h += '<div id="budget-submit-status" class="bp-submit-status"></div>';
+        h += '</div>';
 
         panel.innerHTML = h;
 
@@ -801,7 +801,6 @@ async function submitBudgetBill(currentTick, budgetLaws) {
     const statusEl = document.getElementById('budget-submit-status');
     const btn = document.getElementById('submit-budget-btn');
     statusEl.style.display = 'block';
-    statusEl.style.color = '#888';
     statusEl.textContent = 'Submitting budget bill...';
     if (btn) btn.disabled = true;
 
@@ -809,18 +808,18 @@ async function submitBudgetBill(currentTick, budgetLaws) {
         const billId = await generateBudgetBill(_supabase, currentNation, currentTick, budgetLaws || []);
 
         if (!billId) {
-            statusEl.style.color = '#ff4444';
+            statusEl.className = 'bp-submit-status bp-submit-error';
             statusEl.textContent = 'Failed to create budget bill. Check console for details.';
             if (btn) btn.disabled = false;
             return;
         }
 
-        statusEl.style.color = '#4CAF50';
-        statusEl.textContent = 'Budget bill submitted! Redirecting...';
+        statusEl.className = 'bp-submit-status bp-submit-success';
+        statusEl.textContent = 'Budget bill sent to committee! Redirecting...';
         setTimeout(function() { window.location.href = 'bill.html?id=' + billId; }, 1000);
     } catch (err) {
         console.error('Submit budget bill error:', err);
-        statusEl.style.color = '#ff4444';
+        statusEl.className = 'bp-submit-status bp-submit-error';
         statusEl.textContent = 'Error: ' + (err.message || err);
         if (btn) btn.disabled = false;
     }
