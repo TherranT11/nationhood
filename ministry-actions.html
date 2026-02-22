@@ -597,7 +597,12 @@ initPage('ministry-actions', async (state) => {
             const inst = insts.find(i => i.id === row.id);
             if (!inst) continue;
             inst.baseCostPerCapita = Number(row.base_cost_per_capita) || inst.baseCostPerCapita;
-            inst.baseCostFormula = '$' + inst.baseCostPerCapita + ' \u00D7 population';
+            inst.scalingType = row.scaling_type || 'population';
+            if (inst.scalingType === 'gdp') {
+                inst.baseCostFormula = inst.baseCostPerCapita + '% \u00D7 GDP';
+            } else {
+                inst.baseCostFormula = '$' + inst.baseCostPerCapita + ' \u00D7 population';
+            }
             inst.costShare = Number(row.cost_share) || inst.costShare;
             if (row.primary_stat) inst.primaryStat = { key: row.primary_stat, label: row.primary_stat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) };
             if (row.secondary_stat) inst.secondaryStat = { key: row.secondary_stat, label: row.secondary_stat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) };
@@ -792,11 +797,18 @@ function renderInstitutionsTab(ministryKey, institutions, alloc) {
     }
 
     for (const inst of institutions) {
-        // Calculate this institution's needed cost from population, or fall back to budget share
+        // Calculate this institution's needed cost from population/GDP, or fall back to budget share
         const instAllocated = alloc.allocated * inst.costShare;
-        const instNeeded = inst.baseCostPerCapita
-            ? inst.baseCostPerCapita * (currentNation.population || 0)
-            : alloc.needed * inst.costShare;
+        let instNeeded;
+        if (inst.baseCostPerCapita) {
+            if (inst.scalingType === 'gdp') {
+                instNeeded = (inst.baseCostPerCapita / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0);
+            } else {
+                instNeeded = inst.baseCostPerCapita * (currentNation.population || 0);
+            }
+        } else {
+            instNeeded = alloc.needed * inst.costShare;
+        }
         const pct = instNeeded > 0 ? Math.round((instAllocated / instNeeded) * 100) : 0;
         const funding = getFundingLabel(pct);
         const decay = getDecayRate(pct);

@@ -529,6 +529,7 @@ const BUDGET_MINISTRY_TABS = [
 function renderBudgetMinistryPanel(tab, instByMinistry, budgetLaws, nation) {
     var insts = instByMinistry[tab.key] || [];
     var population = Number(nation.population || 0);
+    var gdpVal = Number(nation.gdp ?? nation.GDP ?? 0);
     var inflationMult = getInflationMultiplier(nation.inflation);
     var instTotal = 0;
     var h = '';
@@ -541,11 +542,17 @@ function renderBudgetMinistryPanel(tab, instByMinistry, budgetLaws, nation) {
     } else {
         for (var i = 0; i < insts.length; i++) {
             var inst = insts[i];
-            var cost = Number(inst.base_cost_per_capita || 0) * population * inflationMult;
+            var baseVal = Number(inst.base_cost_per_capita || 0);
+            var isGdpScaled = inst.scaling_type === 'gdp';
+            var cost = isGdpScaled ? (baseVal / 100) * gdpVal * inflationMult : baseVal * population * inflationMult;
             instTotal += cost;
             h += '<div class="bp-inst-line">';
             h += '<span class="bp-inst-name">' + inst.institution_name;
-            h += ' <span style="color:#666;font-size:0.75rem;">($' + Number(inst.base_cost_per_capita).toFixed(2) + ' × ' + population.toLocaleString() + ' pop)</span>';
+            if (isGdpScaled) {
+                h += ' <span style="color:#666;font-size:0.75rem;">(' + baseVal.toFixed(2) + '% × ' + fmtBudgetVal(gdpVal) + ' GDP)</span>';
+            } else {
+                h += ' <span style="color:#666;font-size:0.75rem;">($' + baseVal.toFixed(2) + ' × ' + population.toLocaleString() + ' pop)</span>';
+            }
             h += '</span>';
             h += '<span class="bp-inst-cost">' + fmtBudgetVal(cost) + '</span>';
             h += '</div>';
@@ -631,7 +638,7 @@ async function renderBudgetBillContent() {
         const tradeTariffRevenue = tradeSummary ? Number(tradeSummary.tariff_revenue) : null;
 
         // Load institution config from DB
-        const { data: instRows } = await _supabase.from('ministry_institution_config').select('ministry_key, institution_name, base_cost_per_capita, cost_share');
+        const { data: instRows } = await _supabase.from('ministry_institution_config').select('ministry_key, institution_name, base_cost_per_capita, cost_share, scaling_type');
         const instByMinistry = {};
         for (var ir of (instRows || [])) {
             if (!instByMinistry[ir.ministry_key]) instByMinistry[ir.ministry_key] = [];

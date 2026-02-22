@@ -2835,9 +2835,11 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
             grouped[row.ministry_key].push(row);
         }
 
+        const gdp = ministryConfigNation ? Number(ministryConfigNation.gdp ?? ministryConfigNation.GDP ?? 0) : 0;
+
         let html = '';
         if (ministryConfigNation) {
-            html += '<div style="color:#888;font-size:0.82rem;margin-bottom:12px;">Population: <strong style="color:#ccc;">' + population.toLocaleString() + '</strong> &middot; Inflation multiplier: <strong style="color:#ccc;">' + inflationMult.toFixed(3) + 'x</strong></div>';
+            html += '<div style="color:#888;font-size:0.82rem;margin-bottom:12px;">Population: <strong style="color:#ccc;">' + population.toLocaleString() + '</strong> &middot; GDP: <strong style="color:#ccc;">' + fmtBudgetCurrency(gdp) + '</strong> &middot; Inflation multiplier: <strong style="color:#ccc;">' + inflationMult.toFixed(3) + 'x</strong></div>';
         }
         for (const mk of MINISTRY_ORDER) {
             const insts = grouped[mk];
@@ -2845,7 +2847,9 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
             // Compute ministry total
             let ministryTotal = 0;
             for (const inst of insts) {
-                ministryTotal += Number(inst.base_cost_per_capita || 0) * population * inflationMult;
+                const bv = Number(inst.base_cost_per_capita || 0);
+                const st = inst.scaling_type || 'population';
+                ministryTotal += (st === 'gdp' ? (bv / 100) * gdp : bv * population) * inflationMult;
             }
             html += '<div class="mc-ministry expanded">';
             html += '<div class="mc-ministry-header" onclick="this.parentElement.classList.toggle(\'expanded\')">';
@@ -2856,9 +2860,9 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
             html += '<div class="mc-ministry-body">';
             for (const inst of insts) {
                 const baseCost = Number(inst.base_cost_per_capita || 0);
-                const annualCost = baseCost * population * inflationMult;
-                const primaryLabel = inst.primary_stat ? inst.primary_stat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'None';
-                const secondaryLabel = inst.secondary_stat ? inst.secondary_stat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'None';
+                const scalingType = inst.scaling_type || 'population';
+                const isGdp = scalingType === 'gdp';
+                const annualCost = (isGdp ? (baseCost / 100) * gdp : baseCost * population) * inflationMult;
 
                 html += '<div class="mc-inst-card" data-id="' + inst.id + '">';
                 html += '<div class="mc-inst-header">';
@@ -2867,11 +2871,27 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
                 html += '</div>';
                 html += '<div class="mc-inst-details">';
 
-                // Base $/capita
+                // Scales With toggle
                 html += '<div class="mc-inst-field">';
-                html += '<label class="mc-field-label">Base $/capita</label>';
-                html += '<input type="number" step="0.01" min="0" class="mc-input" data-id="' + inst.id + '" data-field="base_cost_per_capita" value="' + baseCost + '">';
-                html += '<span class="mc-field-formula">$' + baseCost.toFixed(2) + ' &times; ' + population.toLocaleString() + ' = ' + fmtBudgetCurrency(baseCost * population) + '</span>';
+                html += '<label class="mc-field-label">Scales With</label>';
+                html += '<div class="mc-toggle-group">';
+                html += '<button class="mc-toggle-btn' + (!isGdp ? ' active' : '') + '" data-id="' + inst.id + '" data-val="population" onclick="toggleScalingType(this)">Population</button>';
+                html += '<button class="mc-toggle-btn' + (isGdp ? ' active' : '') + '" data-id="' + inst.id + '" data-val="gdp" onclick="toggleScalingType(this)">GDP</button>';
+                html += '</div>';
+                html += '<input type="hidden" data-id="' + inst.id + '" data-field="scaling_type" value="' + scalingType + '">';
+                html += '</div>';
+
+                // Base cost field — label and formula change based on scaling type
+                html += '<div class="mc-inst-field">';
+                if (isGdp) {
+                    html += '<label class="mc-field-label">Base % of GDP</label>';
+                    html += '<input type="number" step="0.01" min="0" class="mc-input" data-id="' + inst.id + '" data-field="base_cost_per_capita" value="' + baseCost + '">';
+                    html += '<span class="mc-field-formula">' + baseCost.toFixed(2) + '% &times; ' + fmtBudgetCurrency(gdp) + ' = ' + fmtBudgetCurrency((baseCost / 100) * gdp) + '</span>';
+                } else {
+                    html += '<label class="mc-field-label">Base $/capita</label>';
+                    html += '<input type="number" step="0.01" min="0" class="mc-input" data-id="' + inst.id + '" data-field="base_cost_per_capita" value="' + baseCost + '">';
+                    html += '<span class="mc-field-formula">$' + baseCost.toFixed(2) + ' &times; ' + population.toLocaleString() + ' = ' + fmtBudgetCurrency(baseCost * population) + '</span>';
+                }
                 html += '</div>';
 
                 // Cost Share
@@ -2902,6 +2922,23 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
         body.innerHTML = html;
     }
 
+    function toggleScalingType(btn) {
+        const card = btn.closest('.mc-inst-card');
+        const instId = btn.getAttribute('data-id');
+        const newVal = btn.getAttribute('data-val');
+        // Update hidden input
+        const hidden = card.querySelector('input[data-field="scaling_type"]');
+        if (hidden) hidden.value = newVal;
+        // Toggle active class
+        card.querySelectorAll('.mc-toggle-btn[data-id="' + instId + '"]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        // Update the local data so re-render picks it up
+        const row = ministryConfigData.find(r => r.id === instId);
+        if (row) row.scaling_type = newVal;
+        // Re-render to update label + formula
+        renderMinistryConfig();
+    }
+
     function renderStatSelect(instId, field, currentValue) {
         const stats = NATION_STAT_COLUMNS;
         let h = '<select class="mc-select" data-id="' + instId + '" data-field="' + field + '">';
@@ -2919,12 +2956,14 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
         if (!row) return;
         const costInput = row.querySelector('input[data-field="base_cost_per_capita"]');
         const shareInput = row.querySelector('input[data-field="cost_share"]');
+        const scalingInput = row.querySelector('input[data-field="scaling_type"]');
         const primarySelect = row.querySelector('select[data-field="primary_stat"]');
         const secondarySelect = row.querySelector('select[data-field="secondary_stat"]');
 
         const updates = {
             base_cost_per_capita: parseFloat(costInput.value) || 0,
             cost_share: parseFloat(shareInput.value) || 0,
+            scaling_type: scalingInput ? scalingInput.value : 'population',
             primary_stat: primarySelect.value || null,
             secondary_stat: secondarySelect.value || null,
             updated_at: new Date().toISOString()
@@ -3205,6 +3244,7 @@ window.seedAllDefaultDemands = seedAllDefaultDemands;
 window.runPolicyAudit = runPolicyAudit;
 window.recalculatePolicyCosts = recalculatePolicyCosts;
 window.saveInstitutionRow = saveInstitutionRow;
+window.toggleScalingType = toggleScalingType;
 
 // ==================== BUDGET PREVIEW ====================
 let bpSelectedCategory = null;
@@ -3258,7 +3298,7 @@ async function previewBudgetBill() {
 
         // Load institution config
         var { data: instRows } = await _supabase.from('ministry_institution_config')
-            .select('id, ministry_key, institution_name, base_cost_per_capita, cost_share');
+            .select('id, ministry_key, institution_name, base_cost_per_capita, cost_share, scaling_type');
         bpInstitutions = instRows || [];
 
         // Build budget data with trade tariff override and institutions
@@ -3395,14 +3435,20 @@ function renderBpMinistryDetail(category) {
     // Institutions section
     h += '<div class="budget-sub-section">';
     h += '<div class="budget-sub-header">INSTITUTIONS</div>';
+    var gdpVal = bpNation ? Number(bpNation.gdp ?? bpNation.GDP ?? 0) : 0;
     if (institutions.length === 0) {
         h += '<div class="budget-empty-notice">No institutions in this ministry.</div>';
     } else {
         for (var i = 0; i < institutions.length; i++) {
             var inst = institutions[i];
+            var isGdpScaled = inst.scaling_type === 'gdp';
             h += '<div class="budget-policy-line">';
             h += '<span class="budget-policy-name">' + escHtml(inst.institution_name);
-            h += ' <span class="budget-inst-formula">($' + Number(inst.base_cost_per_capita).toFixed(2) + ' &times; ' + population.toLocaleString() + ' pop)</span>';
+            if (isGdpScaled) {
+                h += ' <span class="budget-inst-formula">(' + Number(inst.base_cost_per_capita).toFixed(2) + '% &times; ' + fmtBudgetCurrency(gdpVal) + ' GDP)</span>';
+            } else {
+                h += ' <span class="budget-inst-formula">($' + Number(inst.base_cost_per_capita).toFixed(2) + ' &times; ' + population.toLocaleString() + ' pop)</span>';
+            }
             h += '</span>';
             h += '<span class="budget-policy-cost">' + fmtBudgetCurrency(inst.cost) + '</span>';
             h += '</div>';

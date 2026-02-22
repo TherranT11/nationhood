@@ -1577,7 +1577,8 @@ export function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
 
 /**
  * Compute the annualized cost of all institutions for a given fiscal category.
- * Institutions use base_cost_per_capita × population, scaled by inflation.
+ * Population-scaled: base_cost_per_capita × population × inflation.
+ * GDP-scaled:        base_cost_per_capita (as % of GDP, e.g. 0.5 = 0.5%) × GDP × inflation.
  * @param {Array} institutions - rows from ministry_institution_config
  * @param {string} fiscalCategory - e.g. 'Healthcare', 'Trade'
  * @param {Object} nation
@@ -1586,14 +1587,27 @@ export function computeMinistryInstitutionCost(institutions, fiscalCategory, nat
     const ministryKey = FISCAL_TO_MINISTRY_KEY[fiscalCategory] || fiscalCategory.toLowerCase();
     const insts = (institutions || []).filter(i => i.ministry_key === ministryKey);
     const population = Number(nation.population || 0);
+    const gdp = Number(nation.gdp ?? nation.GDP ?? 0);
     const inflationMult = getInflationMultiplier(nation.inflation);
 
     let total = 0;
     const items = [];
     for (const inst of insts) {
-        let cost = Number(inst.base_cost_per_capita || 0) * population;
+        const baseVal = Number(inst.base_cost_per_capita || 0);
+        const scalingType = inst.scaling_type || 'population';
+        let cost;
+        if (scalingType === 'gdp') {
+            // baseVal is a percentage of GDP (e.g. 0.5 means 0.5%)
+            cost = (baseVal / 100) * gdp;
+        } else {
+            cost = baseVal * population;
+        }
         cost *= inflationMult;
-        items.push({ id: inst.id, institution_name: inst.institution_name, cost, base_cost_per_capita: inst.base_cost_per_capita });
+        items.push({
+            id: inst.id, institution_name: inst.institution_name, cost,
+            base_cost_per_capita: inst.base_cost_per_capita,
+            scaling_type: scalingType
+        });
         total += cost;
     }
     return { total, institutions: items };
@@ -1661,7 +1675,7 @@ export async function generateBudgetBill(supabase, nation, currentTick, activeLa
 
     // Load institution config for cost calculations
     const { data: instRows } = await supabase.from('ministry_institution_config')
-        .select('id, ministry_key, institution_name, base_cost_per_capita, cost_share');
+        .select('id, ministry_key, institution_name, base_cost_per_capita, cost_share, scaling_type');
 
     const budgetData = buildBudgetData(nation, activeLaws, tradeTariffRevenue, instRows || []);
 
