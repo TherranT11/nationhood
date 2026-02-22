@@ -543,17 +543,29 @@ function renderFloorBills() {
 }
 
 function renderFloorBill(bill, isVetoed) {
-    const myStance = currentFaction ? (bill.bill_support || []).find(s => s.faction_id === currentFaction.id) : null;
-    const stanceNorm = myStance ? (myStance.stance === 'accept' ? 'yes' : myStance.stance === 'reject' ? 'no' : myStance.stance) : null;
-    const votedBadge = stanceNorm === 'yes' ? '<span style="background:#4CAF50;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.6rem;font-weight:bold;text-transform:uppercase;margin-left:8px;">VOTED YES</span>'
-        : stanceNorm === 'no' ? '<span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.6rem;font-weight:bold;text-transform:uppercase;margin-left:8px;">VOTED NO</span>'
-        : stanceNorm === 'abstain' ? '<span style="background:#888;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.6rem;font-weight:bold;text-transform:uppercase;margin-left:8px;">ABSTAINED</span>'
-        : '';
+    var myStance = currentFaction ? (bill.bill_support || []).find(function(s) { return s.faction_id === currentFaction.id; }) : null;
+    var stanceNorm = myStance ? (myStance.stance === 'accept' ? 'yes' : myStance.stance === 'reject' ? 'no' : myStance.stance) : null;
+    var votedBadge = '';
+    if (stanceNorm === 'yes') votedBadge = '<span style="background:#4CAF50;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.6rem;font-weight:bold;text-transform:uppercase;margin-left:8px;">VOTED YES</span>';
+    else if (stanceNorm === 'no') votedBadge = '<span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.6rem;font-weight:bold;text-transform:uppercase;margin-left:8px;">VOTED NO</span>';
+    else if (stanceNorm === 'abstain') votedBadge = '<span style="background:#888;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.6rem;font-weight:bold;text-transform:uppercase;margin-left:8px;">ABSTAINED</span>';
+
+    var typeBadge = '';
+    if (bill.bill_type === 'no_confidence') typeBadge = ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚡ No Confidence</span>';
+    else if (bill.bill_type === 'repeal') typeBadge = ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>';
+    else if (bill.bill_type === 'foundational') typeBadge = ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>';
+    else if (bill.bill_type === 'confirmation') typeBadge = ' <span style="background:#1a5276;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Confirmation</span>';
+    else if (bill.bill_type === 'minister_confirmation') typeBadge = ' <span style="background:#E65100;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Cabinet Confirmation</span>';
+    else if (bill.bill_type === 'veto_override') typeBadge = ' <span style="background:#B71C1C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Veto Override</span>';
+    else if (bill.bill_type === 'ratification') typeBadge = ' <span style="background:#00695C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🌐 Ratification</span>';
+
+    var billTitle = (bill.bill_name || 'Unnamed ' + termBill) + typeBadge + votedBadge;
+
     return `
         <div class="floor-bill ${isVetoed ? 'vetoed' : ''} clickable-bill" onclick="window.location.href='bill.html?id=${bill.id}'">
             <div class="committee-bill-header">
                 <div>
-                    <div class="floor-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'no_confidence' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚡ No Confidence</span>' : (bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : (bill.bill_type === 'foundational' ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>' : (bill.bill_type === 'confirmation' ? ' <span style="background:#1a5276;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Confirmation</span>' : (bill.bill_type === 'minister_confirmation' ? ' <span style="background:#E65100;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Cabinet Confirmation</span>' : (bill.bill_type === 'veto_override' ? ' <span style="background:#B71C1C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Veto Override</span>' : (bill.bill_type === 'ratification' ? ' <span style="background:#00695C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🌐 Ratification</span>' : '')))))))}${votedBadge}</div>
+                    <div class="floor-bill-name">` + billTitle + `</div>
                     <div class="committee-bill-sponsor">${bill.bill_type === 'no_confidence' ? 'Filed' : 'Proposed'} by ${bill.factions?.faction_name || 'Unknown'}</div>
                 </div>
                 ${isVetoed ? `<div class="floor-status vetoed-status">VETOED</div>`
