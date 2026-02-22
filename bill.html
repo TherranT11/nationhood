@@ -205,8 +205,8 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
-import { escapeHtml, formatTime } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS } from './js/game-common.js';
+import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass } from './js/game-common.js';
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
@@ -224,7 +224,6 @@ let editingArticleId = null;
 let sponsorSelectedPolicy = null;
 const SPECIAL_BILL_TYPES = ['no_confidence', 'confirmation', 'minister_confirmation', 'veto_override', 'repeal', 'budget'];
 
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const urlParams = new URLSearchParams(window.location.search);
 const billId = urlParams.get('id');
 
@@ -261,11 +260,6 @@ initPage('laws', async (state) => {
     document.getElementById('bill-page').style.display = 'grid';
     setupRealtimeComments();
 });
-
-function tickToDate(tick) {
-    const y = 2000 + Math.floor(tick / 12);
-    return `${MONTHS[tick % 12]}, ${y}`;
-}
 
 async function loadBillData() {
     try {
@@ -705,7 +699,7 @@ function renderArticles() {
             // Ideology tags — support new ideologies array and legacy single ideology
             const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
             const ideoHTML = ideos.map(i => {
-                const colorClass = getIdeologyChipClass(i);
+                const colorClass = getIdeologyChipClass(i, factionIdeology);
                 return '<span class="article-ideology ' + colorClass + '">' + i + '</span>';
             }).join(' ');
 
@@ -758,22 +752,6 @@ function renderArticles() {
  * Determine CSS class for an ideology chip based on alignment with player's
  * dynamic ideology scores. Green = aligned, Red = opposed, Gray = neutral.
  */
-function getIdeologyChipClass(ideologyTag) {
-    if (!factionIdeology) return 'neutral';
-    const tag = ideologyTag.toUpperCase();
-    const mapping = IDEOLOGY_TO_AXIS[tag];
-    if (!mapping) return 'neutral';
-
-    const score = factionIdeology[mapping.axisKey] || 0;
-    // Policy pushes in mapping.direction (+1 or -1).
-    // If faction score agrees with that direction, it's aligned.
-    // If faction score opposes, it's opposed.
-    const alignment = score * mapping.direction; // positive = aligned, negative = opposed
-    if (alignment > 10) return 'aligned';
-    if (alignment < -10) return 'opposed';
-    return 'neutral';
-}
-
 /**
  * Render an ideology alignment warning banner between bill totals and the
  * voting section. Shows how this bill aligns or conflicts with the player's
@@ -1231,7 +1209,7 @@ function onAmendmentSectorChange() {
         const opposedBadge = p.isOpposed ? ' <span style="display:inline-block;background:#ff4444;color:#fff;padding:2px 7px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚠ Opposed</span>' : '';
         const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
         const ideoHTML = ideos.map(i => {
-            const colorClass = getIdeologyChipClass(i);
+            const colorClass = getIdeologyChipClass(i, factionIdeology);
             return `<span class="article-ideology ${colorClass}">${i}</span>`;
         }).join(' ');
         return `<div class="policy-option${opposedClass}" data-policy-id="${p.id}" onclick="selectAmendmentPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name} ${ideoHTML}${opposedBadge}</div><div class="policy-option-desc">${p.description || ''}</div></div>`;
@@ -1503,7 +1481,7 @@ function onSponsorAddSectorChange() {
     document.getElementById('sponsor-add-policies').innerHTML = policies.map(p => {
         const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
         const ideoHTML = ideos.map(i => {
-            const colorClass = getIdeologyChipClass(i);
+            const colorClass = getIdeologyChipClass(i, factionIdeology);
             return `<span class="article-ideology ${colorClass}">${i}</span>`;
         }).join(' ');
         const opposedClass = p.isOpposed ? ' opposed' : '';
@@ -1714,18 +1692,6 @@ function getBudgetTotals() {
     else projectedDebt = Math.max(0, projectedDebt - gap);
 
     return { ...budget, reserves, available, totalSpending, gap, currentDebt, projectedDebt };
-}
-
-function fmtBudgetCurrency(val) {
-    if (val == null) return '$0';
-    val = Number(val);
-    var sign = val < 0 ? '-' : '';
-    var abs = Math.abs(val);
-    if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(1) + 'T';
-    if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(1) + 'B';
-    if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(0) + 'M';
-    if (abs >= 1e3) return sign + '$' + (abs / 1e3).toFixed(0) + 'K';
-    return sign + '$' + Math.round(abs);
 }
 
 function renderBudgetBillUI() {

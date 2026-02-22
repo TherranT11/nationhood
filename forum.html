@@ -48,7 +48,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber, scaleRawToDollars } from './js/common.js';
-import { escapeHtml, truncate } from './js/utils.js';
+import { escapeHtml, truncate, tickToDate } from './js/utils.js';
 
 /**
  * Forum Page
@@ -77,22 +77,6 @@ const CATEGORY_ICONS = {
 };
 
 const REPLIES_PER_PAGE = 20;
-
-// ===== DATE HELPERS =====
-
-function tickToDate(tick) {
-    // Game starts at January 2000 (tick 0)
-    const gameStartMonth = 1;
-    const gameStartYear = 2000;
-    const totalMonths = (gameStartMonth - 1) + tick;
-    const year = gameStartYear + Math.floor(totalMonths / 12);
-    const month = (totalMonths % 12) + 1;
-    const monthNames = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    return `${monthNames[month - 1]} ${year}`;
-}
 
 // ===== ROUTING =====
 

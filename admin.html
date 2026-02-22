@@ -440,6 +440,7 @@
 
 <script type="module">
 const { createClient } = supabase;
+import { fmtBudgetCurrency } from './js/utils.js';
 import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, computeMinistryPolicyCost, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processBlocApprovalDecay, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPartyStandingsJitter, processPMTraitEffects, calculateNationalBudget, markFactionActive, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runManualElectionByGovernmentType, DONOR_DEMANDS } from './js/game-common.js';
 const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
@@ -3163,18 +3164,6 @@ let bpBudgetData = null;
 let bpNation = null;
 let bpActiveLaws = null;
 let bpTradeTariffRevenue = null;
-
-function fmtBudgetCurrency(val) {
-    if (val == null) return '$0';
-    val = Number(val);
-    var sign = val < 0 ? '-' : '';
-    var abs = Math.abs(val);
-    if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(1) + 'T';
-    if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(1) + 'B';
-    if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(0) + 'M';
-    if (abs >= 1e3) return sign + '$' + (abs / 1e3).toFixed(0) + 'K';
-    return sign + '$' + Math.round(abs);
-}
 
 function bpRevLine(label, value, isBold, isNegative) {
     var cls = isBold ? ' budget-rev-bold' : '';

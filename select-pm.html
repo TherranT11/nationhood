@@ -25,6 +25,7 @@
 
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
+import { getIdeologyClass } from './js/utils.js';
 import { initGameConfigForNation, generatePMCandidates, selectPMCandidate, GAME_CONFIG } from './js/game-common.js';
 let currentNation = null;
 let currentFaction = null;
@@ -119,10 +120,6 @@ initPage('government', async (state) => {
 
     renderCandidates();
 });
-
-function getIdeologyClass(tag) {
-    return 'ideo-' + (tag || '').toLowerCase();
-}
 
 function getIdeologyDirectionLabel(direction, axisKey) {
     const axes = {
