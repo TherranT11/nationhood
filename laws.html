@@ -758,8 +758,8 @@ async function renderBudgetBillContent() {
             h += '<div class="bp-submit-notice bp-submit-warning">A budget bill is already pending in ' + (existingBudget[0].status === 'committee' ? 'committee' : 'floor vote') + '.</div>';
         } else if (budgetOnCooldown) {
             h += '<div class="bp-submit-notice bp-submit-disabled">Budget cooldown: ' + cooldownRemaining + ' tick(s) remaining before a new budget can be submitted.</div>';
-        } else if (!playerInGovernment && !isPresidential) {
-            h += '<div class="bp-submit-notice bp-submit-disabled">Only government coalition members can submit a budget bill.</div>';
+        } else if (!(lawsIsAutocracy ? isHeadFaction : isPresidential ? isPresidentParty : (currentFaction && currentNation.ruling_faction_id === currentFaction.id))) {
+            h += '<div class="bp-submit-notice bp-submit-disabled">Only the head of government can submit a budget bill.</div>';
         } else if (isCaretaker || isNoGovernment) {
             h += '<div class="bp-submit-notice bp-submit-disabled">Cannot submit budget bills while the legislature is dissolved.</div>';
         } else {

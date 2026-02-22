@@ -1681,8 +1681,11 @@ function isBudgetEditable() {
     if (!currentBill || (currentBill.status !== 'floor' && currentBill.status !== 'committee')) return false;
     if (currentBill.early_resolution_status) return false;
     if (!currentFaction) return false;
-    // Anyone with at least 1 seat can edit budget allocations
-    return currentSeats >= 1;
+    if (currentSeats < 1) return false;
+    // Presidential / Autocracy: anyone with 1+ seat can edit
+    if (isPresidential || isAutocracy) return true;
+    // Parliamentary: only coalition members can edit
+    return coalitionPartyIds.includes(currentFaction.id);
 }
 
 function getBudgetTotals() {
