@@ -19,9 +19,9 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
-import { tickToDate } from './js/utils.js';
+import { tickToDate, escapeHtml } from './js/utils.js';
 import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel } from './js/game-common.js';
-import { getPartyIconSVG } from './js/party-icons.js';
+import { getPartyIconSVG, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './js/party-icons.js';
 
 let currentFaction = null;
 let currentNation = null;
@@ -151,7 +151,7 @@ async function renderParties() {
     // Fetch all parties for seat + vote share data
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, faction_name, abbreviation, seats, national_vote_share, party_color, party_logo, leader_first_name, leader_last_name, leader_age, founded_tick, ideology_value_1, ideology_value_2')
+        .select('id, faction_name, abbreviation, seats, national_vote_share, party_color, party_logo, party_description, leader_first_name, leader_last_name, leader_age, founded_tick, ideology_value_1, ideology_value_2')
         .eq('nation_id', n.id)
         .eq('faction_type', 'party');
 
@@ -627,6 +627,7 @@ async function renderParties() {
                             <div class="other-party-ideology-row">${opIdeology}</div>
                         </div>
                     </div>
+                    ${op.party_description ? `<div class="other-party-desc">${escapeHtml(op.party_description)}</div>` : ''}
                     <div class="other-party-stats">
                         <div class="other-party-stat">
                             <div class="stat-label">Party Leader</div>
@@ -750,6 +751,8 @@ async function renderParties() {
                 </div>
             </div>
 
+            ${f.party_description ? `<div class="my-party-desc">${escapeHtml(f.party_description)}</div>` : ''}
+
             <div class="my-party-stats">
                 <div class="my-party-stat">
                     <div class="stat-label">Party Leader</div>
@@ -846,8 +849,170 @@ async function renderParties() {
 
         ${ideologyComparisonHtml}
 
+        <div class="edit-identity-section" id="edit-identity-section">
+            <div class="edit-identity-header">Edit Party Identity</div>
+            <div class="edit-identity-desc">Customize your party's appearance. Changes are free and take effect immediately.</div>
+
+            <div class="edit-identity-field">
+                <label class="edit-identity-label">Description <span class="edit-identity-charcount" id="edit-desc-charcount">0 / 200</span></label>
+                <textarea class="edit-identity-textarea" id="edit-party-desc" maxlength="200" placeholder="A political faction of ${n.nation_name || 'your nation'}.">${f.party_description || ''}</textarea>
+            </div>
+
+            <div class="edit-identity-field">
+                <label class="edit-identity-label">Party Color</label>
+                <div class="edit-color-palette" id="edit-color-palette"></div>
+                <div class="edit-color-custom-row">
+                    <label class="edit-color-custom-label">Custom hex:</label>
+                    <input type="text" class="edit-color-hex-input" id="edit-color-hex" maxlength="7" placeholder="#E63946" value="${f.party_color || partyColor}">
+                    <div class="edit-color-preview" id="edit-color-preview" style="background:${f.party_color || partyColor}"></div>
+                </div>
+                <div class="edit-color-warning" id="edit-color-warning" style="display:none"></div>
+            </div>
+
+            <div class="edit-identity-field">
+                <label class="edit-identity-label">Party Logo</label>
+                <div class="edit-logo-grid" id="edit-logo-grid"></div>
+            </div>
+
+            <div class="edit-identity-actions">
+                <button class="edit-identity-save-btn" id="edit-identity-save">Save Changes</button>
+                <span class="edit-identity-status" id="edit-identity-status"></span>
+            </div>
+        </div>
+
         </div>
     `;
+
+    // ── Edit Party Identity logic ──
+    (function initEditIdentity() {
+        const section = document.getElementById('edit-identity-section');
+        if (!section) return;
+
+        let editColor = f.party_color || partyColor;
+        let editLogo = f.party_logo || 'flag';
+
+        // Description char count
+        const descInput = document.getElementById('edit-party-desc');
+        const charCount = document.getElementById('edit-desc-charcount');
+        function updateCharCount() {
+            charCount.textContent = (descInput.value || '').length + ' / 200';
+        }
+        updateCharCount();
+        descInput.addEventListener('input', updateCharCount);
+
+        // Color palette
+        const paletteEl = document.getElementById('edit-color-palette');
+        let paletteHtml = '';
+        for (const c of PARTY_COLOR_PALETTE) {
+            const isActive = c.hex.toUpperCase() === editColor.toUpperCase();
+            paletteHtml += '<div class="edit-color-swatch' + (isActive ? ' active' : '') + '" data-hex="' + c.hex + '" style="background:' + c.hex + '" title="' + c.label + '"></div>';
+        }
+        paletteEl.innerHTML = paletteHtml;
+
+        const hexInput = document.getElementById('edit-color-hex');
+        const colorPreview = document.getElementById('edit-color-preview');
+        const colorWarning = document.getElementById('edit-color-warning');
+
+        function selectColor(hex) {
+            editColor = hex;
+            hexInput.value = hex;
+            colorPreview.style.background = hex;
+            paletteEl.querySelectorAll('.edit-color-swatch').forEach(sw => {
+                sw.classList.toggle('active', sw.dataset.hex.toUpperCase() === hex.toUpperCase());
+            });
+            checkColorSimilarity(hex);
+        }
+
+        function checkColorSimilarity(hex) {
+            const otherColors = (allParties || [])
+                .filter(p => p.id !== f.id && p.party_color)
+                .map(p => ({ name: p.faction_name, color: p.party_color }));
+            let warning = '';
+            for (const other of otherColors) {
+                if (colorDistance(hex, other.color) < 30) {
+                    warning = 'Another party (' + other.name + ') is already using a very similar color. This may cause confusion in charts and maps.';
+                    break;
+                }
+            }
+            colorWarning.style.display = warning ? 'block' : 'none';
+            colorWarning.textContent = warning;
+        }
+
+        paletteEl.addEventListener('click', (e) => {
+            const sw = e.target.closest('.edit-color-swatch');
+            if (sw) selectColor(sw.dataset.hex);
+        });
+
+        hexInput.addEventListener('input', () => {
+            const val = hexInput.value.trim();
+            if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+                selectColor(val);
+            }
+        });
+
+        checkColorSimilarity(editColor);
+
+        // Logo grid
+        const logoGrid = document.getElementById('edit-logo-grid');
+        let logoHtml = '';
+        const categories = {};
+        for (const [key, icon] of Object.entries(PARTY_ICONS)) {
+            if (!categories[icon.category]) categories[icon.category] = [];
+            categories[icon.category].push({ key, label: icon.label });
+        }
+        for (const [cat, icons] of Object.entries(categories)) {
+            logoHtml += '<div class="edit-logo-category">' + cat + '</div>';
+            for (const icon of icons) {
+                const isActive = icon.key === editLogo;
+                logoHtml += '<div class="edit-logo-option' + (isActive ? ' active' : '') + '" data-key="' + icon.key + '" title="' + icon.label + '">' + getPartyIconSVG(icon.key, 28, isActive ? editColor : '#888') + '</div>';
+            }
+        }
+        logoGrid.innerHTML = logoHtml;
+
+        logoGrid.addEventListener('click', (e) => {
+            const opt = e.target.closest('.edit-logo-option');
+            if (!opt) return;
+            editLogo = opt.dataset.key;
+            logoGrid.querySelectorAll('.edit-logo-option').forEach(o => {
+                const isActive = o.dataset.key === editLogo;
+                o.classList.toggle('active', isActive);
+                o.innerHTML = getPartyIconSVG(o.dataset.key, 28, isActive ? editColor : '#888');
+            });
+        });
+
+        // Save
+        const saveBtn = document.getElementById('edit-identity-save');
+        const statusEl = document.getElementById('edit-identity-status');
+        saveBtn.addEventListener('click', async () => {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+            statusEl.textContent = '';
+
+            const newDesc = (descInput.value || '').trim().slice(0, 200);
+            const { error } = await _supabase.from('factions').update({
+                party_description: newDesc || null,
+                party_color: editColor,
+                party_logo: editLogo,
+            }).eq('id', f.id);
+
+            if (error) {
+                statusEl.textContent = 'Error: ' + error.message;
+                statusEl.style.color = '#ff4444';
+            } else {
+                statusEl.textContent = 'Saved!';
+                statusEl.style.color = '#4CAF50';
+                f.party_description = newDesc || null;
+                f.party_color = editColor;
+                f.party_logo = editLogo;
+                currentFaction.party_description = f.party_description;
+                currentFaction.party_color = f.party_color;
+                currentFaction.party_logo = f.party_logo;
+                setTimeout(() => renderParties(), 800);
+            }
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Changes';
+        });
+    })();
 
     // ── Ideology Comparison: chip toggle logic ──
     const ideoSection = document.getElementById('ideology-section');
