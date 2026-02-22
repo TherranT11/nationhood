@@ -67,6 +67,17 @@
         }
         .msb-dot.filled { background: var(--green, #4CAF50); }
         .msb-dot.vacant { background: #555; }
+        .msb-party {
+            font-size: 0.55rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            margin-top: -2px;
+        }
+        .msb-party.vacant {
+            color: #555;
+            font-style: italic;
+            font-weight: 400;
+        }
 
         /* Mobile dropdown */
         .ministry-selector-mobile { display: none; }
@@ -421,6 +432,9 @@
             background: rgba(255,255,255,0.01);
             border-color: rgba(255,255,255,0.04);
             opacity: 0.5;
+        }
+        .pol-card.no-budget {
+            border-color: rgba(239,68,68,0.15);
         }
         .pol-card-top {
             display: flex;
