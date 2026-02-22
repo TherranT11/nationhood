@@ -108,7 +108,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust } from './js/common.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, buildBudgetData } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, buildBudgetData, computeMinistryPolicyCost } from './js/game-common.js';
 (function () {
     'use strict';
 let currentNation = null, currentFaction = null, currentSeats = 0;
@@ -502,6 +502,71 @@ function budgetLine(label, value, isBold, isNegative) {
         '</div>';
 }
 
+const BUDGET_MINISTRY_TABS = [
+    { label: 'Interior', key: 'interior', fiscalCat: 'Interior' },
+    { label: 'Foreign', key: 'foreign', fiscalCat: 'Foreign Ministry' },
+    { label: 'Defense', key: 'defense', fiscalCat: 'Defense' },
+    { label: 'Finance', key: 'finance', fiscalCat: 'Finance' },
+    { label: 'Education', key: 'education', fiscalCat: 'Education' },
+    { label: 'Healthcare', key: 'healthcare', fiscalCat: 'Healthcare' },
+    { label: 'Labor', key: 'labor', fiscalCat: 'Labor' },
+    { label: 'Justice', key: 'justice', fiscalCat: 'Justice' },
+    { label: 'Trade', key: 'trade', fiscalCat: null },
+    { label: 'Energy', key: 'energy', fiscalCat: 'Energy' },
+    { label: 'Transport', key: 'transportation', fiscalCat: 'Transportation' }
+];
+
+function renderBudgetMinistryPanel(tab, instByMinistry, budgetLaws, nation) {
+    var insts = instByMinistry[tab.key] || [];
+    var population = Number(nation.population || 0);
+    var instTotal = 0;
+    var h = '';
+
+    // INSTITUTIONS section
+    h += '<div class="bp-sub-section">';
+    h += '<div class="bp-sub-header">INSTITUTIONS</div>';
+    if (insts.length === 0) {
+        h += '<div class="bp-empty-notice">No institutions configured.</div>';
+    } else {
+        for (var i = 0; i < insts.length; i++) {
+            var inst = insts[i];
+            var cost = Number(inst.base_cost_per_capita || 0) * population;
+            instTotal += cost;
+            h += '<div class="bp-inst-line">';
+            h += '<span class="bp-inst-name">' + inst.institution_name + '</span>';
+            h += '<span class="bp-inst-cost">' + fmtBudgetVal(cost) + '</span>';
+            h += '</div>';
+        }
+    }
+    h += '<div class="bp-sub-total"><span>Institution Subtotal</span><span>' + fmtBudgetVal(instTotal) + '</span></div>';
+    h += '</div>';
+
+    // POLICIES section
+    h += '<div class="bp-sub-section">';
+    h += '<div class="bp-sub-header">POLICIES</div>';
+    if (tab.fiscalCat) {
+        var polData = computeMinistryPolicyCost(budgetLaws, tab.fiscalCat, nation);
+        if (polData.policies.length === 0) {
+            h += '<div class="bp-empty-notice">No active policies in this ministry.</div>';
+        } else {
+            for (var j = 0; j < polData.policies.length; j++) {
+                var p = polData.policies[j];
+                h += '<div class="bp-pol-line">';
+                h += '<span class="bp-pol-name">' + p.policy_name + '</span>';
+                h += '<span class="bp-pol-cost">' + fmtBudgetVal(p.cost) + '</span>';
+                h += '</div>';
+            }
+        }
+        h += '<div class="bp-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetVal(polData.total) + '</span></div>';
+    } else {
+        h += '<div class="bp-empty-notice">No policy category assigned.</div>';
+        h += '<div class="bp-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetVal(0) + '</span></div>';
+    }
+    h += '</div>';
+
+    return h;
+}
+
 async function renderBudgetBillContent() {
     const panel = document.getElementById('budget-bill-panel');
     try {
@@ -522,6 +587,14 @@ async function renderBudgetBillContent() {
             .limit(1)
             .single();
         const tradeTariffRevenue = tradeSummary ? Number(tradeSummary.tariff_revenue) : null;
+
+        // Load institution config from DB
+        const { data: instRows } = await _supabase.from('ministry_institution_config').select('ministry_key, institution_name, base_cost_per_capita, cost_share');
+        const instByMinistry = {};
+        for (var ir of (instRows || [])) {
+            if (!instByMinistry[ir.ministry_key]) instByMinistry[ir.ministry_key] = [];
+            instByMinistry[ir.ministry_key].push(ir);
+        }
 
         const bd = buildBudgetData(currentNation, budgetLaws, tradeTariffRevenue);
         const budget = calculateNationalBudget(currentNation);
@@ -581,7 +654,35 @@ async function renderBudgetBillContent() {
 
         h += '</div>'; // .bp-columns
 
+        // === MINISTRY SUB-TABS ===
+        h += '<div class="bp-ministry-tabs" id="bp-ministry-tabs">';
+        for (var t = 0; t < BUDGET_MINISTRY_TABS.length; t++) {
+            var tab = BUDGET_MINISTRY_TABS[t];
+            var activeClass = t === 0 ? ' active' : '';
+            h += '<button class="bp-ministry-tab' + activeClass + '" data-idx="' + t + '">' + tab.label + '</button>';
+        }
+        h += '</div>';
+
+        // Detail panel — render first tab by default
+        h += '<div class="bp-ministry-detail" id="bp-ministry-detail">';
+        h += renderBudgetMinistryPanel(BUDGET_MINISTRY_TABS[0], instByMinistry, budgetLaws, currentNation);
+        h += '</div>';
+
         panel.innerHTML = h;
+
+        // Wire ministry tab clicks via event delegation
+        var tabBar = document.getElementById('bp-ministry-tabs');
+        if (tabBar) {
+            tabBar.addEventListener('click', function(e) {
+                var btn = e.target.closest('.bp-ministry-tab');
+                if (!btn) return;
+                var idx = Number(btn.getAttribute('data-idx'));
+                tabBar.querySelectorAll('.bp-ministry-tab').forEach(function(b) { b.classList.remove('active'); });
+                btn.classList.add('active');
+                var detail = document.getElementById('bp-ministry-detail');
+                if (detail) detail.innerHTML = renderBudgetMinistryPanel(BUDGET_MINISTRY_TABS[idx], instByMinistry, budgetLaws, currentNation);
+            });
+        }
     } catch (err) {
         console.error('Budget bill preview error:', err);
         panel.innerHTML = `<button class="all-laws-back" onclick="toggleBudgetBill()">\u2190 Back to ${termBills}</button><div style="color:#ff4444;text-align:center;padding:40px;">Error loading budget data: ${err.message || err}</div>`;

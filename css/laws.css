@@ -210,6 +210,25 @@
         .bp-label { flex:1; }
         .bp-value { text-align:right; font-variant-numeric:tabular-nums; }
         .bp-divider { border-top:1px solid #333; margin:8px 0; }
+
+        /* Budget Bill Ministry Sub-Tabs */
+        .bp-ministry-tabs { display:flex; gap:6px; margin-top:24px; margin-bottom:16px; overflow-x:auto; padding-bottom:4px; flex-wrap:wrap; }
+        .bp-ministry-tab { background:#1a1a1a; border:1px solid #333; border-radius:6px; padding:8px 14px; color:#888; font-size:0.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px; cursor:pointer; white-space:nowrap; transition:background 0.2s, color 0.2s, border-color 0.2s; }
+        .bp-ministry-tab:hover { background:#252525; color:#ccc; border-color:#555; }
+        .bp-ministry-tab.active { background:#2E7D32; color:#fff; border-color:#4CAF50; }
+        .bp-ministry-detail { background:#1a1a1a; border:1px solid #333; border-radius:8px; padding:20px; margin-bottom:20px; }
+        .bp-sub-header { font-size:0.75rem; font-weight:bold; color:var(--accent, #c8aa6e); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #333; }
+        .bp-sub-section { margin-bottom:16px; }
+        .bp-sub-section:last-child { margin-bottom:0; }
+        .bp-inst-line { display:flex; justify-content:space-between; align-items:center; padding:5px 0; font-size:0.83rem; color:#ccc; }
+        .bp-inst-name { flex:1; }
+        .bp-inst-cost { text-align:right; font-variant-numeric:tabular-nums; color:#e0e0e0; }
+        .bp-pol-line { display:flex; justify-content:space-between; align-items:center; padding:5px 0; font-size:0.83rem; color:#ccc; }
+        .bp-pol-name { flex:1; }
+        .bp-pol-cost { text-align:right; font-variant-numeric:tabular-nums; color:#e0e0e0; }
+        .bp-sub-total { display:flex; justify-content:space-between; align-items:center; padding:8px 0 0; margin-top:6px; border-top:1px solid #333; font-size:0.85rem; font-weight:bold; color:#e0e0e0; }
+        .bp-empty-notice { color:#666; font-style:italic; font-size:0.82rem; padding:6px 0; }
+
         .archive-summary { display:flex; gap:16px; margin-bottom:20px; flex-wrap:wrap; }
         .archive-summary-stat { padding:6px 16px; border-radius:6px; font-size:0.85rem; font-weight:bold; }
         .archive-summary-stat.passed { background:#1a2a1a; color:#4CAF50; border:1px solid #4CAF50; }
