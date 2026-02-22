@@ -1732,7 +1732,7 @@ async function generateBudgetBill(supabase, nation, currentTick, activeLaws) {
 
     // Load institution config for cost calculations
     const { data: instRows } = await supabase.from('ministry_institution_config')
-        .select('id, ministry_key, institution_name, base_cost_per_capita, cost_share, scaling_type');
+        .select('*');
 
     const budgetData = buildBudgetData(nation, activeLaws, tradeTariffRevenue, instRows || []);
 

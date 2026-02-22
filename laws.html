@@ -638,7 +638,7 @@ async function renderBudgetBillContent() {
         const tradeTariffRevenue = tradeSummary ? Number(tradeSummary.tariff_revenue) : null;
 
         // Load institution config from DB
-        const { data: instRows } = await _supabase.from('ministry_institution_config').select('ministry_key, institution_name, base_cost_per_capita, cost_share, scaling_type');
+        const { data: instRows } = await _supabase.from('ministry_institution_config').select('*');
         const instByMinistry = {};
         for (var ir of (instRows || [])) {
             if (!instByMinistry[ir.ministry_key]) instByMinistry[ir.ministry_key] = [];
