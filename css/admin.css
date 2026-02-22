@@ -195,3 +195,40 @@
             text-align: right;
         }
         .eligible-input:focus { outline: none; border-color: #ffcc00; }
+
+        /* ===== MINISTRY CONFIG TAB ===== */
+        .mc-ministry {
+            background: #1e1e1e; border-radius: 8px; margin-bottom: 8px;
+            border-left: 3px solid #555;
+        }
+        .mc-ministry-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 16px; cursor: pointer; user-select: none;
+        }
+        .mc-ministry-header:hover { background: rgba(255,255,255,0.03); border-radius: 8px; }
+        .mc-ministry-name { font-weight: bold; font-size: 0.95rem; color: #ffcc00; text-transform: uppercase; letter-spacing: 0.5px; }
+        .mc-ministry-arrow { color: #666; font-size: 0.6rem; transition: transform 0.2s; }
+        .mc-ministry.expanded .mc-ministry-arrow { transform: rotate(90deg); }
+        .mc-ministry-body { display: none; padding: 0 16px 16px; }
+        .mc-ministry.expanded .mc-ministry-body { display: block; }
+        .mc-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+        .mc-table th { text-align: left; padding: 6px 8px; color: #888; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #333; }
+        .mc-table td { padding: 8px 8px; border-bottom: 1px solid #222; vertical-align: middle; }
+        .mc-inst-name { font-weight: bold; color: #ccc; white-space: nowrap; }
+        .mc-input {
+            width: 80px; padding: 4px 6px; background: #2a2a2a; border: 1px solid #444;
+            color: #fff; border-radius: 4px; font-size: 0.82rem; text-align: right;
+        }
+        .mc-input-sm { width: 60px; }
+        .mc-input:focus { outline: none; border-color: #ffcc00; }
+        .mc-select {
+            width: 100%; max-width: 180px; padding: 4px 6px; background: #2a2a2a;
+            border: 1px solid #444; color: #fff; border-radius: 4px; font-size: 0.78rem;
+        }
+        .mc-select:focus { outline: none; border-color: #ffcc00; }
+        .mc-save-btn {
+            padding: 4px 12px; background: #4CAF50; color: #fff; border: none;
+            border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-weight: bold;
+            text-transform: uppercase;
+        }
+        .mc-save-btn:hover { background: #45a049; }
