@@ -228,9 +228,14 @@
         .bp-pol-cost { text-align:right; font-variant-numeric:tabular-nums; color:#e0e0e0; }
         .bp-sub-total { display:flex; justify-content:space-between; align-items:center; padding:8px 0 0; margin-top:6px; border-top:1px solid #333; font-size:0.85rem; font-weight:bold; color:#e0e0e0; }
         .bp-empty-notice { color:#666; font-style:italic; font-size:0.82rem; padding:6px 0; }
+        .bp-ministry-total {
+            display:flex; justify-content:space-between; align-items:center;
+            padding:12px 0 0; margin-top:12px; border-top:2px solid #555;
+            font-size:0.95rem; font-weight:bold; color:#fff; letter-spacing:0.5px;
+        }
 
         .bp-inflation-summary {
-            display:flex; align-items:center; gap:10px; padding:14px 18px; margin-top:16px;
+            display:flex; align-items:center; gap:10px; padding:14px 18px; margin-top:0;
             background:linear-gradient(135deg,#1a1a2e,#16213e); border:1px solid #334;
             border-radius:8px; font-size:0.85rem; color:#bbb; line-height:1.5;
         }

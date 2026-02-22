@@ -465,6 +465,18 @@ html { overflow-y: scroll !important; height: auto !important; }
             border-top: 1px solid #444;
         }
 
+        .budget-ministry-total {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 14px 0;
+            margin-top: 12px;
+            border-top: 2px solid #555;
+            font-size: 0.95rem;
+            font-weight: bold;
+            color: #fff;
+            letter-spacing: 0.5px;
+        }
+
         .budget-inst-formula {
             color: #777;
             font-size: 0.75rem;

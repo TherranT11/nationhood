@@ -261,14 +261,70 @@ export function renderNavTabs(activeTab) {
         if (overrideNationId) params.push('nation_id=' + overrideNationId);
         if (overrideFactionId) params.push('faction_id=' + overrideFactionId);
         if (params.length) href += '?' + params.join('&');
+        const badgeHtml = tab.id === 'laws'
+            ? '<span class="nav-badge" id="bills-badge" style="display:none;"></span>'
+            : '';
         return `
-            <a href="${href}" 
+            <a href="${href}"
                class="nav-tab ${tab.id === activeTab ? 'active' : ''}"
                data-tab="${tab.id}">
-                ${tab.label}
+                ${tab.label}${badgeHtml}
             </a>
         `;
     }).join('');
+}
+
+
+// ===== BILLS BADGE (unseen floor bills) =====
+
+function getSeenBills() {
+    try { return JSON.parse(localStorage.getItem('nationhood_seen_bills') || '[]'); }
+    catch { return []; }
+}
+
+export function markBillsSeen(billIds) {
+    const seen = getSeenBills();
+    const updated = [...new Set([...seen, ...billIds])];
+    localStorage.setItem('nationhood_seen_bills', JSON.stringify(updated));
+    const badge = document.getElementById('bills-badge');
+    if (badge) badge.style.display = 'none';
+}
+
+export function cleanSeenBills(activeFloorIds) {
+    const seen = getSeenBills();
+    const cleaned = seen.filter(id => activeFloorIds.includes(id));
+    localStorage.setItem('nationhood_seen_bills', JSON.stringify(cleaned));
+}
+
+async function updateBillsBadge(faction, nation) {
+    const badge = document.getElementById('bills-badge');
+    if (!badge || !faction || !nation) return;
+    try {
+        const { data: floorBills } = await _supabase
+            .from('bills')
+            .select('id, bill_support(faction_id)')
+            .eq('nation_id', nation.id)
+            .eq('status', 'floor');
+        if (!floorBills || floorBills.length === 0) {
+            badge.style.display = 'none';
+            return;
+        }
+        const seenBills = getSeenBills();
+        let count = 0;
+        for (const bill of floorBills) {
+            const hasVoted = (bill.bill_support || []).some(s => s.faction_id === faction.id);
+            const hasSeen = seenBills.includes(bill.id);
+            if (!hasVoted && !hasSeen) count++;
+        }
+        if (count > 0) {
+            badge.textContent = count;
+            badge.style.display = '';
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch (e) {
+        console.error('Error updating bills badge:', e);
+    }
 }
 
 
@@ -565,6 +621,10 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     const state = await loadGameState(requireFaction);
     if (!state) return;
     updateTopBarInfo(state.faction, state.shard, state.nation);
+    // Update bills badge (non-blocking, skip on laws page since it marks seen)
+    if (activeTab !== 'laws') {
+        updateBillsBadge(state.faction, state.nation);
+    }
     if (onReady) {
         await onReady(state);
     }
