@@ -2930,26 +2930,19 @@ export async function resolveExpiredVotes(supabase, nationId) {
 
         const totalVoted = votesFor + votesAgainst;
 
-        // Determine pass/fail — early-locked outcomes take priority
+        // Determine pass/fail — re-verify actual votes even if early lock was set,
+        // since voters may change their stance between the lock tick and resolution tick
         const isNoConfidence = bill.bill_type === 'no_confidence';
         const isFoundational = bill.bill_type === 'foundational';
         let passed;
-        if (bill.early_resolution_status === 'majority_reached') {
-            passed = true;  // Locked by checkEarlyMajority
-        } else if (bill.early_resolution_status === 'majority_opposed') {
-            passed = false; // Locked by checkEarlyMajority
+        if (totalVoted === 0) {
+            passed = false;
+        } else if (bill.bill_type === 'foundational' || bill.bill_type === 'veto_override') {
+            // Supermajority bills require their threshold
+            passed = votesFor >= getRequiredSeats(bill.bill_type);
         } else {
-            // TIMEOUT: no early majority reached by end of voting window
-            if (totalVoted === 0) {
-                passed = false;
-            } else if (bill.bill_type === 'foundational' || bill.bill_type === 'veto_override') {
-                // Supermajority bills still require their threshold at timeout
-                passed = votesFor >= getRequiredSeats(bill.bill_type);
-            } else {
-                // All other bills (standard, no_confidence, confirmation, minister_confirmation):
-                // Relative majority — YES > NO passes, NO >= YES (including tie) fails
-                passed = votesFor > votesAgainst;
-            }
+            // All other bills: relative majority — YES > NO passes
+            passed = votesFor > votesAgainst;
         }
 
         if (isNoConfidence) {
