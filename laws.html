@@ -108,7 +108,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust } from './js/common.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, buildBudgetData, computeMinistryPolicyCost } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier } from './js/game-common.js';
 (function () {
     'use strict';
 let currentNation = null, currentFaction = null, currentSeats = 0;
@@ -511,7 +511,7 @@ const BUDGET_MINISTRY_TABS = [
     { label: 'Healthcare', key: 'healthcare', fiscalCat: 'Healthcare' },
     { label: 'Labor', key: 'labor', fiscalCat: 'Labor' },
     { label: 'Justice', key: 'justice', fiscalCat: 'Justice' },
-    { label: 'Trade', key: 'trade', fiscalCat: null },
+    { label: 'Trade', key: 'trade', fiscalCat: 'Trade' },
     { label: 'Energy', key: 'energy', fiscalCat: 'Energy' },
     { label: 'Transport', key: 'transportation', fiscalCat: 'Transportation' }
 ];
@@ -519,6 +519,7 @@ const BUDGET_MINISTRY_TABS = [
 function renderBudgetMinistryPanel(tab, instByMinistry, budgetLaws, nation) {
     var insts = instByMinistry[tab.key] || [];
     var population = Number(nation.population || 0);
+    var inflationMult = getInflationMultiplier(nation.inflation);
     var instTotal = 0;
     var h = '';
 
@@ -530,10 +531,12 @@ function renderBudgetMinistryPanel(tab, instByMinistry, budgetLaws, nation) {
     } else {
         for (var i = 0; i < insts.length; i++) {
             var inst = insts[i];
-            var cost = Number(inst.base_cost_per_capita || 0) * population;
+            var cost = Number(inst.base_cost_per_capita || 0) * population * inflationMult;
             instTotal += cost;
             h += '<div class="bp-inst-line">';
-            h += '<span class="bp-inst-name">' + inst.institution_name + '</span>';
+            h += '<span class="bp-inst-name">' + inst.institution_name;
+            h += ' <span style="color:#666;font-size:0.75rem;">($' + Number(inst.base_cost_per_capita).toFixed(2) + ' × ' + population.toLocaleString() + ' pop)</span>';
+            h += '</span>';
             h += '<span class="bp-inst-cost">' + fmtBudgetVal(cost) + '</span>';
             h += '</div>';
         }
@@ -559,7 +562,7 @@ function renderBudgetMinistryPanel(tab, instByMinistry, budgetLaws, nation) {
         }
         h += '<div class="bp-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetVal(polData.total) + '</span></div>';
     } else {
-        h += '<div class="bp-empty-notice">No policy category assigned.</div>';
+        h += '<div class="bp-empty-notice">No active policies in this ministry.</div>';
         h += '<div class="bp-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetVal(0) + '</span></div>';
     }
     h += '</div>';
@@ -596,7 +599,7 @@ async function renderBudgetBillContent() {
             instByMinistry[ir.ministry_key].push(ir);
         }
 
-        const bd = buildBudgetData(currentNation, budgetLaws, tradeTariffRevenue);
+        const bd = buildBudgetData(currentNation, budgetLaws, tradeTariffRevenue, instRows || []);
         const budget = calculateNationalBudget(currentNation);
         applyTradeTariffOverride(budget, tradeTariffRevenue);
 
@@ -667,6 +670,50 @@ async function renderBudgetBillContent() {
         h += '<div class="bp-ministry-detail" id="bp-ministry-detail">';
         h += renderBudgetMinistryPanel(BUDGET_MINISTRY_TABS[0], instByMinistry, budgetLaws, currentNation);
         h += '</div>';
+
+        // === INFLATION NOTICE ===
+        var inflationStat = Number(currentNation.inflation || 50);
+        var inflationPct = (inflationStat - 50) / 2;
+        var inflMult = getInflationMultiplier(inflationStat);
+        h += '<div class="bp-inflation-summary">';
+        h += '<span>📊</span> ';
+        h += '<span>' + (currentNation.name || 'Nation') + '\'s inflation is currently <strong>' + inflationStat.toFixed(0) + '/100</strong>. ';
+        if (inflationPct > 0.05) {
+            h += 'That has raised all ministry costs by <strong class="bp-deficit">+' + inflationPct.toFixed(1) + '%</strong> ';
+            h += '(multiplier: ' + inflMult.toFixed(3) + '×).';
+        } else if (inflationPct < -0.05) {
+            h += 'That has reduced all ministry costs by <strong class="bp-surplus">' + inflationPct.toFixed(1) + '%</strong> ';
+            h += '(multiplier: ' + inflMult.toFixed(3) + '×).';
+        } else {
+            h += 'Costs are stable (no inflation adjustment).';
+        }
+        h += '</span></div>';
+
+        // === SURPLUS / DEFICIT OUTCOME ===
+        var currentDebt = Number(currentNation.debt || 0);
+        if (gap >= 0) {
+            h += '<div class="bp-outcome bp-outcome-surplus">';
+            h += '<div class="bp-outcome-title">📈 Projected Surplus: ' + fmtBudgetVal(gap) + '</div>';
+            if (currentDebt > 0) {
+                var repay = Math.min(gap, currentDebt);
+                var leftover = gap - repay;
+                h += '<div class="bp-outcome-detail">';
+                h += '<div>→ ' + fmtBudgetVal(repay) + ' goes toward <strong>debt repayment</strong> (current debt: ' + fmtBudgetVal(currentDebt) + ')</div>';
+                if (leftover > 0) h += '<div>→ ' + fmtBudgetVal(leftover) + ' carried forward as <strong>budget reserves</strong></div>';
+                h += '</div>';
+            } else {
+                h += '<div class="bp-outcome-detail">→ ' + fmtBudgetVal(gap) + ' carried forward as <strong>budget reserves</strong>. No outstanding debt.</div>';
+            }
+            h += '</div>';
+        } else {
+            var deficit = Math.abs(gap);
+            h += '<div class="bp-outcome bp-outcome-deficit">';
+            h += '<div class="bp-outcome-title">📉 Projected Deficit: ' + fmtBudgetVal(deficit) + '</div>';
+            h += '<div class="bp-outcome-detail">';
+            h += '<div>→ ' + fmtBudgetVal(deficit) + ' will be <strong>added to national debt</strong></div>';
+            h += '<div style="margin-top:4px;color:#888;">Projected debt: <strong>' + fmtBudgetVal(bd.projectedDebt) + '</strong> (current: ' + fmtBudgetVal(currentDebt) + ')</div>';
+            h += '</div></div>';
+        }
 
         panel.innerHTML = h;
 

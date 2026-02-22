@@ -1517,8 +1517,18 @@ export function applyTradeTariffOverride(budget, tradeTariffRevenue) {
  */
 export const FISCAL_CATEGORIES = [
     'Interior', 'Labor', 'Healthcare', 'Education',
-    'Transportation', 'Energy', 'Justice', 'Foreign Ministry', 'Finance', 'Defense'
+    'Transportation', 'Energy', 'Justice', 'Foreign Ministry', 'Finance', 'Defense', 'Trade'
 ];
+
+/**
+ * Map fiscal category names → ministry_key used in ministry_institution_config.
+ */
+export const FISCAL_TO_MINISTRY_KEY = {
+    'Interior': 'interior', 'Labor': 'labor', 'Healthcare': 'healthcare',
+    'Education': 'education', 'Transportation': 'transportation', 'Energy': 'energy',
+    'Justice': 'justice', 'Foreign Ministry': 'foreign', 'Finance': 'finance',
+    'Defense': 'defense', 'Trade': 'trade'
+};
 
 /**
  * Compute inflation cost multiplier from the 0-100 inflation stat.
@@ -1571,9 +1581,33 @@ export function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
 }
 
 /**
+ * Compute the annualized cost of all institutions for a given fiscal category.
+ * Institutions use base_cost_per_capita × population, scaled by inflation.
+ * @param {Array} institutions - rows from ministry_institution_config
+ * @param {string} fiscalCategory - e.g. 'Healthcare', 'Trade'
+ * @param {Object} nation
+ */
+export function computeMinistryInstitutionCost(institutions, fiscalCategory, nation) {
+    const ministryKey = FISCAL_TO_MINISTRY_KEY[fiscalCategory] || fiscalCategory.toLowerCase();
+    const insts = (institutions || []).filter(i => i.ministry_key === ministryKey);
+    const population = Number(nation.population || 0);
+    const inflationMult = getInflationMultiplier(nation.inflation);
+
+    let total = 0;
+    const items = [];
+    for (const inst of insts) {
+        let cost = Number(inst.base_cost_per_capita || 0) * population;
+        cost *= inflationMult;
+        items.push({ institution_name: inst.institution_name, cost, base_cost_per_capita: inst.base_cost_per_capita });
+        total += cost;
+    }
+    return { total, institutions: items };
+}
+
+/**
  * Build full budget data for a nation: revenue, expenditures per ministry, debt service, etc.
  */
-export function buildBudgetData(nation, activeLaws, tradeTariffRevenue) {
+export function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions) {
     const budget = calculateNationalBudget(nation);
     applyTradeTariffOverride(budget, tradeTariffRevenue);
     const inflationStat = Number(nation.inflation || 50);
@@ -1584,13 +1618,18 @@ export function buildBudgetData(nation, activeLaws, tradeTariffRevenue) {
     let totalExpenditure = 0;
 
     for (const cat of FISCAL_CATEGORIES) {
-        const result = computeMinistryPolicyCost(activeLaws, cat, nation);
+        const polResult = computeMinistryPolicyCost(activeLaws, cat, nation);
+        const instResult = computeMinistryInstitutionCost(institutions || [], cat, nation);
+        const fulfilledCost = polResult.total + instResult.total;
         ministries[cat] = {
-            fulfilledCost: result.total,
-            allocation: result.total,  // default: fulfill
-            policies: result.policies
+            fulfilledCost,
+            allocation: fulfilledCost,  // default: fulfill
+            policies: polResult.policies,
+            institutions: instResult.institutions,
+            institutionTotal: instResult.total,
+            policyTotal: polResult.total
         };
-        totalExpenditure += result.total;
+        totalExpenditure += fulfilledCost;
     }
 
     const available = budget.grossRevenue + reserves - budget.debtService;
