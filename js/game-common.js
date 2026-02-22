@@ -1873,6 +1873,22 @@ for (const axis of IDEOLOGY_AXES) {
 }
 
 
+/**
+ * Return an alignment CSS class ('aligned', 'opposed', 'neutral') for
+ * an ideology tag relative to a faction's ideology scores.
+ */
+export function getIdeologyChipClass(ideologyTag, factionIdeology) {
+    if (!factionIdeology) return 'neutral';
+    const tag = (ideologyTag || '').toUpperCase();
+    const mapping = IDEOLOGY_TO_AXIS[tag];
+    if (!mapping) return 'neutral';
+    const score = factionIdeology[mapping.axisKey] || 0;
+    const alignment = score * mapping.direction;
+    if (alignment > 10) return 'aligned';
+    if (alignment < -10) return 'opposed';
+    return 'neutral';
+}
+
 // ==================== IDEOLOGY LABELS ====================
 
 export const IDEOLOGY_LABEL_THRESHOLDS = [

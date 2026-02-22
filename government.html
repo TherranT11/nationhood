@@ -38,6 +38,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
+import { tickToDate } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, adjustBlocApproval, callEarlyElectionsAction, closeAdministration, markFactionActive, nominateMinister, resignPM, rolloverAdministration } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 (function () {
@@ -452,7 +453,6 @@ function getPartyNameById(partyId) {
     return p ? p.party_name : (allParties.find(f => f.id === partyId)?.faction_name || 'Unknown');
 }
 
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const FALLBACK_COLORS = ['#E91E63','#2196F3','#4CAF50','#FF9800','#9C27B0','#00BCD4','#F44336','#8BC34A','#FFC107','#673AB7'];
 
 function getPartyColorById(partyId) {
@@ -463,12 +463,6 @@ function getPartyColorById(partyId) {
 function getPartyLogoById(partyId) {
     const p = allParties.find(x => x.id === partyId);
     return p?.party_logo || null;
-}
-
-function tickToDate(tick) {
-    if (tick == null) return '?';
-    const y = 2000 + Math.floor(tick / 12);
-    return `${MONTHS[tick % 12]}, ${y}`;
 }
 
 // ==================== ADMINISTRATION BOX ====================

@@ -32,6 +32,23 @@ export function truncate(str, max) {
     return str.length > max ? str.slice(0, max) + '...' : str;
 }
 
+// ===== GAME DATE =====
+
+export const MONTHS = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+/**
+ * Convert a game tick number to a human-readable date string.
+ * Tick 0 = January, 2000.
+ */
+export function tickToDate(tick) {
+    if (tick == null) return '—';
+    const y = 2000 + Math.floor(tick / 12);
+    return `${MONTHS[tick % 12]}, ${y}`;
+}
+
 // ===== FORMATTING =====
 
 /**
@@ -48,6 +65,32 @@ export function formatCurrencyShort(val) {
     if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(1) + ' Million';
     return sign + '$' + abs.toLocaleString();
 }
+
+/**
+ * Format a budget value with compact suffixes ($1.2T, $500M, $30K).
+ */
+export function fmtBudgetCurrency(val) {
+    if (val == null) return '$0';
+    val = Number(val);
+    const sign = val < 0 ? '-' : '';
+    const abs = Math.abs(val);
+    if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(1) + 'T';
+    if (abs >= 1e9)  return sign + '$' + (abs / 1e9).toFixed(1) + 'B';
+    if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(0) + 'M';
+    if (abs >= 1e3)  return sign + '$' + (abs / 1e3).toFixed(0) + 'K';
+    return sign + '$' + Math.round(abs);
+}
+
+// ===== CSS HELPERS =====
+
+/**
+ * Return a CSS class name for an ideology tag (e.g. "SOCIALIST" → "ideo-socialist").
+ */
+export function getIdeologyClass(tag) {
+    return 'ideo-' + (tag || '').toLowerCase();
+}
+
+// ===== TIME =====
 
 /**
  * Relative time formatter ("Just now", "5m ago", "3h ago", or a date).

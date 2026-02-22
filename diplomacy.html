@@ -84,7 +84,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
-import { escapeHtml } from './js/utils.js';
+import { escapeHtml, tickToDate } from './js/utils.js';
 import { isGovernmentAutocracy, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustBlocApproval, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES } from './js/game-common.js';
 /**
  * Diplomacy Page
@@ -2137,13 +2137,6 @@ async function fetchAmbassador(myNationId, targetNationId) {
 }
 
 // ==================== HELPERS ====================
-
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-function tickToDate(tick) {
-    if (tick == null) return '—';
-    const y = 2000 + Math.floor(tick / 12);
-    return MONTHS[tick % 12] + ' ' + y;
-}
 
 function getStatColor(value) {
     if (value == null) return '#888';
