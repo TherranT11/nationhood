@@ -1,6 +1,8 @@
 /* ===== PAGE SCROLL OVERRIDE ===== */
         body { overflow-y: auto !important; height: auto !important; }
         #top-bar { position: sticky; top: 0; z-index: 100; }
+        /* Remove scroll container from content-area so sticky works against body */
+        #content-area { overflow: visible !important; }
 
         /* ===== MINISTRY SELECTOR BAR ===== */
         .ministry-selector-bar {
