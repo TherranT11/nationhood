@@ -1698,8 +1698,7 @@ async function loadBudgetData(bill) {
 }
 
 function isBudgetEditable() {
-    // Only editable while in committee — once on the floor, allocations are locked
-    if (!currentBill || currentBill.status !== 'committee') return false;
+    if (!currentBill || (currentBill.status !== 'floor' && currentBill.status !== 'committee')) return false;
     if (currentBill.early_resolution_status) return false;
     if (!currentFaction) return false;
     if (currentSeats < 1) return false;
@@ -1777,11 +1776,6 @@ function renderBudgetBillUI() {
     h += '<span>Projected Debt: <strong>' + fmtBudgetCurrency(totals.projectedDebt) + '</strong></span>';
     h += '</div>';
     h += '</div>';
-
-    // Show locked notice when on the floor
-    if (currentBill.status === 'floor' && !editable) {
-        h += '<div class="budget-locked-notice">Allocations are locked while the budget bill is on the floor for voting.</div>';
-    }
 
     // === REVENUE SECTION ===
     h += '<div class="budget-section">';
@@ -2119,7 +2113,7 @@ function wireBudgetControls() {
     // Institution +/- and fulfill buttons
     document.querySelectorAll('.budget-item-btn').forEach(function(btn) {
         btn.addEventListener('click', async function() {
-            if (!isBudgetEditable()) return; // Guard: no edits once on the floor
+            if (!isBudgetEditable()) return;
             const action = btn.getAttribute('data-action');
             const cat = btn.getAttribute('data-cat');
             const itemId = btn.getAttribute('data-item');
@@ -2195,7 +2189,7 @@ function wireBudgetControls() {
     // Policy CUT/FUND toggle
     document.querySelectorAll('.budget-cut-btn').forEach(function(btn) {
         btn.addEventListener('click', async function() {
-            if (!isBudgetEditable()) return; // Guard: no edits once on the floor
+            if (!isBudgetEditable()) return;
             const cat = btn.getAttribute('data-cat');
             const policyId = btn.getAttribute('data-item');
 
