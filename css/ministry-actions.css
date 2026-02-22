@@ -881,6 +881,7 @@
         }
 
         /* ===== COST TUNER PANEL ===== */
+        .cost-tuner-fab.hidden { display: none; }
         .cost-tuner-fab {
             position: fixed;
             bottom: 24px;

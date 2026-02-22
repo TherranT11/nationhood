@@ -14,8 +14,8 @@
     <div class="loading-container"><div class="loading-spinner"></div><div>Loading ministries...</div></div>
 </div>
 
-<!-- Cost Tuner FAB -->
-<button class="cost-tuner-fab" id="cost-tuner-fab" title="Cost Tuner">&#9881;</button>
+<!-- Cost Tuner FAB (dev only — append ?dev=1 to URL) -->
+<button class="cost-tuner-fab hidden" id="cost-tuner-fab" title="Cost Tuner">&#9881;</button>
 
 <!-- Cost Tuner Overlay -->
 <div class="cost-tuner-overlay hidden" id="cost-tuner-overlay">
@@ -1149,19 +1149,23 @@ function onCostInput(e) {
     }
 }
 
-// Wire up FAB and overlay
-document.getElementById('cost-tuner-fab').addEventListener('click', () => {
-    document.getElementById('cost-tuner-overlay').classList.remove('hidden');
-    renderCostTuner();
-});
-document.getElementById('ct-close').addEventListener('click', () => {
-    document.getElementById('cost-tuner-overlay').classList.add('hidden');
-});
-document.getElementById('cost-tuner-overlay').addEventListener('click', (e) => {
-    if (e.target === e.currentTarget) {
+// Wire up FAB and overlay — only in dev mode (?dev=1)
+if (new URLSearchParams(window.location.search).get('dev') === '1') {
+    document.getElementById('cost-tuner-fab').classList.remove('hidden');
+
+    document.getElementById('cost-tuner-fab').addEventListener('click', () => {
+        document.getElementById('cost-tuner-overlay').classList.remove('hidden');
+        renderCostTuner();
+    });
+    document.getElementById('ct-close').addEventListener('click', () => {
         document.getElementById('cost-tuner-overlay').classList.add('hidden');
-    }
-});
+    });
+    document.getElementById('cost-tuner-overlay').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) {
+            document.getElementById('cost-tuner-overlay').classList.add('hidden');
+        }
+    });
+}
 </script>
 </body>
 </html>
