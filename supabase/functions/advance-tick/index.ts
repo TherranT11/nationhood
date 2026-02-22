@@ -1704,7 +1704,23 @@ function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions) {
  * Called at January ticks (tick % 12 === 1, since tick 1 = January after start).
  */
 async function generateBudgetBill(supabase, nation, currentTick, activeLaws) {
-    const budgetData = buildBudgetData(nation, activeLaws);
+    // Fetch latest trade summary for tariff revenue (matches Economy page)
+    let tradeTariffRevenue = null;
+    try {
+        const { data: tradeSummary } = await supabase.from('trade_summary')
+            .select('tariff_revenue')
+            .eq('nation_id', nation.id)
+            .order('tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (tradeSummary) tradeTariffRevenue = Number(tradeSummary.tariff_revenue);
+    } catch (e) { /* no trade data yet — use formula fallback */ }
+
+    // Load institution config for cost calculations
+    const { data: instRows } = await supabase.from('ministry_institution_config')
+        .select('ministry_key, institution_name, base_cost_per_capita, cost_share');
+
+    const budgetData = buildBudgetData(nation, activeLaws, tradeTariffRevenue, instRows || []);
 
     const gameYear = 2000 + Math.floor(currentTick / 12);
     const billName = `Budget Act of ${gameYear}`;
@@ -1776,6 +1792,20 @@ async function resolveBudgetBill(supabase, bill, currentTick) {
     if (!nation) return;
 
     const budget = calculateNationalBudget(nation);
+
+    // Override tariff revenue with real trade engine data
+    let tradeTariffRevenue = null;
+    try {
+        const { data: tradeSummary } = await supabase.from('trade_summary')
+            .select('tariff_revenue')
+            .eq('nation_id', nation.id)
+            .order('tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (tradeSummary) tradeTariffRevenue = Number(tradeSummary.tariff_revenue);
+    } catch (e) { /* no trade data yet */ }
+    applyTradeTariffOverride(budget, tradeTariffRevenue);
+
     const reserves = Number(nation.budget_reserves || 0);
     const available = budget.grossRevenue + reserves - budget.debtService;
 
@@ -1929,6 +1959,22 @@ for (const axis of IDEOLOGY_AXES) {
     IDEOLOGY_TO_AXIS[axis.right] = { axisKey: axis.key, direction: +1 };
 }
 
+
+/**
+ * Return an alignment CSS class ('aligned', 'opposed', 'neutral') for
+ * an ideology tag relative to a faction's ideology scores.
+ */
+function getIdeologyChipClass(ideologyTag, factionIdeology) {
+    if (!factionIdeology) return 'neutral';
+    const tag = (ideologyTag || '').toUpperCase();
+    const mapping = IDEOLOGY_TO_AXIS[tag];
+    if (!mapping) return 'neutral';
+    const score = factionIdeology[mapping.axisKey] || 0;
+    const alignment = score * mapping.direction;
+    if (alignment > 10) return 'aligned';
+    if (alignment < -10) return 'opposed';
+    return 'neutral';
+}
 
 // ==================== IDEOLOGY LABELS ====================
 
@@ -8993,7 +9039,7 @@ async function processLoyaltyTick(supabase, nation) {
     const rulingId = nation.ruling_faction_id;
     if (!rulingId) return;
 
-    const isAutocracy = isAutocracy(nation);
+    const nationIsAutocracy = isAutocracy(nation);
 
     const { data: factions } = await supabase
         .from('factions')
@@ -9021,7 +9067,7 @@ async function processLoyaltyTick(supabase, nation) {
         let seats = faction.seats || 0;
 
         if (faction.id === rulingId) {
-            if (isAutocracy) {
+            if (nationIsAutocracy) {
                 // Autocracy ruling faction: dynamic loyalty drifting toward 80
                 const ministryCount = ministryCounts[faction.id] || 0;
                 if (loyalty > 80) loyalty -= 1;
