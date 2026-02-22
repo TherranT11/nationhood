@@ -1946,19 +1946,27 @@ function renderBudgetMinistryDetail(category, editable) {
         h += '</div>';
     }
 
+    // Proportional funding ratio for per-item budgeted amounts
+    const fundingRatio = liveTotalCost > 0 ? Math.min(1, allocAmt / liveTotalCost) : 1;
+
     // Institutions section
     h += '<div class="budget-sub-section">';
     h += '<div class="budget-sub-header">INSTITUTIONS</div>';
     if (ministryInstitutions.institutions.length === 0) {
         h += '<div class="budget-empty-notice">No institutions in this ministry.</div>';
     } else {
-        const population = Number(budgetNation.population || 0);
         for (const inst of ministryInstitutions.institutions) {
-            h += '<div class="budget-policy-line">';
-            h += '<span class="budget-policy-name">' + escapeHtml(inst.institution_name);
-            h += ' <span class="budget-inst-formula">($' + Number(inst.base_cost_per_capita).toFixed(2) + ' × ' + population.toLocaleString() + ' pop)</span>';
-            h += '</span>';
-            h += '<span class="budget-policy-cost">' + fmtBudgetCurrency(inst.cost) + '</span>';
+            const itemNeeded = inst.cost;
+            const itemBudgeted = itemNeeded * fundingRatio;
+            const itemPct = itemNeeded > 0 ? Math.round((itemBudgeted / itemNeeded) * 100) : 100;
+            const itemPctClass = itemPct >= 100 ? 'funded-full' : itemPct >= 80 ? 'funded-ok' : 'funded-low';
+            h += '<div class="budget-line-item">';
+            h += '<div class="budget-line-name">' + escapeHtml(inst.institution_name) + '</div>';
+            h += '<div class="budget-line-stats">';
+            h += '<span class="budget-line-stat"><span class="budget-line-stat-label">BUDGETED</span> ' + fmtBudgetCurrency(itemBudgeted) + '</span>';
+            h += '<span class="budget-line-stat"><span class="budget-line-stat-label">NEEDED</span> ' + fmtBudgetCurrency(itemNeeded) + '</span>';
+            h += '<span class="budget-line-pct ' + itemPctClass + '">' + itemPct + '%</span>';
+            h += '</div>';
             h += '</div>';
         }
     }
@@ -1972,9 +1980,17 @@ function renderBudgetMinistryDetail(category, editable) {
         h += '<div class="budget-empty-notice">No active policies in this ministry.</div>';
     } else {
         for (const p of ministryPolicies.policies) {
-            h += '<div class="budget-policy-line">';
-            h += '<span class="budget-policy-name">' + escapeHtml(p.policy_name) + '</span>';
-            h += '<span class="budget-policy-cost">' + fmtBudgetCurrency(p.cost) + '</span>';
+            const itemNeeded = p.cost;
+            const itemBudgeted = itemNeeded * fundingRatio;
+            const itemPct = itemNeeded > 0 ? Math.round((itemBudgeted / itemNeeded) * 100) : 100;
+            const itemPctClass = itemPct >= 100 ? 'funded-full' : itemPct >= 80 ? 'funded-ok' : 'funded-low';
+            h += '<div class="budget-line-item">';
+            h += '<div class="budget-line-name">' + escapeHtml(p.policy_name) + '</div>';
+            h += '<div class="budget-line-stats">';
+            h += '<span class="budget-line-stat"><span class="budget-line-stat-label">BUDGETED</span> ' + fmtBudgetCurrency(itemBudgeted) + '</span>';
+            h += '<span class="budget-line-stat"><span class="budget-line-stat-label">NEEDED</span> ' + fmtBudgetCurrency(itemNeeded) + '</span>';
+            h += '<span class="budget-line-pct ' + itemPctClass + '">' + itemPct + '%</span>';
+            h += '</div>';
             h += '</div>';
         }
     }
