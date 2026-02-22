@@ -415,6 +415,9 @@ async function renderGovernmentPage() {
         // Load and render past administrations
         loadPastAdministrations();
 
+        // Load admin chat messages
+        loadAdminChat();
+
     } catch (error) {
         console.error('Error loading government data:', error);
         document.getElementById('content-area').innerHTML = '<div class="panel-padding"><div class="placeholder-panel"><div class="ph-icon">⚠️</div><h3>Error Loading Data</h3><p>Could not load government information. Please refresh.</p></div></div>';
@@ -531,11 +534,6 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
         const pmName = safePmName(primeMinister);
         const pmAge = primeMinister?.minister_age || '—';
         const pmPartyName = primeMinister?.factions?.faction_name || '—';
-        let approvalClass = '';
-        if (governmentApproval !== null) {
-            if (governmentApproval < 35) approvalClass = 'low';
-            else if (governmentApproval < 50) approvalClass = 'medium';
-        }
         return `
             <div class="administration-box">
                 <div class="administration-header">
@@ -543,30 +541,28 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                     <div class="administration-subtitle">National Government</div>
                 </div>
                 <div class="administration-content">
-                    <div class="admin-section">
-                        <div class="admin-section-title">Head of State</div>
-                        <div class="admin-person-name">${hosFirst} ${hosLast}</div>
-                        <div class="admin-person-details">Age ${hosAge} · <span class="admin-person-party">${rulingPartyName}</span></div>
-                        <div style="color: #ff4444; font-size: 0.75rem; margin-top: 6px; font-weight: bold;">Rules until dead or deposed</div>
+                    <div class="admin-leaders-column">
+                        <div class="admin-section">
+                            <div class="admin-section-title">Prime Minister</div>
+                            <div class="admin-person-name">${activeHOG ? `${activeHOG.first_name} ${activeHOG.last_name}` : pmName}</div>
+                            <div class="admin-person-details">${activeHOG ? `Age ${activeHOG.age} • ` : (pmAge !== '—' ? `Age ${pmAge} • ` : '')}<span class="admin-person-party">${activeHOG ? (allParties.find(p => p.id === activeHOG.faction_id)?.faction_name || pmPartyName) : pmPartyName}</span></div>
+                            ${activeHOG ? `
+                                <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
+                                    <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:#9C27B0;color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
+                                    <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${activeHOG.leader_traits?.trait_name || activeHOG.trait_key}</div>
+                                    <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
+                                    <div style="font-size:0.75rem;color:#ff4444;">▼ ${activeHOG.leader_traits?.downside || ''}</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div class="admin-section">
+                            <div class="admin-section-title">Head of State</div>
+                            <div class="admin-person-name">${hosFirst} ${hosLast}</div>
+                            <div class="admin-person-details">Age ${hosAge} · <span class="admin-person-party">${rulingPartyName}</span></div>
+                            <div style="color: #ff4444; font-size: 0.75rem; margin-top: 6px; font-weight: bold;">Rules until dead or deposed</div>
+                        </div>
                     </div>
-                    <div class="admin-section">
-                        <div class="admin-section-title">Prime Minister</div>
-                        <div class="admin-person-name">${activeHOG ? `${activeHOG.first_name} ${activeHOG.last_name}` : pmName}</div>
-                        <div class="admin-person-details">${activeHOG ? `Age ${activeHOG.age} • ` : (pmAge !== '—' ? `Age ${pmAge} • ` : '')}<span class="admin-person-party">${activeHOG ? (allParties.find(p => p.id === activeHOG.faction_id)?.faction_name || pmPartyName) : pmPartyName}</span></div>
-                        ${activeHOG ? `
-                            <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
-                                <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:#9C27B0;color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
-                                <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${activeHOG.leader_traits?.trait_name || activeHOG.trait_key}</div>
-                                <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
-                                <div style="font-size:0.75rem;color:#ff4444;">▼ ${activeHOG.leader_traits?.downside || ''}</div>
-                            </div>
-                        ` : ''}
-                    </div>
-                    <div class="admin-section admin-approval">
-                        <div class="admin-section-title">Government Approval</div>
-                        <div class="admin-approval-value ${approvalClass}">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div>
-                        <div class="admin-approval-label">Ruling Faction</div>
-                    </div>
+                    ${renderAdminChat()}
                 </div>
             </div>`;
     }
@@ -598,12 +594,6 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
         const termTotal = GAME_CONFIG.PRESIDENTIAL_TERM_TICKS || 24;
         const termPct = Math.max(0, Math.min(100, Math.round((termRemaining / termTotal) * 100)));
 
-        let approvalClass = '';
-        if (governmentApproval !== null) {
-            if (governmentApproval < 35) approvalClass = 'low';
-            else if (governmentApproval < 50) approvalClass = 'medium';
-        }
-
         // Fetch president's trait info (already cached or inline)
         let traitHTML = '';
         if (presidentData._traitData) {
@@ -624,28 +614,26 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                     <div class="administration-subtitle">Presidential Government · <span style="color:${govStatusColor};font-weight:bold;">${govStatus}</span></div>
                 </div>
                 <div class="administration-content">
-                    <div class="admin-section">
-                        <div class="admin-section-title">Vice President</div>
-                        <div class="admin-person-name">${hosFirst} ${hosLast}</div>
-                        <div class="admin-person-details">Age ${hosAge}</div>
-                    </div>
-                    <div class="admin-section">
-                        <div class="admin-section-title">President</div>
-                        <div class="admin-person-name">${presidentData.first_name} ${presidentData.last_name}</div>
-                        <div class="admin-person-details">Age ${presidentData.age} · <span class="admin-person-party">${presPartyName}</span></div>
-                        <div style="margin-top:8px;">
-                            <div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:4px;">Term Remaining: ${termRemaining} tick${termRemaining !== 1 ? 's' : ''}</div>
-                            <div style="height:4px;background:#333;border-radius:2px;overflow:hidden;">
-                                <div style="height:100%;width:${termPct}%;background:${termPct > 25 ? 'var(--accent)' : '#ff4444'};border-radius:2px;transition:width 0.3s;"></div>
+                    <div class="admin-leaders-column">
+                        <div class="admin-section">
+                            <div class="admin-section-title">President</div>
+                            <div class="admin-person-name">${presidentData.first_name} ${presidentData.last_name}</div>
+                            <div class="admin-person-details">Age ${presidentData.age} · <span class="admin-person-party">${presPartyName}</span></div>
+                            <div style="margin-top:8px;">
+                                <div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:4px;">Term Remaining: ${termRemaining} tick${termRemaining !== 1 ? 's' : ''}</div>
+                                <div style="height:4px;background:#333;border-radius:2px;overflow:hidden;">
+                                    <div style="height:100%;width:${termPct}%;background:${termPct > 25 ? 'var(--accent)' : '#ff4444'};border-radius:2px;transition:width 0.3s;"></div>
+                                </div>
                             </div>
+                            ${traitHTML}
                         </div>
-                        ${traitHTML}
+                        <div class="admin-section">
+                            <div class="admin-section-title">Vice President</div>
+                            <div class="admin-person-name">${hosFirst} ${hosLast}</div>
+                            <div class="admin-person-details">Age ${hosAge}</div>
+                        </div>
                     </div>
-                    <div class="admin-section admin-approval">
-                        <div class="admin-section-title">Government Approval</div>
-                        <div class="admin-approval-value ${approvalClass}">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div>
-                        <div class="admin-approval-label">Presidential</div>
-                    </div>
+                    ${renderAdminChat()}
                 </div>
                 <div class="coalition-parties">
                     <div class="coalition-party-tag" style="border-left:3px solid ${getPartyColorById(presidentFactionId)};padding-left:8px;">${getPartyLogoById(presidentFactionId) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(getPartyLogoById(presidentFactionId), 16, getPartyColorById(presidentFactionId))}</span>` : ''}${presPartyName}<span class="seats">${presPartySeats} Seats</span></div>
@@ -661,9 +649,11 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                 <div class="administration-box">
                     <div class="administration-header"><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">Single Party Government</div></div>
                     <div class="administration-content">
-                        <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${hosFirst} ${hosLast}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${majorityParty.party_name}</span></div></div>
-                        <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${safePmName(primeMinister)}</div><div class="admin-person-details">${primeMinister?.minister_age ? `Age ${primeMinister.minister_age} • ` : ''}<span class="admin-person-party">${majorityParty.party_name}</span></div></div>
-                        <div class="admin-section admin-approval"><div class="admin-section-title">Government Approval</div><div class="admin-approval-value">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div></div>
+                        <div class="admin-leaders-column">
+                            <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${safePmName(primeMinister)}</div><div class="admin-person-details">${primeMinister?.minister_age ? `Age ${primeMinister.minister_age} • ` : ''}<span class="admin-person-party">${majorityParty.party_name}</span></div></div>
+                            <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${hosFirst} ${hosLast}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${majorityParty.party_name}</span></div></div>
+                        </div>
+                        ${renderAdminChat()}
                     </div>
                     <div class="coalition-parties"><div class="coalition-party-tag">${majorityParty.party_name}<span class="seats">${majorityParty.seats} Seats</span></div></div>
                 </div>`;
@@ -683,31 +673,31 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
         const pmName = safePmName(primeMinister);
         const pmAge = primeMinister?.minister_age || '—';
         const pmParty = primeMinister ? (primeMinister.factions?.faction_name || getPartyNameById(primeMinister.party_id)) : '—';
-        let approvalClass = '';
-        if (governmentApproval !== null) { if (governmentApproval < 35) approvalClass = 'low'; else if (governmentApproval < 50) approvalClass = 'medium'; }
         const coalitionParties = coalition.party_ids.map(id => { const p = parties.find(x => x.party_id === id); const fallbackName = allParties.find(f => f.id === id)?.faction_name || 'Unknown'; return p ? { ...p, seats: allPartySeats[id] || p.seats || 0 } : { party_name: fallbackName, seats: allPartySeats[id] || 0 }; }).sort((a,b) => b.seats - a.seats);
         return `
             <div class="administration-box">
                 <div class="administration-header"><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">${coalition.status === 'caretaker' ? 'Caretaker Government' : 'Coalition Government'}</div></div>
                 <div class="administration-content">
-                    <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${hosFirst} ${hosLast}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${leadPartyName}</span></div></div>
-                    <div class="admin-section">
-                        <div class="admin-section-title">Prime Minister</div>
-                        <div class="admin-person-name">${activeHOG ? `${activeHOG.first_name} ${activeHOG.last_name}` : pmName}</div>
-                        <div class="admin-person-details">${activeHOG ? `Age ${activeHOG.age} • ` : (pmAge !== '—' ? `Age ${pmAge} • ` : '')}<span class="admin-person-party">${pmParty}</span></div>
-                        ${activeHOG ? `
-                            <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
-                                <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:#9C27B0;color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
-                                <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${activeHOG.leader_traits?.trait_name || activeHOG.trait_key}</div>
-                                <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
-                                <div style="font-size:0.75rem;color:#ff4444;">▼ ${activeHOG.leader_traits?.downside || ''}</div>
-                            </div>
-                            ${activeHOG.faction_id === currentFaction?.id && coalition.status !== 'caretaker' ? `
-                                <button class="ministry-btn purge" style="margin-top:10px;" onclick="resignPMAction()">📋 Resign as PM</button>
+                    <div class="admin-leaders-column">
+                        <div class="admin-section">
+                            <div class="admin-section-title">Prime Minister</div>
+                            <div class="admin-person-name">${activeHOG ? `${activeHOG.first_name} ${activeHOG.last_name}` : pmName}</div>
+                            <div class="admin-person-details">${activeHOG ? `Age ${activeHOG.age} • ` : (pmAge !== '—' ? `Age ${pmAge} • ` : '')}<span class="admin-person-party">${pmParty}</span></div>
+                            ${activeHOG ? `
+                                <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
+                                    <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:#9C27B0;color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
+                                    <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${activeHOG.leader_traits?.trait_name || activeHOG.trait_key}</div>
+                                    <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
+                                    <div style="font-size:0.75rem;color:#ff4444;">▼ ${activeHOG.leader_traits?.downside || ''}</div>
+                                </div>
+                                ${activeHOG.faction_id === currentFaction?.id && coalition.status !== 'caretaker' ? `
+                                    <button class="ministry-btn purge" style="margin-top:10px;" onclick="resignPMAction()">📋 Resign as PM</button>
+                                ` : ''}
                             ` : ''}
-                        ` : ''}
+                        </div>
+                        <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${hosFirst} ${hosLast}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${leadPartyName}</span></div></div>
                     </div>
-                    <div class="admin-section admin-approval"><div class="admin-section-title">Government Approval</div><div class="admin-approval-value ${approvalClass}">${governmentApproval !== null ? governmentApproval + '%' : '—'}</div><div class="admin-approval-label">Minister Average</div></div>
+                    ${renderAdminChat()}
                 </div>
                 <div class="coalition-parties">
                     ${coalitionParties.map((p, i) => {
@@ -730,6 +720,144 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
         ${renderCaretakerBanner()}
     </div>`;
 }
+
+// ==================== ADMINISTRATIVE COMMUNICATIONS ====================
+
+let adminChatMessages = [];
+let adminChatLoaded = false;
+let adminChatSubscription = null;
+
+function renderAdminChat() {
+    return `
+        <div class="admin-chat-section" id="admin-chat-box">
+            <div class="admin-chat-header">Administrative Communications</div>
+            <div class="admin-chat-messages" id="admin-chat-messages">
+                <div class="admin-chat-empty">Loading messages...</div>
+            </div>
+            ${currentFaction ? `
+            <div class="admin-chat-input-row">
+                <input type="text" class="admin-chat-input" id="admin-chat-input" placeholder="Type a message..." maxlength="300" onkeydown="if(event.key==='Enter')sendAdminChat()">
+                <button class="admin-chat-send" id="admin-chat-send-btn" onclick="sendAdminChat()">Send</button>
+            </div>` : ''}
+        </div>`;
+}
+
+async function loadAdminChat() {
+    if (!currentNation) return;
+    const { data, error } = await _supabase
+        .from('admin_chat')
+        .select('id, faction_id, message, tick_posted, created_at')
+        .eq('nation_id', currentNation.id)
+        .order('created_at', { ascending: true })
+        .limit(50);
+    if (error) { console.error('Failed to load admin chat:', error); return; }
+    adminChatMessages = data || [];
+    adminChatLoaded = true;
+    renderChatMessages();
+    subscribeAdminChat();
+}
+
+function subscribeAdminChat() {
+    if (adminChatSubscription || !currentNation) return;
+    adminChatSubscription = _supabase
+        .channel('admin_chat_' + currentNation.id)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'admin_chat',
+            filter: 'nation_id=eq.' + currentNation.id
+        }, (payload) => {
+            const msg = payload.new;
+            if (!adminChatMessages.find(m => m.id === msg.id)) {
+                adminChatMessages.push(msg);
+                renderChatMessages();
+            }
+        })
+        .subscribe();
+}
+
+function renderChatMessages() {
+    const container = document.getElementById('admin-chat-messages');
+    if (!container) return;
+    if (adminChatMessages.length === 0) {
+        container.innerHTML = '<div class="admin-chat-empty">No messages yet. Start the conversation.</div>';
+        return;
+    }
+    container.innerHTML = adminChatMessages.map(m => {
+        const party = allParties.find(p => p.id === m.faction_id);
+        const partyName = party?.faction_name || 'Unknown';
+        const partyColor = party?.party_color || '#888';
+        const partyLogo = party?.party_logo;
+        const logoHtml = partyLogo ? `<span style="display:inline-flex;vertical-align:middle;">${getPartyIconSVG(partyLogo, 14, partyColor)}</span>` : '';
+        const timeAgo = formatChatTime(m.created_at);
+        const escapedMsg = escapeHtml(m.message);
+        return `<div class="admin-chat-msg" style="border-left-color:${partyColor};">
+            <div class="admin-chat-msg-header">
+                ${logoHtml}
+                <span class="admin-chat-msg-party" style="color:${partyColor};">${escapeHtml(partyName)}</span>
+                <span class="admin-chat-msg-time">${timeAgo}</span>
+            </div>
+            <div class="admin-chat-msg-body">${escapedMsg}</div>
+        </div>`;
+    }).join('');
+    container.scrollTop = container.scrollHeight;
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function formatChatTime(isoStr) {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    const now = new Date();
+    const diffMs = now - d;
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return diffMin + 'm ago';
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return diffH + 'h ago';
+    const diffD = Math.floor(diffH / 24);
+    return diffD + 'd ago';
+}
+
+window.sendAdminChat = async function() {
+    const input = document.getElementById('admin-chat-input');
+    const btn = document.getElementById('admin-chat-send-btn');
+    if (!input || !currentFaction || !currentNation) return;
+    const message = input.value.trim();
+    if (!message) return;
+    btn.disabled = true;
+    input.disabled = true;
+    const { error } = await _supabase.from('admin_chat').insert({
+        nation_id: currentNation.id,
+        faction_id: currentFaction.id,
+        message: message,
+        tick_posted: currentTick
+    });
+    if (error) {
+        console.error('Failed to send message:', error);
+        alert('Failed to send message.');
+    } else {
+        input.value = '';
+        // If realtime isn't working, manually add
+        if (!adminChatSubscription) {
+            adminChatMessages.push({
+                id: crypto.randomUUID(),
+                faction_id: currentFaction.id,
+                message: message,
+                tick_posted: currentTick,
+                created_at: new Date().toISOString()
+            });
+            renderChatMessages();
+        }
+    }
+    btn.disabled = false;
+    input.disabled = false;
+    input.focus();
+};
 
 // ==================== FORMATION IN PROGRESS ====================
 
