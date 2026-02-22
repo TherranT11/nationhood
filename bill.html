@@ -1805,6 +1805,22 @@ function renderBudgetBillUI() {
     // === MINISTRY TABS ===
     h += '<div class="budget-section">';
     h += '<div class="budget-section-header">EXPENDITURES BY MINISTRY</div>';
+
+    // Inflation notice at top of expenditures
+    const inflationMult = getInflationMultiplier(inflationStat);
+    h += '<div class="budget-inflation-summary">';
+    h += '<span class="budget-inflation-icon">📊</span>';
+    h += '<span>' + escapeHtml(budgetNation.name || 'Nation') + '\'s inflation is currently <strong>' + inflationStat.toFixed(0) + '/100</strong>. ';
+    if (inflationPct > 0.05) {
+        h += 'That has raised all ministry costs by <strong class="budget-gap-deficit">+' + inflationPct.toFixed(1) + '%</strong> ';
+        h += '(multiplier: ' + inflationMult.toFixed(3) + '×).';
+    } else if (inflationPct < -0.05) {
+        h += 'That has reduced all ministry costs by <strong class="budget-gap-surplus">' + inflationPct.toFixed(1) + '%</strong> ';
+        h += '(multiplier: ' + inflationMult.toFixed(3) + '×).';
+    } else {
+        h += 'Costs are stable (no inflation adjustment).';
+    }
+    h += '</span></div>';
     h += '<div class="budget-ministry-tabs" id="budget-ministry-tabs">';
     for (const cat of FISCAL_CATEGORIES) {
         const alloc = budgetAllocations.find(a => a.fiscal_category === cat);
@@ -1825,22 +1841,6 @@ function renderBudgetBillUI() {
     h += '<div id="budget-ministry-detail">';
     h += renderBudgetMinistryDetail(budgetSelectedCategory || FISCAL_CATEGORIES[0], editable);
     h += '</div>';
-
-    // === INFLATION NOTICE (bottom of expenditures) ===
-    const inflationMult = getInflationMultiplier(inflationStat);
-    h += '<div class="budget-inflation-summary">';
-    h += '<span class="budget-inflation-icon">📊</span>';
-    h += '<span>' + escapeHtml(budgetNation.name || 'Nation') + '\'s inflation is currently <strong>' + inflationStat.toFixed(0) + '/100</strong>. ';
-    if (inflationPct > 0.05) {
-        h += 'That has raised all ministry costs by <strong class="budget-gap-deficit">+' + inflationPct.toFixed(1) + '%</strong> ';
-        h += '(multiplier: ' + inflationMult.toFixed(3) + '×).';
-    } else if (inflationPct < -0.05) {
-        h += 'That has reduced all ministry costs by <strong class="budget-gap-surplus">' + inflationPct.toFixed(1) + '%</strong> ';
-        h += '(multiplier: ' + inflationMult.toFixed(3) + '×).';
-    } else {
-        h += 'Costs are stable (no inflation adjustment).';
-    }
-    h += '</span></div>';
 
     // === SURPLUS / DEFICIT OUTCOME ===
     h += '<div class="budget-outcome-section">';
@@ -1987,6 +1987,10 @@ function renderBudgetMinistryDetail(category, editable) {
     }
     h += '<div class="budget-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetCurrency(ministryPolicies.total) + '</span></div>';
     h += '</div>';
+
+    // MINISTRY TOTAL
+    const ministryTotal = ministryInstitutions.total + ministryPolicies.total;
+    h += '<div class="budget-ministry-total"><span>MINISTRY TOTAL</span><span>' + fmtBudgetCurrency(ministryTotal) + '</span></div>';
 
     return h;
 }

@@ -561,11 +561,17 @@ function renderBudgetMinistryPanel(tab, instByMinistry, budgetLaws, nation) {
             }
         }
         h += '<div class="bp-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetVal(polData.total) + '</span></div>';
+        var polTotal = polData.total;
     } else {
         h += '<div class="bp-empty-notice">No active policies in this ministry.</div>';
         h += '<div class="bp-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetVal(0) + '</span></div>';
+        var polTotal = 0;
     }
     h += '</div>';
+
+    // MINISTRY TOTAL
+    var ministryTotal = instTotal + polTotal;
+    h += '<div class="bp-ministry-total"><span>MINISTRY TOTAL</span><span>' + fmtBudgetVal(ministryTotal) + '</span></div>';
 
     return h;
 }
@@ -644,8 +650,24 @@ async function renderBudgetBillContent() {
         h += '</div>';
 
         // --- Right: Expenditures ---
+        var inflationStat = Number(currentNation.inflation || 50);
+        var inflationPct = (inflationStat - 50) / 2;
+        var inflMult = getInflationMultiplier(inflationStat);
         h += '<div class="bp-col">';
         h += '<div class="bp-col-header">EXPENDITURES</div>';
+        h += '<div class="bp-inflation-summary">';
+        h += '<span>📊</span> ';
+        h += '<span>' + (currentNation.name || 'Nation') + '\'s inflation is currently <strong>' + inflationStat.toFixed(0) + '/100</strong>. ';
+        if (inflationPct > 0.05) {
+            h += 'That has raised all ministry costs by <strong class="bp-deficit">+' + inflationPct.toFixed(1) + '%</strong> ';
+            h += '(multiplier: ' + inflMult.toFixed(3) + '×).';
+        } else if (inflationPct < -0.05) {
+            h += 'That has reduced all ministry costs by <strong class="bp-surplus">' + inflationPct.toFixed(1) + '%</strong> ';
+            h += '(multiplier: ' + inflMult.toFixed(3) + '×).';
+        } else {
+            h += 'Costs are stable (no inflation adjustment).';
+        }
+        h += '</span></div>';
         for (var i = 0; i < FISCAL_CATEGORIES.length; i++) {
             var cat = FISCAL_CATEGORIES[i];
             var mData = bd.ministries[cat];
@@ -670,24 +692,6 @@ async function renderBudgetBillContent() {
         h += '<div class="bp-ministry-detail" id="bp-ministry-detail">';
         h += renderBudgetMinistryPanel(BUDGET_MINISTRY_TABS[0], instByMinistry, budgetLaws, currentNation);
         h += '</div>';
-
-        // === INFLATION NOTICE ===
-        var inflationStat = Number(currentNation.inflation || 50);
-        var inflationPct = (inflationStat - 50) / 2;
-        var inflMult = getInflationMultiplier(inflationStat);
-        h += '<div class="bp-inflation-summary">';
-        h += '<span>📊</span> ';
-        h += '<span>' + (currentNation.name || 'Nation') + '\'s inflation is currently <strong>' + inflationStat.toFixed(0) + '/100</strong>. ';
-        if (inflationPct > 0.05) {
-            h += 'That has raised all ministry costs by <strong class="bp-deficit">+' + inflationPct.toFixed(1) + '%</strong> ';
-            h += '(multiplier: ' + inflMult.toFixed(3) + '×).';
-        } else if (inflationPct < -0.05) {
-            h += 'That has reduced all ministry costs by <strong class="bp-surplus">' + inflationPct.toFixed(1) + '%</strong> ';
-            h += '(multiplier: ' + inflMult.toFixed(3) + '×).';
-        } else {
-            h += 'Costs are stable (no inflation adjustment).';
-        }
-        h += '</span></div>';
 
         // === SURPLUS / DEFICIT OUTCOME ===
         var currentDebt = Number(currentNation.debt || 0);
