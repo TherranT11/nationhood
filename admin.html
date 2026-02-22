@@ -419,8 +419,20 @@
         <div class="tab-content" id="tab-ministries">
             <h2>Ministry Institution Config</h2>
             <p style="color:#888; margin-bottom:16px;">Set the base cost per capita and stat attachments for each ministry institution. Changes are saved to the database and apply immediately.</p>
+            <button class="btn" onclick="previewBudgetBill()" style="margin-bottom:16px; background:#1B5E20; border-color:#4CAF50; color:#4CAF50; font-weight:bold;">Preview Budget Bill</button>
             <div id="ministry-config-status" class="status success hidden"></div>
             <div id="ministry-config-body" style="margin-top:12px;">Loading...</div>
+        </div>
+
+        <!-- Budget Preview Modal -->
+        <div id="budget-preview-modal" class="bp-modal-overlay" style="display:none;" onclick="if(event.target===this)closeBudgetPreview()">
+            <div class="bp-modal">
+                <div class="bp-modal-header">
+                    <span id="bp-modal-title">Budget Bill Preview</span>
+                    <button class="bp-modal-close" onclick="closeBudgetPreview()">&times;</button>
+                </div>
+                <div class="bp-modal-body" id="bp-modal-body">Loading...</div>
+            </div>
         </div>
 
     </div>
@@ -428,7 +440,7 @@
 
 <script type="module">
 const { createClient } = supabase;
-import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, computeMinistryPolicyCost, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processBlocApprovalDecay, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPartyStandingsJitter, processPMTraitEffects, calculateNationalBudget, markFactionActive, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runManualElectionByGovernmentType, DONOR_DEMANDS } from './js/game-common.js';
+import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, computeMinistryPolicyCost, buildBudgetData, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processBlocApprovalDecay, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPartyStandingsJitter, processPMTraitEffects, calculateNationalBudget, markFactionActive, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runManualElectionByGovernmentType, DONOR_DEMANDS } from './js/game-common.js';
 const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
     const _supabase = createClient(supabaseUrl, supabaseKey);
@@ -3144,6 +3156,220 @@ window.seedAllDefaultDemands = seedAllDefaultDemands;
 window.runPolicyAudit = runPolicyAudit;
 window.recalculatePolicyCosts = recalculatePolicyCosts;
 window.saveInstitutionRow = saveInstitutionRow;
+
+// ==================== BUDGET PREVIEW ====================
+let bpSelectedCategory = null;
+let bpBudgetData = null;
+let bpNation = null;
+let bpActiveLaws = null;
+
+function fmtBudgetCurrency(val) {
+    if (val == null) return '$0';
+    val = Number(val);
+    var sign = val < 0 ? '-' : '';
+    var abs = Math.abs(val);
+    if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(1) + 'T';
+    if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(1) + 'B';
+    if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(0) + 'M';
+    if (abs >= 1e3) return sign + '$' + (abs / 1e3).toFixed(0) + 'K';
+    return sign + '$' + Math.round(abs);
+}
+
+function bpRevLine(label, value, isBold, isNegative) {
+    var cls = isBold ? ' budget-rev-bold' : '';
+    var negCls = isNegative ? ' budget-rev-negative' : '';
+    return '<div class="budget-rev-line' + cls + negCls + '">' +
+        '<span class="budget-rev-label">' + escHtml(label) + '</span>' +
+        '<span class="budget-rev-value">' + fmtBudgetCurrency(value) + '</span>' +
+        '</div>';
+}
+
+async function previewBudgetBill() {
+    var modal = document.getElementById('budget-preview-modal');
+    var body = document.getElementById('bp-modal-body');
+    modal.style.display = 'flex';
+    body.innerHTML = '<div style="text-align:center;padding:40px;color:#888;">Loading budget data...</div>';
+
+    try {
+        // Fetch nation
+        var { data: nationData, error: nErr } = await _supabase.from('nations').select('*').limit(1).single();
+        if (nErr) throw nErr;
+        bpNation = nationData;
+
+        // Fetch shard for current tick
+        var { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        var currentTick = shard ? shard.current_tick : 0;
+
+        // Fetch active laws with policies
+        var { data: laws, error: lErr } = await _supabase
+            .from('active_laws')
+            .select('*, policies(id, policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat)')
+            .eq('nation_id', bpNation.id);
+        if (lErr) throw lErr;
+        bpActiveLaws = (laws || []).filter(function(l) { return !l.is_reversal; });
+
+        // Build budget data
+        bpBudgetData = buildBudgetData(bpNation, bpActiveLaws);
+        bpSelectedCategory = FISCAL_CATEGORIES[0];
+
+        // Compute game year (next tick = January)
+        var nextTick = currentTick + 1;
+        var gameYear = 2000 + Math.floor(nextTick / 12);
+        document.getElementById('bp-modal-title').textContent = 'Budget Bill Preview \u2014 Year ' + gameYear;
+
+        renderBudgetPreview(gameYear);
+    } catch (err) {
+        console.error('Budget preview error:', err);
+        body.innerHTML = '<div style="color:#ff4444;text-align:center;padding:40px;">Error loading budget data: ' + (err.message || err) + '</div>';
+    }
+}
+
+function renderBudgetPreview(gameYear) {
+    var nation = bpNation;
+    var bd = bpBudgetData;
+    var budget = calculateNationalBudget(nation);
+    var inflationStat = Number(nation.inflation || 50);
+    var inflationPct = (inflationStat - 50) / 2;
+
+    var totalSpending = bd.totalExpenditure;
+    var available = bd.available;
+    var gap = available - totalSpending;
+    var currentDebt = Number(nation.debt || 0);
+    var projectedDebt = bd.projectedDebt;
+
+    var h = '';
+
+    // === TOP BAR ===
+    var gapClass = gap >= 0 ? 'budget-gap-surplus' : 'budget-gap-deficit';
+    var gapSign = gap >= 0 ? '+' : '';
+    h += '<div class="budget-top-bar">';
+    h += '<div class="budget-top-numbers">';
+    h += '<span>Available: <strong>' + fmtBudgetCurrency(available) + '</strong></span>';
+    h += '<span class="budget-top-sep">|</span>';
+    h += '<span>Spending: <strong>' + fmtBudgetCurrency(totalSpending) + '</strong></span>';
+    h += '<span class="budget-top-sep">|</span>';
+    h += '<span>Gap: <strong class="' + gapClass + '">' + gapSign + fmtBudgetCurrency(gap) + '</strong></span>';
+    h += '</div>';
+    h += '<div class="budget-top-debt">';
+    h += '<span>Current Debt: ' + fmtBudgetCurrency(currentDebt) + '</span>';
+    h += '<span class="budget-top-sep">|</span>';
+    h += '<span>Projected Debt: <strong>' + fmtBudgetCurrency(projectedDebt) + '</strong></span>';
+    h += '</div>';
+    h += '</div>';
+
+    // === REVENUE SECTION ===
+    h += '<div class="budget-section">';
+    h += '<div class="budget-section-header">REVENUE \u2014 Year ' + gameYear + '</div>';
+    h += '<div class="budget-revenue-grid">';
+    h += bpRevLine('Income Tax (' + Math.round(Number(nation.income_tax || 0)) + '% rate)', budget.incomeRevenue);
+    h += bpRevLine('Corporate Tax (' + Math.round(Number(nation.corporate_tax || 0)) + '% rate)', budget.corpRevenue);
+    h += bpRevLine('Sales Tax (' + Math.round(Number(nation.sales_tax || 0)) + '% rate)', budget.salesRevenue);
+    h += bpRevLine('Tariff Revenue (' + Math.round(Number(nation.tariffs || 0)) + '% rate)', budget.tariffRevenue);
+    if (budget.oilRevenue > 0) {
+        h += bpRevLine('State Enterprises (Oil & Gas)', budget.oilRevenue);
+    }
+    h += '<div class="budget-rev-divider"></div>';
+    h += bpRevLine('Gross Revenue', budget.grossRevenue, true);
+    var reserves = Number(nation.budget_reserves || 0);
+    if (reserves > 0) {
+        h += bpRevLine("Last Year's Reserves", reserves);
+    }
+    h += bpRevLine('Debt Service (Interest on ' + fmtBudgetCurrency(currentDebt) + ')', -budget.debtService, false, true);
+    h += '<div class="budget-rev-divider"></div>';
+    h += bpRevLine('AVAILABLE FOR ALLOCATION', available, true);
+    h += '</div>';
+
+    if (inflationPct > 0.1) {
+        h += '<div class="budget-inflation-notice">Inflation (' + inflationStat.toFixed(0) + '/100) has increased all costs by ~' + inflationPct.toFixed(1) + '% since last budget cycle</div>';
+    }
+    h += '</div>';
+
+    // === MINISTRY TABS ===
+    h += '<div class="budget-section">';
+    h += '<div class="budget-section-header">EXPENDITURES BY MINISTRY</div>';
+    h += '<div class="budget-ministry-tabs" id="bp-ministry-tabs">';
+    for (var i = 0; i < FISCAL_CATEGORIES.length; i++) {
+        var cat = FISCAL_CATEGORIES[i];
+        var mData = bd.ministries[cat];
+        var catCost = mData ? mData.fulfilledCost : 0;
+        var activeClass = cat === bpSelectedCategory ? ' active' : '';
+        h += '<button class="budget-ministry-tab' + activeClass + '" data-cat="' + escHtml(cat) + '">';
+        h += '<span class="budget-tab-name">' + escHtml(cat) + '</span>';
+        h += '<span class="budget-tab-amount">' + fmtBudgetCurrency(catCost) + '</span>';
+        h += '</button>';
+    }
+    h += '</div>';
+
+    // === MINISTRY DETAIL ===
+    h += '<div id="bp-ministry-detail">';
+    h += renderBpMinistryDetail(bpSelectedCategory);
+    h += '</div>';
+    h += '</div>';
+
+    document.getElementById('bp-modal-body').innerHTML = h;
+
+    // Wire tab clicks
+    document.querySelectorAll('#bp-ministry-tabs .budget-ministry-tab').forEach(function(tab) {
+        tab.addEventListener('click', function() {
+            bpSelectedCategory = tab.getAttribute('data-cat');
+            document.querySelectorAll('#bp-ministry-tabs .budget-ministry-tab').forEach(function(t) { t.classList.remove('active'); });
+            tab.classList.add('active');
+            var detailEl = document.getElementById('bp-ministry-detail');
+            if (detailEl) detailEl.innerHTML = renderBpMinistryDetail(bpSelectedCategory);
+        });
+    });
+}
+
+function renderBpMinistryDetail(category) {
+    var mData = bpBudgetData.ministries[category];
+    var fulfilledCost = mData ? mData.fulfilledCost : 0;
+
+    var h = '';
+
+    // Ministry total cost
+    h += '<div class="budget-ministry-status">';
+    h += '<span>Ministry Total Cost: <strong>' + fmtBudgetCurrency(fulfilledCost) + '</strong></span>';
+    h += '<span class="budget-top-sep">|</span>';
+    h += '<span>Allocation (auto-fulfilled): <strong>' + fmtBudgetCurrency(fulfilledCost) + '</strong></span>';
+    h += '</div>';
+
+    // Institutions section
+    h += '<div class="budget-sub-section">';
+    h += '<div class="budget-sub-header">INSTITUTIONS <span class="budget-locked-badge">LOCKED</span></div>';
+    h += '<div class="budget-empty-notice">No institutions configured yet.</div>';
+    h += '<div class="budget-sub-total"><span>Institution Subtotal</span><span>$0</span></div>';
+    h += '</div>';
+
+    // Policies section
+    var policies = mData ? mData.policies : [];
+    var policyTotal = mData ? mData.fulfilledCost : 0;
+    h += '<div class="budget-sub-section">';
+    h += '<div class="budget-sub-header">POLICIES <span class="budget-info-badge">INFO ONLY</span></div>';
+    if (policies.length === 0) {
+        h += '<div class="budget-empty-notice">No active policies in this ministry.</div>';
+    } else {
+        for (var i = 0; i < policies.length; i++) {
+            var p = policies[i];
+            h += '<div class="budget-policy-line">';
+            h += '<span class="budget-policy-name">' + escHtml(p.policy_name) + '</span>';
+            h += '<span class="budget-policy-cost">' + fmtBudgetCurrency(p.cost) + '</span>';
+            h += '</div>';
+        }
+    }
+    var polSubtotal = 0;
+    for (var j = 0; j < policies.length; j++) polSubtotal += policies[j].cost;
+    h += '<div class="budget-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetCurrency(polSubtotal) + '</span></div>';
+    h += '</div>';
+
+    return h;
+}
+
+function closeBudgetPreview() {
+    document.getElementById('budget-preview-modal').style.display = 'none';
+}
+
+window.previewBudgetBill = previewBudgetBill;
+window.closeBudgetPreview = closeBudgetPreview;
 </script>
 </body>
 </html>
