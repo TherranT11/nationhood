@@ -1791,7 +1791,9 @@ function renderBudgetBillUI() {
     const inflationStat = Number(nation.inflation || 50);
     const inflationPct = (inflationStat - 50) / 2;
     const totals = getBudgetTotals();
-    const editable = isBudgetEditable();
+    // Three-state controls: showControls = buttons visible, canEdit = buttons clickable
+    const showControls = currentBill && currentBill.status === 'committee' && !currentBill.early_resolution_status;
+    const canEdit = isBudgetEditable();
     const gameYear = 2000 + Math.floor((currentBill.proposed_tick || 0) / 12);
 
     let h = '';
@@ -1885,7 +1887,7 @@ function renderBudgetBillUI() {
 
     // === MINISTRY DETAIL ===
     h += '<div id="budget-ministry-detail">';
-    h += renderBudgetMinistryDetail(budgetSelectedCategory || FISCAL_CATEGORIES[0], editable);
+    h += renderBudgetMinistryDetail(budgetSelectedCategory || FISCAL_CATEGORIES[0], showControls, canEdit);
     h += '</div>';
 
     // === SURPLUS / DEFICIT OUTCOME ===
@@ -1939,21 +1941,21 @@ function renderBudgetBillUI() {
 
     articlesEl.innerHTML = h;
 
-    // Wire ministry tab clicks
+    // Set up event delegation once (survives innerHTML rebuilds)
+    initBudgetDelegation();
+
+    // Wire ministry tab clicks via delegation on the tabs container
     document.querySelectorAll('.budget-ministry-tab').forEach(function(tab) {
         tab.addEventListener('click', function() {
             budgetSelectedCategory = tab.getAttribute('data-cat');
             // Update active tab
             document.querySelectorAll('.budget-ministry-tab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
-            // Re-render detail
+            // Re-render detail only — delegated handlers still work
             const detailEl = document.getElementById('budget-ministry-detail');
-            if (detailEl) detailEl.innerHTML = renderBudgetMinistryDetail(budgetSelectedCategory, editable);
-            wireBudgetControls();
+            if (detailEl) detailEl.innerHTML = renderBudgetMinistryDetail(budgetSelectedCategory, showControls, canEdit);
         });
     });
-
-    wireBudgetControls();
 }
 
 function budgetRevLine(label, value, isBold, isNegative) {
@@ -1992,9 +1994,11 @@ function computeMinistryAllocTotal(category) {
     return total;
 }
 
-function renderBudgetMinistryDetail(category, editable) {
+function renderBudgetMinistryDetail(category, showControls, canEdit) {
     const alloc = budgetAllocations.find(a => a.fiscal_category === category);
     const discretionary = Number(alloc?.discretionary_amount || 0);
+    const disabledAttr = canEdit ? '' : ' disabled';
+    const disabledClass = canEdit ? '' : ' budget-btn-disabled';
 
     // Compute live costs for this ministry
     const ministryPolicies = computeMinistryPolicyCost(budgetActiveLaws, category, budgetNation);
@@ -2037,6 +2041,11 @@ function renderBudgetMinistryDetail(category, editable) {
         h += '</div>';
     }
 
+    // Non-coalition notice (committee stage, but not in coalition)
+    if (showControls && !canEdit) {
+        h += '<div class="budget-readonly-notice">Only coalition members can amend the budget in committee.</div>';
+    }
+
     // ===== Institutions section =====
     h += '<div class="budget-sub-section">';
     h += '<div class="budget-sub-header">INSTITUTIONS</div>';
@@ -2059,13 +2068,13 @@ function renderBudgetMinistryDetail(category, editable) {
             h += '<span class="budget-line-stat"><span class="budget-line-stat-label">NEEDED</span> ' + fmtBudgetCurrency(itemNeeded) + '</span>';
             h += '<span class="budget-line-pct ' + itemPctClass + '">' + itemPct + '%</span>';
             h += '</div>';
-            if (editable) {
+            if (showControls) {
                 h += '<div class="budget-item-controls">';
-                h += '<button class="budget-item-btn fulfill" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-fulfill">Fulfill</button>';
-                h += '<button class="budget-item-btn" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-dec5">-5%</button>';
-                h += '<button class="budget-item-btn" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-dec1">-1%</button>';
-                h += '<button class="budget-item-btn" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-inc1">+1%</button>';
-                h += '<button class="budget-item-btn" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-inc5">+5%</button>';
+                h += '<button class="budget-item-btn fulfill' + disabledClass + '" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-fulfill"' + disabledAttr + '>Fulfill</button>';
+                h += '<button class="budget-item-btn' + disabledClass + '" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-dec5"' + disabledAttr + '>-5%</button>';
+                h += '<button class="budget-item-btn' + disabledClass + '" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-dec1"' + disabledAttr + '>-1%</button>';
+                h += '<button class="budget-item-btn' + disabledClass + '" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-inc1"' + disabledAttr + '>+1%</button>';
+                h += '<button class="budget-item-btn' + disabledClass + '" data-type="institution" data-item="' + escapeHtml(inst.id) + '" data-cat="' + escapeHtml(category) + '" data-action="inst-inc5"' + disabledAttr + '>+5%</button>';
                 h += '</div>';
             }
             h += '</div>';
@@ -2090,8 +2099,8 @@ function renderBudgetMinistryDetail(category, editable) {
             h += '<div class="budget-line-item' + (isCut ? ' budget-item-cut' : '') + '">';
             h += '<div class="budget-line-name-row">';
             h += '<span class="budget-line-name' + (isCut ? ' budget-cut-name' : '') + '">' + escapeHtml(p.policy_name) + '</span>';
-            if (editable) {
-                h += '<button class="budget-cut-btn ' + (isCut ? 'is-cut' : '') + '" data-type="policy" data-item="' + escapeHtml(p.policy_id) + '" data-cat="' + escapeHtml(category) + '" data-action="policy-cut">' + (isCut ? 'FUND' : 'CUT') + '</button>';
+            if (showControls) {
+                h += '<button class="budget-cut-btn ' + (isCut ? 'is-cut' : '') + disabledClass + '" data-type="policy" data-item="' + escapeHtml(p.policy_id) + '" data-cat="' + escapeHtml(category) + '" data-action="policy-cut"' + disabledAttr + '>' + (isCut ? 'FUND' : 'CUT') + '</button>';
             } else if (isCut) {
                 h += '<span class="budget-cut-badge">CUT</span>';
             }
@@ -2121,12 +2130,12 @@ function renderBudgetMinistryDetail(category, editable) {
     h += '<div class="budget-line-stats">';
     h += '<span class="budget-line-stat"><span class="budget-line-stat-label">ALLOCATED</span> ' + fmtBudgetCurrency(discretionary) + '</span>';
     h += '</div>';
-    if (editable) {
+    if (showControls) {
         h += '<div class="budget-item-controls">';
-        h += '<button class="budget-item-btn" data-cat="' + escapeHtml(category) + '" data-action="disc-dec5">-5%</button>';
-        h += '<button class="budget-item-btn" data-cat="' + escapeHtml(category) + '" data-action="disc-dec1">-1%</button>';
-        h += '<button class="budget-item-btn" data-cat="' + escapeHtml(category) + '" data-action="disc-inc1">+1%</button>';
-        h += '<button class="budget-item-btn" data-cat="' + escapeHtml(category) + '" data-action="disc-inc5">+5%</button>';
+        h += '<button class="budget-item-btn' + disabledClass + '" data-cat="' + escapeHtml(category) + '" data-action="disc-dec5"' + disabledAttr + '>-5%</button>';
+        h += '<button class="budget-item-btn' + disabledClass + '" data-cat="' + escapeHtml(category) + '" data-action="disc-dec1"' + disabledAttr + '>-1%</button>';
+        h += '<button class="budget-item-btn' + disabledClass + '" data-cat="' + escapeHtml(category) + '" data-action="disc-inc1"' + disabledAttr + '>+1%</button>';
+        h += '<button class="budget-item-btn' + disabledClass + '" data-cat="' + escapeHtml(category) + '" data-action="disc-inc5"' + disabledAttr + '>+5%</button>';
         h += '</div>';
     }
     h += '</div>';
@@ -2150,23 +2159,30 @@ async function syncMinistryAllocation(category) {
         .eq('id', alloc.id);
 }
 
-function wireBudgetControls() {
-    // Institution +/- and fulfill buttons
-    document.querySelectorAll('.budget-item-btn').forEach(function(btn) {
-        btn.addEventListener('click', async function() {
+// One-time event delegation setup — survives innerHTML rebuilds
+function initBudgetDelegation() {
+    const container = document.getElementById('bill-articles');
+    if (!container || container._budgetDelegated) return;
+    container._budgetDelegated = true;
+
+    container.addEventListener('click', async function(e) {
+        // --- Institution / Discretionary +/- buttons ---
+        const itemBtn = e.target.closest('.budget-item-btn');
+        if (itemBtn) {
+            if (itemBtn.disabled) return;
             if (!isBudgetEditable()) return;
-            const action = btn.getAttribute('data-action');
-            const cat = btn.getAttribute('data-cat');
-            const itemId = btn.getAttribute('data-item');
-            const itemType = btn.getAttribute('data-type');
+
+            const action = itemBtn.getAttribute('data-action');
+            const cat = itemBtn.getAttribute('data-cat');
+            const itemId = itemBtn.getAttribute('data-item');
 
             if (action.startsWith('inst-')) {
                 // Institution allocation change
-                let ia = budgetItemAllocations.find(i => i.item_type === 'institution' && i.item_id === itemId && i.fiscal_category === cat);
+                let ia = budgetItemAllocations.find(i => i.item_type === 'institution' && i.item_id === String(itemId) && i.fiscal_category === cat);
 
                 // Compute needed cost for this institution
                 const ministryInst = computeMinistryInstitutionCost(budgetInstitutions, cat, budgetNation);
-                const instData = ministryInst.institutions.find(i => i.id === itemId);
+                const instData = ministryInst.institutions.find(i => String(i.id) === String(itemId));
                 const neededCost = instData ? instData.cost : 0;
 
                 if (!ia) {
@@ -2174,7 +2190,7 @@ function wireBudgetControls() {
                     const instName = instData ? instData.institution_name : itemId;
                     const newRow = {
                         bill_id: currentBill.id, nation_id: currentBill.nation_id,
-                        fiscal_category: cat, item_type: 'institution', item_id: itemId,
+                        fiscal_category: cat, item_type: 'institution', item_id: String(itemId),
                         item_name: instName, allocation_amount: neededCost, needed_amount: neededCost, is_cut: false
                     };
                     const { data } = await _supabase.from('budget_item_allocations').insert(newRow).select('*').single();
@@ -2224,15 +2240,17 @@ function wireBudgetControls() {
                 await syncMinistryAllocation(cat);
                 renderBudgetBillUI();
             }
-        });
-    });
+            return;
+        }
 
-    // Policy CUT/FUND toggle
-    document.querySelectorAll('.budget-cut-btn').forEach(function(btn) {
-        btn.addEventListener('click', async function() {
+        // --- Policy CUT/FUND toggle ---
+        const cutBtn = e.target.closest('.budget-cut-btn');
+        if (cutBtn) {
+            if (cutBtn.disabled) return;
             if (!isBudgetEditable()) return;
-            const cat = btn.getAttribute('data-cat');
-            const policyId = btn.getAttribute('data-item');
+
+            const cat = cutBtn.getAttribute('data-cat');
+            const policyId = cutBtn.getAttribute('data-item');
 
             let ia = budgetItemAllocations.find(i => i.item_type === 'policy' && i.item_id === policyId && i.fiscal_category === cat);
 
@@ -2262,7 +2280,8 @@ function wireBudgetControls() {
 
             await syncMinistryAllocation(cat);
             renderBudgetBillUI();
-        });
+            return;
+        }
     });
 }
 
