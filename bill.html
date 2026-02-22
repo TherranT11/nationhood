@@ -1686,7 +1686,7 @@ async function loadBudgetData(bill) {
 
     // Load institution config for cost breakdown
     const { data: instRows } = await _supabase.from('ministry_institution_config')
-        .select('id, ministry_key, institution_name, base_cost_per_capita, cost_share');
+        .select('id, ministry_key, institution_name, base_cost_per_capita, cost_share, scaling_type');
     budgetInstitutions = instRows || [];
 
     // Load per-item allocations

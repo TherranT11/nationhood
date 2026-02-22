@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS ministry_institution_config (
     institution_name TEXT NOT NULL,            -- display name
     base_cost_per_capita DECIMAL NOT NULL DEFAULT 0,
     cost_share DECIMAL NOT NULL DEFAULT 0,    -- fraction of ministry budget (0-1)
+    scaling_type TEXT NOT NULL DEFAULT 'population',  -- 'population' or 'gdp'
     primary_stat TEXT,                        -- nation stat key this institution maintains
     secondary_stat TEXT,                      -- secondary stat key
     updated_at TIMESTAMPTZ DEFAULT now()
