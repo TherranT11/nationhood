@@ -987,15 +987,10 @@ const GOVERNMENT_TYPE_ALIASES = Object.freeze({
     'executive presidency': CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC
 });
 
-function normalizeGovernmentType(governmentType, fallbackType = CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY) {
-    if (typeof governmentType !== 'string') return fallbackType;
-    const normalized = governmentType.trim().toLowerCase();
-    return GOVERNMENT_TYPE_ALIASES[normalized] || fallbackType;
-}
-
 function getCanonicalGovernmentType(input, fallbackType = CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY) {
     const govType = typeof input === 'string' ? input : input?.government_type;
-    return normalizeGovernmentType(govType, fallbackType);
+    if (typeof govType !== 'string') return fallbackType;
+    return GOVERNMENT_TYPE_ALIASES[govType.trim().toLowerCase()] || fallbackType;
 }
 
 function isAutocracy(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.AUTOCRACY; }
@@ -1553,8 +1548,6 @@ function calculateNationalBudget(nation) {
     };
 }
 
-// ==================== BUDGET BILL HELPERS ====================
-
 /**
  * Override formula-based tariff revenue with real trade engine data.
  * Mutates the budget object in place and returns it.
@@ -1568,6 +1561,8 @@ function applyTradeTariffOverride(budget, tradeTariffRevenue) {
     }
     return budget;
 }
+
+// ==================== BUDGET BILL HELPERS ====================
 
 /**
  * Fiscal categories that map 1:1 to ministries.
@@ -1640,6 +1635,9 @@ function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
 /**
  * Compute the annualized cost of all institutions for a given fiscal category.
  * Institutions use base_cost_per_capita × population, scaled by inflation.
+ * @param {Array} institutions - rows from ministry_institution_config
+ * @param {string} fiscalCategory - e.g. 'Healthcare', 'Trade'
+ * @param {Object} nation
  */
 function computeMinistryInstitutionCost(institutions, fiscalCategory, nation) {
     const ministryKey = FISCAL_TO_MINISTRY_KEY[fiscalCategory] || fiscalCategory.toLowerCase();
@@ -1661,7 +1659,7 @@ function computeMinistryInstitutionCost(institutions, fiscalCategory, nation) {
 /**
  * Build full budget data for a nation: revenue, expenditures per ministry, debt service, etc.
  */
-function buildBudgetData(nation, activeLaws, tradeTariffRevenue?, institutions?) {
+function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions) {
     const budget = calculateNationalBudget(nation);
     applyTradeTariffOverride(budget, tradeTariffRevenue);
     const inflationStat = Number(nation.inflation || 50);
@@ -1706,20 +1704,7 @@ function buildBudgetData(nation, activeLaws, tradeTariffRevenue?, institutions?)
  * Called at January ticks (tick % 12 === 1, since tick 1 = January after start).
  */
 async function generateBudgetBill(supabase, nation, currentTick, activeLaws) {
-    // Fetch latest trade summary for tariff revenue (matches Economy page)
-    const { data: tradeSummary } = await supabase.from('trade_summary')
-        .select('tariff_revenue')
-        .eq('nation_id', nation.id)
-        .order('tick', { ascending: false })
-        .limit(1)
-        .single();
-    const tradeTariffRevenue = tradeSummary ? Number(tradeSummary.tariff_revenue) : null;
-
-    // Load institution config for cost calculations
-    const { data: instRows } = await supabase.from('ministry_institution_config')
-        .select('ministry_key, institution_name, base_cost_per_capita, cost_share');
-
-    const budgetData = buildBudgetData(nation, activeLaws, tradeTariffRevenue, instRows || []);
+    const budgetData = buildBudgetData(nation, activeLaws);
 
     const gameYear = 2000 + Math.floor(currentTick / 12);
     const billName = `Budget Act of ${gameYear}`;
@@ -1791,16 +1776,6 @@ async function resolveBudgetBill(supabase, bill, currentTick) {
     if (!nation) return;
 
     const budget = calculateNationalBudget(nation);
-
-    // Override tariff revenue with real trade engine data (matches Economy page)
-    const { data: tradeSummary } = await supabase.from('trade_summary')
-        .select('tariff_revenue')
-        .eq('nation_id', nation.id)
-        .order('tick', { ascending: false })
-        .limit(1)
-        .single();
-    applyTradeTariffOverride(budget, tradeSummary ? Number(tradeSummary.tariff_revenue) : null);
-
     const reserves = Number(nation.budget_reserves || 0);
     const available = budget.grossRevenue + reserves - budget.debtService;
 
@@ -1985,16 +1960,6 @@ function getFullIdeologyProfile(ideologyRow) {
             label: getIdeologyLabel(score, axis)
         };
     });
-}
-
-function getIdeologySummary(ideologyRow) {
-    const profile = getFullIdeologyProfile(ideologyRow);
-    return profile.map(p => {
-        if (p.label === 'Centrist') {
-            return `Centrist (${p.axisDef.leftLabel}/${p.axisDef.rightLabel})`;
-        }
-        return p.label;
-    }).join(' • ');
 }
 
 
@@ -2526,34 +2491,6 @@ async function applyEnactmentApproval(supabase, approvalDeltas) {
 
 // ==================== STATIC IDEOLOGY PENALTY (LEGACY) ====================
 
-function countOpposedArticles(articles, sponsor) {
-    const ideo1 = (sponsor?.ideology_value_1 || '').toUpperCase();
-    const ideo2 = (sponsor?.ideology_value_2 || '').toUpperCase();
-    const factionIdeos = [ideo1, ideo2].filter(Boolean);
-
-    if (factionIdeos.length === 0) return 0;
-
-    const factionOpposites = new Set(
-        factionIdeos.map(fi => IDEOLOGY_OPPOSITES[fi]).filter(Boolean)
-    );
-
-    let opposed = 0;
-    for (const art of articles) {
-        const p = art.policies || art;
-        if (!p || !p.policy_name) continue;
-
-        const policyIdeos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
-            ? p.ideologies.map(i => i.toUpperCase())
-            : (p.ideology ? [p.ideology.toUpperCase()] : []);
-
-        if (policyIdeos.length === 0) continue;
-
-        const hasOpposite = policyIdeos.some(pi => factionOpposites.has(pi));
-        if (hasOpposite) opposed++;
-    }
-    return opposed;
-}
-
 function calculateIdeologyPenalty(stage, opposedCount, polarization) {
     if (opposedCount === 0) return 0;
 
@@ -2574,11 +2511,6 @@ function calculateIdeologyPenalty(stage, opposedCount, polarization) {
     }
 
     return penalty;
-}
-
-async function applyIdeologyPenalty(supabase, sponsorId, penalty) {
-    if (penalty === 0 || !sponsorId) return;
-    await adjustBlocApproval(supabase, sponsorId, penalty);
 }
 
 
@@ -6093,9 +6025,18 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
     }
 
     // Create confirmation bill (goes straight to floor vote)
+    const ministerTitle = {
+        prime_minister: 'Prime Minister', interior: 'Minister of the Interior',
+        foreign: 'Minister of Foreign Affairs', defense: 'Minister of Defense',
+        finance: 'Minister of Finance', education: 'Minister of Education',
+        healthcare: 'Minister of Healthcare', labor: 'Minister of Labor',
+        justice: 'Minister of Justice', trade: 'Minister of Trade',
+        energy: 'Minister of Energy', transportation: 'Minister of Transportation',
+        security: 'Minister of Security'
+    }[ministryKey] || ministryDisplayName;
 
-    const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministryDisplayName}`;
-    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as head of the ${ministryDisplayName}. A simple majority (${GAME_CONFIG.MAJORITY_SEATS} of ${GAME_CONFIG.TOTAL_SEATS} seats) is required for confirmation.`;
+    const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministerTitle}`;
+    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${GAME_CONFIG.MAJORITY_SEATS} of ${GAME_CONFIG.TOTAL_SEATS} seats) is required for confirmation.`;
 
     const { data: bill, error: billErr } = await supabase.from('bills').insert({
         nation_id: nationId,
@@ -6735,7 +6676,7 @@ async function processPartyStandingsJitter(supabase, nation) {
  * @param {number} currentTick - The tick just committed
  */
 async function calculateThreePillarPreferences(supabase, nation, currentTick) {
-    if (isGovernmentAutocracy(nation)) return;
+    if (isAutocracy(nation)) return;
 
     // ── 1. Load all party factions ──
     const { data: factions } = await supabase
@@ -8331,38 +8272,6 @@ function randInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-/**
- * Select a donor bloc weighted by preference × population.
- * Blocs with preference below 20 are excluded (they won't fund you).
- * Returns the selected bloc object or null if nobody wants to fund you.
- */
-function selectDonorBloc(blocs, approvalRows) {
-    const approvalByBloc = {};
-    for (const row of approvalRows) approvalByBloc[row.bloc_id] = row;
-
-    const eligible = [];
-    let totalWeight = 0;
-
-    for (const bloc of blocs) {
-        const approval = approvalByBloc[bloc.id];
-        if (!approval) continue;
-        const pref = Number(approval.preference_score ?? 0);
-        if (pref < 20) continue; // bloc that hates you won't fund you
-        const weight = pref * (bloc.population_weight || 0);
-        if (weight <= 0) continue;
-        eligible.push({ bloc, approval, weight });
-        totalWeight += weight;
-    }
-
-    if (eligible.length === 0) return null;
-
-    let roll = Math.random() * totalWeight;
-    for (const entry of eligible) {
-        roll -= entry.weight;
-        if (roll <= 0) return entry.bloc;
-    }
-    return eligible[eligible.length - 1].bloc;
-}
 
 /**
  * Generate a fundraiser offer for a given bloc.
@@ -9258,7 +9167,7 @@ async function processLoyaltyTick(supabase, nation) {
     const rulingId = nation.ruling_faction_id;
     if (!rulingId) return;
 
-    const isAutocracy = isGovernmentAutocracy(nation);
+    const isAutocracy = isAutocracy(nation);
 
     const { data: factions } = await supabase
         .from('factions')
@@ -10059,61 +9968,29 @@ async function processCrises(supabase, nation, currentTick) {
     const nationUpdates = {};
     const statBounds = {}; // { stat_key: { floor: highestFloor, ceiling: lowestCeiling } }
 
-    // 2b. Pre-fetch budget funding ratios for ministry crises (keyed by fiscal_category)
-    const fundingRatios: Record<string, number> = {};
-    const hasMinistryTemplates = crisisTemplates.some(t => t.crisis_type === 'ministry');
-    if (hasMinistryTemplates && nation.last_budget_bill_id) {
-        const { data: budgetRows } = await supabase
-            .from('budget_allocations')
-            .select('fiscal_category, allocation_amount, fulfilled_cost')
-            .eq('bill_id', nation.last_budget_bill_id);
-        for (const row of (budgetRows || [])) {
-            const fulfilled = Number(row.fulfilled_cost) || 0;
-            if (fulfilled > 0) {
-                fundingRatios[row.fiscal_category] = (Number(row.allocation_amount) / fulfilled) * 100;
-            } else {
-                fundingRatios[row.fiscal_category] = 100; // no cost = fully funded
-            }
-        }
-    }
-
     // 3. Check inactive crises for activation
     for (const template of crisisTemplates) {
         if (activeMap[template.id]) continue; // already active
 
-        let allTriggersMet = false;
+        const triggers = template.crisis_triggers || [];
+        if (triggers.length === 0) continue;
 
-        if (template.crisis_type === 'ministry') {
-            // Ministry crisis: activate when funding ratio drops below threshold
-            const fc = template.fiscal_category;
-            const threshold = Number(template.funding_threshold_pct) || 50;
-            if (!fc) continue;
-            if (!nation.last_budget_bill_id) continue; // no budget yet
-            const ratio = fundingRatios[fc];
-            if (ratio === undefined) continue; // no budget row for this ministry
-            allTriggersMet = ratio < threshold;
-        } else {
-            // Stat crisis: all stat-based triggers must be met
-            const triggers = template.crisis_triggers || [];
-            if (triggers.length === 0) continue;
-
-            allTriggersMet = true;
-            for (const trigger of triggers) {
-                const resolvedKey = normalizeNationStatKey(trigger.stat_key) || trigger.stat_key;
-                const statValue = nation[resolvedKey];
-                if (statValue === null || statValue === undefined) {
-                    allTriggersMet = false;
-                    break;
-                }
-                const val = Number(statValue);
-                if (trigger.operator === 'gte' && val < Number(trigger.threshold)) {
-                    allTriggersMet = false;
-                    break;
-                }
-                if (trigger.operator === 'lte' && val > Number(trigger.threshold)) {
-                    allTriggersMet = false;
-                    break;
-                }
+        let allTriggersMet = true;
+        for (const trigger of triggers) {
+            const resolvedKey = normalizeNationStatKey(trigger.stat_key) || trigger.stat_key;
+            const statValue = nation[resolvedKey];
+            if (statValue === null || statValue === undefined) {
+                allTriggersMet = false;
+                break;
+            }
+            const val = Number(statValue);
+            if (trigger.operator === 'gte' && val < Number(trigger.threshold)) {
+                allTriggersMet = false;
+                break;
+            }
+            if (trigger.operator === 'lte' && val > Number(trigger.threshold)) {
+                allTriggersMet = false;
+                break;
             }
         }
 
@@ -10344,35 +10221,24 @@ async function processCrises(supabase, nation, currentTick) {
         }
 
         // 4c. Check end / recovery triggers AFTER effects applied (prevents flicker)
-        let allEndConditionsMet = false;
+        const endTriggers = template.crisis_end_triggers || [];
+        let allEndConditionsMet = endTriggers.length > 0;
 
-        if (template.crisis_type === 'ministry') {
-            // Ministry crisis: recovers when funding ratio >= recovery_threshold_pct
-            const fc = template.fiscal_category;
-            const recoveryPct = Number(template.recovery_threshold_pct) || 75;
-            const ratio = fc ? (fundingRatios[fc] ?? 100) : 100;
-            allEndConditionsMet = ratio >= recoveryPct;
-        } else {
-            // Stat crisis: all end triggers must be met
-            const endTriggers = template.crisis_end_triggers || [];
-            allEndConditionsMet = endTriggers.length > 0;
-
-            for (const endTrigger of endTriggers) {
-                const resolvedEndKey = normalizeNationStatKey(endTrigger.stat_key) || endTrigger.stat_key;
-                const statValue = nation[resolvedEndKey];
-                if (statValue === null || statValue === undefined) {
-                    allEndConditionsMet = false;
-                    break;
-                }
-                const val = Number(statValue);
-                if (endTrigger.operator === 'gte' && val < Number(endTrigger.threshold)) {
-                    allEndConditionsMet = false;
-                    break;
-                }
-                if (endTrigger.operator === 'lte' && val > Number(endTrigger.threshold)) {
-                    allEndConditionsMet = false;
-                    break;
-                }
+        for (const endTrigger of endTriggers) {
+            const resolvedEndKey = normalizeNationStatKey(endTrigger.stat_key) || endTrigger.stat_key;
+            const statValue = nation[resolvedEndKey];
+            if (statValue === null || statValue === undefined) {
+                allEndConditionsMet = false;
+                break;
+            }
+            const val = Number(statValue);
+            if (endTrigger.operator === 'gte' && val < Number(endTrigger.threshold)) {
+                allEndConditionsMet = false;
+                break;
+            }
+            if (endTrigger.operator === 'lte' && val > Number(endTrigger.threshold)) {
+                allEndConditionsMet = false;
+                break;
             }
         }
 
@@ -10423,110 +10289,6 @@ async function processCrises(supabase, nation, currentTick) {
     }
 
     return crisisEvents;
-}
-
-
-// ==================== POPULATION GROWTH ====================
-/**
- * Computes population_growth from birth_rate, death_rate, immigration, emigration
- * with a standard-of-living demographic-transition modifier.
- * Then applies the growth score to update population, eligible_voters, and voter blocs.
- *
- * Formula:
- *   natural  = birth_rate - death_rate       (60% weight)
- *   migration = immigration - emigration     (40% weight)
- *   solMod   = ((50 - standard_of_living) / 50) * 5   (~5pt max drag/boost)
- *   population_growth = clamp(50 + raw/4 + solMod, 0, 100)
- *   monthlyRate = ((population_growth - 50) / 50) * 0.01   (+/- 1% max per tick)
- */
-async function processPopulation(supabase: any, nation: any) {
-    // Re-fetch to get post-effect stat values
-    const { data: fresh } = await supabase.from('nations').select('*').eq('id', nation.id).single();
-    if (fresh) Object.assign(nation, fresh);
-
-    const birthRate = Number(nation.birth_rate ?? 50);
-    const deathRate = Number(nation.death_rate ?? 50);
-    const immigration = Number(nation.immigration ?? 50);
-    const emigration = Number(nation.emigration ?? 50);
-    const sol = Number(nation.standard_of_living ?? 50);
-    const population = Number(nation.population ?? 0);
-
-    if (population <= 0) return null;
-
-    // Component deltas (each -100 to +100)
-    const natural = birthRate - deathRate;
-    const migration = immigration - emigration;
-
-    // Weighted blend: 60% natural, 40% migration
-    const raw = natural * 0.6 + migration * 0.4;
-
-    // Standard-of-living modifier: demographic transition
-    // At SoL 50 = no effect. At SoL 80 = -3pt drag. At SoL 20 = +3pt boost.
-    const solModifier = ((50 - sol) / 50) * 5;
-
-    // Map to 0-100 scale (/4 keeps values in playable range)
-    const growthScore = Math.round(Math.max(0, Math.min(100, 50 + (raw / 4) + solModifier)));
-
-    // Compute actual population change (+/- 1% max per tick)
-    const monthlyRate = ((growthScore - 50) / 50) * 0.01;
-    const popChange = Math.round(population * monthlyRate);
-    const newPopulation = Math.max(0, population + popChange);
-
-    // Scale eligible voters proportionally
-    const voterRatio = population > 0 ? (Number(nation.eligible_voters ?? 0) / population) : 0;
-    const newEligibleVoters = Math.round(newPopulation * voterRatio);
-
-    // Scale ideology voter blocs proportionally
-    const ideologyKeys = [
-        'progressive_voters', 'liberal_voters', 'moderate_voters',
-        'conservative_voters', 'nationalist_voters'
-    ];
-    let totalVoters = 0;
-    const currentVoters: Record<string, number> = {};
-    for (const key of ideologyKeys) {
-        const v = Number(nation[key] ?? 0);
-        currentVoters[key] = v;
-        totalVoters += v;
-    }
-    const updatedVoters: Record<string, number> = {};
-    for (const key of ideologyKeys) {
-        if (totalVoters > 0) {
-            const share = currentVoters[key] / totalVoters;
-            updatedVoters[key] = Math.round(currentVoters[key] + (popChange * share));
-        } else {
-            updatedVoters[key] = currentVoters[key];
-        }
-    }
-
-    // Build update payload
-    const updates: Record<string, number> = {
-        population_growth: growthScore,
-        population: newPopulation,
-        eligible_voters: newEligibleVoters,
-        ...updatedVoters
-    };
-
-    const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
-    if (error) {
-        console.error(`[processPopulation] Update failed for ${nation.name}:`, error.message);
-        return null;
-    }
-
-    // Sync in-memory nation object
-    Object.assign(nation, updates);
-
-    console.log(`[processPopulation] ${nation.name}: growth=${growthScore} (birth=${birthRate} death=${deathRate} imm=${immigration} emi=${emigration} sol=${sol}) pop ${population} -> ${newPopulation} (${popChange >= 0 ? '+' : ''}${popChange})`);
-
-    return {
-        population_growth: growthScore,
-        population: newPopulation,
-        population_change: popChange,
-        birth_rate: birthRate,
-        death_rate: deathRate,
-        immigration: immigration,
-        emigration: emigration,
-        standard_of_living: sol
-    };
 }
 
 
@@ -12495,13 +12257,6 @@ async function advanceTick(supabase) {
             summary.vacancies.push(vacancyResult);
         }
 
-        // Auto-expire committee bills that sat too long without going to the floor
-        const committeeExpired = await expireCommitteeBills(supabase, nation.id, newTick);
-        if (committeeExpired.length > 0) {
-            summary.committeeExpired = summary.committeeExpired || [];
-            summary.committeeExpired.push({ nation: nation.name, bills: committeeExpired });
-        }
-
         // Check for early majority on active floor bills (lock outcome + set grace tick)
         const earlyResults = await checkEarlyMajority(supabase, nation.id);
         if (earlyResults.length > 0) {
@@ -12533,7 +12288,7 @@ async function advanceTick(supabase) {
         await processIdeologyShifts(supabase, nation.id, resolutions, newTick);
 
         // Purge approval decay (autocracy scapegoat mechanic)
-        if (isGovernmentAutocracy(nation)) {
+        if (isAutocracy(nation)) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
@@ -12547,12 +12302,12 @@ async function advanceTick(supabase) {
         await calculateThreePillarPreferences(supabase, nation, newTick);
 
         // Faction loyalty (autocracy)
-        if (isGovernmentAutocracy(nation)) {
+        if (isAutocracy(nation)) {
             await processLoyaltyTick(supabase, nation);
         }
 
         // Auto-resolve shakeups that are 1+ ticks old
-        if (isGovernmentAutocracy(nation)) {
+        if (isAutocracy(nation)) {
             await autoResolveStaleShakeups(supabase, nation.id, newTick);
         }
 
@@ -12578,6 +12333,13 @@ async function advanceTick(supabase) {
         const eventResults = await processEvents(supabase, nation, newTick);
         if (eventResults.length > 0) summary.events.push({ nation: nation.name, events: eventResults });
 
+        // Process active fundraiser promises
+        const promiseResults = await processPromiseTick(supabase, nation, newTick);
+        if (promiseResults.length > 0) {
+            summary.promises = summary.promises || [];
+            summary.promises.push({ nation: nation.name, promises: promiseResults });
+        }
+
         // Ministry inbox events (fire from templates + expire overdue)
         const ministryEventResults = await processMinistryInboxEvents(supabase, freshNation || nation, newTick);
         if (ministryEventResults.length > 0) {
@@ -12590,13 +12352,6 @@ async function advanceTick(supabase) {
         if (retirementResults.length > 0) {
             summary.ambassadorRetirements = summary.ambassadorRetirements || [];
             summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
-        }
-
-        // Population growth (computed from birth_rate, death_rate, immigration, emigration)
-        const popResult = await processPopulation(supabase, nation);
-        if (popResult) {
-            summary.population = summary.population || [];
-            summary.population.push({ nation: nation.name, ...popResult });
         }
 
         // Final snapshot — capture everything that happened this tick
