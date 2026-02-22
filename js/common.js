@@ -296,26 +296,42 @@ export function cleanSeenBills(activeFloorIds) {
     localStorage.setItem('nationhood_seen_bills', JSON.stringify(cleaned));
 }
 
-async function updateBillsBadge(faction, nation) {
+async function updateBillsBadge(faction, nation, shard) {
     const badge = document.getElementById('bills-badge');
     if (!badge || !faction || !nation) return;
     try {
         const { data: floorBills } = await _supabase
             .from('bills')
-            .select('id, bill_support(faction_id)')
+            .select('id, bill_type, bill_support(faction_id)')
             .eq('nation_id', nation.id)
             .eq('status', 'floor');
-        if (!floorBills || floorBills.length === 0) {
-            badge.style.display = 'none';
-            return;
-        }
+
         const seenBills = getSeenBills();
         let count = 0;
-        for (const bill of floorBills) {
+        for (const bill of (floorBills || [])) {
             const hasVoted = (bill.bill_support || []).some(s => s.faction_id === faction.id);
             const hasSeen = seenBills.includes(bill.id);
             if (!hasVoted && !hasSeen) count++;
         }
+
+        // Check if budget bill badge should show (no passed budget, not on cooldown, none pending)
+        const currentTick = shard?.current_tick || 0;
+        const lastBudgetTick = Number(nation.last_budget_tick || 0);
+        const budgetOnCooldown = lastBudgetTick > 0 && (currentTick - lastBudgetTick) < 12;
+        const hasPendingBudget = (floorBills || []).some(b => b.bill_type === 'budget');
+        if (!budgetOnCooldown && !hasPendingBudget) {
+            // Also check committee
+            const { data: committeeBudget } = await _supabase.from('bills')
+                .select('id')
+                .eq('nation_id', nation.id)
+                .eq('bill_type', 'budget')
+                .eq('status', 'committee')
+                .limit(1);
+            if (!committeeBudget || committeeBudget.length === 0) {
+                count++;
+            }
+        }
+
         if (count > 0) {
             badge.textContent = count;
             badge.style.display = '';
@@ -623,7 +639,7 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     updateTopBarInfo(state.faction, state.shard, state.nation);
     // Update bills badge (non-blocking, skip on laws page since it marks seen)
     if (activeTab !== 'laws') {
-        updateBillsBadge(state.faction, state.nation);
+        updateBillsBadge(state.faction, state.nation, state.shard);
     }
     if (onReady) {
         await onReady(state);
