@@ -108,7 +108,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust } from './js/common.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, buildBudgetData } from './js/game-common.js';
 (function () {
     'use strict';
 let currentNation = null, currentFaction = null, currentSeats = 0;
@@ -127,6 +127,7 @@ let showingAllLaws = false;
 let factionIdeology = null; // Dynamic ideology scores for current player
 let archiveBills = null; // null = not loaded yet; array once fetched
 let showingPassedLaws = false;
+let showingBudgetBill = false;
 const FALLBACK_COLORS = ['#ff4444','#4CAF50','#2196F3','#ff9800','#9C27B0','#00BCD4','#E91E63','#CDDC39'];
 
 function _getCompatiblePolicies(sector) {
@@ -313,8 +314,9 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
             <div class="laws-header">
                 <div class="section-header" style="margin-bottom:0;border-bottom:none;">${pageTitle}</div>
                 <div class="laws-header-buttons">
-                    <button class="all-laws-btn" onclick="toggleAllLaws()">📋 All Laws</button>
                     <button class="passed-laws-btn" onclick="togglePassedLaws()">📜 Passed Laws</button>
+                    <button class="budget-bill-btn" onclick="toggleBudgetBill()">💰 Budget Bill</button>
+                    <button class="all-laws-btn" onclick="toggleAllLaws()">📋 All Laws</button>
                     <button class="draft-btn ${lawsIsAutocracy ? 'autocracy-btn' : ''}" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'} ${noSeatsTitle}>
                         ${termPropose} <span class="ap-cost">${GAME_CONFIG.DRAFT_BILL_AP_COST} AP</span>
                     </button>
@@ -342,6 +344,9 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
             <!-- Passed Laws Archive Panel (hidden by default) -->
             <div class="passed-laws-panel" id="passed-laws-panel"></div>
 
+            <!-- Budget Bill Preview Panel (hidden by default) -->
+            <div class="budget-bill-panel" id="budget-bill-panel"></div>
+
             <!-- Bills View (shown by default) -->
             <div id="bills-view">
                 ${presidentDeskBills.length > 0 ? renderPresidentDeskBills() : ''}
@@ -367,8 +372,12 @@ function toggleAllLaws() {
         showingPassedLaws = false;
         document.getElementById('passed-laws-panel').classList.remove('active');
     }
+    if (showingAllLaws && showingBudgetBill) {
+        showingBudgetBill = false;
+        document.getElementById('budget-bill-panel').classList.remove('active');
+    }
     document.getElementById('all-laws-panel').classList.toggle('active', showingAllLaws);
-    document.getElementById('bills-view').style.display = (showingAllLaws || showingPassedLaws) ? 'none' : 'block';
+    document.getElementById('bills-view').style.display = (showingAllLaws || showingPassedLaws || showingBudgetBill) ? 'none' : 'block';
     if (showingAllLaws) filterAllLaws();
 }
 
@@ -445,6 +454,138 @@ function filterAllLaws() {
             </div>
         </div>`;
     }).join('');
+}
+
+// ==================== BUDGET BILL PREVIEW ====================
+
+async function toggleBudgetBill() {
+    showingBudgetBill = !showingBudgetBill;
+    if (showingBudgetBill && showingAllLaws) {
+        showingAllLaws = false;
+        document.getElementById('all-laws-panel').classList.remove('active');
+    }
+    if (showingBudgetBill && showingPassedLaws) {
+        showingPassedLaws = false;
+        document.getElementById('passed-laws-panel').classList.remove('active');
+    }
+    const panel = document.getElementById('budget-bill-panel');
+    const billsView = document.getElementById('bills-view');
+    if (showingBudgetBill) {
+        panel.classList.add('active');
+        billsView.style.display = 'none';
+        panel.innerHTML = `<button class="all-laws-back" onclick="toggleBudgetBill()">\u2190 Back to ${termBills}</button><div style="text-align:center;padding:40px;color:#888;">Loading budget data...</div>`;
+        await renderBudgetBillContent();
+    } else {
+        panel.classList.remove('active');
+        billsView.style.display = 'block';
+    }
+}
+
+function fmtBudgetVal(val) {
+    if (val == null) return '$0';
+    val = Number(val);
+    var sign = val < 0 ? '-' : '';
+    var abs = Math.abs(val);
+    if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(1) + ' Trillion';
+    if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(1) + ' Billion';
+    if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(1) + ' Million';
+    if (abs >= 1e3) return sign + '$' + (abs / 1e3).toFixed(0) + 'K';
+    return sign + '$' + Math.round(abs);
+}
+
+function budgetLine(label, value, isBold, isNegative) {
+    var cls = isBold ? ' bp-line-bold' : '';
+    var negCls = isNegative ? ' bp-line-negative' : '';
+    return '<div class="bp-line' + cls + negCls + '">' +
+        '<span class="bp-label">' + label + '</span>' +
+        '<span class="bp-value">' + fmtBudgetVal(value) + '</span>' +
+        '</div>';
+}
+
+async function renderBudgetBillContent() {
+    const panel = document.getElementById('budget-bill-panel');
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shard?.current_tick || 0;
+        const nextJanTick = Math.ceil((currentTick + 1) / 12) * 12;
+        const gameYear = 2000 + Math.floor(nextJanTick / 12);
+
+        const { data: laws } = await _supabase.from('active_laws')
+            .select('*, policies(id, policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat)')
+            .eq('nation_id', currentNation.id);
+        const budgetLaws = (laws || []).filter(l => !l.is_reversal);
+
+        const { data: tradeSummary } = await _supabase.from('trade_summary')
+            .select('tariff_revenue')
+            .eq('nation_id', currentNation.id)
+            .order('tick', { ascending: false })
+            .limit(1)
+            .single();
+        const tradeTariffRevenue = tradeSummary ? Number(tradeSummary.tariff_revenue) : null;
+
+        const bd = buildBudgetData(currentNation, budgetLaws, tradeTariffRevenue);
+        const budget = calculateNationalBudget(currentNation);
+        applyTradeTariffOverride(budget, tradeTariffRevenue);
+
+        const gap = bd.available - bd.totalExpenditure;
+        const gapLabel = gap >= 0 ? 'SURPLUS' : 'DEFICIT';
+        const gapClass = gap >= 0 ? 'bp-surplus' : 'bp-deficit';
+
+        let h = '';
+        h += `<button class="all-laws-back" onclick="toggleBudgetBill()">\u2190 Back to ${termBills}</button>`;
+        h += '<div class="section-header" style="font-size:1rem;">Upcoming Budget Bill \u2014 Year ' + gameYear + '</div>';
+
+        // === SUMMARY BAR ===
+        h += '<div class="bp-summary-bar">';
+        h += '<div class="bp-summary-item"><span class="bp-summary-label">Available</span><span class="bp-summary-value">' + fmtBudgetVal(bd.available) + '</span></div>';
+        h += '<div class="bp-summary-item"><span class="bp-summary-label">Spending</span><span class="bp-summary-value">' + fmtBudgetVal(bd.totalExpenditure) + '</span></div>';
+        h += '<div class="bp-summary-item"><span class="bp-summary-label">' + gapLabel + '</span><span class="bp-summary-value ' + gapClass + '">' + (gap >= 0 ? '+' : '') + fmtBudgetVal(gap) + '</span></div>';
+        h += '<div class="bp-summary-item"><span class="bp-summary-label">Projected Debt</span><span class="bp-summary-value">' + fmtBudgetVal(bd.projectedDebt) + '</span></div>';
+        h += '</div>';
+
+        // === TWO-COLUMN LAYOUT ===
+        h += '<div class="bp-columns">';
+
+        // --- Left: Revenue ---
+        h += '<div class="bp-col">';
+        h += '<div class="bp-col-header">REVENUE</div>';
+        h += budgetLine('Income Tax (' + Math.round(Number(currentNation.income_tax || 0)) + '%)', budget.incomeRevenue);
+        h += budgetLine('Corporate Tax (' + Math.round(Number(currentNation.corporate_tax || 0)) + '%)', budget.corpRevenue);
+        h += budgetLine('Sales Tax (' + Math.round(Number(currentNation.sales_tax || 0)) + '%)', budget.salesRevenue);
+        h += budgetLine('Tariffs (' + Math.round(Number(currentNation.tariffs || 0)) + '%)', budget.tariffRevenue);
+        if (budget.oilRevenue > 0) {
+            h += budgetLine('State Enterprises (Oil & Gas)', budget.oilRevenue);
+        }
+        h += '<div class="bp-divider"></div>';
+        h += budgetLine('Gross Revenue', budget.grossRevenue, true);
+        var reserves = Number(currentNation.budget_reserves || 0);
+        if (reserves > 0) {
+            h += budgetLine("Last Year's Reserves", reserves);
+        }
+        h += budgetLine('Debt Service', -budget.debtService, false, true);
+        h += '<div class="bp-divider"></div>';
+        h += budgetLine('AVAILABLE FOR ALLOCATION', bd.available, true);
+        h += '</div>';
+
+        // --- Right: Expenditures ---
+        h += '<div class="bp-col">';
+        h += '<div class="bp-col-header">EXPENDITURES</div>';
+        for (var i = 0; i < FISCAL_CATEGORIES.length; i++) {
+            var cat = FISCAL_CATEGORIES[i];
+            var mData = bd.ministries[cat];
+            h += budgetLine(cat, mData ? mData.fulfilledCost : 0);
+        }
+        h += '<div class="bp-divider"></div>';
+        h += budgetLine('Total Expenditures', bd.totalExpenditure, true);
+        h += '</div>';
+
+        h += '</div>'; // .bp-columns
+
+        panel.innerHTML = h;
+    } catch (err) {
+        console.error('Budget bill preview error:', err);
+        panel.innerHTML = `<button class="all-laws-back" onclick="toggleBudgetBill()">\u2190 Back to ${termBills}</button><div style="color:#ff4444;text-align:center;padding:40px;">Error loading budget data: ${err.message || err}</div>`;
+    }
 }
 
 // ==================== FLOOR BILLS ====================
@@ -661,6 +802,10 @@ async function togglePassedLaws() {
     if (showingPassedLaws && showingAllLaws) {
         showingAllLaws = false;
         document.getElementById('all-laws-panel').classList.remove('active');
+    }
+    if (showingPassedLaws && showingBudgetBill) {
+        showingBudgetBill = false;
+        document.getElementById('budget-bill-panel').classList.remove('active');
     }
     const panel = document.getElementById('passed-laws-panel');
     const billsView = document.getElementById('bills-view');
@@ -1427,6 +1572,7 @@ window.enactDecree = enactDecree;
 window.retractBill = retractBill;
 window.filterAllLaws = filterAllLaws;
 window.togglePassedLaws = togglePassedLaws;
+window.toggleBudgetBill = toggleBudgetBill;
 })();
 </script>
 </body>
