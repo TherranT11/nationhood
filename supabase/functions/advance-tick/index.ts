@@ -1651,7 +1651,7 @@ function computeMinistryInstitutionCost(institutions, fiscalCategory, nation) {
     for (const inst of insts) {
         let cost = Number(inst.base_cost_per_capita || 0) * population;
         cost *= inflationMult;
-        items.push({ institution_name: inst.institution_name, cost, base_cost_per_capita: inst.base_cost_per_capita });
+        items.push({ id: inst.id, institution_name: inst.institution_name, cost, base_cost_per_capita: inst.base_cost_per_capita });
         total += cost;
     }
     return { total, institutions: items };
@@ -1719,7 +1719,7 @@ async function generateBudgetBill(supabase, nation, currentTick, activeLaws) {
 
     // Load institution config for cost calculations
     const { data: instRows } = await supabase.from('ministry_institution_config')
-        .select('ministry_key, institution_name, base_cost_per_capita, cost_share');
+        .select('id, ministry_key, institution_name, base_cost_per_capita, cost_share');
 
     const budgetData = buildBudgetData(nation, activeLaws, tradeTariffRevenue, instRows || []);
 
@@ -1774,6 +1774,32 @@ async function generateBudgetBill(supabase, nation, currentTick, activeLaws) {
     const { error: allocError } = await supabase.from('budget_allocations').insert(allocRows);
     if (allocError) {
         console.error('[generateBudgetBill] Failed to insert allocations:', allocError.message);
+    }
+
+    // Insert per-item allocations (institutions + policies)
+    const itemRows = [];
+    for (const cat of FISCAL_CATEGORIES) {
+        const m = budgetData.ministries[cat];
+        for (const inst of (m.institutions || [])) {
+            itemRows.push({
+                bill_id: bill.id, nation_id: nation.id, fiscal_category: cat,
+                item_type: 'institution', item_id: inst.id,
+                item_name: inst.institution_name,
+                allocation_amount: inst.cost, needed_amount: inst.cost, is_cut: false
+            });
+        }
+        for (const pol of (m.policies || [])) {
+            itemRows.push({
+                bill_id: bill.id, nation_id: nation.id, fiscal_category: cat,
+                item_type: 'policy', item_id: pol.policy_id,
+                item_name: pol.policy_name,
+                allocation_amount: pol.cost, needed_amount: pol.cost, is_cut: false
+            });
+        }
+    }
+    if (itemRows.length > 0) {
+        const { error: itemError } = await supabase.from('budget_item_allocations').insert(itemRows);
+        if (itemError) console.error('[generateBudgetBill] Failed to insert item allocations:', itemError.message);
     }
 
     console.log(`[generateBudgetBill] Created budget bill "${billName}" for ${nation.name} (bill ${bill.id})`);

@@ -575,13 +575,14 @@ initPage('ministry-actions', async (state) => {
     // Fetch current budget allocations (from last passed budget bill)
     if (currentNation.last_budget_bill_id) {
         const { data: allocs } = await _supabase.from('budget_allocations')
-            .select('fiscal_category, allocation_amount, fulfilled_cost')
+            .select('fiscal_category, allocation_amount, fulfilled_cost, discretionary_amount')
             .eq('bill_id', currentNation.last_budget_bill_id);
         if (allocs) {
             for (const a of allocs) {
                 budgetAllocations[a.fiscal_category] = {
                     allocated: Number(a.allocation_amount) || 0,
-                    needed: Number(a.fulfilled_cost) || 0
+                    needed: Number(a.fulfilled_cost) || 0,
+                    discretionary: Number(a.discretionary_amount) || 0
                 };
             }
         }
