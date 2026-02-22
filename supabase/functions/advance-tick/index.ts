@@ -2988,6 +2988,7 @@ async function resolveExpiredVotes(supabase, nationId) {
 
         // Determine pass/fail — early-locked outcomes take priority
         const isNoConfidence = bill.bill_type === 'no_confidence';
+        const isFoundational = bill.bill_type === 'foundational';
         let passed;
         if (bill.early_resolution_status === 'majority_reached') {
             passed = true;  // Locked by checkEarlyMajority
