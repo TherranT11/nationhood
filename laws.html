@@ -116,6 +116,7 @@ let allPartySeats = {}, allParties = [], allPolicies = [];
 let activeLaws = [], committeeBills = [], floorBills = [], frozenBills = [], presidentDeskBills = [], recentBills = [];
 let lawsIsAutocracy = false, isHeadFaction = false, headFactionId = null;
 let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
+let coalitionLeadPartyId = null;
 let isCaretaker = false;
 let isNoGovernment = false;
 let showBudgetBadge = false;
@@ -162,6 +163,7 @@ initPage('laws', async (state) => {
     qCacheBust('coalition_');
     if (!lawsIsAutocracy) {
         const coalition = await fetchActiveCoalition(_supabase, nation.id);
+        coalitionLeadPartyId = coalition?.lead_party_id || null;
         isCaretaker = coalition?.status === 'caretaker';
         isNoGovernment = !coalition;
         // Fallback: frozen bills are ground truth for caretaker status
@@ -638,7 +640,7 @@ async function renderBudgetBillContent() {
         const tradeTariffRevenue = tradeSummary ? Number(tradeSummary.tariff_revenue) : null;
 
         // Load institution config from DB
-        const { data: instRows } = await _supabase.from('ministry_institution_config').select('ministry_key, institution_name, base_cost_per_capita, cost_share, scaling_type');
+        const { data: instRows } = await _supabase.from('ministry_institution_config').select('*');
         const instByMinistry = {};
         for (var ir of (instRows || [])) {
             if (!instByMinistry[ir.ministry_key]) instByMinistry[ir.ministry_key] = [];
@@ -765,7 +767,7 @@ async function renderBudgetBillContent() {
             h += '<div class="bp-submit-notice bp-submit-warning">A budget bill is already pending in ' + (existingBudget[0].status === 'committee' ? 'committee' : 'floor vote') + '.</div>';
         } else if (budgetOnCooldown) {
             h += '<div class="bp-submit-notice bp-submit-disabled">Budget cooldown: ' + cooldownRemaining + ' tick(s) remaining before a new budget can be submitted.</div>';
-        } else if (!(lawsIsAutocracy ? isHeadFaction : isPresidential ? isPresidentParty : (currentFaction && currentNation.ruling_faction_id === currentFaction.id))) {
+        } else if (!(lawsIsAutocracy ? isHeadFaction : isPresidential ? isPresidentParty : (currentFaction && coalitionLeadPartyId === currentFaction.id))) {
             h += '<div class="bp-submit-notice bp-submit-disabled">Only the head of government can submit a budget bill.</div>';
         } else if (isCaretaker || isNoGovernment) {
             h += '<div class="bp-submit-notice bp-submit-disabled">Cannot submit budget bills while the legislature is dissolved.</div>';
