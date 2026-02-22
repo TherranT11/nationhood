@@ -588,8 +588,8 @@ initPage('ministry-actions', async (state) => {
     }
 
     // Load admin-configured institution overrides from DB
-    const { data: instConfig } = await _supabase.from('ministry_institution_config').select('*');
-    if (instConfig && instConfig.length > 0) {
+    const { data: instConfig, error: instConfigErr } = await _supabase.from('ministry_institution_config').select('*');
+    if (!instConfigErr && instConfig && instConfig.length > 0) {
         for (const row of instConfig) {
             const insts = MINISTRY_INSTITUTIONS[row.ministry_key];
             if (!insts) continue;
