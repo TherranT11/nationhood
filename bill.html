@@ -966,7 +966,7 @@ function renderSidebar() {
                         </div>`;
                     }).join('')}
                 </div>` : (!isSponsor ? `<div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div><div class="no-amendments">No conditional support offers</div>` : '')}
-            ${!isSponsor && bill.bill_type !== 'foundational' && bill.bill_type !== 'confirmation' && bill.bill_type !== 'minister_confirmation' && bill.bill_type !== 'veto_override' ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button><button class="add-strike-btn" onclick="openStrikeAmendmentModal()">✂ Strike Article</button></div>` : ''}
+            ${!isSponsor && bill.bill_type !== 'foundational' && bill.bill_type !== 'confirmation' && bill.bill_type !== 'minister_confirmation' && bill.bill_type !== 'veto_override' && bill.bill_type !== 'budget' ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button><button class="add-strike-btn" onclick="openStrikeAmendmentModal()">✂ Strike Article</button></div>` : ''}
         </div>`;
 
     } else if (isFloor) {
@@ -1705,8 +1705,8 @@ function isBudgetEditable() {
     if (currentSeats < 1) return false;
     // Presidential / Autocracy: anyone with 1+ seat can edit
     if (isPresidential || isAutocracy) return true;
-    // Parliamentary: only coalition members can edit
-    return coalitionPartyIds.includes(currentFaction.id);
+    // Parliamentary: coalition members and PM (lead party) can edit
+    return coalitionPartyIds.includes(currentFaction.id) || currentFaction.id === coalitionLeadPartyId;
 }
 
 function getBudgetTotals() {
