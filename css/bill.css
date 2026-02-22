@@ -354,10 +354,41 @@ html { overflow-y: scroll !important; height: auto !important; }
         }
         .budget-tab-name { font-weight: bold; text-align: center; line-height: 1.2; }
         .budget-tab-amount { color: #ccc; font-size: 0.75rem; }
+        .budget-tab-budgeted { color: #ccc; font-size: 0.7rem; }
+        .budget-tab-needed { color: #999; font-size: 0.7rem; }
         .budget-tab-pct { font-weight: bold; font-size: 0.7rem; }
         .funded-full { color: #4CAF50; }
         .funded-ok { color: #ff9800; }
         .funded-low { color: #ff4444; }
+
+        /* Allocation summary */
+        .budget-alloc-summary {
+            display: flex;
+            gap: 20px;
+            padding: 14px 16px;
+            background: #1a1a2e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .budget-alloc-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+        }
+        .budget-alloc-item .budget-alloc-label {
+            color: #888;
+            font-size: 0.7rem;
+            font-weight: bold;
+            letter-spacing: 0.05em;
+            margin-bottom: 4px;
+        }
+        .budget-alloc-item .budget-alloc-value {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #fff;
+        }
 
         /* Allocation controls */
         .budget-alloc-row {

@@ -1663,12 +1663,11 @@ async function loadBudgetData(bill) {
 }
 
 function isBudgetEditable() {
-    if (!currentBill || currentBill.status !== 'floor') return false;
+    if (!currentBill || (currentBill.status !== 'floor' && currentBill.status !== 'committee')) return false;
     if (currentBill.early_resolution_status) return false;
     if (!currentFaction) return false;
-    // Government coalition members can edit
-    return coalitionPartyIds.includes(currentFaction.id) ||
-           currentFaction.id === currentBill.proposed_by;
+    // Anyone with at least 1 seat can edit budget allocations
+    return currentSeats >= 1;
 }
 
 function getBudgetTotals() {
@@ -1782,13 +1781,17 @@ function renderBudgetBillUI() {
     for (const cat of FISCAL_CATEGORIES) {
         const alloc = budgetAllocations.find(a => a.fiscal_category === cat);
         const allocAmt = Number(alloc?.allocation_amount || 0);
-        const fulfilledCost = Number(alloc?.fulfilled_cost || 0);
-        const pctFunded = fulfilledCost > 0 ? Math.round((allocAmt / fulfilledCost) * 100) : 100;
+        // Compute live needed cost
+        const catPolicies = computeMinistryPolicyCost(budgetActiveLaws, cat, budgetNation);
+        const catInstitutions = computeMinistryInstitutionCost(budgetInstitutions, cat, budgetNation);
+        const neededCost = catPolicies.total + catInstitutions.total;
+        const pctFunded = neededCost > 0 ? Math.round((allocAmt / neededCost) * 100) : 100;
         const pctClass = pctFunded >= 100 ? 'funded-full' : pctFunded >= 80 ? 'funded-ok' : 'funded-low';
         const activeClass = (budgetSelectedCategory === cat || (!budgetSelectedCategory && cat === FISCAL_CATEGORIES[0])) ? ' active' : '';
         h += '<button class="budget-ministry-tab' + activeClass + '" data-cat="' + escapeHtml(cat) + '">';
         h += '<span class="budget-tab-name">' + escapeHtml(cat) + '</span>';
-        h += '<span class="budget-tab-amount">' + fmtBudgetCurrency(allocAmt) + '</span>';
+        h += '<span class="budget-tab-budgeted">BUDGETED: ' + fmtBudgetCurrency(allocAmt) + '</span>';
+        h += '<span class="budget-tab-needed">NEEDED: ' + fmtBudgetCurrency(neededCost) + '</span>';
         h += '<span class="budget-tab-pct ' + pctClass + '">' + pctFunded + '%</span>';
         h += '</button>';
     }
@@ -1868,8 +1871,6 @@ function budgetRevLine(label, value, isBold, isNegative) {
 function renderBudgetMinistryDetail(category, editable) {
     const alloc = budgetAllocations.find(a => a.fiscal_category === category);
     const allocAmt = Number(alloc?.allocation_amount || 0);
-    const fulfilledCost = Number(alloc?.fulfilled_cost || 0);
-    const pctFunded = fulfilledCost > 0 ? Math.round((allocAmt / fulfilledCost) * 100) : 100;
 
     // Compute live costs for this ministry
     const ministryPolicies = computeMinistryPolicyCost(budgetActiveLaws, category, budgetNation);
@@ -1878,11 +1879,27 @@ function renderBudgetMinistryDetail(category, editable) {
 
     let h = '';
 
+    // Allocation header with BUDGETED / NEEDED / Percentage
+    const detailPctFunded = liveTotalCost > 0 ? Math.round((allocAmt / liveTotalCost) * 100) : 100;
+    const detailPctClass = detailPctFunded >= 100 ? 'funded-full' : detailPctFunded >= 80 ? 'funded-ok' : 'funded-low';
+    h += '<div class="budget-alloc-summary">';
+    h += '<div class="budget-alloc-item">';
+    h += '<span class="budget-alloc-label">BUDGETED</span>';
+    h += '<span class="budget-alloc-value">' + fmtBudgetCurrency(allocAmt) + '</span>';
+    h += '</div>';
+    h += '<div class="budget-alloc-item">';
+    h += '<span class="budget-alloc-label">NEEDED</span>';
+    h += '<span class="budget-alloc-value">' + fmtBudgetCurrency(liveTotalCost) + '</span>';
+    h += '</div>';
+    h += '<div class="budget-alloc-item">';
+    h += '<span class="budget-alloc-label">FUNDED</span>';
+    h += '<span class="budget-alloc-value ' + detailPctClass + '">' + detailPctFunded + '%</span>';
+    h += '</div>';
+    h += '</div>';
+
     // Allocation controls
-    h += '<div class="budget-alloc-row">';
-    h += '<div class="budget-alloc-label">Allocation:</div>';
-    h += '<div class="budget-alloc-value">' + fmtBudgetCurrency(allocAmt) + '</div>';
     if (editable) {
+        h += '<div class="budget-alloc-row">';
         h += '<div class="budget-alloc-controls">';
         h += '<button class="budget-ctrl-btn fulfill" data-cat="' + escapeHtml(category) + '" data-action="fulfill" title="Set allocation to match true cost">Fulfill ' + fmtBudgetCurrency(liveTotalCost) + '</button>';
         h += '<button class="budget-ctrl-btn" data-cat="' + escapeHtml(category) + '" data-action="dec5">-5%</button>';
@@ -1890,25 +1907,15 @@ function renderBudgetMinistryDetail(category, editable) {
         h += '<button class="budget-ctrl-btn" data-cat="' + escapeHtml(category) + '" data-action="inc1">+1%</button>';
         h += '<button class="budget-ctrl-btn" data-cat="' + escapeHtml(category) + '" data-action="inc5">+5%</button>';
         h += '</div>';
+        h += '</div>';
     }
-    h += '</div>';
 
     // Funding status
-    const surpDef = allocAmt - liveTotalCost;
-    const sdLabel = surpDef >= 0 ? 'SURPLUS' : 'DEFICIT';
-    const sdClass = surpDef >= 0 ? 'budget-gap-surplus' : 'budget-gap-deficit';
-    const sdSign = surpDef >= 0 ? '+' : '';
-    h += '<div class="budget-ministry-status">';
-    h += '<span>Ministry Total Cost: <strong>' + fmtBudgetCurrency(liveTotalCost) + '</strong></span>';
-    h += '<span class="budget-top-sep">|</span>';
-    h += '<span>Allocated: <strong>' + fmtBudgetCurrency(allocAmt) + '</strong></span>';
-    h += '<span class="budget-top-sep">|</span>';
-    h += '<span>' + sdLabel + ': <strong class="' + sdClass + '">' + sdSign + fmtBudgetCurrency(surpDef) + '</strong></span>';
-    if (pctFunded < 100) {
-        h += '<span class="budget-top-sep">|</span>';
-        h += '<span class="budget-underfunded-note">Effects run at ' + pctFunded + '% capacity</span>';
+    if (detailPctFunded < 100) {
+        h += '<div class="budget-ministry-status">';
+        h += '<span class="budget-underfunded-note">⚠ Underfunded — effects run at ' + detailPctFunded + '% capacity</span>';
+        h += '</div>';
     }
-    h += '</div>';
 
     // Institutions section
     h += '<div class="budget-sub-section">';
