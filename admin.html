@@ -441,7 +441,7 @@
 <script type="module">
 const { createClient } = supabase;
 import { fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, computeMinistryPolicyCost, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPMTraitEffects, calculateNationalBudget, markFactionActive, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runManualElectionByGovernmentType, DONOR_DEMANDS } from './js/game-common.js';
+import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPMTraitEffects, calculateNationalBudget, markFactionActive, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runManualElectionByGovernmentType, DONOR_DEMANDS } from './js/game-common.js';
 const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
     const _supabase = createClient(supabaseUrl, supabaseKey);
@@ -2796,6 +2796,7 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     };
 
     let ministryConfigData = []; // rows from DB
+    let ministryConfigNation = null; // nation data for computing costs
 
     async function loadMinistryConfig() {
         try {
@@ -2805,6 +2806,11 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
                 .order('ministry_key');
             if (error) throw error;
             ministryConfigData = data || [];
+
+            // Load nation data for cost computation
+            const { data: nationData } = await _supabase.from('nations').select('*').limit(1).single();
+            ministryConfigNation = nationData;
+
             renderMinistryConfig();
         } catch (err) {
             console.error('loadMinistryConfig error:', err);
@@ -2819,6 +2825,9 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
             return;
         }
 
+        const population = ministryConfigNation ? Number(ministryConfigNation.population || 0) : 0;
+        const inflationMult = ministryConfigNation ? getInflationMultiplier(ministryConfigNation.inflation) : 1;
+
         // Group by ministry
         const grouped = {};
         for (const row of ministryConfigData) {
@@ -2827,27 +2836,66 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
         }
 
         let html = '';
+        if (ministryConfigNation) {
+            html += '<div style="color:#888;font-size:0.82rem;margin-bottom:12px;">Population: <strong style="color:#ccc;">' + population.toLocaleString() + '</strong> &middot; Inflation multiplier: <strong style="color:#ccc;">' + inflationMult.toFixed(3) + 'x</strong></div>';
+        }
         for (const mk of MINISTRY_ORDER) {
             const insts = grouped[mk];
             if (!insts) continue;
-            html += '<div class="mc-ministry">';
+            // Compute ministry total
+            let ministryTotal = 0;
+            for (const inst of insts) {
+                ministryTotal += Number(inst.base_cost_per_capita || 0) * population * inflationMult;
+            }
+            html += '<div class="mc-ministry expanded">';
             html += '<div class="mc-ministry-header" onclick="this.parentElement.classList.toggle(\'expanded\')">';
             html += '<span class="mc-ministry-name">' + (MINISTRY_DISPLAY_NAMES[mk] || mk) + '</span>';
+            html += '<span style="color:#aaa;font-size:0.82rem;margin-left:8px;">' + fmtBudgetCurrency(ministryTotal) + '</span>';
             html += '<span class="mc-ministry-arrow">&#9654;</span>';
             html += '</div>';
             html += '<div class="mc-ministry-body">';
-            html += '<table class="mc-table"><thead><tr><th>Institution</th><th>Base $/capita</th><th>Cost Share</th><th>Primary Stat</th><th>Secondary Stat</th><th></th></tr></thead><tbody>';
             for (const inst of insts) {
-                html += '<tr data-id="' + inst.id + '">';
-                html += '<td class="mc-inst-name">' + escHtml(inst.institution_name) + '</td>';
-                html += '<td><input type="number" step="0.01" min="0" class="mc-input" data-id="' + inst.id + '" data-field="base_cost_per_capita" value="' + (inst.base_cost_per_capita || 0) + '"></td>';
-                html += '<td><input type="number" step="0.01" min="0" max="1" class="mc-input mc-input-sm" data-id="' + inst.id + '" data-field="cost_share" value="' + (inst.cost_share || 0) + '"></td>';
-                html += '<td>' + renderStatSelect(inst.id, 'primary_stat', inst.primary_stat) + '</td>';
-                html += '<td>' + renderStatSelect(inst.id, 'secondary_stat', inst.secondary_stat) + '</td>';
-                html += '<td><button class="mc-save-btn" onclick="saveInstitutionRow(\'' + inst.id + '\')">Save</button></td>';
-                html += '</tr>';
+                const baseCost = Number(inst.base_cost_per_capita || 0);
+                const annualCost = baseCost * population * inflationMult;
+                const primaryLabel = inst.primary_stat ? inst.primary_stat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'None';
+                const secondaryLabel = inst.secondary_stat ? inst.secondary_stat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'None';
+
+                html += '<div class="mc-inst-card" data-id="' + inst.id + '">';
+                html += '<div class="mc-inst-header">';
+                html += '<span class="mc-inst-name">' + escHtml(inst.institution_name) + '</span>';
+                html += '<span class="mc-inst-cost">' + fmtBudgetCurrency(annualCost) + '</span>';
+                html += '</div>';
+                html += '<div class="mc-inst-details">';
+
+                // Base $/capita
+                html += '<div class="mc-inst-field">';
+                html += '<label class="mc-field-label">Base $/capita</label>';
+                html += '<input type="number" step="0.01" min="0" class="mc-input" data-id="' + inst.id + '" data-field="base_cost_per_capita" value="' + baseCost + '">';
+                html += '<span class="mc-field-formula">$' + baseCost.toFixed(2) + ' &times; ' + population.toLocaleString() + ' = ' + fmtBudgetCurrency(baseCost * population) + '</span>';
+                html += '</div>';
+
+                // Cost Share
+                html += '<div class="mc-inst-field">';
+                html += '<label class="mc-field-label">Cost Share</label>';
+                html += '<input type="number" step="0.01" min="0" max="1" class="mc-input mc-input-sm" data-id="' + inst.id + '" data-field="cost_share" value="' + (inst.cost_share || 0) + '">';
+                html += '</div>';
+
+                // Primary Stat
+                html += '<div class="mc-inst-field">';
+                html += '<label class="mc-field-label">Primary Stat</label>';
+                html += renderStatSelect(inst.id, 'primary_stat', inst.primary_stat);
+                html += '</div>';
+
+                // Secondary Stat
+                html += '<div class="mc-inst-field">';
+                html += '<label class="mc-field-label">Secondary Stat</label>';
+                html += renderStatSelect(inst.id, 'secondary_stat', inst.secondary_stat);
+                html += '</div>';
+
+                html += '<button class="mc-save-btn" onclick="saveInstitutionRow(\'' + inst.id + '\')">Save</button>';
+                html += '</div>'; // mc-inst-details
+                html += '</div>'; // mc-inst-card
             }
-            html += '</tbody></table>';
             html += '</div></div>';
         }
 
@@ -2867,7 +2915,7 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     }
 
     async function saveInstitutionRow(instId) {
-        const row = document.querySelector('tr[data-id="' + instId + '"]');
+        const row = document.querySelector('.mc-inst-card[data-id="' + instId + '"]') || document.querySelector('tr[data-id="' + instId + '"]');
         if (!row) return;
         const costInput = row.querySelector('input[data-field="base_cost_per_capita"]');
         const shareInput = row.querySelector('input[data-field="cost_share"]');
@@ -3164,6 +3212,7 @@ let bpBudgetData = null;
 let bpNation = null;
 let bpActiveLaws = null;
 let bpTradeTariffRevenue = null;
+let bpInstitutions = [];
 
 function bpRevLine(label, value, isBold, isNegative) {
     var cls = isBold ? ' budget-rev-bold' : '';
@@ -3207,8 +3256,13 @@ async function previewBudgetBill() {
             .single();
         bpTradeTariffRevenue = tradeSummary ? Number(tradeSummary.tariff_revenue) : null;
 
-        // Build budget data with trade tariff override
-        bpBudgetData = buildBudgetData(bpNation, bpActiveLaws, bpTradeTariffRevenue);
+        // Load institution config
+        var { data: instRows } = await _supabase.from('ministry_institution_config')
+            .select('id, ministry_key, institution_name, base_cost_per_capita, cost_share');
+        bpInstitutions = instRows || [];
+
+        // Build budget data with trade tariff override and institutions
+        bpBudgetData = buildBudgetData(bpNation, bpActiveLaws, bpTradeTariffRevenue, bpInstitutions);
         bpSelectedCategory = FISCAL_CATEGORIES[0];
 
         // Compute game year (next tick = January)
@@ -3323,6 +3377,11 @@ function renderBudgetPreview(gameYear) {
 function renderBpMinistryDetail(category) {
     var mData = bpBudgetData.ministries[category];
     var fulfilledCost = mData ? mData.fulfilledCost : 0;
+    var institutions = mData ? (mData.institutions || []) : [];
+    var policies = mData ? (mData.policies || []) : [];
+    var instTotal = mData ? (mData.institutionTotal || 0) : 0;
+    var polTotal = mData ? (mData.policyTotal || 0) : 0;
+    var population = bpNation ? Number(bpNation.population || 0) : 0;
 
     var h = '';
 
@@ -3335,31 +3394,42 @@ function renderBpMinistryDetail(category) {
 
     // Institutions section
     h += '<div class="budget-sub-section">';
-    h += '<div class="budget-sub-header">INSTITUTIONS <span class="budget-locked-badge">LOCKED</span></div>';
-    h += '<div class="budget-empty-notice">No institutions configured yet.</div>';
-    h += '<div class="budget-sub-total"><span>Institution Subtotal</span><span>$0</span></div>';
+    h += '<div class="budget-sub-header">INSTITUTIONS</div>';
+    if (institutions.length === 0) {
+        h += '<div class="budget-empty-notice">No institutions in this ministry.</div>';
+    } else {
+        for (var i = 0; i < institutions.length; i++) {
+            var inst = institutions[i];
+            h += '<div class="budget-policy-line">';
+            h += '<span class="budget-policy-name">' + escHtml(inst.institution_name);
+            h += ' <span class="budget-inst-formula">($' + Number(inst.base_cost_per_capita).toFixed(2) + ' &times; ' + population.toLocaleString() + ' pop)</span>';
+            h += '</span>';
+            h += '<span class="budget-policy-cost">' + fmtBudgetCurrency(inst.cost) + '</span>';
+            h += '</div>';
+        }
+    }
+    h += '<div class="budget-sub-total"><span>Institution Subtotal</span><span>' + fmtBudgetCurrency(instTotal) + '</span></div>';
     h += '</div>';
 
     // Policies section
-    var policies = mData ? mData.policies : [];
-    var policyTotal = mData ? mData.fulfilledCost : 0;
     h += '<div class="budget-sub-section">';
-    h += '<div class="budget-sub-header">POLICIES <span class="budget-info-badge">INFO ONLY</span></div>';
+    h += '<div class="budget-sub-header">POLICIES</div>';
     if (policies.length === 0) {
         h += '<div class="budget-empty-notice">No active policies in this ministry.</div>';
     } else {
-        for (var i = 0; i < policies.length; i++) {
-            var p = policies[i];
+        for (var j = 0; j < policies.length; j++) {
+            var p = policies[j];
             h += '<div class="budget-policy-line">';
             h += '<span class="budget-policy-name">' + escHtml(p.policy_name) + '</span>';
             h += '<span class="budget-policy-cost">' + fmtBudgetCurrency(p.cost) + '</span>';
             h += '</div>';
         }
     }
-    var polSubtotal = 0;
-    for (var j = 0; j < policies.length; j++) polSubtotal += policies[j].cost;
-    h += '<div class="budget-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetCurrency(polSubtotal) + '</span></div>';
+    h += '<div class="budget-sub-total"><span>Policy Subtotal</span><span>' + fmtBudgetCurrency(polTotal) + '</span></div>';
     h += '</div>';
+
+    // Ministry total
+    h += '<div class="budget-ministry-total"><span>MINISTRY TOTAL</span><span>' + fmtBudgetCurrency(fulfilledCost) + '</span></div>';
 
     return h;
 }

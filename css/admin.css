@@ -233,6 +233,49 @@
         }
         .mc-save-btn:hover { background: #45a049; }
 
+        /* Institution card layout */
+        .mc-inst-card {
+            background: #252525;
+            border-radius: 6px;
+            padding: 12px 14px;
+            margin-bottom: 8px;
+            border-left: 2px solid #444;
+        }
+        .mc-inst-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .mc-inst-cost {
+            color: #aaa;
+            font-size: 0.82rem;
+            font-weight: bold;
+        }
+        .mc-inst-details {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: flex-end;
+        }
+        .mc-inst-field {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .mc-field-label {
+            font-size: 0.65rem;
+            color: #777;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: bold;
+        }
+        .mc-field-formula {
+            font-size: 0.68rem;
+            color: #666;
+            font-style: italic;
+        }
+
         /* ===== Budget Preview Modal ===== */
         .bp-modal-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.85);
