@@ -452,12 +452,18 @@ function renderBill() {
         }
     } else if (isCommittee) {
         const el = document.getElementById('sponsor-actions');
+        // For budget bills, head of government can send to floor (PM/President/Autocrat)
+        const isBudgetBill = bill.bill_type === 'budget';
+        const isHeadOfGov = isAutocracy ? isHeadFaction
+            : isPresidential ? (presidentFactionId && currentFaction?.id === presidentFactionId)
+            : (budgetNation?.ruling_faction_id && currentFaction?.id === budgetNation?.ruling_faction_id);
+        const canActOnBill = isSponsor || (isBudgetBill && isHeadOfGov);
         if (isAutocracy) {
             if (isHeadFaction || isSponsor) {
                 el.style.display = 'flex';
                 el.innerHTML = `${isHeadFaction ? '<button class="sponsor-btn enact-decree" onclick="enactDecree()">⚡ Enact Decree</button>' : ''}${isSponsor ? '<button class="sponsor-btn retract" onclick="retractBill()">Retract Decree</button>' : ''}`;
             }
-        } else if (isSponsor) {
+        } else if (canActOnBill) {
     el.style.display = 'flex';
 
     const sponsorSeats = allPartySeats[bill.proposed_by] || 0;
@@ -1115,7 +1121,12 @@ async function enactDecree() {
 }
 
 async function sendToFloor() {
-    if (!currentFaction || currentBill.proposed_by !== currentFaction.id) return;
+    const isBudgetHeadOfGov = currentBill.bill_type === 'budget' && (
+        isAutocracy ? isHeadFaction
+        : isPresidential ? (presidentFactionId && currentFaction?.id === presidentFactionId)
+        : (budgetNation?.ruling_faction_id && currentFaction?.id === budgetNation?.ruling_faction_id)
+    );
+    if (!currentFaction || (currentBill.proposed_by !== currentFaction.id && !isBudgetHeadOfGov)) return;
     if (isNoGovernment) { alert('Legislature is suspended. A new government must be formed before bills can advance.'); return; }
 
     // Prompt to rename the bill before sending to floor
