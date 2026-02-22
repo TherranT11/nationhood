@@ -522,19 +522,9 @@ function renderVoteStatusBadge(bill) {
             badge.textContent = stance.toUpperCase();
         }
     } else if (bill.status === 'floor') {
-        if (!myVote) {
-            badge.className = 'vote-status-badge not-voted';
-            badge.textContent = 'NOT VOTED';
-        } else if (myVote === 'yes') {
-            badge.className = 'vote-status-badge voted-yes';
-            badge.textContent = 'VOTED YES';
-        } else if (myVote === 'no') {
-            badge.className = 'vote-status-badge voted-no';
-            badge.textContent = 'VOTED NO';
-        } else if (myVote === 'abstain') {
-            badge.className = 'vote-status-badge voted-abstain';
-            badge.textContent = 'ABSTAINED';
-        }
+        // Vote status shown on the bills list (laws.html), not here
+        badge.style.display = 'none';
+        return;
     }
 
     badge.style.display = 'block';
