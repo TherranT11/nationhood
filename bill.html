@@ -1698,7 +1698,8 @@ async function loadBudgetData(bill) {
 }
 
 function isBudgetEditable() {
-    if (!currentBill || (currentBill.status !== 'floor' && currentBill.status !== 'committee')) return false;
+    // Adjustments only allowed in committee — floor is voting only
+    if (!currentBill || currentBill.status !== 'committee') return false;
     if (currentBill.early_resolution_status) return false;
     if (!currentFaction) return false;
     if (currentSeats < 1) return false;
@@ -1776,6 +1777,10 @@ function renderBudgetBillUI() {
     h += '<span>Projected Debt: <strong>' + fmtBudgetCurrency(totals.projectedDebt) + '</strong></span>';
     h += '</div>';
     h += '</div>';
+
+    if (currentBill.status === 'floor') {
+        h += '<div class="budget-locked-notice">Budget allocations are locked — this bill is now on the floor for voting.</div>';
+    }
 
     // === REVENUE SECTION ===
     h += '<div class="budget-section">';
