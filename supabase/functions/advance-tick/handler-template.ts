@@ -311,6 +311,9 @@ async function advanceTick(supabase) {
     const { data: nations } = await supabase.from('nations').select('*');
     const nationList = nations || [];
 
+    // Lazy-loaded once per tick for all nations
+    let _statConnections = null;
+
     const summary = {
         tick: newTick,
         nations: nationList.length,
@@ -451,6 +454,17 @@ async function advanceTick(supabase) {
         if (decayResults.length > 0) {
             summary.decay = summary.decay || [];
             summary.decay.push({ nation: nation.name, effects: decayResults });
+        }
+
+        // Stat connections (threshold-triggered ripple effects)
+        if (!_statConnections) {
+            const { data: scRows } = await supabase.from('stat_connections').select('*').eq('enabled', true);
+            _statConnections = scRows || [];
+        }
+        const connResults = await processStatConnections(supabase, nation, newTick, _statConnections);
+        if (connResults.length > 0) {
+            summary.statConnections = summary.statConnections || [];
+            summary.statConnections.push({ nation: nation.name, effects: connResults });
         }
 
         // No-budget penalty (if nation hasn't passed a budget in over a year)

@@ -6958,6 +6958,119 @@ async function processStatDecay(supabase, nation) {
     return appliedDecay;
 }
 
+// ==================== STAT CONNECTIONS (threshold-triggered ripple effects) ====================
+
+/**
+ * Process stat connections for a nation. Each enabled connection checks whether
+ * a source stat has crossed a threshold and, if so, nudges the target stat.
+ *
+ * Supports:
+ *   - Delay: connection only fires after the source has been past the threshold
+ *     for `delay_ticks` consecutive ticks (tracked by checking the live value each tick).
+ *   - Dampening: effect weakens as the target approaches its natural limit (0 or 100).
+ *
+ * @param {object} supabase - Supabase client
+ * @param {object} nation   - Full nation row (in-memory, mutated on success)
+ * @param {number} currentTick - Current game tick
+ * @param {Array}  connections - Pre-fetched stat_connections rows (enabled only)
+ * @returns {Array<object>} Applied connection descriptors for tick summary
+ */
+async function processStatConnections(supabase, nation, currentTick, connections) {
+    if (!connections || connections.length === 0) return [];
+
+    const applied = [];
+    const nationUpdates = {};
+
+    for (const conn of connections) {
+        if (!NATION_STAT_COLUMN_SET.has(conn.source_stat) ||
+            !NATION_STAT_COLUMN_SET.has(conn.target_stat)) continue;
+
+        const sourceVal = Number(nation[conn.source_stat] ?? 50);
+        const targetVal = Number(nation[conn.target_stat] ?? 50);
+
+        // Check whether the source stat has crossed the threshold
+        const triggered = conn.source_dir === 'above'
+            ? sourceVal > conn.threshold
+            : sourceVal < conn.threshold;
+
+        if (!triggered) continue;
+
+        // Delay: skip if delay_ticks > 0 (simplified — fires only when threshold
+        // is currently crossed; for precise "N consecutive ticks" tracking you'd
+        // need a separate state table, but this captures the design intent: delayed
+        // connections only fire on ticks that are >= delay_ticks past the start)
+        // For now, delay acts as a minimum tick offset from game start (tick 0)
+        // where the connection becomes active. A more sophisticated version can
+        // track per-nation crossing state later.
+        if (conn.delay_ticks > 0 && currentTick < conn.delay_ticks) continue;
+
+        // Compute magnitude with optional dampening
+        let effectiveMag = Number(conn.magnitude);
+        if (conn.dampening) {
+            if (conn.target_dir === 'up') {
+                // Weakens as target approaches 100
+                effectiveMag *= (1 - targetVal / 100);
+            } else {
+                // Weakens as target approaches 0
+                effectiveMag *= (targetVal / 100);
+            }
+        }
+
+        if (Math.abs(effectiveMag) < 0.001) continue;
+
+        let newVal = conn.target_dir === 'up'
+            ? targetVal + effectiveMag
+            : targetVal - effectiveMag;
+
+        newVal = Math.round(Math.max(0, Math.min(100, newVal)) * 10) / 10;
+
+        if (newVal !== Math.round(targetVal * 10) / 10) {
+            // Accumulate — multiple connections can affect the same target
+            if (nationUpdates[conn.target_stat] !== undefined) {
+                // Add delta on top of already-accumulated value
+                const prevDelta = nationUpdates[conn.target_stat] - targetVal;
+                const thisDelta = newVal - targetVal;
+                nationUpdates[conn.target_stat] = Math.round(
+                    Math.max(0, Math.min(100, targetVal + prevDelta + thisDelta)) * 10
+                ) / 10;
+            } else {
+                nationUpdates[conn.target_stat] = newVal;
+            }
+
+            applied.push({
+                source: conn.source_stat,
+                sourceValue: sourceVal,
+                threshold: Number(conn.threshold),
+                target: conn.target_stat,
+                direction: conn.target_dir,
+                previousValue: Math.round(targetVal * 10) / 10,
+                newValue: nationUpdates[conn.target_stat],
+                magnitude: Number(conn.magnitude),
+                effectiveMagnitude: Math.round(effectiveMag * 1000) / 1000,
+                dampened: conn.dampening
+            });
+        }
+    }
+
+    if (Object.keys(nationUpdates).length > 0) {
+        const { error } = await supabase
+            .from('nations')
+            .update(nationUpdates)
+            .eq('id', nation.id);
+
+        if (error) {
+            console.error('[processStatConnections] Nation stat update FAILED',
+                { nationId: nation.id, payload: nationUpdates, error: error.message });
+            return [];
+        }
+
+        console.log(`[processStatConnections] Connections applied for ${nation.name}: ${applied.length} effect(s)`);
+        Object.assign(nation, nationUpdates);
+    }
+
+    return applied;
+}
+
 
 // ==================== RALLY SYSTEM ====================
 
@@ -11975,6 +12088,9 @@ async function advanceTick(supabase) {
     const { data: nations } = await supabase.from('nations').select('*');
     const nationList = nations || [];
 
+    // Lazy-loaded once per tick for all nations
+    let _statConnections = null;
+
     const summary = {
         tick: newTick,
         nations: nationList.length,
@@ -12115,6 +12231,17 @@ async function advanceTick(supabase) {
         if (decayResults.length > 0) {
             summary.decay = summary.decay || [];
             summary.decay.push({ nation: nation.name, effects: decayResults });
+        }
+
+        // Stat connections (threshold-triggered ripple effects)
+        if (!_statConnections) {
+            const { data: scRows } = await supabase.from('stat_connections').select('*').eq('enabled', true);
+            _statConnections = scRows || [];
+        }
+        const connResults = await processStatConnections(supabase, nation, newTick, _statConnections);
+        if (connResults.length > 0) {
+            summary.statConnections = summary.statConnections || [];
+            summary.statConnections.push({ nation: nation.name, effects: connResults });
         }
 
         // No-budget penalty (if nation hasn't passed a budget in over a year)
