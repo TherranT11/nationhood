@@ -2933,14 +2933,30 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
 // ==================== BILL RESOLUTION ENGINE ====================
 
 /**
- * Get the number of YES seats required for a bill to pass,
- * based on bill type and current GAME_CONFIG.
+ * Returns true if this bill type uses simple/relative majority (YES > NO)
+ * rather than an absolute seat threshold.
  */
-export function getRequiredSeats(billType) {
+export function isSimpleMajorityBill(billType) {
+    return billType !== 'foundational' && billType !== 'veto_override';
+}
+
+/**
+ * Get the number of YES seats required for a bill to pass.
+ *
+ * For supermajority bills (foundational, veto_override) the threshold is a
+ * fixed fraction of TOTAL_SEATS.
+ *
+ * For all other bills the rule is simple majority: YES > NO.  When
+ * `votesAgainst` is provided, we return `votesAgainst + 1` so the display
+ * updates dynamically as votes come in.  Without it we fall back to the
+ * absolute half-chamber number for backward compat.
+ */
+export function getRequiredSeats(billType, votesAgainst) {
     if (billType === 'foundational')
         return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD);
     if (billType === 'veto_override')
         return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
+    if (votesAgainst != null) return votesAgainst + 1;
     return GAME_CONFIG.MAJORITY_SEATS;
 }
 
@@ -3013,14 +3029,26 @@ export async function checkEarlyMajority(supabase, nationId) {
             else if (stance === 'no') noSeats += s.seat_count;
         });
 
-        const requiredSeats = getRequiredSeats(bill.bill_type);
         let earlyStatus = null;
+        const undeclaredSeats = GAME_CONFIG.TOTAL_SEATS - yesSeats - noSeats;
 
-        if (yesSeats >= requiredSeats) {
-            earlyStatus = 'majority_reached';
-        } else if (noSeats > GAME_CONFIG.TOTAL_SEATS - requiredSeats) {
-            // Remaining seats can't push YES to threshold
-            earlyStatus = 'majority_opposed';
+        if (isSimpleMajorityBill(bill.bill_type)) {
+            // Relative majority: YES > NO passes.
+            // Locked YES: even if ALL undeclared vote NO, YES still wins.
+            if (yesSeats > noSeats + undeclaredSeats) {
+                earlyStatus = 'majority_reached';
+            // Locked NO: even if ALL undeclared vote YES, NO still wins/ties.
+            } else if (noSeats >= yesSeats + undeclaredSeats) {
+                earlyStatus = 'majority_opposed';
+            }
+        } else {
+            // Supermajority: fixed seat threshold
+            const requiredSeats = getRequiredSeats(bill.bill_type);
+            if (yesSeats >= requiredSeats) {
+                earlyStatus = 'majority_reached';
+            } else if (noSeats > GAME_CONFIG.TOTAL_SEATS - requiredSeats) {
+                earlyStatus = 'majority_opposed';
+            }
         }
 
         if (earlyStatus) {

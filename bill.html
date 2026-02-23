@@ -206,7 +206,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass } from './js/game-common.js';
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
@@ -398,13 +398,19 @@ function renderBill() {
             if (st === 'yes') earlyYes += s.seat_count;
             else if (st === 'no') earlyNo += s.seat_count;
         });
-        const reqSeats = getRequiredSeats(bill.bill_type);
+        const earlyIsSimple = isSimpleMajorityBill(bill.bill_type);
         if (isMajReached) {
+            const passText = earlyIsSimple
+                ? `${earlyYes} YES vs ${earlyNo} NO &mdash; Passes next tick`
+                : `${earlyYes} YES of ${getRequiredSeats(bill.bill_type)} needed &mdash; Passes next tick`;
             earlyBanner.innerHTML = `<div style="font-size:1rem;text-transform:uppercase;letter-spacing:1.5px;">Majority Reached</div>
-                <div style="font-size:0.85rem;margin-top:6px;color:var(--text-secondary);">${earlyYes} YES of ${reqSeats} needed &mdash; Passes next tick</div>`;
+                <div style="font-size:0.85rem;margin-top:6px;color:var(--text-secondary);">${passText}</div>`;
         } else {
+            const failText = earlyIsSimple
+                ? `${earlyNo} NO vs ${earlyYes} YES &mdash; Fails next tick`
+                : `${earlyNo} NO seats block passage &mdash; Fails next tick`;
             earlyBanner.innerHTML = `<div style="font-size:1rem;text-transform:uppercase;letter-spacing:1.5px;">Majority Opposed</div>
-                <div style="font-size:0.85rem;margin-top:6px;color:var(--text-secondary);">${earlyNo} NO seats block passage &mdash; Fails next tick</div>`;
+                <div style="font-size:0.85rem;margin-top:6px;color:var(--text-secondary);">${failText}</div>`;
         }
         const header = document.getElementById('bill-header');
         header.parentNode.insertBefore(earlyBanner, header.nextSibling);
@@ -668,7 +674,7 @@ function renderArticles() {
                 '<div class="repeal-notice-icon">🏛</div>' +
                 '<div class="repeal-notice-text">Presidential Cabinet Nomination</div>' +
                 '<div class="repeal-notice-sub" style="color:#aaa;line-height:1.6;">' +
-                    'Requires <strong style="color:#4CAF50;">simple majority</strong> (' + GAME_CONFIG.MAJORITY_SEATS + ' of ' + GAME_CONFIG.TOTAL_SEATS + ' seats) to confirm.<br>' +
+                    'Requires <strong style="color:#4CAF50;">simple majority</strong> (YES votes &gt; NO votes) to confirm.<br>' +
                     'If confirmed: nominee takes office as minister.<br>' +
                     'If rejected: President must nominate from a different party.' +
                 '</div>' +
@@ -999,15 +1005,28 @@ function renderSidebar() {
 
         const isFoundationalBill = bill.bill_type === 'foundational';
         const isNoConfidenceBill = bill.bill_type === 'no_confidence';
-        const requiredSeats = getRequiredSeats(bill.bill_type);
-        const thresholdLabel = isFoundationalBill ? '2/3 Supermajority' : 'Simple Majority';
+        const isSimple = isSimpleMajorityBill(bill.bill_type);
         const undeclared = GAME_CONFIG.TOTAL_SEATS - f - a - ab;
 
+        // For simple-majority bills the threshold is dynamic: YES must exceed NO.
+        // Show the number of YES seats still needed (NO + 1 - current YES), min 0.
+        const requiredSeats = isSimple ? (a + 1) : getRequiredSeats(bill.bill_type);
+        const thresholdLabel = isFoundationalBill ? '2/3 Supermajority' : 'Simple Majority';
+        const thresholdDisplay = isSimple
+            ? (f > a ? 'Passing' : f === a ? `${a + 1 - f} more needed` : `${a + 1 - f} more needed`)
+            : `${requiredSeats} needed`;
+        const thresholdMet = isSimple ? (f > a) : (f >= requiredSeats);
+
         // Cosmetic early-majority hint (client-side check before server confirms)
-        const noBlocksPassage = a > (GAME_CONFIG.TOTAL_SEATS - requiredSeats);
+        const noBlocksPassage = isSimple
+            ? (a >= f + undeclared)                        // NO can't be overcome even if all undeclared vote YES
+            : (a > (GAME_CONFIG.TOTAL_SEATS - requiredSeats));
+        const majorityLocked = isSimple
+            ? (f > a + undeclared)                         // YES wins even if all undeclared vote NO
+            : (f >= requiredSeats);
         const earlyHint = bill.early_resolution_status
             ? '' // Server already confirmed — banner handles it
-            : f >= requiredSeats
+            : majorityLocked
                 ? '<div style="color:#4CAF50;font-size:0.78rem;margin-top:6px;text-align:center;">Majority threshold met</div>'
                 : noBlocksPassage
                     ? '<div style="color:#ff4444;font-size:0.78rem;margin-top:6px;text-align:center;">Passage blocked by opposition</div>'
@@ -1018,7 +1037,7 @@ function renderSidebar() {
             <div class="vote-tally-row"><span class="vote-tally-label">Against</span><span class="vote-tally-value against">${a} seats</span></div>
             <div class="vote-tally-row"><span class="vote-tally-label">Abstain</span><span class="vote-tally-value abstain">${ab} seats</span></div>
             <div class="vote-tally-row"><span class="vote-tally-label">Undeclared</span><span class="vote-tally-value" style="color:var(--text-secondary);">${undeclared} seats</span></div>
-            <div class="vote-tally-row" style="border-top:1px solid #444;padding-top:8px;"><span class="vote-tally-label">${thresholdLabel}</span><span class="vote-tally-value" style="color:${f >= requiredSeats ? '#4CAF50' : '#9C27B0'};">${requiredSeats} needed</span></div>
+            <div class="vote-tally-row" style="border-top:1px solid #444;padding-top:8px;"><span class="vote-tally-label">${thresholdLabel}</span><span class="vote-tally-value" style="color:${thresholdMet ? '#4CAF50' : '#9C27B0'};">${thresholdDisplay}</span></div>
             ${earlyHint}
         </div>
         <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Party Votes</div></div>
