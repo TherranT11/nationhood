@@ -468,7 +468,7 @@ async function renderNationPage(nation) {
     h += '<div class="overview-item"><div class="overview-label">Capital</div><div class="overview-value">' + (nation.capital || '—') + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">Government</div><div class="overview-value">' + (isPresidentialRepublic(nation) ? 'Presidential Republic' : (getCanonicalGovernmentType(nation, nation.government_type || '—'))) + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">Population</div><div class="overview-value">' + formatNumber(nation.population) + '</div></div>';
-    h += '<div class="overview-item"><div class="overview-label">National Approval</div><div class="overview-value gold">' + (nation.national_approval || 50) + '%</div></div>';
+    h += '<div class="overview-item"><div class="overview-label">Government Approval</div><div class="overview-value gold">' + (nation.national_approval || 50) + '%</div></div>';
     h += '<div class="overview-item"><div class="overview-label">GDP</div><div class="overview-value gold">' + formatCurrencyShort(scaleRawToDollars(nation.gdp)) + '</div></div>';
     h += '</div></div>';
 
