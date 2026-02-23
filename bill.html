@@ -1999,40 +1999,45 @@ window.submitSponsorAddTextArticle = submitSponsorAddTextArticle;
 let budgetSelectedCategory = null;
 
 async function loadBudgetData(bill) {
-    // Load budget allocations
-    const { data: allocs } = await _supabase.from('budget_allocations')
-        .select('*').eq('bill_id', bill.id);
-    budgetAllocations = allocs || [];
+    try {
+        // Load budget allocations
+        const { data: allocs } = await _supabase.from('budget_allocations')
+            .select('*').eq('bill_id', bill.id);
+        budgetAllocations = allocs || [];
 
-    // Load full nation data for budget calculations
-    const { data: nation } = await _supabase.from('nations')
-        .select('*').eq('id', bill.nation_id).single();
-    budgetNation = nation;
+        // Load full nation data for budget calculations
+        const { data: nation } = await _supabase.from('nations')
+            .select('*').eq('id', bill.nation_id).single();
+        budgetNation = nation;
 
-    // Load active laws for cost breakdown
-    const { data: laws } = await _supabase.from('active_laws')
-        .select('*, policies(id, policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat)')
-        .eq('nation_id', bill.nation_id);
-    budgetActiveLaws = (laws || []).filter(l => !l.is_reversal);
+        // Load active laws for cost breakdown
+        const { data: laws } = await _supabase.from('active_laws')
+            .select('*, policies(id, policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat)')
+            .eq('nation_id', bill.nation_id);
+        budgetActiveLaws = (laws || []).filter(l => !l.is_reversal);
 
-    // Load latest trade summary for tariff revenue (matches Economy page)
-    const { data: tradeSummary } = await _supabase.from('trade_summary')
-        .select('tariff_revenue')
-        .eq('nation_id', bill.nation_id)
-        .order('tick', { ascending: false })
-        .limit(1)
-        .single();
-    budgetTradeTariffRevenue = tradeSummary ? Number(tradeSummary.tariff_revenue) : null;
+        // Load latest trade summary for tariff revenue (matches Economy page)
+        const { data: tradeSummary } = await _supabase.from('trade_summary')
+            .select('tariff_revenue')
+            .eq('nation_id', bill.nation_id)
+            .order('tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        budgetTradeTariffRevenue = tradeSummary ? Number(tradeSummary.tariff_revenue) : null;
 
-    // Load institution config for cost breakdown
-    const { data: instRows } = await _supabase.from('ministry_institution_config')
-        .select('*');
-    budgetInstitutions = instRows || [];
+        // Load institution config for cost breakdown
+        const { data: instRows } = await _supabase.from('ministry_institution_config')
+            .select('*');
+        budgetInstitutions = instRows || [];
 
-    // Load per-item allocations
-    const { data: itemAllocs } = await _supabase.from('budget_item_allocations')
-        .select('*').eq('bill_id', bill.id);
-    budgetItemAllocations = itemAllocs || [];
+        // Load per-item allocations
+        const { data: itemAllocs } = await _supabase.from('budget_item_allocations')
+            .select('*').eq('bill_id', bill.id);
+        budgetItemAllocations = itemAllocs || [];
+    } catch (e) {
+        console.error('Error loading budget data:', e);
+        // Non-fatal: renderBudgetBillUI handles missing budgetNation gracefully
+    }
 }
 
 function isBudgetEditable() {
