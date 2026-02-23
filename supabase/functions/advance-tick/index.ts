@@ -1921,6 +1921,118 @@ async function processNoBudgetPenalty(supabase, nation, currentTick) {
     return { ticksOverdue, severity, effPenalty, stabPenalty, creditPenalty };
 }
 
+// ==================== GOVERNMENT SHUTDOWN ====================
+/**
+ * Check if a government shutdown is active for this nation.
+ * Shutdown triggers when 2+ ticks have passed since the budget expired
+ * (i.e., ticksSinceLastBudget >= TICKS_PER_YEAR + 2).
+ *
+ * @returns {boolean} true if shutdown is active
+ */
+function isGovernmentShutdown(nation, currentTick) {
+    // Grace period: no shutdown in the first fiscal year + 2 ticks
+    if (currentTick < GAME_CONFIG.TICKS_PER_YEAR + 2) return false;
+
+    const lastBudgetTick = nation.last_budget_tick;
+    const ticksSinceLastBudget = lastBudgetTick != null ? (currentTick - lastBudgetTick) : currentTick;
+
+    return ticksSinceLastBudget >= GAME_CONFIG.TICKS_PER_YEAR + 2;
+}
+
+/**
+ * Build a forced-Collapsed statInstitutionMap: every institution at 0% funding.
+ * Used during government shutdown to force all institution-covered stats to decay
+ * at the Collapsed tier rate (primary: 2.7, secondary: 1.7).
+ */
+function buildShutdownStatInstMap(institutionConfig) {
+    const statMap = {};
+    for (const inst of (institutionConfig || [])) {
+        for (const role of ['primary', 'secondary']) {
+            const statKey = inst[`${role}_stat`];
+            if (!statKey) continue;
+            if (!statMap[statKey]) statMap[statKey] = [];
+            statMap[statKey].push({ id: inst.id, role, fundingPct: 0 });
+        }
+    }
+    return statMap;
+}
+
+/**
+ * Government Shutdown Crisis — coalition/approval/momentum penalties.
+ * Called each tick when isGovernmentShutdown() returns true.
+ *
+ * Effects (in addition to Collapsed institution decay handled by the main loop):
+ *   - All coalition parties: -2 Momentum and -2 Approval per voter bloc per tick
+ *   - Prime Minister's party: additional -3 Approval/tick
+ *   - President's party (presidential systems): -3 Approval/tick
+ *   - Fires a system event notification
+ */
+async function processGovernmentShutdown(supabase, nation, currentTick) {
+    const lastBudgetTick = nation.last_budget_tick;
+    const ticksSinceLastBudget = lastBudgetTick != null ? (currentTick - lastBudgetTick) : currentTick;
+    const ticksOverdue = ticksSinceLastBudget - GAME_CONFIG.TICKS_PER_YEAR;
+
+    console.log(`[GovernmentShutdown] ACTIVE for ${nation.name} — ${ticksSinceLastBudget} ticks since last budget (overdue by ${ticksOverdue} ticks)`);
+
+    // --- 1. Coalition party penalties: -2 Momentum and -2 Approval per voter bloc ---
+    const coalition = await fetchActiveCoalition(supabase, nation.id);
+    const coalitionPartyIds = coalition?.party_ids || [];
+
+    for (const partyId of coalitionPartyIds) {
+        await adjustMomentum(supabase, partyId, -2);
+        await adjustBlocApproval(supabase, partyId, -2);
+    }
+    if (coalitionPartyIds.length > 0) {
+        console.log(`[GovernmentShutdown] Applied -2 Momentum & -2 Approval to ${coalitionPartyIds.length} coalition parties for ${nation.name}`);
+    }
+
+    // --- 2. PM approval penalty: -3/tick ---
+    const pmPartyId = coalition?.lead_party_id;
+    if (pmPartyId) {
+        await adjustBlocApproval(supabase, pmPartyId, -3);
+        console.log(`[GovernmentShutdown] Applied -3 Approval to PM party ${pmPartyId} for ${nation.name}`);
+    }
+
+    // --- 3. President approval penalty: -3/tick (presidential systems) ---
+    if (isPresidentialRepublic(nation)) {
+        const { data: president } = await supabase
+            .from('presidents')
+            .select('id, faction_id')
+            .eq('nation_id', nation.id)
+            .eq('is_active', true)
+            .order('elected_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (president) {
+            await adjustBlocApproval(supabase, president.faction_id, -3);
+            console.log(`[GovernmentShutdown] Applied -3 Approval to President party ${president.faction_id} for ${nation.name}`);
+        }
+    }
+
+    // --- 4. Fire system event (once per tick while shutdown is active) ---
+    try {
+        await supabase.rpc('fire_system_event', {
+            p_trigger_key: 'government_shutdown',
+            p_nation_id: nation.id,
+            p_tick: currentTick,
+            p_placeholders: {
+                nation: nation.name || 'Unknown',
+                ticks_overdue: String(ticksOverdue)
+            }
+        });
+    } catch (e) {
+        // Non-critical — don't block shutdown processing if event template doesn't exist
+        console.warn(`[GovernmentShutdown] fire_system_event failed (template may not exist):`, e.message);
+    }
+
+    return {
+        active: true,
+        ticksSinceLastBudget,
+        ticksOverdue,
+        coalitionPartiesAffected: coalitionPartyIds.length
+    };
+}
+
 // Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -1% to +1% per month
 // Formula: monthlyChange% = (gdp_growth - 50) / 50  →  0=-1%, 50=0%, 100=+1%
 async function applyGdpGrowth(supabase, nation) {
@@ -12886,8 +12998,13 @@ async function advanceTick(supabase) {
             const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
             _institutionConfig = icRows || [];
         }
+        const shutdown = isGovernmentShutdown(nation, newTick);
         let statInstMap = null;
-        if (nation.last_budget_bill_id && _institutionConfig.length > 0) {
+        if (shutdown && _institutionConfig.length > 0) {
+            // Government shutdown: force ALL institutions to 0% funding → Collapsed decay rates
+            statInstMap = buildShutdownStatInstMap(_institutionConfig);
+            console.log(`[GovernmentShutdown] Forcing Collapsed institution decay for ${nation.name}`);
+        } else if (nation.last_budget_bill_id && _institutionConfig.length > 0) {
             const { data: itemAllocs } = await supabase.from('budget_item_allocations')
                 .select('item_type, item_id, allocation_amount, needed_amount')
                 .eq('bill_id', nation.last_budget_bill_id)
@@ -12990,6 +13107,15 @@ async function advanceTick(supabase) {
 
         // Three-pillar voter preference recalculation (Layer 3: mood multiplier from govApproval)
         await calculateThreePillarPreferences(supabase, nation, newTick, govApproval);
+
+        // Government shutdown penalties (coalition momentum/approval + PM/President approval)
+        if (shutdown) {
+            const shutdownResult = await processGovernmentShutdown(supabase, nation, newTick);
+            if (shutdownResult) {
+                summary.governmentShutdowns = summary.governmentShutdowns || [];
+                summary.governmentShutdowns.push({ nation: nation.name, ...shutdownResult });
+            }
+        }
 
         // Faction loyalty (autocracy)
         if (isAutocracy(nation)) {
