@@ -473,6 +473,8 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
     const hosFirst = currentNation.head_of_state_first_name || 'Unknown';
     const hosLast = currentNation.head_of_state_last_name || 'Unknown';
     const hosAge = currentNation.head_of_state_age || '—';
+    const approvalColor = governmentApproval >= 60 ? '#4CAF50' : governmentApproval >= 40 ? 'var(--accent)' : '#ff4444';
+    const approvalHTML = `<div style="text-align:right;"><div style="font-size:0.7rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px;">Government Approval</div><div style="font-size:1.4rem;font-weight:bold;color:${approvalColor};">${governmentApproval}%</div></div>`;
 
     // Safe PM name: prevents "null null" when ministry row exists but names are SQL NULL
     function safePmName(pm) {
@@ -608,8 +610,11 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
         return `
             <div class="administration-box">
                 <div class="administration-header">
-                    <div class="administration-title">${presidentData.last_name} Administration</div>
-                    <div class="administration-subtitle">Presidential Government · <span style="color:${govStatusColor};font-weight:bold;">${govStatus}</span></div>
+                    <div>
+                        <div class="administration-title">${presidentData.last_name} Administration</div>
+                        <div class="administration-subtitle">Presidential Government · <span style="color:${govStatusColor};font-weight:bold;">${govStatus}</span></div>
+                    </div>
+                    ${approvalHTML}
                 </div>
                 <div class="administration-content">
                     <div class="admin-leaders-column">
@@ -645,7 +650,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
         if (majorityParty) {
             return `
                 <div class="administration-box">
-                    <div class="administration-header"><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">Single Party Government</div></div>
+                    <div class="administration-header"><div><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">Single Party Government</div></div>${approvalHTML}</div>
                     <div class="administration-content">
                         <div class="admin-leaders-column">
                             <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${safePmName(primeMinister)}</div><div class="admin-person-details">${primeMinister?.minister_age ? `Age ${primeMinister.minister_age} • ` : ''}<span class="admin-person-party">${majorityParty.party_name}</span></div></div>
@@ -674,7 +679,7 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
         const coalitionParties = coalition.party_ids.map(id => { const p = parties.find(x => x.party_id === id); const fallbackName = allParties.find(f => f.id === id)?.faction_name || 'Unknown'; return p ? { ...p, seats: allPartySeats[id] || p.seats || 0 } : { party_name: fallbackName, seats: allPartySeats[id] || 0 }; }).sort((a,b) => b.seats - a.seats);
         return `
             <div class="administration-box">
-                <div class="administration-header"><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">${coalition.status === 'caretaker' ? 'Caretaker Government' : 'Coalition Government'}</div></div>
+                <div class="administration-header"><div><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">${coalition.status === 'caretaker' ? 'Caretaker Government' : 'Coalition Government'}</div></div>${approvalHTML}</div>
                 <div class="administration-content">
                     <div class="admin-leaders-column">
                         <div class="admin-section">
