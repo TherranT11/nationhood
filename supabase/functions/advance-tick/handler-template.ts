@@ -543,8 +543,22 @@ async function advanceTick(supabase) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
-        // Three-pillar voter preference recalculation
-        await calculateThreePillarPreferences(supabase, nation, newTick);
+        // Re-fetch nation to get post-effect stat values for minister approval
+        const { data: preApprovalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+        if (preApprovalNation) Object.assign(nation, preApprovalNation);
+
+        // Layer 1: Update minister approvals from stat thresholds
+        const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick);
+        if (ministerApprovalResults.length > 0) {
+            summary.ministerApprovals = summary.ministerApprovals || [];
+            summary.ministerApprovals.push({ nation: nation.name, results: ministerApprovalResults });
+        }
+
+        // Layer 2: Calculate composite government approval
+        const govApproval = await calculateGovernmentApprovalTick(supabase, nation, newTick);
+
+        // Three-pillar voter preference recalculation (Layer 3: mood multiplier from govApproval)
+        await calculateThreePillarPreferences(supabase, nation, newTick, govApproval);
 
         // Faction loyalty (autocracy)
         if (isAutocracy(nation)) {

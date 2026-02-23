@@ -4269,6 +4269,82 @@ export function statDirectionSign(statKey) {
     return 0;
 }
 
+// ==================== MINISTER & GOVERNMENT APPROVAL SYSTEM ====================
+
+/**
+ * Reverse map: ministry_key → [stat_keys] derived from STAT_TO_MINISTRY.
+ * Used by the per-tick minister approval calculation to find which stats
+ * each minister "owns".
+ */
+export const MINISTRY_TO_STATS = {};
+for (const [statKey, ministryKey] of Object.entries(STAT_TO_MINISTRY)) {
+    if (!MINISTRY_TO_STATS[ministryKey]) MINISTRY_TO_STATS[ministryKey] = [];
+    MINISTRY_TO_STATS[ministryKey].push(statKey);
+}
+
+/**
+ * Threshold-based approval contribution for a single stat.
+ * Returns how much a stat's current value helps or hurts the responsible minister.
+ *
+ * Normal stats (higher=better): >=70 → +1.5, 50-69 → +0.5, 30-49 → -1.5, <30 → -3.0
+ * Inverse stats (lower=better): <=15 → +1.5, 16-30 → +0.5, 31-50 → -1.5, >50  → -3.0
+ *
+ * @param {string} statKey - nation stat key
+ * @param {number} value   - current stat value
+ * @returns {number} approval contribution (-3.0 to +1.5)
+ */
+export function statApprovalContribution(statKey, value) {
+    const sign = statDirectionSign(statKey);
+    if (sign === 0) return 0;
+
+    if (sign === 1) {
+        // Higher is better
+        if (value >= 70) return 1.5;
+        if (value >= 50) return 0.5;
+        if (value >= 30) return -1.5;
+        return -3.0;
+    } else {
+        // Lower is better (inverse)
+        if (value <= 15) return 1.5;
+        if (value <= 30) return 0.5;
+        if (value <= 50) return -1.5;
+        return -3.0;
+    }
+}
+
+export const GOV_APPROVAL_CONFIG = {
+    // Layer 2 component weights
+    MINISTER_WEIGHT: 0.60,
+    PM_STATS_WEIGHT: 0.20,
+    TRAJECTORY_WEIGHT: 0.20,
+
+    // Trajectory lookback
+    TRAJECTORY_LOOKBACK: 5,
+
+    // PM-owned stats for Layer 2 scoring
+    PM_STATS: ['happiness', 'standard_of_living', 'stability'],
+
+    // Mood multiplier bounds (Layer 3)
+    MOOD_MULTIPLIER_MIN: 0.4,
+    MOOD_MULTIPLIER_MAX: 1.15,
+
+    // Opposition boost
+    OPPOSITION_BOOST_THRESHOLD: 40,
+    OPPOSITION_BOOST_RATE: 0.05,
+
+    // Embattled / Crisis thresholds
+    EMBATTLED_THRESHOLD: 30,
+    EMBATTLED_TICKS_REQUIRED: 5,
+    EMBATTLED_GOV_PENALTY: -1,
+    CRISIS_THRESHOLD: 20,
+    CRISIS_GOV_PENALTY: -2,
+
+    // Minister firing
+    FIRE_MINISTER_AP_COST: 1,
+    NEW_MINISTER_APPROVAL: 45,
+    FIRE_GOV_APPROVAL_BONUS: 3,
+};
+
 /**
  * Snapshot all nation stats into a flat JSONB object.
  */
@@ -6773,17 +6849,43 @@ export async function processParliamentaryPMTimeout(supabase, nation, currentTic
  * @param {object} nation   - Full nation row
  * @param {number} currentTick - The tick just committed
  */
-export async function calculateThreePillarPreferences(supabase, nation, currentTick) {
+export async function calculateThreePillarPreferences(supabase, nation, currentTick, govApproval = null) {
     if (isAutocracy(nation)) return;
 
     // ── 1. Load all party factions ──
     const { data: factions } = await supabase
         .from('factions')
-        .select('id')
+        .select('id, seats')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
     if (!factions || factions.length === 0) return;
     const factionIds = factions.map(f => f.id);
+
+    // ── 1b. Mood multiplier from government approval (Layer 3) ──
+    const coalition = await fetchActiveCoalition(supabase, nation.id);
+    const coalitionPartyIds = new Set(coalition?.party_ids || []);
+
+    let moodMultiplier = 1.0;
+    if (govApproval !== null && coalitionPartyIds.size > 0) {
+        // Linear interpolation: govApproval 0→0.4, 100→1.15
+        moodMultiplier = GOV_APPROVAL_CONFIG.MOOD_MULTIPLIER_MIN
+            + (govApproval / 100) * (GOV_APPROVAL_CONFIG.MOOD_MULTIPLIER_MAX - GOV_APPROVAL_CONFIG.MOOD_MULTIPLIER_MIN);
+    }
+
+    // Find largest opposition party (by seats) for opposition boost
+    let largestOppositionId = null;
+    if (govApproval !== null && govApproval < GOV_APPROVAL_CONFIG.OPPOSITION_BOOST_THRESHOLD && coalitionPartyIds.size > 0) {
+        let maxSeats = 0;
+        for (const f of factions) {
+            if (!coalitionPartyIds.has(f.id) && (f.seats || 0) > maxSeats) {
+                maxSeats = f.seats || 0;
+                largestOppositionId = f.id;
+            }
+        }
+    }
+    const oppositionPerfBoost = largestOppositionId
+        ? (GOV_APPROVAL_CONFIG.OPPOSITION_BOOST_THRESHOLD - govApproval) * GOV_APPROVAL_CONFIG.OPPOSITION_BOOST_RATE
+        : 0;
 
     // ── 2. Load all faction_bloc_approval rows ──
     const { data: allBlocRows } = await supabase
@@ -6920,6 +7022,13 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         const oldPerf = Number(row.performance_perception ?? 50);
         const PERF_DECAY = 0.05; // 5% drift toward neutral per tick
         let newPerf = oldPerf * (1 - PERF_DECAY) + 50 * PERF_DECAY + perfDelta;
+
+        // Opposition boost: largest opposition party gets a performance perception nudge
+        // when government approval is low (Layer 3)
+        if (row.faction_id === largestOppositionId && oppositionPerfBoost > 0) {
+            newPerf += oppositionPerfBoost;
+        }
+
         newPerf = Math.round(Math.max(0, Math.min(100, newPerf)) * 100) / 100;
 
         // ─── PILLAR 3: Momentum ───
@@ -6930,9 +7039,14 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
 
         // ─── COMBINE: preference_score ───
         const clampedMomentum = Math.max(0, Math.min(100, 50 + newMomentum));
-        const prefScore = Math.round(
+        let prefScore = Math.round(
             (ideoScore * 0.40 + newPerf * 0.40 + clampedMomentum * 0.20) * 100
         ) / 100;
+
+        // Mood multiplier: governing coalition parties get scaled by government approval (Layer 3)
+        if (coalitionPartyIds.has(row.faction_id) && moodMultiplier !== 1.0) {
+            prefScore = Math.round(prefScore * moodMultiplier * 100) / 100;
+        }
 
         updates.push({
             id: row.id,
@@ -9921,6 +10035,219 @@ export async function processMinistryActions(supabase, nation, currentTick) {
     }
 
     return appliedEffects;
+}
+
+// ==================== LAYER 1: PER-TICK MINISTER APPROVAL ====================
+
+/**
+ * Update each minister's approval based on the current state of their owned stats.
+ * Uses threshold-based scoring: the public doesn't care about marginal changes,
+ * they care whether stats are at acceptable levels or in crisis.
+ *
+ * Excludes prime_minister (PM approval comes from the composite government approval).
+ *
+ * Also tracks embattled status: if a minister stays below 30 approval for 5+ ticks,
+ * they become "embattled" and impose penalties on government approval.
+ *
+ * @param {object} supabase
+ * @param {object} nation - nation row with current stat values
+ * @param {number} currentTick
+ * @returns {Array} results for logging
+ */
+export async function updateMinisterApprovals(supabase, nation, currentTick) {
+    const { data: ministries } = await supabase
+        .from('ministries')
+        .select('id, ministry_key, minister_approval, minister_first_name, embattled_since_tick, party_id')
+        .eq('nation_id', nation.id)
+        .eq('is_active', true);
+
+    if (!ministries || ministries.length === 0) return [];
+
+    const results = [];
+
+    for (const ministry of ministries) {
+        // Skip PM — their approval is derived from the composite government score
+        if (ministry.ministry_key === 'prime_minister') continue;
+        // Skip vacant ministries (no minister appointed)
+        if (!ministry.minister_first_name) continue;
+
+        const ownedStats = MINISTRY_TO_STATS[ministry.ministry_key];
+        if (!ownedStats || ownedStats.length === 0) continue;
+
+        // Score each owned stat
+        let contributionSum = 0;
+        let statCount = 0;
+        for (const statKey of ownedStats) {
+            const value = Number(nation[statKey] ?? 0);
+            const contribution = statApprovalContribution(statKey, value);
+            if (contribution !== 0 || statDirectionSign(statKey) !== 0) {
+                contributionSum += contribution;
+                statCount++;
+            }
+        }
+
+        if (statCount === 0) continue;
+
+        const avgDelta = contributionSum / statCount;
+        const oldApproval = ministry.minister_approval ?? 50;
+        const newApproval = Math.round(Math.max(0, Math.min(100, oldApproval + avgDelta)) * 10) / 10;
+
+        // Track embattled status
+        let embattledSinceTick = ministry.embattled_since_tick;
+        if (newApproval < GOV_APPROVAL_CONFIG.EMBATTLED_THRESHOLD) {
+            if (embattledSinceTick === null || embattledSinceTick === undefined) {
+                embattledSinceTick = currentTick;
+            }
+        } else {
+            embattledSinceTick = null;
+        }
+
+        await supabase.from('ministries')
+            .update({
+                minister_approval: Math.round(newApproval),
+                embattled_since_tick: embattledSinceTick
+            })
+            .eq('id', ministry.id);
+
+        results.push({
+            ministry_key: ministry.ministry_key,
+            old: oldApproval,
+            new: Math.round(newApproval),
+            delta: Math.round(avgDelta * 10) / 10,
+            embattled: embattledSinceTick !== null
+        });
+    }
+
+    if (results.length > 0) {
+        console.log(`[updateMinisterApprovals] ${nation.name}: ${results.map(r => `${r.ministry_key} ${r.old}→${r.new} (${r.delta >= 0 ? '+' : ''}${r.delta})`).join(', ')}`);
+    }
+
+    return results;
+}
+
+// ==================== LAYER 2: GOVERNMENT APPROVAL (COMPOSITE) ====================
+
+/**
+ * Calculate composite government approval from three components:
+ *   60% — weighted average of minister approvals (+ embattled penalties)
+ *   20% — PM-owned stat threshold scoring (happiness, standard_of_living, stability)
+ *   20% — trajectory (are stats improving or declining over last N ticks?)
+ *
+ * Stores the result in nations.national_approval.
+ *
+ * @param {object} supabase
+ * @param {object} nation - nation row with current stat values
+ * @param {number} currentTick
+ * @returns {number|null} the computed government approval (0-100), or null if no government
+ */
+export async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
+    const { data: ministries } = await supabase
+        .from('ministries')
+        .select('ministry_key, minister_approval, minister_first_name, embattled_since_tick')
+        .eq('nation_id', nation.id)
+        .eq('is_active', true);
+
+    if (!ministries || ministries.length === 0) return null;
+
+    // Only count ministries with an appointed minister
+    const filledMinistries = ministries.filter(m => m.minister_first_name);
+    if (filledMinistries.length === 0) return null;
+
+    // ─── Component A (60%): Minister approval average + embattled penalties ───
+    let ministerSum = 0;
+    let embattledPenalty = 0;
+
+    for (const m of filledMinistries) {
+        const approval = m.minister_approval ?? 50;
+        ministerSum += approval;
+
+        // Check embattled status penalties
+        if (m.embattled_since_tick !== null && m.embattled_since_tick !== undefined && m.ministry_key !== 'prime_minister') {
+            const ticksEmbattled = currentTick - m.embattled_since_tick;
+            if (ticksEmbattled >= GOV_APPROVAL_CONFIG.EMBATTLED_TICKS_REQUIRED) {
+                if (approval < GOV_APPROVAL_CONFIG.CRISIS_THRESHOLD) {
+                    embattledPenalty += GOV_APPROVAL_CONFIG.CRISIS_GOV_PENALTY;
+                } else {
+                    embattledPenalty += GOV_APPROVAL_CONFIG.EMBATTLED_GOV_PENALTY;
+                }
+            }
+        }
+    }
+
+    const ministerAvg = ministerSum / filledMinistries.length;
+
+    // ─── Component B (20%): PM stats threshold scoring ───
+    let pmContribSum = 0;
+    for (const statKey of GOV_APPROVAL_CONFIG.PM_STATS) {
+        const value = Number(nation[statKey] ?? 0);
+        pmContribSum += statApprovalContribution(statKey, value);
+    }
+    const pmAvgContrib = pmContribSum / GOV_APPROVAL_CONFIG.PM_STATS.length;
+    // Map contribution range (-3 to +1.5) to 0-100 scale
+    // -3 → 15, -1.5 → 35, 0 → 50, +0.5 → 55, +1.5 → 75
+    const pmComponent = Math.max(0, Math.min(100, 50 + pmAvgContrib * (50 / 3)));
+
+    // ─── Component C (20%): Trajectory (are stats improving over last N ticks?) ───
+    let trajectoryComponent = 50; // default neutral
+    const lookback = GOV_APPROVAL_CONFIG.TRAJECTORY_LOOKBACK;
+
+    const { data: historyRows } = await supabase
+        .from('nations_history')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .gte('tick', currentTick - lookback)
+        .order('tick', { ascending: true })
+        .limit(1);
+
+    if (historyRows && historyRows.length > 0) {
+        const oldSnapshot = historyRows[0];
+        let improving = 0;
+        let declining = 0;
+        let total = 0;
+
+        for (const statKey of NATION_STAT_COLUMNS) {
+            const sign = statDirectionSign(statKey);
+            if (sign === 0) continue;
+
+            const oldVal = Number(oldSnapshot[statKey] ?? 0);
+            const curVal = Number(nation[statKey] ?? 0);
+            const delta = curVal - oldVal;
+
+            if (delta === 0) continue;
+            total++;
+
+            // Is this stat moving in the "good" direction?
+            if (delta * sign > 0) improving++;
+            else declining++;
+        }
+
+        if (total > 0) {
+            // Net ratio: +1 = all improving, -1 = all declining
+            const netRatio = (improving - declining) / total;
+            // Map to 0-100: -1 → 15, 0 → 50, +1 → 85
+            trajectoryComponent = Math.max(0, Math.min(100, 50 + netRatio * 35));
+        }
+    }
+
+    // ─── Composite ───
+    const rawApproval = ministerAvg * GOV_APPROVAL_CONFIG.MINISTER_WEIGHT
+        + pmComponent * GOV_APPROVAL_CONFIG.PM_STATS_WEIGHT
+        + trajectoryComponent * GOV_APPROVAL_CONFIG.TRAJECTORY_WEIGHT
+        + embattledPenalty;
+
+    const govApproval = Math.round(Math.max(0, Math.min(100, rawApproval)));
+
+    // Store on the nation
+    await supabase.from('nations')
+        .update({ national_approval: govApproval })
+        .eq('id', nation.id);
+
+    // Update in-memory nation object so snapshot captures it
+    nation.national_approval = govApproval;
+
+    console.log(`[calculateGovernmentApprovalTick] ${nation.name}: gov_approval=${govApproval} (ministers=${Math.round(ministerAvg)}, pm_stats=${Math.round(pmComponent)}, trajectory=${Math.round(trajectoryComponent)}, embattled_penalty=${embattledPenalty})`);
+
+    return govApproval;
 }
 
 export async function processOngoingCosts(supabase, nation, currentTick) {
