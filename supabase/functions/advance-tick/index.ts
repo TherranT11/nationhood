@@ -2874,6 +2874,8 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
     if (legislativeBills.length === 0) return;
 
     const passedBillIds = new Set(resolutions.filter(r => r.result === 'passed').map(r => r.billId));
+    // Presidential bills sent to president's desk are deferred — shifts applied when signed/auto-signed
+    const deskBillIds = new Set(resolutions.filter(r => r.result === 'president_desk').map(r => r.billId));
 
     // Accumulate shifts: { factionId: { axisKey: totalShift } }
     const factionShifts = {};
@@ -2884,6 +2886,9 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
     }
 
     for (const bill of legislativeBills) {
+        // Skip presidential bills on president's desk — shifts deferred to sign/auto-sign
+        if (deskBillIds.has(bill.id)) continue;
+
         // Collect ideology tags from articles (per-article, with duplicates)
         const tags = [];
         for (const art of (bill.bill_articles || [])) {
@@ -2910,11 +2915,6 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
         for (const tag of tags) {
             const mapping = IDEOLOGY_TO_AXIS[tag];
             if (!mapping) continue;
-
-            // +1 for proposing (sponsor only)
-            if (bill.proposed_by) {
-                addShift(bill.proposed_by, mapping.axisKey, 1 * mapping.direction);
-            }
 
             // +2 for voting YES (all YES voters including sponsor)
             for (const factionId of yesVoters) {
@@ -3345,6 +3345,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                 if (originalBill) {
                     await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
                     await enactBill(supabase, originalBill, currentTick);
+                    // Apply ideology shifts for the original bill (deferred from president_desk)
+                    await processIdeologyShifts(supabase, bill.nation_id, [{ billId: originalBill.id, result: 'passed' }], currentTick);
                 }
                 try {
                     await supabase.rpc('fire_system_event', {
@@ -6580,6 +6582,9 @@ async function signPresidentialBill(supabase, billId, presidentFactionId) {
 
     await enactBill(supabase, bill, currentTick);
 
+    // Apply ideology shifts now that the bill is enacted (deferred from president_desk)
+    await processIdeologyShifts(supabase, bill.nation_id, [{ billId: bill.id, result: 'passed' }], currentTick);
+
     try {
         await supabase.rpc('fire_system_event', {
             p_trigger_key: 'bill_passed',
@@ -6676,6 +6681,9 @@ async function processPresidentDesk(supabase, nation, currentTick) {
         }).eq('id', bill.id);
 
         await enactBill(supabase, bill, currentTick);
+
+        // Apply ideology shifts now that the bill is enacted (deferred from president_desk)
+        await processIdeologyShifts(supabase, nation.id, [{ billId: bill.id, result: 'passed' }], currentTick);
 
         try {
             await supabase.rpc('fire_system_event', {
