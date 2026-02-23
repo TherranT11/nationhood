@@ -2518,6 +2518,115 @@ export async function applyEnactmentApproval(supabase, approvalDeltas) {
 }
 
 
+// ==================== NO-VOTE PENALTY ====================
+
+/**
+ * Penalize factions that did not cast any vote (YES/NO/ABSTAIN) on a bill.
+ * - Momentum: lose [1d3+1] (2-4) across all blocs
+ * - Preference: -2 approval with every voter bloc whose ideology axis score
+ *   is at least ±10 from center (≤40 or ≥60) on any axis present in the bill.
+ *
+ * @param {object} supabase
+ * @param {object} bill - Full bill row with bill_articles (with policies) and bill_support
+ * @param {string} nationId
+ */
+export async function applyNoVotePenalty(supabase, bill, nationId) {
+    const PREFERENCE_PENALTY = -2;
+    const AXIS_THRESHOLD = 10; // distance from center (50) to count as "having" an ideology
+
+    // 1. Get all party factions in this nation
+    const { data: allFactions } = await supabase
+        .from('factions')
+        .select('id, faction_name')
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+    if (!allFactions || allFactions.length === 0) return [];
+
+    // 2. Determine which factions voted (have a bill_support row)
+    const votedFactionIds = new Set();
+    // Sponsor always counts as having voted (they implicitly support their own bill)
+    if (bill.proposed_by) votedFactionIds.add(bill.proposed_by);
+    for (const s of (bill.bill_support || [])) {
+        if (s.faction_id) votedFactionIds.add(s.faction_id);
+    }
+
+    // 3. Find non-voters
+    const nonVoters = allFactions.filter(f => !votedFactionIds.has(f.id));
+    if (nonVoters.length === 0) return [];
+
+    // 4. Extract ideology tags from bill articles
+    const allTags = [];
+    for (const art of (bill.bill_articles || [])) {
+        const p = art.policies || art;
+        if (!p) continue;
+        const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
+            ? p.ideologies.map(i => i.toUpperCase())
+            : (p.ideology ? [p.ideology.toUpperCase()] : []);
+        allTags.push(...ideos);
+    }
+
+    // Map tags to unique axis keys
+    const affectedAxes = new Set();
+    for (const tag of allTags) {
+        const mapping = IDEOLOGY_TO_AXIS[tag];
+        if (mapping) affectedAxes.add(mapping.axisKey);
+    }
+
+    // 5. Load voter blocs for this nation (need axis scores to filter)
+    const { data: voterBlocs } = await supabase
+        .from('voter_blocs')
+        .select('id, bloc_name, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+
+    // 6. Determine which blocs are affected (lean ±10 from center on any affected axis)
+    const affectedBlocIds = new Set();
+    for (const bloc of (voterBlocs || [])) {
+        for (const axisKey of affectedAxes) {
+            const score = bloc['axis_' + axisKey] ?? 50;
+            if (Math.abs(score - 50) >= AXIS_THRESHOLD) {
+                affectedBlocIds.add(bloc.id);
+                break; // one matching axis is enough
+            }
+        }
+    }
+
+    // 7. Apply penalties to each non-voter
+    const penalized = [];
+    for (const faction of nonVoters) {
+        // Momentum: lose 1d3+1 (2-4) across ALL blocs
+        const momentumLoss = -(Math.floor(Math.random() * 3) + 2);
+        await adjustMomentum(supabase, faction.id, momentumLoss);
+
+        // Preference: -2 approval on matched blocs only
+        if (affectedBlocIds.size > 0) {
+            const { data: blocRows } = await supabase
+                .from('faction_bloc_approval')
+                .select('id, bloc_id, approval')
+                .eq('faction_id', faction.id)
+                .in('bloc_id', [...affectedBlocIds]);
+
+            for (const row of (blocRows || [])) {
+                const newApproval = Math.round(Math.max(0, Math.min(100, row.approval + PREFERENCE_PENALTY)));
+                await supabase.from('faction_bloc_approval')
+                    .update({ approval: newApproval })
+                    .eq('id', row.id);
+            }
+        }
+
+        penalized.push({
+            factionId: faction.id,
+            factionName: faction.faction_name,
+            momentumLoss,
+            preferencePenalty: affectedBlocIds.size > 0 ? PREFERENCE_PENALTY : 0,
+            affectedBlocCount: affectedBlocIds.size
+        });
+    }
+
+    return penalized;
+}
+
+
 // ==================== STATIC IDEOLOGY PENALTY (LEGACY) ====================
 
 export function calculateIdeologyPenalty(stage, opposedCount, polarization) {
@@ -3341,6 +3450,29 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 }
             });
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
+        }
+
+        // ── No-vote penalty: punish factions that didn't cast any vote ──
+        try {
+            const penalized = await applyNoVotePenalty(supabase, bill, bill.nation_id);
+            if (penalized.length > 0) {
+                const names = penalized.map(p => `${p.factionName} (${p.momentumLoss} momentum, ${p.preferencePenalty} pref to ${p.affectedBlocCount} blocs)`).join(', ');
+                console.log(`[resolveExpiredVotes] No-vote penalty on "${bill.bill_name}": ${names}`);
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_trigger_key: 'no_vote_penalty',
+                        p_nation_id: bill.nation_id,
+                        p_tick: currentTick,
+                        p_placeholders: {
+                            bill_name: bill.bill_name,
+                            party_names: penalized.map(p => p.factionName).join(', '),
+                            party_count: String(penalized.length)
+                        }
+                    });
+                } catch (e) { /* non-blocking if event key doesn't exist yet */ }
+            }
+        } catch (penaltyErr) {
+            console.error(`[resolveExpiredVotes] No-vote penalty failed for bill ${bill.id}:`, penaltyErr.message);
         }
     }
 
