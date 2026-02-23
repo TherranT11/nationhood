@@ -1922,6 +1922,9 @@ async function processNoBudgetPenalty(supabase, nation, currentTick) {
 }
 
 // ==================== GOVERNMENT SHUTDOWN ====================
+// Stable UUID for the Government Shutdown crisis template (matches SQL migration)
+const GOVERNMENT_SHUTDOWN_CRISIS_ID = '00000000-0000-0000-0000-000000000001';
+
 /**
  * Check if a government shutdown is active for this nation.
  * Shutdown triggers when 2+ ticks have passed since the budget expired
@@ -1958,13 +1961,14 @@ function buildShutdownStatInstMap(institutionConfig) {
 }
 
 /**
- * Government Shutdown Crisis — coalition/approval/momentum penalties.
+ * Government Shutdown Crisis — coalition/approval/momentum penalties + active_crises management.
  * Called each tick when isGovernmentShutdown() returns true.
  *
  * Effects (in addition to Collapsed institution decay handled by the main loop):
  *   - All coalition parties: -2 Momentum and -2 Approval per voter bloc per tick
  *   - Prime Minister's party: additional -3 Approval/tick
  *   - President's party (presidential systems): -3 Approval/tick
+ *   - Inserts an active_crises row so it shows on nation.html
  *   - Fires a system event notification
  */
 async function processGovernmentShutdown(supabase, nation, currentTick) {
@@ -1973,6 +1977,40 @@ async function processGovernmentShutdown(supabase, nation, currentTick) {
     const ticksOverdue = ticksSinceLastBudget - GAME_CONFIG.TICKS_PER_YEAR;
 
     console.log(`[GovernmentShutdown] ACTIVE for ${nation.name} — ${ticksSinceLastBudget} ticks since last budget (overdue by ${ticksOverdue} ticks)`);
+
+    // --- 0. Activate crisis record (insert into active_crises if not already present) ---
+    const { data: existingCrisis } = await supabase
+        .from('active_crises')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('crisis_id', GOVERNMENT_SHUTDOWN_CRISIS_ID)
+        .maybeSingle();
+
+    if (!existingCrisis) {
+        const { error: insertErr } = await supabase
+            .from('active_crises')
+            .insert({
+                crisis_id: GOVERNMENT_SHUTDOWN_CRISIS_ID,
+                nation_id: nation.id,
+                started_at_tick: currentTick,
+                effects_applied_log: []
+            });
+        if (insertErr) {
+            console.warn(`[GovernmentShutdown] Failed to insert active_crises row:`, insertErr.message);
+        } else {
+            console.log(`[GovernmentShutdown] Crisis activated for ${nation.name} at tick ${currentTick}`);
+
+            // Log to event_log
+            await supabase.from('event_log').insert({
+                nation_id: nation.id,
+                event_name: 'CRISIS_STARTED: Government Shutdown',
+                description_used: 'The government has shut down due to failure to pass a budget.',
+                category: 'crisis',
+                effects_applied: [],
+                fired_at_tick: currentTick
+            });
+        }
+    }
 
     // --- 1. Coalition party penalties: -2 Momentum and -2 Approval per voter bloc ---
     const coalition = await fetchActiveCoalition(supabase, nation.id);
@@ -2031,6 +2069,37 @@ async function processGovernmentShutdown(supabase, nation, currentTick) {
         ticksOverdue,
         coalitionPartiesAffected: coalitionPartyIds.length
     };
+}
+
+/**
+ * Deactivate the Government Shutdown crisis when a budget has been passed.
+ * Called each tick when isGovernmentShutdown() returns false — removes the
+ * active_crises row if one exists, so it disappears from nation.html.
+ */
+async function resolveGovernmentShutdown(supabase, nation, currentTick) {
+    const { data: existingCrisis } = await supabase
+        .from('active_crises')
+        .select('id, started_at_tick')
+        .eq('nation_id', nation.id)
+        .eq('crisis_id', GOVERNMENT_SHUTDOWN_CRISIS_ID)
+        .maybeSingle();
+
+    if (!existingCrisis) return; // No active shutdown to resolve
+
+    await supabase.from('active_crises').delete().eq('id', existingCrisis.id);
+
+    const duration = currentTick - (existingCrisis.started_at_tick || 0);
+
+    await supabase.from('event_log').insert({
+        nation_id: nation.id,
+        event_name: 'CRISIS_RESOLVED: Government Shutdown',
+        description_used: 'The government shutdown has ended. A budget has been passed.',
+        category: 'crisis',
+        effects_applied: [],
+        fired_at_tick: currentTick
+    });
+
+    console.log(`[GovernmentShutdown] Crisis resolved for ${nation.name} at tick ${currentTick} (duration: ${duration} ticks)`);
 }
 
 // Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -1% to +1% per month
@@ -13115,6 +13184,9 @@ async function advanceTick(supabase) {
                 summary.governmentShutdowns = summary.governmentShutdowns || [];
                 summary.governmentShutdowns.push({ nation: nation.name, ...shutdownResult });
             }
+        } else {
+            // If shutdown ended (budget passed), remove the active_crises row
+            await resolveGovernmentShutdown(supabase, nation, newTick);
         }
 
         // Faction loyalty (autocracy)
