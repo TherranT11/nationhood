@@ -206,7 +206,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES } from './js/game-common.js';
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
@@ -215,6 +215,7 @@ let factionIdeology = null; // Dynamic ideology scores for current player
 let isNoGovernment = false;
 let coalitionPartyIds = []; // For budget bill editing permissions
 let coalitionLeadPartyId = null; // PM's party in parliamentary systems
+let ratificationData = null; // Fetched agreement/proposal data for ratification bills
 let budgetAllocations = []; // Budget allocation rows for budget bills
 let budgetItemAllocations = []; // Per-item (institution/policy) allocation rows
 let budgetActiveLaws = [];  // Active laws for computing ministry costs
@@ -272,6 +273,39 @@ async function loadBillData() {
             .eq('id', billId).single();
         if (error) throw error;
         currentBill = bill;
+
+        // Fetch linked agreement data for ratification bills
+        ratificationData = null;
+        if (bill.bill_type === 'ratification') {
+            if (bill.diplomatic_proposal_id) {
+                const { data: proposal } = await _supabase
+                    .from('diplomatic_proposals')
+                    .select('*')
+                    .eq('id', bill.diplomatic_proposal_id).single();
+                if (proposal) {
+                    const { data: propNation } = await _supabase.from('nations').select('id, name').eq('id', proposal.proposing_nation_id).single();
+                    const { data: targNation } = await _supabase.from('nations').select('id, name').eq('id', proposal.target_nation_id).single();
+                    ratificationData = { kind: 'diplomatic', proposal, proposerName: propNation?.name || 'Unknown', targetName: targNation?.name || 'Unknown' };
+                }
+            } else if (bill.trade_negotiation_id) {
+                const { data: neg } = await _supabase
+                    .from('trade_negotiations')
+                    .select('*')
+                    .eq('id', bill.trade_negotiation_id).single();
+                if (neg) {
+                    const { data: nationA } = await _supabase.from('nations').select('id, name').eq('id', neg.nation_a_id).single();
+                    const { data: nationB } = await _supabase.from('nations').select('id, name').eq('id', neg.nation_b_id).single();
+                    const isNationA = bill.nation_id === neg.nation_a_id;
+                    const otherBillId = isNationA ? neg.bill_b_id : neg.bill_a_id;
+                    let otherBillStatus = null;
+                    if (otherBillId) {
+                        const { data: otherBill } = await _supabase.from('bills').select('status').eq('id', otherBillId).single();
+                        otherBillStatus = otherBill?.status || null;
+                    }
+                    ratificationData = { kind: 'trade', neg, nationA, nationB, otherBillStatus, isNationA };
+                }
+            }
+        }
 
         const { data: parties } = await _supabase
             .from('factions')
@@ -347,6 +381,8 @@ function renderBill() {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#B71C1C;">⚖ Veto Override</span>';
     } else if (bill.bill_type === 'budget') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#1B5E20;">Budget</span>';
+    } else if (bill.bill_type === 'ratification') {
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#0288D1;">🌐 Ratification</span>';
     }
     if (isFrozen) {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#ff9800;color:#000;">FROZEN</span>';
@@ -393,7 +429,7 @@ function renderBill() {
         earlyBanner.className = 'bill-early-resolution ' + (isMajReached ? 'majority-reached' : 'majority-opposed');
         // Tally current votes for display
         let earlyYes = 0, earlyNo = 0;
-        (billSupport || []).forEach(s => {
+        (bill.bill_support || []).forEach(s => {
             const st = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
             if (st === 'yes') earlyYes += s.seat_count;
             else if (st === 'no') earlyNo += s.seat_count;
@@ -684,6 +720,12 @@ function renderArticles() {
         return;
     }
 
+    // Ratification bills show agreement details
+    if (bill.bill_type === 'ratification' && ratificationData) {
+        renderRatificationBill();
+        return;
+    }
+
     const articles = (bill.bill_articles || []).sort((a,b) => a.article_number - b.article_number);
     let totalUpfront = 0, totalOngoing = 0;
     const html = `
@@ -760,6 +802,247 @@ function renderArticles() {
     document.getElementById('total-ongoing').className = `total-value ${totalOngoing < 0 ? 'revenue' : ''}`;
 }
 
+
+// ==================== RATIFICATION BILL RENDERING ====================
+
+const ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
+
+function renderTradeArticleDescription(art, rd) {
+    const d = art.data || {};
+    const sectorLabel = (key) => (TRADEABLE_SECTOR_MAP[key] || {}).label || key || 'Unknown Sector';
+    const nationAName = rd.nationA?.name || 'Nation A';
+    const nationBName = rd.nationB?.name || 'Nation B';
+    const weAreA = rd.isNationA;
+    const ourName = weAreA ? nationAName : nationBName;
+    const theirName = weAreA ? nationBName : nationAName;
+
+    switch (art.type) {
+        case 'duration': {
+            const isPerm = d.duration_type === 'permanent';
+            const ticks = d.duration_ticks || 0;
+            const years = ticks >= 12 ? (ticks / 12).toFixed(1).replace(/\.0$/, '') + ' year(s)' : ticks + ' month(s)';
+            let text = isPerm ? 'This agreement is <strong>permanent</strong> and has no expiration date.' :
+                'This agreement shall remain in effect for <strong>' + years + '</strong>.';
+            if (!isPerm && d.auto_renew) text += ' The agreement <strong>auto-renews</strong> at expiration.';
+            if (d.withdrawal_notice_ticks) text += ' Either party may withdraw with <strong>' + d.withdrawal_notice_ticks + ' month(s)</strong> notice.';
+            return text;
+        }
+        case 'sector_exemption':
+            return '<strong>' + escapeHtml(sectorLabel(d.sector)) + '</strong> is exempt from tariff elimination under this agreement.' +
+                (d.reason ? ' Reason: ' + escapeHtml(d.reason) : '');
+        case 'tariff_reduction': {
+            const dir = d.direction === 'mutual' ? 'Both nations' :
+                d.direction === 'your_exports' ? ourName : theirName;
+            return dir + ' shall reduce tariffs on <strong>' + escapeHtml(sectorLabel(d.sector)) + '</strong> by <strong>' + (d.reduction_pct || 0) + '%</strong>.' +
+                (d.reduction_pct >= 100 ? ' (Full elimination)' : '');
+        }
+        case 'supply_commitment': {
+            const buyer = d.direction === 'we_buy' ? ourName : theirName;
+            const seller = d.direction === 'we_buy' ? theirName : ourName;
+            return buyer + ' commits to purchasing <strong>' + (d.commitment_pct || 0) + '%</strong> of its <strong>' + escapeHtml(sectorLabel(d.sector)) + '</strong> imports from ' + seller + '.';
+        }
+        case 'price_terms': {
+            const ptMap = { market: 'market rate', fixed: 'a fixed rate', discounted: 'a discounted rate (' + (d.modifier_pct || 0) + '% below market)', premium: 'a premium rate (' + (d.modifier_pct || 0) + '% above market)' };
+            return 'Pricing shall be set at <strong>' + (ptMap[d.price_type] || 'market rate') + '</strong>.';
+        }
+        case 'breach_penalty': {
+            const parts = [];
+            if (d.relations_penalty) parts.push('relations penalty of <strong>-' + d.relations_penalty + '</strong>');
+            if (d.reputation_penalty) parts.push('reputation penalty of <strong>-' + d.reputation_penalty + '</strong>');
+            if (d.financial_penalty) parts.push('financial penalty of <strong>' + formatCurrency(d.financial_penalty) + '</strong>');
+            return parts.length ? 'Breach of contract incurs: ' + parts.join(', ') + '.' : 'No specific breach penalties defined.';
+        }
+        case 'subsidized_sector':
+            return 'Exports in <strong>' + escapeHtml(sectorLabel(d.sector)) + '</strong> shall receive a <strong>' + (d.subsidy_pct || 0) + '%</strong> government subsidy.';
+        case 'funding_source':
+            return 'Subsidy funded from the <strong>' + (d.source === 'ministry_budget' ? 'Ministry Budget' : 'General Treasury') + '</strong>.';
+        case 'text_article':
+            return (d.title ? '<strong>' + escapeHtml(d.title) + ':</strong> ' : '') + escapeHtml(d.body || '');
+        default:
+            return 'Agreement provision (' + escapeHtml(art.type || 'unknown') + ').';
+    }
+}
+
+function renderRatificationBill() {
+    const bill = currentBill;
+    const rd = ratificationData;
+    let html = '';
+    let totalFiscal = 0;
+
+    if (rd.kind === 'diplomatic') {
+        // === DIPLOMATIC INITIATIVE RATIFICATION ===
+        const proposal = rd.proposal;
+        const pd = proposal.proposal_data || {};
+        const articles = pd.articles || [];
+        const struck = new Set(pd.struck_articles || []);
+        const typeInfo = PROPOSAL_TYPES[pd.agreement_type] || {};
+        const classification = pd.classification || typeInfo.classification || 'MAJOR';
+
+        // Section 1: Preamble
+        html += '<div class="article preamble" style="border-left-color:#0288D1;">' +
+            '<div class="article-number" style="color:#0288D1;">DIPLOMATIC RATIFICATION</div>' +
+            '<div class="article-title">' + escapeHtml(pd.name || bill.bill_name || 'Diplomatic Agreement') + '</div>' +
+            '<div class="article-description">' +
+                '<strong>Type:</strong> ' + escapeHtml(typeInfo.label || pd.agreement_type || 'Diplomatic Initiative') +
+                    ' <span class="ratification-classification ' + classification.toLowerCase() + '">' + classification + '</span><br>' +
+                '<strong>Parties:</strong> ' + escapeHtml(rd.proposerName) + ' and ' + escapeHtml(rd.targetName) + '<br>' +
+                '<strong>Duration:</strong> ' + (pd.duration_years ? pd.duration_years + ' year(s)' : 'Unspecified') + '<br>' +
+                (pd.proposer_ambassador_name ? '<strong>Proposed by:</strong> ' + escapeHtml(pd.proposer_ambassador_name) : '') +
+            '</div>' +
+        '</div>';
+
+        // Section 2: Terms & Provisions
+        if (articles.length > 0) {
+            html += '<div class="ratification-section">' +
+                '<div class="ratification-section-header">Terms &amp; Provisions</div>';
+            articles.forEach((art, i) => {
+                const isStruck = struck.has(i);
+                const numeral = ROMAN[i] || (i + 1);
+                html += '<div class="article' + (isStruck ? ' struck-article' : '') + '">' +
+                    '<div class="article-number">Article ' + numeral + (isStruck ? ' <span style="color:#ff4444;font-size:0.7rem;">STRUCK</span>' : '') + '</div>' +
+                    '<div class="article-description" style="white-space:pre-wrap;">' + escapeHtml(art.text || '') + '</div>';
+                // Show per-article impact if available
+                const impactParts = [];
+                if (art.relations && art.relations !== 0) impactParts.push('Relations: ' + (art.relations > 0 ? '+' : '') + art.relations);
+                if (art.money && art.money !== 0) impactParts.push('Fiscal: ' + formatCurrency(art.money));
+                if (impactParts.length > 0 && !isStruck) {
+                    html += '<div class="article-stat-effect">' + impactParts.join(' &middot; ') + '</div>';
+                }
+                html += '</div>';
+                if (!isStruck && art.money) totalFiscal += art.money;
+            });
+            html += '</div>';
+        }
+
+        // Section 3: Stat Impact Projections
+        const statEffects = typeInfo.stat_effects || [];
+        if (statEffects.length > 0) {
+            html += '<div class="ratification-section">' +
+                '<div class="ratification-section-header">Projected Stat Effects</div>' +
+                '<div class="ratification-stats">';
+            statEffects.forEach(e => {
+                const dir = e.direction === 'up' ? '↑' : '↓';
+                const cls = e.direction === 'up' ? 'stat-up' : 'stat-down';
+                const label = (e.stat_key || '').replace(/_/g, ' ');
+                html += '<div class="ratification-stat-row"><span class="' + cls + '">' + dir + ' ' + label + '</span>' +
+                    '<span class="ratification-stat-note">(' + (e.rate || 1) + 'x rate' +
+                    (e.delay_ticks ? ', ' + e.delay_ticks + ' month delay' : '') +
+                    (e.duration_ticks ? ', ' + e.duration_ticks + ' month duration' : ', ongoing') + ')</span></div>';
+            });
+            html += '</div></div>';
+        }
+
+        // Section 4: Counterparty Note
+        html += '<div class="ratification-section">' +
+            '<div class="ratification-section-header">Counterparty</div>' +
+            '<div class="counterparty-note">This agreement was accepted through diplomatic channels by <strong>' + escapeHtml(rd.targetName) + '</strong>. Only your legislature\'s ratification is required.</div>' +
+        '</div>';
+
+    } else if (rd.kind === 'trade') {
+        // === TRADE AGREEMENT RATIFICATION ===
+        const neg = rd.neg;
+        const articles = neg.draft_articles || [];
+        const typeInfo = TRADE_AGREEMENT_TYPES[neg.agreement_type] || {};
+        const nationAName = rd.nationA?.name || 'Unknown';
+        const nationBName = rd.nationB?.name || 'Unknown';
+        const ourName = rd.isNationA ? nationAName : nationBName;
+        const theirName = rd.isNationA ? nationBName : nationAName;
+
+        // Extract duration from articles
+        const durationArt = articles.find(a => a.type === 'duration');
+        const durData = durationArt?.data || {};
+        const isPerm = durData.duration_type === 'permanent';
+        const durTicks = durData.duration_ticks || 0;
+        const durLabel = isPerm ? 'Permanent' : (durTicks >= 12 ? (durTicks / 12).toFixed(1).replace(/\.0$/, '') + ' year(s)' : durTicks + ' month(s)');
+
+        // Section 1: Preamble
+        html += '<div class="article preamble" style="border-left-color:#0288D1;">' +
+            '<div class="article-number" style="color:#0288D1;">TRADE RATIFICATION</div>' +
+            '<div class="article-title">' + escapeHtml(neg.agreement_name || bill.bill_name || 'Trade Agreement') + '</div>' +
+            '<div class="article-description">' +
+                '<strong>Type:</strong> ' + escapeHtml(typeInfo.label || neg.agreement_type || 'Trade Agreement') +
+                    (typeInfo.shortLabel ? ' (' + typeInfo.shortLabel + ')' : '') + '<br>' +
+                '<strong>Parties:</strong> ' + escapeHtml(nationAName) + ' and ' + escapeHtml(nationBName) + '<br>' +
+                '<strong>Duration:</strong> ' + durLabel + '<br>' +
+                '<strong>Description:</strong> ' + escapeHtml(typeInfo.description || '') +
+            '</div>' +
+        '</div>';
+
+        // Section 2: Terms & Provisions
+        const nonDurationArticles = articles.filter(a => a.type !== 'duration');
+        if (nonDurationArticles.length > 0 || articles.length > 0) {
+            html += '<div class="ratification-section">' +
+                '<div class="ratification-section-header">Terms &amp; Provisions</div>';
+            // Show duration first as its own article
+            if (durationArt) {
+                html += '<div class="article" style="border-left:3px solid #0288D1;">' +
+                    '<div class="article-number">Article I <span style="color:#0288D1;font-size:0.7rem;">DURATION</span></div>' +
+                    '<div class="article-description">' + renderTradeArticleDescription(durationArt, rd) + '</div>' +
+                '</div>';
+            }
+            // Render remaining articles
+            nonDurationArticles.forEach((art, i) => {
+                const numeral = ROMAN[(durationArt ? 1 : 0) + i] || ((durationArt ? 2 : 1) + i);
+                const artTypeInfo = TRADE_ARTICLE_TYPES[art.type] || {};
+                const typeLabel = artTypeInfo.label || art.type || 'Provision';
+                const borderColor = art.type === 'text_article' ? '#2196F3' :
+                    art.type === 'breach_penalty' ? '#ff4444' :
+                    art.type === 'sector_exemption' ? '#ff9800' : '#0288D1';
+                html += '<div class="article" style="border-left:3px solid ' + borderColor + ';">' +
+                    '<div class="article-number">Article ' + numeral + ' <span style="color:' + borderColor + ';font-size:0.7rem;">' + escapeHtml(typeLabel.toUpperCase()) + '</span></div>' +
+                    '<div class="article-description">' + renderTradeArticleDescription(art, rd) + '</div>' +
+                '</div>';
+            });
+            html += '</div>';
+        }
+
+        // Section 3: Stat Impact Projections
+        const tradeStatEffects = (PROPOSAL_TYPES.trade_agreement || {}).stat_effects || [];
+        if (tradeStatEffects.length > 0) {
+            html += '<div class="ratification-section">' +
+                '<div class="ratification-section-header">Projected Stat Effects</div>' +
+                '<div class="ratification-stats">';
+            tradeStatEffects.forEach(e => {
+                const dir = e.direction === 'up' ? '↑' : '↓';
+                const cls = e.direction === 'up' ? 'stat-up' : 'stat-down';
+                const label = (e.stat_key || '').replace(/_/g, ' ');
+                html += '<div class="ratification-stat-row"><span class="' + cls + '">' + dir + ' ' + label + '</span>' +
+                    '<span class="ratification-stat-note">(' + (e.rate || 1) + 'x rate' +
+                    (e.delay_ticks ? ', ' + e.delay_ticks + ' month delay' : '') +
+                    (e.duration_ticks ? ', ' + e.duration_ticks + ' month duration' : ', ongoing') + ')</span></div>';
+            });
+            html += '</div></div>';
+        }
+
+        // Section 4: Counterparty Status
+        const otherName = theirName;
+        let statusLabel, statusClass;
+        switch (rd.otherBillStatus) {
+            case 'passed': statusLabel = 'RATIFIED'; statusClass = 'ratified'; break;
+            case 'floor': statusLabel = 'PENDING — on the floor'; statusClass = 'pending'; break;
+            case 'committee': statusLabel = 'PENDING — in committee'; statusClass = 'pending'; break;
+            case 'failed': statusLabel = 'REJECTED'; statusClass = 'rejected'; break;
+            default: statusLabel = 'NO BILL YET'; statusClass = 'pending'; break;
+        }
+        html += '<div class="ratification-section">' +
+            '<div class="ratification-section-header">Counterparty Status</div>' +
+            '<div class="counterparty-row">' +
+                '<span class="counterparty-nation">' + escapeHtml(otherName) + ':</span>' +
+                '<span class="counterparty-badge ' + statusClass + '">' + statusLabel + '</span>' +
+            '</div>' +
+            '<div class="counterparty-note">This agreement takes effect only when <strong>both</strong> legislatures ratify it.</div>' +
+        '</div>';
+    }
+
+    document.getElementById('bill-articles').innerHTML = html;
+
+    // Update fiscal totals
+    const ongoingCost = 0; // ratification bills don't have ongoing costs on the bill itself
+    document.getElementById('total-upfront').textContent = formatCurrency(totalFiscal);
+    document.getElementById('total-upfront').className = 'total-value' + (totalFiscal < 0 ? ' revenue' : '');
+    document.getElementById('total-ongoing').textContent = '$0M/mo';
+    document.getElementById('total-ongoing').className = 'total-value';
+}
 
 // ==================== IDEOLOGY AWARENESS (PHASE 4) ====================
 
@@ -1716,40 +1999,45 @@ window.submitSponsorAddTextArticle = submitSponsorAddTextArticle;
 let budgetSelectedCategory = null;
 
 async function loadBudgetData(bill) {
-    // Load budget allocations
-    const { data: allocs } = await _supabase.from('budget_allocations')
-        .select('*').eq('bill_id', bill.id);
-    budgetAllocations = allocs || [];
+    try {
+        // Load budget allocations
+        const { data: allocs } = await _supabase.from('budget_allocations')
+            .select('*').eq('bill_id', bill.id);
+        budgetAllocations = allocs || [];
 
-    // Load full nation data for budget calculations
-    const { data: nation } = await _supabase.from('nations')
-        .select('*').eq('id', bill.nation_id).single();
-    budgetNation = nation;
+        // Load full nation data for budget calculations
+        const { data: nation } = await _supabase.from('nations')
+            .select('*').eq('id', bill.nation_id).single();
+        budgetNation = nation;
 
-    // Load active laws for cost breakdown
-    const { data: laws } = await _supabase.from('active_laws')
-        .select('*, policies(id, policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat)')
-        .eq('nation_id', bill.nation_id);
-    budgetActiveLaws = (laws || []).filter(l => !l.is_reversal);
+        // Load active laws for cost breakdown
+        const { data: laws } = await _supabase.from('active_laws')
+            .select('*, policies(id, policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat)')
+            .eq('nation_id', bill.nation_id);
+        budgetActiveLaws = (laws || []).filter(l => !l.is_reversal);
 
-    // Load latest trade summary for tariff revenue (matches Economy page)
-    const { data: tradeSummary } = await _supabase.from('trade_summary')
-        .select('tariff_revenue')
-        .eq('nation_id', bill.nation_id)
-        .order('tick', { ascending: false })
-        .limit(1)
-        .single();
-    budgetTradeTariffRevenue = tradeSummary ? Number(tradeSummary.tariff_revenue) : null;
+        // Load latest trade summary for tariff revenue (matches Economy page)
+        const { data: tradeSummary } = await _supabase.from('trade_summary')
+            .select('tariff_revenue')
+            .eq('nation_id', bill.nation_id)
+            .order('tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        budgetTradeTariffRevenue = tradeSummary ? Number(tradeSummary.tariff_revenue) : null;
 
-    // Load institution config for cost breakdown
-    const { data: instRows } = await _supabase.from('ministry_institution_config')
-        .select('*');
-    budgetInstitutions = instRows || [];
+        // Load institution config for cost breakdown
+        const { data: instRows } = await _supabase.from('ministry_institution_config')
+            .select('*');
+        budgetInstitutions = instRows || [];
 
-    // Load per-item allocations
-    const { data: itemAllocs } = await _supabase.from('budget_item_allocations')
-        .select('*').eq('bill_id', bill.id);
-    budgetItemAllocations = itemAllocs || [];
+        // Load per-item allocations
+        const { data: itemAllocs } = await _supabase.from('budget_item_allocations')
+            .select('*').eq('bill_id', bill.id);
+        budgetItemAllocations = itemAllocs || [];
+    } catch (e) {
+        console.error('Error loading budget data:', e);
+        // Non-fatal: renderBudgetBillUI handles missing budgetNation gracefully
+    }
 }
 
 function isBudgetEditable() {
