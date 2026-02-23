@@ -331,7 +331,7 @@ function getNationButton(nation, isFull = false) {
     }
 
     // For other nations, link to their info page if it exists
-    const nationPages = { 'melizea': true, 'avelia': true, 'sangreza': true };
+    const nationPages = { 'melizea': true, 'avelia': true, 'sangreza': true, 'sanestrella': true };
     const slug = nationSlug(nation.name);
     if (nationPages[slug]) {
         return `<button onclick="window.location.href='${slug}.html'" style="width:100%; padding:14px; background:#ffcc00; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:0.95rem; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:0.3s;">VIEW ${nation.name.toUpperCase()}</button>`;
