@@ -3414,10 +3414,10 @@ async function openTradeNegotiation(negotiationId) {
                 <div style="font-size:0.7rem;color:var(--text-muted);">Opened tick ${neg.opened_at_tick}</div>
             </div>
             <div style="text-align:right;">
-                <div class="trade-neg-status-value ${statusClass}">
-                    ${neg.status === 'open' ? 'AWAITING ACCEPTANCE' : ticksLeft + ' ticks remaining'}
+                <div class="trade-neg-status-value ${neg.status === 'ratification' ? 'active' : neg.status === 'ratification_failed' ? 'expiring' : neg.status === 'concluded' ? 'active' : statusClass}">
+                    ${neg.status === 'open' ? 'AWAITING ACCEPTANCE' : neg.status === 'ratification' ? 'AWAITING PARLIAMENT' : neg.status === 'ratification_failed' ? 'RATIFICATION FAILED' : neg.status === 'concluded' ? 'RATIFIED &amp; ACTIVE' : ticksLeft + ' ticks remaining'}
                 </div>
-                <div style="font-size:0.62rem;color:var(--text-dim);">Expires tick ${neg.expires_at_tick}</div>
+                <div style="font-size:0.62rem;color:var(--text-dim);">${neg.status === 'ratification' || neg.status === 'concluded' || neg.status === 'ratification_failed' ? 'Both sides approved' : 'Expires tick ' + neg.expires_at_tick}</div>
             </div>
         </div>
     `;
@@ -3620,6 +3620,47 @@ async function openTradeNegotiation(negotiationId) {
         // Cancel
         html += '<button class="proposal-reject-btn" style="font-size:0.72rem;padding:5px 12px;" onclick="cancelTradeNegotiation(\'' + neg.id + '\')">Cancel Negotiations</button>';
         html += '</div>';
+    }
+
+    // Ratification status display
+    if (neg.status === 'ratification') {
+        html += '<div class="diplo-section-title" style="margin-top:16px;">Parliament Ratification</div>';
+        html += '<div class="trade-info-box info" style="margin-bottom:8px;">Both sides have approved this agreement. Ratification bills are now before both parliaments.</div>';
+
+        // Show bill links/status for each nation
+        const nationALabel = neg.nation_a_id === currentNation.id ? currentNation.name : partnerName;
+        const nationBLabel = neg.nation_b_id === currentNation.id ? currentNation.name : partnerName;
+        const billIds = [
+            { label: nationALabel, billId: neg.bill_a_id, nationId: neg.nation_a_id },
+            { label: nationBLabel, billId: neg.bill_b_id, nationId: neg.nation_b_id }
+        ];
+
+        // Fetch bill statuses
+        for (const entry of billIds) {
+            let billStatus = 'unknown';
+            if (entry.billId) {
+                const { data: bData } = await _supabase.from('bills').select('status').eq('id', entry.billId).single();
+                billStatus = bData?.status || 'unknown';
+            }
+            const statusColor = billStatus === 'passed' ? '#4CAF50' : billStatus === 'failed' ? '#ff4444' : billStatus === 'floor' ? '#ffcc00' : '#888';
+            const statusText = billStatus === 'passed' ? 'RATIFIED' : billStatus === 'failed' ? 'REJECTED' : billStatus === 'floor' ? 'VOTING' : 'PENDING';
+            const isOurs = entry.nationId === currentNation.id;
+            const linkHtml = isOurs && entry.billId ? ' <a href="bill.html?id=' + entry.billId + '" style="color:var(--accent);font-size:0.7rem;text-decoration:underline;">View Bill</a>' : '';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--bg-body);border:1px solid var(--border-light);border-radius:4px;margin-bottom:4px;">';
+            html += '<span style="font-size:0.8rem;color:var(--text-primary);">' + (isOurs ? escapeHtml(currentNation.name) : escapeHtml(entry.label)) + '\'s Parliament' + linkHtml + '</span>';
+            html += '<span style="font-size:0.72rem;font-weight:bold;color:' + statusColor + ';">' + statusText + '</span>';
+            html += '</div>';
+        }
+    }
+
+    if (neg.status === 'ratification_failed') {
+        html += '<div class="diplo-section-title" style="margin-top:16px;">Ratification Failed</div>';
+        html += '<div class="trade-info-box warning">One or both parliaments rejected the ratification bill. This trade agreement will not take effect.</div>';
+    }
+
+    if (neg.status === 'concluded') {
+        html += '<div class="diplo-section-title" style="margin-top:16px;">Agreement Active</div>';
+        html += '<div class="trade-info-box info">Both parliaments have ratified this agreement. The trade agreement is now active and in effect.</div>';
     }
 
     panel.innerHTML = html;
@@ -3850,16 +3891,94 @@ async function approveTradeNegotiation(negotiationId) {
     // Check if other side already approved
     const otherApproved = weAreA ? neg.approved_by_b : neg.approved_by_a;
     if (otherApproved) {
-        // Both sides approved — conclude and generate bills
-        updateData.status = 'concluded';
-        updateData.concluded_at_tick = shardTick;
-        // TODO: Auto-generate ratification bills in both parliaments (Phase 7)
+        // Both sides approved — generate ratification bills in both parliaments
+        updateData.status = 'ratification';
+
+        // Fetch nation names for bill text
+        const { data: nationA } = await _supabase.from('nations').select('id, name').eq('id', neg.nation_a_id).single();
+        const { data: nationB } = await _supabase.from('nations').select('id, name').eq('id', neg.nation_b_id).single();
+        const nationAName = nationA?.name || 'Unknown';
+        const nationBName = nationB?.name || 'Unknown';
+        const typeInfo = neg.agreement_type ? TRADE_AGREEMENT_TYPES[neg.agreement_type] : null;
+        const typeLabel = typeInfo ? typeInfo.label : 'Trade Agreement';
+
+        const billTitle = 'Ratify: ' + (neg.agreement_name || typeLabel);
+        const billPreamble = 'Ratification of the ' + typeLabel + ' "' +
+            (neg.agreement_name || 'Unnamed Agreement') + '" between ' +
+            nationAName + ' and ' + nationBName + '. ' +
+            'This agreement was negotiated by diplomatic representatives of both nations. ' +
+            'A YES vote enacts the agreement; a NO vote rejects it.';
+
+        // Insert bill for nation A
+        const { data: billA, error: billAErr } = await _supabase.from('bills').insert({
+            nation_id: neg.nation_a_id,
+            bill_type: 'ratification',
+            bill_name: billTitle,
+            preamble: billPreamble,
+            proposed_by: neg.approved_by_a,
+            trade_negotiation_id: negotiationId,
+            status: 'floor',
+            proposed_tick: shardTick,
+            voting_ends_tick: shardTick + GAME_CONFIG.VOTING_WINDOW_TICKS
+        }).select('id').single();
+
+        if (billAErr) {
+            console.error('Error creating ratification bill for nation A:', billAErr);
+            alert('Error creating ratification bill: ' + billAErr.message);
+            return;
+        }
+
+        // Insert bill for nation B
+        const { data: billB, error: billBErr } = await _supabase.from('bills').insert({
+            nation_id: neg.nation_b_id,
+            bill_type: 'ratification',
+            bill_name: billTitle,
+            preamble: billPreamble,
+            proposed_by: neg.approved_by_b,
+            trade_negotiation_id: negotiationId,
+            status: 'floor',
+            proposed_tick: shardTick,
+            voting_ends_tick: shardTick + GAME_CONFIG.VOTING_WINDOW_TICKS
+        }).select('id').single();
+
+        if (billBErr) {
+            console.error('Error creating ratification bill for nation B:', billBErr);
+            alert('Error creating ratification bill: ' + billBErr.message);
+            return;
+        }
+
+        // Store bill IDs on the negotiation
+        updateData.bill_a_id = billA?.id || null;
+        updateData.bill_b_id = billB?.id || null;
+
+        // Fire news events for both nations
+        try {
+            const eventRows = [
+                {
+                    nation_id: neg.nation_a_id,
+                    event_name: (neg.agreement_name || typeLabel) + ' — Ratification',
+                    category: 'Diplomatic',
+                    description_chosen: 'The ' + typeLabel + ' "' + (neg.agreement_name || 'Unnamed') + '" between ' + nationAName + ' and ' + nationBName + ' has been sent to both parliaments for ratification.',
+                    fired_at_tick: shardTick
+                },
+                {
+                    nation_id: neg.nation_b_id,
+                    event_name: (neg.agreement_name || typeLabel) + ' — Ratification',
+                    category: 'Diplomatic',
+                    description_chosen: 'The ' + typeLabel + ' "' + (neg.agreement_name || 'Unnamed') + '" between ' + nationAName + ' and ' + nationBName + ' has been sent to both parliaments for ratification.',
+                    fired_at_tick: shardTick
+                }
+            ];
+            await _supabase.from('event_log').insert(eventRows);
+        } catch (e) {
+            console.warn('Error firing trade ratification events:', e);
+        }
     }
 
     await _supabase.from('trade_negotiations').update(updateData).eq('id', negotiationId);
 
     if (otherApproved) {
-        alert('Both sides have approved! Ratification bills will be generated in both parliaments.');
+        alert('Both sides have approved! Ratification bills have been submitted to both parliaments.');
     } else {
         alert('You have approved the agreement. Waiting for the other side to approve.');
     }

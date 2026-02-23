@@ -3398,6 +3398,104 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
             }
+        } else if (bill.bill_type === 'ratification' && bill.trade_negotiation_id) {
+            // Trade agreement ratification bill
+            if (passed) {
+                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+                // Check if the OTHER nation's ratification bill has also passed
+                const { data: neg } = await supabase.from('trade_negotiations')
+                    .select('*').eq('id', bill.trade_negotiation_id).single();
+
+                if (neg) {
+                    const isNationA = bill.nation_id === neg.nation_a_id;
+                    const otherBillId = isNationA ? neg.bill_b_id : neg.bill_a_id;
+
+                    let otherPassed = false;
+                    if (otherBillId) {
+                        const { data: otherBill } = await supabase.from('bills')
+                            .select('status').eq('id', otherBillId).single();
+                        otherPassed = otherBill?.status === 'passed';
+                    }
+
+                    if (otherPassed) {
+                        // Both parliaments ratified — activate the trade agreement
+                        // Extract duration info from draft articles
+                        const articles = neg.draft_articles || [];
+                        const durationArt = articles.find(a => a.type === 'duration');
+                        const durData = durationArt?.data || {};
+                        const isPermanent = durData.duration_type === 'permanent';
+                        const durationTicks = durData.duration_ticks || null;
+                        const autoRenew = durData.auto_renew || false;
+                        const withdrawalNotice = durData.withdrawal_notice_ticks || 3;
+
+                        // Ensure canonical nation order (nation_a_id < nation_b_id)
+                        const nA = neg.nation_a_id < neg.nation_b_id ? neg.nation_a_id : neg.nation_b_id;
+                        const nB = neg.nation_a_id < neg.nation_b_id ? neg.nation_b_id : neg.nation_a_id;
+
+                        // Insert into trade_agreements
+                        await supabase.from('trade_agreements').insert({
+                            nation_a_id: nA,
+                            nation_b_id: nB,
+                            negotiation_id: neg.id,
+                            bill_a_id: neg.bill_a_id,
+                            bill_b_id: neg.bill_b_id,
+                            agreement_type: neg.agreement_type,
+                            agreement_name: neg.agreement_name || 'Trade Agreement',
+                            articles: articles,
+                            duration_type: isPermanent ? 'permanent' : 'fixed',
+                            duration_ticks: isPermanent ? null : durationTicks,
+                            auto_renew: autoRenew,
+                            withdrawal_notice_ticks: withdrawalNotice,
+                            status: 'active',
+                            enacted_at_tick: currentTick,
+                            expires_at_tick: isPermanent ? null : (durationTicks ? currentTick + durationTicks : null)
+                        });
+
+                        // Mark negotiation as concluded
+                        await supabase.from('trade_negotiations')
+                            .update({ status: 'concluded', concluded_at_tick: currentTick })
+                            .eq('id', neg.id);
+
+                        // Update diplomatic relations
+                        const { data: rel } = await supabase.from('diplomatic_relations')
+                            .select('id, relation_score, active_treaties')
+                            .eq('nation_a_id', nA).eq('nation_b_id', nB).maybeSingle();
+                        if (rel) {
+                            const bonus = 5; // relation boost for ratified trade agreement
+                            const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + bonus));
+                            await supabase.from('diplomatic_relations')
+                                .update({ relation_score: newScore }).eq('id', rel.id);
+                        }
+                    }
+                    // If only one side ratified so far, just leave negotiation in 'ratification' status
+                }
+
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_trigger_key: 'bill_passed',
+                        p_nation_id: bill.nation_id,
+                        p_tick: currentTick,
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), article_count: '0' }
+                    });
+                } catch (e) { /* non-blocking */ }
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'trade_ratification', earlyResolution: bill.early_resolution_status || null });
+            } else {
+                await failBill(supabase, bill);
+                // Mark negotiation as ratification_failed
+                await supabase.from('trade_negotiations')
+                    .update({ status: 'ratification_failed' })
+                    .eq('id', bill.trade_negotiation_id);
+                try {
+                    await supabase.rpc('fire_system_event', {
+                        p_trigger_key: 'bill_failed',
+                        p_nation_id: bill.nation_id,
+                        p_tick: currentTick,
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
+                    });
+                } catch (e) { /* non-blocking */ }
+                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'trade_ratification', earlyResolution: bill.early_resolution_status || null });
+            }
         } else if (bill.bill_type === 'budget') {
             // Budget bill resolution
             if (passed) {
