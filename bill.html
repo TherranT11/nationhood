@@ -429,7 +429,7 @@ function renderBill() {
         earlyBanner.className = 'bill-early-resolution ' + (isMajReached ? 'majority-reached' : 'majority-opposed');
         // Tally current votes for display
         let earlyYes = 0, earlyNo = 0;
-        (billSupport || []).forEach(s => {
+        (bill.bill_support || []).forEach(s => {
             const st = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
             if (st === 'yes') earlyYes += s.seat_count;
             else if (st === 'no') earlyNo += s.seat_count;
