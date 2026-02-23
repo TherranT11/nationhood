@@ -441,14 +441,12 @@ async function fetchMinistries() {
 }
 
 async function calculateGovernmentApproval() {
-    const { data: ministers } = await _supabase
-        .from('ministries')
-        .select('minister_approval')
-        .eq('nation_id', currentNation.id)
-        .eq('is_active', true);
-    if (!ministers || ministers.length === 0) return null;
-    const total = ministers.reduce((sum, m) => sum + (m.minister_approval ?? 50), 0);
-    return Math.round(total / ministers.length);
+    const { data: nation } = await _supabase
+        .from('nations')
+        .select('national_approval')
+        .eq('id', currentNation.id)
+        .single();
+    return nation?.national_approval ?? 50;
 }
 
 function getPartyNameById(partyId) {
@@ -1040,16 +1038,34 @@ function renderCabinet(ministries, coalition) {
         var mLogoHtml = mLogo ? '<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">' + getPartyIconSVG(mLogo, 16, mColor) + '</span>' : '';
         var name = m.minister_first_name + ' ' + m.minister_last_name;
         var isMyMinistry = currentFaction && m.party_id === currentFaction.id;
-        var resignBtn = (isMyMinistry && !isCaretaker) ? '<div class="ministry-actions"><button class="ministry-btn purge" onclick="event.stopPropagation();resignMinistry(\'' + m.ministry_key + '\')">📋 Resign Ministry</button></div>' : '';
+        var resignBtn = (isMyMinistry && !isCaretaker) ? '<div class="ministry-actions"><button class="ministry-btn purge" onclick="event.stopPropagation();resignMinistry(\'' + m.ministry_key + '\')">Resign Ministry</button></div>' : '';
         var appr = m.minister_approval ?? 50;
         var apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
+
+        // Embattled / Crisis badges
+        var statusBadge = '';
+        if (m.embattled_since_tick != null && (currentTick - m.embattled_since_tick) >= 5) {
+            if (appr < 20) {
+                statusBadge = '<span class="minister-badge crisis">CRISIS</span>';
+            } else {
+                statusBadge = '<span class="minister-badge embattled">EMBATTLED</span>';
+            }
+        }
+
+        // Fire button: visible to PM party (parliamentary) — not for own party resignations
+        var fireBtn = '';
+        if (isPMParty && !isCaretaker && !isMyMinistry) {
+            var apCost = (currentFaction?.action_points || 0) < 1;
+            fireBtn = '<div class="ministry-actions"><button class="ministry-btn dismiss" onclick="event.stopPropagation();fireMinister(\'' + m.ministry_key + '\')"' + (apCost ? ' disabled title="Need 1 AP"' : '') + '>Dismiss Minister <span class="ap-cost">1 AP</span></button></div>';
+        }
+
         return '<div class="ministry-card" style="border-top-color:' + mColor + ';">'
-            + '<div class="ministry-header"><div class="ministry-title">' + (m.ministry_name || title) + '</div></div>'
+            + '<div class="ministry-header"><div class="ministry-title">' + (m.ministry_name || title) + '</div>' + statusBadge + '</div>'
             + '<div class="ministry-body">'
             + '<div class="minister-name">' + name + '</div>'
             + '<div class="minister-details">' + (m.minister_age ? 'Age ' + m.minister_age + ' &bull; ' : '') + '<span class="minister-party" style="color:' + mColor + ';">' + mLogoHtml + partyName + '</span></div>'
             + '<div class="minister-approval">Approval: <span class="' + apprCls + '">' + appr + '%</span></div>'
-            + resignBtn + '</div></div>';
+            + resignBtn + fireBtn + '</div></div>';
     }).join('');
     return '<div class="ministry-grid">' + demCards + '</div>';
 }
@@ -1109,11 +1125,30 @@ function renderPresidentialMinistryCard(key, ministry) {
         const pmLogoHtml = pmLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(pmLogo, 16, pmColor)}</span>` : '';
         const appr = ministry.minister_approval ?? 50;
         const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
+
+        // Embattled / Crisis badges
+        let statusBadge = '';
+        if (ministry.embattled_since_tick != null && (currentTick - ministry.embattled_since_tick) >= 5) {
+            if (appr < 20) {
+                statusBadge = '<span class="minister-badge crisis">CRISIS</span>';
+            } else {
+                statusBadge = '<span class="minister-badge embattled">EMBATTLED</span>';
+            }
+        }
+
+        // Fire button for President's party
+        let fireBtn = '';
+        if (isPresidentParty) {
+            const apCost = (currentFaction?.action_points || 0) < 1;
+            fireBtn = `<div class="ministry-actions"><button class="ministry-btn dismiss" onclick="event.stopPropagation();fireMinister('${key}')"${apCost ? ' disabled title="Need 1 AP"' : ''}>Dismiss Minister <span class="ap-cost">1 AP</span></button></div>`;
+        }
+
         return `<div class="ministry-card" style="border-top:3px solid ${pmColor};padding:10px 12px;">
-            <div class="ministry-title">${ministry.ministry_name || MINISTRY_NAMES[key]}</div>
+            <div class="ministry-header"><div class="ministry-title">${ministry.ministry_name || MINISTRY_NAMES[key]}</div>${statusBadge}</div>
             <div class="minister-name">${ministry.minister_first_name} ${ministry.minister_last_name}</div>
             <div class="minister-details">Age ${ministry.minister_age || '?'} • <span class="minister-party" style="color:${pmColor};">${pmLogoHtml}${partyName}</span></div>
             <div class="minister-approval">Approval: <span class="${apprCls}">${appr}%</span></div>
+            ${fireBtn}
         </div>`;
     }
 
@@ -2275,6 +2310,55 @@ async function resignPMAction() {
     }
 }
 
+    async function fireMinister(ministryKey) {
+    if (!currentFaction) return;
+
+    const ministry = ministryData.find(m => m.ministry_key === ministryKey);
+    if (!ministry || !ministry.minister_first_name) { alert('No minister to dismiss.'); return; }
+    if (ministryKey === 'prime_minister') { alert('Cannot dismiss the Prime Minister this way.'); return; }
+
+    // Permission check: PM party (parliamentary) or President party (presidential)
+    const canFire = isPresidential ? isPresidentParty : (currentFaction.id === coalitionData?.lead_party_id);
+    if (!canFire) { alert('Only the head of government can dismiss ministers.'); return; }
+
+    if ((currentFaction.action_points || 0) < 1) { alert('Not enough AP (need 1).'); return; }
+
+    const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
+    const ministryName = ministry.ministry_name || MINISTRY_NAMES[ministryKey] || ministryKey;
+    if (!confirm('Dismiss ' + ministerName + ' from ' + ministryName + '?\n\nCosts 1 AP. A replacement will need to be appointed.\nThe new minister starts at 45% approval.\nNote: The underlying national stats will not change.')) return;
+
+    try {
+        // Deduct AP
+        const apResult = await deductAP(_supabase, currentFaction.id, 1);
+        currentFaction.action_points = apResult.newAp;
+
+        // Clear minister and reset approval
+        await _supabase.from('ministries').update({
+            minister_first_name: null,
+            minister_last_name: null,
+            minister_age: null,
+            party_id: null,
+            minister_approval: 45,
+            embattled_since_tick: null
+        }).eq('id', ministry.id);
+
+        // Apply +3 government approval bounce
+        const { data: nationRow } = await _supabase.from('nations')
+            .select('national_approval')
+            .eq('id', currentNation.id)
+            .single();
+        const curApproval = nationRow?.national_approval ?? 50;
+        const newApproval = Math.min(100, curApproval + 3);
+        await _supabase.from('nations').update({ national_approval: newApproval }).eq('id', currentNation.id);
+
+        alert(ministerName + ' has been dismissed from ' + ministryName + '.\nGovernment approval: ' + curApproval + '% → ' + newApproval + '%');
+        await renderGovernmentPage();
+    } catch (e) {
+        console.error('Fire minister error:', e);
+        alert('Error: ' + e.message);
+    }
+}
+
     async function resignMinistry(ministryKey) {
     const ministry = ministryData.find(m => m.ministry_key === ministryKey);
     if (!ministry) return;
@@ -2672,6 +2756,7 @@ window.claimPower = claimPower;
 window.resignPMAction = resignPMAction;
 window.resignMinistry = resignMinistry;
 window.purgeMinister = purgeMinister;
+window.fireMinister = fireMinister;
 window.openAssignModal = openAssignModal;
 window.denyRequest = denyRequest;
 window.unrequestMinistry = unrequestMinistry;
