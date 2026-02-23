@@ -23,7 +23,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatCurrency } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import { calculateNationalBudget, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY } from './js/game-common.js';
+import { calculateNationalBudget, applyTradeTariffOverride, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY } from './js/game-common.js';
 
 // ==================== STATE ====================
 var previousTickData = null;
@@ -33,7 +33,9 @@ var expenditureData = null;
 var expenditureDetails = null;
 var tradeData = null;
 var currentNation = null;
+var allNations = null;
 var gameYear = 0;
+var activeTab = 'overview';
 
 // ==================== INIT ====================
 initPage('economy', async function(state) {
@@ -51,9 +53,12 @@ initPage('economy', async function(state) {
 
     currentNation = nation;
     await loadPreviousTickData(nation.id);
-    await loadPreviousYearData(nation.id);
-    await loadExpenditureData(nation.id, nation);
-    await loadTradeData(nation.id);
+    await Promise.all([
+        loadPreviousYearData(nation.id),
+        loadExpenditureData(nation.id, nation),
+        loadTradeData(nation.id),
+        loadAllNationsData()
+    ]);
     renderEconomyPage(nation);
 });
 
@@ -82,7 +87,6 @@ async function loadPreviousTickData(nationId) {
         return;
     }
 
-    // Fallback: most recent history row before current tick
     var fbRes = await _supabase.from('nations_history')
         .select('*').eq('nation_id', nationId).lt('tick', currentTick)
         .order('tick', { ascending: false }).limit(1);
@@ -99,7 +103,6 @@ async function loadPreviousYearData(nationId) {
     var cached = qCache(cacheKey);
     if (cached) { previousYearData = cached.data; currentTick = cached.tick; return; }
 
-    // If loadPreviousTickData already set currentTick, use it; otherwise fetch
     if (!currentTick) {
         var res = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         if (!res.data) return;
@@ -118,7 +121,6 @@ async function loadPreviousYearData(nationId) {
         return;
     }
 
-    // Fallback: closest row before target tick
     var fbRes = await _supabase.from('nations_history')
         .select('*').eq('nation_id', nationId).lte('tick', previousYearTick)
         .order('tick', { ascending: false }).limit(1);
@@ -138,7 +140,6 @@ async function loadExpenditureData(nationId, nation) {
     var totals = {};
     var details = {};
 
-    // --- Policy costs from active laws ---
     var res = await _supabase.from('active_laws')
         .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat)')
         .eq('nation_id', nationId);
@@ -157,14 +158,12 @@ async function loadExpenditureData(nationId, nation) {
 
         var policyCost = 0;
 
-        // Ongoing costs: annualized (base per tick × 12)
         var ongoingBase = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
         if (ongoingBase > 0) {
             var ongoingScaled = scaleCost(ongoingBase, policy.ongoing_scaling_stat, nation);
             policyCost += ongoingScaled * GAME_CONFIG.TICKS_PER_YEAR * 1000000;
         }
 
-        // Upfront costs: only if passed in current budget year
         if (law.passed_tick >= yearStartTick) {
             var upfront = policy.upfront_cost || 0;
             if (upfront > 0) {
@@ -179,7 +178,6 @@ async function loadExpenditureData(nationId, nation) {
         }
     }
 
-    // --- Institution costs from last passed budget ---
     if (nation.last_budget_bill_id) {
         var instRes = await _supabase.from('budget_item_allocations')
             .select('fiscal_category, item_name, allocation_amount, needed_amount')
@@ -203,7 +201,6 @@ async function loadExpenditureData(nationId, nation) {
             }
         }
     } else {
-        // No budget passed yet — show institution needed costs so the page isn't empty
         var configRes = await _supabase.from('ministry_institution_config').select('*');
         var population = Number(nation.population || 0);
         var gdp = Number(nation.gdp || 0);
@@ -249,7 +246,6 @@ async function loadTradeData(nationId) {
     var cached = qCache(cacheKey);
     if (cached) { tradeData = cached; return; }
 
-    // Get latest trade summary for this nation
     var sumRes = await _supabase.from('trade_summary')
         .select('*')
         .eq('nation_id', nationId)
@@ -264,13 +260,11 @@ async function loadTradeData(nationId) {
     if (!sumRes.data || sumRes.data.length === 0) { tradeData = null; return; }
     var summary = sumRes.data[0];
 
-    // Get per-sector flows for this tick
     var flowRes = await _supabase.from('trade_flows')
         .select('sector, export_volume, import_volume, net_flow, price_modifier')
         .eq('nation_id', nationId)
         .eq('tick', summary.tick);
 
-    // Get previous tick flows for trend arrows
     var prevFlowRes = await _supabase.from('trade_flows')
         .select('sector, export_volume, import_volume')
         .eq('nation_id', nationId)
@@ -290,7 +284,6 @@ async function loadTradeData(nationId) {
         }
     }
 
-    // Get bilateral partner data for this tick
     var partnerExportRes = await _supabase.from('trade_partners')
         .select('importer_nation_id, sector, trade_volume, affinity_score')
         .eq('exporter_nation_id', nationId)
@@ -301,7 +294,6 @@ async function loadTradeData(nationId) {
         .eq('importer_nation_id', nationId)
         .eq('tick', summary.tick);
 
-    // Get all nation names for display
     var nationRes = await _supabase.from('nations').select('id, name');
     var nationNames = {};
     if (nationRes.data) {
@@ -310,7 +302,6 @@ async function loadTradeData(nationId) {
         }
     }
 
-    // Build partner map: partners[nationId] = { name, exportsTo: {sector: vol}, importsFrom: {sector: vol}, totalExports, totalImports }
     var partners = {};
     if (partnerExportRes.data) {
         for (var i = 0; i < partnerExportRes.data.length; i++) {
@@ -337,10 +328,297 @@ async function loadTradeData(nationId) {
     qCacheSet(cacheKey, tradeData, 2 * 60 * 1000);
 }
 
-// ==================== RENDER ====================
+// ==================== ALL NATIONS DATA (NEW) ====================
+async function loadAllNationsData() {
+    var cacheKey = 'all_nations_econ';
+    var cached = qCache(cacheKey);
+    if (cached) { allNations = cached; return; }
+
+    var res = await _supabase.from('nations')
+        .select('id, name, gdp, population, gdp_growth, unemployment, inflation, standard_of_living, debt, tariffs, oil_and_gas, rare_minerals, arable_land, physical_infrastructure, digital_infrastructure, higher_education, credit, happiness, stability');
+
+    if (res.data) {
+        allNations = res.data;
+        qCacheSet(cacheKey, allNations, 5 * 60 * 1000);
+    } else {
+        allNations = [];
+    }
+}
+
+// ==================== TAB INFRASTRUCTURE ====================
 function renderEconomyPage(nation) {
     var h = '';
-    h += renderHeroBar(nation);
+    h += '<div class="econ-title-bar">';
+    h += '<div class="econ-title">ECONOMY OF ' + escapeHtml(nation.name).toUpperCase() + '</div>';
+    h += '</div>';
+    h += renderTabBar();
+    h += '<div id="econ-tab-content">';
+    h += renderTabContent(nation);
+    h += '</div>';
+    document.getElementById('content-area').innerHTML = h;
+    wireTabEvents(nation);
+}
+
+function renderTabBar() {
+    var tabs = [
+        { key: 'overview', label: 'Overview' },
+        { key: 'budget', label: 'Budget' },
+        { key: 'trade', label: 'Trade' },
+        { key: 'sectors', label: 'Sectors' },
+        { key: 'tariffs', label: 'Tariffs' }
+    ];
+    var h = '<div class="econ-tab-bar">';
+    for (var i = 0; i < tabs.length; i++) {
+        var cls = tabs[i].key === activeTab ? ' active' : '';
+        h += '<button class="econ-tab' + cls + '" data-tab="' + tabs[i].key + '">' + tabs[i].label + '</button>';
+    }
+    h += '</div>';
+    return h;
+}
+
+function renderTabContent(nation) {
+    switch (activeTab) {
+        case 'overview': return renderOverviewTab(nation);
+        case 'budget': return renderBudgetTab(nation);
+        case 'trade': return renderTradeTab(nation);
+        case 'sectors': return renderSectorsTab();
+        case 'tariffs': return renderTariffsTab();
+        default: return '';
+    }
+}
+
+function wireTabEvents(nation) {
+    document.querySelectorAll('.econ-tab').forEach(function(tab) {
+        tab.addEventListener('click', function() {
+            activeTab = tab.getAttribute('data-tab');
+            renderEconomyPage(nation);
+        });
+    });
+    if (activeTab === 'budget') {
+        document.querySelectorAll('.ministry-tab').forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                selectMinistryCategory(tab.getAttribute('data-category'));
+            });
+        });
+        document.querySelectorAll('.budget-line-clickable').forEach(function(line) {
+            line.addEventListener('click', function() {
+                selectMinistryCategory(line.getAttribute('data-category'));
+            });
+        });
+    }
+}
+
+// ==================== OVERVIEW TAB ====================
+function computeBudgetSummary(nation) {
+    var budget = calculateNationalBudget(nation);
+    if (tradeData && tradeData.summary) {
+        applyTradeTariffOverride(budget, Number(tradeData.summary.tariff_revenue));
+    }
+    var totalExp = 0;
+    if (expenditureData) {
+        for (var k in expenditureData) totalExp += expenditureData[k] || 0;
+    }
+    totalExp += budget.debtService || 0;
+    return { budget: budget, totalExpenditure: totalExp, balance: budget.grossRevenue - totalExp };
+}
+
+function renderOverviewTab(nation) {
+    var bs = computeBudgetSummary(nation);
+    var debt = Number(nation.debt) || 0;
+
+    var h = '<div class="econ-overview">';
+
+    // --- Fiscal Snapshot ---
+    h += '<div class="econ-section">';
+    h += '<div class="econ-section-header">FISCAL SNAPSHOT</div>';
+    h += '<div class="econ-cards-row">';
+    h += renderOverviewCard('Revenue', formatBudgetCurrency(bs.budget.grossRevenue), 'neutral', null);
+    h += renderOverviewCard('Expenditures', formatBudgetCurrency(bs.totalExpenditure), 'neutral', null);
+    var balClass = bs.balance >= 0 ? 'surplus' : 'deficit';
+    var balSign = bs.balance >= 0 ? '+' : '';
+    var balLabel = bs.balance >= 0 ? 'Surplus' : 'Deficit';
+    h += renderOverviewCard(balLabel, balSign + formatBudgetCurrency(bs.balance), balClass, null);
+    h += '</div>';
+    h += '</div>';
+
+    // --- Trade + Debt split ---
+    h += '<div class="econ-overview-split">';
+
+    // Trade summary
+    h += '<div class="econ-section">';
+    h += '<div class="econ-section-header">TRADE SNAPSHOT</div>';
+    if (tradeData && tradeData.summary) {
+        var totalExports = Number(tradeData.summary.total_exports) || 0;
+        var totalImports = Number(tradeData.summary.total_imports) || 0;
+        var surplus = Number(tradeData.summary.trade_surplus) || 0;
+        h += '<div class="econ-cards-row">';
+        h += renderOverviewCard('Exports', formatBudgetCurrency(totalExports), 'surplus', 'Per Tick');
+        h += renderOverviewCard('Imports', formatBudgetCurrency(totalImports), 'deficit', 'Per Tick');
+        var tCls = surplus >= 0 ? 'surplus' : 'deficit';
+        var tSign = surplus >= 0 ? '+' : '';
+        h += renderOverviewCard('Balance', tSign + formatBudgetCurrency(surplus), tCls, 'Per Tick');
+        h += '</div>';
+    } else {
+        h += '<div class="econ-placeholder">Trade data will appear after the next tick.</div>';
+    }
+    h += '</div>';
+
+    // Debt
+    h += '<div class="econ-section">';
+    h += '<div class="econ-section-header">NATIONAL DEBT</div>';
+    var debtToRev = bs.budget.grossRevenue > 0 ? (debt / bs.budget.grossRevenue) : 0;
+    var dRating, dCls;
+    if (debtToRev <= 0.5) { dRating = 'LOW'; dCls = 'excellent'; }
+    else if (debtToRev <= 1.5) { dRating = 'MODERATE'; dCls = 'moderate'; }
+    else if (debtToRev <= 3) { dRating = 'HIGH'; dCls = 'poor'; }
+    else { dRating = 'CRITICAL'; dCls = 'critical'; }
+    h += '<div class="econ-debt-card">';
+    h += '<div class="econ-debt-amount">' + formatBudgetCurrency(debt) + '</div>';
+    h += '<div class="econ-debt-ratio">' + (debtToRev * 100).toFixed(0) + '% of Revenue</div>';
+    h += '<div class="econ-debt-rating rating-' + dCls + '">' + dRating + '</div>';
+    h += '</div>';
+    h += '</div>';
+
+    h += '</div>'; // .econ-overview-split
+
+    // --- Macro Indicators ---
+    h += '<div class="econ-section">';
+    h += '<div class="econ-section-header">MACRO INDICATORS</div>';
+    h += '<div class="econ-cards-row econ-cards-4">';
+
+    var gdpGrowth = Number(nation.gdp_growth) || 50;
+    var growthPct = ((gdpGrowth - 50) / 50) * 1;
+    var growthDisplay = (growthPct >= 0 ? '+' : '') + growthPct.toFixed(2) + '%';
+    h += renderOverviewCard('GDP Growth', growthDisplay, growthPct >= 0 ? 'surplus' : 'deficit', getTrendArrow('gdp_growth', gdpGrowth, false));
+
+    var unemp = Number(nation.unemployment) || 50;
+    h += renderOverviewCard('Unemployment', Math.round(unemp), unemp <= 30 ? 'surplus' : unemp <= 60 ? 'neutral' : 'deficit', getTrendArrow('unemployment', unemp, true));
+
+    var infl = Number(nation.inflation) || 50;
+    h += renderOverviewCard('Inflation', Math.round(infl), infl <= 30 ? 'surplus' : infl <= 60 ? 'neutral' : 'deficit', getTrendArrow('inflation', infl, true));
+
+    var sol = Number(nation.standard_of_living) || 50;
+    h += renderOverviewCard('Std of Living', Math.round(sol), sol >= 70 ? 'surplus' : sol >= 40 ? 'neutral' : 'deficit', getTrendArrow('standard_of_living', sol, false));
+
+    h += '</div>';
+    h += '</div>';
+
+    // --- Rankings ---
+    h += renderRankings(nation);
+
+    // --- Sector Health ---
+    h += renderSectorHealth(nation);
+
+    h += '</div>'; // .econ-overview
+    return h;
+}
+
+function renderOverviewCard(label, value, colorClass, subHtml) {
+    var h = '<div class="econ-card econ-card-' + colorClass + '">';
+    h += '<div class="econ-card-label">' + escapeHtml(label) + '</div>';
+    h += '<div class="econ-card-value">' + value + '</div>';
+    if (subHtml) h += '<div class="econ-card-sub">' + subHtml + '</div>';
+    h += '</div>';
+    return h;
+}
+
+function renderRankings(nation) {
+    if (!allNations || allNations.length === 0) return '';
+
+    var metrics = [
+        { key: 'gdp', label: 'GDP', higher: true, fmt: function(v) { return formatBudgetCurrency(v); } },
+        { key: 'gdp_growth', label: 'GDP Growth', higher: true, fmt: function(v) { var p = ((v - 50) / 50); return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; } },
+        { key: 'standard_of_living', label: 'Std of Living', higher: true, fmt: function(v) { return Math.round(v); } },
+        { key: 'unemployment', label: 'Unemployment', higher: false, fmt: function(v) { return Math.round(v); } },
+        { key: 'debt', label: 'National Debt', higher: false, fmt: function(v) { return formatBudgetCurrency(v); } }
+    ];
+
+    var h = '<div class="econ-section">';
+    h += '<div class="econ-section-header">ECONOMIC RANKINGS</div>';
+    h += '<div class="econ-ranking-table">';
+
+    // Header row
+    h += '<div class="econ-ranking-row econ-ranking-header">';
+    h += '<div class="econ-ranking-cell econ-ranking-metric">Metric</div>';
+    for (var r = 0; r < allNations.length; r++) {
+        h += '<div class="econ-ranking-cell">#' + (r + 1) + '</div>';
+    }
+    h += '</div>';
+
+    for (var m = 0; m < metrics.length; m++) {
+        var metric = metrics[m];
+        var sorted = allNations.slice().sort(function(a, b) {
+            var va = Number(a[metric.key]) || 0;
+            var vb = Number(b[metric.key]) || 0;
+            return metric.higher ? (vb - va) : (va - vb);
+        });
+
+        h += '<div class="econ-ranking-row">';
+        h += '<div class="econ-ranking-cell econ-ranking-metric">' + escapeHtml(metric.label) + '</div>';
+        for (var s = 0; s < sorted.length; s++) {
+            var isYou = sorted[s].id === nation.id;
+            var cls = isYou ? ' econ-ranking-highlight' : '';
+            h += '<div class="econ-ranking-cell' + cls + '">';
+            h += '<div class="econ-ranking-name">' + escapeHtml(sorted[s].name) + '</div>';
+            h += '<div class="econ-ranking-val">' + metric.fmt(Number(sorted[s][metric.key]) || 0) + '</div>';
+            h += '</div>';
+        }
+        h += '</div>';
+    }
+
+    h += '</div>';
+    h += '</div>';
+    return h;
+}
+
+function renderSectorHealth(nation) {
+    var h = '<div class="econ-section">';
+    h += '<div class="econ-section-header">SECTOR HEALTH</div>';
+    h += '<div class="econ-section-subtitle">Export capacity scores derived from nation stats. Marker shows export threshold.</div>';
+    h += '<div class="econ-sector-health">';
+
+    for (var i = 0; i < TRADE_SECTORS.length; i++) {
+        var sector = TRADE_SECTORS[i];
+        var score = getSectorScore(nation, sector);
+        var pct = Math.min(100, Math.max(0, Math.round(score)));
+        var color = pct >= 70 ? 'var(--green, #4CAF50)' : pct >= 40 ? 'var(--accent, #ffcc00)' : 'var(--red, #f44336)';
+        var aboveThreshold = score >= sector.export_threshold;
+
+        h += '<div class="econ-sector-row">';
+        h += '<div class="econ-sector-label">' + escapeHtml(sector.label) + '</div>';
+        h += '<div class="econ-health-track">';
+        h += '<div class="econ-health-fill" style="width:' + pct + '%;background:' + color + '"></div>';
+        h += '<div class="econ-health-threshold" style="left:' + sector.export_threshold + '%" title="Export threshold: ' + sector.export_threshold + '"></div>';
+        h += '</div>';
+        h += '<div class="econ-health-value" style="color:' + color + '">' + pct + '</div>';
+        if (!aboveThreshold) {
+            h += '<div class="econ-health-warning">Below threshold (' + sector.export_threshold + ')</div>';
+        }
+        h += '</div>';
+    }
+
+    h += '</div>';
+    h += '</div>';
+    return h;
+}
+
+function getSectorScore(nation, sector) {
+    if (sector.export_stat) {
+        return Number(nation[sector.export_stat]) || 0;
+    }
+    if (sector.export_stats) {
+        var sum = 0;
+        for (var i = 0; i < sector.export_stats.length; i++) {
+            sum += Number(nation[sector.export_stats[i]]) || 0;
+        }
+        return sum / sector.export_stats.length;
+    }
+    return 0;
+}
+
+// ==================== BUDGET TAB ====================
+function renderBudgetTab(nation) {
+    var h = '<div class="econ-tab-body">';
     h += '<div class="economy-body">';
     h += '<div class="economy-left">';
     h += renderBudgetPanel(nation);
@@ -349,138 +627,26 @@ function renderEconomyPage(nation) {
     h += renderMinistryPanel();
     h += '</div>';
     h += '</div>';
-    h += '<div class="economy-trade-row">';
-    h += '<div class="economy-trade-col">';
-    h += renderTradePanel(nation);
-    h += '</div>';
-    h += '<div class="economy-trade-col">';
-    h += renderTradePartnersPanel();
-    h += '</div>';
-    h += '</div>';
-    document.getElementById('content-area').innerHTML = h;
-
-    // Wire ministry tab clicks
-    document.querySelectorAll('.ministry-tab').forEach(function(tab) {
-        tab.addEventListener('click', function() {
-            selectMinistryCategory(tab.getAttribute('data-category'));
-        });
-    });
-
-    // Wire clickable expenditure lines to ministry tabs
-    document.querySelectorAll('.budget-line-clickable').forEach(function(line) {
-        line.addEventListener('click', function() {
-            selectMinistryCategory(line.getAttribute('data-category'));
-        });
-    });
-}
-
-function renderHeroBar(nation) {
-    var h = '<div class="economy-hero">';
-    h += '<div class="economy-hero-title">ECONOMY OF ' + escapeHtml(nation.name).toUpperCase() + '</div>';
-    h += '<div class="economy-hero-stats">';
-
-    // Compute balance (revenue - expenditures) and debt
-    var heroBudget = calculateNationalBudget(nation);
-    var heroExpTotal = 0;
-    if (expenditureData) {
-        for (var ek in expenditureData) heroExpTotal += expenditureData[ek] || 0;
-    }
-    heroExpTotal += heroBudget.debtService || 0;
-    var heroBalance = heroBudget.grossRevenue - heroExpTotal;
-    var heroDebt = Number(nation.debt) || 0;
-
-    h += renderHeroFinancial('Balance', heroBalance, heroBudget.grossRevenue, heroExpTotal);
-    h += renderHeroStat('GDP Growth', nation.gdp_growth, 'gdp_growth', false, true);
-    h += renderHeroStat('Unemployment', nation.unemployment, 'unemployment', true, false);
-    h += renderHeroStat('Inflation', nation.inflation, 'inflation', true, false);
-    h += renderHeroStat('Standard of Living', nation.standard_of_living, 'standard_of_living', false, false);
-    h += renderHeroDebt(heroDebt, heroBudget.grossRevenue);
-
-    h += '</div>';
     h += '</div>';
     return h;
 }
 
-function renderHeroFinancial(label, balance, revenue, expenditures) {
-    var isPositive = balance >= 0;
-    var cls = isPositive ? 'hero-surplus' : 'hero-deficit';
-    var sign = isPositive ? '+' : '';
-
-    var h = '<div class="economy-stat-box economy-stat-financial ' + cls + '">';
-    h += '<div class="economy-stat-label">' + escapeHtml(label) + '</div>';
-    h += '<div class="economy-stat-value ' + cls + '">' + sign + formatBudgetCurrency(balance) + '</div>';
-    h += '<div class="economy-stat-breakdown">';
-    h += '<span class="breakdown-revenue">' + formatBudgetCurrency(revenue) + '</span>';
-    h += '<span class="breakdown-sep">&minus;</span>';
-    h += '<span class="breakdown-expense">' + formatBudgetCurrency(expenditures) + '</span>';
-    h += '</div>';
-    h += '</div>';
-    return h;
-}
-
-function renderHeroDebt(debt, revenue) {
-    var debtToRevenue = revenue > 0 ? (debt / revenue) : 0;
-    var rating, ratingCls;
-    if (debtToRevenue <= 0.5) { rating = 'LOW'; ratingCls = 'rating-excellent'; }
-    else if (debtToRevenue <= 1.5) { rating = 'MODERATE'; ratingCls = 'rating-moderate'; }
-    else if (debtToRevenue <= 3) { rating = 'HIGH'; ratingCls = 'rating-poor'; }
-    else { rating = 'CRITICAL'; ratingCls = 'rating-critical'; }
-
-    var h = '<div class="economy-stat-box economy-stat-debt">';
-    h += '<div class="economy-stat-label">National Debt</div>';
-    h += '<div class="economy-stat-value">' + formatBudgetCurrency(debt) + '</div>';
-    h += '<div class="economy-stat-breakdown">';
-    h += '<span class="breakdown-ratio">' + (debtToRevenue * 100).toFixed(0) + '% of Revenue</span>';
-    h += '</div>';
-    h += '<div class="economy-stat-rating ' + ratingCls + '">' + rating + '</div>';
-    h += '</div>';
-    return h;
-}
-
-function renderHeroStat(label, value, statKey, inverted, isGdpGrowth) {
-    var numValue = Number(value) || 50;
-    var displayValue;
-
-    if (isGdpGrowth) {
-        // 0-100 scale where 50 = 0% growth, 100 = +1%, 0 = -1%
-        var growthPercent = ((numValue - 50) / 50) * 1;
-        displayValue = (growthPercent >= 0 ? '+' : '') + growthPercent.toFixed(2) + '%';
-    } else {
-        displayValue = Math.round(numValue);
-    }
-
-    var trendHtml = getTrendArrow(statKey, numValue, inverted);
-    var rating = getRating(numValue, inverted);
-
-    var h = '<div class="economy-stat-box">';
-    h += '<div class="economy-stat-label">' + escapeHtml(label) + '</div>';
-    h += '<div class="economy-stat-value">' + displayValue + '</div>';
-    h += '<div class="economy-stat-trend">' + trendHtml + '</div>';
-    h += '<div class="economy-stat-rating rating-' + rating.cls + '">' + rating.label + '</div>';
-    h += '</div>';
-    return h;
-}
-
-// ==================== BUDGET PANEL ====================
 function renderBudgetPanel(nation) {
     var budget = calculateNationalBudget(nation);
     var currentYear = gameYear || new Date().getFullYear();
     var previousYear = currentYear - 1;
 
-    // Override tariff revenue with real trade engine data when available
     if (tradeData && tradeData.summary && Number(tradeData.summary.tariff_revenue) > 0) {
         var oldTariff = budget.tariffRevenue;
         budget.tariffRevenue = Number(tradeData.summary.tariff_revenue);
         budget.grossRevenue = budget.grossRevenue - oldTariff + budget.tariffRevenue;
     }
 
-    // Compute previous year budget for YoY comparison
     var prevBudget = null;
     if (previousYearData) {
         prevBudget = calculateNationalBudget(previousYearData);
     }
 
-    // Build expenditure map from active policy costs + debt service
     var expenditures = {};
     if (expenditureData) {
         for (var key in expenditureData) {
@@ -497,13 +663,11 @@ function renderBudgetPanel(nation) {
 
     var h = '<div class="budget-panel">';
 
-    // === Header ===
     h += '<div class="budget-header">';
     h += '<div class="budget-title">YEARLY BUDGET</div>';
     h += '<div class="budget-subtitle">Budget of ' + escapeHtml(nation.name) + ' &mdash; Year ' + currentYear + '</div>';
     h += '</div>';
 
-    // === Summary Row ===
     h += '<div class="budget-summary">';
     h += '<div class="budget-summary-row">';
     h += '<div class="budget-summary-item">';
@@ -516,7 +680,6 @@ function renderBudgetPanel(nation) {
     h += '</div>';
     h += '</div>';
 
-    // Balance line
     var balanceClass = balance >= 0 ? 'surplus' : 'deficit';
     var balanceLabel = balance >= 0 ? 'SURPLUS' : 'DEFICIT';
     var balanceSign = balance >= 0 ? '+' : '';
@@ -524,19 +687,15 @@ function renderBudgetPanel(nation) {
     h += '<span class="budget-balance-label">' + balanceLabel + ':</span> ';
     h += '<span class="budget-balance-value">' + balanceSign + formatBudgetCurrency(balance) + '</span>';
 
-    // YoY trend for balance
     if (prevBudget) {
-        var prevBalance = prevBudget.grossRevenue - 0; // expenditures were $0 last year too
+        var prevBalance = prevBudget.grossRevenue - 0;
         h += '<span class="budget-balance-trend">' + budgetTrendHtml(balance, prevBalance, previousYear) + '</span>';
     }
     h += '</div>';
+    h += '</div>';
 
-    h += '</div>'; // .budget-summary
-
-    // === Two-Column Breakdown ===
     h += '<div class="budget-columns">';
 
-    // --- Left column: Revenue ---
     h += '<div class="budget-column">';
     h += '<div class="budget-column-header">Revenue Breakdown</div>';
     h += budgetLineItem('Income Tax', budget.incomeRevenue, prevBudget ? prevBudget.incomeRevenue : null, previousYear);
@@ -547,7 +706,6 @@ function renderBudgetPanel(nation) {
     h += budgetTotalLine(budget.grossRevenue);
     h += '</div>';
 
-    // --- Right column: Expenditures ---
     h += '<div class="budget-column">';
     h += '<div class="budget-column-header">Expenditure Breakdown</div>';
     var expenditureItems = [
@@ -566,22 +724,34 @@ function renderBudgetPanel(nation) {
     h += budgetTotalLine(totalExpenditure);
     h += '</div>';
 
-    h += '</div>'; // .budget-columns
-    h += '</div>'; // .budget-panel
+    h += '</div>';
+    h += '</div>';
     return h;
 }
 
-// ==================== TRADE PANEL ====================
+// ==================== TRADE TAB ====================
+function renderTradeTab(nation) {
+    var h = '<div class="econ-tab-body">';
+    h += '<div class="economy-trade-row">';
+    h += '<div class="economy-trade-col">';
+    h += renderTradePanel(nation);
+    h += '</div>';
+    h += '<div class="economy-trade-col">';
+    h += renderTradePartnersPanel();
+    h += '</div>';
+    h += '</div>';
+    h += '</div>';
+    return h;
+}
+
 function renderTradePanel(nation) {
     var h = '<div class="budget-panel trade-panel">';
 
-    // Header
     h += '<div class="budget-header">';
     h += '<div class="budget-title">TRADE</div>';
     h += '<div class="budget-subtitle">Exports &amp; Imports &mdash; Per Tick</div>';
     h += '</div>';
 
-    // No data fallback
     if (!tradeData || !tradeData.summary) {
         h += '<div class="trade-placeholder">Trade data will appear after the next tick.</div>';
         h += '</div>';
@@ -593,32 +763,25 @@ function renderTradePanel(nation) {
     var totalImports = Number(summary.total_imports) || 0;
     var surplus = Number(summary.trade_surplus) || 0;
 
-    // Summary row: Exports / Imports / Balance
     h += '<div class="trade-summary-row">';
-
     h += '<div class="trade-summary-item">';
     h += '<span class="trade-summary-label">Exports</span>';
     h += '<span class="trade-summary-value exports">' + formatBudgetCurrency(totalExports) + '</span>';
     h += '</div>';
-
     h += '<div class="trade-summary-item">';
     h += '<span class="trade-summary-label">Imports</span>';
     h += '<span class="trade-summary-value imports">' + formatBudgetCurrency(totalImports) + '</span>';
     h += '</div>';
-
     var balClass = surplus >= 0 ? 'surplus' : 'deficit';
     var balSign = surplus >= 0 ? '+' : '';
     h += '<div class="trade-summary-item">';
     h += '<span class="trade-summary-label">Balance</span>';
     h += '<span class="trade-summary-value ' + balClass + '">' + balSign + formatBudgetCurrency(surplus) + '</span>';
     h += '</div>';
+    h += '</div>';
 
-    h += '</div>'; // .trade-summary-row
-
-    // Two-column breakdown
     h += '<div class="budget-columns">';
 
-    // --- Left: Export Breakdown ---
     h += '<div class="budget-column">';
     h += '<div class="budget-column-header">Export Breakdown</div>';
     var expTotal = 0;
@@ -634,7 +797,6 @@ function renderTradePanel(nation) {
     h += budgetTotalLine(expTotal);
     h += '</div>';
 
-    // --- Right: Import Breakdown ---
     h += '<div class="budget-column trade-inverted">';
     h += '<div class="budget-column-header">Import Breakdown</div>';
     var impTotal = 0;
@@ -651,12 +813,11 @@ function renderTradePanel(nation) {
     h += budgetTotalLine(impTotal);
     h += '</div>';
 
-    h += '</div>'; // .budget-columns
+    h += '</div>';
 
-    // Derived Trade Scores
     h += renderTradeScores(nation);
 
-    h += '</div>'; // .budget-panel
+    h += '</div>';
     return h;
 }
 
@@ -729,8 +890,8 @@ function renderTradeScores(nation) {
         h += '</div>';
     }
 
-    h += '</div>'; // .trade-scores-grid
-    h += '</div>'; // .trade-scores-section
+    h += '</div>';
+    h += '</div>';
     return h;
 }
 
@@ -757,14 +918,12 @@ function renderTradePartners() {
         return '<div class="trade-placeholder">No active trading partners this tick.</div>';
     }
 
-    // Sort by total volume (exports + imports) descending
     partnerIds.sort(function(a, b) {
         var volA = partners[a].totalExports + partners[a].totalImports;
         var volB = partners[b].totalExports + partners[b].totalImports;
         return volB - volA;
     });
 
-    // Find max volume for bar scaling
     var maxVolume = 0;
     for (var i = 0; i < partnerIds.length; i++) {
         var p = partners[partnerIds[i]];
@@ -782,20 +941,17 @@ function renderTradePartners() {
 
         h += '<div class="partner-card">';
 
-        // Partner header row
         h += '<div class="partner-header">';
         h += '<div class="partner-name">' + escapeHtml(p.name) + '</div>';
         h += '<div class="partner-affinity">Affinity: ' + Math.round(p.affinity) + '</div>';
         h += '</div>';
 
-        // Stats row
         h += '<div class="partner-stats">';
         h += '<div class="partner-stat"><span class="partner-stat-label">Exports To</span><span class="partner-stat-value exports">' + formatBudgetCurrency(p.totalExports) + '</span></div>';
         h += '<div class="partner-stat"><span class="partner-stat-label">Imports From</span><span class="partner-stat-value imports">' + formatBudgetCurrency(p.totalImports) + '</span></div>';
         h += '<div class="partner-stat"><span class="partner-stat-label">Balance</span><span class="partner-stat-value ' + balClass + '">' + balSign + formatBudgetCurrency(balance) + '</span></div>';
         h += '</div>';
 
-        // Volume bar
         if (maxVolume > 0) {
             var expPct = (p.totalExports / maxVolume) * 100;
             var impPct = (p.totalImports / maxVolume) * 100;
@@ -808,7 +964,6 @@ function renderTradePartners() {
             h += '</div>';
         }
 
-        // Sector breakdown (compact)
         var sectorParts = [];
         for (var si = 0; si < TRADE_SECTORS.length; si++) {
             var sKey = TRADE_SECTORS[si].key;
@@ -838,13 +993,116 @@ function renderTradePartners() {
             h += '</div>';
         }
 
-        h += '</div>'; // .partner-card
+        h += '</div>';
     }
 
     return h;
 }
 
-// Stat hints — shows players what influences each trade sector
+// ==================== STUB TABS (Phase 4 & 5) ====================
+function renderSectorsTab() {
+    return '<div class="econ-stub">' +
+        '<div class="econ-stub-icon">&#9881;</div>' +
+        '<div class="econ-stub-label">SECTORS</div>' +
+        '<div class="econ-stub-text">Per-sector analysis with export composition, destinations, and net import warnings.</div>' +
+        '</div>';
+}
+
+function renderTariffsTab() {
+    return '<div class="econ-stub">' +
+        '<div class="econ-stub-icon">&#9878;</div>' +
+        '<div class="econ-stub-label">TARIFFS</div>' +
+        '<div class="econ-stub-text">Tariff rates, trade agreements, and tariff matrix across all nations.</div>' +
+        '</div>';
+}
+
+// ==================== MINISTRY DETAIL PANEL ====================
+var MINISTRY_CATEGORIES = [
+    'Interior', 'Labor', 'Healthcare', 'Education',
+    'Transportation', 'Energy', 'Justice', 'Foreign Ministry', 'Finance', 'Defense', 'Trade'
+];
+
+function renderMinistryPanel() {
+    var h = '<div class="ministry-panel budget-panel">';
+
+    h += '<div class="budget-header">';
+    h += '<div class="budget-title">MINISTRY DETAIL</div>';
+    h += '<div class="budget-subtitle">Expenditures by Ministry</div>';
+    h += '</div>';
+
+    h += '<div class="ministry-tabs">';
+    for (var i = 0; i < MINISTRY_CATEGORIES.length; i++) {
+        var cat = MINISTRY_CATEGORIES[i];
+        var activeClass = i === 0 ? ' active' : '';
+        h += '<button class="ministry-tab' + activeClass + '" data-category="' + escapeHtml(cat) + '">' + escapeHtml(cat) + '</button>';
+    }
+    h += '</div>';
+
+    h += '<div id="ministry-policy-list">';
+    h += renderMinistryPoliciesHtml(MINISTRY_CATEGORIES[0]);
+    h += '</div>';
+
+    h += '</div>';
+    return h;
+}
+
+function selectMinistryCategory(category) {
+    document.querySelectorAll('.ministry-tab').forEach(function(t) { t.classList.remove('active'); });
+    var target = document.querySelector('.ministry-tab[data-category="' + category + '"]');
+    if (target) target.classList.add('active');
+    renderMinistryPolicies(category);
+}
+
+function renderMinistryPolicies(category) {
+    var el = document.getElementById('ministry-policy-list');
+    if (el) el.innerHTML = renderMinistryPoliciesHtml(category);
+}
+
+function renderMinistryPoliciesHtml(category) {
+    var items = (expenditureDetails && expenditureDetails[category]) ? expenditureDetails[category] : [];
+    var h = '';
+
+    if (items.length === 0) {
+        h += '<div class="ministry-empty">No expenditures</div>';
+        h += budgetTotalLine(0);
+        return h;
+    }
+
+    var institutions = [];
+    var policies = [];
+    for (var i = 0; i < items.length; i++) {
+        if (items[i].type === 'institution') {
+            institutions.push(items[i]);
+        } else {
+            policies.push(items[i]);
+        }
+    }
+
+    var total = 0;
+    h += '<div class="ministry-policy-list">';
+
+    if (institutions.length > 0) {
+        h += '<div class="ministry-section-label" style="font-size:0.7rem;color:#8b8a7e;text-transform:uppercase;letter-spacing:0.05em;margin:0.4rem 0 0.2rem;padding-left:0.3rem">Institutions</div>';
+        for (var j = 0; j < institutions.length; j++) {
+            total += institutions[j].cost;
+            h += budgetLineItem(institutions[j].name, institutions[j].cost, null, null);
+        }
+    }
+
+    if (policies.length > 0) {
+        h += '<div class="ministry-section-label" style="font-size:0.7rem;color:#8b8a7e;text-transform:uppercase;letter-spacing:0.05em;margin:0.4rem 0 0.2rem;padding-left:0.3rem">Policies</div>';
+        for (var k = 0; k < policies.length; k++) {
+            total += policies[k].cost;
+            h += budgetLineItem(policies[k].name, policies[k].cost, null, null);
+        }
+    }
+
+    h += budgetTotalLine(total);
+    h += '</div>';
+    return h;
+}
+
+// ==================== TRADE LINE ITEMS ====================
 var TRADE_EXPORT_HINTS = {
     fuel_energy:        'Driven by: Oil & Gas',
     minerals:           'Driven by: Rare Minerals',
@@ -893,104 +1151,10 @@ function tradeTrendHtml(current, previous, inverted) {
     if (Math.abs(pctChange) < 0.1) {
         return '<span class="budget-trend trend-neutral">&mdash; 0.0%</span>';
     }
-    // For exports: up = green (trend-up), down = red (trend-down)
-    // For imports (inverted): up = red, down = green — handled via CSS .trade-inverted
     if (pctChange > 0) {
         return '<span class="budget-trend trend-up">&#9650; +' + pctChange.toFixed(1) + '%</span>';
     }
     return '<span class="budget-trend trend-down">&#9660; ' + Math.abs(pctChange).toFixed(1) + '%</span>';
-}
-
-// ==================== MINISTRY DETAIL PANEL ====================
-var MINISTRY_CATEGORIES = [
-    'Interior', 'Labor', 'Healthcare', 'Education',
-    'Transportation', 'Energy', 'Justice', 'Foreign Ministry', 'Finance', 'Defense', 'Trade'
-];
-
-function renderMinistryPanel() {
-    var h = '<div class="ministry-panel budget-panel">';
-
-    // Header
-    h += '<div class="budget-header">';
-    h += '<div class="budget-title">MINISTRY DETAIL</div>';
-    h += '<div class="budget-subtitle">Expenditures by Ministry</div>';
-    h += '</div>';
-
-    // Category tabs
-    h += '<div class="ministry-tabs">';
-    for (var i = 0; i < MINISTRY_CATEGORIES.length; i++) {
-        var cat = MINISTRY_CATEGORIES[i];
-        var activeClass = i === 0 ? ' active' : '';
-        h += '<button class="ministry-tab' + activeClass + '" data-category="' + escapeHtml(cat) + '">' + escapeHtml(cat) + '</button>';
-    }
-    h += '</div>';
-
-    // Policy list (rendered for first category by default)
-    h += '<div id="ministry-policy-list">';
-    h += renderMinistryPoliciesHtml(MINISTRY_CATEGORIES[0]);
-    h += '</div>';
-
-    h += '</div>';
-    return h;
-}
-
-function selectMinistryCategory(category) {
-    document.querySelectorAll('.ministry-tab').forEach(function(t) { t.classList.remove('active'); });
-    var target = document.querySelector('.ministry-tab[data-category="' + category + '"]');
-    if (target) target.classList.add('active');
-    renderMinistryPolicies(category);
-}
-
-function renderMinistryPolicies(category) {
-    var el = document.getElementById('ministry-policy-list');
-    if (el) el.innerHTML = renderMinistryPoliciesHtml(category);
-}
-
-function renderMinistryPoliciesHtml(category) {
-    var items = (expenditureDetails && expenditureDetails[category]) ? expenditureDetails[category] : [];
-    var h = '';
-
-    if (items.length === 0) {
-        h += '<div class="ministry-empty">No expenditures</div>';
-        h += budgetTotalLine(0);
-        return h;
-    }
-
-    // Separate institutions and policies
-    var institutions = [];
-    var policies = [];
-    for (var i = 0; i < items.length; i++) {
-        if (items[i].type === 'institution') {
-            institutions.push(items[i]);
-        } else {
-            policies.push(items[i]);
-        }
-    }
-
-    var total = 0;
-    h += '<div class="ministry-policy-list">';
-
-    // Institutions first
-    if (institutions.length > 0) {
-        h += '<div class="ministry-section-label" style="font-size:0.7rem;color:#8b8a7e;text-transform:uppercase;letter-spacing:0.05em;margin:0.4rem 0 0.2rem;padding-left:0.3rem">Institutions</div>';
-        for (var j = 0; j < institutions.length; j++) {
-            total += institutions[j].cost;
-            h += budgetLineItem(institutions[j].name, institutions[j].cost, null, null);
-        }
-    }
-
-    // Then policies
-    if (policies.length > 0) {
-        h += '<div class="ministry-section-label" style="font-size:0.7rem;color:#8b8a7e;text-transform:uppercase;letter-spacing:0.05em;margin:0.4rem 0 0.2rem;padding-left:0.3rem">Policies</div>';
-        for (var k = 0; k < policies.length; k++) {
-            total += policies[k].cost;
-            h += budgetLineItem(policies[k].name, policies[k].cost, null, null);
-        }
-    }
-
-    h += budgetTotalLine(total);
-    h += '</div>';
-    return h;
 }
 
 // ==================== BUDGET HELPERS ====================
@@ -1088,7 +1252,6 @@ function formatDelta(d) {
 
 // ==================== RATING ====================
 function getRating(value, inverted) {
-    // For inverted stats (unemployment, inflation), lower is better
     var effective = inverted ? (100 - value) : value;
     if (effective >= 80) return { label: 'Excellent', cls: 'excellent' };
     if (effective >= 60) return { label: 'Good', cls: 'good' };

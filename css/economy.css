@@ -1,5 +1,486 @@
 /* ===== ECONOMY PAGE — FINANCIAL DASHBOARD ===== */
 
+/* ===== TITLE BAR ===== */
+.econ-title-bar {
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+    border-bottom: 2px solid var(--accent);
+    padding: 24px 24px 16px;
+    text-align: center;
+}
+
+.econ-title {
+    color: var(--accent);
+    font-size: 1.5rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    font-family: 'Courier New', monospace;
+}
+
+body.light-mode .econ-title-bar {
+    background: linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%);
+}
+
+/* ===== TAB BAR ===== */
+.econ-tab-bar {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    padding: 12px 24px;
+    background: var(--bg-panel, #141414);
+    border-bottom: 1px solid var(--border-main);
+}
+
+.econ-tab {
+    padding: 8px 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    border: 1px solid var(--border-main);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+
+.econ-tab:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.econ-tab.active {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+}
+
+body.light-mode .econ-tab-bar {
+    background: #f8f8f8;
+}
+
+body.light-mode .econ-tab {
+    border-color: #d0d0d0;
+    color: #666;
+}
+
+body.light-mode .econ-tab:hover {
+    color: #333;
+}
+
+body.light-mode .econ-tab.active {
+    color: #000;
+}
+
+/* ===== TAB CONTENT ===== */
+#econ-tab-content {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px;
+}
+
+.econ-tab-body {
+    width: 100%;
+}
+
+/* ===== OVERVIEW TAB ===== */
+.econ-overview {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* Section */
+.econ-section {
+    background: var(--bg-panel, #1a1a1a);
+    border: 1px solid var(--border-main);
+    border-radius: 8px;
+    padding: 20px;
+    overflow: hidden;
+}
+
+.econ-section-header {
+    font-size: 0.72rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 2.5px;
+    font-weight: 700;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-main);
+}
+
+.econ-section-subtitle {
+    font-size: 0.65rem;
+    color: var(--text-muted, #888);
+    font-style: italic;
+    margin-top: -8px;
+    margin-bottom: 14px;
+}
+
+body.light-mode .econ-section {
+    background: #ffffff;
+    border-color: #d0d0d0;
+}
+
+/* Cards Row */
+.econ-cards-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+.econ-cards-row.econ-cards-4 {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+/* Card */
+.econ-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-light, #2a2a2a);
+    border-radius: 6px;
+    padding: 16px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.econ-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--border-light, #2a2a2a);
+}
+
+.econ-card-surplus::before { background: var(--green, #4CAF50); }
+.econ-card-deficit::before { background: var(--red, #ff4444); }
+.econ-card-neutral::before { background: var(--accent); }
+
+.econ-card-surplus { border-color: rgba(76, 175, 80, 0.25); }
+.econ-card-deficit { border-color: rgba(255, 68, 68, 0.25); }
+
+.econ-card-label {
+    font-size: 0.65rem;
+    color: var(--text-secondary, #888);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.econ-card-value {
+    font-size: 1.5rem;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    color: var(--text-primary, #e0e0e0);
+    line-height: 1;
+    margin-bottom: 6px;
+}
+
+.econ-card-surplus .econ-card-value { color: var(--green, #4CAF50); }
+.econ-card-deficit .econ-card-value { color: var(--red, #ff4444); }
+
+.econ-card-sub {
+    font-size: 0.75rem;
+    color: var(--text-secondary, #888);
+    font-weight: 600;
+}
+
+body.light-mode .econ-card {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+/* ===== OVERVIEW SPLIT (Trade + Debt side by side) ===== */
+.econ-overview-split {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 24px;
+}
+
+/* Placeholder */
+.econ-placeholder {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 24px 16px;
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+/* ===== DEBT CARD ===== */
+.econ-debt-card {
+    text-align: center;
+    padding: 12px 0;
+}
+
+.econ-debt-amount {
+    font-size: 1.8rem;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.econ-debt-ratio {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-family: 'Courier New', monospace;
+    margin-bottom: 10px;
+}
+
+.econ-debt-rating {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.econ-debt-rating.rating-excellent { color: #4CAF50; }
+.econ-debt-rating.rating-good      { color: #2196F3; }
+.econ-debt-rating.rating-moderate   { color: #e0e0e0; }
+.econ-debt-rating.rating-poor       { color: #ff9800; }
+.econ-debt-rating.rating-critical   { color: #ff4444; }
+
+/* ===== RANKINGS TABLE ===== */
+.econ-ranking-table {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow-x: auto;
+}
+
+.econ-ranking-row {
+    display: flex;
+    border-bottom: 1px solid var(--border-light, #2a2a2a);
+}
+
+.econ-ranking-row:last-child {
+    border-bottom: none;
+}
+
+.econ-ranking-header {
+    border-bottom: 2px solid var(--border-main);
+}
+
+.econ-ranking-header .econ-ranking-cell {
+    font-size: 0.65rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-weight: 700;
+    padding: 8px 12px;
+}
+
+.econ-ranking-cell {
+    flex: 1;
+    padding: 10px 12px;
+    min-width: 0;
+    text-align: center;
+}
+
+.econ-ranking-metric {
+    flex: 0 0 140px;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.econ-ranking-name {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.econ-ranking-val {
+    font-size: 0.8rem;
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.econ-ranking-highlight {
+    background: rgba(255, 204, 0, 0.08);
+    border-left: 2px solid var(--accent);
+}
+
+.econ-ranking-highlight .econ-ranking-name {
+    color: var(--accent);
+    font-weight: 700;
+}
+
+/* ===== SECTOR HEALTH ===== */
+.econ-sector-health {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.econ-sector-row {
+    display: grid;
+    grid-template-columns: 180px 1fr 40px auto;
+    gap: 12px;
+    align-items: center;
+}
+
+.econ-sector-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.econ-health-track {
+    height: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 5px;
+    overflow: visible;
+    position: relative;
+}
+
+.econ-health-fill {
+    height: 100%;
+    border-radius: 5px;
+    transition: width 0.3s;
+}
+
+.econ-health-threshold {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 2px;
+    background: rgba(255, 255, 255, 0.4);
+    border-radius: 1px;
+}
+
+.econ-health-value {
+    font-size: 0.85rem;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    text-align: right;
+}
+
+.econ-health-warning {
+    font-size: 0.65rem;
+    color: var(--red, #ff4444);
+    font-style: italic;
+    white-space: nowrap;
+}
+
+body.light-mode .econ-health-track {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+body.light-mode .econ-health-threshold {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+/* ===== STUB TABS ===== */
+.econ-stub {
+    text-align: center;
+    padding: 60px 24px;
+    color: var(--text-secondary);
+}
+
+.econ-stub-icon {
+    font-size: 2.5rem;
+    margin-bottom: 12px;
+    opacity: 0.4;
+}
+
+.econ-stub-label {
+    font-size: 1rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.econ-stub-text {
+    font-size: 0.85rem;
+    font-style: italic;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+/* ===== RESPONSIVE — Tab Bar & Overview ===== */
+@media (max-width: 1100px) {
+    .econ-overview-split {
+        grid-template-columns: 1fr;
+    }
+
+    .econ-cards-row.econ-cards-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .econ-sector-row {
+        grid-template-columns: 140px 1fr 36px auto;
+    }
+}
+
+@media (max-width: 768px) {
+    .econ-tab-bar {
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 10px 16px;
+    }
+
+    .econ-tab {
+        padding: 6px 14px;
+        font-size: 0.68rem;
+    }
+
+    #econ-tab-content {
+        padding: 16px;
+    }
+
+    .econ-cards-row {
+        grid-template-columns: 1fr;
+    }
+
+    .econ-cards-row.econ-cards-4 {
+        grid-template-columns: 1fr;
+    }
+
+    .econ-ranking-metric {
+        flex: 0 0 100px;
+        font-size: 0.65rem;
+    }
+
+    .econ-ranking-val {
+        font-size: 0.7rem;
+    }
+
+    .econ-sector-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+
+    .econ-health-track {
+        height: 8px;
+    }
+}
+
+@media (max-width: 480px) {
+    .econ-title {
+        font-size: 1.1rem;
+        letter-spacing: 2px;
+    }
+
+    .econ-card-value {
+        font-size: 1.2rem;
+    }
+}
+
+/* ===== EXISTING STYLES BELOW ===== */
+
 /* Hero Bar */
 .economy-hero {
     background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
