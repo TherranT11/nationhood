@@ -1609,10 +1609,28 @@ async function submitToCommittee() {
     if (currentSeats === 0) { alert('Your faction holds no seats and cannot propose bills.'); return; }
     isSubmitting = true;
     document.getElementById('submit-bill-btn').disabled = true;
-    const billName = document.getElementById('bill-name-input').value.trim() || ('Unnamed ' + termBill);
-
     // Check if this is a foundational bill
     const isFoundationalBill = draftArticles.some(a => a.isFoundational);
+
+    // Auto-generate a bill name from articles if the user left the field blank
+    let billName = document.getElementById('bill-name-input').value.trim();
+    if (!billName) {
+        if (isFoundationalBill) {
+            billName = 'Electoral Reform Act';
+        } else {
+            const policyNames = draftArticles.filter(a => a.policy).map(a => a.policy.policy_name);
+            if (policyNames.length === 1) {
+                billName = 'The ' + policyNames[0] + ' Act';
+            } else if (policyNames.length === 2) {
+                billName = 'The ' + policyNames[0] + ' & ' + policyNames[1] + ' Act';
+            } else if (policyNames.length > 2) {
+                billName = 'The ' + policyNames[0] + ' & ' + (policyNames.length - 1) + ' More Provisions Act';
+            } else {
+                const textTitle = draftArticles.find(a => a.isText)?.textTitle;
+                billName = textTitle && textTitle !== 'Untitled Provision' ? 'The ' + textTitle + ' Act' : ('Unnamed ' + termBill);
+            }
+        }
+    }
 
     if (isFoundationalBill) {
         const foundationalArt = draftArticles.find(a => a.isFoundational);
