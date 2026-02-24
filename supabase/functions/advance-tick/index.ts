@@ -1334,15 +1334,6 @@ const PROPOSAL_TYPES = {
     },
 
     // === Tier 3: Major — Escalates to FM, then Parliament ratification bill ===
-    trade_agreement: {
-        tier: 3,
-        label: 'Trade Agreement',
-        description: 'Establish a formal trade agreement affecting GDP and trade volume.',
-        stat_effects: [
-            { stat_key: 'gdp_growth', direction: 'up', rate: 2, delay_ticks: 1, duration_ticks: 0 },
-            { stat_key: 'trade_balance', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 }
-        ]
-    },
     non_aggression_pact: {
         tier: 3,
         label: 'Non-Aggression Pact',

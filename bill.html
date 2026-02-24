@@ -751,7 +751,7 @@ function renderArticles() {
                 '</div>';
             }
             totalUpfront += p.upfront_cost || 0;
-            totalOngoing += p.ongoing_cost_per_tick || p.ongoing_base_cost || p.ongoing_cost || 0;
+            totalOngoing += p.ongoing_cost_per_tick || p.ongoing_base_cost || 0;
 
             // Ideology tags — support new ideologies array and legacy single ideology
             const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
@@ -776,7 +776,7 @@ function renderArticles() {
             }
 
             const upCost = p.upfront_cost || 0;
-            const onCost = p.ongoing_cost_per_tick || p.ongoing_base_cost || p.ongoing_cost || 0;
+            const onCost = p.ongoing_cost_per_tick || p.ongoing_base_cost || 0;
 
             const policyActions = canEditArticles ? '<div class="article-sponsor-actions">' +
                 '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
