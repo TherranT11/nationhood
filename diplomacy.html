@@ -2839,6 +2839,13 @@ function renderWizardStep2() {
 }
 
 function wizardSelectCategory(category) {
+    // MoT-only players cannot select diplomatic initiatives
+    if (category === 'diplomatic') {
+        const hasAmbassador = diplomaticRoles && diplomaticRoles.ambassadorTo.length > 0;
+        const isMoTOnly = diplomaticRoles.isMoT && !hasAmbassador && !diplomaticRoles.isFM && !diplomaticRoles.isHoG;
+        if (isMoTOnly) return;
+    }
+
     document.querySelectorAll('#wizard-panel-2 .type-card').forEach(el => el.classList.remove('selected'));
     const card = document.querySelector('#wizard-panel-2 .type-card[data-category="' + category + '"]');
     if (card) {
@@ -2858,6 +2865,17 @@ function wizardBackToStep1() {
 
 async function wizardGoToStep3() {
     if (!wizardCategory) return;
+
+    // Block MoT-only players from the diplomatic initiative path
+    if (wizardCategory === 'diplomatic') {
+        const hasAmbassador = diplomaticRoles && diplomaticRoles.ambassadorTo.length > 0;
+        const isMoTOnly = diplomaticRoles.isMoT && !hasAmbassador && !diplomaticRoles.isFM && !diplomaticRoles.isHoG;
+        if (isMoTOnly) {
+            alert('The Minister of Trade can only propose Trade Agreements, not Diplomatic Initiatives.');
+            return;
+        }
+    }
+
     wizardStep = 3;
     updateWizardStepIndicators(3);
     if (wizardCategory === 'diplomatic') {
@@ -3194,6 +3212,15 @@ async function wizardSubmit() {
     const filledArticles = wizardArticles.filter(a => a.text.trim());
     if (filledArticles.length === 0) { alert('Please add at least one article with content.'); return; }
     if (!wizardTargetNation || !wizardAgreementType) { alert('Missing target nation or agreement type.'); return; }
+
+    // MoT-only players cannot submit diplomatic initiatives
+    await refreshRoles();
+    const hasAmbassador = diplomaticRoles && diplomaticRoles.ambassadorTo.length > 0;
+    const isMoTOnly = diplomaticRoles.isMoT && !hasAmbassador && !diplomaticRoles.isFM && !diplomaticRoles.isHoG;
+    if (isMoTOnly) {
+        alert('The Minister of Trade can only propose Trade Agreements, not Diplomatic Initiatives.');
+        return;
+    }
 
     const typeInfo = INITIATIVE_TYPES[wizardAgreementType];
     if (!typeInfo) { alert('Invalid agreement type.'); return; }
