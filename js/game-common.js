@@ -23,6 +23,7 @@ export const GAME_CONFIG = {
     TOTAL_SEATS: 120,
     MAJORITY_SEATS: 61,
     VOTING_WINDOW_TICKS: 6,
+    QUORUM_THRESHOLD: 0.6,           // 60% of seats must vote before quorum-based early resolution
     COMMITTEE_EXPIRY_TICKS: 6,
     DRAFT_BILL_AP_COST: 2,
     VETO_APPROVAL_COST: 3,
@@ -3210,6 +3211,7 @@ export async function checkEarlyMajority(supabase, nationId) {
 
     if (error || !activeBills || activeBills.length === 0) return [];
 
+    const quorumSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.QUORUM_THRESHOLD);
     const results = [];
 
     for (const bill of activeBills) {
@@ -3221,10 +3223,11 @@ export async function checkEarlyMajority(supabase, nationId) {
         });
 
         let earlyStatus = null;
-        const undeclaredSeats = GAME_CONFIG.TOTAL_SEATS - yesSeats - noSeats;
+        const totalVoted = yesSeats + noSeats;
+        const undeclaredSeats = GAME_CONFIG.TOTAL_SEATS - totalVoted;
 
+        // ── Check 1: Mathematical lock (outcome impossible to change) ──
         if (isSimpleMajorityBill(bill.bill_type)) {
-            // Relative majority: YES > NO passes.
             // Locked YES: even if ALL undeclared vote NO, YES still wins.
             if (yesSeats > noSeats + undeclaredSeats) {
                 earlyStatus = 'majority_reached';
@@ -3242,9 +3245,34 @@ export async function checkEarlyMajority(supabase, nationId) {
             }
         }
 
+        // ── Check 2: Quorum-based early resolution ──
+        // If not math-locked but quorum (60% of seats) has voted,
+        // resolve based on the majority among those who voted.
+        // Gives remaining parties a 1-tick grace period to cast their vote.
+        if (!earlyStatus && totalVoted >= quorumSeats) {
+            if (isSimpleMajorityBill(bill.bill_type)) {
+                if (yesSeats > noSeats) {
+                    earlyStatus = 'quorum_reached';
+                } else if (noSeats > yesSeats) {
+                    earlyStatus = 'quorum_opposed';
+                }
+                // Exact tie at quorum: wait for more votes or deadline
+            } else {
+                const requiredSeats = getRequiredSeats(bill.bill_type);
+                if (yesSeats >= requiredSeats) {
+                    earlyStatus = 'quorum_reached';
+                } else {
+                    earlyStatus = 'quorum_opposed';
+                }
+            }
+        }
+
         if (earlyStatus) {
             // Grace tick: resolve one tick from now, but never extend past original deadline
-            const graceEndTick = Math.min(currentTick + 1, bill.voting_ends_tick);
+            // Budget bills have null voting_ends_tick, so just use currentTick + 1
+            const graceEndTick = bill.voting_ends_tick != null
+                ? Math.min(currentTick + 1, bill.voting_ends_tick)
+                : currentTick + 1;
 
             await supabase.from('bills').update({
                 early_resolution_status: earlyStatus,
@@ -3252,7 +3280,8 @@ export async function checkEarlyMajority(supabase, nationId) {
                 voting_ends_tick: graceEndTick
             }).eq('id', bill.id);
 
-            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} (YES=${yesSeats}, NO=${noSeats}, required=${requiredSeats}). Resolves tick ${graceEndTick}`);
+            const resolveType = earlyStatus.startsWith('quorum') ? 'QUORUM' : 'MATH-LOCK';
+            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} [${resolveType}] (YES=${yesSeats}, NO=${noSeats}, quorum=${quorumSeats}, voted=${totalVoted}). Resolves tick ${graceEndTick}`);
             results.push({ billId: bill.id, billName: bill.bill_name, status: earlyStatus, yesSeats, noSeats });
         }
     }

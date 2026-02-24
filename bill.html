@@ -425,7 +425,7 @@ function renderBill() {
     // Early resolution banner — majority locked, resolves next tick
     if (isFloor && bill.early_resolution_status) {
         const earlyBanner = document.createElement('div');
-        const isMajReached = bill.early_resolution_status === 'majority_reached';
+        const isMajReached = bill.early_resolution_status === 'majority_reached' || bill.early_resolution_status === 'quorum_reached';
         earlyBanner.className = 'bill-early-resolution ' + (isMajReached ? 'majority-reached' : 'majority-opposed');
         // Tally current votes for display
         let earlyYes = 0, earlyNo = 0;
