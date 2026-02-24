@@ -1500,6 +1500,10 @@ async function sendToFloor() {
 }
 
 async function retractBill() {
+    if (currentBill.status !== 'committee') {
+        alert('This bill is on the floor and cannot be retracted.');
+        return;
+    }
     if (!confirm('Retract this? This cannot be undone.')) return;
     try {
         // Reverse ideology shift: -1 per ideology tag (mirrors +1 proposer bonus)
@@ -1539,6 +1543,10 @@ async function retractBill() {
 }
 
 async function retractBudgetBill() {
+    if (currentBill.status !== 'committee') {
+        alert('This budget bill is on the floor and cannot be retracted.');
+        return;
+    }
     if (!confirm('Retract this budget bill? This cannot be undone.')) return;
     try {
         await _supabase.from('budget_item_allocations').delete().eq('bill_id', billId);
@@ -2239,7 +2247,7 @@ function renderBudgetBillUI() {
     const isPMParty = isAutocracy ? isHeadFaction
         : isPresidential ? (presidentFactionId && currentFaction?.id === presidentFactionId)
         : (coalitionLeadPartyId && currentFaction?.id === coalitionLeadPartyId);
-    if (isPMParty && (currentBill.status === 'committee' || currentBill.status === 'floor')) {
+    if (isPMParty && currentBill.status === 'committee') {
         h += '<div class="budget-retract-section">';
         h += '<button class="budget-retract-btn" onclick="retractBudgetBill()">Retract Budget Bill</button>';
         h += '<div class="budget-retract-note">Only the head of government can retract a budget bill.</div>';

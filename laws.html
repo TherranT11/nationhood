@@ -1682,6 +1682,12 @@ async function setStance(billId, stance) {
 }
 
 async function retractBill(billId) {
+    // Verify bill is still in committee before allowing retraction
+    const { data: check } = await _supabase.from('bills').select('status').eq('id', billId).single();
+    if (check?.status !== 'committee') {
+        alert('This bill is on the floor and cannot be retracted.');
+        return;
+    }
     if (!confirm(`Retract this ${termBill.toLowerCase()}? This cannot be undone.`)) return;
     try {
         // Load bill + articles before deletion so we can reverse ideology
