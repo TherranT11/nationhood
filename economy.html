@@ -26,7 +26,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatCurrency } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import { calculateNationalBudget, applyTradeTariffOverride, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY } from './js/game-common.js';
+import { calculateNationalBudget, applyTradeTariffOverride, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS } from './js/game-common.js';
 
 // ==================== STATE ====================
 var previousTickData = null;
@@ -40,6 +40,7 @@ var allNations = null;
 var gameYear = 0;
 var activeTab = 'overview';
 var activeSector = 'fuel_energy';
+var tradeAgreements = null;
 
 // ==================== INIT ====================
 initPage('economy', async function(state) {
@@ -61,7 +62,8 @@ initPage('economy', async function(state) {
         loadPreviousYearData(nation.id),
         loadExpenditureData(nation.id, nation),
         loadTradeData(nation.id),
-        loadAllNationsData()
+        loadAllNationsData(),
+        loadTradeAgreements(nation.id)
     ]);
     renderEconomyPage(nation);
 });
@@ -349,6 +351,19 @@ async function loadAllNationsData() {
     }
 }
 
+async function loadTradeAgreements(nationId) {
+    try {
+        var { data } = await _supabase.from('trade_agreements')
+            .select('*')
+            .eq('status', 'active')
+            .or('nation_a_id.eq.' + nationId + ',nation_b_id.eq.' + nationId)
+            .order('enacted_at_tick', { ascending: false });
+        tradeAgreements = data || [];
+    } catch (e) {
+        tradeAgreements = [];
+    }
+}
+
 // ==================== TAB INFRASTRUCTURE ====================
 function renderEconomyPage(nation) {
     var h = '';
@@ -386,7 +401,7 @@ function renderTabContent(nation) {
         case 'budget': return renderBudgetTab(nation);
         case 'trade': return renderTradeTab(nation);
         case 'sectors': return renderSectorsTab(nation);
-        case 'tariffs': return renderTariffsTab();
+        case 'tariffs': return renderTariffsTab(nation);
         default: return '';
     }
 }
@@ -1334,12 +1349,285 @@ function formatStatLabel(key) {
     return labels[key] || key;
 }
 
-function renderTariffsTab() {
-    return '<div class="econ-stub">' +
-        '<div class="econ-stub-icon">&#9878;</div>' +
-        '<div class="econ-stub-label">TARIFFS</div>' +
-        '<div class="econ-stub-text">Tariff rates, trade agreements, and tariff matrix across all nations.</div>' +
-        '</div>';
+// ==================== TARIFFS TAB ====================
+function renderTariffsTab(nation) {
+    var h = '<div class="econ-tab-body"><div class="econ-overview">';
+
+    var tariffRate = Number(nation.tariffs) || 0;
+    var tariffRev = 0;
+    if (tradeData && tradeData.summary) {
+        tariffRev = Number(tradeData.summary.tariff_revenue) || 0;
+    }
+
+    // --- Tariff Overview ---
+    h += '<div class="econ-section">';
+    h += '<div class="econ-section-header">TARIFF POLICY</div>';
+    h += '<div class="econ-section-subtitle">Your tariff rate dampens imports. Higher tariffs reduce import volume but generate more revenue.</div>';
+
+    h += '<div class="econ-cards-row econ-cards-4">';
+    h += renderOverviewCard('Tariff Rate', tariffRate.toFixed(0) + '%', 'neutral', null);
+    h += renderOverviewCard('Tariff Revenue', formatBudgetCurrency(tariffRev), tariffRev > 0 ? 'surplus' : 'neutral', 'Per Tick');
+    var dampener = (1 - tariffRate / 200) * 100;
+    h += renderOverviewCard('Import Dampener', dampener.toFixed(0) + '%', 'neutral', 'of full demand');
+    var agreementCount = tradeAgreements ? tradeAgreements.length : 0;
+    h += renderOverviewCard('Active Agreements', String(agreementCount), agreementCount > 0 ? 'surplus' : 'neutral', null);
+    h += '</div>';
+
+    // Tariff effect explanation
+    h += '<div class="tariff-explainer">';
+    h += '<span class="tariff-explainer-label">FORMULA</span> ';
+    h += 'Import dampener = 1 &minus; (tariff_rate / 200). ';
+    h += 'At <strong>0%</strong> tariffs, imports flow at 100%. At <strong>50%</strong>, imports are reduced to 75%. At <strong>100%</strong>, imports are cut by half.';
+    h += '</div>';
+    h += '</div>';
+
+    // --- Active Trade Agreements ---
+    h += renderTariffAgreementsSection(nation);
+
+    // --- Tariff Matrix ---
+    h += renderTariffMatrix(nation);
+
+    h += '</div></div>';
+    return h;
+}
+
+function renderTariffAgreementsSection(nation) {
+    if (!tradeAgreements || tradeAgreements.length === 0) {
+        var h = '<div class="econ-section">';
+        h += '<div class="econ-section-header">TRADE AGREEMENTS</div>';
+        h += '<div class="econ-placeholder">No active trade agreements. Negotiate FTAs or PTAs through the Diplomacy page.</div>';
+        h += '</div>';
+        return h;
+    }
+
+    // Build name lookup
+    var nameMap = {};
+    if (allNations) {
+        for (var i = 0; i < allNations.length; i++) {
+            nameMap[allNations[i].id] = allNations[i].name;
+        }
+    }
+
+    var h = '<div class="econ-section">';
+    h += '<div class="econ-section-header">TRADE AGREEMENTS (' + tradeAgreements.length + ')</div>';
+    h += '<div class="econ-section-subtitle">Active bilateral agreements affecting your tariff rates and trade flows.</div>';
+    h += '<div class="tariff-agreements-grid">';
+
+    for (var i = 0; i < tradeAgreements.length; i++) {
+        var ag = tradeAgreements[i];
+        var partnerId = ag.nation_a_id === nation.id ? ag.nation_b_id : ag.nation_a_id;
+        var partnerName = nameMap[partnerId] || 'Unknown';
+        var typeInfo = TRADE_AGREEMENT_TYPES[ag.agreement_type] || {};
+        var typeBadge = typeInfo.shortLabel || ag.agreement_type.toUpperCase();
+
+        // Duration info
+        var durationText = 'Permanent';
+        if (ag.duration_type === 'fixed' && ag.expires_at_tick) {
+            var ticksLeft = ag.expires_at_tick - currentTick;
+            if (ticksLeft > 0) {
+                durationText = ticksLeft + ' ticks remaining';
+            } else {
+                durationText = 'Expiring';
+            }
+            if (ag.auto_renew) durationText += ' (auto-renew)';
+        }
+
+        // Border color by type
+        var borderColor = ag.agreement_type === 'fta' ? '#4CAF50' : ag.agreement_type === 'pta' ? '#2196F3' : '#8a8778';
+
+        h += '<div class="tariff-agreement-card" style="border-left-color:' + borderColor + '">';
+        h += '<div class="ta-card-header">';
+        h += '<div class="ta-card-name">' + escapeHtml(ag.agreement_name || typeInfo.label || 'Agreement') + '</div>';
+        h += '<div class="ta-card-badge" style="background:' + borderColor + '">' + escapeHtml(typeBadge) + '</div>';
+        h += '</div>';
+        h += '<div class="ta-card-partner">with <strong>' + escapeHtml(partnerName) + '</strong></div>';
+        h += '<div class="ta-card-duration">' + escapeHtml(durationText) + '</div>';
+
+        // Parse articles for tariff details
+        var articles = ag.articles || [];
+        var tariffArticles = [];
+        var exemptionArticles = [];
+        var supplyArticles = [];
+        var subsidyArticles = [];
+
+        for (var j = 0; j < articles.length; j++) {
+            var art = articles[j];
+            if (art.type === 'tariff_reduction') tariffArticles.push(art);
+            else if (art.type === 'sector_exemption') exemptionArticles.push(art);
+            else if (art.type === 'supply_commitment') supplyArticles.push(art);
+            else if (art.type === 'subsidized_sector') subsidyArticles.push(art);
+        }
+
+        // FTA: show exemptions
+        if (ag.agreement_type === 'fta') {
+            h += '<div class="ta-card-detail ta-card-effect">All tariffs eliminated between parties</div>';
+            if (exemptionArticles.length > 0) {
+                h += '<div class="ta-card-exemptions">';
+                h += '<span class="ta-card-detail-label">EXEMPTIONS:</span> ';
+                var exemptNames = [];
+                for (var j = 0; j < exemptionArticles.length; j++) {
+                    var d = exemptionArticles[j].data || {};
+                    exemptNames.push(escapeHtml(getSectorLabel(d.sector)));
+                }
+                h += exemptNames.join(', ');
+                h += '</div>';
+            }
+        }
+
+        // PTA: show per-sector reductions
+        if (ag.agreement_type === 'pta' && tariffArticles.length > 0) {
+            h += '<div class="ta-card-reductions">';
+            for (var j = 0; j < tariffArticles.length; j++) {
+                var d = tariffArticles[j].data || {};
+                var sectorName = getSectorLabel(d.sector);
+                var direction = d.direction === 'mutual' ? 'Mutual' : d.direction === 'your_exports' ? 'Your exports' : 'Their exports';
+                var reduction = (d.reduction_pct || 0) + '%';
+                h += '<div class="ta-reduction-line">';
+                h += '<span class="ta-reduction-sector">' + escapeHtml(sectorName) + '</span>';
+                h += '<span class="ta-reduction-dir">' + escapeHtml(direction) + '</span>';
+                h += '<span class="ta-reduction-pct">&minus;' + escapeHtml(reduction) + '</span>';
+                h += '</div>';
+            }
+            h += '</div>';
+        }
+
+        // RSC: show supply commitment
+        if (ag.agreement_type === 'resource_supply' && supplyArticles.length > 0) {
+            var d = supplyArticles[0].data || {};
+            var sectorName = getSectorLabel(d.sector);
+            var dir = d.direction === 'we_buy' ? 'We buy from' : 'We sell to';
+            h += '<div class="ta-card-detail">' + escapeHtml(dir) + ' ' + escapeHtml(partnerName) + ': ' + escapeHtml(sectorName) + ' @ ' + (d.commitment_pct || 0) + '% commitment</div>';
+        }
+
+        // ES: show subsidy
+        if (ag.agreement_type === 'export_subsidy' && subsidyArticles.length > 0) {
+            var d = subsidyArticles[0].data || {};
+            var sectorName = getSectorLabel(d.sector);
+            h += '<div class="ta-card-detail">Subsidizing <strong>' + escapeHtml(sectorName) + '</strong> exports @ ' + (d.subsidy_pct || 0) + '%</div>';
+        }
+
+        h += '</div>';
+    }
+
+    h += '</div>';
+    h += '</div>';
+    return h;
+}
+
+function getSectorLabel(sectorKey) {
+    for (var i = 0; i < TRADEABLE_SECTORS.length; i++) {
+        if (TRADEABLE_SECTORS[i].key === sectorKey) return TRADEABLE_SECTORS[i].label;
+    }
+    for (var i = 0; i < TRADE_SECTORS.length; i++) {
+        if (TRADE_SECTORS[i].key === sectorKey) return TRADE_SECTORS[i].label;
+    }
+    return sectorKey || 'All Sectors';
+}
+
+function renderTariffMatrix(nation) {
+    if (!allNations || allNations.length === 0) return '';
+
+    // Sort nations: current nation first, then alphabetically
+    var sorted = allNations.slice().sort(function(a, b) {
+        if (a.id === nation.id) return -1;
+        if (b.id === nation.id) return 1;
+        return (a.name || '').localeCompare(b.name || '');
+    });
+
+    // Build agreement lookup: agreementWith[nationId] = { type, details }
+    var agreementWith = {};
+    if (tradeAgreements) {
+        for (var i = 0; i < tradeAgreements.length; i++) {
+            var ag = tradeAgreements[i];
+            var partnerId = ag.nation_a_id === nation.id ? ag.nation_b_id : ag.nation_a_id;
+            agreementWith[partnerId] = ag;
+        }
+    }
+
+    var h = '<div class="econ-section">';
+    h += '<div class="econ-section-header">TARIFF MATRIX</div>';
+    h += '<div class="econ-section-subtitle">Tariff rates across all nations. Agreements may override effective rates between specific partners.</div>';
+
+    h += '<div class="tariff-matrix">';
+
+    // Header row
+    h += '<div class="tm-header">';
+    h += '<div class="tm-cell tm-nation-name">NATION</div>';
+    h += '<div class="tm-cell tm-rate">TARIFF RATE</div>';
+    h += '<div class="tm-cell tm-dampener">DAMPENER</div>';
+    h += '<div class="tm-cell tm-agreement">AGREEMENT</div>';
+    h += '<div class="tm-cell tm-effective">EFFECTIVE RATE</div>';
+    h += '</div>';
+
+    for (var i = 0; i < sorted.length; i++) {
+        var n = sorted[i];
+        var isYou = n.id === nation.id;
+        var rate = Number(n.tariffs) || 0;
+        var dampener = (1 - rate / 200) * 100;
+
+        // Determine agreement status with this nation
+        var ag = isYou ? null : agreementWith[n.id];
+        var agLabel = '—';
+        var effectiveRate = rate;
+        var agBadgeColor = '#3a3930';
+
+        if (ag) {
+            var typeInfo = TRADE_AGREEMENT_TYPES[ag.agreement_type] || {};
+            agLabel = typeInfo.shortLabel || ag.agreement_type.toUpperCase();
+
+            if (ag.agreement_type === 'fta') {
+                // FTA: tariffs eliminated (check exemptions)
+                var articles = ag.articles || [];
+                var exemptions = articles.filter(function(a) { return a.type === 'sector_exemption'; });
+                if (exemptions.length > 0) {
+                    effectiveRate = 0;
+                    agLabel += '*'; // asterisk for partial
+                } else {
+                    effectiveRate = 0;
+                }
+                agBadgeColor = '#4CAF50';
+            } else if (ag.agreement_type === 'pta') {
+                // PTA: partial reductions — approximate as weighted average
+                var articles = ag.articles || [];
+                var reductions = articles.filter(function(a) { return a.type === 'tariff_reduction'; });
+                if (reductions.length > 0) {
+                    var totalReduction = 0;
+                    for (var j = 0; j < reductions.length; j++) {
+                        totalReduction += Number(reductions[j].data.reduction_pct) || 0;
+                    }
+                    var avgReduction = totalReduction / reductions.length;
+                    effectiveRate = Math.max(0, rate * (1 - avgReduction / 100));
+                }
+                agBadgeColor = '#2196F3';
+            } else if (ag.agreement_type === 'resource_supply') {
+                agBadgeColor = '#ff9800';
+            }
+        }
+
+        var rateColor = rate <= 20 ? '#4CAF50' : rate <= 50 ? '#e2e0d6' : '#ff4444';
+        var effColor = effectiveRate <= 5 ? '#4CAF50' : effectiveRate <= 20 ? '#e2e0d6' : effectiveRate <= 50 ? '#8a8778' : '#ff4444';
+
+        h += '<div class="tm-row' + (isYou ? ' tm-highlight' : '') + '">';
+        h += '<div class="tm-cell tm-nation-name">' + escapeHtml(n.name) + (isYou ? ' <span class="tm-you">(YOU)</span>' : '') + '</div>';
+        h += '<div class="tm-cell tm-rate" style="color:' + rateColor + '">' + rate.toFixed(0) + '%</div>';
+        h += '<div class="tm-cell tm-dampener">' + dampener.toFixed(0) + '%</div>';
+
+        if (isYou) {
+            h += '<div class="tm-cell tm-agreement">—</div>';
+            h += '<div class="tm-cell tm-effective">—</div>';
+        } else if (ag) {
+            h += '<div class="tm-cell tm-agreement"><span class="tm-ag-badge" style="background:' + agBadgeColor + '">' + escapeHtml(agLabel) + '</span></div>';
+            h += '<div class="tm-cell tm-effective" style="color:' + effColor + '">' + effectiveRate.toFixed(0) + '%</div>';
+        } else {
+            h += '<div class="tm-cell tm-agreement"><span class="tm-no-agreement">NONE</span></div>';
+            h += '<div class="tm-cell tm-effective" style="color:' + rateColor + '">' + rate.toFixed(0) + '%</div>';
+        }
+        h += '</div>';
+    }
+
+    h += '</div>';
+    h += '</div>';
+    return h;
 }
 
 // ==================== MINISTRY DETAIL PANEL ====================

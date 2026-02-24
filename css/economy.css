@@ -1912,6 +1912,295 @@ body.light-mode .sector-score-threshold {
     }
 }
 
+/* ===== TARIFFS TAB ===== */
+
+/* Tariff explainer */
+.tariff-explainer {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 3px;
+    font-size: 0.65rem;
+    color: #6b6a5e;
+    line-height: 1.6;
+}
+
+.tariff-explainer strong {
+    color: #8a8778;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.tariff-explainer-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: #4a493e;
+    letter-spacing: 0.08em;
+}
+
+/* Agreement cards grid */
+.tariff-agreements-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 10px;
+}
+
+.tariff-agreement-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-left: 3px solid #3a3930;
+    border-radius: 3px;
+    padding: 12px 14px;
+}
+
+.ta-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.ta-card-name {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #e2e0d6;
+}
+
+.ta-card-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.52rem;
+    font-weight: 700;
+    color: #141412;
+    padding: 2px 6px;
+    border-radius: 2px;
+    letter-spacing: 0.06em;
+}
+
+.ta-card-partner {
+    font-size: 0.68rem;
+    color: #8a8778;
+    margin-bottom: 2px;
+}
+
+.ta-card-partner strong {
+    color: #e2e0d6;
+}
+
+.ta-card-duration {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
+    color: #6b6a5e;
+    margin-bottom: 8px;
+}
+
+.ta-card-detail {
+    font-size: 0.65rem;
+    color: #8a8778;
+    margin-top: 4px;
+}
+
+.ta-card-effect {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #4CAF50;
+    font-weight: 600;
+}
+
+.ta-card-exemptions {
+    font-size: 0.62rem;
+    color: #ff9800;
+    margin-top: 4px;
+}
+
+.ta-card-detail-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.52rem;
+    font-weight: 700;
+    color: #6b6a5e;
+    letter-spacing: 0.06em;
+}
+
+/* PTA reduction lines */
+.ta-card-reductions {
+    margin-top: 6px;
+    border-top: 1px solid rgba(255,255,255,0.04);
+    padding-top: 6px;
+}
+
+.ta-reduction-line {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 8px;
+    align-items: center;
+    padding: 2px 0;
+}
+
+.ta-reduction-sector {
+    font-size: 0.65rem;
+    color: #e2e0d6;
+    font-weight: 500;
+}
+
+.ta-reduction-dir {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.ta-reduction-pct {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #4CAF50;
+}
+
+/* Tariff matrix */
+.tariff-matrix {
+    width: 100%;
+}
+
+.tm-header {
+    display: grid;
+    grid-template-columns: 1.6fr 0.8fr 0.8fr 0.8fr 0.8fr;
+    gap: 4px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.tm-header .tm-cell {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+}
+
+.tm-row {
+    display: grid;
+    grid-template-columns: 1.6fr 0.8fr 0.8fr 0.8fr 0.8fr;
+    gap: 4px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    align-items: center;
+}
+
+.tm-row:last-child {
+    border-bottom: none;
+}
+
+.tm-row.tm-highlight {
+    background: rgba(226, 224, 214, 0.04);
+    border-left: 2px solid #e2e0d6;
+    padding-left: 8px;
+    margin: 0 -10px;
+    padding-right: 10px;
+}
+
+.tm-cell {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    min-width: 0;
+}
+
+.tm-cell.tm-nation-name {
+    font-size: 0.75rem;
+    color: #e2e0d6;
+    font-weight: 500;
+    font-family: inherit;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tm-you {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.52rem;
+    color: #8a8778;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+}
+
+.tm-cell.tm-rate,
+.tm-cell.tm-dampener,
+.tm-cell.tm-effective {
+    text-align: center;
+    font-weight: 600;
+}
+
+.tm-cell.tm-dampener {
+    color: #8a8778;
+}
+
+.tm-cell.tm-agreement {
+    text-align: center;
+}
+
+.tm-ag-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.5rem;
+    font-weight: 700;
+    color: #141412;
+    padding: 2px 6px;
+    border-radius: 2px;
+    letter-spacing: 0.04em;
+}
+
+.tm-no-agreement {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.52rem;
+    color: #4a493e;
+    letter-spacing: 0.06em;
+}
+
+body.light-mode .tariff-agreement-card {
+    background: rgba(0, 0, 0, 0.02);
+    border-color: rgba(0,0,0,0.06);
+}
+
+body.light-mode .tm-row.tm-highlight {
+    background: rgba(0, 0, 0, 0.04);
+    border-left-color: #2a2a25;
+}
+
+body.light-mode .tariff-explainer {
+    background: rgba(0, 0, 0, 0.02);
+    border-color: rgba(0,0,0,0.04);
+}
+
+@media (max-width: 768px) {
+    .tariff-agreements-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .tm-header,
+    .tm-row {
+        grid-template-columns: 1.2fr 0.6fr 0.6fr 0.6fr;
+    }
+
+    /* Hide dampener column on tablets */
+    .tm-header .tm-cell:nth-child(3),
+    .tm-row .tm-cell:nth-child(3) {
+        display: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .tm-header,
+    .tm-row {
+        grid-template-columns: 1fr 0.6fr 0.6fr;
+    }
+
+    /* Also hide agreement column on mobile */
+    .tm-header .tm-cell:nth-child(4),
+    .tm-row .tm-cell:nth-child(4) {
+        display: none;
+    }
+}
+
 /* ===== TREND ARROWS (overview cards) ===== */
 .trend-up { color: var(--green, #4CAF50); }
 .trend-down { color: var(--red, #ff4444); }
