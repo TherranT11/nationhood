@@ -39,6 +39,7 @@ var currentNation = null;
 var allNations = null;
 var gameYear = 0;
 var activeTab = 'overview';
+var activeSector = 'fuel_energy';
 
 // ==================== INIT ====================
 initPage('economy', async function(state) {
@@ -384,7 +385,7 @@ function renderTabContent(nation) {
         case 'overview': return renderOverviewTab(nation);
         case 'budget': return renderBudgetTab(nation);
         case 'trade': return renderTradeTab(nation);
-        case 'sectors': return renderSectorsTab();
+        case 'sectors': return renderSectorsTab(nation);
         case 'tariffs': return renderTariffsTab();
         default: return '';
     }
@@ -397,6 +398,13 @@ function wireTabEvents(nation) {
             renderEconomyPage(nation);
         });
     });
+    if (activeTab === 'sectors') {
+        document.querySelectorAll('.sector-tab').forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                selectSector(tab.getAttribute('data-sector'), currentNation);
+            });
+        });
+    }
     if (activeTab === 'budget') {
         document.querySelectorAll('.ministry-tab').forEach(function(tab) {
             tab.addEventListener('click', function() {
@@ -1030,13 +1038,300 @@ function renderTradePartnersSection() {
     return h;
 }
 
-// ==================== STUB TABS (Phase 4 & 5) ====================
-function renderSectorsTab() {
-    return '<div class="econ-stub">' +
-        '<div class="econ-stub-icon">&#9881;</div>' +
-        '<div class="econ-stub-label">SECTORS</div>' +
-        '<div class="econ-stub-text">Per-sector analysis with export composition, destinations, and net import warnings.</div>' +
-        '</div>';
+// ==================== SECTORS TAB ====================
+function renderSectorsTab(nation) {
+    var h = '<div class="econ-tab-body"><div class="econ-overview">';
+
+    // Sector selector tabs
+    h += '<div class="econ-section sector-tabs-section">';
+    h += '<div class="sector-tabs">';
+    for (var i = 0; i < TRADE_SECTORS.length; i++) {
+        var s = TRADE_SECTORS[i];
+        var score = getSectorScore(nation, s);
+        var isActive = s.key === activeSector;
+        var borderColor = score >= 70 ? '#4CAF50' : score >= 40 ? '#8a8778' : '#ff4444';
+        h += '<button class="sector-tab' + (isActive ? ' active' : '') + '" data-sector="' + s.key + '" style="' + (isActive ? 'border-bottom-color:' + borderColor : '') + '">';
+        h += escapeHtml(s.label);
+        h += '</button>';
+    }
+    h += '</div>';
+    h += '</div>';
+
+    // Sector detail
+    h += '<div id="sector-detail">';
+    h += renderSectorDetail(nation, activeSector);
+    h += '</div>';
+
+    h += '</div></div>';
+    return h;
+}
+
+function selectSector(sectorKey, nation) {
+    activeSector = sectorKey;
+    // Update tab active states
+    document.querySelectorAll('.sector-tab').forEach(function(t) {
+        t.classList.remove('active');
+        t.style.borderBottomColor = 'transparent';
+    });
+    var target = document.querySelector('.sector-tab[data-sector="' + sectorKey + '"]');
+    if (target) {
+        target.classList.add('active');
+        var sector = TRADE_SECTOR_MAP[sectorKey];
+        if (sector && nation) {
+            var score = getSectorScore(nation, sector);
+            var borderColor = score >= 70 ? '#4CAF50' : score >= 40 ? '#8a8778' : '#ff4444';
+            target.style.borderBottomColor = borderColor;
+        }
+    }
+    var el = document.getElementById('sector-detail');
+    if (el && nation) el.innerHTML = renderSectorDetail(nation, sectorKey);
+}
+
+function renderSectorDetail(nation, sectorKey) {
+    var sector = TRADE_SECTOR_MAP[sectorKey];
+    if (!sector) return '';
+
+    var score = getSectorScore(nation, sector);
+    var pct = Math.min(100, Math.max(0, Math.round(score)));
+    var aboveThreshold = score >= sector.export_threshold;
+    var scoreColor = pct >= 70 ? '#4CAF50' : pct >= 40 ? '#e2e0d6' : '#ff4444';
+    var borderColor = pct >= 70 ? '#4CAF50' : pct >= 40 ? '#8a8778' : '#ff4444';
+
+    var flow = (tradeData && tradeData.flows) ? tradeData.flows[sectorKey] : null;
+    var expVol = flow ? Number(flow.export_volume) || 0 : 0;
+    var impVol = flow ? Number(flow.import_volume) || 0 : 0;
+    var net = expVol - impVol;
+    var priceMod = flow ? Number(flow.price_modifier) || 1 : 1;
+    var isNetImporter = impVol > expVol;
+
+    var h = '';
+
+    // --- Header card with score + volume summary ---
+    h += '<div class="econ-section">';
+    h += '<div class="econ-section-header">' + escapeHtml(sector.label).toUpperCase();
+    if (sector.export_only) h += ' <span class="sector-badge">EXPORT ONLY</span>';
+    h += '</div>';
+
+    h += '<div class="sector-header-grid">';
+
+    // Left: score gauge
+    h += '<div class="sector-score-panel">';
+    h += '<div class="sector-score-label">EXPORT CAPACITY</div>';
+    h += '<div class="sector-score-big" style="color:' + scoreColor + '">' + pct + '</div>';
+    h += '<div class="sector-score-track">';
+    h += '<div class="sector-score-fill" style="width:' + pct + '%;background:' + borderColor + '"></div>';
+    h += '<div class="sector-score-threshold" style="left:' + sector.export_threshold + '%" title="Export threshold: ' + sector.export_threshold + '"></div>';
+    h += '</div>';
+    if (aboveThreshold) {
+        h += '<div class="sector-threshold-status sector-above">Above threshold (' + sector.export_threshold + ')</div>';
+    } else {
+        h += '<div class="sector-threshold-status sector-below">Below threshold (' + sector.export_threshold + ') — no exports</div>';
+    }
+    h += '</div>';
+
+    // Right: volume cards
+    h += '<div class="sector-volume-panel">';
+    if (flow) {
+        h += '<div class="sector-vol-row">';
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">EXPORTS</span><span class="sector-vol-value" style="color:#4CAF50">' + formatBudgetCurrency(expVol) + '</span></div>';
+        if (!sector.export_only) {
+            h += '<div class="sector-vol-item"><span class="sector-vol-label">IMPORTS</span><span class="sector-vol-value" style="color:#ff4444">' + formatBudgetCurrency(impVol) + '</span></div>';
+        }
+        var netColor = net > 0 ? '#4CAF50' : net < 0 ? '#ff4444' : '#8a8778';
+        var netSign = net > 0 ? '+' : '';
+        h += '<div class="sector-vol-item"><span class="sector-vol-label">NET</span><span class="sector-vol-value" style="color:' + netColor + '">' + netSign + formatBudgetCurrency(net) + '</span></div>';
+        h += '</div>';
+
+        // Price modifier
+        var priceColor = priceMod >= 1.05 ? '#4CAF50' : priceMod <= 0.95 ? '#ff4444' : '#8a8778';
+        h += '<div class="sector-price-mod">';
+        h += 'Price modifier: <strong style="color:' + priceColor + '">' + priceMod.toFixed(2) + 'x</strong>';
+        h += '</div>';
+
+        // Tick trend
+        var prevFlow = (tradeData && tradeData.prevFlows) ? tradeData.prevFlows[sectorKey] : null;
+        if (prevFlow) {
+            var prevExp = Number(prevFlow.export_volume) || 0;
+            var prevImp = Number(prevFlow.import_volume) || 0;
+            var prevNet = prevExp - prevImp;
+            h += '<div class="sector-trend-line">';
+            h += 'vs. prev tick: ' + tradeTrendHtml(net, prevNet, false);
+            h += '</div>';
+        }
+    } else {
+        h += '<div class="sector-no-data">No trade flow data yet.</div>';
+    }
+    h += '</div>';
+
+    h += '</div>'; // .sector-header-grid
+
+    // Net importer warning
+    if (isNetImporter && !sector.export_only) {
+        h += '<div class="sector-warning">';
+        h += 'NET IMPORTER — This nation imports more ' + escapeHtml(sector.label).toLowerCase() + ' than it exports.';
+        if (TRADE_IMPORT_HINTS[sectorKey]) {
+            h += ' ' + escapeHtml(TRADE_IMPORT_HINTS[sectorKey]) + '.';
+        }
+        h += '</div>';
+    }
+
+    h += '</div>'; // .econ-section
+
+    // --- Export Drivers ---
+    h += renderSectorDrivers(nation, sector);
+
+    // --- Partner breakdown ---
+    h += renderSectorPartners(sectorKey, sector);
+
+    return h;
+}
+
+function renderSectorDrivers(nation, sector) {
+    var stats = [];
+    if (sector.export_stat) {
+        stats.push({ key: sector.export_stat, label: formatStatLabel(sector.export_stat), value: Number(nation[sector.export_stat]) || 0 });
+    } else if (sector.export_stats) {
+        for (var i = 0; i < sector.export_stats.length; i++) {
+            var key = sector.export_stats[i];
+            stats.push({ key: key, label: formatStatLabel(key), value: Number(nation[key]) || 0 });
+        }
+    }
+
+    if (stats.length === 0) return '';
+
+    var h = '<div class="econ-section">';
+    h += '<div class="econ-section-header">EXPORT DRIVERS</div>';
+    if (TRADE_EXPORT_HINTS[sector.key]) {
+        h += '<div class="econ-section-subtitle">' + escapeHtml(TRADE_EXPORT_HINTS[sector.key]) + '</div>';
+    }
+
+    h += '<div class="sector-drivers">';
+    for (var i = 0; i < stats.length; i++) {
+        var st = stats[i];
+        var stPct = Math.min(100, Math.max(0, Math.round(st.value)));
+        var stColor = stPct >= 70 ? '#4CAF50' : stPct >= 40 ? '#e2e0d6' : '#ff4444';
+        var barColor = stPct >= 70 ? '#4CAF50' : stPct >= 40 ? '#8a8778' : '#ff4444';
+
+        h += '<div class="sector-driver-row">';
+        h += '<div class="sector-driver-label">' + escapeHtml(st.label) + '</div>';
+        h += '<div class="sector-driver-track">';
+        h += '<div class="sector-driver-fill" style="width:' + stPct + '%;background:' + barColor + '"></div>';
+        h += '</div>';
+        h += '<div class="sector-driver-value" style="color:' + stColor + '">' + stPct + '</div>';
+
+        // Show trend from previous tick
+        var trendHtml = getTrendArrow(st.key, st.value, false);
+        h += '<div class="sector-driver-trend">' + trendHtml + '</div>';
+        h += '</div>';
+    }
+
+    // Composite score
+    var compositeScore = getSectorScore(nation, sector);
+    h += '<div class="sector-driver-row sector-driver-composite">';
+    h += '<div class="sector-driver-label">Composite Score</div>';
+    h += '<div class="sector-driver-track">';
+    var compPct = Math.min(100, Math.max(0, Math.round(compositeScore)));
+    var compColor = compPct >= 70 ? '#4CAF50' : compPct >= 40 ? '#8a8778' : '#ff4444';
+    h += '<div class="sector-driver-fill" style="width:' + compPct + '%;background:' + compColor + '"></div>';
+    h += '<div class="sector-score-threshold" style="left:' + sector.export_threshold + '%"></div>';
+    h += '</div>';
+    h += '<div class="sector-driver-value" style="color:' + (compPct >= 70 ? '#4CAF50' : compPct >= 40 ? '#e2e0d6' : '#ff4444') + '">' + compPct + '</div>';
+    h += '<div class="sector-driver-trend"></div>';
+    h += '</div>';
+
+    h += '</div>';
+    h += '</div>';
+    return h;
+}
+
+function renderSectorPartners(sectorKey, sector) {
+    if (!tradeData || !tradeData.partners) return '';
+
+    var exportPartners = [];
+    var importPartners = [];
+    var partners = tradeData.partners;
+    var partnerIds = Object.keys(partners);
+
+    for (var i = 0; i < partnerIds.length; i++) {
+        var pid = partnerIds[i];
+        var p = partners[pid];
+        var expAmt = p.exportsTo[sectorKey] || 0;
+        var impAmt = p.importsFrom[sectorKey] || 0;
+        if (expAmt > 0) exportPartners.push({ name: p.name, amount: expAmt, affinity: p.affinity });
+        if (impAmt > 0) importPartners.push({ name: p.name, amount: impAmt, affinity: p.affinity });
+    }
+
+    exportPartners.sort(function(a, b) { return b.amount - a.amount; });
+    importPartners.sort(function(a, b) { return b.amount - a.amount; });
+
+    if (exportPartners.length === 0 && importPartners.length === 0) return '';
+
+    var h = '<div class="econ-section">';
+    h += '<div class="econ-section-header">TRADE PARTNERS — ' + escapeHtml(sector.label).toUpperCase() + '</div>';
+    h += '<div class="sector-partners-grid">';
+
+    // Export destinations
+    h += '<div class="sector-partner-col">';
+    h += '<div class="sector-partner-col-header">Export Destinations</div>';
+    if (exportPartners.length === 0) {
+        h += '<div class="sector-partner-empty">No exports this tick</div>';
+    } else {
+        var maxExp = exportPartners[0].amount;
+        for (var i = 0; i < exportPartners.length; i++) {
+            var ep = exportPartners[i];
+            var barW = maxExp > 0 ? (ep.amount / maxExp * 100) : 0;
+            h += '<div class="sector-partner-row">';
+            h += '<div class="sector-partner-name">' + escapeHtml(ep.name) + '</div>';
+            h += '<div class="sector-partner-bar-wrap">';
+            h += '<div class="sector-partner-bar" style="width:' + barW.toFixed(1) + '%;background:#4CAF50"></div>';
+            h += '</div>';
+            h += '<div class="sector-partner-amount" style="color:#4CAF50">' + formatBudgetCurrency(ep.amount) + '</div>';
+            h += '</div>';
+        }
+    }
+    h += '</div>';
+
+    // Import sources (only if not export-only)
+    if (!sector.export_only) {
+        h += '<div class="sector-partner-col">';
+        h += '<div class="sector-partner-col-header">Import Sources</div>';
+        if (importPartners.length === 0) {
+            h += '<div class="sector-partner-empty">No imports this tick</div>';
+        } else {
+            var maxImp = importPartners[0].amount;
+            for (var i = 0; i < importPartners.length; i++) {
+                var ip = importPartners[i];
+                var barW = maxImp > 0 ? (ip.amount / maxImp * 100) : 0;
+                h += '<div class="sector-partner-row">';
+                h += '<div class="sector-partner-name">' + escapeHtml(ip.name) + '</div>';
+                h += '<div class="sector-partner-bar-wrap">';
+                h += '<div class="sector-partner-bar" style="width:' + barW.toFixed(1) + '%;background:#ff4444"></div>';
+                h += '</div>';
+                h += '<div class="sector-partner-amount" style="color:#ff4444">' + formatBudgetCurrency(ip.amount) + '</div>';
+                h += '</div>';
+            }
+        }
+        h += '</div>';
+    }
+
+    h += '</div>'; // .sector-partners-grid
+    h += '</div>';
+    return h;
+}
+
+function formatStatLabel(key) {
+    var labels = {
+        oil_and_gas: 'Oil & Gas',
+        rare_minerals: 'Rare Minerals',
+        arable_land: 'Arable Land',
+        physical_infrastructure: 'Physical Infrastructure',
+        digital_infrastructure: 'Digital Infrastructure',
+        higher_education: 'Higher Education',
+        happiness: 'Happiness',
+        stability: 'Stability',
+        credit: 'Credit'
+    };
+    return labels[key] || key;
 }
 
 function renderTariffsTab() {

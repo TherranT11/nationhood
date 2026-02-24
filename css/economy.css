@@ -1507,6 +1507,411 @@ body.light-mode .partner-card {
     }
 }
 
+/* ===== SECTORS TAB ===== */
+
+/* Sector selector tabs */
+.sector-tabs-section {
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+}
+
+.sector-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    background: #1e1e1a;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.sector-tab {
+    flex: 1;
+    padding: 10px 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: #6b6a5e;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.sector-tab:hover {
+    color: #8a8778;
+    background: rgba(255,255,255,0.02);
+}
+
+.sector-tab.active {
+    color: #e2e0d6;
+    background: rgba(255,255,255,0.03);
+}
+
+/* Sector badge (export only) */
+.sector-badge {
+    font-size: 0.5rem;
+    color: #4a493e;
+    background: rgba(255,255,255,0.04);
+    padding: 1px 6px;
+    border-radius: 2px;
+    letter-spacing: 0.06em;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
+/* Sector header grid */
+.sector-header-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    gap: 20px;
+    align-items: start;
+}
+
+/* Score panel (left) */
+.sector-score-panel {
+    text-align: center;
+    padding: 8px 0;
+}
+
+.sector-score-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.sector-score-big {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 2.4rem;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 8px;
+}
+
+.sector-score-track {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+    overflow: visible;
+    position: relative;
+    margin-bottom: 6px;
+}
+
+.sector-score-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+
+.sector-score-threshold {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 2px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 1px;
+}
+
+.sector-threshold-status {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
+    font-weight: 600;
+}
+
+.sector-threshold-status.sector-above {
+    color: #4CAF50;
+}
+
+.sector-threshold-status.sector-below {
+    color: #ff4444;
+}
+
+/* Volume panel (right) */
+.sector-volume-panel {
+    padding: 4px 0;
+}
+
+.sector-vol-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 10px;
+}
+
+.sector-vol-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+}
+
+.sector-vol-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+}
+
+.sector-vol-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.sector-price-mod {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: #6b6a5e;
+    margin-bottom: 4px;
+}
+
+.sector-trend-line {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    color: #6b6a5e;
+}
+
+.sector-no-data {
+    color: #6b6a5e;
+    font-style: italic;
+    font-size: 0.75rem;
+    padding: 12px 0;
+}
+
+/* Net importer warning */
+.sector-warning {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: rgba(255, 68, 68, 0.06);
+    border: 1px solid rgba(255, 68, 68, 0.12);
+    border-left: 3px solid #ff4444;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    color: #ff4444;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+/* Export drivers */
+.sector-drivers {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sector-driver-row {
+    display: grid;
+    grid-template-columns: 160px 1fr 36px 50px;
+    gap: 10px;
+    align-items: center;
+}
+
+.sector-driver-composite {
+    border-top: 1px solid rgba(255,255,255,0.06);
+    margin-top: 4px;
+    padding-top: 8px;
+}
+
+.sector-driver-composite .sector-driver-label {
+    font-weight: 700;
+    color: #8a8778;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 0.6rem;
+}
+
+.sector-driver-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #e2e0d6;
+}
+
+.sector-driver-track {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+    overflow: visible;
+    position: relative;
+}
+
+.sector-driver-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+
+.sector-driver-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-align: right;
+}
+
+.sector-driver-trend {
+    font-size: 0.72rem;
+    text-align: right;
+}
+
+/* Sector partners grid */
+.sector-partners-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.sector-partner-col-header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.sector-partner-row {
+    display: grid;
+    grid-template-columns: 120px 1fr auto;
+    gap: 8px;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+}
+
+.sector-partner-row:last-child {
+    border-bottom: none;
+}
+
+.sector-partner-name {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #e2e0d6;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sector-partner-bar-wrap {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.sector-partner-bar {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s;
+}
+
+.sector-partner-amount {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.sector-partner-empty {
+    color: #4a493e;
+    font-style: italic;
+    font-size: 0.72rem;
+    padding: 12px 0;
+}
+
+/* Light mode */
+body.light-mode .sector-tabs {
+    background: #ffffff;
+    border-color: rgba(0,0,0,0.08);
+}
+
+body.light-mode .sector-tab {
+    color: #999;
+}
+
+body.light-mode .sector-tab:hover {
+    color: #666;
+    background: rgba(0,0,0,0.02);
+}
+
+body.light-mode .sector-tab.active {
+    color: #2a2a25;
+    background: rgba(0,0,0,0.03);
+}
+
+body.light-mode .sector-warning {
+    background: rgba(255, 68, 68, 0.04);
+}
+
+body.light-mode .sector-score-track,
+body.light-mode .sector-driver-track {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+body.light-mode .sector-score-threshold {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .sector-header-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .sector-partners-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .sector-tab {
+        font-size: 0.5rem;
+        padding: 8px 4px;
+    }
+
+    .sector-driver-row {
+        grid-template-columns: 120px 1fr 36px 40px;
+    }
+
+    .sector-partner-row {
+        grid-template-columns: 100px 1fr auto;
+    }
+}
+
+@media (max-width: 480px) {
+    .sector-tabs {
+        flex-wrap: wrap;
+    }
+
+    .sector-tab {
+        flex: 0 0 auto;
+        min-width: 80px;
+    }
+
+    .sector-driver-row {
+        grid-template-columns: 1fr;
+        gap: 2px;
+    }
+
+    .sector-driver-track {
+        display: none;
+    }
+}
+
 /* ===== TREND ARROWS (overview cards) ===== */
 .trend-up { color: var(--green, #4CAF50); }
 .trend-down { color: var(--red, #ff4444); }
