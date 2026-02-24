@@ -1240,7 +1240,6 @@ async function enactDecree(billId) {
         await _supabase.from('bills').update(decreeFields).eq('id', billId);
 
         // Apply dynamic ideology penalty to sponsor
-        const bill = committeeBills.find(b => b.id === billId);
         if (bill) {
             const sponsorIdeology = await loadFactionIdeology(_supabase, bill.proposed_by);
             if (sponsorIdeology) {
