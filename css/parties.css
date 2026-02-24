@@ -318,13 +318,6 @@ body.light-mode .vote-bar-track {
     text-align: right;
 }
 
-.vote-share-footer {
-    margin-top: 14px;
-    padding-top: 12px;
-    border-top: 1px solid var(--border-main, #333);
-    font-size: 0.72rem;
-    color: var(--text-muted, #666);
-}
 
 /* ===== MOMENTUM PANEL ===== */
 .momentum-panel {
