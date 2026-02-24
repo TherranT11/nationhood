@@ -105,11 +105,10 @@ const GAME_CONFIG = {
     BUDGET_BILL_VOTING_TICKS: null,   // budget bills persist until passed (never expire)
     NO_BUDGET_PENALTY_TICKS: 24,     // how many ticks without a budget before max penalty
     // Inactivity decay
-    INACTIVITY_GRACE_TICKS: 12,          // no penalty for first 12 ticks of inactivity
-    INACTIVITY_APPROVAL_DECAY: 3,        // -3 approval per tick while inactive
-    INACTIVITY_SEAT_LOSS_THRESHOLD: 24,  // after 24 ticks inactive, start losing seats
-    INACTIVITY_SEAT_LOSS_PER_TICK: 1,    // -1 seat per tick once past threshold
-    INACTIVITY_DISBAND_THRESHOLD: 48     // after 48 ticks inactive, auto-disband
+    INACTIVITY_GRACE_TICKS: 12,              // no penalty for first 12 ticks of inactivity
+    INACTIVITY_PREFERENCE_DECAY_PCT: 0.10,   // -10% voter bloc preference per tick while inactive
+    INACTIVITY_MOMENTUM_DECAY: 7,            // -7 momentum per tick while inactive
+    INACTIVITY_DISBAND_THRESHOLD: 24         // after 24 ticks inactive, auto-disband
 };
 
 // ==================== TRADE SYSTEM CONSTANTS ====================
@@ -11755,22 +11754,20 @@ async function markFactionActive(supabase, factionId, currentTick) {
  *
  * Timeline:
  *   0 – GRACE ticks:   no penalty
- *   GRACE – SEAT_LOSS: approval decays each tick
- *   SEAT_LOSS – DISBAND: approval decays + seats erode each tick
- *   > DISBAND:          auto-disband (removed from nation)
+ *   GRACE – DISBAND:   -10% voter bloc preference + -7 momentum per tick
+ *   > DISBAND:         auto-disband (removed from nation)
  */
 async function processInactivityDecay(supabase, nationId, currentTick) {
     const {
         INACTIVITY_GRACE_TICKS,
-        INACTIVITY_APPROVAL_DECAY,
-        INACTIVITY_SEAT_LOSS_THRESHOLD,
-        INACTIVITY_SEAT_LOSS_PER_TICK,
+        INACTIVITY_PREFERENCE_DECAY_PCT,
+        INACTIVITY_MOMENTUM_DECAY,
         INACTIVITY_DISBAND_THRESHOLD
     } = GAME_CONFIG;
 
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, faction_name, nation_id, seats, approval_rating, last_ap_spent_tick, founded_tick, disband_cooldown_until_tick')
+        .select('id, faction_name, nation_id, last_ap_spent_tick, founded_tick, disband_cooldown_until_tick')
         .eq('nation_id', nationId)
         .eq('faction_type', 'party')
         .eq('is_npc', false);
@@ -11796,8 +11793,9 @@ async function processInactivityDecay(supabase, nationId, currentTick) {
             factionId: faction.id,
             factionName: faction.faction_name,
             ticksInactive,
-            approvalLost: 0,
-            seatsLost: 0,
+            preferenceLost: 0,
+            momentumLost: 0,
+            blocsAffected: 0,
             disbanded: false
         };
 
@@ -11871,29 +11869,38 @@ async function processInactivityDecay(supabase, nationId, currentTick) {
             }
         }
 
-        // Approval decay
-        const currentApproval = faction.approval_rating ?? 0;
-        const newApproval = Math.max(0, currentApproval - INACTIVITY_APPROVAL_DECAY);
-        entry.approvalLost = currentApproval - newApproval;
+        // Decay voter bloc preference (-10%) and momentum (-7) for this faction
+        const { data: blocRows } = await supabase
+            .from('faction_bloc_approval')
+            .select('id, preference_score, momentum')
+            .eq('faction_id', faction.id);
 
-        // Seat loss (only past the seat loss threshold)
-        let seatsLost = 0;
-        if (ticksInactive > INACTIVITY_SEAT_LOSS_THRESHOLD) {
-            const currentSeats = faction.seats ?? 0;
-            seatsLost = Math.min(currentSeats, INACTIVITY_SEAT_LOSS_PER_TICK);
-            entry.seatsLost = seatsLost;
+        if (blocRows && blocRows.length > 0) {
+            let totalPrefLost = 0;
+            for (const row of blocRows) {
+                const oldPref = Number(row.preference_score ?? 0);
+                const prefLoss = Math.round(oldPref * INACTIVITY_PREFERENCE_DECAY_PCT * 100) / 100;
+                const newPref = Math.round((oldPref - prefLoss) * 100) / 100;
+
+                const oldMomentum = Number(row.momentum ?? 0);
+                const newMomentum = Math.round((oldMomentum - INACTIVITY_MOMENTUM_DECAY) * 100) / 100;
+
+                await supabase.from('faction_bloc_approval')
+                    .update({ preference_score: newPref, momentum: newMomentum })
+                    .eq('id', row.id);
+
+                totalPrefLost += prefLoss;
+            }
+            entry.preferenceLost = Math.round((totalPrefLost / blocRows.length) * 100) / 100;
+            entry.momentumLost = INACTIVITY_MOMENTUM_DECAY;
+            entry.blocsAffected = blocRows.length;
         }
 
-        // Apply updates
-        const updates = { approval_rating: newApproval };
-        if (seatsLost > 0) updates.seats = (faction.seats ?? 0) - seatsLost;
+        // Recalculate derived approval_rating from updated preferences
+        await recalcDerivedApproval(supabase, faction.id);
 
-        await supabase.from('factions')
-            .update(updates)
-            .eq('id', faction.id);
-
-        if (entry.approvalLost > 0 || entry.seatsLost > 0) {
-            console.log(`[inactivityDecay] "${faction.faction_name}": ${ticksInactive} ticks idle → -${entry.approvalLost} approval, -${entry.seatsLost} seats`);
+        if (entry.preferenceLost > 0 || entry.momentumLost > 0) {
+            console.log(`[inactivityDecay] "${faction.faction_name}": ${ticksInactive} ticks idle → -${entry.preferenceLost} avg preference, -${entry.momentumLost} momentum across ${entry.blocsAffected} blocs`);
             results.push(entry);
         }
     }
@@ -13465,7 +13472,7 @@ async function advanceTick(supabase) {
             summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
         }
 
-        // Inactivity decay (approval + seat erosion for idle factions, auto-disband)
+        // Inactivity decay (preference + momentum erosion for idle factions, auto-disband)
         const inactivityResults = await processInactivityDecay(supabase, nation.id, newTick);
         if (inactivityResults.length > 0) {
             summary.inactivityDecay = summary.inactivityDecay || [];

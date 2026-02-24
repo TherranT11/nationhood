@@ -1092,11 +1092,9 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
         const lastActive = player.last_ap_spent_tick ?? player.founded_tick ?? 0;
         const ticksInactive = _playerShardTick - lastActive;
         const grace = GAME_CONFIG.INACTIVITY_GRACE_TICKS;
-        const seatThreshold = GAME_CONFIG.INACTIVITY_SEAT_LOSS_THRESHOLD;
         const disbandThreshold = GAME_CONFIG.INACTIVITY_DISBAND_THRESHOLD;
         if (ticksInactive <= grace) return { ticksInactive, level: 'active', label: 'Active', color: '#4CAF50' };
-        if (ticksInactive <= seatThreshold) return { ticksInactive, level: 'warning', label: `Idle ${ticksInactive}t`, color: '#ff9800' };
-        if (ticksInactive <= disbandThreshold) return { ticksInactive, level: 'danger', label: `Losing seats — ${ticksInactive}t idle`, color: '#ff4444' };
+        if (ticksInactive <= disbandThreshold) return { ticksInactive, level: 'warning', label: `Decaying — ${ticksInactive}t idle`, color: '#ff9800' };
         return { ticksInactive, level: 'critical', label: `Auto-disband imminent — ${ticksInactive}t idle`, color: '#ff0000' };
     }
     function renderPlayers(filter) {

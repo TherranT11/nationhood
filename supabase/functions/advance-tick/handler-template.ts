@@ -634,7 +634,7 @@ async function advanceTick(supabase) {
             summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
         }
 
-        // Inactivity decay (approval + seat erosion for idle factions, auto-disband)
+        // Inactivity decay (preference + momentum erosion for idle factions, auto-disband)
         const inactivityResults = await processInactivityDecay(supabase, nation.id, newTick);
         if (inactivityResults.length > 0) {
             summary.inactivityDecay = summary.inactivityDecay || [];
