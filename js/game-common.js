@@ -45,7 +45,13 @@ export const GAME_CONFIG = {
     MAX_AP: 20,  // maximum action points a party can accumulate
     TICKS_PER_YEAR: 12,
     BUDGET_BILL_VOTING_TICKS: 3,     // budget bill voting window
-    NO_BUDGET_PENALTY_TICKS: 24      // how many ticks without a budget before max penalty
+    NO_BUDGET_PENALTY_TICKS: 24,     // how many ticks without a budget before max penalty
+    // Inactivity decay
+    INACTIVITY_GRACE_TICKS: 12,          // no penalty for first 12 ticks of inactivity
+    INACTIVITY_APPROVAL_DECAY: 3,        // -3 approval per tick while inactive
+    INACTIVITY_SEAT_LOSS_THRESHOLD: 24,  // after 24 ticks inactive, start losing seats
+    INACTIVITY_SEAT_LOSS_PER_TICK: 1,    // -1 seat per tick once past threshold
+    INACTIVITY_DISBAND_THRESHOLD: 48     // after 48 ticks inactive, auto-disband
 };
 
 // ==================== TRADE SYSTEM CONSTANTS ====================
@@ -878,6 +884,8 @@ export async function deductAP(supabase, factionId, cost) {
     if (data === -1) {
         return { success: false, error: 'Insufficient AP' };
     }
+    // Update inactivity clock on every successful AP spend
+    markFactionActive(supabase, factionId).catch(() => {});
     return { success: true, newAp: data };
 }
 
@@ -11650,6 +11658,158 @@ export async function markFactionActive(supabase, factionId, currentTick) {
     await supabase.from('factions')
         .update({ last_ap_spent_tick: currentTick })
         .eq('id', factionId);
+}
+
+/**
+ * Inactivity decay — penalises factions that haven't spent AP in a while.
+ * Called once per nation during tick processing.
+ *
+ * Timeline:
+ *   0 – GRACE ticks:   no penalty
+ *   GRACE – SEAT_LOSS: approval decays each tick
+ *   SEAT_LOSS – DISBAND: approval decays + seats erode each tick
+ *   > DISBAND:          auto-disband (removed from nation)
+ */
+export async function processInactivityDecay(supabase, nationId, currentTick) {
+    const {
+        INACTIVITY_GRACE_TICKS,
+        INACTIVITY_APPROVAL_DECAY,
+        INACTIVITY_SEAT_LOSS_THRESHOLD,
+        INACTIVITY_SEAT_LOSS_PER_TICK,
+        INACTIVITY_DISBAND_THRESHOLD
+    } = GAME_CONFIG;
+
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, faction_name, nation_id, seats, approval_rating, last_ap_spent_tick, founded_tick, disband_cooldown_until_tick')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party')
+        .eq('is_npc', false);
+
+    if (!factions || factions.length === 0) return [];
+
+    // Load nation for ruling faction guard (ruling faction in autocracy cannot be auto-disbanded)
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('ruling_faction_id, government_type')
+        .eq('id', nationId)
+        .single();
+
+    const results = [];
+
+    for (const faction of factions) {
+        const lastActive = faction.last_ap_spent_tick ?? faction.founded_tick ?? 0;
+        const ticksInactive = currentTick - lastActive;
+
+        if (ticksInactive <= INACTIVITY_GRACE_TICKS) continue;
+
+        const entry = {
+            factionId: faction.id,
+            factionName: faction.faction_name,
+            ticksInactive,
+            approvalLost: 0,
+            seatsLost: 0,
+            disbanded: false
+        };
+
+        // Auto-disband check (skip ruling faction in autocracy)
+        if (ticksInactive > INACTIVITY_DISBAND_THRESHOLD) {
+            const isRulingFaction = isAutocracy(nation) && nation.ruling_faction_id === faction.id;
+            if (!isRulingFaction) {
+                // Remove from nation
+                const { error: disbandErr } = await supabase
+                    .from('factions')
+                    .update({
+                        nation_id: null,
+                        abandoned_at: new Date().toISOString(),
+                        disband_cooldown_until_tick: currentTick + 24
+                    })
+                    .eq('id', faction.id);
+
+                if (!disbandErr) {
+                    // Remove from coalition if applicable
+                    const { data: formations } = await supabase
+                        .from('government_formations')
+                        .select('id, lead_party_id, party_ids')
+                        .eq('nation_id', nationId)
+                        .in('status', ['formed', 'caretaker']);
+
+                    const myFormation = (formations || []).find(f =>
+                        (f.party_ids || []).includes(faction.id)
+                    );
+                    if (myFormation) {
+                        if (myFormation.lead_party_id === faction.id) {
+                            await dissolveCoalition(supabase, nationId);
+                        } else {
+                            const newPartyIds = (myFormation.party_ids || []).filter(id => id !== faction.id);
+                            await supabase.from('government_formations')
+                                .update({ party_ids: newPartyIds })
+                                .eq('id', myFormation.id);
+                            await supabase.from('ministries')
+                                .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
+                                .eq('nation_id', nationId)
+                                .eq('party_id', faction.id)
+                                .eq('is_active', true);
+                        }
+                    }
+
+                    // Resign PM if this faction holds it
+                    const { data: hog } = await supabase
+                        .from('head_of_government')
+                        .select('id')
+                        .eq('nation_id', nationId)
+                        .eq('faction_id', faction.id)
+                        .eq('active', true)
+                        .maybeSingle();
+                    if (hog) {
+                        await resignPM(supabase, nationId, faction.id, currentTick);
+                    }
+
+                    // Audit log
+                    await supabase.from('campaign_actions').insert({
+                        party_id: faction.id,
+                        nation_id: nationId,
+                        action_type: 'auto_disbanded_inactivity',
+                        tick_performed: currentTick,
+                        result: { faction_name: faction.faction_name, ticks_inactive: ticksInactive }
+                    });
+
+                    entry.disbanded = true;
+                    console.log(`[inactivityDecay] Auto-disbanded "${faction.faction_name}" after ${ticksInactive} ticks inactive`);
+                }
+                results.push(entry);
+                continue;
+            }
+        }
+
+        // Approval decay
+        const currentApproval = faction.approval_rating ?? 0;
+        const newApproval = Math.max(0, currentApproval - INACTIVITY_APPROVAL_DECAY);
+        entry.approvalLost = currentApproval - newApproval;
+
+        // Seat loss (only past the seat loss threshold)
+        let seatsLost = 0;
+        if (ticksInactive > INACTIVITY_SEAT_LOSS_THRESHOLD) {
+            const currentSeats = faction.seats ?? 0;
+            seatsLost = Math.min(currentSeats, INACTIVITY_SEAT_LOSS_PER_TICK);
+            entry.seatsLost = seatsLost;
+        }
+
+        // Apply updates
+        const updates = { approval_rating: newApproval };
+        if (seatsLost > 0) updates.seats = (faction.seats ?? 0) - seatsLost;
+
+        await supabase.from('factions')
+            .update(updates)
+            .eq('id', faction.id);
+
+        if (entry.approvalLost > 0 || entry.seatsLost > 0) {
+            console.log(`[inactivityDecay] "${faction.faction_name}": ${ticksInactive} ticks idle → -${entry.approvalLost} approval, -${entry.seatsLost} seats`);
+            results.push(entry);
+        }
+    }
+
+    return results;
 }
 
 
