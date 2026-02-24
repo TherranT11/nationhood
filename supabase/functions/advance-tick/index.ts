@@ -3055,8 +3055,6 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
     if (legislativeBills.length === 0) return;
 
     const passedBillIds = new Set(resolutions.filter(r => r.result === 'passed').map(r => r.billId));
-    // Presidential bills sent to president's desk are deferred — shifts applied when signed/auto-signed
-    const deskBillIds = new Set(resolutions.filter(r => r.result === 'president_desk').map(r => r.billId));
 
     // Accumulate shifts: { factionId: { axisKey: totalShift } }
     const factionShifts = {};
@@ -3067,9 +3065,6 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
     }
 
     for (const bill of legislativeBills) {
-        // Skip presidential bills on president's desk — shifts deferred to sign/auto-sign
-        if (deskBillIds.has(bill.id)) continue;
-
         // Collect ideology tags from articles (per-article, with duplicates)
         const tags = [];
         for (const art of (bill.bill_articles || [])) {
@@ -3096,6 +3091,11 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
         for (const tag of tags) {
             const mapping = IDEOLOGY_TO_AXIS[tag];
             if (!mapping) continue;
+
+            // +1 for proposing (sponsor only)
+            if (bill.proposed_by) {
+                addShift(bill.proposed_by, mapping.axisKey, 1 * mapping.direction);
+            }
 
             // +2 for voting YES (all YES voters including sponsor)
             for (const factionId of yesVoters) {
@@ -3171,14 +3171,30 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
 // ==================== BILL RESOLUTION ENGINE ====================
 
 /**
- * Get the number of YES seats required for a bill to pass,
- * based on bill type and current GAME_CONFIG.
+ * Returns true if this bill type uses simple/relative majority (YES > NO)
+ * rather than an absolute seat threshold.
  */
-function getRequiredSeats(billType) {
+function isSimpleMajorityBill(billType) {
+    return billType !== 'foundational' && billType !== 'veto_override';
+}
+
+/**
+ * Get the number of YES seats required for a bill to pass.
+ *
+ * For supermajority bills (foundational, veto_override) the threshold is a
+ * fixed fraction of TOTAL_SEATS.
+ *
+ * For all other bills the rule is simple majority: YES > NO.  When
+ * `votesAgainst` is provided, we return `votesAgainst + 1` so the display
+ * updates dynamically as votes come in.  Without it we fall back to the
+ * absolute half-chamber number for backward compat.
+ */
+function getRequiredSeats(billType, votesAgainst) {
     if (billType === 'foundational')
         return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD);
     if (billType === 'veto_override')
         return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
+    if (votesAgainst != null) return votesAgainst + 1;
     return GAME_CONFIG.MAJORITY_SEATS;
 }
 
@@ -3251,14 +3267,26 @@ async function checkEarlyMajority(supabase, nationId) {
             else if (stance === 'no') noSeats += s.seat_count;
         });
 
-        const requiredSeats = getRequiredSeats(bill.bill_type);
         let earlyStatus = null;
+        const undeclaredSeats = GAME_CONFIG.TOTAL_SEATS - yesSeats - noSeats;
 
-        if (yesSeats >= requiredSeats) {
-            earlyStatus = 'majority_reached';
-        } else if (noSeats > GAME_CONFIG.TOTAL_SEATS - requiredSeats) {
-            // Remaining seats can't push YES to threshold
-            earlyStatus = 'majority_opposed';
+        if (isSimpleMajorityBill(bill.bill_type)) {
+            // Relative majority: YES > NO passes.
+            // Locked YES: even if ALL undeclared vote NO, YES still wins.
+            if (yesSeats > noSeats + undeclaredSeats) {
+                earlyStatus = 'majority_reached';
+            // Locked NO: even if ALL undeclared vote YES, NO still wins/ties.
+            } else if (noSeats >= yesSeats + undeclaredSeats) {
+                earlyStatus = 'majority_opposed';
+            }
+        } else {
+            // Supermajority: fixed seat threshold
+            const requiredSeats = getRequiredSeats(bill.bill_type);
+            if (yesSeats >= requiredSeats) {
+                earlyStatus = 'majority_reached';
+            } else if (noSeats > GAME_CONFIG.TOTAL_SEATS - requiredSeats) {
+                earlyStatus = 'majority_opposed';
+            }
         }
 
         if (earlyStatus) {
@@ -3526,8 +3554,6 @@ async function resolveExpiredVotes(supabase, nationId) {
                 if (originalBill) {
                     await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
                     await enactBill(supabase, originalBill, currentTick);
-                    // Apply ideology shifts for the original bill (deferred from president_desk)
-                    await processIdeologyShifts(supabase, bill.nation_id, [{ billId: originalBill.id, result: 'passed' }], currentTick);
                 }
                 try {
                     await supabase.rpc('fire_system_event', {
@@ -3632,6 +3658,7 @@ async function resolveExpiredVotes(supabase, nationId) {
 
                     if (otherPassed) {
                         // Both parliaments ratified — activate the trade agreement
+                        // Extract duration info from draft articles
                         const articles = neg.draft_articles || [];
                         const durationArt = articles.find(a => a.type === 'duration');
                         const durData = durationArt?.data || {};
@@ -3640,9 +3667,11 @@ async function resolveExpiredVotes(supabase, nationId) {
                         const autoRenew = durData.auto_renew || false;
                         const withdrawalNotice = durData.withdrawal_notice_ticks || 3;
 
+                        // Ensure canonical nation order (nation_a_id < nation_b_id)
                         const nA = neg.nation_a_id < neg.nation_b_id ? neg.nation_a_id : neg.nation_b_id;
                         const nB = neg.nation_a_id < neg.nation_b_id ? neg.nation_b_id : neg.nation_a_id;
 
+                        // Insert into trade_agreements
                         await supabase.from('trade_agreements').insert({
                             nation_a_id: nA,
                             nation_b_id: nB,
@@ -3661,20 +3690,23 @@ async function resolveExpiredVotes(supabase, nationId) {
                             expires_at_tick: isPermanent ? null : (durationTicks ? currentTick + durationTicks : null)
                         });
 
+                        // Mark negotiation as concluded
                         await supabase.from('trade_negotiations')
                             .update({ status: 'concluded', concluded_at_tick: currentTick })
                             .eq('id', neg.id);
 
+                        // Update diplomatic relations
                         const { data: rel } = await supabase.from('diplomatic_relations')
                             .select('id, relation_score, active_treaties')
                             .eq('nation_a_id', nA).eq('nation_b_id', nB).maybeSingle();
                         if (rel) {
-                            const bonus = 5;
+                            const bonus = 5; // relation boost for ratified trade agreement
                             const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + bonus));
                             await supabase.from('diplomatic_relations')
                                 .update({ relation_score: newScore }).eq('id', rel.id);
                         }
                     }
+                    // If only one side ratified so far, just leave negotiation in 'ratification' status
                 }
 
                 try {
@@ -3688,6 +3720,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'trade_ratification', earlyResolution: bill.early_resolution_status || null });
             } else {
                 await failBill(supabase, bill);
+                // Mark negotiation as ratification_failed
                 await supabase.from('trade_negotiations')
                     .update({ status: 'ratification_failed' })
                     .eq('id', bill.trade_negotiation_id);
@@ -6763,9 +6796,6 @@ async function signPresidentialBill(supabase, billId, presidentFactionId) {
 
     await enactBill(supabase, bill, currentTick);
 
-    // Apply ideology shifts now that the bill is enacted (deferred from president_desk)
-    await processIdeologyShifts(supabase, bill.nation_id, [{ billId: bill.id, result: 'passed' }], currentTick);
-
     try {
         await supabase.rpc('fire_system_event', {
             p_trigger_key: 'bill_passed',
@@ -6862,9 +6892,6 @@ async function processPresidentDesk(supabase, nation, currentTick) {
         }).eq('id', bill.id);
 
         await enactBill(supabase, bill, currentTick);
-
-        // Apply ideology shifts now that the bill is enacted (deferred from president_desk)
-        await processIdeologyShifts(supabase, nation.id, [{ billId: bill.id, result: 'passed' }], currentTick);
 
         try {
             await supabase.rpc('fire_system_event', {
