@@ -13364,8 +13364,12 @@ async function advanceTick(supabase) {
         // Three-pillar voter preference recalculation (Layer 3: mood multiplier from govApproval)
         await calculateThreePillarPreferences(supabase, nation, newTick, govApproval);
 
+        // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
+        // (the original `shutdown` boolean was computed before bill resolution)
+        const shutdownNow = isGovernmentShutdown(nation, newTick);
+
         // Government shutdown penalties (coalition momentum/approval + PM/President approval)
-        if (shutdown) {
+        if (shutdownNow) {
             const shutdownResult = await processGovernmentShutdown(supabase, nation, newTick);
             if (shutdownResult) {
                 summary.governmentShutdowns = summary.governmentShutdowns || [];
