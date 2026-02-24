@@ -22,29 +22,29 @@
 export const GAME_CONFIG = {
     TOTAL_SEATS: 120,
     MAJORITY_SEATS: 61,
-    VOTING_WINDOW_TICKS: 7,
-    COMMITTEE_EXPIRY_TICKS: 4,
+    VOTING_WINDOW_TICKS: 6,
+    COMMITTEE_EXPIRY_TICKS: 6,
     DRAFT_BILL_AP_COST: 2,
     VETO_APPROVAL_COST: 3,
     NO_CONFIDENCE_AP_COST: 5,
-    NO_CONFIDENCE_VOTING_TICKS: 2,
+    NO_CONFIDENCE_VOTING_TICKS: 6,
     NO_CONFIDENCE_COOLDOWN_TICKS: 6,
     FOUNDATIONAL_AP_COST: 3,
-    FOUNDATIONAL_VOTING_TICKS: 3,
+    FOUNDATIONAL_VOTING_TICKS: 6,
     SUPERMAJORITY_THRESHOLD: 2/3,
-    EARLY_ELECTION_TICKS: 2,
+    EARLY_ELECTION_TICKS: 6,
     EARLY_ELECTION_PM_APPROVAL_COST: 5,
     EARLY_ELECTION_COALITION_APPROVAL_COST: 3,
     // Presidential Democracy
     PRESIDENTIAL_TERM_TICKS: 48,
     PARLIAMENTARY_TERM_TICKS: 24,
     VETO_OVERRIDE_THRESHOLD: 2/3,
-    PRESIDENT_DESK_TICKS: 2,
-    MINISTER_CONFIRMATION_VOTING_TICKS: 2,
+    PRESIDENT_DESK_TICKS: 6,
+    MINISTER_CONFIRMATION_VOTING_TICKS: 6,
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
     MAX_AP: 20,  // maximum action points a party can accumulate
     TICKS_PER_YEAR: 12,
-    BUDGET_BILL_VOTING_TICKS: 3,     // budget bill voting window
+    BUDGET_BILL_VOTING_TICKS: null,   // budget bills persist until passed (never expire)
     NO_BUDGET_PENALTY_TICKS: 24,     // how many ticks without a budget before max penalty
     // Inactivity decay
     INACTIVITY_GRACE_TICKS: 12,          // no penalty for first 12 ticks of inactivity
@@ -1002,8 +1002,8 @@ export const DIPLOMACY_CONFIG = {
     ULTIMATUM_DEADLINE_TICKS: 3,
     STATE_VISIT_ACCEPT_WINDOW: 2,
     STATE_VISIT_COOLDOWN: 6,
-    TREATY_RATIFICATION_VOTING_TICKS: 3,
-    AMBASSADOR_CONFIRMATION_VOTING_TICKS: 2,
+    TREATY_RATIFICATION_VOTING_TICKS: 6,
+    AMBASSADOR_CONFIRMATION_VOTING_TICKS: 6,
     AMBASSADOR_TERM_LENGTH: 36,         // ticks (36 ticks = 3 years)
     AMBASSADOR_RETIREMENT_WARNING: 3,   // warn this many ticks before retirement
 
@@ -1036,7 +1036,7 @@ export const DIPLOMACY_CONFIG = {
     NEGOTIATION_DEFAULT_DURATION: 4,      // ticks until negotiation expires
     NEGOTIATION_EXTENSION_TICKS: 12,      // ticks added per extension (1 month)
     NEGOTIATION_MAX_EXTENSIONS: 3,        // max times negotiations can be extended
-    TRADE_RATIFICATION_VOTING_TICKS: 4    // ticks for parliament to vote on trade bill
+    TRADE_RATIFICATION_VOTING_TICKS: 6    // ticks for parliament to vote on trade bill
 };
 
 /**
@@ -3160,6 +3160,7 @@ export async function expireCommitteeBills(supabase, nationId, currentTick) {
         .select('id, bill_name, proposed_by')
         .eq('nation_id', nationId)
         .eq('status', 'committee')
+        .neq('bill_type', 'budget')  // budget bills persist until passed
         .lte('proposed_tick', deadline);
 
     if (error || !expired || expired.length === 0) return [];
@@ -3198,13 +3199,14 @@ export async function checkEarlyMajority(supabase, nationId) {
     const currentTick = shard.current_tick;
 
     // Bills still voting, not yet locked, not yet expired
+    // Include budget bills with null voting_ends_tick (they persist until passed)
     const { data: activeBills, error } = await supabase
         .from('bills')
         .select('id, bill_name, bill_type, voting_ends_tick, bill_support(faction_id, stance, seat_count)')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .is('early_resolution_status', null)
-        .gt('voting_ends_tick', currentTick);
+        .or(`voting_ends_tick.gt.${currentTick},voting_ends_tick.is.null`);
 
     if (error || !activeBills || activeBills.length === 0) return [];
 
@@ -10419,7 +10421,7 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
 
         await supabase.from('ministries')
             .update({
-                minister_approval: Math.round(newApproval),
+                minister_approval: newApproval,
                 embattled_since_tick: embattledSinceTick
             })
             .eq('id', ministry.id);
@@ -10427,7 +10429,7 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
         results.push({
             ministry_key: ministry.ministry_key,
             old: oldApproval,
-            new: Math.round(newApproval),
+            new: newApproval,
             delta: Math.round(avgDelta * 10) / 10,
             embattled: embattledSinceTick !== null
         });
@@ -11001,7 +11003,7 @@ export async function processCrises(supabase, nation, currentTick) {
 
                 if (pmMinistry) {
                     const currentVal = pmMinistry.minister_approval ?? 50;
-                    const newVal = Math.round(clampWithFloor(currentVal, currentVal + changePT));
+                    const newVal = clampWithFloor(currentVal, currentVal + changePT);
                     const { error: pmUpdErr } = await supabase.from('ministries')
                         .update({ minister_approval: newVal })
                         .eq('nation_id', nation.id)
@@ -11039,7 +11041,7 @@ export async function processCrises(supabase, nation, currentTick) {
 
                 if (ministry) {
                     const currentVal = ministry.minister_approval ?? 50;
-                    const newVal = Math.round(clampWithFloor(currentVal, currentVal + changePT));
+                    const newVal = clampWithFloor(currentVal, currentVal + changePT);
                     const { error: minUpdErr } = await supabase.from('ministries')
                         .update({ minister_approval: newVal })
                         .eq('nation_id', nation.id)
