@@ -10476,7 +10476,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
 
         await supabase.from('ministries')
             .update({
-                minister_approval: Math.round(newApproval),
+                minister_approval: newApproval,
                 embattled_since_tick: embattledSinceTick
             })
             .eq('id', ministry.id);
@@ -10484,7 +10484,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
         results.push({
             ministry_key: ministry.ministry_key,
             old: oldApproval,
-            new: Math.round(newApproval),
+            new: newApproval,
             delta: Math.round(avgDelta * 10) / 10,
             embattled: embattledSinceTick !== null
         });

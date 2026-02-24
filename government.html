@@ -1003,7 +1003,7 @@ function renderCabinet(ministries, coalition) {
                 const mLogoHtml = mLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(mLogo, 16, mColor)}</span>` : '';
                 const appr = m.minister_approval ?? 50;
                 const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
-                return `<div class="ministry-card" style="border-top:3px solid ${mColor};padding:10px 12px;"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${m.minister_first_name} ${m.minister_last_name}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party" style="color:${mColor};">${mLogoHtml}${partyName}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${appr}%</span></div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests, m)}</div>`;
+                return `<div class="ministry-card" style="border-top:3px solid ${mColor};padding:10px 12px;"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${m.minister_first_name} ${m.minister_last_name}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party" style="color:${mColor};">${mLogoHtml}${partyName}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests, m)}</div>`;
             } else {
                 return `<div class="ministry-card vacant" style="padding:10px 12px;"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests, null)}</div>`;
             }
@@ -1069,7 +1069,7 @@ function renderCabinet(ministries, coalition) {
             + '<div class="ministry-body">'
             + '<div class="minister-name">' + name + '</div>'
             + '<div class="minister-details">' + (m.minister_age ? 'Age ' + m.minister_age + ' &bull; ' : '') + '<span class="minister-party" style="color:' + mColor + ';">' + mLogoHtml + partyName + '</span></div>'
-            + '<div class="minister-approval">Approval: <span class="' + apprCls + '">' + appr + '%</span></div>'
+            + '<div class="minister-approval">Approval: <span class="' + apprCls + '">' + Math.round(appr) + '%</span></div>'
             + resignBtn + fireBtn + '</div></div>';
     }).join('');
     return '<div class="ministry-grid">' + demCards + '</div>';
@@ -1152,7 +1152,7 @@ function renderPresidentialMinistryCard(key, ministry) {
             <div class="ministry-header"><div class="ministry-title">${ministry.ministry_name || MINISTRY_NAMES[key]}</div>${statusBadge}</div>
             <div class="minister-name">${ministry.minister_first_name} ${ministry.minister_last_name}</div>
             <div class="minister-details">Age ${ministry.minister_age || '?'} • <span class="minister-party" style="color:${pmColor};">${pmLogoHtml}${partyName}</span></div>
-            <div class="minister-approval">Approval: <span class="${apprCls}">${appr}%</span></div>
+            <div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>
             ${fireBtn}
         </div>`;
     }
