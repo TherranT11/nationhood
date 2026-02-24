@@ -11001,7 +11001,7 @@ export async function processCrises(supabase, nation, currentTick) {
 
                 if (pmMinistry) {
                     const currentVal = pmMinistry.minister_approval ?? 50;
-                    const newVal = Math.round(clampWithFloor(currentVal, currentVal + changePT));
+                    const newVal = clampWithFloor(currentVal, currentVal + changePT);
                     const { error: pmUpdErr } = await supabase.from('ministries')
                         .update({ minister_approval: newVal })
                         .eq('nation_id', nation.id)
@@ -11039,7 +11039,7 @@ export async function processCrises(supabase, nation, currentTick) {
 
                 if (ministry) {
                     const currentVal = ministry.minister_approval ?? 50;
-                    const newVal = Math.round(clampWithFloor(currentVal, currentVal + changePT));
+                    const newVal = clampWithFloor(currentVal, currentVal + changePT);
                     const { error: minUpdErr } = await supabase.from('ministries')
                         .update({ minister_approval: newVal })
                         .eq('nation_id', nation.id)
