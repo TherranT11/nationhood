@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Economy | Nationhood Alpha</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/economy.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1082,7 +1085,7 @@ function renderMinistryPoliciesHtml(category) {
     h += '<div class="ministry-policy-list">';
 
     if (institutions.length > 0) {
-        h += '<div class="ministry-section-label" style="font-size:0.7rem;color:#8b8a7e;text-transform:uppercase;letter-spacing:0.05em;margin:0.4rem 0 0.2rem;padding-left:0.3rem">Institutions</div>';
+        h += '<div class="ministry-section-label">Institutions</div>';
         for (var j = 0; j < institutions.length; j++) {
             total += institutions[j].cost;
             h += budgetLineItem(institutions[j].name, institutions[j].cost, null, null);
@@ -1090,7 +1093,7 @@ function renderMinistryPoliciesHtml(category) {
     }
 
     if (policies.length > 0) {
-        h += '<div class="ministry-section-label" style="font-size:0.7rem;color:#8b8a7e;text-transform:uppercase;letter-spacing:0.05em;margin:0.4rem 0 0.2rem;padding-left:0.3rem">Policies</div>';
+        h += '<div class="ministry-section-label">Policies</div>';
         for (var k = 0; k < policies.length; k++) {
             total += policies[k].cost;
             h += budgetLineItem(policies[k].name, policies[k].cost, null, null);
