@@ -1,84 +1,91 @@
-/* ===== ECONOMY PAGE — FINANCIAL DASHBOARD ===== */
+/* ===== ECONOMY PAGE — Command & Control Financial Dashboard ===== */
+/* Design system: warm olive-dark palette, JetBrains Mono, brutalist cards */
 
 /* ===== TITLE BAR ===== */
 .econ-title-bar {
-    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
-    border-bottom: 2px solid var(--accent);
-    padding: 24px 24px 16px;
+    background: #141412;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    padding: 18px 24px 14px;
     text-align: center;
 }
 
 .econ-title {
-    color: var(--accent);
-    font-size: 1.5rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: #e2e0d6;
+    font-size: 0.85rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 4px;
-    font-family: 'Courier New', monospace;
+    letter-spacing: 0.2em;
 }
 
 body.light-mode .econ-title-bar {
-    background: linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%);
+    background: #f5f5f0;
+    border-bottom-color: rgba(0,0,0,0.08);
+}
+
+body.light-mode .econ-title {
+    color: #2a2a25;
 }
 
 /* ===== TAB BAR ===== */
 .econ-tab-bar {
     display: flex;
     justify-content: center;
-    gap: 4px;
-    padding: 12px 24px;
-    background: var(--bg-panel, #141414);
-    border-bottom: 1px solid var(--border-main);
+    gap: 2px;
+    padding: 0;
+    background: #141412;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
 .econ-tab {
-    padding: 8px 20px;
-    font-size: 0.75rem;
-    font-weight: 700;
+    padding: 12px 22px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
-    border: 1px solid var(--border-main);
-    border-radius: 4px;
+    letter-spacing: 0.1em;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
     background: transparent;
-    color: var(--text-secondary);
+    color: #6b6a5e;
     cursor: pointer;
     transition: all 0.2s;
-    font-family: inherit;
 }
 
 .econ-tab:hover {
-    border-color: var(--accent);
-    color: var(--text-primary);
+    color: #8a8778;
 }
 
 .econ-tab.active {
-    background: var(--accent);
-    color: #000;
-    border-color: var(--accent);
+    color: #e2e0d6;
+    border-bottom-color: #e2e0d6;
+    background: transparent;
 }
 
 body.light-mode .econ-tab-bar {
-    background: #f8f8f8;
+    background: #f5f5f0;
+    border-bottom-color: rgba(0,0,0,0.08);
 }
 
 body.light-mode .econ-tab {
-    border-color: #d0d0d0;
-    color: #666;
+    color: #999;
 }
 
 body.light-mode .econ-tab:hover {
-    color: #333;
+    color: #666;
 }
 
 body.light-mode .econ-tab.active {
-    color: #000;
+    color: #2a2a25;
+    border-bottom-color: #2a2a25;
 }
 
 /* ===== TAB CONTENT ===== */
 #econ-tab-content {
     max-width: 1400px;
     margin: 0 auto;
-    padding: 24px;
+    padding: 20px 24px;
 }
 
 .econ-tab-body {
@@ -89,47 +96,53 @@ body.light-mode .econ-tab.active {
 .econ-overview {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 16px;
 }
 
 /* Section */
 .econ-section {
-    background: var(--bg-panel, #1a1a1a);
-    border: 1px solid var(--border-main);
-    border-radius: 8px;
-    padding: 20px;
+    background: #1e1e1a;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 3px;
+    padding: 16px 20px;
     overflow: hidden;
 }
 
 .econ-section-header {
-    font-size: 0.72rem;
-    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    color: #6b6a5e;
     text-transform: uppercase;
-    letter-spacing: 2.5px;
-    font-weight: 700;
-    margin-bottom: 14px;
+    letter-spacing: 0.15em;
+    font-weight: 600;
+    margin-bottom: 12px;
     padding-bottom: 8px;
-    border-bottom: 1px solid var(--border-main);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
 .econ-section-subtitle {
     font-size: 0.65rem;
-    color: var(--text-muted, #888);
+    color: #6b6a5e;
     font-style: italic;
-    margin-top: -8px;
-    margin-bottom: 14px;
+    margin-top: -6px;
+    margin-bottom: 12px;
 }
 
 body.light-mode .econ-section {
     background: #ffffff;
-    border-color: #d0d0d0;
+    border-color: rgba(0,0,0,0.08);
+}
+
+body.light-mode .econ-section-header {
+    color: #999;
+    border-bottom-color: rgba(0,0,0,0.08);
 }
 
 /* Cards Row */
 .econ-cards-row {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
+    gap: 10px;
 }
 
 .econ-cards-row.econ-cards-4 {
@@ -139,109 +152,108 @@ body.light-mode .econ-section {
 /* Card */
 .econ-card {
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border-light, #2a2a2a);
-    border-radius: 6px;
-    padding: 16px;
-    text-align: center;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-left: 3px solid #3a3930;
+    border-radius: 3px;
+    padding: 12px 14px;
+    text-align: left;
     position: relative;
     overflow: hidden;
 }
 
 .econ-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: var(--border-light, #2a2a2a);
+    display: none;
 }
 
-.econ-card-surplus::before { background: var(--green, #4CAF50); }
-.econ-card-deficit::before { background: var(--red, #ff4444); }
-.econ-card-neutral::before { background: var(--accent); }
-
-.econ-card-surplus { border-color: rgba(76, 175, 80, 0.25); }
-.econ-card-deficit { border-color: rgba(255, 68, 68, 0.25); }
+.econ-card-surplus { border-left-color: var(--green, #4CAF50); }
+.econ-card-deficit { border-left-color: var(--red, #ff4444); }
+.econ-card-neutral { border-left-color: #8a8778; }
 
 .econ-card-label {
-    font-size: 0.65rem;
-    color: var(--text-secondary, #888);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #6b6a5e;
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 0.1em;
     font-weight: 600;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 .econ-card-value {
-    font-size: 1.5rem;
-    font-family: 'Courier New', monospace;
+    font-size: 1.3rem;
+    font-family: 'JetBrains Mono', monospace;
     font-weight: 700;
-    color: var(--text-primary, #e0e0e0);
+    color: #e2e0d6;
     line-height: 1;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
 }
 
 .econ-card-surplus .econ-card-value { color: var(--green, #4CAF50); }
 .econ-card-deficit .econ-card-value { color: var(--red, #ff4444); }
 
 .econ-card-sub {
-    font-size: 0.75rem;
-    color: var(--text-secondary, #888);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: #8a8778;
     font-weight: 600;
 }
 
 body.light-mode .econ-card {
     background: rgba(0, 0, 0, 0.02);
+    border-color: rgba(0,0,0,0.06);
 }
+
+body.light-mode .econ-card-label { color: #999; }
+body.light-mode .econ-card-value { color: #2a2a25; }
 
 /* ===== OVERVIEW SPLIT (Trade + Debt side by side) ===== */
 .econ-overview-split {
     display: grid;
     grid-template-columns: 2fr 1fr;
-    gap: 24px;
+    gap: 16px;
 }
 
 /* Placeholder */
 .econ-placeholder {
     text-align: center;
-    color: var(--text-secondary);
+    color: #6b6a5e;
     padding: 24px 16px;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     font-style: italic;
 }
 
 /* ===== DEBT CARD ===== */
 .econ-debt-card {
     text-align: center;
-    padding: 12px 0;
+    padding: 8px 0;
 }
 
 .econ-debt-amount {
-    font-size: 1.8rem;
-    font-family: 'Courier New', monospace;
+    font-size: 1.6rem;
+    font-family: 'JetBrains Mono', monospace;
     font-weight: 700;
-    color: var(--text-primary);
-    margin-bottom: 8px;
+    color: #e2e0d6;
+    margin-bottom: 6px;
 }
 
 .econ-debt-ratio {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    font-family: 'Courier New', monospace;
-    margin-bottom: 10px;
+    font-size: 0.72rem;
+    color: #8a8778;
+    font-family: 'JetBrains Mono', monospace;
+    margin-bottom: 8px;
 }
 
 .econ-debt-rating {
-    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 0.15em;
 }
 
 .econ-debt-rating.rating-excellent { color: #4CAF50; }
 .econ-debt-rating.rating-good      { color: #2196F3; }
-.econ-debt-rating.rating-moderate   { color: #e0e0e0; }
+.econ-debt-rating.rating-moderate   { color: #8a8778; }
 .econ-debt-rating.rating-poor       { color: #ff9800; }
 .econ-debt-rating.rating-critical   { color: #ff4444; }
 
@@ -255,7 +267,7 @@ body.light-mode .econ-card {
 
 .econ-ranking-row {
     display: flex;
-    border-bottom: 1px solid var(--border-light, #2a2a2a);
+    border-bottom: 1px solid rgba(255,255,255,0.04);
 }
 
 .econ-ranking-row:last-child {
@@ -263,56 +275,58 @@ body.light-mode .econ-card {
 }
 
 .econ-ranking-header {
-    border-bottom: 2px solid var(--border-main);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 
 .econ-ranking-header .econ-ranking-cell {
-    font-size: 0.65rem;
-    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #6b6a5e;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
-    font-weight: 700;
-    padding: 8px 12px;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+    padding: 8px 10px;
 }
 
 .econ-ranking-cell {
     flex: 1;
-    padding: 10px 12px;
+    padding: 8px 10px;
     min-width: 0;
     text-align: center;
 }
 
 .econ-ranking-metric {
-    flex: 0 0 140px;
+    flex: 0 0 130px;
     text-align: left;
-    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: #8a8778;
 }
 
 .econ-ranking-name {
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    margin-bottom: 2px;
+    font-size: 0.68rem;
+    color: #8a8778;
+    margin-bottom: 1px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .econ-ranking-val {
-    font-size: 0.8rem;
-    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    font-family: 'JetBrains Mono', monospace;
     font-weight: 600;
-    color: var(--text-primary);
+    color: #e2e0d6;
 }
 
 .econ-ranking-highlight {
-    background: rgba(255, 204, 0, 0.08);
-    border-left: 2px solid var(--accent);
+    background: rgba(226, 224, 214, 0.04);
+    border-left: 2px solid #e2e0d6;
 }
 
 .econ-ranking-highlight .econ-ranking-name {
-    color: var(--accent);
+    color: #e2e0d6;
     font-weight: 700;
 }
 
@@ -320,33 +334,33 @@ body.light-mode .econ-card {
 .econ-sector-health {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
 }
 
 .econ-sector-row {
     display: grid;
-    grid-template-columns: 180px 1fr 40px auto;
-    gap: 12px;
+    grid-template-columns: 160px 1fr 36px auto;
+    gap: 10px;
     align-items: center;
 }
 
 .econ-sector-label {
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     font-weight: 600;
-    color: var(--text-primary);
+    color: #e2e0d6;
 }
 
 .econ-health-track {
-    height: 10px;
+    height: 6px;
     background: rgba(255, 255, 255, 0.06);
-    border-radius: 5px;
+    border-radius: 3px;
     overflow: visible;
     position: relative;
 }
 
 .econ-health-fill {
     height: 100%;
-    border-radius: 5px;
+    border-radius: 3px;
     transition: width 0.3s;
 }
 
@@ -355,19 +369,20 @@ body.light-mode .econ-card {
     top: -3px;
     bottom: -3px;
     width: 2px;
-    background: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.3);
     border-radius: 1px;
 }
 
 .econ-health-value {
-    font-size: 0.85rem;
-    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    font-family: 'JetBrains Mono', monospace;
     font-weight: 700;
     text-align: right;
 }
 
 .econ-health-warning {
-    font-size: 0.65rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
     color: var(--red, #ff4444);
     font-style: italic;
     white-space: nowrap;
@@ -385,29 +400,31 @@ body.light-mode .econ-health-threshold {
 .econ-stub {
     text-align: center;
     padding: 60px 24px;
-    color: var(--text-secondary);
+    color: #6b6a5e;
 }
 
 .econ-stub-icon {
-    font-size: 2.5rem;
+    font-size: 2rem;
     margin-bottom: 12px;
-    opacity: 0.4;
+    opacity: 0.3;
 }
 
 .econ-stub-label {
-    font-size: 1rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 3px;
-    color: var(--text-secondary);
+    letter-spacing: 0.15em;
+    color: #6b6a5e;
     margin-bottom: 8px;
 }
 
 .econ-stub-text {
-    font-size: 0.85rem;
-    font-style: italic;
+    font-size: 0.78rem;
+    color: #4a493e;
     max-width: 400px;
     margin: 0 auto;
+    line-height: 1.5;
 }
 
 /* ===== RESPONSIVE — Tab Bar & Overview ===== */
@@ -421,24 +438,24 @@ body.light-mode .econ-health-threshold {
     }
 
     .econ-sector-row {
-        grid-template-columns: 140px 1fr 36px auto;
+        grid-template-columns: 120px 1fr 36px auto;
     }
 }
 
 @media (max-width: 768px) {
     .econ-tab-bar {
         flex-wrap: wrap;
-        gap: 6px;
-        padding: 10px 16px;
+        gap: 0;
+        padding: 0 8px;
     }
 
     .econ-tab {
-        padding: 6px 14px;
-        font-size: 0.68rem;
+        padding: 10px 14px;
+        font-size: 0.62rem;
     }
 
     #econ-tab-content {
-        padding: 16px;
+        padding: 12px;
     }
 
     .econ-cards-row {
@@ -450,12 +467,12 @@ body.light-mode .econ-health-threshold {
     }
 
     .econ-ranking-metric {
-        flex: 0 0 100px;
-        font-size: 0.65rem;
+        flex: 0 0 90px;
+        font-size: 0.62rem;
     }
 
     .econ-ranking-val {
-        font-size: 0.7rem;
+        font-size: 0.68rem;
     }
 
     .econ-sector-row {
@@ -464,62 +481,60 @@ body.light-mode .econ-health-threshold {
     }
 
     .econ-health-track {
-        height: 8px;
+        height: 6px;
     }
 }
 
 @media (max-width: 480px) {
     .econ-title {
-        font-size: 1.1rem;
-        letter-spacing: 2px;
+        font-size: 0.75rem;
+        letter-spacing: 0.12em;
     }
 
     .econ-card-value {
-        font-size: 1.2rem;
+        font-size: 1.1rem;
     }
 }
 
-/* ===== EXISTING STYLES BELOW ===== */
+/* ===== LEGACY HERO BAR (kept for backward compat) ===== */
 
-/* Hero Bar */
 .economy-hero {
-    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
-    border-bottom: 3px solid var(--accent);
-    padding: 28px 24px 32px;
+    background: #141412;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    padding: 24px 24px 28px;
     text-align: center;
 }
 
 .economy-hero-title {
-    color: var(--accent);
-    font-size: 1.6rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: #e2e0d6;
+    font-size: 0.85rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 4px;
-    margin-bottom: 24px;
-    font-family: 'Courier New', monospace;
+    letter-spacing: 0.2em;
+    margin-bottom: 20px;
 }
 
 .economy-hero-stats {
     display: grid;
     grid-template-columns: repeat(6, 1fr);
-    gap: 12px;
+    gap: 10px;
     max-width: 1200px;
     margin: 0 auto;
 }
 
-/* Individual Stat Box */
 .economy-stat-box {
-    background: var(--bg-panel, #1a1a1a);
-    border: 2px solid #2a2a2a;
-    border-radius: 8px;
-    padding: 20px 16px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 3px;
+    padding: 14px 12px;
     position: relative;
     overflow: hidden;
     transition: border-color 0.3s;
 }
 
 .economy-stat-box:hover {
-    border-color: var(--accent);
+    border-color: rgba(255,255,255,0.12);
 }
 
 .economy-stat-box::before {
@@ -527,31 +542,32 @@ body.light-mode .econ-health-threshold {
     position: absolute;
     top: 0;
     left: 0;
-    right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, var(--accent) 0%, transparent 100%);
+    bottom: 0;
+    width: 3px;
+    background: #3a3930;
 }
 
 .economy-stat-label {
-    font-size: 0.65rem;
-    color: var(--text-secondary, #888);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #6b6a5e;
     text-transform: uppercase;
-    letter-spacing: 2px;
-    margin-bottom: 10px;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
     font-weight: 600;
 }
 
 .economy-stat-value {
-    font-size: 2rem;
-    font-family: 'Courier New', monospace;
+    font-size: 1.6rem;
+    font-family: 'JetBrains Mono', monospace;
     font-weight: 700;
-    color: var(--text-primary, #e0e0e0);
-    margin-bottom: 8px;
+    color: #e2e0d6;
+    margin-bottom: 6px;
     line-height: 1;
 }
 
 .economy-stat-trend {
-    font-size: 0.85rem;
+    font-size: 0.78rem;
     font-weight: 600;
     display: flex;
     align-items: center;
@@ -559,54 +575,39 @@ body.light-mode .econ-health-threshold {
     gap: 4px;
 }
 
-.economy-stat-trend .trend-up {
-    color: var(--green, #4CAF50);
-}
+.economy-stat-trend .trend-up { color: var(--green, #4CAF50); }
+.economy-stat-trend .trend-down { color: var(--red, #ff4444); }
+.economy-stat-trend .trend-neutral { color: #6b6a5e; }
 
-.economy-stat-trend .trend-down {
-    color: var(--red, #ff4444);
-}
-
-.economy-stat-trend .trend-neutral {
-    color: var(--text-secondary, #888);
-}
-
-/* Rating Label */
 .economy-stat-rating {
-    font-size: 0.7rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
-    margin-top: 8px;
+    letter-spacing: 0.1em;
+    margin-top: 6px;
 }
 
 .economy-stat-rating.rating-excellent { color: #4CAF50; }
 .economy-stat-rating.rating-good      { color: #2196F3; }
-.economy-stat-rating.rating-moderate   { color: #e0e0e0; }
+.economy-stat-rating.rating-moderate   { color: #8a8778; }
 .economy-stat-rating.rating-poor       { color: #ff9800; }
 .economy-stat-rating.rating-critical   { color: #ff4444; }
 
-/* Inverted stats: up is bad, down is good */
-.economy-stat-trend .trend-up.inverted {
-    color: var(--red, #ff4444);
-}
+.economy-stat-trend .trend-up.inverted { color: var(--red, #ff4444); }
+.economy-stat-trend .trend-down.inverted { color: var(--green, #4CAF50); }
 
-.economy-stat-trend .trend-down.inverted {
-    color: var(--green, #4CAF50);
-}
-
-/* Financial stat boxes (Balance / Debt) */
 .economy-stat-financial.hero-surplus {
-    border-color: rgba(76, 175, 80, 0.3);
+    border-color: rgba(76, 175, 80, 0.15);
 }
 .economy-stat-financial.hero-deficit {
-    border-color: rgba(255, 68, 68, 0.3);
+    border-color: rgba(255, 68, 68, 0.15);
 }
 .economy-stat-financial.hero-surplus::before {
-    background: linear-gradient(90deg, var(--green, #4CAF50) 0%, transparent 100%);
+    background: var(--green, #4CAF50);
 }
 .economy-stat-financial.hero-deficit::before {
-    background: linear-gradient(90deg, var(--red, #ff4444) 0%, transparent 100%);
+    background: var(--red, #ff4444);
 }
 .economy-stat-value.hero-surplus { color: var(--green, #4CAF50); }
 .economy-stat-value.hero-deficit { color: var(--red, #ff4444); }
@@ -616,62 +617,40 @@ body.light-mode .econ-health-threshold {
     align-items: center;
     justify-content: center;
     gap: 5px;
-    font-size: 0.68rem;
-    font-family: 'Courier New', monospace;
-    margin-top: 6px;
-    color: var(--text-secondary, #888);
+    font-size: 0.65rem;
+    font-family: 'JetBrains Mono', monospace;
+    margin-top: 4px;
+    color: #6b6a5e;
 }
 .breakdown-revenue { color: var(--green, #4CAF50); }
 .breakdown-expense { color: var(--red, #ff4444); }
-.breakdown-sep { color: #555; }
-.breakdown-ratio { color: var(--text-secondary, #888); }
+.breakdown-sep { color: #3a3930; }
+.breakdown-ratio { color: #6b6a5e; }
 
-/* Responsive */
 @media (max-width: 1100px) {
-    .economy-hero-stats {
-        grid-template-columns: repeat(3, 1fr);
-    }
+    .economy-hero-stats { grid-template-columns: repeat(3, 1fr); }
 }
 
 @media (max-width: 768px) {
-    .economy-hero-stats {
-        grid-template-columns: repeat(2, 1fr);
-    }
-
-    .economy-hero-title {
-        font-size: 1.3rem;
-        letter-spacing: 3px;
-    }
+    .economy-hero-stats { grid-template-columns: repeat(2, 1fr); }
+    .economy-hero-title { font-size: 0.78rem; letter-spacing: 0.15em; }
 }
 
 @media (max-width: 480px) {
-    .economy-hero-stats {
-        grid-template-columns: 1fr;
-        max-width: 320px;
-    }
-
-    .economy-hero {
-        padding: 20px 16px 24px;
-    }
-
-    .economy-hero-title {
-        font-size: 1.1rem;
-        letter-spacing: 2px;
-    }
-
-    .economy-stat-value {
-        font-size: 1.6rem;
-    }
+    .economy-hero-stats { grid-template-columns: 1fr; max-width: 320px; }
+    .economy-hero { padding: 16px; }
+    .economy-hero-title { font-size: 0.72rem; }
+    .economy-stat-value { font-size: 1.3rem; }
 }
 
-/* Light Mode */
 body.light-mode .economy-hero {
-    background: linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%);
+    background: #f5f5f0;
+    border-bottom-color: rgba(0,0,0,0.08);
 }
 
 body.light-mode .economy-stat-box {
-    background: #ffffff;
-    border-color: #d0d0d0;
+    background: rgba(0,0,0,0.02);
+    border-color: rgba(0,0,0,0.06);
 }
 
 /* ===== ECONOMY PAGE BODY — TWO-COLUMN LAYOUT ===== */
@@ -680,28 +659,26 @@ body.light-mode .economy-stat-box {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0;
-    padding: 24px;
     max-width: 1400px;
-    margin: 0 auto;
+    margin: -4px auto 0;
 }
 
 .economy-left {
-    padding-right: 12px;
+    padding-right: 10px;
 }
 
 .economy-right {
-    padding-left: 12px;
-    border-left: 1px solid var(--border-light);
+    padding-left: 10px;
+    border-left: 1px solid rgba(255,255,255,0.06);
 }
 
 /* ===== TRADE ROW — Side-by-Side Trade + Partners ===== */
 .economy-trade-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 24px;
-    padding: 0 24px 24px;
+    gap: 16px;
     max-width: 1400px;
-    margin: 0 auto;
+    margin: -4px auto 0;
 }
 
 .economy-trade-col .budget-panel {
@@ -711,106 +688,108 @@ body.light-mode .economy-stat-box {
 /* ===== BUDGET PANEL ===== */
 
 .budget-panel {
-    background: var(--bg-panel);
-    border: 1px solid var(--border-main);
-    border-radius: 8px;
+    background: #1e1e1a;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 3px;
     overflow: hidden;
 }
 
 /* --- Header --- */
 .budget-header {
-    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
-    padding: 20px 24px;
-    border-bottom: 2px solid var(--accent);
-    text-align: center;
+    background: #141412;
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    text-align: left;
 }
 
 .budget-title {
-    color: var(--accent);
-    font-size: 1.2rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: #e2e0d6;
+    font-size: 0.72rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 3px;
-    font-family: 'Courier New', monospace;
-    margin-bottom: 4px;
+    letter-spacing: 0.12em;
+    margin-bottom: 2px;
 }
 
 .budget-subtitle {
-    color: var(--text-secondary);
-    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: #6b6a5e;
+    font-size: 0.62rem;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 0.08em;
 }
 
 /* --- Summary Row --- */
 .budget-summary {
-    padding: 20px 24px;
-    border-bottom: 1px solid var(--border-main);
+    padding: 14px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
 .budget-summary-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
 }
 
 .budget-summary-item {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
 }
 
 .budget-summary-label {
-    font-size: 0.65rem;
-    color: var(--text-secondary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #6b6a5e;
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 0.1em;
     font-weight: 600;
 }
 
 .budget-summary-value {
-    font-size: 1.3rem;
-    font-family: 'Courier New', monospace;
+    font-size: 1.2rem;
+    font-family: 'JetBrains Mono', monospace;
     font-weight: 700;
-    color: var(--text-primary);
+    color: #e2e0d6;
 }
 
 /* --- Balance --- */
 .budget-balance {
     text-align: center;
-    padding: 10px;
-    border-radius: 6px;
-    font-family: 'Courier New', monospace;
+    padding: 8px 12px;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
     font-weight: 700;
-    font-size: 1rem;
+    font-size: 0.9rem;
 }
 
 .budget-balance.surplus {
     color: var(--green);
-    background: rgba(76, 175, 80, 0.08);
-    border: 1px solid rgba(76, 175, 80, 0.2);
+    background: rgba(76, 175, 80, 0.06);
+    border: 1px solid rgba(76, 175, 80, 0.12);
 }
 
 .budget-balance.deficit {
     color: var(--red);
-    background: rgba(255, 68, 68, 0.08);
-    border: 1px solid rgba(255, 68, 68, 0.2);
+    background: rgba(255, 68, 68, 0.06);
+    border: 1px solid rgba(255, 68, 68, 0.12);
 }
 
 .budget-balance-label {
-    font-size: 0.7rem;
-    letter-spacing: 2px;
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
 }
 
 .budget-balance-value {
-    font-size: 1.1rem;
+    font-size: 1rem;
 }
 
 .budget-balance-trend {
     display: block;
-    margin-top: 4px;
+    margin-top: 3px;
 }
 
 /* --- Two-Column Breakdown --- */
@@ -821,28 +800,29 @@ body.light-mode .economy-stat-box {
 }
 
 .budget-column {
-    padding: 16px 20px;
+    padding: 12px 16px;
 }
 
 .budget-column:first-child {
-    border-right: 1px solid var(--border-light);
+    border-right: 1px solid rgba(255,255,255,0.04);
 }
 
 .budget-column-header {
-    font-size: 0.68rem;
-    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #6b6a5e;
     text-transform: uppercase;
-    letter-spacing: 2px;
-    font-weight: 700;
-    margin-bottom: 12px;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+    margin-bottom: 10px;
     padding-bottom: 6px;
-    border-bottom: 1px solid var(--border-main);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
 /* --- Line Items --- */
 .budget-line-item {
-    padding: 8px 0;
-    border-bottom: 1px solid var(--border-light);
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
 }
 
 .budget-line-item:last-child {
@@ -852,14 +832,17 @@ body.light-mode .economy-stat-box {
 .budget-line-clickable {
     cursor: pointer;
     transition: background 0.15s;
+    padding: 6px 4px;
+    margin: 0 -4px;
+    border-radius: 2px;
 }
 
 .budget-line-clickable:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(255, 255, 255, 0.03);
 }
 
 body.light-mode .budget-line-clickable:hover {
-    background: rgba(0, 0, 0, 0.04);
+    background: rgba(0, 0, 0, 0.03);
 }
 
 .budget-line-top {
@@ -869,76 +852,71 @@ body.light-mode .budget-line-clickable:hover {
 }
 
 .budget-line-label {
-    font-size: 0.78rem;
-    color: var(--text-primary);
+    font-size: 0.75rem;
+    color: #e2e0d6;
     font-weight: 500;
 }
 
 .budget-line-value {
-    font-size: 0.85rem;
-    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    font-family: 'JetBrains Mono', monospace;
     font-weight: 600;
-    color: var(--text-primary);
+    color: #e2e0d6;
 }
 
 .budget-line-trend {
-    margin-top: 2px;
+    margin-top: 1px;
     text-align: right;
 }
 
 .trade-stat-hint {
-    font-size: 0.65rem;
-    color: var(--text-muted, #999);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
+    color: #4a493e;
     font-style: italic;
     margin-top: 1px;
-    letter-spacing: 0.2px;
+    letter-spacing: 0.02em;
 }
 
 /* --- Total Line --- */
 .budget-line-total {
-    border-top: 2px solid var(--border-main);
+    border-top: 1px solid rgba(255,255,255,0.08);
     border-bottom: none;
     margin-top: 4px;
-    padding-top: 10px;
+    padding-top: 8px;
 }
 
 .budget-line-total .budget-line-label {
-    font-size: 0.7rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 2px;
-    color: var(--accent);
+    letter-spacing: 0.12em;
+    color: #8a8778;
 }
 
 .budget-line-total .budget-line-value {
-    font-size: 0.9rem;
+    font-size: 0.82rem;
     font-weight: 700;
-    color: var(--accent);
+    color: #e2e0d6;
 }
 
 /* --- Trend Indicators --- */
 .budget-trend {
-    font-size: 0.7rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
     font-weight: 600;
 }
 
-.budget-trend.trend-up {
-    color: var(--green);
-}
-
-.budget-trend.trend-down {
-    color: var(--red);
-}
-
-.budget-trend.trend-neutral {
-    color: var(--text-secondary);
-}
+.budget-trend.trend-up { color: var(--green); }
+.budget-trend.trend-down { color: var(--red); }
+.budget-trend.trend-neutral { color: #6b6a5e; }
 
 /* ===== RESPONSIVE — Budget Panel ===== */
 @media (max-width: 1100px) {
     .economy-body {
         grid-template-columns: 1fr;
-        gap: 24px;
+        gap: 16px;
     }
 
     .economy-left {
@@ -948,8 +926,8 @@ body.light-mode .budget-line-clickable:hover {
     .economy-right {
         padding-left: 0;
         border-left: none;
-        border-top: 1px solid var(--border-light);
-        padding-top: 24px;
+        border-top: 1px solid rgba(255,255,255,0.06);
+        padding-top: 16px;
     }
 
     .economy-trade-row {
@@ -959,7 +937,7 @@ body.light-mode .budget-line-clickable:hover {
 
 @media (max-width: 600px) {
     .economy-body {
-        padding: 16px;
+        padding: 12px;
     }
 
     .budget-columns {
@@ -968,13 +946,13 @@ body.light-mode .budget-line-clickable:hover {
 
     .budget-column:first-child {
         border-right: none;
-        border-bottom: 1px solid var(--border-light);
-        padding-bottom: 12px;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        padding-bottom: 10px;
     }
 
     .budget-summary-row {
         flex-direction: column;
-        gap: 12px;
+        gap: 10px;
         align-items: stretch;
     }
 
@@ -983,28 +961,29 @@ body.light-mode .budget-line-clickable:hover {
     }
 
     .budget-summary-value {
-        font-size: 1.1rem;
+        font-size: 1rem;
     }
 }
 
 /* ===== Light Mode — Budget Panel ===== */
 body.light-mode .budget-header {
-    background: linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%);
+    background: #f0f0eb;
+    border-bottom-color: rgba(0,0,0,0.06);
 }
 
 body.light-mode .budget-panel {
     background: #ffffff;
-    border-color: #d0d0d0;
+    border-color: rgba(0,0,0,0.08);
 }
 
 body.light-mode .budget-balance.surplus {
-    background: rgba(46, 125, 50, 0.06);
-    border-color: rgba(46, 125, 50, 0.2);
+    background: rgba(46, 125, 50, 0.04);
+    border-color: rgba(46, 125, 50, 0.12);
 }
 
 body.light-mode .budget-balance.deficit {
-    background: rgba(198, 40, 40, 0.06);
-    border-color: rgba(198, 40, 40, 0.2);
+    background: rgba(198, 40, 40, 0.04);
+    border-color: rgba(198, 40, 40, 0.12);
 }
 
 /* ===== MINISTRY DETAIL PANEL ===== */
@@ -1012,68 +991,78 @@ body.light-mode .budget-balance.deficit {
 .ministry-tabs {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border-main);
+    gap: 2px;
+    padding: 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
 .ministry-tab {
-    padding: 6px 12px;
-    font-size: 0.65rem;
+    padding: 10px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    border: 1px solid var(--border-main);
-    border-radius: 4px;
+    letter-spacing: 0.06em;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
     background: transparent;
-    color: var(--text-secondary);
+    color: #6b6a5e;
     cursor: pointer;
     transition: all 0.2s;
-    font-family: inherit;
 }
 
 .ministry-tab:hover {
-    border-color: var(--accent);
-    color: var(--text-primary);
+    color: #8a8778;
 }
 
 .ministry-tab.active {
-    background: var(--accent);
-    color: #000;
-    border-color: var(--accent);
+    color: #e2e0d6;
+    border-bottom-color: #e2e0d6;
+    background: transparent;
 }
 
 .ministry-policy-list {
-    padding: 16px 20px;
+    padding: 12px 16px;
+}
+
+.ministry-section-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin: 8px 0 4px;
+    padding-left: 2px;
 }
 
 .ministry-empty {
     text-align: center;
-    color: var(--text-secondary);
-    padding: 32px 16px;
-    font-size: 0.85rem;
+    color: #6b6a5e;
+    padding: 28px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
     font-style: italic;
 }
 
 /* Light mode */
 body.light-mode .ministry-tab {
-    border-color: #d0d0d0;
-    color: #666;
+    color: #999;
 }
 
 body.light-mode .ministry-tab:hover {
-    color: #333;
+    color: #666;
 }
 
 body.light-mode .ministry-tab.active {
-    color: #000;
+    color: #2a2a25;
+    border-bottom-color: #2a2a25;
 }
 
 /* ===== TRADE PANEL ===== */
 
-/* Spacing between stacked panels */
 .budget-panel + .budget-panel {
-    margin-top: 20px;
+    margin-top: 16px;
 }
 
 /* Trade summary row */
@@ -1081,29 +1070,30 @@ body.light-mode .ministry-tab.active {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px 24px;
-    border-bottom: 1px solid var(--border-main);
-    gap: 12px;
+    padding: 12px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    gap: 10px;
 }
 
 .trade-summary-item {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
     text-align: center;
 }
 
 .trade-summary-label {
-    font-size: 0.65rem;
-    color: var(--text-secondary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #6b6a5e;
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 0.1em;
     font-weight: 600;
 }
 
 .trade-summary-value {
-    font-size: 1.1rem;
-    font-family: 'Courier New', monospace;
+    font-size: 1rem;
+    font-family: 'JetBrains Mono', monospace;
     font-weight: 700;
 }
 
@@ -1112,66 +1102,69 @@ body.light-mode .ministry-tab.active {
 .trade-summary-value.surplus { color: var(--green); }
 .trade-summary-value.deficit { color: var(--red); }
 
-/* Inverted trend for imports: up = red (costs rising), down = green (costs falling) */
+/* Inverted trend for imports */
 .trade-inverted .budget-trend.trend-up { color: var(--red); }
 .trade-inverted .budget-trend.trend-down { color: var(--green); }
 
-/* Trade placeholder when no data yet */
 .trade-placeholder {
     text-align: center;
-    color: var(--text-secondary);
-    padding: 32px 16px;
-    font-size: 0.85rem;
+    color: #6b6a5e;
+    padding: 28px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
     font-style: italic;
 }
 
 /* --- Derived Trade Scores --- */
 .trade-scores-section {
-    border-top: 2px solid var(--border-main);
-    padding: 20px 20px 16px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding: 16px 16px 14px;
 }
 
 .trade-scores-header {
-    font-size: 0.72rem;
-    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    color: #6b6a5e;
     text-transform: uppercase;
-    letter-spacing: 2.5px;
-    font-weight: 700;
+    letter-spacing: 0.15em;
+    font-weight: 600;
     margin-bottom: 4px;
 }
 
 .trade-scores-subtitle {
-    font-size: 0.65rem;
-    color: var(--text-muted, #888);
+    font-size: 0.6rem;
+    color: #4a493e;
     font-style: italic;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
 }
 
 .trade-scores-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
+    gap: 8px;
 }
 
 .trade-score-card {
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border-light);
-    border-radius: 6px;
-    padding: 12px 14px;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-left: 3px solid #3a3930;
+    border-radius: 3px;
+    padding: 10px 12px;
 }
 
 .trade-score-name {
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: #8a8778;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.08em;
     margin-bottom: 4px;
 }
 
 .trade-score-value {
-    font-size: 1.4rem;
-    font-family: 'Courier New', monospace;
+    font-size: 1.2rem;
+    font-family: 'JetBrains Mono', monospace;
     font-weight: 700;
     line-height: 1;
     margin-bottom: 6px;
@@ -1182,7 +1175,7 @@ body.light-mode .ministry-tab.active {
     background: rgba(255, 255, 255, 0.06);
     border-radius: 2px;
     overflow: hidden;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 .trade-score-bar-fill {
@@ -1192,31 +1185,31 @@ body.light-mode .ministry-tab.active {
 }
 
 .trade-score-formula {
-    font-size: 0.6rem;
-    color: var(--text-muted, #888);
-    font-family: 'Courier New', monospace;
-    margin-bottom: 6px;
-    letter-spacing: 0.3px;
+    font-size: 0.55rem;
+    color: #4a493e;
+    font-family: 'JetBrains Mono', monospace;
+    margin-bottom: 4px;
+    letter-spacing: 0.02em;
 }
 
 .trade-score-stats {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px 12px;
+    gap: 4px 10px;
 }
 
 .trade-score-stat {
-    font-size: 0.65rem;
-    color: var(--text-secondary);
+    font-size: 0.6rem;
+    color: #6b6a5e;
 }
 
 .trade-score-stat strong {
-    font-family: 'Courier New', monospace;
+    font-family: 'JetBrains Mono', monospace;
 }
 
-/* Light mode */
 body.light-mode .trade-score-card {
     background: rgba(0, 0, 0, 0.02);
+    border-color: rgba(0,0,0,0.06);
 }
 
 body.light-mode .trade-score-bar {
@@ -1231,10 +1224,11 @@ body.light-mode .trade-score-bar {
 
 /* --- Partner Cards --- */
 .partner-card {
-    border: 1px solid var(--border-main);
-    border-radius: 6px;
-    padding: 14px 16px;
-    margin: 10px 0;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-left: 3px solid #3a3930;
+    border-radius: 3px;
+    padding: 12px 14px;
+    margin: 8px 0;
     background: rgba(255, 255, 255, 0.02);
 }
 
@@ -1242,28 +1236,28 @@ body.light-mode .trade-score-bar {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 
 .partner-name {
-    font-size: 0.95rem;
+    font-size: 0.85rem;
     font-weight: 700;
-    color: var(--accent);
+    color: #e2e0d6;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.05em;
 }
 
 .partner-affinity {
-    font-size: 0.7rem;
-    color: var(--text-muted, #888);
-    font-style: italic;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    color: #6b6a5e;
 }
 
 .partner-stats {
     display: flex;
     justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 10px;
+    gap: 10px;
+    margin-bottom: 8px;
 }
 
 .partner-stat {
@@ -1274,17 +1268,19 @@ body.light-mode .trade-score-bar {
 }
 
 .partner-stat-label {
-    font-size: 0.65rem;
-    color: var(--text-secondary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
+    color: #6b6a5e;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.06em;
     margin-bottom: 2px;
 }
 
 .partner-stat-value {
-    font-size: 0.85rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
     font-weight: 600;
-    color: var(--text-primary);
+    color: #e2e0d6;
 }
 
 .partner-stat-value.exports { color: var(--green, #4CAF50); }
@@ -1294,36 +1290,37 @@ body.light-mode .trade-score-bar {
 
 /* Volume bar */
 .partner-bar-container {
-    margin: 8px 0 6px;
+    margin: 6px 0 4px;
 }
 
 .partner-bar {
     display: flex;
-    height: 8px;
-    border-radius: 4px;
+    height: 6px;
+    border-radius: 3px;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.04);
     gap: 2px;
 }
 
 .partner-bar-exports {
     background: var(--green, #4CAF50);
-    border-radius: 4px 0 0 4px;
+    border-radius: 3px 0 0 3px;
     min-width: 2px;
 }
 
 .partner-bar-imports {
     background: var(--red, #f44336);
-    border-radius: 0 4px 4px 0;
+    border-radius: 0 3px 3px 0;
     min-width: 2px;
 }
 
 .partner-bar-legend {
     display: flex;
     justify-content: space-between;
-    font-size: 0.6rem;
-    color: var(--text-muted, #888);
-    margin-top: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    color: #4a493e;
+    margin-top: 2px;
 }
 
 .partner-legend-exports { color: var(--green, #4CAF50); }
@@ -1331,9 +1328,9 @@ body.light-mode .trade-score-bar {
 
 /* Sector breakdown */
 .partner-sectors {
-    border-top: 1px solid var(--border-main);
-    margin-top: 8px;
-    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.04);
+    margin-top: 6px;
+    padding-top: 6px;
 }
 
 .partner-sector-line {
@@ -1344,13 +1341,14 @@ body.light-mode .trade-score-bar {
 }
 
 .partner-sector-name {
-    font-size: 0.7rem;
-    color: var(--text-secondary);
+    font-size: 0.65rem;
+    color: #6b6a5e;
 }
 
 .partner-sector-detail {
-    font-size: 0.7rem;
-    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: #8a8778;
     font-weight: 500;
 }
 
@@ -1361,4 +1359,851 @@ body.light-mode .trade-summary-value.surplus { color: var(--green); }
 body.light-mode .trade-summary-value.deficit { color: var(--red); }
 body.light-mode .trade-inverted .budget-trend.trend-up { color: var(--red); }
 body.light-mode .trade-inverted .budget-trend.trend-down { color: var(--green); }
-body.light-mode .partner-card { background: rgba(0, 0, 0, 0.02); }
+body.light-mode .partner-card {
+    background: rgba(0, 0, 0, 0.02);
+    border-color: rgba(0,0,0,0.06);
+}
+
+/* ===== SECTOR FLOWS TABLE ===== */
+.trade-flow-table {
+    width: 100%;
+}
+
+.tft-header {
+    display: grid;
+    grid-template-columns: 1.8fr 1fr 1fr 1fr 0.7fr 0.6fr;
+    gap: 4px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.tft-header .tft-cell {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+}
+
+.tft-row {
+    display: grid;
+    grid-template-columns: 1.8fr 1fr 1fr 1fr 0.7fr 0.6fr;
+    gap: 4px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    align-items: center;
+}
+
+.tft-row:last-child {
+    border-bottom: none;
+}
+
+.tft-row.tft-total {
+    border-top: 1px solid rgba(255,255,255,0.08);
+    border-bottom: none;
+    margin-top: 2px;
+    padding-top: 8px;
+}
+
+.tft-row.tft-total .tft-cell {
+    font-weight: 700;
+}
+
+.tft-row.tft-total .tft-sector {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    color: #8a8778;
+    letter-spacing: 0.1em;
+}
+
+.tft-cell {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    min-width: 0;
+}
+
+.tft-cell.tft-sector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tft-sector-name {
+    font-size: 0.75rem;
+    color: #e2e0d6;
+    font-weight: 500;
+    font-family: inherit;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tft-export-only {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.5rem;
+    color: #4a493e;
+    background: rgba(255,255,255,0.04);
+    padding: 1px 5px;
+    border-radius: 2px;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.tft-cell.tft-num {
+    text-align: right;
+    font-weight: 600;
+}
+
+.tft-cell.tft-trend {
+    text-align: right;
+}
+
+/* ===== TRADING PARTNERS GRID ===== */
+.trade-partners-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 10px;
+}
+
+.trade-partners-grid .partner-card {
+    margin: 0;
+}
+
+@media (max-width: 768px) {
+    .tft-header,
+    .tft-row {
+        grid-template-columns: 1.5fr 1fr 1fr 1fr;
+    }
+
+    /* Hide price mod and trend on mobile */
+    .tft-header .tft-cell:nth-child(5),
+    .tft-header .tft-cell:nth-child(6),
+    .tft-row .tft-cell:nth-child(5),
+    .tft-row .tft-cell:nth-child(6) {
+        display: none;
+    }
+
+    .tft-export-only {
+        display: none;
+    }
+
+    .trade-partners-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .tft-header,
+    .tft-row {
+        grid-template-columns: 1fr 1fr 1fr;
+    }
+
+    /* Also hide imports on very small screens */
+    .tft-header .tft-cell:nth-child(3),
+    .tft-row .tft-cell:nth-child(3) {
+        display: none;
+    }
+}
+
+/* ===== SECTORS TAB ===== */
+
+/* Sector selector tabs */
+.sector-tabs-section {
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+}
+
+.sector-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    background: #1e1e1a;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.sector-tab {
+    flex: 1;
+    padding: 10px 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: #6b6a5e;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.sector-tab:hover {
+    color: #8a8778;
+    background: rgba(255,255,255,0.02);
+}
+
+.sector-tab.active {
+    color: #e2e0d6;
+    background: rgba(255,255,255,0.03);
+}
+
+/* Sector badge (export only) */
+.sector-badge {
+    font-size: 0.5rem;
+    color: #4a493e;
+    background: rgba(255,255,255,0.04);
+    padding: 1px 6px;
+    border-radius: 2px;
+    letter-spacing: 0.06em;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
+/* Sector header grid */
+.sector-header-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    gap: 20px;
+    align-items: start;
+}
+
+/* Score panel (left) */
+.sector-score-panel {
+    text-align: center;
+    padding: 8px 0;
+}
+
+.sector-score-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.sector-score-big {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 2.4rem;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 8px;
+}
+
+.sector-score-track {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+    overflow: visible;
+    position: relative;
+    margin-bottom: 6px;
+}
+
+.sector-score-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+
+.sector-score-threshold {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 2px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 1px;
+}
+
+.sector-threshold-status {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
+    font-weight: 600;
+}
+
+.sector-threshold-status.sector-above {
+    color: #4CAF50;
+}
+
+.sector-threshold-status.sector-below {
+    color: #ff4444;
+}
+
+/* Volume panel (right) */
+.sector-volume-panel {
+    padding: 4px 0;
+}
+
+.sector-vol-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 10px;
+}
+
+.sector-vol-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+}
+
+.sector-vol-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+}
+
+.sector-vol-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.sector-price-mod {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: #6b6a5e;
+    margin-bottom: 4px;
+}
+
+.sector-trend-line {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    color: #6b6a5e;
+}
+
+.sector-no-data {
+    color: #6b6a5e;
+    font-style: italic;
+    font-size: 0.75rem;
+    padding: 12px 0;
+}
+
+/* Net importer warning */
+.sector-warning {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: rgba(255, 68, 68, 0.06);
+    border: 1px solid rgba(255, 68, 68, 0.12);
+    border-left: 3px solid #ff4444;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    color: #ff4444;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+/* Export drivers */
+.sector-drivers {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sector-driver-row {
+    display: grid;
+    grid-template-columns: 160px 1fr 36px 50px;
+    gap: 10px;
+    align-items: center;
+}
+
+.sector-driver-composite {
+    border-top: 1px solid rgba(255,255,255,0.06);
+    margin-top: 4px;
+    padding-top: 8px;
+}
+
+.sector-driver-composite .sector-driver-label {
+    font-weight: 700;
+    color: #8a8778;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 0.6rem;
+}
+
+.sector-driver-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #e2e0d6;
+}
+
+.sector-driver-track {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+    overflow: visible;
+    position: relative;
+}
+
+.sector-driver-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+
+.sector-driver-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-align: right;
+}
+
+.sector-driver-trend {
+    font-size: 0.72rem;
+    text-align: right;
+}
+
+/* Sector partners grid */
+.sector-partners-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.sector-partner-col-header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.sector-partner-row {
+    display: grid;
+    grid-template-columns: 120px 1fr auto;
+    gap: 8px;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+}
+
+.sector-partner-row:last-child {
+    border-bottom: none;
+}
+
+.sector-partner-name {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #e2e0d6;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sector-partner-bar-wrap {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.sector-partner-bar {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s;
+}
+
+.sector-partner-amount {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.sector-partner-empty {
+    color: #4a493e;
+    font-style: italic;
+    font-size: 0.72rem;
+    padding: 12px 0;
+}
+
+/* Light mode */
+body.light-mode .sector-tabs {
+    background: #ffffff;
+    border-color: rgba(0,0,0,0.08);
+}
+
+body.light-mode .sector-tab {
+    color: #999;
+}
+
+body.light-mode .sector-tab:hover {
+    color: #666;
+    background: rgba(0,0,0,0.02);
+}
+
+body.light-mode .sector-tab.active {
+    color: #2a2a25;
+    background: rgba(0,0,0,0.03);
+}
+
+body.light-mode .sector-warning {
+    background: rgba(255, 68, 68, 0.04);
+}
+
+body.light-mode .sector-score-track,
+body.light-mode .sector-driver-track {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+body.light-mode .sector-score-threshold {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .sector-header-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .sector-partners-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .sector-tab {
+        font-size: 0.5rem;
+        padding: 8px 4px;
+    }
+
+    .sector-driver-row {
+        grid-template-columns: 120px 1fr 36px 40px;
+    }
+
+    .sector-partner-row {
+        grid-template-columns: 100px 1fr auto;
+    }
+}
+
+@media (max-width: 480px) {
+    .sector-tabs {
+        flex-wrap: wrap;
+    }
+
+    .sector-tab {
+        flex: 0 0 auto;
+        min-width: 80px;
+    }
+
+    .sector-driver-row {
+        grid-template-columns: 1fr;
+        gap: 2px;
+    }
+
+    .sector-driver-track {
+        display: none;
+    }
+}
+
+/* ===== TARIFFS TAB ===== */
+
+/* Tariff explainer */
+.tariff-explainer {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 3px;
+    font-size: 0.65rem;
+    color: #6b6a5e;
+    line-height: 1.6;
+}
+
+.tariff-explainer strong {
+    color: #8a8778;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.tariff-explainer-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: #4a493e;
+    letter-spacing: 0.08em;
+}
+
+/* Agreement cards grid */
+.tariff-agreements-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 10px;
+}
+
+.tariff-agreement-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-left: 3px solid #3a3930;
+    border-radius: 3px;
+    padding: 12px 14px;
+}
+
+.ta-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.ta-card-name {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #e2e0d6;
+}
+
+.ta-card-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.52rem;
+    font-weight: 700;
+    color: #141412;
+    padding: 2px 6px;
+    border-radius: 2px;
+    letter-spacing: 0.06em;
+}
+
+.ta-card-partner {
+    font-size: 0.68rem;
+    color: #8a8778;
+    margin-bottom: 2px;
+}
+
+.ta-card-partner strong {
+    color: #e2e0d6;
+}
+
+.ta-card-duration {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
+    color: #6b6a5e;
+    margin-bottom: 8px;
+}
+
+.ta-card-detail {
+    font-size: 0.65rem;
+    color: #8a8778;
+    margin-top: 4px;
+}
+
+.ta-card-effect {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #4CAF50;
+    font-weight: 600;
+}
+
+.ta-card-exemptions {
+    font-size: 0.62rem;
+    color: #ff9800;
+    margin-top: 4px;
+}
+
+.ta-card-detail-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.52rem;
+    font-weight: 700;
+    color: #6b6a5e;
+    letter-spacing: 0.06em;
+}
+
+/* PTA reduction lines */
+.ta-card-reductions {
+    margin-top: 6px;
+    border-top: 1px solid rgba(255,255,255,0.04);
+    padding-top: 6px;
+}
+
+.ta-reduction-line {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 8px;
+    align-items: center;
+    padding: 2px 0;
+}
+
+.ta-reduction-sector {
+    font-size: 0.65rem;
+    color: #e2e0d6;
+    font-weight: 500;
+}
+
+.ta-reduction-dir {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.ta-reduction-pct {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #4CAF50;
+}
+
+/* Tariff matrix */
+.tariff-matrix {
+    width: 100%;
+}
+
+.tm-header {
+    display: grid;
+    grid-template-columns: 1.6fr 0.8fr 0.8fr 0.8fr 0.8fr;
+    gap: 4px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.tm-header .tm-cell {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+}
+
+.tm-row {
+    display: grid;
+    grid-template-columns: 1.6fr 0.8fr 0.8fr 0.8fr 0.8fr;
+    gap: 4px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    align-items: center;
+}
+
+.tm-row:last-child {
+    border-bottom: none;
+}
+
+.tm-row.tm-highlight {
+    background: rgba(226, 224, 214, 0.04);
+    border-left: 2px solid #e2e0d6;
+    padding-left: 8px;
+    margin: 0 -10px;
+    padding-right: 10px;
+}
+
+.tm-cell {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    min-width: 0;
+}
+
+.tm-cell.tm-nation-name {
+    font-size: 0.75rem;
+    color: #e2e0d6;
+    font-weight: 500;
+    font-family: inherit;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tm-you {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.52rem;
+    color: #8a8778;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+}
+
+.tm-cell.tm-rate,
+.tm-cell.tm-dampener,
+.tm-cell.tm-effective {
+    text-align: center;
+    font-weight: 600;
+}
+
+.tm-cell.tm-dampener {
+    color: #8a8778;
+}
+
+.tm-cell.tm-agreement {
+    text-align: center;
+}
+
+.tm-ag-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.5rem;
+    font-weight: 700;
+    color: #141412;
+    padding: 2px 6px;
+    border-radius: 2px;
+    letter-spacing: 0.04em;
+}
+
+.tm-no-agreement {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.52rem;
+    color: #4a493e;
+    letter-spacing: 0.06em;
+}
+
+body.light-mode .tariff-agreement-card {
+    background: rgba(0, 0, 0, 0.02);
+    border-color: rgba(0,0,0,0.06);
+}
+
+body.light-mode .tm-row.tm-highlight {
+    background: rgba(0, 0, 0, 0.04);
+    border-left-color: #2a2a25;
+}
+
+body.light-mode .tariff-explainer {
+    background: rgba(0, 0, 0, 0.02);
+    border-color: rgba(0,0,0,0.04);
+}
+
+@media (max-width: 768px) {
+    .tariff-agreements-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .tm-header,
+    .tm-row {
+        grid-template-columns: 1.2fr 0.6fr 0.6fr 0.6fr;
+    }
+
+    /* Hide dampener column on tablets */
+    .tm-header .tm-cell:nth-child(3),
+    .tm-row .tm-cell:nth-child(3) {
+        display: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .tm-header,
+    .tm-row {
+        grid-template-columns: 1fr 0.6fr 0.6fr;
+    }
+
+    /* Also hide agreement column on mobile */
+    .tm-header .tm-cell:nth-child(4),
+    .tm-row .tm-cell:nth-child(4) {
+        display: none;
+    }
+}
+
+/* ===== TREND ARROWS (overview cards) ===== */
+.trend-up { color: var(--green, #4CAF50); }
+.trend-down { color: var(--red, #ff4444); }
+.trend-neutral { color: #6b6a5e; }
+.trend-up.inverted { color: var(--red, #ff4444); }
+.trend-down.inverted { color: var(--green, #4CAF50); }

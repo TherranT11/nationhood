@@ -79,30 +79,37 @@ async function ensureApRpcAvailability(supabase) {
 const GAME_CONFIG = {
     TOTAL_SEATS: 120,
     MAJORITY_SEATS: 61,
-    VOTING_WINDOW_TICKS: 7,
-    COMMITTEE_EXPIRY_TICKS: 4,
+    VOTING_WINDOW_TICKS: 6,
+    QUORUM_THRESHOLD: 0.6,           // 60% of seats must vote before quorum-based early resolution
+    COMMITTEE_EXPIRY_TICKS: 6,
     DRAFT_BILL_AP_COST: 2,
     VETO_APPROVAL_COST: 3,
     NO_CONFIDENCE_AP_COST: 5,
-    NO_CONFIDENCE_VOTING_TICKS: 2,
+    NO_CONFIDENCE_VOTING_TICKS: 6,
     NO_CONFIDENCE_COOLDOWN_TICKS: 6,
     FOUNDATIONAL_AP_COST: 3,
-    FOUNDATIONAL_VOTING_TICKS: 3,
+    FOUNDATIONAL_VOTING_TICKS: 6,
     SUPERMAJORITY_THRESHOLD: 2/3,
-    EARLY_ELECTION_TICKS: 2,
+    EARLY_ELECTION_TICKS: 6,
     EARLY_ELECTION_PM_APPROVAL_COST: 5,
     EARLY_ELECTION_COALITION_APPROVAL_COST: 3,
     // Presidential Democracy
     PRESIDENTIAL_TERM_TICKS: 48,
     PARLIAMENTARY_TERM_TICKS: 24,
     VETO_OVERRIDE_THRESHOLD: 2/3,
-    PRESIDENT_DESK_TICKS: 2,
-    MINISTER_CONFIRMATION_VOTING_TICKS: 2,
+    PRESIDENT_DESK_TICKS: 6,
+    MINISTER_CONFIRMATION_VOTING_TICKS: 6,
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
     MAX_AP: 20,  // maximum action points a party can accumulate
     TICKS_PER_YEAR: 12,
-    BUDGET_BILL_VOTING_TICKS: 3,     // budget bill voting window
-    NO_BUDGET_PENALTY_TICKS: 24      // how many ticks without a budget before max penalty
+    BUDGET_BILL_VOTING_TICKS: null,   // budget bills persist until passed (never expire)
+    NO_BUDGET_PENALTY_TICKS: 24,     // how many ticks without a budget before max penalty
+    // Inactivity decay
+    INACTIVITY_GRACE_TICKS: 12,          // no penalty for first 12 ticks of inactivity
+    INACTIVITY_APPROVAL_DECAY: 3,        // -3 approval per tick while inactive
+    INACTIVITY_SEAT_LOSS_THRESHOLD: 24,  // after 24 ticks inactive, start losing seats
+    INACTIVITY_SEAT_LOSS_PER_TICK: 1,    // -1 seat per tick once past threshold
+    INACTIVITY_DISBAND_THRESHOLD: 48     // after 48 ticks inactive, auto-disband
 };
 
 // ==================== TRADE SYSTEM CONSTANTS ====================
@@ -935,6 +942,8 @@ async function deductAP(supabase, factionId, cost) {
     if (data === -1) {
         return { success: false, error: 'Insufficient AP' };
     }
+    // Update inactivity clock on every successful AP spend
+    markFactionActive(supabase, factionId).catch(() => {});
     return { success: true, newAp: data };
 }
 
@@ -1051,8 +1060,8 @@ const DIPLOMACY_CONFIG = {
     ULTIMATUM_DEADLINE_TICKS: 3,
     STATE_VISIT_ACCEPT_WINDOW: 2,
     STATE_VISIT_COOLDOWN: 6,
-    TREATY_RATIFICATION_VOTING_TICKS: 3,
-    AMBASSADOR_CONFIRMATION_VOTING_TICKS: 2,
+    TREATY_RATIFICATION_VOTING_TICKS: 6,
+    AMBASSADOR_CONFIRMATION_VOTING_TICKS: 6,
     AMBASSADOR_TERM_LENGTH: 36,         // ticks (36 ticks = 3 years)
     AMBASSADOR_RETIREMENT_WARNING: 3,   // warn this many ticks before retirement
 
@@ -1085,7 +1094,7 @@ const DIPLOMACY_CONFIG = {
     NEGOTIATION_DEFAULT_DURATION: 4,      // ticks until negotiation expires
     NEGOTIATION_EXTENSION_TICKS: 12,      // ticks added per extension (1 month)
     NEGOTIATION_MAX_EXTENSIONS: 3,        // max times negotiations can be extended
-    TRADE_RATIFICATION_VOTING_TICKS: 4    // ticks for parliament to vote on trade bill
+    TRADE_RATIFICATION_VOTING_TICKS: 6    // ticks for parliament to vote on trade bill
 };
 
 /**
@@ -3055,8 +3064,6 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
     if (legislativeBills.length === 0) return;
 
     const passedBillIds = new Set(resolutions.filter(r => r.result === 'passed').map(r => r.billId));
-    // Presidential bills sent to president's desk are deferred — shifts applied when signed/auto-signed
-    const deskBillIds = new Set(resolutions.filter(r => r.result === 'president_desk').map(r => r.billId));
 
     // Accumulate shifts: { factionId: { axisKey: totalShift } }
     const factionShifts = {};
@@ -3067,9 +3074,6 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
     }
 
     for (const bill of legislativeBills) {
-        // Skip presidential bills on president's desk — shifts deferred to sign/auto-sign
-        if (deskBillIds.has(bill.id)) continue;
-
         // Collect ideology tags from articles (per-article, with duplicates)
         const tags = [];
         for (const art of (bill.bill_articles || [])) {
@@ -3096,6 +3100,11 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
         for (const tag of tags) {
             const mapping = IDEOLOGY_TO_AXIS[tag];
             if (!mapping) continue;
+
+            // +1 for proposing (sponsor only)
+            if (bill.proposed_by) {
+                addShift(bill.proposed_by, mapping.axisKey, 1 * mapping.direction);
+            }
 
             // +2 for voting YES (all YES voters including sponsor)
             for (const factionId of yesVoters) {
@@ -3171,14 +3180,30 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
 // ==================== BILL RESOLUTION ENGINE ====================
 
 /**
- * Get the number of YES seats required for a bill to pass,
- * based on bill type and current GAME_CONFIG.
+ * Returns true if this bill type uses simple/relative majority (YES > NO)
+ * rather than an absolute seat threshold.
  */
-function getRequiredSeats(billType) {
+function isSimpleMajorityBill(billType) {
+    return billType !== 'foundational' && billType !== 'veto_override';
+}
+
+/**
+ * Get the number of YES seats required for a bill to pass.
+ *
+ * For supermajority bills (foundational, veto_override) the threshold is a
+ * fixed fraction of TOTAL_SEATS.
+ *
+ * For all other bills the rule is simple majority: YES > NO.  When
+ * `votesAgainst` is provided, we return `votesAgainst + 1` so the display
+ * updates dynamically as votes come in.  Without it we fall back to the
+ * absolute half-chamber number for backward compat.
+ */
+function getRequiredSeats(billType, votesAgainst) {
     if (billType === 'foundational')
         return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD);
     if (billType === 'veto_override')
         return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
+    if (votesAgainst != null) return votesAgainst + 1;
     return GAME_CONFIG.MAJORITY_SEATS;
 }
 
@@ -3193,6 +3218,7 @@ async function expireCommitteeBills(supabase, nationId, currentTick) {
         .select('id, bill_name, proposed_by')
         .eq('nation_id', nationId)
         .eq('status', 'committee')
+        .neq('bill_type', 'budget')  // budget bills persist until passed
         .lte('proposed_tick', deadline);
 
     if (error || !expired || expired.length === 0) return [];
@@ -3231,17 +3257,20 @@ async function checkEarlyMajority(supabase, nationId) {
     const currentTick = shard.current_tick;
 
     // Bills still voting, not yet locked, not yet expired
+    // Include budget bills with null voting_ends_tick (they persist until passed)
     const { data: activeBills, error } = await supabase
         .from('bills')
         .select('id, bill_name, bill_type, voting_ends_tick, bill_support(faction_id, stance, seat_count)')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .is('early_resolution_status', null)
-        .gt('voting_ends_tick', currentTick);
+        .or(`voting_ends_tick.gt.${currentTick},voting_ends_tick.is.null`);
 
     if (error || !activeBills || activeBills.length === 0) return [];
 
     const results = [];
+
+    const quorumSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.QUORUM_THRESHOLD);
 
     for (const bill of activeBills) {
         let yesSeats = 0, noSeats = 0;
@@ -3251,19 +3280,57 @@ async function checkEarlyMajority(supabase, nationId) {
             else if (stance === 'no') noSeats += s.seat_count;
         });
 
-        const requiredSeats = getRequiredSeats(bill.bill_type);
         let earlyStatus = null;
+        const totalVoted = yesSeats + noSeats;
+        const undeclaredSeats = GAME_CONFIG.TOTAL_SEATS - totalVoted;
 
-        if (yesSeats >= requiredSeats) {
-            earlyStatus = 'majority_reached';
-        } else if (noSeats > GAME_CONFIG.TOTAL_SEATS - requiredSeats) {
-            // Remaining seats can't push YES to threshold
-            earlyStatus = 'majority_opposed';
+        // ── Check 1: Mathematical lock (outcome impossible to change) ──
+        if (isSimpleMajorityBill(bill.bill_type)) {
+            // Locked YES: even if ALL undeclared vote NO, YES still wins.
+            if (yesSeats > noSeats + undeclaredSeats) {
+                earlyStatus = 'majority_reached';
+            // Locked NO: even if ALL undeclared vote YES, NO still wins/ties.
+            } else if (noSeats >= yesSeats + undeclaredSeats) {
+                earlyStatus = 'majority_opposed';
+            }
+        } else {
+            // Supermajority: fixed seat threshold
+            const requiredSeats = getRequiredSeats(bill.bill_type);
+            if (yesSeats >= requiredSeats) {
+                earlyStatus = 'majority_reached';
+            } else if (noSeats > GAME_CONFIG.TOTAL_SEATS - requiredSeats) {
+                earlyStatus = 'majority_opposed';
+            }
+        }
+
+        // ── Check 2: Quorum-based early resolution ──
+        // If not math-locked but quorum (60% of seats) has voted,
+        // resolve based on the majority among those who voted.
+        // Gives remaining parties a 1-tick grace period to cast their vote.
+        if (!earlyStatus && totalVoted >= quorumSeats) {
+            if (isSimpleMajorityBill(bill.bill_type)) {
+                if (yesSeats > noSeats) {
+                    earlyStatus = 'quorum_reached';
+                } else if (noSeats > yesSeats) {
+                    earlyStatus = 'quorum_opposed';
+                }
+                // Exact tie at quorum: wait for more votes or deadline
+            } else {
+                const requiredSeats = getRequiredSeats(bill.bill_type);
+                if (yesSeats >= requiredSeats) {
+                    earlyStatus = 'quorum_reached';
+                } else {
+                    earlyStatus = 'quorum_opposed';
+                }
+            }
         }
 
         if (earlyStatus) {
             // Grace tick: resolve one tick from now, but never extend past original deadline
-            const graceEndTick = Math.min(currentTick + 1, bill.voting_ends_tick);
+            // Budget bills have null voting_ends_tick, so just use currentTick + 1
+            const graceEndTick = bill.voting_ends_tick != null
+                ? Math.min(currentTick + 1, bill.voting_ends_tick)
+                : currentTick + 1;
 
             await supabase.from('bills').update({
                 early_resolution_status: earlyStatus,
@@ -3271,7 +3338,8 @@ async function checkEarlyMajority(supabase, nationId) {
                 voting_ends_tick: graceEndTick
             }).eq('id', bill.id);
 
-            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} (YES=${yesSeats}, NO=${noSeats}, required=${requiredSeats}). Resolves tick ${graceEndTick}`);
+            const resolveType = earlyStatus.startsWith('quorum') ? 'QUORUM' : 'MATH-LOCK';
+            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} [${resolveType}] (YES=${yesSeats}, NO=${noSeats}, quorum=${quorumSeats}, voted=${totalVoted}). Resolves tick ${graceEndTick}`);
             results.push({ billId: bill.id, billName: bill.bill_name, status: earlyStatus, yesSeats, noSeats });
         }
     }
@@ -3526,8 +3594,6 @@ async function resolveExpiredVotes(supabase, nationId) {
                 if (originalBill) {
                     await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
                     await enactBill(supabase, originalBill, currentTick);
-                    // Apply ideology shifts for the original bill (deferred from president_desk)
-                    await processIdeologyShifts(supabase, bill.nation_id, [{ billId: originalBill.id, result: 'passed' }], currentTick);
                 }
                 try {
                     await supabase.rpc('fire_system_event', {
@@ -3632,6 +3698,7 @@ async function resolveExpiredVotes(supabase, nationId) {
 
                     if (otherPassed) {
                         // Both parliaments ratified — activate the trade agreement
+                        // Extract duration info from draft articles
                         const articles = neg.draft_articles || [];
                         const durationArt = articles.find(a => a.type === 'duration');
                         const durData = durationArt?.data || {};
@@ -3640,9 +3707,11 @@ async function resolveExpiredVotes(supabase, nationId) {
                         const autoRenew = durData.auto_renew || false;
                         const withdrawalNotice = durData.withdrawal_notice_ticks || 3;
 
+                        // Ensure canonical nation order (nation_a_id < nation_b_id)
                         const nA = neg.nation_a_id < neg.nation_b_id ? neg.nation_a_id : neg.nation_b_id;
                         const nB = neg.nation_a_id < neg.nation_b_id ? neg.nation_b_id : neg.nation_a_id;
 
+                        // Insert into trade_agreements
                         await supabase.from('trade_agreements').insert({
                             nation_a_id: nA,
                             nation_b_id: nB,
@@ -3661,20 +3730,23 @@ async function resolveExpiredVotes(supabase, nationId) {
                             expires_at_tick: isPermanent ? null : (durationTicks ? currentTick + durationTicks : null)
                         });
 
+                        // Mark negotiation as concluded
                         await supabase.from('trade_negotiations')
                             .update({ status: 'concluded', concluded_at_tick: currentTick })
                             .eq('id', neg.id);
 
+                        // Update diplomatic relations
                         const { data: rel } = await supabase.from('diplomatic_relations')
                             .select('id, relation_score, active_treaties')
                             .eq('nation_a_id', nA).eq('nation_b_id', nB).maybeSingle();
                         if (rel) {
-                            const bonus = 5;
+                            const bonus = 5; // relation boost for ratified trade agreement
                             const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + bonus));
                             await supabase.from('diplomatic_relations')
                                 .update({ relation_score: newScore }).eq('id', rel.id);
                         }
                     }
+                    // If only one side ratified so far, just leave negotiation in 'ratification' status
                 }
 
                 try {
@@ -3688,6 +3760,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'trade_ratification', earlyResolution: bill.early_resolution_status || null });
             } else {
                 await failBill(supabase, bill);
+                // Mark negotiation as ratification_failed
                 await supabase.from('trade_negotiations')
                     .update({ status: 'ratification_failed' })
                     .eq('id', bill.trade_negotiation_id);
@@ -6763,9 +6836,6 @@ async function signPresidentialBill(supabase, billId, presidentFactionId) {
 
     await enactBill(supabase, bill, currentTick);
 
-    // Apply ideology shifts now that the bill is enacted (deferred from president_desk)
-    await processIdeologyShifts(supabase, bill.nation_id, [{ billId: bill.id, result: 'passed' }], currentTick);
-
     try {
         await supabase.rpc('fire_system_event', {
             p_trigger_key: 'bill_passed',
@@ -6862,9 +6932,6 @@ async function processPresidentDesk(supabase, nation, currentTick) {
         }).eq('id', bill.id);
 
         await enactBill(supabase, bill, currentTick);
-
-        // Apply ideology shifts now that the bill is enacted (deferred from president_desk)
-        await processIdeologyShifts(supabase, nation.id, [{ billId: bill.id, result: 'passed' }], currentTick);
 
         try {
             await supabase.rpc('fire_system_event', {
@@ -10441,7 +10508,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
 
         await supabase.from('ministries')
             .update({
-                minister_approval: Math.round(newApproval),
+                minister_approval: newApproval,
                 embattled_since_tick: embattledSinceTick
             })
             .eq('id', ministry.id);
@@ -10449,7 +10516,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
         results.push({
             ministry_key: ministry.ministry_key,
             old: oldApproval,
-            new: Math.round(newApproval),
+            new: newApproval,
             delta: Math.round(avgDelta * 10) / 10,
             embattled: embattledSinceTick !== null
         });
@@ -11023,7 +11090,7 @@ async function processCrises(supabase, nation, currentTick) {
 
                 if (pmMinistry) {
                     const currentVal = pmMinistry.minister_approval ?? 50;
-                    const newVal = Math.round(clampWithFloor(currentVal, currentVal + changePT));
+                    const newVal = clampWithFloor(currentVal, currentVal + changePT);
                     const { error: pmUpdErr } = await supabase.from('ministries')
                         .update({ minister_approval: newVal })
                         .eq('nation_id', nation.id)
@@ -11061,7 +11128,7 @@ async function processCrises(supabase, nation, currentTick) {
 
                 if (ministry) {
                     const currentVal = ministry.minister_approval ?? 50;
-                    const newVal = Math.round(clampWithFloor(currentVal, currentVal + changePT));
+                    const newVal = clampWithFloor(currentVal, currentVal + changePT);
                     const { error: minUpdErr } = await supabase.from('ministries')
                         .update({ minister_approval: newVal })
                         .eq('nation_id', nation.id)
@@ -11680,6 +11747,158 @@ async function markFactionActive(supabase, factionId, currentTick) {
     await supabase.from('factions')
         .update({ last_ap_spent_tick: currentTick })
         .eq('id', factionId);
+}
+
+/**
+ * Inactivity decay — penalises factions that haven't spent AP in a while.
+ * Called once per nation during tick processing.
+ *
+ * Timeline:
+ *   0 – GRACE ticks:   no penalty
+ *   GRACE – SEAT_LOSS: approval decays each tick
+ *   SEAT_LOSS – DISBAND: approval decays + seats erode each tick
+ *   > DISBAND:          auto-disband (removed from nation)
+ */
+async function processInactivityDecay(supabase, nationId, currentTick) {
+    const {
+        INACTIVITY_GRACE_TICKS,
+        INACTIVITY_APPROVAL_DECAY,
+        INACTIVITY_SEAT_LOSS_THRESHOLD,
+        INACTIVITY_SEAT_LOSS_PER_TICK,
+        INACTIVITY_DISBAND_THRESHOLD
+    } = GAME_CONFIG;
+
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, faction_name, nation_id, seats, approval_rating, last_ap_spent_tick, founded_tick, disband_cooldown_until_tick')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party')
+        .eq('is_npc', false);
+
+    if (!factions || factions.length === 0) return [];
+
+    // Load nation for ruling faction guard (ruling faction in autocracy cannot be auto-disbanded)
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('ruling_faction_id, government_type')
+        .eq('id', nationId)
+        .single();
+
+    const results = [];
+
+    for (const faction of factions) {
+        const lastActive = faction.last_ap_spent_tick ?? faction.founded_tick ?? 0;
+        const ticksInactive = currentTick - lastActive;
+
+        if (ticksInactive <= INACTIVITY_GRACE_TICKS) continue;
+
+        const entry = {
+            factionId: faction.id,
+            factionName: faction.faction_name,
+            ticksInactive,
+            approvalLost: 0,
+            seatsLost: 0,
+            disbanded: false
+        };
+
+        // Auto-disband check (skip ruling faction in autocracy)
+        if (ticksInactive > INACTIVITY_DISBAND_THRESHOLD) {
+            const isRulingFaction = isAutocracy(nation) && nation.ruling_faction_id === faction.id;
+            if (!isRulingFaction) {
+                // Remove from nation
+                const { error: disbandErr } = await supabase
+                    .from('factions')
+                    .update({
+                        nation_id: null,
+                        abandoned_at: new Date().toISOString(),
+                        disband_cooldown_until_tick: currentTick + 24
+                    })
+                    .eq('id', faction.id);
+
+                if (!disbandErr) {
+                    // Remove from coalition if applicable
+                    const { data: formations } = await supabase
+                        .from('government_formations')
+                        .select('id, lead_party_id, party_ids')
+                        .eq('nation_id', nationId)
+                        .in('status', ['formed', 'caretaker']);
+
+                    const myFormation = (formations || []).find(f =>
+                        (f.party_ids || []).includes(faction.id)
+                    );
+                    if (myFormation) {
+                        if (myFormation.lead_party_id === faction.id) {
+                            await dissolveCoalition(supabase, nationId);
+                        } else {
+                            const newPartyIds = (myFormation.party_ids || []).filter(id => id !== faction.id);
+                            await supabase.from('government_formations')
+                                .update({ party_ids: newPartyIds })
+                                .eq('id', myFormation.id);
+                            await supabase.from('ministries')
+                                .update({ party_id: null, minister_first_name: null, minister_last_name: null, minister_age: null })
+                                .eq('nation_id', nationId)
+                                .eq('party_id', faction.id)
+                                .eq('is_active', true);
+                        }
+                    }
+
+                    // Resign PM if this faction holds it
+                    const { data: hog } = await supabase
+                        .from('head_of_government')
+                        .select('id')
+                        .eq('nation_id', nationId)
+                        .eq('faction_id', faction.id)
+                        .eq('active', true)
+                        .maybeSingle();
+                    if (hog) {
+                        await resignPM(supabase, nationId, faction.id, currentTick);
+                    }
+
+                    // Audit log
+                    await supabase.from('campaign_actions').insert({
+                        party_id: faction.id,
+                        nation_id: nationId,
+                        action_type: 'auto_disbanded_inactivity',
+                        tick_performed: currentTick,
+                        result: { faction_name: faction.faction_name, ticks_inactive: ticksInactive }
+                    });
+
+                    entry.disbanded = true;
+                    console.log(`[inactivityDecay] Auto-disbanded "${faction.faction_name}" after ${ticksInactive} ticks inactive`);
+                }
+                results.push(entry);
+                continue;
+            }
+        }
+
+        // Approval decay
+        const currentApproval = faction.approval_rating ?? 0;
+        const newApproval = Math.max(0, currentApproval - INACTIVITY_APPROVAL_DECAY);
+        entry.approvalLost = currentApproval - newApproval;
+
+        // Seat loss (only past the seat loss threshold)
+        let seatsLost = 0;
+        if (ticksInactive > INACTIVITY_SEAT_LOSS_THRESHOLD) {
+            const currentSeats = faction.seats ?? 0;
+            seatsLost = Math.min(currentSeats, INACTIVITY_SEAT_LOSS_PER_TICK);
+            entry.seatsLost = seatsLost;
+        }
+
+        // Apply updates
+        const updates = { approval_rating: newApproval };
+        if (seatsLost > 0) updates.seats = (faction.seats ?? 0) - seatsLost;
+
+        await supabase.from('factions')
+            .update(updates)
+            .eq('id', faction.id);
+
+        if (entry.approvalLost > 0 || entry.seatsLost > 0) {
+            console.log(`[inactivityDecay] "${faction.faction_name}": ${ticksInactive} ticks idle → -${entry.approvalLost} approval, -${entry.seatsLost} seats`);
+            results.push(entry);
+        }
+    }
+
+    return results;
 }
 
 
@@ -13177,8 +13396,12 @@ async function advanceTick(supabase) {
         // Three-pillar voter preference recalculation (Layer 3: mood multiplier from govApproval)
         await calculateThreePillarPreferences(supabase, nation, newTick, govApproval);
 
+        // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
+        // (the original `shutdown` boolean was computed before bill resolution)
+        const shutdownNow = isGovernmentShutdown(nation, newTick);
+
         // Government shutdown penalties (coalition momentum/approval + PM/President approval)
-        if (shutdown) {
+        if (shutdownNow) {
             const shutdownResult = await processGovernmentShutdown(supabase, nation, newTick);
             if (shutdownResult) {
                 summary.governmentShutdowns = summary.governmentShutdowns || [];
@@ -13240,6 +13463,13 @@ async function advanceTick(supabase) {
         if (retirementResults.length > 0) {
             summary.ambassadorRetirements = summary.ambassadorRetirements || [];
             summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
+        }
+
+        // Inactivity decay (approval + seat erosion for idle factions, auto-disband)
+        const inactivityResults = await processInactivityDecay(supabase, nation.id, newTick);
+        if (inactivityResults.length > 0) {
+            summary.inactivityDecay = summary.inactivityDecay || [];
+            summary.inactivityDecay.push({ nation: nation.name, factions: inactivityResults });
         }
 
         // Final snapshot — capture everything that happened this tick

@@ -455,8 +455,13 @@ async function advanceTick(supabase) {
             const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
             _institutionConfig = icRows || [];
         }
+        const shutdown = isGovernmentShutdown(nation, newTick);
         let statInstMap = null;
-        if (nation.last_budget_bill_id && _institutionConfig.length > 0) {
+        if (shutdown && _institutionConfig.length > 0) {
+            // Government shutdown: force ALL institutions to 0% funding → Collapsed decay rates
+            statInstMap = buildShutdownStatInstMap(_institutionConfig);
+            console.log(`[GovernmentShutdown] Forcing Collapsed institution decay for ${nation.name}`);
+        } else if (nation.last_budget_bill_id && _institutionConfig.length > 0) {
             const { data: itemAllocs } = await supabase.from('budget_item_allocations')
                 .select('item_type, item_id, allocation_amount, needed_amount')
                 .eq('bill_id', nation.last_budget_bill_id)
@@ -560,6 +565,22 @@ async function advanceTick(supabase) {
         // Three-pillar voter preference recalculation (Layer 3: mood multiplier from govApproval)
         await calculateThreePillarPreferences(supabase, nation, newTick, govApproval);
 
+        // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
+        // (the original `shutdown` boolean was computed before bill resolution)
+        const shutdownNow = isGovernmentShutdown(nation, newTick);
+
+        // Government shutdown penalties (coalition momentum/approval + PM/President approval)
+        if (shutdownNow) {
+            const shutdownResult = await processGovernmentShutdown(supabase, nation, newTick);
+            if (shutdownResult) {
+                summary.governmentShutdowns = summary.governmentShutdowns || [];
+                summary.governmentShutdowns.push({ nation: nation.name, ...shutdownResult });
+            }
+        } else {
+            // If shutdown ended (budget passed), remove the active_crises row
+            await resolveGovernmentShutdown(supabase, nation, newTick);
+        }
+
         // Faction loyalty (autocracy)
         if (isAutocracy(nation)) {
             await processLoyaltyTick(supabase, nation);
@@ -611,6 +632,13 @@ async function advanceTick(supabase) {
         if (retirementResults.length > 0) {
             summary.ambassadorRetirements = summary.ambassadorRetirements || [];
             summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
+        }
+
+        // Inactivity decay (approval + seat erosion for idle factions, auto-disband)
+        const inactivityResults = await processInactivityDecay(supabase, nation.id, newTick);
+        if (inactivityResults.length > 0) {
+            summary.inactivityDecay = summary.inactivityDecay || [];
+            summary.inactivityDecay.push({ nation: nation.name, factions: inactivityResults });
         }
 
         // Final snapshot — capture everything that happened this tick

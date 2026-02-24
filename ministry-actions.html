@@ -753,7 +753,7 @@ function renderMinistryContent(key) {
         const appr = ministry.minister_approval ?? 50;
         const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
         h += '<span class="mdet-sep">|</span>';
-        h += `<span>Approval: <strong class="mdet-appr-${apprCls}">${appr}%</strong></span>`;
+        h += `<span>Approval: <strong class="mdet-appr-${apprCls}">${Math.round(appr)}%</strong></span>`;
     } else {
         h += '<span class="mdet-vacant-label">No minister appointed</span>';
     }

@@ -425,7 +425,7 @@ function renderBill() {
     // Early resolution banner — majority locked, resolves next tick
     if (isFloor && bill.early_resolution_status) {
         const earlyBanner = document.createElement('div');
-        const isMajReached = bill.early_resolution_status === 'majority_reached';
+        const isMajReached = bill.early_resolution_status === 'majority_reached' || bill.early_resolution_status === 'quorum_reached';
         earlyBanner.className = 'bill-early-resolution ' + (isMajReached ? 'majority-reached' : 'majority-opposed');
         // Tally current votes for display
         let earlyYes = 0, earlyNo = 0;
@@ -1436,7 +1436,11 @@ async function enactDecree() {
     if (!confirm('⚡ ENACT this decree?\n\nThis will send it directly to the floor for a vote.\n\nProceed?')) return;
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const { error } = await _supabase.from('bills').update({ status: 'floor', voting_ends_tick: (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS }).eq('id', billId);
+        const decreeFields = { status: 'floor' };
+        if (currentBill.bill_type !== 'budget') {
+            decreeFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
+        }
+        const { error } = await _supabase.from('bills').update(decreeFields).eq('id', billId);
         if (error) throw error;
 
         // Apply dynamic ideology penalty to sponsor (replaces static penalty)
@@ -1477,7 +1481,10 @@ async function sendToFloor() {
             updateFields.bill_name = trimmed;
         }
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        updateFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
+        // Budget bills persist indefinitely (no voting deadline)
+        if (currentBill.bill_type !== 'budget') {
+            updateFields.voting_ends_tick = (shard?.current_tick || 0) + GAME_CONFIG.VOTING_WINDOW_TICKS;
+        }
         const { error } = await _supabase.from('bills').update(updateFields).eq('id', billId);
         if (error) throw error;
 
@@ -1500,6 +1507,10 @@ async function sendToFloor() {
 }
 
 async function retractBill() {
+    if (currentBill.status !== 'committee') {
+        alert('This bill is on the floor and cannot be retracted.');
+        return;
+    }
     if (!confirm('Retract this? This cannot be undone.')) return;
     try {
         // Reverse ideology shift: -1 per ideology tag (mirrors +1 proposer bonus)
@@ -1539,6 +1550,10 @@ async function retractBill() {
 }
 
 async function retractBudgetBill() {
+    if (currentBill.status !== 'committee') {
+        alert('This budget bill is on the floor and cannot be retracted.');
+        return;
+    }
     if (!confirm('Retract this budget bill? This cannot be undone.')) return;
     try {
         await _supabase.from('budget_item_allocations').delete().eq('bill_id', billId);
@@ -2239,7 +2254,7 @@ function renderBudgetBillUI() {
     const isPMParty = isAutocracy ? isHeadFaction
         : isPresidential ? (presidentFactionId && currentFaction?.id === presidentFactionId)
         : (coalitionLeadPartyId && currentFaction?.id === coalitionLeadPartyId);
-    if (isPMParty && (currentBill.status === 'committee' || currentBill.status === 'floor')) {
+    if (isPMParty && currentBill.status === 'committee') {
         h += '<div class="budget-retract-section">';
         h += '<button class="budget-retract-btn" onclick="retractBudgetBill()">Retract Budget Bill</button>';
         h += '<div class="budget-retract-note">Only the head of government can retract a budget bill.</div>';
