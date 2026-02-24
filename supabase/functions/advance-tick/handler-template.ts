@@ -630,6 +630,13 @@ async function advanceTick(supabase) {
             summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
         }
 
+        // Inactivity decay (approval + seat erosion for idle factions, auto-disband)
+        const inactivityResults = await processInactivityDecay(supabase, nation.id, newTick);
+        if (inactivityResults.length > 0) {
+            summary.inactivityDecay = summary.inactivityDecay || [];
+            summary.inactivityDecay.push({ nation: nation.name, factions: inactivityResults });
+        }
+
         // Final snapshot — capture everything that happened this tick
         const { data: finalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         await snapshotNationHistory(supabase, finalNation || nation, newTick);
