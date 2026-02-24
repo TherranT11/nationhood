@@ -1364,6 +1364,149 @@ body.light-mode .partner-card {
     border-color: rgba(0,0,0,0.06);
 }
 
+/* ===== SECTOR FLOWS TABLE ===== */
+.trade-flow-table {
+    width: 100%;
+}
+
+.tft-header {
+    display: grid;
+    grid-template-columns: 1.8fr 1fr 1fr 1fr 0.7fr 0.6fr;
+    gap: 4px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.tft-header .tft-cell {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+}
+
+.tft-row {
+    display: grid;
+    grid-template-columns: 1.8fr 1fr 1fr 1fr 0.7fr 0.6fr;
+    gap: 4px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    align-items: center;
+}
+
+.tft-row:last-child {
+    border-bottom: none;
+}
+
+.tft-row.tft-total {
+    border-top: 1px solid rgba(255,255,255,0.08);
+    border-bottom: none;
+    margin-top: 2px;
+    padding-top: 8px;
+}
+
+.tft-row.tft-total .tft-cell {
+    font-weight: 700;
+}
+
+.tft-row.tft-total .tft-sector {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    color: #8a8778;
+    letter-spacing: 0.1em;
+}
+
+.tft-cell {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    min-width: 0;
+}
+
+.tft-cell.tft-sector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tft-sector-name {
+    font-size: 0.75rem;
+    color: #e2e0d6;
+    font-weight: 500;
+    font-family: inherit;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tft-export-only {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.5rem;
+    color: #4a493e;
+    background: rgba(255,255,255,0.04);
+    padding: 1px 5px;
+    border-radius: 2px;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.tft-cell.tft-num {
+    text-align: right;
+    font-weight: 600;
+}
+
+.tft-cell.tft-trend {
+    text-align: right;
+}
+
+/* ===== TRADING PARTNERS GRID ===== */
+.trade-partners-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 10px;
+}
+
+.trade-partners-grid .partner-card {
+    margin: 0;
+}
+
+@media (max-width: 768px) {
+    .tft-header,
+    .tft-row {
+        grid-template-columns: 1.5fr 1fr 1fr 1fr;
+    }
+
+    /* Hide price mod and trend on mobile */
+    .tft-header .tft-cell:nth-child(5),
+    .tft-header .tft-cell:nth-child(6),
+    .tft-row .tft-cell:nth-child(5),
+    .tft-row .tft-cell:nth-child(6) {
+        display: none;
+    }
+
+    .tft-export-only {
+        display: none;
+    }
+
+    .trade-partners-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .tft-header,
+    .tft-row {
+        grid-template-columns: 1fr 1fr 1fr;
+    }
+
+    /* Also hide imports on very small screens */
+    .tft-header .tft-cell:nth-child(3),
+    .tft-row .tft-cell:nth-child(3) {
+        display: none;
+    }
+}
+
 /* ===== TREND ARROWS (overview cards) ===== */
 .trend-up { color: var(--green, #4CAF50); }
 .trend-down { color: var(--red, #ff4444); }
