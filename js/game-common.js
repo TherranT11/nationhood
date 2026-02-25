@@ -11131,6 +11131,7 @@ export async function processCrises(supabase, nation, currentTick) {
     // 3. Check inactive crises for activation
     for (const template of crisisTemplates) {
         if (activeMap[template.id]) continue; // already active
+        if (template.id === GOVERNMENT_SHUTDOWN_CRISIS_ID) continue; // managed by dedicated shutdown code
 
         const triggers = template.crisis_triggers || [];
         if (triggers.length === 0) continue;
