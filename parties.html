@@ -263,7 +263,6 @@ async function renderParties() {
             </div>`;
     }
 
-    const nextElectionDate = nextElection ? tickToDate(nextElection.election_tick) : '—';
 
     // === Approval by Voter Bloc (compute data) ===
     const blocLookup = {};
@@ -778,7 +777,7 @@ async function renderParties() {
             <div class="vote-bars">
                 ${voteBarsHtml}
             </div>
-            <div class="vote-share-footer">Next election: ${nextElectionDate}</div>
+
         </div>
 
         <div class="momentum-panel">

@@ -26,7 +26,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatCurrency } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import { calculateNationalBudget, applyTradeTariffOverride, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS } from './js/game-common.js';
+import { calculateNationalBudget, applyTradeTariffOverride, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TAX_CONFIG, isPresidentialRepublic, isAutocracy, ISSUE_CATEGORY_STATS, formatStatName, deductAP } from './js/game-common.js';
 
 // ==================== STATE ====================
 var previousTickData = null;
@@ -41,6 +41,16 @@ var gameYear = 0;
 var activeTab = 'overview';
 var activeSector = 'fuel_energy';
 var tradeAgreements = null;
+
+// ==================== TAXATION TAB STATE ====================
+var currentFaction = null;
+var taxConnections = [];
+var taxVoterBlocs = [];
+var taxAdminFunding = { allocated: 0, needed: 0, fundingPct: 0 };
+var taxRateChanges = {};  // { income_tax: 22, ... } — only keys that changed
+var originalRates = {};   // { income_tax: 18, corporate_tax: 24, sales_tax: 10 }
+var taxPendingBills = [];
+var taxHistory = [];
 
 // ==================== INIT ====================
 initPage('economy', async function(state) {
@@ -57,13 +67,19 @@ initPage('economy', async function(state) {
     }
 
     currentNation = nation;
+    currentFaction = state.faction;
     await loadPreviousTickData(nation.id);
     await Promise.all([
         loadPreviousYearData(nation.id),
         loadExpenditureData(nation.id, nation),
         loadTradeData(nation.id),
         loadAllNationsData(),
-        loadTradeAgreements(nation.id)
+        loadTradeAgreements(nation.id),
+        loadTaxConnections(),
+        loadTaxVoterBlocs(nation.id),
+        loadTaxAdminFunding(nation),
+        loadTaxPendingBills(nation.id),
+        loadTaxHistory(nation.id)
     ]);
     renderEconomyPage(nation);
 });
@@ -382,6 +398,7 @@ function renderTabBar() {
     var tabs = [
         { key: 'overview', label: 'Overview' },
         { key: 'budget', label: 'Budget' },
+        { key: 'taxation', label: 'Taxation' },
         { key: 'trade', label: 'Trade' },
         { key: 'sectors', label: 'Sectors' },
         { key: 'tariffs', label: 'Tariffs' }
@@ -399,6 +416,7 @@ function renderTabContent(nation) {
     switch (activeTab) {
         case 'overview': return renderOverviewTab(nation);
         case 'budget': return renderBudgetTab(nation);
+        case 'taxation': return renderTaxationTab(nation);
         case 'trade': return renderTradeTab(nation);
         case 'sectors': return renderSectorsTab(nation);
         case 'tariffs': return renderTariffsTab(nation);
@@ -431,6 +449,161 @@ function wireTabEvents(nation) {
                 selectMinistryCategory(line.getAttribute('data-category'));
             });
         });
+    }
+    if (activeTab === 'taxation') {
+        wireTaxSliders(nation);
+    }
+}
+
+function wireTaxSliders(nation) {
+    document.querySelectorAll('.tax-rate-slider').forEach(function(slider) {
+        slider.addEventListener('input', function() {
+            var key = slider.getAttribute('data-tax-key');
+            var newRate = parseInt(slider.value, 10);
+            var origRate = originalRates[key];
+
+            // Update rate change tracking
+            if (newRate === origRate) {
+                delete taxRateChanges[key];
+            } else {
+                taxRateChanges[key] = newRate;
+            }
+
+            // Re-render the full tab to keep everything in sync
+            var contentEl = document.getElementById('econ-tab-content');
+            if (contentEl) {
+                contentEl.innerHTML = renderTaxationTab(nation);
+                wireTaxSliders(nation);
+            }
+        });
+    });
+    document.querySelectorAll('.tax-reset-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var key = btn.getAttribute('data-tax-key');
+            delete taxRateChanges[key];
+            var contentEl = document.getElementById('econ-tab-content');
+            if (contentEl) {
+                contentEl.innerHTML = renderTaxationTab(nation);
+                wireTaxSliders(nation);
+            }
+        });
+    });
+    var submitBtn = document.getElementById('tax-submit-btn');
+    if (submitBtn && !submitBtn.disabled) {
+        submitBtn.addEventListener('click', function() { submitTaxBill(nation); });
+    }
+}
+
+async function submitTaxBill(nation) {
+    var changedKeys = Object.keys(taxRateChanges).filter(function(k) { return taxRateChanges[k] !== originalRates[k]; });
+    if (changedKeys.length === 0) return;
+
+    var apCost = GAME_CONFIG.DRAFT_BILL_AP_COST || 2;
+    var isAutocracyGov = isAutocracy(nation);
+    var termBill = isAutocracyGov ? 'decree' : 'bill';
+
+    // Build confirmation summary
+    var gdp = Number(nation.gdp || 0);
+    var eff = Number(nation.efficiency || 50);
+    var corr = Number(nation.corruption || 50);
+    var collectionRate = (eff + (100 - corr)) / 200;
+    var summaryLines = [];
+    for (var i = 0; i < changedKeys.length; i++) {
+        var key = changedKeys[i];
+        var cfg = TAX_CONFIG.find(function(t) { return t.key === key; });
+        if (!cfg) continue;
+        var oldRate = originalRates[key];
+        var newRate = taxRateChanges[key];
+        var direction = newRate > oldRate ? 'increase' : 'decrease';
+        var delta = gdp * ((newRate - oldRate) / 100) * cfg.gdpMultiplier * collectionRate;
+        var rateDiff = newRate - oldRate;
+        var approvalImpact = rateDiff > 0 ? rateDiff * -2 : Math.abs(rateDiff) * 1;
+        summaryLines.push(
+            cfg.name + ': ' + oldRate + '% → ' + newRate + '% (' + direction + ')\n' +
+            '  Revenue: ' + (delta >= 0 ? '+' : '') + formatBudgetCurrency(delta) + '/yr\n' +
+            '  Approval impact: ' + (approvalImpact >= 0 ? '+' : '') + approvalImpact + '%'
+        );
+    }
+    var confirmMsg = 'Submit Tax Reform ' + (isAutocracyGov ? 'Decree' : 'Bill') + '?\n\n' +
+        summaryLines.join('\n\n') + '\n\nCost: ' + apCost + ' AP';
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        // Deduct AP
+        var apResult = await deductAP(_supabase, currentFaction.id, apCost);
+        currentFaction.action_points = apResult.newAp;
+
+        // Get current tick
+        var { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        var tick = shard ? shard.current_tick : 0;
+
+        // Generate bill name
+        var billName = changedKeys.length === 1
+            ? TAX_CONFIG.find(function(t) { return t.key === changedKeys[0]; }).name + ' Reform Act'
+            : 'Tax Reform Act';
+
+        // Build preamble
+        var preamble = 'This ' + termBill + ', put forth by the ' + currentFaction.faction_name +
+            ', proposes changes to the tax rates of ' + escapeHtml(nation.name) + '.';
+
+        // Insert bill
+        var { data: bill, error: billError } = await _supabase.from('bills').insert({
+            nation_id: nation.id,
+            proposed_by: currentFaction.id,
+            proposed_tick: tick,
+            bill_name: billName,
+            status: 'committee',
+            preamble: preamble
+        }).select().single();
+        if (billError) throw billError;
+
+        // Insert text articles for each tax change
+        var articles = [];
+        for (var j = 0; j < changedKeys.length; j++) {
+            var artKey = changedKeys[j];
+            var artCfg = TAX_CONFIG.find(function(t) { return t.key === artKey; });
+            if (!artCfg) continue;
+            var artOld = originalRates[artKey];
+            var artNew = taxRateChanges[artKey];
+            var artDelta = gdp * ((artNew - artOld) / 100) * artCfg.gdpMultiplier * collectionRate;
+            var artRateDiff = artNew - artOld;
+            var artApproval = artRateDiff > 0 ? artRateDiff * -2 : Math.abs(artRateDiff) * 1;
+
+            articles.push({
+                bill_id: bill.id,
+                policy_id: null,
+                article_number: j + 1,
+                added_by: currentFaction.id,
+                article_title: artCfg.name + ' Rate Change',
+                article_text: 'Proposing to change ' + artCfg.name + ' from ' + artOld +
+                    '% to ' + artNew + '%. This would ' + (artDelta >= 0 ? 'generate' : 'cost') +
+                    ' ' + formatBudgetCurrency(Math.abs(artDelta)) + ' per year in revenue.\n\n' +
+                    'Estimated approval impact: ' + (artApproval >= 0 ? '+' : '') + artApproval + '%'
+            });
+        }
+        if (articles.length > 0) {
+            await _supabase.from('bill_articles').insert(articles);
+        }
+
+        // Auto-add sponsor support
+        var mySeats = currentFaction.seats || 0;
+        await _supabase.from('bill_support').insert({
+            bill_id: bill.id, faction_id: currentFaction.id,
+            stance: 'accept', seat_count: mySeats
+        });
+
+        // Trigger NPC committee votes for democracies
+        if (!isAutocracyGov) {
+            await _supabase.rpc('process_npc_committee_votes', { p_nation_id: nation.id });
+        }
+
+        // Reset state and navigate to the bill
+        taxRateChanges = {};
+        originalRates = {};
+        window.location.href = 'bill.html?id=' + bill.id;
+    } catch (e) {
+        console.error('Error submitting tax bill:', e);
+        alert('Error submitting tax ' + termBill + ': ' + (e.message || e));
     }
 }
 
@@ -640,6 +813,415 @@ function getSectorScore(nation, sector) {
         return sum / sector.export_stats.length;
     }
     return 0;
+}
+
+// ==================== TAXATION TAB ====================
+
+async function loadTaxConnections() {
+    var cacheKey = 'tax_connections';
+    var cached = qCache(cacheKey);
+    if (cached) { taxConnections = cached; return; }
+    var { data } = await _supabase.from('stat_connections')
+        .select('source_stat, source_dir, threshold, target_stat, target_dir, magnitude, dampening')
+        .eq('enabled', true)
+        .in('source_stat', ['income_tax', 'corporate_tax', 'sales_tax']);
+    taxConnections = data || [];
+    qCacheSet(cacheKey, taxConnections, 5 * 60 * 1000);
+}
+
+async function loadTaxVoterBlocs(nationId) {
+    var cacheKey = 'tax_voter_blocs_' + nationId;
+    var cached = qCache(cacheKey);
+    if (cached) { taxVoterBlocs = cached; return; }
+    var { data } = await _supabase.from('voter_blocs')
+        .select('bloc_name, priority_issues')
+        .eq('nation_id', nationId);
+    taxVoterBlocs = data || [];
+    qCacheSet(cacheKey, taxVoterBlocs, 5 * 60 * 1000);
+}
+
+async function loadTaxAdminFunding(nation) {
+    var cacheKey = 'tax_admin_funding_' + nation.id;
+    var cached = qCache(cacheKey);
+    if (cached) { taxAdminFunding = cached; return; }
+
+    var allocated = 0;
+    var needed = 0;
+
+    if (nation.last_budget_bill_id) {
+        // Check budget allocations for Tax Administration institution
+        var { data: items } = await _supabase.from('budget_item_allocations')
+            .select('allocation_amount, needed_amount')
+            .eq('bill_id', nation.last_budget_bill_id)
+            .eq('item_type', 'institution')
+            .ilike('item_name', '%Tax Administration%');
+        if (items && items.length > 0) {
+            allocated = Number(items[0].allocation_amount || 0);
+            needed = Number(items[0].needed_amount || 0);
+        }
+    }
+
+    // Fallback: compute needed from ministry_institution_config
+    if (needed === 0) {
+        var { data: cfg } = await _supabase.from('ministry_institution_config')
+            .select('base_cost_per_capita, scaling_type')
+            .eq('id', 'tax_admin')
+            .single();
+        if (cfg) {
+            var population = Number(nation.population || 0);
+            var gdp = Number(nation.gdp || 0);
+            needed = cfg.scaling_type === 'gdp'
+                ? (Number(cfg.base_cost_per_capita) / 100) * gdp
+                : Number(cfg.base_cost_per_capita) * population;
+        }
+    }
+
+    var fundingPct = needed > 0 ? Math.round((allocated / needed) * 100) : 0;
+    taxAdminFunding = { allocated: allocated, needed: needed, fundingPct: fundingPct };
+    qCacheSet(cacheKey, taxAdminFunding, 5 * 60 * 1000);
+}
+
+async function loadTaxPendingBills(nationId) {
+    var cacheKey = 'tax_pending_bills_' + nationId;
+    var cached = qCache(cacheKey);
+    if (cached) { taxPendingBills = cached; return; }
+    var { data } = await _supabase.from('bills')
+        .select('id, bill_name, status, proposed_by, bill_articles(article_title, article_text)')
+        .eq('nation_id', nationId)
+        .in('status', ['committee', 'floor'])
+        .ilike('bill_name', '%Tax%');
+    taxPendingBills = data || [];
+    qCacheSet(cacheKey, taxPendingBills, 2 * 60 * 1000);
+}
+
+async function loadTaxHistory(nationId) {
+    var cacheKey = 'tax_history_' + nationId;
+    var cached = qCache(cacheKey);
+    if (cached) { taxHistory = cached; return; }
+    var { data } = await _supabase.from('nations_history')
+        .select('tick, income_tax, corporate_tax, sales_tax, gdp, efficiency, corruption')
+        .eq('nation_id', nationId)
+        .order('tick', { ascending: false })
+        .limit(12);
+    taxHistory = (data || []).reverse(); // oldest first
+    qCacheSet(cacheKey, taxHistory, 5 * 60 * 1000);
+}
+
+function computeSparklineRevenues(taxKey, gdpMultiplier) {
+    var revenues = [];
+    for (var i = 0; i < taxHistory.length; i++) {
+        var snap = taxHistory[i];
+        var rate = Number(snap[taxKey] || 0);
+        var gdp = Number(snap.gdp || 0);
+        var eff = Number(snap.efficiency || 50);
+        var corr = Number(snap.corruption || 50);
+        var cr = (eff + (100 - corr)) / 200;
+        revenues.push(gdp * (rate / 100) * gdpMultiplier * cr);
+    }
+    return revenues;
+}
+
+function getTaxEffects(taxKey) {
+    return taxConnections.filter(function(c) { return c.source_stat === taxKey; });
+}
+
+function getTaxHits(taxKey) {
+    var effects = getTaxEffects(taxKey);
+    if (effects.length === 0) return [];
+    var targetStats = new Set(effects.map(function(e) { return e.target_stat; }));
+    var matchedCategories = new Set();
+    for (var cat in ISSUE_CATEGORY_STATS) {
+        var stats = ISSUE_CATEGORY_STATS[cat];
+        for (var i = 0; i < stats.length; i++) {
+            if (targetStats.has(stats[i])) { matchedCategories.add(cat); break; }
+        }
+    }
+    var hitBlocs = [];
+    for (var j = 0; j < taxVoterBlocs.length; j++) {
+        var bloc = taxVoterBlocs[j];
+        var issues = bloc.priority_issues || [];
+        for (var k = 0; k < issues.length; k++) {
+            if (matchedCategories.has(issues[k])) { hitBlocs.push(bloc.bloc_name); break; }
+        }
+    }
+    return hitBlocs;
+}
+
+function getSliderColorClass(rate, maxRate) {
+    var pct = rate / maxRate;
+    if (pct <= 0.25) return 'low';
+    if (pct <= 0.50) return 'mid';
+    if (pct <= 0.75) return 'high';
+    return 'extreme';
+}
+
+function renderTaxationTab(nation) {
+    var budget = calculateNationalBudget(nation);
+    if (tradeData && tradeData.summary && Number(tradeData.summary.tariff_revenue) > 0) {
+        applyTradeTariffOverride(budget, tradeData.summary.tariff_revenue);
+    }
+
+    var incomeTax = Math.round(Number(nation.income_tax || 0));
+    var corpTax = Math.round(Number(nation.corporate_tax || 0));
+    var salesTax = Math.round(Number(nation.sales_tax || 0));
+
+    // Store original rates on first render (don't overwrite if already set)
+    if (!originalRates.income_tax && !originalRates.corporate_tax && !originalRates.sales_tax) {
+        originalRates = { income_tax: incomeTax, corporate_tax: corpTax, sales_tax: salesTax };
+    }
+
+    var avgRate = (incomeTax + corpTax + salesTax) / 3;
+    var totalTaxRevenue = budget.incomeRevenue + budget.corpRevenue + budget.salesRevenue;
+
+    var h = '<div class="econ-tab-body">';
+
+    // ── FISCAL SUMMARY BAR ──
+    h += '<div class="tax-summary-bar">';
+    h += '<div class="tax-summary-stat">';
+    h += '<span class="tax-summary-label">Tax Revenue</span>';
+    h += '<span class="tax-summary-value green">' + formatBudgetCurrency(totalTaxRevenue) + '/year</span>';
+    h += '<span class="tax-summary-detail">' + (budget.grossRevenue > 0 ? Math.round(totalTaxRevenue / budget.grossRevenue * 100) : 0) + '% of total income</span>';
+    h += '</div>';
+
+    var taxBurden = Math.round(avgRate * 1.28);
+    var burdenLabel = taxBurden < 30 ? 'Low (0–30)' : taxBurden < 50 ? 'Moderate-Low (30–50)' : taxBurden < 70 ? 'Moderate (50–70)' : taxBurden < 85 ? 'High (70–85)' : 'Very High (85+)';
+    var burdenClass = taxBurden < 50 ? 'green' : taxBurden < 70 ? 'yellow' : 'red';
+    h += '<div class="tax-summary-stat">';
+    h += '<span class="tax-summary-label">Tax Burden</span>';
+    h += '<span class="tax-summary-value ' + burdenClass + '">' + taxBurden + '</span>';
+    h += '<span class="tax-summary-detail">' + burdenLabel + '</span>';
+    h += '</div>';
+
+    // Compliance: base from efficiency/corruption, modified by Tax Admin funding
+    var efficiency = Number(nation.efficiency || 50);
+    var corruption = Number(nation.corruption || 50);
+    var baseCompliance = (efficiency + (100 - corruption)) / 2;
+    var fundingBonus = taxAdminFunding.fundingPct >= 100 ? 5 :
+                       taxAdminFunding.fundingPct >= 75 ? 0 :
+                       taxAdminFunding.fundingPct >= 50 ? -5 :
+                       taxAdminFunding.fundingPct >= 25 ? -10 : -20;
+    var compliance = Math.max(0, Math.min(100, Math.round(baseCompliance + fundingBonus)));
+    var complianceDetail = '';
+    if (taxAdminFunding.fundingPct < 50) {
+        complianceDetail = '&darr; Tax Admin underfunded (' + taxAdminFunding.fundingPct + '%)';
+    } else if (corruption > 30) {
+        complianceDetail = '&darr; ' + Math.round(corruption / 10) + '% from corruption';
+    } else {
+        complianceDetail = 'Healthy collection';
+    }
+    h += '<div class="tax-summary-stat">';
+    h += '<span class="tax-summary-label">Compliance</span>';
+    h += '<span class="tax-summary-value">' + compliance + '%</span>';
+    h += '<span class="tax-summary-detail">' + complianceDetail + '</span>';
+    h += '</div>';
+
+    h += '<div class="tax-summary-stat">';
+    h += '<span class="tax-summary-label">Avg Effective Rate</span>';
+    h += '<span class="tax-summary-value">' + avgRate.toFixed(1) + '%</span>';
+    h += '<span class="tax-summary-detail">Across all taxes</span>';
+    h += '</div>';
+
+    var pendingCount = taxPendingBills.length;
+    h += '<div class="tax-summary-stat">';
+    h += '<span class="tax-summary-label">Pending Changes</span>';
+    if (pendingCount > 0) {
+        h += '<span class="tax-summary-value yellow">' + pendingCount + '</span>';
+        h += '<span class="tax-summary-detail">In legislature</span>';
+    } else {
+        h += '<span class="tax-summary-value" style="color:var(--text-dim);">0</span>';
+        h += '<span class="tax-summary-detail">None pending</span>';
+    }
+    h += '</div>';
+
+    // Submit button — greyed out unless ≥1 seat AND ≥1 rate changed
+    var changedKeys = Object.keys(taxRateChanges).filter(function(k) { return taxRateChanges[k] !== originalRates[k]; });
+    var hasChanges = changedKeys.length > 0;
+    var mySeats = currentFaction ? (currentFaction.seats || 0) : 0;
+    var canSubmit = mySeats >= 1 && hasChanges;
+    var apCost = GAME_CONFIG.DRAFT_BILL_AP_COST || 2;
+    var hasAp = currentFaction ? (currentFaction.action_points || 0) >= apCost : false;
+    var btnDisabled = !(canSubmit && hasAp);
+    var termBill = isAutocracy(nation) ? 'Decree' : 'Bill';
+    var btnTitle = !mySeats ? 'Your party holds no legislature seats' : !hasChanges ? 'Adjust at least one tax rate' : !hasAp ? 'Not enough AP (' + apCost + ' required)' : 'Submit tax reform ' + termBill.toLowerCase();
+
+    h += '<div class="tax-summary-spacer"></div>';
+    h += '<button class="tax-submit-btn" id="tax-submit-btn" ' + (btnDisabled ? 'disabled' : '') + ' title="' + escapeHtml(btnTitle) + '">';
+    h += 'Submit Tax ' + termBill + ' &mdash; ' + apCost + ' AP';
+    h += '</button>';
+
+    h += '</div>'; // .tax-summary-bar
+
+    // ── PRESIDENTIAL INFO CALLOUT ──
+    if (isPresidentialRepublic(nation)) {
+        h += '<div class="tax-info-callout">';
+        h += '<span class="tax-info-callout-icon">&#8505;</span>';
+        h += '<span class="tax-info-callout-text">Rate changes of <strong>&pm;3% or less</strong> can be made by executive order. Larger changes require a <strong>bill</strong> through the legislature. Effects scale with rate.</span>';
+        h += '</div>';
+    }
+
+    // ── TAX CARDS ──
+    h += '<div class="tax-list">';
+    for (var i = 0; i < TAX_CONFIG.length; i++) {
+        h += renderTaxCard(TAX_CONFIG[i], nation, budget);
+    }
+    h += '</div>';
+
+    h += '</div>'; // .econ-tab-body
+    return h;
+}
+
+function renderTaxCard(config, nation, budget) {
+    var origRate = originalRates[config.key] || Math.round(Number(nation[config.key] || 0));
+    var currentRate = (taxRateChanges[config.key] !== undefined) ? taxRateChanges[config.key] : origRate;
+    var isChanged = currentRate !== origRate;
+    var revenue = budget[config.revenueKey] || 0;
+    var effects = getTaxEffects(config.key);
+    var hits = getTaxHits(config.key);
+
+    // Revenue projection
+    var gdp = Number(nation.gdp || 0);
+    var eff = Number(nation.efficiency || 50);
+    var corr = Number(nation.corruption || 50);
+    var collectionRate = (eff + (100 - corr)) / 200;
+    var projectedRevenue = gdp * (currentRate / 100) * config.gdpMultiplier * collectionRate;
+    var revenueDelta = projectedRevenue - revenue;
+
+    var fillPct = config.maxRate > 0 ? Math.round((currentRate / config.maxRate) * 100) : 0;
+    var colorClass = getSliderColorClass(currentRate, config.maxRate);
+
+    var h = '<div class="tax-card' + (isChanged ? ' tax-card-changed' : '') + '">';
+
+    // ── TOP ROW ──
+    h += '<div class="tax-top">';
+    h += '<span class="tax-name">' + escapeHtml(config.name) + '</span>';
+    h += '<span class="tax-category-pill ' + config.categoryClass + '">' + escapeHtml(config.category) + '</span>';
+    h += '<div class="tax-spacer"></div>';
+
+    // Sparkline
+    var sparkRevenues = computeSparklineRevenues(config.key, config.gdpMultiplier);
+    if (sparkRevenues.length > 0) {
+        var sparkMax = Math.max.apply(null, sparkRevenues) || 1;
+        h += '<div class="tax-sparkline-container">';
+        h += '<span class="tax-sparkline-label">' + sparkRevenues.length + ' ticks</span>';
+        h += '<div class="tax-sparkline">';
+        for (var s = 0; s < sparkRevenues.length; s++) {
+            var barH = Math.max(2, Math.round((sparkRevenues[s] / sparkMax) * 20));
+            var barCls = (s === sparkRevenues.length - 1) ? ' current' : '';
+            h += '<div class="tax-spark-bar' + barCls + '" style="height:' + barH + 'px"></div>';
+        }
+        h += '</div>';
+        h += '</div>';
+    }
+
+    h += '<div class="tax-revenue-block">';
+    h += '<span class="tax-revenue-label">Revenue</span>';
+    if (isChanged) {
+        h += '<span class="tax-revenue-value">' + formatBudgetCurrency(projectedRevenue) + '/yr</span>';
+        var deltaClass = revenueDelta >= 0 ? 'tax-delta-positive' : 'tax-delta-negative';
+        var deltaSign = revenueDelta >= 0 ? '+' : '';
+        h += '<span class="tax-revenue-delta ' + deltaClass + '">' + deltaSign + formatBudgetCurrency(revenueDelta) + '/yr</span>';
+    } else {
+        h += '<span class="tax-revenue-value">' + formatBudgetCurrency(revenue) + '/yr</span>';
+    }
+    h += '</div>';
+    h += '</div>';
+
+    // ── SLIDER ROW ──
+    h += '<div class="tax-slider-row">';
+    h += '<div class="tax-rate-display" id="tax-rate-val-' + config.key + '">' + currentRate + '<span class="tax-pct">%</span></div>';
+    h += '<div class="tax-slider-container">';
+    h += '<div class="tax-slider-visual">';
+    h += '<div class="tax-slider-track">';
+    h += '<div class="tax-slider-fill ' + colorClass + '" id="tax-fill-' + config.key + '" style="width:' + fillPct + '%"></div>';
+    h += '</div>';
+    h += '<input type="range" class="tax-rate-slider" data-tax-key="' + config.key + '" min="0" max="' + config.maxRate + '" step="1" value="' + currentRate + '">';
+    h += '</div>';
+    h += '<div class="tax-slider-labels">';
+    h += '<span class="tax-slider-min">0%</span>';
+    h += '<span class="tax-slider-max">' + config.maxRate + '%</span>';
+    h += '</div>';
+    h += '</div>';
+    if (isChanged) {
+        h += '<button class="tax-reset-btn" data-tax-key="' + config.key + '">Reset</button>';
+    }
+    h += '</div>';
+
+    // ── APPROVAL IMPACT PREVIEW ──
+    if (isChanged) {
+        var rateDiff = currentRate - origRate;
+        var approvalImpact = rateDiff > 0 ? rateDiff * -2 : Math.abs(rateDiff) * 1;
+        var impactLabel = approvalImpact >= 0 ? 'APPROVAL RATE INCREASE' : 'APPROVAL RATE DECREASE';
+        var impactClass = approvalImpact >= 0 ? 'tax-approval-increase' : 'tax-approval-decrease';
+        var impactSign = approvalImpact >= 0 ? '+' : '';
+        var impactExplain = rateDiff > 0
+            ? Math.abs(rateDiff) + '% increase &times; -2 per point'
+            : Math.abs(rateDiff) + '% decrease &times; +1 per point';
+        var scopeNote = isPresidentialRepublic(nation) ? 'President&rsquo;s party + proposing party' : 'Coalition parties + proposing party';
+        h += '<div class="tax-approval-impact ' + impactClass + '">';
+        h += '<span class="tax-approval-badge">' + impactLabel + '</span> ';
+        h += '<span class="tax-approval-value">' + impactSign + approvalImpact + '%</span>';
+        h += '<span class="tax-approval-explain">(' + impactExplain + ')</span>';
+        h += '<span class="tax-approval-scope">' + scopeNote + '</span>';
+        h += '</div>';
+    }
+
+    // ── EFFECTS + HITS FOOTER ──
+    h += '<div class="tax-bottom">';
+
+    if (effects.length > 0) {
+        h += '<div class="tax-effects-grid">';
+        for (var i = 0; i < effects.length; i++) {
+            var eff = effects[i];
+            var arrowCls = eff.target_dir === 'up' ? 'up' : 'down';
+            var arrowChar = eff.target_dir === 'up' ? '&#9650;' : '&#9660;';
+            h += '<div class="tax-effect-item">';
+            h += '<span class="tax-effect-arrow ' + arrowCls + '">' + arrowChar + '</span>';
+            h += '<span class="tax-effect-stat">' + escapeHtml(formatStatName(eff.target_stat)) + '</span>';
+            h += '</div>';
+        }
+        h += '</div>';
+    } else {
+        h += '<div class="tax-effects-empty">No stat effects configured</div>';
+    }
+
+    if (hits.length > 0) {
+        h += '<div class="tax-hits-row">';
+        h += '<span class="tax-hits-label">Hits:</span>';
+        h += '<div class="tax-hits-tags">';
+        for (var j = 0; j < hits.length; j++) {
+            h += '<span class="tax-hit-tag">' + escapeHtml(hits[j]) + '</span>';
+        }
+        h += '</div>';
+        h += '</div>';
+    }
+
+    h += '</div>'; // .tax-bottom
+
+    // ── PENDING BILL BANNER ──
+    var taxName = config.name.toLowerCase();
+    for (var p = 0; p < taxPendingBills.length; p++) {
+        var pb = taxPendingBills[p];
+        var billArticles = pb.bill_articles || [];
+        var matchesTax = (pb.bill_name || '').toLowerCase().indexOf(taxName) >= 0;
+        if (!matchesTax) {
+            for (var pa = 0; pa < billArticles.length; pa++) {
+                if ((billArticles[pa].article_title || '').toLowerCase().indexOf(taxName) >= 0) {
+                    matchesTax = true; break;
+                }
+            }
+        }
+        if (matchesTax) {
+            var statusLabel = pb.status === 'floor' ? 'Floor Vote' : 'Committee';
+            h += '<a href="bill.html?id=' + pb.id + '" class="tax-proposed-change">';
+            h += '<span class="tax-proposed-icon">&#128203;</span>';
+            h += '<span class="tax-proposed-text">Pending: <strong>' + escapeHtml(pb.bill_name) + '</strong></span>';
+            h += '<span class="tax-proposed-status">' + statusLabel + '</span>';
+            h += '</a>';
+        }
+    }
+
+    h += '</div>'; // .tax-card
+    return h;
 }
 
 // ==================== BUDGET TAB ====================
