@@ -2048,6 +2048,26 @@ export async function processGovernmentShutdown(supabase, nation, currentTick) {
         console.warn(`[GovernmentShutdown] fire_system_event failed (template may not exist):`, e.message);
     }
 
+    // --- 5. Direct stat damage (matches crisis_effects display on nation.html) ---
+    // The crisis_effects DB rows (civil_unrest +2.7, corruption +1.7) are display-only
+    // because the Government Shutdown template has is_active=false (processCrises skips it).
+    // Apply the same deltas here so the actual stat changes match what the UI shows.
+    const shutdownStatEffects = [
+        { stat: 'civil_unrest', delta: 2.7 },
+        { stat: 'corruption',   delta: 1.7 },
+    ];
+    const nationUpdates = {};
+    for (const { stat, delta } of shutdownStatEffects) {
+        const current = Number(nation[stat] ?? 50);
+        const newVal = Math.round(Math.max(0, Math.min(100, current + delta)) * 10) / 10;
+        nationUpdates[stat] = newVal;
+        nation[stat] = newVal;
+    }
+    if (Object.keys(nationUpdates).length > 0) {
+        await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+        console.log(`[GovernmentShutdown] Applied stat effects for ${nation.name}:`, nationUpdates);
+    }
+
     return {
         active: true,
         ticksSinceLastBudget,

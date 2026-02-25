@@ -2105,6 +2105,26 @@ async function processGovernmentShutdown(supabase, nation, currentTick) {
         console.warn(`[GovernmentShutdown] fire_system_event failed (template may not exist):`, e.message);
     }
 
+    // --- 5. Direct stat damage (matches crisis_effects display on nation.html) ---
+    // The crisis_effects DB rows (civil_unrest +2.7, corruption +1.7) are display-only
+    // because the Government Shutdown template has is_active=false (processCrises skips it).
+    // Apply the same deltas here so the actual stat changes match what the UI shows.
+    const shutdownStatEffects = [
+        { stat: 'civil_unrest', delta: 2.7 },
+        { stat: 'corruption',   delta: 1.7 },
+    ];
+    const nationUpdates = {};
+    for (const { stat, delta } of shutdownStatEffects) {
+        const current = Number(nation[stat] ?? 50);
+        const newVal = Math.round(Math.max(0, Math.min(100, current + delta)) * 10) / 10;
+        nationUpdates[stat] = newVal;
+        nation[stat] = newVal;
+    }
+    if (Object.keys(nationUpdates).length > 0) {
+        await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+        console.log(`[GovernmentShutdown] Applied stat effects for ${nation.name}:`, nationUpdates);
+    }
+
     return {
         active: true,
         ticksSinceLastBudget,
@@ -13658,7 +13678,32 @@ async function advanceTick(supabase) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
-        // Re-fetch nation to get post-effect stat values for minister approval
+        // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
+        // (the original `shutdown` boolean was computed before bill resolution)
+        const shutdownNow = isGovernmentShutdown(nation, newTick);
+
+        // Government shutdown penalties (coalition momentum/approval + PM/President approval + stat damage)
+        // Runs BEFORE approval calculations so stat/event effects propagate in the same tick.
+        if (shutdownNow) {
+            const shutdownResult = await processGovernmentShutdown(supabase, nation, newTick);
+            if (shutdownResult) {
+                summary.governmentShutdowns = summary.governmentShutdowns || [];
+                summary.governmentShutdowns.push({ nation: nation.name, ...shutdownResult });
+            }
+        } else {
+            // If shutdown ended (budget passed), remove the active_crises row
+            await resolveGovernmentShutdown(supabase, nation, newTick);
+        }
+
+        // Crises (persistent negative events that apply effects every tick)
+        // Runs BEFORE approval calculations so crisis stat/event effects propagate in the same tick.
+        const crisisResults = await processCrises(supabase, nation, newTick);
+        if (crisisResults.length > 0) {
+            summary.crises = summary.crises || [];
+            summary.crises.push({ nation: nation.name, crises: crisisResults });
+        }
+
+        // Re-fetch nation to get post-crisis/shutdown stat values for minister approval
         const { data: preApprovalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (preApprovalNation) Object.assign(nation, preApprovalNation);
 
@@ -13688,22 +13733,6 @@ async function advanceTick(supabase) {
         // Three-pillar voter preference recalculation
         await calculateThreePillarPreferences(supabase, nation, newTick);
 
-        // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
-        // (the original `shutdown` boolean was computed before bill resolution)
-        const shutdownNow = isGovernmentShutdown(nation, newTick);
-
-        // Government shutdown penalties (coalition momentum/approval + PM/President approval)
-        if (shutdownNow) {
-            const shutdownResult = await processGovernmentShutdown(supabase, nation, newTick);
-            if (shutdownResult) {
-                summary.governmentShutdowns = summary.governmentShutdowns || [];
-                summary.governmentShutdowns.push({ nation: nation.name, ...shutdownResult });
-            }
-        } else {
-            // If shutdown ended (budget passed), remove the active_crises row
-            await resolveGovernmentShutdown(supabase, nation, newTick);
-        }
-
         // Faction loyalty (autocracy)
         if (isAutocracy(nation)) {
             await processLoyaltyTick(supabase, nation);
@@ -13722,13 +13751,6 @@ async function advanceTick(supabase) {
         // Re-fetch nation with post-effect values for remaining processors
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (freshNation) Object.assign(nation, freshNation);
-
-        // Crises (persistent negative events that apply effects every tick)
-        const crisisResults = await processCrises(supabase, nation, newTick);
-        if (crisisResults.length > 0) {
-            summary.crises = summary.crises || [];
-            summary.crises.push({ nation: nation.name, crises: crisisResults });
-        }
 
         // Democratic revolution (autocracy only)
         const revolutionResult = await processRevolution(supabase, nation, newTick);
