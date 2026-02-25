@@ -929,7 +929,15 @@ async function renderParties() {
             leaderColor: leaderParty?.party_color || '#666',
             isLeading,
             margin,
-            pillars
+            pillars,
+            axes: {
+                liberty_equality: b.axis_liberty_equality ?? 50,
+                tradition_progress: b.axis_tradition_progress ?? 50,
+                security_freedom: b.axis_security_freedom ?? 50,
+                globalism_nationalism: b.axis_globalism_nationalism ?? 50,
+                individualism_collectivism: b.axis_individualism_collectivism ?? 50
+            },
+            priorityIssues: b.priority_issues || []
         };
     }).sort((a, b) => b.myApproval - a.myApproval);
 
@@ -1195,6 +1203,29 @@ async function renderParties() {
         return String(Math.round(v));
     }
 
+    // Build ideology tooltip content for a voter bloc from its 5-axis scores
+    function blocIdeologyTip(axes, priorityIssues) {
+        let rows = '';
+        for (const ax of IDEOLOGY_AXES) {
+            const v = axes[ax.key] ?? 50;
+            const leftBold = v < 40;
+            const rightBold = v > 60;
+            const leftStyle = leftBold ? `color:${ax.leftColor};font-weight:700` : 'color:var(--text-muted, #666)';
+            const rightStyle = rightBold ? `color:${ax.rightColor};font-weight:700` : 'color:var(--text-muted, #666)';
+            const markerColor = leftBold ? ax.leftColor : rightBold ? ax.rightColor : 'var(--text-secondary, #aaa)';
+            rows += `<div class="bloc-ideo-axis">
+                <span class="bloc-ideo-pole" style="${leftStyle}">${ax.leftLabel}</span>
+                <div class="bloc-ideo-track"><div class="bloc-ideo-marker" style="left:${v}%;background:${markerColor}"></div></div>
+                <span class="bloc-ideo-pole bloc-ideo-pole-right" style="${rightStyle}">${ax.rightLabel}</span>
+            </div>`;
+        }
+        let issuesHtml = '';
+        if (priorityIssues && priorityIssues.length > 0) {
+            issuesHtml = `<div class="bloc-ideo-issues">Priorities: ${priorityIssues.join(', ')}</div>`;
+        }
+        return `<div class="bloc-ideo-tip">${rows}${issuesHtml}</div>`;
+    }
+
     let blocTableHtml = '';
     for (const r of blocRows) {
         const barColor = r.isLeading ? partyColor : 'var(--text-muted, #555)';
@@ -1202,9 +1233,10 @@ async function renderParties() {
         const p = r.pillars;
         const momMapped = Math.round(50 + p.mom);
         const momSign = p.mom > 0 ? '+' : '';
+        const ideoTip = blocIdeologyTip(r.axes, r.priorityIssues);
         blocTableHtml += `
             <div class="bloc-row${r.isLeading ? ' bloc-row-leading' : ''}">
-                <span class="bloc-name">${r.blocName}</span>
+                <span class="bloc-name bloc-name-hover">${r.blocName}${ideoTip}</span>
                 <span class="bloc-voters">${voters}</span>
                 <div class="bloc-bar-track">
                     <div class="bloc-bar-fill" style="width:${r.myApproval}%;background:${barColor}"></div>

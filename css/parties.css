@@ -738,6 +738,78 @@ body.light-mode .bloc-pillar-tip {
     border-color: #ccc;
 }
 
+/* ---- Bloc name ideology tooltip ---- */
+.bloc-name-hover {
+    position: relative;
+    cursor: help;
+    text-decoration: underline dotted var(--text-muted, #666);
+    text-underline-offset: 2px;
+}
+.bloc-ideo-tip {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: -8px;
+    background: var(--bg-card, #252525);
+    border: 1px solid var(--border-main, #333);
+    border-radius: 6px;
+    padding: 10px 12px;
+    width: 260px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    z-index: 40;
+    text-align: left;
+}
+.bloc-name-hover:hover .bloc-ideo-tip { opacity: 1; pointer-events: auto; }
+.bloc-ideo-axis {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 5px;
+}
+.bloc-ideo-axis:last-child { margin-bottom: 0; }
+.bloc-ideo-pole {
+    font-size: 0.6rem;
+    width: 68px;
+    flex-shrink: 0;
+    text-align: right;
+    letter-spacing: 0.2px;
+}
+.bloc-ideo-pole-right {
+    text-align: left;
+}
+.bloc-ideo-track {
+    flex: 1;
+    height: 6px;
+    background: var(--bg-body, #121212);
+    border-radius: 3px;
+    position: relative;
+}
+.bloc-ideo-marker {
+    position: absolute;
+    top: -2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-secondary, #aaa);
+    transform: translateX(-50%);
+    border: 1px solid rgba(0,0,0,0.3);
+}
+.bloc-ideo-issues {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-main, #333);
+    font-size: 0.62rem;
+    color: var(--text-secondary, #aaa);
+}
+body.light-mode .bloc-ideo-tip {
+    background: #fff;
+    border-color: #ccc;
+}
+body.light-mode .bloc-ideo-track {
+    background: #e8e8e8;
+}
+
 /* ---- Footer ---- */
 .bloc-approval-footer {
     margin-top: 12px;
