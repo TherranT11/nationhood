@@ -10195,6 +10195,164 @@ async function processRegimePillars(supabase, nation) {
     }
 }
 
+// ==================== STEWARD TICK ====================
+
+/**
+ * Map pillar_key → steward archetype.
+ */
+const PILLAR_TO_STEWARD_TYPE = {
+    bureaucracy: 'technocrat',
+    military:    'general',
+    party:       'party_chairman',
+    oligarchs:   'oligarch',
+    security:    'security_chief',
+    media:       'propaganda_chief',
+};
+
+const STEWARD_TYPE_LABELS = {
+    technocrat:      'Technocrat',
+    general:         'General',
+    party_chairman:  'Party Chairman',
+    oligarch:        'Oligarch',
+    security_chief:  'Security Chief',
+    propaganda_chief:'Propaganda Chief',
+};
+
+/**
+ * Process steward stats each tick for all stewards in an autocracy nation.
+ *
+ * Standing: political influence within the regime
+ * Power Base: institutional support and resources
+ * True Loyalty: actual allegiance (hidden from strongman, may diverge from faction loyalty)
+ * Coup Readiness: preparedness to seize power (only grows when conditions align)
+ */
+async function processStewardTick(supabase, nation) {
+    if (!isAutocracy(nation)) return;
+
+    const { data: stewards } = await supabase
+        .from('stewards')
+        .select('id, faction_id, pillar_key, standing, power_base, true_loyalty, coup_readiness')
+        .eq('nation_id', nation.id);
+
+    if (!stewards || stewards.length === 0) return;
+
+    // Fetch faction data for loyalty + seats
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, loyalty, seats')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+
+    const factionMap = {};
+    let totalSeats = 0;
+    for (const f of (factions || [])) {
+        factionMap[f.id] = f;
+        totalSeats += (f.seats || 0);
+    }
+    const avgSeats = factions && factions.length > 0 ? totalSeats / factions.length : 0;
+
+    // Fetch ministry counts per faction
+    const { data: ministries } = await supabase
+        .from('ministries')
+        .select('party_id')
+        .eq('nation_id', nation.id)
+        .not('party_id', 'is', null);
+
+    const ministryCounts = {};
+    for (const m of (ministries || [])) {
+        ministryCounts[m.party_id] = (ministryCounts[m.party_id] || 0) + 1;
+    }
+
+    // Fetch pillar support values
+    const { data: pillars } = await supabase
+        .from('regime_pillars')
+        .select('pillar_key, support')
+        .eq('nation_id', nation.id);
+
+    const pillarSupportMap = {};
+    for (const p of (pillars || [])) {
+        pillarSupportMap[p.pillar_key] = p.support ?? 50;
+    }
+
+    // Check if any pillar is below 20 (regime weakness signal)
+    const anyPillarBelow20 = Object.values(pillarSupportMap).some(v => v < 20);
+
+    for (const steward of stewards) {
+        const faction = factionMap[steward.faction_id];
+        if (!faction) continue;
+
+        const factionLoyalty = faction.loyalty ?? 50;
+        const factionSeats = faction.seats || 0;
+        const ministryCount = ministryCounts[steward.faction_id] || 0;
+        const pillarSupport = pillarSupportMap[steward.pillar_key] ?? 50;
+
+        // ── Standing ──
+        let standing = steward.standing;
+        // Drift toward 50
+        if (standing > 50) standing -= 1;
+        else if (standing < 50) standing += 1;
+        // Pillar backing
+        if (pillarSupport > 50) standing += d2();
+        // Ministry influence
+        standing += ministryCount;
+        // Disloyal factions lose influence
+        if (factionLoyalty < 30) standing -= 2;
+
+        // ── Power Base ──
+        let powerBase = steward.power_base;
+        // Natural decay
+        powerBase -= d2();
+        // Institutional backing
+        if (pillarSupport > 60) powerBase += d2();
+        // Ministry presence
+        powerBase += ministryCount;
+        // Legislative power
+        if (factionSeats > avgSeats) powerBase += 1;
+
+        // ── True Loyalty ──
+        let trueLoyalty = steward.true_loyalty;
+        // Drift toward faction's displayed loyalty
+        if (trueLoyalty > factionLoyalty) trueLoyalty -= 1;
+        else if (trueLoyalty < factionLoyalty) trueLoyalty += 1;
+        // Regime crumbling → steward may turn disloyal
+        if (pillarSupport < 35) trueLoyalty -= d2();
+
+        // ── Coup Readiness ──
+        let coupReadiness = steward.coup_readiness;
+        let coupGrowing = false;
+        // Only grows when the steward is strong, resourced, and disloyal
+        if (standing > 60 && powerBase > 50 && trueLoyalty < 30) {
+            coupReadiness += 1;
+            coupGrowing = true;
+        }
+        // Regime weakness accelerates
+        if (anyPillarBelow20) {
+            coupReadiness += 1;
+            coupGrowing = true;
+        }
+        // Decays when conditions aren't met
+        if (!coupGrowing && coupReadiness > 0) {
+            coupReadiness -= 1;
+        }
+
+        // Clamp all values
+        standing = Math.max(0, Math.min(100, standing));
+        powerBase = Math.max(0, Math.min(100, powerBase));
+        trueLoyalty = Math.max(0, Math.min(100, trueLoyalty));
+        coupReadiness = Math.max(0, Math.min(100, coupReadiness));
+
+        await supabase.from('stewards')
+            .update({
+                standing,
+                power_base: powerBase,
+                true_loyalty: trueLoyalty,
+                coup_readiness: coupReadiness,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', steward.id);
+    }
+}
+
 // ==================== SHAKEUP AUTO-RESOLVE ====================
 
 async function autoResolveStaleShakeups(supabase, nationId, currentTick) {
@@ -13741,6 +13899,11 @@ async function advanceTick(supabase) {
         // Regime pillars decay & bonus (autocracy)
         if (isAutocracy(nation)) {
             await processRegimePillars(supabase, nation);
+        }
+
+        // Steward stats tick (autocracy)
+        if (isAutocracy(nation)) {
+            await processStewardTick(supabase, nation);
         }
 
         // Auto-resolve shakeups that are 1+ ticks old

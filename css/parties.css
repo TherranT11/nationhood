@@ -2200,6 +2200,111 @@ body.light-mode .ap-bar-track {
     .reg-grip-components { grid-template-columns: 1fr; }
 }
 
+/* ── Steward Card ── */
+.reg-steward-card {
+    background: #1e1e1a;
+    border: 1px solid rgba(226, 224, 214, 0.1);
+    border-radius: 3px;
+    padding: 16px 18px;
+}
+
+.reg-steward-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(226, 224, 214, 0.06);
+}
+
+.reg-steward-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #e2e0d6;
+    letter-spacing: 0.5px;
+}
+
+.reg-steward-meta {
+    font-size: 0.55rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 2px;
+}
+
+.reg-steward-type-badge {
+    font-size: 0.5rem;
+    font-weight: 700;
+    color: #e2e0d6;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 3px 10px;
+    border: 1px solid rgba(226, 224, 214, 0.2);
+    border-radius: 2px;
+    background: rgba(226, 224, 214, 0.06);
+    white-space: nowrap;
+}
+
+.reg-steward-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.reg-steward-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.reg-steward-stat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+
+.reg-steward-stat-label {
+    font-size: 0.5rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    font-weight: 700;
+}
+
+.reg-steward-stat-val {
+    font-size: 0.85rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.reg-steward-bar-track {
+    height: 4px;
+    background: #141412;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.reg-steward-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.4s ease;
+}
+
+.reg-steward-stat-row {
+    display: flex;
+    gap: 16px;
+    margin-top: 4px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(226, 224, 214, 0.06);
+}
+
+.reg-steward-stat-mini {
+    flex: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+
 /* Light mode overrides */
 body.light-mode .reg-panel { background: #fafaf8; border-color: #ddd; }
 body.light-mode .reg-header { border-bottom-color: #ddd; }
@@ -2230,6 +2335,12 @@ body.light-mode .reg-pillar-bar-track { background: #e8e8e4; }
 body.light-mode .reg-pillar-claim-btn { color: #2a2a28; background: rgba(0,0,0,0.05); border-color: #ccc; }
 body.light-mode .reg-pillar-claim-btn:hover { background: rgba(0,0,0,0.1); border-color: #aaa; }
 body.light-mode .reg-pillar-steward { color: #888; }
+body.light-mode .reg-steward-card { background: #f0f0ee; border-color: #ddd; }
+body.light-mode .reg-steward-name { color: #2a2a28; }
+body.light-mode .reg-steward-meta,
+body.light-mode .reg-steward-stat-label { color: #888; }
+body.light-mode .reg-steward-type-badge { color: #2a2a28; background: rgba(0,0,0,0.05); border-color: #ccc; }
+body.light-mode .reg-steward-bar-track { background: #e8e8e4; }
 
 /* ===== RALLY PANEL ===== */
 .rally-panel {

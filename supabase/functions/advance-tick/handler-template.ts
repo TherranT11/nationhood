@@ -613,6 +613,11 @@ async function advanceTick(supabase) {
             await processRegimePillars(supabase, nation);
         }
 
+        // Steward stats tick (autocracy)
+        if (isAutocracy(nation)) {
+            await processStewardTick(supabase, nation);
+        }
+
         // Auto-resolve shakeups that are 1+ ticks old
         if (isAutocracy(nation)) {
             await autoResolveStaleShakeups(supabase, nation.id, newTick);
