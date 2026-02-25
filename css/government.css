@@ -696,7 +696,7 @@
         }
 
         /* Government approval breakdown tooltip */
-        .gov-approval-hover { cursor: default; }
+        .gov-approval-hover { cursor: help; text-decoration: underline dotted var(--text-muted, #666); text-underline-offset: 3px; }
         .gov-approval-tooltip {
             position: absolute;
             top: calc(100% + 8px);
