@@ -599,6 +599,11 @@ async function advanceTick(supabase) {
             await processLoyaltyTick(supabase, nation);
         }
 
+        // Regime pillars decay & bonus (autocracy)
+        if (isAutocracy(nation)) {
+            await processRegimePillars(supabase, nation);
+        }
+
         // Auto-resolve shakeups that are 1+ ticks old
         if (isAutocracy(nation)) {
             await autoResolveStaleShakeups(supabase, nation.id, newTick);
