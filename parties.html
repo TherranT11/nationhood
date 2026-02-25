@@ -20,7 +20,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
 import { tickToDate, escapeHtml } from './js/utils.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS } from './js/game-common.js';
 import { getPartyIconSVG, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -91,6 +91,15 @@ async function renderAutocracyParties(el, f, n) {
         .select('id, pillar_key, pillar_name, support, steward_faction_id')
         .eq('nation_id', n.id)
         .order('pillar_key');
+
+    // Fetch stewards for this nation
+    const { data: stewardRows } = await _supabase
+        .from('stewards')
+        .select('id, faction_id, pillar_key, steward_type, first_name, last_name, age, standing, power_base, true_loyalty, coup_readiness')
+        .eq('nation_id', n.id);
+
+    const stewardByFaction = {};
+    for (const s of (stewardRows || [])) stewardByFaction[s.faction_id] = s;
 
     const rulingId = n.ruling_faction_id;
     const isStrongman = f.id === rulingId;
@@ -295,7 +304,7 @@ async function renderAutocracyParties(el, f, n) {
                 } else if (hasSteward) {
                     stewardHtml = `<div class="reg-pillar-steward">${escapeHtml(stewardName)}</div>`;
                 } else {
-                    stewardHtml = `<button class="reg-pillar-claim-btn" data-pillar-id="${p.id}" data-pillar-name="${escapeHtml(p.pillar_name)}">Become Steward</button>`;
+                    stewardHtml = `<button class="reg-pillar-claim-btn" data-pillar-id="${p.id}" data-pillar-key="${key}" data-pillar-name="${escapeHtml(p.pillar_name)}">Become Steward</button>`;
                 }
 
                 return `
@@ -314,6 +323,84 @@ async function renderAutocracyParties(el, f, n) {
                 <div class="reg-section">
                     <div class="reg-section-title">PILLARS OF THE REGIME</div>
                     <div class="reg-pillar-grid">${cards}</div>
+                </div>`;
+        }
+
+        // Build steward card for the current faction (if they have one)
+        let stewardCardHtml = '';
+        const mySteward = stewardByFaction[f.id];
+        if (!isStrongman && mySteward) {
+            const typeLabel = STEWARD_TYPE_LABELS[mySteward.steward_type] || mySteward.steward_type;
+            const standing = mySteward.standing ?? 40;
+            const powerBase = mySteward.power_base ?? 30;
+            const trueLoyalty = mySteward.true_loyalty ?? 50;
+            const loyaltyGap = Math.abs(trueLoyalty - (f.loyalty ?? 50));
+            const coupReadiness = mySteward.coup_readiness ?? 0;
+
+            function stewardStatColor(val) {
+                if (val >= 70) return '#4CAF50';
+                if (val >= 50) return '#8BC34A';
+                if (val >= 30) return '#ff9800';
+                return '#ff4444';
+            }
+            function coupColor(val) {
+                if (val >= 60) return '#ff1744';
+                if (val >= 30) return '#ff9800';
+                if (val >= 10) return '#8BC34A';
+                return '#555';
+            }
+
+            stewardCardHtml = `
+                <div class="reg-section">
+                    <div class="reg-section-title">YOUR STEWARD</div>
+                    <div class="reg-steward-card">
+                        <div class="reg-steward-header">
+                            <div class="reg-steward-identity">
+                                <div class="reg-steward-name">${escapeHtml(mySteward.first_name)} ${escapeHtml(mySteward.last_name)}</div>
+                                <div class="reg-steward-meta">Age ${mySteward.age}</div>
+                            </div>
+                            <div class="reg-steward-type-badge">${escapeHtml(typeLabel)}</div>
+                        </div>
+                        <div class="reg-steward-stats">
+                            <div class="reg-steward-stat">
+                                <div class="reg-steward-stat-header">
+                                    <span class="reg-steward-stat-label">STANDING</span>
+                                    <span class="reg-steward-stat-val" style="color:${stewardStatColor(standing)}">${standing}</span>
+                                </div>
+                                <div class="reg-steward-bar-track">
+                                    <div class="reg-steward-bar-fill" style="width:${standing}%;background:${stewardStatColor(standing)}"></div>
+                                </div>
+                            </div>
+                            <div class="reg-steward-stat">
+                                <div class="reg-steward-stat-header">
+                                    <span class="reg-steward-stat-label">POWER BASE</span>
+                                    <span class="reg-steward-stat-val" style="color:${stewardStatColor(powerBase)}">${powerBase}</span>
+                                </div>
+                                <div class="reg-steward-bar-track">
+                                    <div class="reg-steward-bar-fill" style="width:${powerBase}%;background:${stewardStatColor(powerBase)}"></div>
+                                </div>
+                            </div>
+                            <div class="reg-steward-stat">
+                                <div class="reg-steward-stat-header">
+                                    <span class="reg-steward-stat-label">TRUE LOYALTY</span>
+                                    <span class="reg-steward-stat-val" style="color:${stewardStatColor(trueLoyalty)}">${trueLoyalty}</span>
+                                </div>
+                                <div class="reg-steward-bar-track">
+                                    <div class="reg-steward-bar-fill" style="width:${trueLoyalty}%;background:${stewardStatColor(trueLoyalty)}"></div>
+                                </div>
+                            </div>
+                            <div class="reg-steward-stat-row">
+                                <div class="reg-steward-stat-mini">
+                                    <span class="reg-steward-stat-label">LOYALTY GAP</span>
+                                    <span class="reg-steward-stat-val" style="color:${loyaltyGap > 20 ? '#ff9800' : '#8BC34A'}">${loyaltyGap}</span>
+                                </div>
+                                <div class="reg-steward-stat-mini">
+                                    <span class="reg-steward-stat-label">COUP READINESS</span>
+                                    <span class="reg-steward-stat-val" style="color:${coupColor(coupReadiness)}">${coupReadiness}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>`;
         }
 
@@ -399,6 +486,7 @@ async function renderAutocracyParties(el, f, n) {
                     </div>
 
                     <div class="reg-col-right">
+                        ${stewardCardHtml}
                         <div class="reg-section">
                             <div class="reg-section-title">FACTION INTELLIGENCE</div>
                             <div class="reg-intel-list">
@@ -419,6 +507,7 @@ async function renderAutocracyParties(el, f, n) {
     el.querySelectorAll('.reg-pillar-claim-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
             const pillarId = btn.dataset.pillarId;
+            const pillarKey = btn.dataset.pillarKey;
             const pillarName = btn.dataset.pillarName;
             btn.disabled = true;
             btn.textContent = 'Claiming...';
@@ -432,26 +521,60 @@ async function renderAutocracyParties(el, f, n) {
                 .maybeSingle();
 
             if (existing) {
-                // Release old pillar first
+                // Release old pillar
                 await _supabase.from('regime_pillars')
                     .update({ steward_faction_id: null })
                     .eq('id', existing.id);
+                // Delete old steward row
+                await _supabase.from('stewards')
+                    .delete()
+                    .eq('nation_id', n.id)
+                    .eq('faction_id', f.id);
             }
 
+            // Claim the pillar (only if unclaimed)
             const { error } = await _supabase
                 .from('regime_pillars')
                 .update({ steward_faction_id: f.id })
                 .eq('id', pillarId)
-                .is('steward_faction_id', null); // only claim if unclaimed
+                .is('steward_faction_id', null);
 
             if (error) {
                 console.error('[pillar-claim]', error);
                 btn.textContent = 'Failed';
                 setTimeout(() => { btn.textContent = 'Become Steward'; btn.disabled = false; }, 2000);
-            } else {
-                // Re-render the page to reflect the new steward
-                await renderAutocracyParties(el, f, n);
+                return;
             }
+
+            // Generate steward identity
+            const firstName = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)];
+            const lastName = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)];
+            const age = 40 + Math.floor(Math.random() * 26); // 40-65
+            const stewardType = PILLAR_TO_STEWARD_TYPE[pillarKey] || 'technocrat';
+
+            // Insert steward row
+            const { error: stewardErr } = await _supabase
+                .from('stewards')
+                .upsert({
+                    nation_id: n.id,
+                    faction_id: f.id,
+                    pillar_key: pillarKey,
+                    steward_type: stewardType,
+                    first_name: firstName,
+                    last_name: lastName,
+                    age: age,
+                    standing: 40,
+                    power_base: 30,
+                    true_loyalty: 50,
+                    coup_readiness: 0,
+                }, { onConflict: 'nation_id,faction_id' });
+
+            if (stewardErr) {
+                console.error('[steward-insert]', stewardErr);
+            }
+
+            // Re-render the page to reflect the new steward
+            await renderAutocracyParties(el, f, n);
         });
     });
 }

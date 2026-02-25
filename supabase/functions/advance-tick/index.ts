@@ -2105,6 +2105,26 @@ async function processGovernmentShutdown(supabase, nation, currentTick) {
         console.warn(`[GovernmentShutdown] fire_system_event failed (template may not exist):`, e.message);
     }
 
+    // --- 5. Direct stat damage (matches crisis_effects display on nation.html) ---
+    // The crisis_effects DB rows (civil_unrest +2.7, corruption +1.7) are display-only
+    // because the Government Shutdown template has is_active=false (processCrises skips it).
+    // Apply the same deltas here so the actual stat changes match what the UI shows.
+    const shutdownStatEffects = [
+        { stat: 'civil_unrest', delta: 2.7 },
+        { stat: 'corruption',   delta: 1.7 },
+    ];
+    const nationUpdates = {};
+    for (const { stat, delta } of shutdownStatEffects) {
+        const current = Number(nation[stat] ?? 50);
+        const newVal = Math.round(Math.max(0, Math.min(100, current + delta)) * 10) / 10;
+        nationUpdates[stat] = newVal;
+        nation[stat] = newVal;
+    }
+    if (Object.keys(nationUpdates).length > 0) {
+        await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+        console.log(`[GovernmentShutdown] Applied stat effects for ${nation.name}:`, nationUpdates);
+    }
+
     return {
         active: true,
         ticksSinceLastBudget,
@@ -10175,6 +10195,164 @@ async function processRegimePillars(supabase, nation) {
     }
 }
 
+// ==================== STEWARD TICK ====================
+
+/**
+ * Map pillar_key → steward archetype.
+ */
+const PILLAR_TO_STEWARD_TYPE = {
+    bureaucracy: 'technocrat',
+    military:    'general',
+    party:       'party_chairman',
+    oligarchs:   'oligarch',
+    security:    'security_chief',
+    media:       'propaganda_chief',
+};
+
+const STEWARD_TYPE_LABELS = {
+    technocrat:      'Technocrat',
+    general:         'General',
+    party_chairman:  'Party Chairman',
+    oligarch:        'Oligarch',
+    security_chief:  'Security Chief',
+    propaganda_chief:'Propaganda Chief',
+};
+
+/**
+ * Process steward stats each tick for all stewards in an autocracy nation.
+ *
+ * Standing: political influence within the regime
+ * Power Base: institutional support and resources
+ * True Loyalty: actual allegiance (hidden from strongman, may diverge from faction loyalty)
+ * Coup Readiness: preparedness to seize power (only grows when conditions align)
+ */
+async function processStewardTick(supabase, nation) {
+    if (!isAutocracy(nation)) return;
+
+    const { data: stewards } = await supabase
+        .from('stewards')
+        .select('id, faction_id, pillar_key, standing, power_base, true_loyalty, coup_readiness')
+        .eq('nation_id', nation.id);
+
+    if (!stewards || stewards.length === 0) return;
+
+    // Fetch faction data for loyalty + seats
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, loyalty, seats')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+
+    const factionMap = {};
+    let totalSeats = 0;
+    for (const f of (factions || [])) {
+        factionMap[f.id] = f;
+        totalSeats += (f.seats || 0);
+    }
+    const avgSeats = factions && factions.length > 0 ? totalSeats / factions.length : 0;
+
+    // Fetch ministry counts per faction
+    const { data: ministries } = await supabase
+        .from('ministries')
+        .select('party_id')
+        .eq('nation_id', nation.id)
+        .not('party_id', 'is', null);
+
+    const ministryCounts = {};
+    for (const m of (ministries || [])) {
+        ministryCounts[m.party_id] = (ministryCounts[m.party_id] || 0) + 1;
+    }
+
+    // Fetch pillar support values
+    const { data: pillars } = await supabase
+        .from('regime_pillars')
+        .select('pillar_key, support')
+        .eq('nation_id', nation.id);
+
+    const pillarSupportMap = {};
+    for (const p of (pillars || [])) {
+        pillarSupportMap[p.pillar_key] = p.support ?? 50;
+    }
+
+    // Check if any pillar is below 20 (regime weakness signal)
+    const anyPillarBelow20 = Object.values(pillarSupportMap).some(v => v < 20);
+
+    for (const steward of stewards) {
+        const faction = factionMap[steward.faction_id];
+        if (!faction) continue;
+
+        const factionLoyalty = faction.loyalty ?? 50;
+        const factionSeats = faction.seats || 0;
+        const ministryCount = ministryCounts[steward.faction_id] || 0;
+        const pillarSupport = pillarSupportMap[steward.pillar_key] ?? 50;
+
+        // ── Standing ──
+        let standing = steward.standing;
+        // Drift toward 50
+        if (standing > 50) standing -= 1;
+        else if (standing < 50) standing += 1;
+        // Pillar backing
+        if (pillarSupport > 50) standing += d2();
+        // Ministry influence
+        standing += ministryCount;
+        // Disloyal factions lose influence
+        if (factionLoyalty < 30) standing -= 2;
+
+        // ── Power Base ──
+        let powerBase = steward.power_base;
+        // Natural decay
+        powerBase -= d2();
+        // Institutional backing
+        if (pillarSupport > 60) powerBase += d2();
+        // Ministry presence
+        powerBase += ministryCount;
+        // Legislative power
+        if (factionSeats > avgSeats) powerBase += 1;
+
+        // ── True Loyalty ──
+        let trueLoyalty = steward.true_loyalty;
+        // Drift toward faction's displayed loyalty
+        if (trueLoyalty > factionLoyalty) trueLoyalty -= 1;
+        else if (trueLoyalty < factionLoyalty) trueLoyalty += 1;
+        // Regime crumbling → steward may turn disloyal
+        if (pillarSupport < 35) trueLoyalty -= d2();
+
+        // ── Coup Readiness ──
+        let coupReadiness = steward.coup_readiness;
+        let coupGrowing = false;
+        // Only grows when the steward is strong, resourced, and disloyal
+        if (standing > 60 && powerBase > 50 && trueLoyalty < 30) {
+            coupReadiness += 1;
+            coupGrowing = true;
+        }
+        // Regime weakness accelerates
+        if (anyPillarBelow20) {
+            coupReadiness += 1;
+            coupGrowing = true;
+        }
+        // Decays when conditions aren't met
+        if (!coupGrowing && coupReadiness > 0) {
+            coupReadiness -= 1;
+        }
+
+        // Clamp all values
+        standing = Math.max(0, Math.min(100, standing));
+        powerBase = Math.max(0, Math.min(100, powerBase));
+        trueLoyalty = Math.max(0, Math.min(100, trueLoyalty));
+        coupReadiness = Math.max(0, Math.min(100, coupReadiness));
+
+        await supabase.from('stewards')
+            .update({
+                standing,
+                power_base: powerBase,
+                true_loyalty: trueLoyalty,
+                coup_readiness: coupReadiness,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', steward.id);
+    }
+}
+
 // ==================== SHAKEUP AUTO-RESOLVE ====================
 
 async function autoResolveStaleShakeups(supabase, nationId, currentTick) {
@@ -13658,7 +13836,32 @@ async function advanceTick(supabase) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
-        // Re-fetch nation to get post-effect stat values for minister approval
+        // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
+        // (the original `shutdown` boolean was computed before bill resolution)
+        const shutdownNow = isGovernmentShutdown(nation, newTick);
+
+        // Government shutdown penalties (coalition momentum/approval + PM/President approval + stat damage)
+        // Runs BEFORE approval calculations so stat/event effects propagate in the same tick.
+        if (shutdownNow) {
+            const shutdownResult = await processGovernmentShutdown(supabase, nation, newTick);
+            if (shutdownResult) {
+                summary.governmentShutdowns = summary.governmentShutdowns || [];
+                summary.governmentShutdowns.push({ nation: nation.name, ...shutdownResult });
+            }
+        } else {
+            // If shutdown ended (budget passed), remove the active_crises row
+            await resolveGovernmentShutdown(supabase, nation, newTick);
+        }
+
+        // Crises (persistent negative events that apply effects every tick)
+        // Runs BEFORE approval calculations so crisis stat/event effects propagate in the same tick.
+        const crisisResults = await processCrises(supabase, nation, newTick);
+        if (crisisResults.length > 0) {
+            summary.crises = summary.crises || [];
+            summary.crises.push({ nation: nation.name, crises: crisisResults });
+        }
+
+        // Re-fetch nation to get post-crisis/shutdown stat values for minister approval
         const { data: preApprovalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (preApprovalNation) Object.assign(nation, preApprovalNation);
 
@@ -13688,22 +13891,6 @@ async function advanceTick(supabase) {
         // Three-pillar voter preference recalculation
         await calculateThreePillarPreferences(supabase, nation, newTick);
 
-        // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
-        // (the original `shutdown` boolean was computed before bill resolution)
-        const shutdownNow = isGovernmentShutdown(nation, newTick);
-
-        // Government shutdown penalties (coalition momentum/approval + PM/President approval)
-        if (shutdownNow) {
-            const shutdownResult = await processGovernmentShutdown(supabase, nation, newTick);
-            if (shutdownResult) {
-                summary.governmentShutdowns = summary.governmentShutdowns || [];
-                summary.governmentShutdowns.push({ nation: nation.name, ...shutdownResult });
-            }
-        } else {
-            // If shutdown ended (budget passed), remove the active_crises row
-            await resolveGovernmentShutdown(supabase, nation, newTick);
-        }
-
         // Faction loyalty (autocracy)
         if (isAutocracy(nation)) {
             await processLoyaltyTick(supabase, nation);
@@ -13714,6 +13901,11 @@ async function advanceTick(supabase) {
             await processRegimePillars(supabase, nation);
         }
 
+        // Steward stats tick (autocracy)
+        if (isAutocracy(nation)) {
+            await processStewardTick(supabase, nation);
+        }
+
         // Auto-resolve shakeups that are 1+ ticks old
         if (isAutocracy(nation)) {
             await autoResolveStaleShakeups(supabase, nation.id, newTick);
@@ -13722,13 +13914,6 @@ async function advanceTick(supabase) {
         // Re-fetch nation with post-effect values for remaining processors
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (freshNation) Object.assign(nation, freshNation);
-
-        // Crises (persistent negative events that apply effects every tick)
-        const crisisResults = await processCrises(supabase, nation, newTick);
-        if (crisisResults.length > 0) {
-            summary.crises = summary.crises || [];
-            summary.crises.push({ nation: nation.name, crises: crisisResults });
-        }
 
         // Democratic revolution (autocracy only)
         const revolutionResult = await processRevolution(supabase, nation, newTick);

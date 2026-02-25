@@ -548,7 +548,32 @@ async function advanceTick(supabase) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
-        // Re-fetch nation to get post-effect stat values for minister approval
+        // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
+        // (the original `shutdown` boolean was computed before bill resolution)
+        const shutdownNow = isGovernmentShutdown(nation, newTick);
+
+        // Government shutdown penalties (coalition momentum/approval + PM/President approval + stat damage)
+        // Runs BEFORE approval calculations so stat/event effects propagate in the same tick.
+        if (shutdownNow) {
+            const shutdownResult = await processGovernmentShutdown(supabase, nation, newTick);
+            if (shutdownResult) {
+                summary.governmentShutdowns = summary.governmentShutdowns || [];
+                summary.governmentShutdowns.push({ nation: nation.name, ...shutdownResult });
+            }
+        } else {
+            // If shutdown ended (budget passed), remove the active_crises row
+            await resolveGovernmentShutdown(supabase, nation, newTick);
+        }
+
+        // Crises (persistent negative events that apply effects every tick)
+        // Runs BEFORE approval calculations so crisis stat/event effects propagate in the same tick.
+        const crisisResults = await processCrises(supabase, nation, newTick);
+        if (crisisResults.length > 0) {
+            summary.crises = summary.crises || [];
+            summary.crises.push({ nation: nation.name, crises: crisisResults });
+        }
+
+        // Re-fetch nation to get post-crisis/shutdown stat values for minister approval
         const { data: preApprovalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (preApprovalNation) Object.assign(nation, preApprovalNation);
 
@@ -578,22 +603,6 @@ async function advanceTick(supabase) {
         // Three-pillar voter preference recalculation
         await calculateThreePillarPreferences(supabase, nation, newTick);
 
-        // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
-        // (the original `shutdown` boolean was computed before bill resolution)
-        const shutdownNow = isGovernmentShutdown(nation, newTick);
-
-        // Government shutdown penalties (coalition momentum/approval + PM/President approval)
-        if (shutdownNow) {
-            const shutdownResult = await processGovernmentShutdown(supabase, nation, newTick);
-            if (shutdownResult) {
-                summary.governmentShutdowns = summary.governmentShutdowns || [];
-                summary.governmentShutdowns.push({ nation: nation.name, ...shutdownResult });
-            }
-        } else {
-            // If shutdown ended (budget passed), remove the active_crises row
-            await resolveGovernmentShutdown(supabase, nation, newTick);
-        }
-
         // Faction loyalty (autocracy)
         if (isAutocracy(nation)) {
             await processLoyaltyTick(supabase, nation);
@@ -604,6 +613,11 @@ async function advanceTick(supabase) {
             await processRegimePillars(supabase, nation);
         }
 
+        // Steward stats tick (autocracy)
+        if (isAutocracy(nation)) {
+            await processStewardTick(supabase, nation);
+        }
+
         // Auto-resolve shakeups that are 1+ ticks old
         if (isAutocracy(nation)) {
             await autoResolveStaleShakeups(supabase, nation.id, newTick);
@@ -612,13 +626,6 @@ async function advanceTick(supabase) {
         // Re-fetch nation with post-effect values for remaining processors
         const { data: freshNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (freshNation) Object.assign(nation, freshNation);
-
-        // Crises (persistent negative events that apply effects every tick)
-        const crisisResults = await processCrises(supabase, nation, newTick);
-        if (crisisResults.length > 0) {
-            summary.crises = summary.crises || [];
-            summary.crises.push({ nation: nation.name, crises: crisisResults });
-        }
 
         // Democratic revolution (autocracy only)
         const revolutionResult = await processRevolution(supabase, nation, newTick);
