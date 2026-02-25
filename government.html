@@ -315,8 +315,17 @@ async function renderGovernmentPage() {
             }
         }
 
-        // Government approval (average of all minister approvals)
+        // Government approval
         let governmentApproval = await calculateGovernmentApproval();
+
+        // Fetch recent gov approval events for display
+        const { data: govApprovalEvents } = await _supabase
+            .from('gov_approval_log')
+            .select('amount, source, tick')
+            .eq('nation_id', currentNation.id)
+            .order('tick', { ascending: false })
+            .limit(8);
+        currentNation._govApprovalEvents = govApprovalEvents || [];
 
         // Check for pending PM or President candidates (player needs to select)
         const primeMinister = ministries?.find(m => m.ministry_key === 'prime_minister');
@@ -474,7 +483,55 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
     const hosLast = currentNation.head_of_state_last_name || 'Unknown';
     const hosAge = currentNation.head_of_state_age || '—';
     const approvalColor = governmentApproval >= 60 ? '#4CAF50' : governmentApproval >= 40 ? 'var(--accent)' : '#ff4444';
-    const approvalHTML = `<div style="text-align:right;"><div style="font-size:0.7rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px;">Government Approval</div><div style="font-size:1.4rem;font-weight:bold;color:${approvalColor};">${governmentApproval}%</div></div>`;
+    const inst = Math.round(currentNation.gov_approval_institutional ?? 50);
+    const outc = Math.round(currentNation.gov_approval_outcomes ?? 50);
+    const evRaw = currentNation.gov_approval_events ?? 0;
+    const ev = Math.round(Math.max(0, Math.min(100, 50 + evRaw)));
+    const approvalHTML = `<div style="text-align:right;position:relative;" class="gov-approval-hover">
+        <div style="font-size:0.7rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px;">Government Approval</div>
+        <div style="font-size:1.4rem;font-weight:bold;color:${approvalColor};">${governmentApproval}%</div>
+        <div class="gov-approval-tooltip">
+            <div class="gov-tip-title">Approval Breakdown</div>
+            <div class="gov-tip-row">
+                <span class="gov-tip-label">Institutional (45%)</span>
+                <div class="gov-tip-bar"><div class="gov-tip-bar-fill" style="width:${inst}%;background:#4CAF50"></div></div>
+                <span class="gov-tip-val">${inst}</span>
+            </div>
+            <div class="gov-tip-desc">Minister performance, vacancies & crises</div>
+            <div class="gov-tip-row">
+                <span class="gov-tip-label">Outcomes (35%)</span>
+                <div class="gov-tip-bar"><div class="gov-tip-bar-fill" style="width:${outc}%;background:#2196F3"></div></div>
+                <span class="gov-tip-val">${outc}</span>
+            </div>
+            <div class="gov-tip-desc">Economic & social stat trends</div>
+            <div class="gov-tip-row">
+                <span class="gov-tip-label">Events (20%)</span>
+                <div class="gov-tip-bar"><div class="gov-tip-bar-fill" style="width:${ev}%;background:#ff9800"></div></div>
+                <span class="gov-tip-val">${ev}</span>
+            </div>
+            <div class="gov-tip-desc">Recent crises & events (decays over time)</div>
+            ${(() => {
+                const events = currentNation._govApprovalEvents || [];
+                if (events.length === 0) return '';
+                const GOV_SOURCE_LABELS = {
+                    'crisis:government_shutdown': 'Gov shutdown',
+                    'crisis:scandal': 'Scandal',
+                    'crisis:natural_disaster': 'Natural disaster',
+                    'minister:fired': 'Minister fired',
+                    'bill:enactment': 'Bill enacted',
+                    'bill:veto': 'Bill vetoed',
+                    'election:result': 'Election result'
+                };
+                const rows = events.map(e => {
+                    const label = GOV_SOURCE_LABELS[e.source] || e.source.replace(/[_:]/g, ' ');
+                    const sign = e.amount > 0 ? '+' : '';
+                    const color = e.amount > 0 ? '#4CAF50' : '#ff4444';
+                    return '<div class="gov-tip-evt"><span>' + label + '</span><span style="color:' + color + '">' + sign + Math.round(e.amount * 10) / 10 + '</span></div>';
+                }).join('');
+                return '<div class="gov-tip-events-title">Recent Events</div>' + rows;
+            })()}
+        </div>
+    </div>`;
 
     // Safe PM name: prevents "null null" when ministry row exists but names are SQL NULL
     function safePmName(pm) {

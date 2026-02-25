@@ -399,6 +399,40 @@ body.light-mode .momentum-bar-track {
     line-height: 1.4;
 }
 
+/* ===== MOMENTUM LOG ===== */
+.mom-log-panel {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-main, #333);
+}
+.mom-log-title {
+    font-size: 0.62rem;
+    color: var(--text-muted, #666);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 6px;
+}
+.mom-log-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 0;
+    font-size: 0.68rem;
+}
+.mom-log-src {
+    color: var(--text-secondary, #aaa);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    margin-right: 8px;
+}
+.mom-log-amt {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+}
+
 /* ===== PERFORMANCE CREDIT PANEL ===== */
 .perf-panel {
     background: var(--bg-panel, #1a1a1a);
@@ -645,6 +679,61 @@ body.light-mode .bloc-bar-track {
     font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 0.3px;
+}
+
+/* ---- Pillar breakdown tooltip ---- */
+.bloc-approval-hover {
+    position: relative;
+    cursor: default;
+}
+.bloc-pillar-tip {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    right: -12px;
+    background: var(--bg-card, #252525);
+    border: 1px solid var(--border-main, #333);
+    border-radius: 6px;
+    padding: 10px 12px;
+    width: 200px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    z-index: 30;
+    text-align: left;
+}
+.bloc-approval-hover:hover .bloc-pillar-tip { opacity: 1; }
+.bpt-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+.bpt-row:last-child { margin-bottom: 0; }
+.bpt-label {
+    font-size: 0.65rem;
+    color: var(--text-secondary, #aaa);
+    width: 72px;
+    flex-shrink: 0;
+}
+.bpt-bar {
+    flex: 1;
+    height: 5px;
+    background: var(--bg-body, #121212);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.bpt-fill { height: 100%; border-radius: 3px; }
+.bpt-val {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-primary, #e0e0e0);
+    width: 26px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+body.light-mode .bloc-pillar-tip {
+    background: #fff;
+    border-color: #ccc;
 }
 
 /* ---- Footer ---- */

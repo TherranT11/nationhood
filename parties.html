@@ -178,7 +178,7 @@ async function renderParties() {
     const allPartyIds = (allParties || []).map(p => p.id);
     const { data: allBlocApprovals } = await _supabase
         .from('faction_bloc_approval')
-        .select('faction_id, momentum, bloc_id, preference_score')
+        .select('faction_id, momentum, bloc_id, preference_score, ideology_alignment, performance_perception')
         .in('faction_id', allPartyIds);
 
     const { data: blocs } = await _supabase
@@ -186,6 +186,15 @@ async function renderParties() {
         .select('id, bloc_name, population_weight, priority_issues, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
         .eq('nation_id', n.id)
         .eq('is_active', true);
+
+    // Fetch recent momentum log for this party (last 10 entries)
+    const { data: momentumLog } = await _supabase
+        .from('momentum_log')
+        .select('amount, source, tick')
+        .eq('nation_id', n.id)
+        .eq('faction_id', f.id)
+        .order('tick', { ascending: false })
+        .limit(10);
 
     const blocWeights = {};
     for (const b of (blocs || [])) blocWeights[b.id] = b.population_weight || 1;
@@ -207,7 +216,7 @@ async function renderParties() {
     const myEntry = partyMomentum[f.id];
     const rawMomentum = myEntry && myEntry.wTotal > 0 ? myEntry.wSum / myEntry.wTotal : 0;
     const momentumScore = Math.round(Math.max(0, Math.min(100, 50 + rawMomentum)));
-    const decayPerTick = Math.round(Math.abs(rawMomentum) * 0.20 * 10) / 10;
+    const decayPerTick = Math.round(Math.abs(rawMomentum) * 0.15 * 10) / 10;
     const momentumRank = partyScores.findIndex(p => p.id === f.id) + 1;
     const totalParties = partyScores.length;
     const role = getPartyRole(f.id, mySeats, coalition);
@@ -269,9 +278,16 @@ async function renderParties() {
     for (const b of (blocs || [])) blocLookup[b.id] = b;
 
     const approvalByBloc = {};
+    const pillarByBloc = {};  // { blocId: { factionId: { ideo, perf, mom } } }
     for (const row of (allBlocApprovals || [])) {
         if (!approvalByBloc[row.bloc_id]) approvalByBloc[row.bloc_id] = {};
         approvalByBloc[row.bloc_id][row.faction_id] = row.preference_score ?? 0;
+        if (!pillarByBloc[row.bloc_id]) pillarByBloc[row.bloc_id] = {};
+        pillarByBloc[row.bloc_id][row.faction_id] = {
+            ideo: Math.round(row.ideology_alignment ?? 50),
+            perf: Math.round(row.performance_perception ?? 50),
+            mom: Math.round(row.momentum ?? 0)
+        };
     }
 
     const blocRows = (blocs || []).map(b => {
@@ -285,6 +301,7 @@ async function renderParties() {
         const leaderParty = partyLookup[leaderId];
         const isLeading = leaderId === f.id;
         const margin = leaderApproval - myApproval;
+        const pillars = pillarByBloc[b.id]?.[f.id] || { ideo: 50, perf: 50, mom: 0 };
         return {
             blocId: b.id,
             blocName: b.bloc_name,
@@ -294,7 +311,8 @@ async function renderParties() {
             leaderAbbr: leaderParty?.abbreviation || '?',
             leaderColor: leaderParty?.party_color || '#666',
             isLeading,
-            margin
+            margin,
+            pillars
         };
     }).sort((a, b) => b.myApproval - a.myApproval);
 
@@ -384,7 +402,7 @@ async function renderParties() {
             <div class="stat-grid stat-grid-3col" style="margin-bottom: 12px;">
                 <div class="stat-card"><div class="stat-label">Action Points</div><div class="stat-value" id="party-ap">${f?.action_points || 0}</div></div>
                 <div class="stat-card"><div class="stat-label">Party Funds</div><div class="stat-value" id="party-funds">$${(f?.party_funds || 0).toLocaleString()}</div></div>
-                <div class="stat-card"><div class="stat-label">Approval Rating</div><div class="stat-value" id="party-approval">${f?._derivedApproval ?? f?.approval_rating ?? 0}%</div></div>
+                <div class="stat-card"><div class="stat-label" title="Weighted average approval across all voter blocs">Approval Rating</div><div class="stat-value" id="party-approval">${f?._derivedApproval ?? f?.approval_rating ?? 0}%</div></div>
             </div>
             ${(() => {
                 if (!blocs || blocs.length === 0 || !f) return '';
@@ -564,6 +582,9 @@ async function renderParties() {
     for (const r of blocRows) {
         const barColor = r.isLeading ? partyColor : 'var(--text-muted, #555)';
         const voters = compactNum(totalEligible * (r.popWeight / 100));
+        const p = r.pillars;
+        const momMapped = Math.round(50 + p.mom);
+        const momSign = p.mom > 0 ? '+' : '';
         blocTableHtml += `
             <div class="bloc-row${r.isLeading ? ' bloc-row-leading' : ''}">
                 <span class="bloc-name">${r.blocName}</span>
@@ -571,8 +592,14 @@ async function renderParties() {
                 <div class="bloc-bar-track">
                     <div class="bloc-bar-fill" style="width:${r.myApproval}%;background:${barColor}"></div>
                 </div>
-                <span class="bloc-approval">${r.myApproval}%</span>
-                <span class="bloc-change">—</span>
+                <span class="bloc-approval bloc-approval-hover">${r.myApproval}%
+                    <div class="bloc-pillar-tip">
+                        <div class="bpt-row"><span class="bpt-label">Ideology</span><div class="bpt-bar"><div class="bpt-fill" style="width:${p.ideo}%;background:#9C27B0"></div></div><span class="bpt-val">${p.ideo}</span></div>
+                        <div class="bpt-row"><span class="bpt-label">Performance</span><div class="bpt-bar"><div class="bpt-fill" style="width:${p.perf}%;background:#2196F3"></div></div><span class="bpt-val">${p.perf}</span></div>
+                        <div class="bpt-row"><span class="bpt-label">Momentum</span><div class="bpt-bar"><div class="bpt-fill" style="width:${momMapped}%;background:#ff9800"></div></div><span class="bpt-val">${momSign}${p.mom}</span></div>
+                    </div>
+                </span>
+                <span class="bloc-change">${p.mom !== 0 ? (p.mom > 0 ? '<span style="color:#4CAF50">+' + p.mom + '</span>' : '<span style="color:#ff4444">' + p.mom + '</span>') : '—'}</span>
                 <span class="bloc-leader" style="color:${r.leaderColor}">${r.isLeading ? 'YOU' : r.leaderAbbr}</span>
             </div>`;
     }
@@ -792,6 +819,38 @@ async function renderParties() {
             <div class="momentum-decay">${decayPerTick > 0 ? `${rawMomentum > 0 ? '−' : '+'}${decayPerTick} / tick` : 'Stable'}</div>
             <div class="momentum-rank">You are ${ordinal(momentumRank)} of ${totalParties} in Momentum right now.</div>
             <div class="momentum-desc">How loud you are in the national conversation right now.</div>
+            ${(() => {
+                if (!momentumLog || momentumLog.length === 0) return '';
+                const SOURCE_LABELS = {
+                    'crisis:government_shutdown': 'Government shutdown',
+                    'penalty:no_vote': 'Didn\'t vote on bill',
+                    'campaign:press_conference': 'Press conference',
+                    'campaign:press_conference_target': 'Targeted by press conference',
+                    'promise:kept': 'Promise kept',
+                    'promise:broken': 'Promise broken',
+                    'bill:enactment': 'Bill enacted',
+                    'bill:enactment:sponsor': 'Sponsored enacted bill',
+                    'bill:enactment:supporter': 'Supported enacted bill',
+                    'bill:enactment:opposer': 'Opposed enacted bill',
+                    'bill:veto': 'Bill vetoed',
+                    'bill:withdraw': 'Withdrew bill',
+                    'crisis:scandal': 'Scandal',
+                    'crisis:natural_disaster': 'Natural disaster',
+                    'gov_approval_shift': 'Gov approval shift',
+                    'election:winner': 'Election winner',
+                    'election:loser': 'Election loss',
+                    'minister:fired': 'Minister fired',
+                    'campaign:voter_outreach': 'Voter outreach',
+                    'campaign:rally': 'Campaign rally'
+                };
+                const rows = momentumLog.map(e => {
+                    const label = SOURCE_LABELS[e.source] || e.source.replace(/[_:]/g, ' ');
+                    const sign = e.amount > 0 ? '+' : '';
+                    const color = e.amount > 0 ? '#4CAF50' : e.amount < 0 ? '#ff4444' : 'var(--text-muted)';
+                    return `<div class="mom-log-row"><span class="mom-log-src">${label}</span><span class="mom-log-amt" style="color:${color}">${sign}${Math.round(e.amount * 10) / 10}</span></div>`;
+                }).join('');
+                return `<div class="mom-log-panel"><div class="mom-log-title">Recent Changes</div>${rows}</div>`;
+            })()}
         </div>
 
         ${perfCreditHtml}
@@ -813,7 +872,7 @@ async function renderParties() {
         <div class="bloc-approval-panel">
             <div class="bloc-approval-header-row">
                 <span class="bloc-approval-title">Approval by Voter Bloc</span>
-                <span class="bloc-approval-note">&plusmn; margin of error</span>
+                <span class="bloc-approval-note">Hover approval for breakdown</span>
             </div>
             <div class="bloc-table-header">
                 <span class="bloc-name">Bloc</span>
