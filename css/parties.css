@@ -1747,6 +1747,16 @@ body.light-mode .ap-bar-track {
     margin-top: 2px;
 }
 
+.reg-strongman-faction {
+    font-size: 0.6rem;
+    color: #ff4444;
+    font-weight: 700;
+    text-align: right;
+    margin-top: 2px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
 .reg-strongman-meta {
     font-size: 0.65rem;
     color: #8a8778;
@@ -1895,7 +1905,7 @@ body.light-mode .ap-bar-track {
 /* ── Pillars of the Regime ── */
 .reg-pillar-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: 10px;
 }
 
@@ -1948,6 +1958,49 @@ body.light-mode .ap-bar-track {
     font-weight: 700;
     letter-spacing: 1.5px;
     text-transform: uppercase;
+}
+
+.reg-pillar-card-mine {
+    border-color: rgba(76, 175, 80, 0.3);
+}
+
+.reg-pillar-steward {
+    font-size: 0.5rem;
+    color: #6b6a5e;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-top: 6px;
+}
+
+.reg-pillar-steward-mine {
+    color: #4CAF50;
+    font-weight: 700;
+}
+
+.reg-pillar-claim-btn {
+    margin-top: 8px;
+    padding: 4px 12px;
+    font-size: 0.55rem;
+    font-weight: 700;
+    font-family: inherit;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #e2e0d6;
+    background: rgba(226, 224, 214, 0.08);
+    border: 1px solid rgba(226, 224, 214, 0.15);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.reg-pillar-claim-btn:hover {
+    background: rgba(226, 224, 214, 0.15);
+    border-color: rgba(226, 224, 214, 0.3);
+}
+
+.reg-pillar-claim-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 /* ── Regime Vitals ── */
@@ -2130,10 +2183,11 @@ body.light-mode .ap-bar-track {
     .reg-body { flex-direction: column; }
     .reg-col-left { border-right: none; border-bottom: 1px solid rgba(226, 224, 214, 0.06); }
     .reg-vitals-grid { grid-template-columns: 1fr 1fr; }
-    .reg-pillar-grid { grid-template-columns: 1fr 1fr 1fr; }
+    .reg-pillar-grid { grid-template-columns: 1fr 1fr; }
     .reg-header { flex-direction: column; gap: 12px; }
     .reg-strongman-label,
     .reg-strongman-name,
+    .reg-strongman-faction,
     .reg-strongman-meta { text-align: left; }
 }
 
@@ -2142,7 +2196,7 @@ body.light-mode .ap-bar-track {
     .reg-strip-item { border-right: none; border-bottom: 1px solid rgba(226, 224, 214, 0.06); }
     .reg-strip-item:last-child { border-bottom: none; }
     .reg-vitals-grid { grid-template-columns: 1fr 1fr; }
-    .reg-pillar-grid { grid-template-columns: 1fr 1fr; }
+    .reg-pillar-grid { grid-template-columns: 1fr; }
     .reg-grip-components { grid-template-columns: 1fr; }
 }
 
@@ -2173,6 +2227,9 @@ body.light-mode .reg-intel-bar-track { background: #e8e8e4; }
 body.light-mode .reg-pillar-card { background: #f0f0ee; border-color: #ddd; }
 body.light-mode .reg-pillar-name { color: #888; }
 body.light-mode .reg-pillar-bar-track { background: #e8e8e4; }
+body.light-mode .reg-pillar-claim-btn { color: #2a2a28; background: rgba(0,0,0,0.05); border-color: #ccc; }
+body.light-mode .reg-pillar-claim-btn:hover { background: rgba(0,0,0,0.1); border-color: #aaa; }
+body.light-mode .reg-pillar-steward { color: #888; }
 
 /* ===== RALLY PANEL ===== */
 .rally-panel {
