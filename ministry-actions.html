@@ -729,21 +729,9 @@ function renderMinistryContent(key) {
     const icon = MINISTRY_ICONS[key] || '';
     const fiscalCat = MINISTRY_FISCAL_MAP[key];
     const alloc = budgetAllocations[fiscalCat] || { allocated: 0, needed: 0 };
-    // Compute live needed from current nation stats instead of stale DB snapshot
-    const inflMult = getInflationMultiplier(currentNation.inflation);
-    const ministryInsts = MINISTRY_INSTITUTIONS[key] || [];
-    let liveNeeded = 0;
-    for (const inst of ministryInsts) {
-        if (inst.baseCostPerCapita) {
-            if (inst.scalingType === 'gdp') {
-                liveNeeded += (inst.baseCostPerCapita / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0) * inflMult;
-            } else {
-                liveNeeded += inst.baseCostPerCapita * (currentNation.population || 0) * inflMult;
-            }
-        }
-    }
-    const overallNeeded = liveNeeded > 0 ? liveNeeded : alloc.needed;
-    const overallPct = overallNeeded > 0 ? Math.round((alloc.allocated / overallNeeded) * 100) : 0;
+    // Ministry-level needed uses stored fulfilled_cost which includes both
+    // institution and policy costs — live recalc happens at the institution level
+    const overallPct = alloc.needed > 0 ? Math.round((alloc.allocated / alloc.needed) * 100) : 0;
     const overallFunding = getFundingLabel(overallPct);
     const institutions = MINISTRY_INSTITUTIONS[key] || [];
     const policies = MINISTRY_POLICIES[key] || [];
@@ -778,7 +766,7 @@ function renderMinistryContent(key) {
     h += '<div class="mdet-header-right">';
     h += '<div class="mdet-budget-label">MINISTRY BUDGET</div>';
     h += `<div class="mdet-budget-value" style="color:${overallFunding.color}">${fmtCurrency(alloc.allocated)}</div>`;
-    h += `<div class="mdet-budget-sub">of ${fmtCurrency(overallNeeded)} needed &mdash; <span style="color:${overallFunding.color};font-weight:700">${overallPct}% funded</span></div>`;
+    h += `<div class="mdet-budget-sub">of ${fmtCurrency(alloc.needed)} needed &mdash; <span style="color:${overallFunding.color};font-weight:700">${overallPct}% funded</span></div>`;
     h += '</div>';
 
     h += '</div>'; // .mdet-header-inner
