@@ -694,3 +694,89 @@
             .past-admin-summary { flex-direction: column; align-items: flex-start; gap: 8px; }
             .past-admin-approval { text-align: left; }
         }
+
+        /* Government approval breakdown tooltip */
+        .gov-approval-hover { cursor: default; }
+        .gov-approval-tooltip {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            background: var(--bg-card, #252525);
+            border: 1px solid var(--border-main, #333);
+            border-radius: 8px;
+            padding: 14px 16px;
+            width: 260px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s;
+            z-index: 30;
+            text-align: left;
+        }
+        .gov-approval-hover:hover .gov-approval-tooltip { opacity: 1; pointer-events: auto; }
+        .gov-tip-title {
+            font-size: 0.68rem;
+            color: var(--text-muted, #666);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 10px;
+        }
+        .gov-tip-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 2px;
+        }
+        .gov-tip-label {
+            font-size: 0.72rem;
+            color: var(--text-secondary, #aaa);
+            width: 110px;
+            flex-shrink: 0;
+        }
+        .gov-tip-bar {
+            flex: 1;
+            height: 6px;
+            background: var(--bg-body, #121212);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .gov-tip-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+        .gov-tip-val {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--text-primary, #e0e0e0);
+            width: 24px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .gov-tip-desc {
+            font-size: 0.62rem;
+            color: var(--text-muted, #666);
+            margin-bottom: 8px;
+            padding-left: 2px;
+        }
+        .gov-tip-events-title {
+            font-size: 0.62rem;
+            color: var(--text-muted, #666);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--border-main, #333);
+            margin-bottom: 4px;
+        }
+        .gov-tip-evt {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.68rem;
+            color: var(--text-secondary, #aaa);
+            padding: 1px 0;
+        }
+        .gov-tip-evt span:last-child {
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            margin-left: 8px;
+        }
+        body.light-mode .gov-approval-tooltip {
+            background: #fff;
+            border-color: #ccc;
+        }

@@ -2002,18 +2002,18 @@ export async function processGovernmentShutdown(supabase, nation, currentTick) {
     const coalitionPartyIds = coalition?.party_ids || [];
 
     for (const partyId of coalitionPartyIds) {
-        await adjustMomentum(supabase, partyId, -2);
-        await adjustBlocApproval(supabase, partyId, -2);
+        await adjustMomentumAll(supabase, nation.id, partyId, -4, 'crisis:government_shutdown');
     }
     if (coalitionPartyIds.length > 0) {
-        console.log(`[GovernmentShutdown] Applied -2 Momentum & -2 Approval to ${coalitionPartyIds.length} coalition parties for ${nation.name}`);
+        console.log(`[GovernmentShutdown] Applied -4 Momentum to ${coalitionPartyIds.length} coalition parties for ${nation.name}`);
     }
 
-    // --- 2. PM approval penalty: -3/tick ---
+    // --- 2. PM party extra penalty: -3/tick + gov approval event ---
     const pmPartyId = coalition?.lead_party_id;
     if (pmPartyId) {
-        await adjustBlocApproval(supabase, pmPartyId, -3);
-        console.log(`[GovernmentShutdown] Applied -3 Approval to PM party ${pmPartyId} for ${nation.name}`);
+        await adjustMomentumAll(supabase, nation.id, pmPartyId, -3, 'crisis:government_shutdown_pm');
+        await adjustGovernmentApprovalEvent(supabase, nation.id, -3, 'crisis:government_shutdown');
+        console.log(`[GovernmentShutdown] Applied -3 Momentum to PM party ${pmPartyId} + -3 gov approval event for ${nation.name}`);
     }
 
     // --- 3. President approval penalty: -3/tick (presidential systems) ---
@@ -2027,8 +2027,8 @@ export async function processGovernmentShutdown(supabase, nation, currentTick) {
             .limit(1)
             .maybeSingle();
         if (president) {
-            await adjustBlocApproval(supabase, president.faction_id, -3);
-            console.log(`[GovernmentShutdown] Applied -3 Approval to President party ${president.faction_id} for ${nation.name}`);
+            await adjustMomentumAll(supabase, nation.id, president.faction_id, -3, 'crisis:government_shutdown_president');
+            console.log(`[GovernmentShutdown] Applied -3 Momentum to President party ${president.faction_id} for ${nation.name}`);
         }
     }
 
@@ -2737,10 +2737,10 @@ export function calculateEnactmentApproval(articles, billSupport, sponsorId, fac
     return approvalDeltas;
 }
 
-export async function applyEnactmentApproval(supabase, approvalDeltas) {
+export async function applyEnactmentApproval(supabase, nationId, approvalDeltas) {
     for (const [factionId, delta] of Object.entries(approvalDeltas)) {
         if (delta === 0) continue;
-        await adjustBlocApproval(supabase, factionId, delta);
+        await adjustMomentumAll(supabase, nationId, factionId, delta, 'bill:enactment');
     }
 }
 
@@ -2750,7 +2750,7 @@ export async function applyEnactmentApproval(supabase, approvalDeltas) {
 /**
  * Penalize factions that did not cast any vote (YES/NO/ABSTAIN) on a bill.
  * - Momentum: lose [1d3+1] (2-4) across all blocs
- * - Preference: -2 approval with every voter bloc whose ideology axis score
+ * - Preference: -2 preference_score with every voter bloc whose ideology axis score
  *   is at least ±10 from center (≤40 or ≥60) on any axis present in the bill.
  *
  * @param {object} supabase
@@ -2823,20 +2823,20 @@ export async function applyNoVotePenalty(supabase, bill, nationId) {
     for (const faction of nonVoters) {
         // Momentum: lose 1d3+1 (2-4) across ALL blocs
         const momentumLoss = -(Math.floor(Math.random() * 3) + 2);
-        await adjustMomentum(supabase, faction.id, momentumLoss);
+        await adjustMomentumAll(supabase, nationId, faction.id, momentumLoss, 'penalty:no_vote');
 
-        // Preference: -2 approval on matched blocs only
+        // Preference: -2 preference_score on matched blocs only
         if (affectedBlocIds.size > 0) {
             const { data: blocRows } = await supabase
                 .from('faction_bloc_approval')
-                .select('id, bloc_id, approval')
+                .select('id, bloc_id, preference_score')
                 .eq('faction_id', faction.id)
                 .in('bloc_id', [...affectedBlocIds]);
 
             for (const row of (blocRows || [])) {
-                const newApproval = Math.round(Math.max(0, Math.min(100, row.approval + PREFERENCE_PENALTY)));
+                const newPref = Math.round(Math.max(0, Math.min(100, (row.preference_score ?? 50) + PREFERENCE_PENALTY)));
                 await supabase.from('faction_bloc_approval')
-                    .update({ approval: newApproval })
+                    .update({ preference_score: newPref })
                     .eq('id', row.id);
             }
         }
@@ -2883,14 +2883,14 @@ export function calculateIdeologyPenalty(stage, opposedCount, polarization) {
 
 /**
  * Recalculate derived overall approval_rating for a faction from
- * faction_bloc_approval rows weighted by voter_blocs population_weight.
- * Updates the factions table and returns the new value.
+ * faction_bloc_approval preference_scores weighted by voter_blocs population_weight.
+ * Updates the factions.approval_rating cache column.
  */
 export async function recalcDerivedApproval(supabase, factionId, blocRows) {
     if (!blocRows) {
         const { data } = await supabase
             .from('faction_bloc_approval')
-            .select('bloc_id, approval')
+            .select('bloc_id, preference_score')
             .eq('faction_id', factionId);
         blocRows = data || [];
     }
@@ -2908,7 +2908,8 @@ export async function recalcDerivedApproval(supabase, factionId, blocRows) {
 
     let weightedSum = 0;
     for (const row of blocRows) {
-        weightedSum += row.approval * (weightMap[row.bloc_id] || 0);
+        const score = row.preference_score ?? 50;
+        weightedSum += score * (weightMap[row.bloc_id] || 0);
     }
     const derived = Math.round(weightedSum / 100);
 
@@ -2920,62 +2921,14 @@ export async function recalcDerivedApproval(supabase, factionId, blocRows) {
 }
 
 /**
- * Adjust approval for a single faction across all voter blocs uniformly.
- * Updates faction_bloc_approval rows, then recalculates derived approval_rating.
- * Falls back to direct approval_rating update if no bloc rows exist.
- * Returns the new derived overall approval.
- */
-export async function adjustBlocApproval(supabase, factionId, delta) {
-    if (delta === 0) return;
-
-    const { data: blocRows } = await supabase
-        .from('faction_bloc_approval')
-        .select('id, bloc_id, approval')
-        .eq('faction_id', factionId);
-
-    // Fallback: no bloc rows — use legacy direct update
-    if (!blocRows || blocRows.length === 0) {
-        const { data: faction } = await supabase
-            .from('factions')
-            .select('approval_rating')
-            .eq('id', factionId)
-            .single();
-        if (!faction) return null;
-        const current = faction.approval_rating ?? 50;
-        const updated = Math.round(Math.max(0, Math.min(100, current + delta)));
-        const { error: legacyErr } = await supabase.from('factions')
-            .update({ approval_rating: updated })
-            .eq('id', factionId);
-        if (legacyErr) console.error(`[adjustBlocApproval] Legacy update failed for faction ${factionId}:`, legacyErr.message);
-        return updated;
-    }
-
-    // Apply delta to each bloc row, clamped 0-100 and rounded to integer
-    for (const row of blocRows) {
-        row.approval = Math.round(Math.max(0, Math.min(100, row.approval + delta)));
-    }
-
-    // Update all rows
-    for (const row of blocRows) {
-        const { error: updErr } = await supabase.from('faction_bloc_approval')
-            .update({ approval: row.approval })
-            .eq('id', row.id);
-        if (updErr) console.error(`[adjustBlocApproval] Failed to update bloc ${row.id}:`, updErr.message);
-    }
-
-    // Recalculate and update derived approval
-    return await recalcDerivedApproval(supabase, factionId, blocRows);
-}
-
-/**
  * Ensures faction_bloc_approval rows exist for a given faction.
- * If none exist, seeds them with default approval of 40 for all active blocs.
+ * If none exist, seeds them with default preference_score of 40 for all active blocs.
  * Returns the (possibly newly created) bloc approval rows, or null on failure.
  */
 export async function ensureBlocApprovals(supabase, factionId, nationId) {
     const { data: existing, error: checkErr } = await supabase
         .from('faction_bloc_approval')
-        .select('id, bloc_id, approval')
+        .select('id, bloc_id, preference_score')
         .eq('faction_id', factionId);
 
     if (checkErr) {
@@ -3001,7 +2954,7 @@ export async function ensureBlocApprovals(supabase, factionId, nationId) {
     const rows = blocs.map(bloc => ({
         faction_id: factionId,
         bloc_id: bloc.id,
-        approval: 40
+        preference_score: 40
     }));
 
     const { error: upsertErr } = await supabase
@@ -3015,7 +2968,7 @@ export async function ensureBlocApprovals(supabase, factionId, nationId) {
 
     const { data: newRows } = await supabase
         .from('faction_bloc_approval')
-        .select('id, bloc_id, approval')
+        .select('id, bloc_id, preference_score')
         .eq('faction_id', factionId);
 
     console.log(`[ensureBlocApprovals] Seeded ${rows.length} bloc approval rows for faction ${factionId}`);
@@ -3935,7 +3888,7 @@ export async function enactBill(supabase, bill, currentTick) {
         bill.proposed_by,
         factionIdeologies
     );
-    await applyEnactmentApproval(supabase, approvalDeltas);
+    await applyEnactmentApproval(supabase, bill.nation_id, approvalDeltas);
 }
 
 export async function reversePolicy(supabase, nation, policy, passedTick, currentTick) {
@@ -4652,6 +4605,88 @@ export function statDirectionSign(statKey) {
     return 0;
 }
 
+// ==================== STAT TREND CALCULATION ====================
+
+/** Weights for weighted-average trend: most recent delta gets 0.40, oldest gets 0.05 */
+const TREND_WEIGHTS = [0.05, 0.05, 0.10, 0.15, 0.25, 0.40];
+
+/**
+ * Weighted trend for a single stat over the last `lookback` ticks.
+ * Returns a signed value: positive = rising, negative = falling.
+ * Requires stat_history rows populated by recordStatHistory().
+ *
+ * @param {object} supabase
+ * @param {string} nationId
+ * @param {string} statName  - nation stat key (e.g. 'unemployment')
+ * @param {number} [lookback=6] - how many tick-deltas to consider
+ * @returns {Promise<number>} weighted trend value
+ */
+export async function statTrend(supabase, nationId, statName, lookback = 6) {
+    const { data: rows } = await supabase
+        .from('stat_history')
+        .select('value, tick')
+        .eq('nation_id', nationId)
+        .eq('stat_name', statName)
+        .order('tick', { ascending: true })
+        .limit(lookback + 1);
+
+    if (!rows || rows.length < 2) return 0;
+
+    let weightedSum = 0;
+    const deltas = rows.length - 1;
+    for (let i = 1; i < rows.length; i++) {
+        const delta = rows[i].value - rows[i - 1].value;
+        const weightIdx = Math.max(0, TREND_WEIGHTS.length - deltas + i - 1);
+        weightedSum += delta * (TREND_WEIGHTS[weightIdx] || 0.10);
+    }
+    return weightedSum;
+}
+
+/**
+ * Batch version: compute weighted trends for multiple stats in a single query.
+ * Returns { statName: trendValue, ... }.
+ *
+ * @param {object} supabase
+ * @param {string} nationId
+ * @param {string[]} statNames - array of stat keys
+ * @param {number} [lookback=6]
+ * @returns {Promise<Object.<string, number>>}
+ */
+export async function statTrendBatch(supabase, nationId, statNames, lookback = 6) {
+    if (!statNames || statNames.length === 0) return {};
+
+    const { data: rows } = await supabase
+        .from('stat_history')
+        .select('stat_name, value, tick')
+        .eq('nation_id', nationId)
+        .in('stat_name', statNames)
+        .order('tick', { ascending: true });
+
+    if (!rows || rows.length === 0) return {};
+
+    // Group by stat_name
+    const byName = {};
+    for (const r of rows) {
+        if (!byName[r.stat_name]) byName[r.stat_name] = [];
+        byName[r.stat_name].push(r);
+    }
+
+    const trends = {};
+    for (const [name, vals] of Object.entries(byName)) {
+        const recent = vals.slice(-(lookback + 1));
+        if (recent.length < 2) { trends[name] = 0; continue; }
+        let weightedSum = 0;
+        const deltas = recent.length - 1;
+        for (let i = 1; i < recent.length; i++) {
+            const delta = recent[i].value - recent[i - 1].value;
+            const weightIdx = Math.max(0, TREND_WEIGHTS.length - deltas + i - 1);
+            weightedSum += delta * (TREND_WEIGHTS[weightIdx] || 0.10);
+        }
+        trends[name] = weightedSum;
+    }
+    return trends;
+}
+
 // ==================== MINISTER & GOVERNMENT APPROVAL SYSTEM ====================
 
 /**
@@ -4696,36 +4731,51 @@ export function statApprovalContribution(statKey, value) {
 }
 
 export const GOV_APPROVAL_CONFIG = {
-    // Layer 2 component weights
-    MINISTER_WEIGHT: 0.60,
-    PM_STATS_WEIGHT: 0.20,
-    TRAJECTORY_WEIGHT: 0.20,
+    // ─── New spec weights (Phase 4) ───
+    INSTITUTIONAL_WEIGHT: 0.45,
+    OUTCOMES_WEIGHT: 0.35,
+    EVENTS_WEIGHT: 0.20,
 
-    // Trajectory lookback
-    TRAJECTORY_LOOKBACK: 5,
+    // Events component decay (12% per tick — transient shocks fade naturally)
+    EVENTS_DECAY_RATE: 0.12,
 
-    // PM-owned stats for Layer 2 scoring
-    PM_STATS: ['happiness', 'standard_of_living', 'stability'],
+    // Outcome stats: universal stats everyone cares about, with relative weights
+    OUTCOME_STATS: [
+        { stat: 'standard_of_living', weight: 0.18 },
+        { stat: 'unemployment',       weight: 0.15, inverted: true },
+        { stat: 'inflation',          weight: 0.12, inverted: true },
+        { stat: 'crime_rate',         weight: 0.10, inverted: true },
+        { stat: 'healthcare_quality', weight: 0.10 },
+        { stat: 'happiness',          weight: 0.10 },
+        { stat: 'poverty_rate',       weight: 0.08, inverted: true },
+        { stat: 'gdp_growth',         weight: 0.07 },
+        { stat: 'stability',          weight: 0.05 },
+        { stat: 'corruption',         weight: 0.05, inverted: true },
+    ],
+    OUTCOME_TREND_LOOKBACK: 8,
+    OUTCOME_TREND_WEIGHT: 0.6,    // 60% trend direction
+    OUTCOME_ABSOLUTE_WEIGHT: 0.4, // 40% absolute level
 
-    // Mood multiplier bounds (Layer 3)
-    MOOD_MULTIPLIER_MIN: 0.4,
-    MOOD_MULTIPLIER_MAX: 1.15,
+    // Gov approval → momentum feedback
+    FEEDBACK_THRESHOLD: 2,          // min delta to trigger feedback
+    FEEDBACK_COALITION_COEFF: 0.15, // coalition gets 15% of delta as momentum
+    FEEDBACK_OPPOSITION_COEFF: 0.08, // opposition gets inverse 8%
 
-    // Opposition boost
-    OPPOSITION_BOOST_THRESHOLD: 40,
-    OPPOSITION_BOOST_RATE: 0.05,
+    // Vacancy penalty per unfilled ministry
+    VACANCY_PENALTY: -5,
 
-    // Embattled / Crisis thresholds
+    // Embattled / Crisis thresholds (kept from original)
     EMBATTLED_THRESHOLD: 30,
     EMBATTLED_TICKS_REQUIRED: 5,
     EMBATTLED_GOV_PENALTY: -1,
     CRISIS_THRESHOLD: 20,
     CRISIS_GOV_PENALTY: -2,
 
-    // Minister firing
+    // Minister firing (kept from original)
     FIRE_MINISTER_AP_COST: 1,
     NEW_MINISTER_APPROVAL: 45,
     FIRE_GOV_APPROVAL_BONUS: 3,
+
 };
 
 /**
@@ -5159,12 +5209,12 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
             // Dissolve coalition
             await dissolveCoalition(supabase, nationId);
 
-            // Calling party gets +3 approval
-            await adjustBlocApproval(supabase, callingPartyId, 3);
+            // Calling party gets +3 momentum
+            await adjustMomentumAll(supabase, nationId, callingPartyId, 3, 'no_confidence:success');
 
-            // All coalition parties get -5 approval
+            // All coalition parties get -5 momentum
             for (const partyId of coalitionPartyIds) {
-                await adjustBlocApproval(supabase, partyId, -5);
+                await adjustMomentumAll(supabase, nationId, partyId, -5, 'no_confidence:coalition_falls');
             }
 
             // Schedule snap election (same pattern as early elections)
@@ -5195,12 +5245,12 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
         } // end else (coalition not already dissolved)
 
     } else {
-        // FAILED: calling party gets -5 approval
-        await adjustBlocApproval(supabase, callingPartyId, -5);
+        // FAILED: calling party gets -5 momentum
+        await adjustMomentumAll(supabase, nationId, callingPartyId, -5, 'no_confidence:failed');
 
-        // PM's party gets +3 approval
+        // PM's party gets +3 momentum
         if (pmFactionId) {
-            await adjustBlocApproval(supabase, pmFactionId, 3);
+            await adjustMomentumAll(supabase, nationId, pmFactionId, 3, 'no_confidence:pm_survives');
         }
 
         // Record cooldown: store the tick when the no-confidence failed
@@ -5301,7 +5351,7 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
         const penalty = partyId === pmFactionId
             ? GAME_CONFIG.EARLY_ELECTION_PM_APPROVAL_COST
             : GAME_CONFIG.EARLY_ELECTION_COALITION_APPROVAL_COST;
-        await adjustBlocApproval(supabase, partyId, -penalty);
+        await adjustMomentumAll(supabase, nationId, partyId, -penalty, 'early_election:penalty');
     }
 
     // Bust coalition cache after caretaker transition
@@ -5479,16 +5529,16 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
             .order('seats', { ascending: false });
 
         if (parties && parties.length > 0) {
-            // Largest party: -10% approval
+            // Largest party: -10 momentum
             const largest = parties[0];
-            await adjustBlocApproval(supabase, largest.id, -10);
-            console.log(`  Snap penalty: ${largest.faction_name} -10% approval`);
+            await adjustMomentumAll(supabase, nation.id, largest.id, -10, 'snap_election:largest_penalty');
+            console.log(`  Snap penalty: ${largest.faction_name} -10 momentum`);
 
-            // Second largest: -5% approval
+            // Second largest: -5 momentum
             if (parties.length > 1) {
                 const second = parties[1];
-                await adjustBlocApproval(supabase, second.id, -5);
-                console.log(`  Snap penalty: ${second.faction_name} -5% approval`);
+                await adjustMomentumAll(supabase, nation.id, second.id, -5, 'snap_election:second_penalty');
+                console.log(`  Snap penalty: ${second.faction_name} -5 momentum`);
             }
         }
 
@@ -5539,7 +5589,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
     }
 
     // ===== ONGOING PENALTIES =====
-    // -2 approval to ALL parties
+    // -2 momentum to ALL parties
     const { data: parties } = await supabase
         .from('factions')
         .select('id, faction_name')
@@ -5547,7 +5597,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
         .eq('faction_type', 'party');
 
     for (const party of (parties || [])) {
-        await adjustBlocApproval(supabase, party.id, -2);
+        await adjustMomentumAll(supabase, nation.id, party.id, -2, 'government_vacancy:ongoing');
     }
 
     // -1 stability to nation
@@ -5640,14 +5690,14 @@ export async function processPartialElection(supabase, nation, election, current
         }
     }));
 
-    // 3b. Load per-bloc approval data
+    // 3b. Load per-bloc preference data
     const { data: fbaRows } = await supabase
-        .from('faction_bloc_approval').select('faction_id, bloc_id, approval')
+        .from('faction_bloc_approval').select('faction_id, bloc_id, preference_score')
         .in('faction_id', factionIds);
     const allBlocApprovals = {};
     for (const row of (fbaRows || [])) {
         if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
-        allBlocApprovals[row.bloc_id][row.faction_id] = row.approval;
+        allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? 40;
     }
 
     // 4. Run election simulation for ONLY the delta seats
@@ -6361,14 +6411,14 @@ export async function processPresidentialElectionResult(supabase, nation, comple
             }
         }
 
-        // Approval effects: incumbent win boosts their faction, challenger win penalizes losing incumbent faction
+        // Momentum effects: incumbent win boosts their faction, challenger win penalizes losing incumbent faction
         if (isIncumbentWin && incumbentFactionId) {
-            await adjustBlocApproval(supabase, incumbentFactionId, 3);
-            console.log(`Incumbent re-elected: +3 approval to ${winner.party_name}`);
+            await adjustMomentumAll(supabase, nation.id, incumbentFactionId, 3, 'election:incumbent_win');
+            console.log(`Incumbent re-elected: +3 momentum to ${winner.party_name}`);
         } else if (isChallengerWin && incumbentFactionId) {
-            await adjustBlocApproval(supabase, incumbentFactionId, -5);
-            await adjustBlocApproval(supabase, winner.faction_id, 3);
-            console.log(`Challenger wins: -5 approval to outgoing party, +3 to ${winner.party_name}`);
+            await adjustMomentumAll(supabase, nation.id, incumbentFactionId, -5, 'election:incumbent_loss');
+            await adjustMomentumAll(supabase, nation.id, winner.faction_id, 3, 'election:challenger_win');
+            console.log(`Challenger wins: -5 momentum to outgoing party, +3 to ${winner.party_name}`);
         }
     } catch (effectsErr) { console.warn('Could not apply winner/loser effects:', effectsErr); }
 
@@ -7232,7 +7282,7 @@ export async function processParliamentaryPMTimeout(supabase, nation, currentTic
  * @param {object} nation   - Full nation row
  * @param {number} currentTick - The tick just committed
  */
-export async function calculateThreePillarPreferences(supabase, nation, currentTick, govApproval = null) {
+export async function calculateThreePillarPreferences(supabase, nation, currentTick) {
     if (isAutocracy(nation)) return;
 
     // ── 1. Load all party factions ──
@@ -7244,36 +7294,13 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
     if (!factions || factions.length === 0) return;
     const factionIds = factions.map(f => f.id);
 
-    // ── 1b. Mood multiplier from government approval (Layer 3) ──
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     const coalitionPartyIds = new Set(coalition?.party_ids || []);
-
-    let moodMultiplier = 1.0;
-    if (govApproval !== null && coalitionPartyIds.size > 0) {
-        // Linear interpolation: govApproval 0→0.4, 100→1.15
-        moodMultiplier = GOV_APPROVAL_CONFIG.MOOD_MULTIPLIER_MIN
-            + (govApproval / 100) * (GOV_APPROVAL_CONFIG.MOOD_MULTIPLIER_MAX - GOV_APPROVAL_CONFIG.MOOD_MULTIPLIER_MIN);
-    }
-
-    // Find largest opposition party (by seats) for opposition boost
-    let largestOppositionId = null;
-    if (govApproval !== null && govApproval < GOV_APPROVAL_CONFIG.OPPOSITION_BOOST_THRESHOLD && coalitionPartyIds.size > 0) {
-        let maxSeats = 0;
-        for (const f of factions) {
-            if (!coalitionPartyIds.has(f.id) && (f.seats || 0) > maxSeats) {
-                maxSeats = f.seats || 0;
-                largestOppositionId = f.id;
-            }
-        }
-    }
-    const oppositionPerfBoost = largestOppositionId
-        ? (GOV_APPROVAL_CONFIG.OPPOSITION_BOOST_THRESHOLD - govApproval) * GOV_APPROVAL_CONFIG.OPPOSITION_BOOST_RATE
-        : 0;
 
     // ── 2. Load all faction_bloc_approval rows ──
     const { data: allBlocRows } = await supabase
         .from('faction_bloc_approval')
-        .select('id, faction_id, bloc_id, approval, ideology_alignment, performance_perception, momentum, preference_score')
+        .select('id, faction_id, bloc_id, ideology_alignment, performance_perception, momentum, preference_score')
         .in('faction_id', factionIds);
     if (!allBlocRows || allBlocRows.length === 0) return;
 
@@ -7297,66 +7324,43 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
     const ideoMap = {};
     for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
 
-    // ── 5. Load ministries (for performance perception credit/blame) ──
+    // ── 5. Load ministries (for performance credit/blame) ──
     const { data: ministries } = await supabase
         .from('ministries')
         .select('ministry_key, party_id')
         .eq('nation_id', nation.id)
         .eq('is_active', true);
 
-    // Build ministry_key → party_id lookup
     const ministryHolder = {};
     for (const m of (ministries || [])) {
         if (m.party_id) ministryHolder[m.ministry_key] = m.party_id;
     }
 
-    // ── 6. Load stat snapshot from previous tick (for performance deltas) ──
-    let prevStats = null;
-    if (currentTick > 0) {
-        const { data: histRow } = await supabase
-            .from('nations_history')
-            .select('*')
-            .eq('nation_id', nation.id)
-            .eq('tick', currentTick - 1)
-            .single();
-        prevStats = histRow;
-    }
-
-    // Fresh nation stats (after this tick's effects have been applied)
-    const { data: freshNation } = await supabase
-        .from('nations')
-        .select('*')
-        .eq('id', nation.id)
-        .single();
-    const curStats = freshNation || nation;
-
-    // ── 7. Pre-compute stat deltas & ministry credit per faction ──
-    //    For each stat, compute: delta * direction_sign (positive = improved)
-    //    Then attribute to the ministry-holding faction.
-    const statImprovements = {}; // stat_key → { delta, ministryKey, holderId }
-    if (prevStats) {
-        for (const statKey of NATION_STAT_COLUMNS) {
-            const cur = Number(curStats[statKey] ?? 0);
-            const prev = Number(prevStats[statKey] ?? 0);
-            const rawDelta = cur - prev;
-            if (rawDelta === 0) continue;
-
-            const sign = statDirectionSign(statKey);
-            if (sign === 0) continue;
-
-            const ministryKey = STAT_TO_MINISTRY[statKey];
-            if (!ministryKey) continue;
-
-            const holderId = ministryHolder[ministryKey];
-            statImprovements[statKey] = {
-                improvement: rawDelta * sign, // positive = got better
-                ministryKey,
-                holderId: holderId || null
-            };
+    // ── 6. Collect all priority stat names for batch trend lookup ──
+    const allPriorityStatNames = new Set();
+    for (const bloc of voterBlocs) {
+        const priorities = Array.isArray(bloc.priority_issues) ? bloc.priority_issues : [];
+        for (const issue of priorities) {
+            const stats = ISSUE_CATEGORY_STATS[issue];
+            if (stats) stats.forEach(s => allPriorityStatNames.add(s));
         }
     }
 
-    // ── 8. Calculate all three pillars for each faction-bloc pair ──
+    // Load weighted trends for all relevant stats in one batch query
+    const trends = allPriorityStatNames.size > 0
+        ? await statTrendBatch(supabase, nation.id, [...allPriorityStatNames], 6)
+        : {};
+
+    // Fresh nation stats (after this tick's effects have been applied)
+    const curStats = nation;
+
+    // ── 7. Calculate all three pillars for each faction-bloc pair ──
+    const PILLAR_WEIGHT_IDEO = 0.40;
+    const PILLAR_WEIGHT_PERF = 0.35;
+    const PILLAR_WEIGHT_MOM  = 0.25;
+    const MOMENTUM_DECAY     = 0.85; // 15% decay per tick
+    const PERF_DECAY         = 0.05; // 5% drift toward neutral per tick
+
     const updates = [];
 
     for (const row of allBlocRows) {
@@ -7365,16 +7369,14 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         const ideo = ideoMap[row.faction_id];
 
         // ─── PILLAR 1: Ideology Alignment (0-100) ───
-        // Uses dynamic axis scores that shift based on voting behavior
         const ideoScore = ideo ? computeIdeologyAlignment(ideo, bloc) : 50;
 
         // ─── PILLAR 2: Performance Perception (0-100) ───
-        // Credit/blame the faction for stats under its ministry control,
-        // filtered to the bloc's priority issues.
+        // Uses weighted 6-tick trends for stats the bloc cares about.
+        // Ministry holders get credit/blame; non-holders get a muted signal.
         let perfDelta = 0;
         const priorities = Array.isArray(bloc.priority_issues) ? bloc.priority_issues : [];
-        if (prevStats && priorities.length > 0) {
-            // Collect the stats this bloc cares about
+        if (priorities.length > 0) {
             const relevantStats = new Set();
             for (const issue of priorities) {
                 const stats = ISSUE_CATEGORY_STATS[issue];
@@ -7384,52 +7386,49 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
             let creditSum = 0;
             let statCount = 0;
             for (const statKey of relevantStats) {
-                const info = statImprovements[statKey];
-                if (!info) continue;
+                const rawTrend = trends[statKey] || 0;
+                if (rawTrend === 0) continue;
+                const sign = statDirectionSign(statKey);
+                if (sign === 0) continue;
+                const trendQuality = rawTrend * sign; // positive = improving
+
                 statCount++;
-                // Credit this faction if it holds the responsible ministry
-                if (info.holderId === row.faction_id) {
-                    creditSum += info.improvement;
+                const ministryKey = STAT_TO_MINISTRY[statKey];
+                const holderId = ministryKey ? ministryHolder[ministryKey] : null;
+
+                if (holderId === row.faction_id) {
+                    // Ministry holder: full credit/blame
+                    creditSum += trendQuality * 1.5;
+                } else if (coalitionPartyIds.has(row.faction_id)) {
+                    // Coalition partner: partial credit/blame
+                    creditSum += trendQuality * 0.3;
                 }
+                // Opposition: no direct credit (they benefit via momentum feedback in Phase 4)
             }
 
-            // Scale: raw stat deltas are typically ±0-5 per tick.
-            // Multiply by PERF_SENSITIVITY to make meaningful adjustments.
-            const PERF_SENSITIVITY = 3;
             if (statCount > 0) {
-                perfDelta = (creditSum / statCount) * PERF_SENSITIVITY;
+                perfDelta = (creditSum / statCount) * 3; // sensitivity multiplier
             }
         }
 
-        // Decay toward 50 + apply delta
+        // Decay toward 50 + apply trend-based delta
         const oldPerf = Number(row.performance_perception ?? 50);
-        const PERF_DECAY = 0.05; // 5% drift toward neutral per tick
         let newPerf = oldPerf * (1 - PERF_DECAY) + 50 * PERF_DECAY + perfDelta;
-
-        // Opposition boost: largest opposition party gets a performance perception nudge
-        // when government approval is low (Layer 3)
-        if (row.faction_id === largestOppositionId && oppositionPerfBoost > 0) {
-            newPerf += oppositionPerfBoost;
-        }
-
         newPerf = Math.round(Math.max(0, Math.min(100, newPerf)) * 100) / 100;
 
-        // ─── PILLAR 3: Momentum ───
-        // Decays 20% per tick. Action bonuses are added externally via adjustMomentum().
+        // ─── PILLAR 3: Momentum (-50 to +50) ───
+        // Decays 15% per tick. Adjusted externally via adjustMomentum().
         const oldMomentum = Number(row.momentum ?? 0);
-        const MOMENTUM_DECAY = 0.80;
         let newMomentum = Math.round(oldMomentum * MOMENTUM_DECAY * 100) / 100;
+        // Zero out negligible values to avoid perpetual tiny drifts
+        if (Math.abs(newMomentum) < 0.05) newMomentum = 0;
 
         // ─── COMBINE: preference_score ───
-        const clampedMomentum = Math.max(0, Math.min(100, 50 + newMomentum));
-        let prefScore = Math.round(
-            (ideoScore * 0.40 + newPerf * 0.40 + clampedMomentum * 0.20) * 100
+        // Map momentum from [-50,+50] to [0,100] for blending
+        const momMapped = Math.max(0, Math.min(100, 50 + newMomentum));
+        const prefScore = Math.round(
+            (ideoScore * PILLAR_WEIGHT_IDEO + newPerf * PILLAR_WEIGHT_PERF + momMapped * PILLAR_WEIGHT_MOM) * 100
         ) / 100;
-
-        // Mood multiplier: governing coalition parties get scaled by government approval (Layer 3)
-        if (coalitionPartyIds.has(row.faction_id) && moodMultiplier !== 1.0) {
-            prefScore = Math.round(prefScore * moodMultiplier * 100) / 100;
-        }
 
         updates.push({
             id: row.id,
@@ -7442,8 +7441,7 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         });
     }
 
-    // ── 9. Softmax vote share per bloc ──
-    // Group updates by bloc
+    // ── 8. Softmax vote share per bloc ──
     const byBloc = {};
     for (const u of updates) {
         if (!byBloc[u.bloc_id]) byBloc[u.bloc_id] = [];
@@ -7455,8 +7453,6 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         const k = Number(bloc?.k_value ?? 10);
         const entries = byBloc[blocId];
 
-        // Softmax: P(i) = exp(pref_i / k) / Σ exp(pref_j / k)
-        // Subtract max for numerical stability
         const maxPref = Math.max(...entries.map(e => e.preference_score));
         const exps = entries.map(e => Math.exp((e.preference_score - maxPref) / k));
         const sumExp = exps.reduce((a, b) => a + b, 0);
@@ -7468,7 +7464,7 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         }
     }
 
-    // ── 10. Batch-update faction_bloc_approval rows ──
+    // ── 9. Batch-update faction_bloc_approval rows ──
     for (const u of updates) {
         await supabase.from('faction_bloc_approval')
             .update({
@@ -7476,13 +7472,12 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
                 performance_perception: u.performance_perception,
                 momentum: u.momentum,
                 preference_score: u.preference_score,
-                vote_share: u.vote_share,
-                approval: Math.round(u.preference_score)
+                vote_share: u.vote_share
             })
             .eq('id', u.id);
     }
 
-    // ── 11. Aggregate national_vote_share per faction ──
+    // ── 10. Aggregate national_vote_share per faction ──
     const factionNationalShare = {};
     let totalWeight = 0;
 
@@ -7497,7 +7492,6 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         }
     }
 
-    // Normalize and persist
     for (const factionId of factionIds) {
         const rawShare = factionNationalShare[factionId] || 0;
         const pct = totalWeight > 0
@@ -7509,40 +7503,67 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
             .eq('id', factionId);
     }
 
-    // ── 12. Also update derived approval (backward compat) ──
+    // ── 11. Update derived approval_rating cache (backward compat) ──
     for (const fId of factionIds) {
-        const factionBlocRows = allBlocRows.filter(r => r.faction_id === fId);
-        await recalcDerivedApproval(supabase, fId, factionBlocRows);
+        const factionUpdates = updates.filter(r => r.faction_id === fId);
+        await recalcDerivedApproval(supabase, fId, factionUpdates);
     }
 
     console.log(`[Three-Pillar] Recalculated preferences for ${factionIds.length} parties × ${voterBlocs.length} blocs in ${nation.name}`);
 }
 
 /**
- * Add a momentum bonus (or penalty) to all bloc rows for a faction.
- * Called by game actions, ministry events, scandals, etc.
- * Momentum decays 20% per tick in calculateThreePillarPreferences().
+ * Adjust momentum for a faction, optionally targeting a specific voter bloc.
+ * Clamps to [-50, +50]. Writes an audit row to momentum_log.
  *
  * @param {object} supabase
- * @param {string} factionId
- * @param {number} delta - positive = boost, negative = penalty
+ * @param {string} nationId  - nation UUID (for audit log)
+ * @param {string} factionId - faction UUID
+ * @param {string|null} blocId - specific bloc UUID, or null for all blocs
+ * @param {number} amount    - positive = boost, negative = penalty
+ * @param {string} source    - audit tag, e.g. 'crisis:government_shutdown'
  */
-export async function adjustMomentum(supabase, factionId, delta) {
-    const { data: rows } = await supabase
-        .from('faction_bloc_approval')
-        .select('id, momentum')
-        .eq('faction_id', factionId);
+export async function adjustMomentum(supabase, nationId, factionId, blocId, amount, source) {
+    if (amount === 0) return;
 
+    const query = supabase
+        .from('faction_bloc_approval')
+        .select('id, bloc_id, momentum')
+        .eq('faction_id', factionId);
+    if (blocId) query.eq('bloc_id', blocId);
+
+    const { data: rows } = await query;
     if (!rows || rows.length === 0) return;
 
     for (const row of rows) {
-        const newMomentum = Math.round(((Number(row.momentum ?? 0)) + delta) * 100) / 100;
+        const old = Number(row.momentum ?? 0);
+        const clamped = Math.round(Math.max(-50, Math.min(50, old + amount)) * 100) / 100;
         await supabase.from('faction_bloc_approval')
-            .update({ momentum: newMomentum })
+            .update({ momentum: clamped })
             .eq('id', row.id);
     }
 
-    console.log(`[Momentum] Adjusted momentum by ${delta} for faction ${factionId} (${rows.length} bloc rows)`);
+    // Audit log (best-effort — don't fail the caller)
+    const { data: shard } = await supabase
+        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    await supabase.from('momentum_log').insert({
+        nation_id: nationId,
+        faction_id: factionId,
+        bloc_id: blocId || null,
+        amount,
+        source: source || 'unknown',
+        tick: shard?.current_tick || 0
+    });
+
+    console.log(`[Momentum] ${amount > 0 ? '+' : ''}${amount} for faction ${factionId}${blocId ? ` bloc ${blocId}` : ` (${rows.length} blocs)`} — ${source}`);
+}
+
+/**
+ * Convenience wrapper: adjust momentum uniformly across ALL blocs for a faction.
+ * Use this for events that affect a party's overall standing (crises, elections, etc.).
+ */
+export async function adjustMomentumAll(supabase, nationId, factionId, amount, source) {
+    await adjustMomentum(supabase, nationId, factionId, null, amount, source);
 }
 
 
@@ -8218,11 +8239,11 @@ export async function executePressConference(supabase, factionId, nationId, stat
     // ── 10. Apply momentum ──
     // Self momentum: apply to all our bloc rows
     if (selfMomentumDelta !== 0) {
-        await adjustMomentum(supabase, factionId, selfMomentumDelta);
+        await adjustMomentumAll(supabase, nationId, factionId, selfMomentumDelta, 'campaign:press_conference');
     }
     // Target momentum (attack mode)
     if (targetPartyId && targetMomentumDelta !== 0) {
-        await adjustMomentum(supabase, targetPartyId, targetMomentumDelta);
+        await adjustMomentumAll(supabase, nationId, targetPartyId, targetMomentumDelta, 'campaign:press_conference_target');
     }
 
     // ── 11. Deduct AP + money ──
@@ -9751,7 +9772,7 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
         }
 
         // +4 momentum
-        await adjustMomentum(supabase, promise.party_id, cfg.PROMISE_KEPT_MOMENTUM);
+        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.PROMISE_KEPT_MOMENTUM, 'promise:kept');
 
         // Update donor trust: +25% multiplier
         await supabase.from('donor_trust')
@@ -9804,11 +9825,11 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
                 .eq('id', blocRow.id);
         }
 
-        // -2 preference with ALL blocs
-        await adjustBlocApproval(supabase, promise.party_id, cfg.PROMISE_BROKEN_ALL_PREF);
+        // -2 momentum with ALL blocs
+        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.PROMISE_BROKEN_ALL_PREF, 'promise:broken_penalty');
 
         // -12 momentum
-        await adjustMomentum(supabase, promise.party_id, cfg.PROMISE_BROKEN_MOMENTUM);
+        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.PROMISE_BROKEN_MOMENTUM, 'promise:broken');
 
         // Lockout: bloc won't offer large donations for 30 ticks
         const { data: trust } = await supabase
@@ -10409,11 +10430,11 @@ export async function processMinistryActions(supabase, nation, currentTick) {
         factionUpdates[factionId] = Math.max(0, factionUpdates[factionId] - (loss * multiplier));
     }
 
-    // Bulk update faction approval via bloc system
+    // Bulk update faction momentum via event cascades
     for (const fKey of Object.keys(factionUpdates)) {
         const delta = Math.round((factionUpdates[fKey] - (factionBaseline[fKey] ?? 50)) * 10) / 10;
         if (delta !== 0) {
-            await adjustBlocApproval(supabase, fKey, delta);
+            await adjustMomentumAll(supabase, nation.id, fKey, delta, 'event:cascade');
         }
     }
 
@@ -10511,12 +10532,53 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
 // ==================== LAYER 2: GOVERNMENT APPROVAL (COMPOSITE) ====================
 
 /**
- * Calculate composite government approval from three components:
- *   60% — weighted average of minister approvals (+ embattled penalties)
- *   20% — PM-owned stat threshold scoring (happiness, standard_of_living, stability)
- *   20% — trajectory (are stats improving or declining over last N ticks?)
+ * Apply a one-time event modifier to the government approval events component.
+ * The events component decays 12% per tick, so transient shocks fade naturally.
+ * Clamped to [-50, +50]. Writes an audit row to gov_approval_log.
  *
- * Stores the result in nations.national_approval.
+ * @param {object} supabase
+ * @param {string} nationId
+ * @param {number} amount   - signed delta (positive = boost, negative = shock)
+ * @param {string} source   - audit tag, e.g. 'crisis:government_shutdown'
+ */
+export async function adjustGovernmentApprovalEvent(supabase, nationId, amount, source) {
+    if (amount === 0) return;
+
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('gov_approval_events')
+        .eq('id', nationId)
+        .single();
+
+    const current = Number(nation?.gov_approval_events ?? 0);
+    const updated = Math.round(Math.max(-50, Math.min(50, current + amount)) * 100) / 100;
+
+    await supabase.from('nations')
+        .update({ gov_approval_events: updated })
+        .eq('id', nationId);
+
+    // Audit log
+    const { data: shard } = await supabase
+        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    await supabase.from('gov_approval_log').insert({
+        nation_id: nationId,
+        amount,
+        source: source || 'unknown',
+        tick: shard?.current_tick || 0
+    });
+
+    console.log(`[GovApprovalEvent] ${amount > 0 ? '+' : ''}${amount} for nation ${nationId} — ${source}`);
+}
+
+/**
+ * Calculate composite government approval from three components:
+ *   45% — Institutional: minister approval avg + embattled penalties + vacancy penalty
+ *   35% — Outcomes: weighted trend+absolute blend across key nation stats
+ *   20% — Events: transient modifier (decays 12%/tick), fed by adjustGovernmentApprovalEvent()
+ *
+ * Stores the result in nations.gov_approval.
+ * Caches component values in gov_approval_institutional, gov_approval_outcomes, gov_approval_events.
+ * Triggers momentum feedback when gov approval shifts significantly.
  *
  * @param {object} supabase
  * @param {object} nation - nation row with current stat values
@@ -10524,6 +10586,8 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
  * @returns {number|null} the computed government approval (0-100), or null if no government
  */
 export async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
+    const cfg = GOV_APPROVAL_CONFIG;
+
     const { data: ministries } = await supabase
         .from('ministries')
         .select('ministry_key, minister_approval, minister_first_name, embattled_since_tick')
@@ -10532,11 +10596,10 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
 
     if (!ministries || ministries.length === 0) return null;
 
-    // Only count ministries with an appointed minister
     const filledMinistries = ministries.filter(m => m.minister_first_name);
-    if (filledMinistries.length === 0) return null;
+    const vacantCount = ministries.length - filledMinistries.length;
 
-    // ─── Component A (60%): Minister approval average + embattled penalties ───
+    // ─── Component A (45%): Institutional — minister avg + embattled + vacancy ───
     let ministerSum = 0;
     let embattledPenalty = 0;
 
@@ -10544,91 +10607,108 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
         const approval = m.minister_approval ?? 50;
         ministerSum += approval;
 
-        // Check embattled status penalties
         if (m.embattled_since_tick !== null && m.embattled_since_tick !== undefined && m.ministry_key !== 'prime_minister') {
             const ticksEmbattled = currentTick - m.embattled_since_tick;
-            if (ticksEmbattled >= GOV_APPROVAL_CONFIG.EMBATTLED_TICKS_REQUIRED) {
-                if (approval < GOV_APPROVAL_CONFIG.CRISIS_THRESHOLD) {
-                    embattledPenalty += GOV_APPROVAL_CONFIG.CRISIS_GOV_PENALTY;
+            if (ticksEmbattled >= cfg.EMBATTLED_TICKS_REQUIRED) {
+                if (approval < cfg.CRISIS_THRESHOLD) {
+                    embattledPenalty += cfg.CRISIS_GOV_PENALTY;
                 } else {
-                    embattledPenalty += GOV_APPROVAL_CONFIG.EMBATTLED_GOV_PENALTY;
+                    embattledPenalty += cfg.EMBATTLED_GOV_PENALTY;
                 }
             }
         }
     }
 
-    const ministerAvg = ministerSum / filledMinistries.length;
+    const ministerAvg = filledMinistries.length > 0 ? ministerSum / filledMinistries.length : 50;
+    const vacancyPenalty = vacantCount * (cfg.VACANCY_PENALTY || -5);
+    const institutional = Math.max(0, Math.min(100, ministerAvg + embattledPenalty + vacancyPenalty));
 
-    // ─── Component B (20%): PM stats threshold scoring ───
-    let pmContribSum = 0;
-    for (const statKey of GOV_APPROVAL_CONFIG.PM_STATS) {
-        const value = Number(nation[statKey] ?? 0);
-        pmContribSum += statApprovalContribution(statKey, value);
+    // ─── Component B (35%): Outcomes — weighted trend+absolute blend ───
+    const outcomeStatNames = cfg.OUTCOME_STATS.map(s => s.stat);
+    const trends = await statTrendBatch(supabase, nation.id, outcomeStatNames, cfg.OUTCOME_TREND_LOOKBACK);
+
+    let outcomesScore = 50; // neutral default
+    let weightSum = 0;
+    let blendedSum = 0;
+
+    for (const entry of cfg.OUTCOME_STATS) {
+        const rawVal = Number(nation[entry.stat] ?? 50);
+        // Normalize absolute value to 0-100 quality scale (inverted stats: lower is better)
+        const absQuality = entry.inverted ? (100 - rawVal) : rawVal;
+        // Normalize trend: positive trend = good. For inverted stats, a negative raw trend is good.
+        const rawTrend = trends[entry.stat] || 0;
+        const trendSign = entry.inverted ? -rawTrend : rawTrend;
+        // Map trend to 0-100 scale: clamp trend to [-5, +5] range then scale
+        const trendQuality = Math.max(0, Math.min(100, 50 + trendSign * 10));
+
+        const blended = absQuality * cfg.OUTCOME_ABSOLUTE_WEIGHT + trendQuality * cfg.OUTCOME_TREND_WEIGHT;
+        blendedSum += blended * entry.weight;
+        weightSum += entry.weight;
     }
-    const pmAvgContrib = pmContribSum / GOV_APPROVAL_CONFIG.PM_STATS.length;
-    // Map contribution range (-3 to +1.5) to 0-100 scale
-    // -3 → 15, -1.5 → 35, 0 → 50, +0.5 → 55, +1.5 → 75
-    const pmComponent = Math.max(0, Math.min(100, 50 + pmAvgContrib * (50 / 3)));
 
-    // ─── Component C (20%): Trajectory (are stats improving over last N ticks?) ───
-    let trajectoryComponent = 50; // default neutral
-    const lookback = GOV_APPROVAL_CONFIG.TRAJECTORY_LOOKBACK;
-
-    const { data: historyRows } = await supabase
-        .from('nations_history')
-        .select('*')
-        .eq('nation_id', nation.id)
-        .gte('tick', currentTick - lookback)
-        .order('tick', { ascending: true })
-        .limit(1);
-
-    if (historyRows && historyRows.length > 0) {
-        const oldSnapshot = historyRows[0];
-        let improving = 0;
-        let declining = 0;
-        let total = 0;
-
-        for (const statKey of NATION_STAT_COLUMNS) {
-            const sign = statDirectionSign(statKey);
-            if (sign === 0) continue;
-
-            const oldVal = Number(oldSnapshot[statKey] ?? 0);
-            const curVal = Number(nation[statKey] ?? 0);
-            const delta = curVal - oldVal;
-
-            if (delta === 0) continue;
-            total++;
-
-            // Is this stat moving in the "good" direction?
-            if (delta * sign > 0) improving++;
-            else declining++;
-        }
-
-        if (total > 0) {
-            // Net ratio: +1 = all improving, -1 = all declining
-            const netRatio = (improving - declining) / total;
-            // Map to 0-100: -1 → 15, 0 → 50, +1 → 85
-            trajectoryComponent = Math.max(0, Math.min(100, 50 + netRatio * 35));
-        }
+    if (weightSum > 0) {
+        outcomesScore = Math.max(0, Math.min(100, blendedSum / weightSum));
     }
+
+    // ─── Component C (20%): Events — transient modifier, decayed before this call ───
+    const eventsRaw = Number(nation.gov_approval_events ?? 0); // range: -50 to +50
+    // Map [-50, +50] → [0, 100]
+    const eventsComponent = Math.max(0, Math.min(100, 50 + eventsRaw));
 
     // ─── Composite ───
-    const rawApproval = ministerAvg * GOV_APPROVAL_CONFIG.MINISTER_WEIGHT
-        + pmComponent * GOV_APPROVAL_CONFIG.PM_STATS_WEIGHT
-        + trajectoryComponent * GOV_APPROVAL_CONFIG.TRAJECTORY_WEIGHT
-        + embattledPenalty;
+    const rawApproval = institutional * cfg.INSTITUTIONAL_WEIGHT
+        + outcomesScore * cfg.OUTCOMES_WEIGHT
+        + eventsComponent * cfg.EVENTS_WEIGHT;
 
     const govApproval = Math.round(Math.max(0, Math.min(100, rawApproval)));
+    const prevGovApproval = Number(nation.gov_approval ?? 50);
 
-    // Store on the nation
+    // Store all components + composite on the nation
     await supabase.from('nations')
-        .update({ national_approval: govApproval })
+        .update({
+            gov_approval: govApproval,
+            gov_approval_institutional: Math.round(institutional * 10) / 10,
+            gov_approval_outcomes: Math.round(outcomesScore * 10) / 10,
+            gov_approval_events: eventsRaw   // preserve raw value (already decayed)
+        })
         .eq('id', nation.id);
 
-    // Update in-memory nation object so snapshot captures it
-    nation.national_approval = govApproval;
+    // Update in-memory nation object
+    nation.gov_approval = govApproval;
+    nation.gov_approval_institutional = institutional;
+    nation.gov_approval_outcomes = outcomesScore;
 
-    console.log(`[calculateGovernmentApprovalTick] ${nation.name}: gov_approval=${govApproval} (ministers=${Math.round(ministerAvg)}, pm_stats=${Math.round(pmComponent)}, trajectory=${Math.round(trajectoryComponent)}, embattled_penalty=${embattledPenalty})`);
+    // ─── Momentum feedback: significant gov approval shifts affect party momentum ───
+    const delta = govApproval - prevGovApproval;
+    if (Math.abs(delta) > cfg.FEEDBACK_THRESHOLD) {
+        const coalition = await fetchActiveCoalition(supabase, nation.id);
+        const coalitionPartyIds = coalition?.party_ids || [];
+
+        // Coalition parties gain/lose momentum proportional to approval shift
+        for (const partyId of coalitionPartyIds) {
+            const momDelta = Math.round(delta * cfg.FEEDBACK_COALITION_COEFF * 100) / 100;
+            if (momDelta !== 0) {
+                await adjustMomentumAll(supabase, nation.id, partyId, momDelta, 'gov_approval_shift');
+            }
+        }
+
+        // Opposition benefits inversely (at reduced rate)
+        const { data: oppParties } = await supabase
+            .from('factions')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('faction_type', 'party')
+            .eq('is_npc', false);
+        for (const opp of (oppParties || [])) {
+            if (coalitionPartyIds.includes(opp.id)) continue;
+            const momDelta = Math.round(-delta * cfg.FEEDBACK_OPPOSITION_COEFF * 100) / 100;
+            if (momDelta !== 0) {
+                await adjustMomentumAll(supabase, nation.id, opp.id, momDelta, 'gov_approval_shift');
+            }
+        }
+    }
+
+    console.log(`[GovApproval] ${nation.name}: ${govApproval} (inst=${Math.round(institutional)}, outcomes=${Math.round(outcomesScore)}, events=${Math.round(eventsComponent)}, vacancies=${vacantCount}, embattled=${embattledPenalty})`);
 
     return govApproval;
 }
@@ -10677,7 +10757,7 @@ export async function processOngoingCosts(supabase, nation, currentTick) {
 // All columns that nations_history tracks (must match the DB table schema)
 export const HISTORY_SNAPSHOT_COLUMNS = [
     ...NATION_STAT_COLUMNS,
-    'national_approval',
+    'gov_approval',
     'competition_voters', 'liberty_voters', 'security_voters', 'globalism_voters',
     'progressive_voters', 'liberal_voters', 'moderate_voters', 'conservative_voters', 'nationalist_voters'
 ];
@@ -10698,6 +10778,26 @@ export async function snapshotNationHistory(supabase, nation, currentTick) {
         console.error('[snapshotNationHistory] FAILED for nation', nation.id, 'tick', currentTick, ':', snapError.message);
     } else {
         console.log(`[snapshotNationHistory] Stored ${Object.keys(snapshot).length - 2} stats for nation ${nation.id} at tick ${currentTick}`);
+    }
+}
+
+/**
+ * Record current nation stat values into stat_history for trend calculations.
+ * Called once per tick, before minister/government approval calculations.
+ * Uses upsert to prevent duplicate rows if tick is re-processed.
+ */
+export async function recordStatHistory(supabase, nation, currentTick) {
+    const rows = [];
+    for (const statKey of NATION_STAT_COLUMNS) {
+        const val = nation[statKey];
+        if (val !== undefined && val !== null) {
+            rows.push({ nation_id: nation.id, stat_name: statKey, value: Number(val), tick: currentTick });
+        }
+    }
+    if (rows.length === 0) return;
+    const { error } = await supabase.from('stat_history').upsert(rows, { onConflict: 'nation_id,stat_name,tick' });
+    if (error) {
+        console.error('[recordStatHistory] FAILED for nation', nation.id, 'tick', currentTick, ':', error.message);
     }
 }
 
@@ -11051,12 +11151,14 @@ export async function processCrises(supabase, nation, currentTick) {
                 const coalition = await fetchActiveCoalition(supabase, nation.id);
                 const partyIds = coalition?.party_ids || [];
                 for (const partyId of partyIds) {
-                    await adjustBlocApproval(supabase, partyId, changePT);
+                    await adjustMomentumAll(supabase, nation.id, partyId, changePT, 'crisis:' + template.name);
                     appliedEffects.push({
-                        stat: 'approval_rating', change: changePT,
+                        stat: 'momentum', change: changePT,
                         target: effect.target, faction_id: partyId
                     });
                 }
+                // Also push to gov approval events component
+                await adjustGovernmentApprovalEvent(supabase, nation.id, changePT, 'crisis:' + template.name);
 
             } else if (effect.target === 'pm_approval') {
                 const { data: pmMinistry } = await supabase
@@ -11083,13 +11185,13 @@ export async function processCrises(supabase, nation, currentTick) {
                         old: currentVal, new: newVal
                     });
 
-                    // Cascade PM approval loss to party approval (2x multiplier)
+                    // Cascade PM approval loss to party momentum (2x multiplier)
                     if (changePT < 0 && pmMinistry.party_id) {
                         const cascadeDelta = -(Math.abs(changePT) * 2);
-                        await adjustBlocApproval(supabase, pmMinistry.party_id, cascadeDelta);
+                        await adjustMomentumAll(supabase, nation.id, pmMinistry.party_id, cascadeDelta, 'crisis:pm_cascade:' + template.name);
 
                         appliedEffects.push({
-                            stat: 'approval_rating', change: cascadeDelta,
+                            stat: 'momentum', change: cascadeDelta,
                             target: 'minister_cascade', faction_id: pmMinistry.party_id,
                             minister_key: 'prime_minister'
                         });
@@ -11121,15 +11223,15 @@ export async function processCrises(supabase, nation, currentTick) {
                         old: currentVal, new: newVal
                     });
 
-                    // Cascade minister approval loss to party approval (2x for PM, 1x for others)
+                    // Cascade minister approval loss to party momentum (2x for PM, 1x for others)
                     if (changePT < 0 && ministry.party_id) {
                         const loss = Math.abs(changePT);
                         const multiplier = effect.minister_key === 'prime_minister' ? 2 : 1;
                         const cascadeDelta = -(loss * multiplier);
-                        await adjustBlocApproval(supabase, ministry.party_id, cascadeDelta);
+                        await adjustMomentumAll(supabase, nation.id, ministry.party_id, cascadeDelta, 'crisis:minister_cascade:' + effect.minister_key);
 
                         appliedEffects.push({
-                            stat: 'approval_rating', change: cascadeDelta,
+                            stat: 'momentum', change: cascadeDelta,
                             target: 'minister_cascade', faction_id: ministry.party_id,
                             minister_key: effect.minister_key
                         });
@@ -11392,7 +11494,7 @@ export async function processRevolution(supabase, nation, currentTick) {
     if (allFactions && allFactions.length > 0) {
         for (const faction of allFactions) {
             await supabase.from('faction_bloc_approval')
-                .update({ approval: 50 })
+                .update({ preference_score: 50, momentum: 0 })
                 .eq('faction_id', faction.id);
             await recalcDerivedApproval(supabase, faction.id);
         }
@@ -12224,7 +12326,7 @@ export async function processPMTraitEffects(supabase, nation, currentTick) {
     }
 
     if (effects.party_approval_per_tick) {
-        await adjustBlocApproval(supabase, factionId, effects.party_approval_per_tick);
+        await adjustMomentumAll(supabase, nation.id, factionId, effects.party_approval_per_tick, 'pm_trait:party_approval');
     }
 
     if (effects.nation_stat_per_tick) {
@@ -12260,7 +12362,7 @@ export async function processPMTraitEffects(supabase, nation, currentTick) {
                 delta = effects.approval_above_60_penalty;
             }
             if (delta !== 0) {
-                await adjustBlocApproval(supabase, factionId, delta);
+                await adjustMomentumAll(supabase, nation.id, factionId, delta, 'pm_trait:conditional');
             }
         }
     }
@@ -12274,7 +12376,7 @@ export async function processPMTraitEffects(supabase, nation, currentTick) {
             .neq('id', factionId);
 
         for (const opp of (oppParties || [])) {
-            await adjustBlocApproval(supabase, opp.id, effects.opposition_approval_per_tick);
+            await adjustMomentumAll(supabase, nation.id, opp.id, effects.opposition_approval_per_tick, 'pm_trait:opposition');
         }
     }
 
@@ -12288,7 +12390,7 @@ export async function processPMTraitEffects(supabase, nation, currentTick) {
             .eq('passed_tick', currentTick - 1);
 
         if (!count || count === 0) {
-            await adjustBlocApproval(supabase, factionId, effects.no_bill_penalty_per_tick);
+            await adjustMomentumAll(supabase, nation.id, factionId, effects.no_bill_penalty_per_tick, 'pm_trait:no_bill_penalty');
         }
     }
 }
@@ -12316,7 +12418,7 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
         .update({ active: false })
         .eq('id', hog.id);
 
-    await adjustBlocApproval(supabase, factionId, -5);
+    await adjustMomentumAll(supabase, nationId, factionId, -5, 'pm:resignation');
 
     const { data: nation } = await supabase
         .from('nations')
@@ -12816,15 +12918,14 @@ export async function runElectionPreview(supabase, nationId) {
     // 3b. Load per-bloc preference data from faction_bloc_approval (Three-Pillar system)
     const { data: fbaRows } = await supabase
         .from('faction_bloc_approval')
-        .select('faction_id, bloc_id, approval, preference_score')
+        .select('faction_id, bloc_id, preference_score')
         .in('faction_id', factionIds);
 
     // Build allBlocApprovals map: { blocId: { partyId: preference_score } }
-    // Uses preference_score (Three-Pillar system) with fallback to approval (legacy)
     const allBlocApprovals = {};
     for (const row of (fbaRows || [])) {
         if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
-        allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? row.approval ?? 40;
+        allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? 40;
     }
 
     // 4. Run simulation with per-bloc approvals

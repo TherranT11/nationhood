@@ -24,7 +24,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, getAdminNationOverride, getAdminFactionOverride } from './js/common.js';
-import { adjustBlocApproval, fetchActiveCoalition, isGovernmentAutocracy, loadSeats, syncVoteTallies } from './js/game-common.js';
+import { adjustMomentumAll, fetchActiveCoalition, isGovernmentAutocracy, loadSeats, syncVoteTallies } from './js/game-common.js';
 (function () {
     'use strict';
 const FIRST_NAMES_POOL = [
@@ -303,7 +303,7 @@ async function confirmNomination() {
         }
 
         // +1 approval to the candidate's party
-        await adjustBlocApproval(_supabase, candidate.partyId, 1);
+        await adjustMomentumAll(_supabase, currentNation.id, candidate.partyId, 1, 'diplomacy:ambassador_selected');
 
         // Democracy: auto-cast FM seats on the confirmation bill created by RPC
         if (!isAutocracy) {

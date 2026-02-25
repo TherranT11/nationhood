@@ -36,6 +36,17 @@
     }
     .overview-value.gold { color: var(--accent); }
 
+    .gov-components {
+        display: flex;
+        gap: 8px;
+        margin-top: 4px;
+    }
+    .gov-comp {
+        font-size: 0.6rem;
+        color: var(--text-muted, #666);
+        cursor: default;
+    }
+
     /* Crisis Section */
     .crisis-section {
         padding: 24px;

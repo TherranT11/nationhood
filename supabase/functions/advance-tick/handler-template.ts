@@ -93,7 +93,7 @@ async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
     const ticksToElection = upcomingElection.election_tick - currentTick;
     console.log(`Campaign bonuses for incumbent ${president.first_name} ${president.last_name} in ${nation.name} (${ticksToElection} ticks to election)`);
 
-    await adjustBlocApproval(supabase, president.faction_id, 2);
+    await adjustMomentumAll(supabase, nation.id, president.faction_id, 2, 'campaign:incumbent_bonus');
 
     const { data: nationStats } = await supabase
         .from('nations')
@@ -274,7 +274,7 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
         if (!result || !result.decay_ticks_remaining || result.decay_ticks_remaining <= 0) continue;
 
         const decayRate = result.decay_rate || 1;
-        await adjustBlocApproval(supabase, action.party_id, -decayRate);
+        await adjustMomentumAll(supabase, nationId, action.party_id, -decayRate, 'purge:decay');
 
         const newRemaining = result.decay_ticks_remaining - 1;
         await supabase.from('campaign_actions')
@@ -552,6 +552,9 @@ async function advanceTick(supabase) {
         const { data: preApprovalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (preApprovalNation) Object.assign(nation, preApprovalNation);
 
+        // Record stat history for trend calculations (Phase 2)
+        await recordStatHistory(supabase, nation, newTick);
+
         // Layer 1: Update minister approvals from stat thresholds
         const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick);
         if (ministerApprovalResults.length > 0) {
@@ -559,11 +562,21 @@ async function advanceTick(supabase) {
             summary.ministerApprovals.push({ nation: nation.name, results: ministerApprovalResults });
         }
 
+        // Decay gov_approval_events by 12% per tick (transient shocks fade naturally)
+        const oldEvents = Number(nation.gov_approval_events ?? 0);
+        if (Math.abs(oldEvents) > 0.01) {
+            const decayed = Math.round(oldEvents * (1 - GOV_APPROVAL_CONFIG.EVENTS_DECAY_RATE) * 100) / 100;
+            await supabase.from('nations')
+                .update({ gov_approval_events: decayed })
+                .eq('id', nation.id);
+            nation.gov_approval_events = decayed;
+        }
+
         // Layer 2: Calculate composite government approval
         const govApproval = await calculateGovernmentApprovalTick(supabase, nation, newTick);
 
-        // Three-pillar voter preference recalculation (Layer 3: mood multiplier from govApproval)
-        await calculateThreePillarPreferences(supabase, nation, newTick, govApproval);
+        // Three-pillar voter preference recalculation
+        await calculateThreePillarPreferences(supabase, nation, newTick);
 
         // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
         // (the original `shutdown` boolean was computed before bill resolution)

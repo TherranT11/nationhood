@@ -85,7 +85,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { isGovernmentAutocracy, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustBlocApproval, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES } from './js/game-common.js';
+import { isGovernmentAutocracy, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES } from './js/game-common.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -2242,8 +2242,8 @@ async function resignAmbassador(ambassadorId, nationName) {
             .update({ status: 'resigned', is_active: false, recalled_at_tick: tick })
             .eq('id', ambassadorId);
 
-        // 1 approval loss for resigning
-        await adjustBlocApproval(_supabase, amb.faction_id, -1);
+        // 1 momentum loss for resigning
+        await adjustMomentumAll(_supabase, currentNation.id, amb.faction_id, -1, 'diplomacy:ambassador_recall');
 
         const ambName = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim();
         alert(`Ambassador ${ambName} has resigned from ${nationName}.\n-1 Approval to your party.`);
@@ -2297,9 +2297,9 @@ async function recallAmbassador(ambassadorId, nationName) {
             .update({ status: 'recalled', is_active: false, recalled_at_tick: tick })
             .eq('id', ambassadorId);
 
-        // 1d3 approval loss
+        // 1d3 momentum loss
         const loss = Math.floor(Math.random() * 3) + 1;
-        await adjustBlocApproval(_supabase, amb.faction_id, -loss);
+        await adjustMomentumAll(_supabase, currentNation.id, amb.faction_id, -loss, 'diplomacy:ambassador_failure');
 
         const ambName = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim();
         alert(`Ambassador ${ambName} recalled from ${nationName}.\n-${loss} Approval to their party.`);

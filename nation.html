@@ -468,7 +468,17 @@ async function renderNationPage(nation) {
     h += '<div class="overview-item"><div class="overview-label">Capital</div><div class="overview-value">' + (nation.capital || '—') + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">Government</div><div class="overview-value">' + (isPresidentialRepublic(nation) ? 'Presidential Republic' : (getCanonicalGovernmentType(nation, nation.government_type || '—'))) + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">Population</div><div class="overview-value">' + formatNumber(nation.population) + '</div></div>';
-    h += '<div class="overview-item"><div class="overview-label">Government Approval</div><div class="overview-value gold">' + (nation.national_approval || 50) + '%</div></div>';
+    var govAppr = nation.gov_approval ?? nation.national_approval ?? 50;
+    var govInst = Math.round(nation.gov_approval_institutional ?? 50);
+    var govOutc = Math.round(nation.gov_approval_outcomes ?? 50);
+    var govEvRaw = nation.gov_approval_events ?? 0;
+    var govEv = Math.round(Math.max(0, Math.min(100, 50 + govEvRaw)));
+    h += '<div class="overview-item"><div class="overview-label">Government Approval</div><div class="overview-value gold">' + govAppr + '%</div>'
+       + '<div class="gov-components">'
+       + '<span class="gov-comp" title="Ministers & leadership">Inst ' + govInst + '</span>'
+       + '<span class="gov-comp" title="Economic & social outcomes">Out ' + govOutc + '</span>'
+       + '<span class="gov-comp" title="Recent events (decays)">Evt ' + govEv + '</span>'
+       + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">GDP</div><div class="overview-value gold">' + formatCurrencyShort(scaleRawToDollars(nation.gdp)) + '</div></div>';
     h += '</div></div>';
 
