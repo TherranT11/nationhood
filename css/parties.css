@@ -1695,6 +1695,420 @@ body.light-mode .ap-bar-track {
     }
 }
 
+/* ===== REGIME PANEL (Strongman Only) ===== */
+/* Warm dark palette: #141412 base, #1e1e1a elevated, #e2e0d6 primary text */
+
+.reg-panel {
+    background: #141412;
+    border: 1px solid rgba(226, 224, 214, 0.06);
+    border-radius: 3px;
+    margin-bottom: 24px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+}
+
+/* ── Header ── */
+.reg-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid rgba(226, 224, 214, 0.06);
+}
+
+.reg-nation-name {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #e2e0d6;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.reg-gov-type {
+    font-size: 0.65rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-top: 4px;
+}
+
+.reg-strongman-label {
+    font-size: 0.6rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-align: right;
+}
+
+.reg-strongman-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #e2e0d6;
+    text-align: right;
+    margin-top: 2px;
+}
+
+.reg-strongman-meta {
+    font-size: 0.65rem;
+    color: #8a8778;
+    text-align: right;
+    margin-top: 2px;
+}
+
+/* ── Status Strip ── */
+.reg-strip {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid rgba(226, 224, 214, 0.06);
+}
+
+.reg-strip-item {
+    flex: 1;
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-right: 1px solid rgba(226, 224, 214, 0.06);
+}
+
+.reg-strip-item:last-child { border-right: none; }
+
+.reg-strip-label {
+    font-size: 0.58rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    flex-shrink: 0;
+}
+
+.reg-strip-value {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+/* ── Body (two columns) ── */
+.reg-body {
+    display: flex;
+    gap: 0;
+}
+
+.reg-col-left {
+    flex: 1.2;
+    padding: 20px 24px;
+    border-right: 1px solid rgba(226, 224, 214, 0.06);
+}
+
+.reg-col-right {
+    flex: 1;
+    padding: 20px 24px;
+}
+
+/* ── Section ── */
+.reg-section {
+    margin-bottom: 20px;
+}
+
+.reg-section:last-child { margin-bottom: 0; }
+
+.reg-section-title {
+    font-size: 0.6rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 12px;
+    font-weight: 700;
+}
+
+/* ── Grip on Power ── */
+.reg-grip-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.reg-grip-score {
+    font-size: 1.8rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    min-width: 48px;
+}
+
+.reg-grip-bar-track {
+    flex: 1;
+    height: 6px;
+    background: #1e1e1a;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.reg-grip-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+.reg-grip-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    min-width: 80px;
+    text-align: right;
+}
+
+.reg-grip-components {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 16px;
+}
+
+.reg-grip-comp {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.reg-grip-comp-label {
+    font-size: 0.6rem;
+    color: #8a8778;
+    flex: 1;
+}
+
+.reg-grip-comp-val {
+    font-size: 0.68rem;
+    color: #e2e0d6;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    width: 24px;
+    text-align: right;
+}
+
+.reg-grip-comp-weight {
+    font-size: 0.55rem;
+    color: #6b6a5e;
+    width: 24px;
+    text-align: right;
+}
+
+/* ── Regime Vitals ── */
+.reg-vitals-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+}
+
+.reg-vital {
+    background: #1e1e1a;
+    border: 1px solid rgba(226, 224, 214, 0.04);
+    border-radius: 3px;
+    padding: 10px 12px;
+    text-align: center;
+}
+
+.reg-vital-label {
+    display: block;
+    font-size: 0.52rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+}
+
+.reg-vital-val {
+    display: block;
+    font-size: 1.1rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Revolution Threat ── */
+.reg-threat {
+    border-radius: 3px;
+    padding: 12px 16px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.reg-threat-active {
+    background: rgba(255, 23, 68, 0.08);
+    border: 1px solid rgba(255, 23, 68, 0.25);
+}
+
+.reg-threat-warning {
+    background: rgba(255, 152, 0, 0.06);
+    border: 1px solid rgba(255, 152, 0, 0.2);
+}
+
+.reg-threat-clear {
+    background: rgba(76, 175, 80, 0.05);
+    border: 1px solid rgba(76, 175, 80, 0.15);
+}
+
+.reg-threat-icon {
+    font-size: 0.9rem;
+}
+
+.reg-threat-active .reg-threat-icon { color: #ff1744; }
+.reg-threat-warning .reg-threat-icon { color: #ff9800; }
+.reg-threat-clear .reg-threat-icon { color: #4CAF50; }
+
+.reg-threat-text {
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+}
+
+.reg-threat-active .reg-threat-text { color: #ff1744; }
+.reg-threat-warning .reg-threat-text { color: #ff9800; }
+.reg-threat-clear .reg-threat-text { color: #4CAF50; }
+
+.reg-threat-timer {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #ff1744;
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+}
+
+.reg-threat-factors {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.reg-threat-factor {
+    font-size: 0.58rem;
+    color: #8a8778;
+    background: rgba(255, 152, 0, 0.06);
+    padding: 3px 8px;
+    border-radius: 2px;
+    border: 1px solid rgba(255, 152, 0, 0.12);
+}
+
+/* ── Faction Intelligence ── */
+.reg-intel-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.reg-intel-row {
+    background: #1e1e1a;
+    border: 1px solid rgba(226, 224, 214, 0.04);
+    border-radius: 3px;
+    padding: 12px 14px;
+}
+
+.reg-intel-name {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #e2e0d6;
+    margin-bottom: 8px;
+}
+
+.reg-intel-stats {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.reg-intel-stat {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+}
+
+.reg-intel-label {
+    font-size: 0.5rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.reg-intel-val {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #e2e0d6;
+    font-variant-numeric: tabular-nums;
+}
+
+.reg-intel-tag {
+    font-size: 0.52rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.reg-intel-bar-track {
+    height: 3px;
+    background: #141412;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.reg-intel-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+.reg-intel-empty {
+    font-size: 0.68rem;
+    color: #6b6a5e;
+    font-style: italic;
+    padding: 12px 0;
+}
+
+/* ── Responsive ── */
+@media (max-width: 800px) {
+    .reg-body { flex-direction: column; }
+    .reg-col-left { border-right: none; border-bottom: 1px solid rgba(226, 224, 214, 0.06); }
+    .reg-vitals-grid { grid-template-columns: 1fr 1fr; }
+    .reg-header { flex-direction: column; gap: 12px; }
+    .reg-strongman-label,
+    .reg-strongman-name,
+    .reg-strongman-meta { text-align: left; }
+}
+
+@media (max-width: 480px) {
+    .reg-strip { flex-direction: column; }
+    .reg-strip-item { border-right: none; border-bottom: 1px solid rgba(226, 224, 214, 0.06); }
+    .reg-strip-item:last-child { border-bottom: none; }
+    .reg-vitals-grid { grid-template-columns: 1fr 1fr; }
+    .reg-grip-components { grid-template-columns: 1fr; }
+}
+
+/* Light mode overrides */
+body.light-mode .reg-panel { background: #fafaf8; border-color: #ddd; }
+body.light-mode .reg-header { border-bottom-color: #ddd; }
+body.light-mode .reg-strip { border-bottom-color: #ddd; }
+body.light-mode .reg-strip-item { border-right-color: #ddd; }
+body.light-mode .reg-col-left { border-right-color: #ddd; }
+body.light-mode .reg-nation-name { color: #2a2a28; }
+body.light-mode .reg-strongman-name { color: #2a2a28; }
+body.light-mode .reg-gov-type,
+body.light-mode .reg-strongman-label,
+body.light-mode .reg-strongman-meta,
+body.light-mode .reg-strip-label,
+body.light-mode .reg-section-title,
+body.light-mode .reg-grip-comp-label,
+body.light-mode .reg-grip-comp-weight,
+body.light-mode .reg-vital-label,
+body.light-mode .reg-intel-label { color: #888; }
+body.light-mode .reg-grip-comp-val,
+body.light-mode .reg-intel-val,
+body.light-mode .reg-intel-name { color: #2a2a28; }
+body.light-mode .reg-vital { background: #f0f0ee; border-color: #ddd; }
+body.light-mode .reg-intel-row { background: #f0f0ee; border-color: #ddd; }
+body.light-mode .reg-grip-bar-track { background: #e8e8e4; }
+body.light-mode .reg-intel-bar-track { background: #e8e8e4; }
+
 /* ===== RALLY PANEL ===== */
 .rally-panel {
     background: var(--bg-panel, #1a1a1a);

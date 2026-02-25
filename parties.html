@@ -73,9 +73,24 @@ async function renderAutocracyParties(el, f, n) {
         .eq('faction_type', 'party')
         .order('seats', { ascending: false });
 
+    // Fetch ministries for faction intelligence
+    const { data: ministries } = await _supabase
+        .from('ministries')
+        .select('ministry_key, party_id')
+        .eq('nation_id', n.id)
+        .not('party_id', 'is', null);
+
+    const ministryCounts = {};
+    for (const m of (ministries || [])) {
+        ministryCounts[m.party_id] = (ministryCounts[m.party_id] || 0) + 1;
+    }
+
     const maxAP = GAME_CONFIG.MAX_AP;
     const rulingId = n.ruling_faction_id;
+    const isStrongman = f.id === rulingId;
+    const currentTick = currentShard?.current_tick || 0;
 
+    // ── FACTION AP CARDS (shown to everyone) ──
     let factionAPCards = '';
     for (const faction of (allFactions || [])) {
         const ap = Math.min(faction.action_points || 0, maxAP);
@@ -109,8 +124,249 @@ async function renderAutocracyParties(el, f, n) {
             </div>`;
     }
 
+    // ── STRONGMAN REGIME PANEL (only for ruling faction) ──
+    let regimePanel = '';
+    if (isStrongman) {
+        const hosFirst = n.head_of_state_first_name || 'Unknown';
+        const hosLast = n.head_of_state_last_name || 'Unknown';
+        const hosAge = n.head_of_state_age || '—';
+        const govType = (n.government_type || 'Autocracy');
+        const nationName = n.name || 'Unknown';
+
+        // Compute Grip on Power (0-100)
+        const stability = Number(n.stability ?? 50);
+        const legitimacy = Number(n.legitimacy ?? 50);
+        const civilUnrest = Number(n.civil_unrest ?? 30);
+        const nonRuling = (allFactions || []).filter(p => p.id !== rulingId);
+        const avgLoyalty = nonRuling.length > 0
+            ? nonRuling.reduce((s, p) => s + (p.loyalty ?? 50), 0) / nonRuling.length
+            : 50;
+        const grip = Math.round(
+            stability * 0.30 +
+            avgLoyalty * 0.25 +
+            (100 - civilUnrest) * 0.25 +
+            legitimacy * 0.20
+        );
+        const gripClamped = Math.max(0, Math.min(100, grip));
+
+        let gripLabel, gripColor;
+        if (gripClamped >= 85) { gripLabel = 'IRON GRIP'; gripColor = '#4CAF50'; }
+        else if (gripClamped >= 70) { gripLabel = 'FIRM'; gripColor = '#8BC34A'; }
+        else if (gripClamped >= 50) { gripLabel = 'STABLE'; gripColor = '#ff9800'; }
+        else if (gripClamped >= 30) { gripLabel = 'TENUOUS'; gripColor = '#ff5722'; }
+        else { gripLabel = 'CRUMBLING'; gripColor = '#ff1744'; }
+
+        // Revolution status
+        const revActive = n.revolution_started_tick != null && n.revolution_duration != null;
+        const revRemaining = revActive ? Math.max(0, n.revolution_duration - (currentTick - n.revolution_started_tick)) : 0;
+
+        // Succession — derived: if no other factions have >60 loyalty, undesignated
+        const potentialSuccessor = nonRuling.find(p => (p.loyalty ?? 0) >= 60);
+        const successionLabel = potentialSuccessor ? potentialSuccessor.faction_name : 'UNDESIGNATED';
+        const successionColor = potentialSuccessor ? '#8a8778' : '#ff5722';
+
+        // Regime vitals
+        const pressF = Math.round(Number(n.press_freedom ?? 50));
+        const judicialI = Math.round(Number(n.judicial_independence ?? 50));
+        const corruption = Math.round(Number(n.corruption ?? 50));
+        const freedomIdx = Math.round(Number(n.freedom_index ?? 50));
+
+        function vitalColor(val, invertedIsBetter) {
+            const v = invertedIsBetter ? (100 - val) : val;
+            if (v >= 70) return '#4CAF50';
+            if (v >= 45) return '#ff9800';
+            return '#ff4444';
+        }
+
+        function loyaltyColor(val) {
+            if (val >= 70) return '#4CAF50';
+            if (val >= 50) return '#8BC34A';
+            if (val >= 30) return '#ff9800';
+            return '#ff4444';
+        }
+
+        function loyaltyLabel(val) {
+            if (val >= 70) return 'LOYAL';
+            if (val >= 50) return 'COMPLIANT';
+            if (val >= 30) return 'WAVERING';
+            return 'DISLOYAL';
+        }
+
+        // Build faction intelligence rows
+        let factionIntelRows = '';
+        for (const faction of (allFactions || [])) {
+            if (faction.id === rulingId) continue;
+            const loy = Math.round(faction.loyalty ?? 50);
+            const loyPct = Math.max(0, Math.min(100, loy));
+            const lColor = loyaltyColor(loy);
+            const lLabel = loyaltyLabel(loy);
+            const mCount = ministryCounts[faction.id] || 0;
+            const seats = faction.seats || 0;
+            const fColor = faction.party_color || '#666';
+
+            factionIntelRows += `
+                <div class="reg-intel-row" style="border-left: 3px solid ${fColor}">
+                    <div class="reg-intel-name">${escapeHtml(faction.faction_name)}</div>
+                    <div class="reg-intel-stats">
+                        <span class="reg-intel-stat">
+                            <span class="reg-intel-label">LOYALTY</span>
+                            <span class="reg-intel-val" style="color:${lColor}">${loy}</span>
+                            <span class="reg-intel-tag" style="color:${lColor}">${lLabel}</span>
+                        </span>
+                        <span class="reg-intel-stat">
+                            <span class="reg-intel-label">SEATS</span>
+                            <span class="reg-intel-val">${seats}</span>
+                        </span>
+                        <span class="reg-intel-stat">
+                            <span class="reg-intel-label">MINISTRIES</span>
+                            <span class="reg-intel-val">${mCount}</span>
+                        </span>
+                    </div>
+                    <div class="reg-intel-bar-track">
+                        <div class="reg-intel-bar-fill" style="width:${loyPct}%;background:${lColor}"></div>
+                    </div>
+                </div>`;
+        }
+
+        // Revolution threat assessment
+        let threatHtml = '';
+        if (revActive) {
+            threatHtml = `
+                <div class="reg-threat reg-threat-active">
+                    <span class="reg-threat-icon">&#9888;</span>
+                    <span class="reg-threat-text">DEMOCRATIC REVOLUTION IN PROGRESS</span>
+                    <span class="reg-threat-timer">${revRemaining} TICK${revRemaining !== 1 ? 'S' : ''} REMAINING</span>
+                </div>`;
+        } else {
+            // Check proximity to trigger (stability < 15, freedom_index > 50, civil_unrest > 70)
+            const triggers = [];
+            if (stability < 25) triggers.push(`Stability critical (${stability})`);
+            if (freedomIdx > 40) triggers.push(`Freedom Index rising (${freedomIdx})`);
+            if (civilUnrest > 55) triggers.push(`Civil Unrest elevated (${civilUnrest})`);
+            if (triggers.length > 0) {
+                threatHtml = `
+                    <div class="reg-threat reg-threat-warning">
+                        <span class="reg-threat-icon">&#9888;</span>
+                        <span class="reg-threat-text">REVOLUTION RISK FACTORS</span>
+                        <div class="reg-threat-factors">${triggers.map(t => `<span class="reg-threat-factor">${t}</span>`).join('')}</div>
+                    </div>`;
+            } else {
+                threatHtml = `
+                    <div class="reg-threat reg-threat-clear">
+                        <span class="reg-threat-icon">&#10003;</span>
+                        <span class="reg-threat-text">NO ACTIVE THREAT</span>
+                    </div>`;
+            }
+        }
+
+        regimePanel = `
+            <div class="reg-panel">
+                <div class="reg-header">
+                    <div class="reg-header-left">
+                        <div class="reg-nation-name">${escapeHtml(nationName)}</div>
+                        <div class="reg-gov-type">${escapeHtml(govType)} &middot; TICK ${currentTick}</div>
+                    </div>
+                    <div class="reg-header-right">
+                        <div class="reg-strongman-label">STRONGMAN</div>
+                        <div class="reg-strongman-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div>
+                        <div class="reg-strongman-meta">Age ${hosAge}</div>
+                    </div>
+                </div>
+
+                <div class="reg-strip">
+                    <div class="reg-strip-item">
+                        <span class="reg-strip-label">REGIME</span>
+                        <span class="reg-strip-value" style="color:${gripColor}">${gripLabel}</span>
+                    </div>
+                    <div class="reg-strip-item">
+                        <span class="reg-strip-label">SUCCESSION</span>
+                        <span class="reg-strip-value" style="color:${successionColor}">${escapeHtml(successionLabel)}</span>
+                    </div>
+                </div>
+
+                <div class="reg-body">
+                    <div class="reg-col-left">
+                        <div class="reg-section">
+                            <div class="reg-section-title">GRIP ON POWER</div>
+                            <div class="reg-grip-row">
+                                <span class="reg-grip-score" style="color:${gripColor}">${gripClamped}</span>
+                                <div class="reg-grip-bar-track">
+                                    <div class="reg-grip-bar-fill" style="width:${gripClamped}%;background:${gripColor}"></div>
+                                </div>
+                                <span class="reg-grip-label" style="color:${gripColor}">${gripLabel}</span>
+                            </div>
+                            <div class="reg-grip-components">
+                                <div class="reg-grip-comp">
+                                    <span class="reg-grip-comp-label">Stability</span>
+                                    <span class="reg-grip-comp-val">${stability}</span>
+                                    <span class="reg-grip-comp-weight">30%</span>
+                                </div>
+                                <div class="reg-grip-comp">
+                                    <span class="reg-grip-comp-label">Avg Loyalty</span>
+                                    <span class="reg-grip-comp-val">${Math.round(avgLoyalty)}</span>
+                                    <span class="reg-grip-comp-weight">25%</span>
+                                </div>
+                                <div class="reg-grip-comp">
+                                    <span class="reg-grip-comp-label">Order</span>
+                                    <span class="reg-grip-comp-val">${100 - civilUnrest}</span>
+                                    <span class="reg-grip-comp-weight">25%</span>
+                                </div>
+                                <div class="reg-grip-comp">
+                                    <span class="reg-grip-comp-label">Legitimacy</span>
+                                    <span class="reg-grip-comp-val">${legitimacy}</span>
+                                    <span class="reg-grip-comp-weight">20%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="reg-section">
+                            <div class="reg-section-title">REGIME VITALS</div>
+                            <div class="reg-vitals-grid">
+                                <div class="reg-vital">
+                                    <span class="reg-vital-label">STABILITY</span>
+                                    <span class="reg-vital-val" style="color:${vitalColor(stability, false)}">${stability}</span>
+                                </div>
+                                <div class="reg-vital">
+                                    <span class="reg-vital-label">LEGITIMACY</span>
+                                    <span class="reg-vital-val" style="color:${vitalColor(legitimacy, false)}">${legitimacy}</span>
+                                </div>
+                                <div class="reg-vital">
+                                    <span class="reg-vital-label">CIVIL UNREST</span>
+                                    <span class="reg-vital-val" style="color:${vitalColor(civilUnrest, true)}">${civilUnrest}</span>
+                                </div>
+                                <div class="reg-vital">
+                                    <span class="reg-vital-label">CORRUPTION</span>
+                                    <span class="reg-vital-val" style="color:${vitalColor(corruption, true)}">${corruption}</span>
+                                </div>
+                                <div class="reg-vital">
+                                    <span class="reg-vital-label">PRESS FREEDOM</span>
+                                    <span class="reg-vital-val" style="color:${vitalColor(pressF, true)}">${pressF}</span>
+                                </div>
+                                <div class="reg-vital">
+                                    <span class="reg-vital-label">FREEDOM INDEX</span>
+                                    <span class="reg-vital-val" style="color:${vitalColor(freedomIdx, true)}">${freedomIdx}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        ${threatHtml}
+                    </div>
+
+                    <div class="reg-col-right">
+                        <div class="reg-section">
+                            <div class="reg-section-title">FACTION INTELLIGENCE</div>
+                            <div class="reg-intel-list">
+                                ${factionIntelRows || '<div class="reg-intel-empty">No rival factions in the regime</div>'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+    }
+
     el.innerHTML = `
         <div class="parties-page">
+            ${regimePanel}
             <div class="section-header" style="margin-bottom:16px;">Faction Action Points</div>
             <div class="faction-ap-grid">
                 ${factionAPCards}
