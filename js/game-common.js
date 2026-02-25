@@ -2750,7 +2750,7 @@ export async function applyEnactmentApproval(supabase, nationId, approvalDeltas)
 /**
  * Penalize factions that did not cast any vote (YES/NO/ABSTAIN) on a bill.
  * - Momentum: lose [1d3+1] (2-4) across all blocs
- * - Preference: -2 approval with every voter bloc whose ideology axis score
+ * - Preference: -2 preference_score with every voter bloc whose ideology axis score
  *   is at least ±10 from center (≤40 or ≥60) on any axis present in the bill.
  *
  * @param {object} supabase
@@ -2825,18 +2825,18 @@ export async function applyNoVotePenalty(supabase, bill, nationId) {
         const momentumLoss = -(Math.floor(Math.random() * 3) + 2);
         await adjustMomentumAll(supabase, nationId, faction.id, momentumLoss, 'penalty:no_vote');
 
-        // Preference: -2 approval on matched blocs only
+        // Preference: -2 preference_score on matched blocs only
         if (affectedBlocIds.size > 0) {
             const { data: blocRows } = await supabase
                 .from('faction_bloc_approval')
-                .select('id, bloc_id, approval')
+                .select('id, bloc_id, preference_score')
                 .eq('faction_id', faction.id)
                 .in('bloc_id', [...affectedBlocIds]);
 
             for (const row of (blocRows || [])) {
-                const newApproval = Math.round(Math.max(0, Math.min(100, row.approval + PREFERENCE_PENALTY)));
+                const newPref = Math.round(Math.max(0, Math.min(100, (row.preference_score ?? 50) + PREFERENCE_PENALTY)));
                 await supabase.from('faction_bloc_approval')
-                    .update({ approval: newApproval })
+                    .update({ preference_score: newPref })
                     .eq('id', row.id);
             }
         }
@@ -2908,7 +2908,7 @@ export async function recalcDerivedApproval(supabase, factionId, blocRows) {
 
     let weightedSum = 0;
     for (const row of blocRows) {
-        const score = row.preference_score ?? row.approval ?? 50;
+        const score = row.preference_score ?? 50;
         weightedSum += score * (weightMap[row.bloc_id] || 0);
     }
     const derived = Math.round(weightedSum / 100);
@@ -2922,13 +2922,13 @@ export async function recalcDerivedApproval(supabase, factionId, blocRows) {
 
 /**
  * Ensures faction_bloc_approval rows exist for a given faction.
- * If none exist, seeds them with default approval of 40 for all active blocs.
+ * If none exist, seeds them with default preference_score of 40 for all active blocs.
  * Returns the (possibly newly created) bloc approval rows, or null on failure.
  */
 export async function ensureBlocApprovals(supabase, factionId, nationId) {
     const { data: existing, error: checkErr } = await supabase
         .from('faction_bloc_approval')
-        .select('id, bloc_id, approval')
+        .select('id, bloc_id, preference_score')
         .eq('faction_id', factionId);
 
     if (checkErr) {
@@ -2954,7 +2954,7 @@ export async function ensureBlocApprovals(supabase, factionId, nationId) {
     const rows = blocs.map(bloc => ({
         faction_id: factionId,
         bloc_id: bloc.id,
-        approval: 40
+        preference_score: 40
     }));
 
     const { error: upsertErr } = await supabase
@@ -2968,7 +2968,7 @@ export async function ensureBlocApprovals(supabase, factionId, nationId) {
 
     const { data: newRows } = await supabase
         .from('faction_bloc_approval')
-        .select('id, bloc_id, approval')
+        .select('id, bloc_id, preference_score')
         .eq('faction_id', factionId);
 
     console.log(`[ensureBlocApprovals] Seeded ${rows.length} bloc approval rows for faction ${factionId}`);
@@ -5690,14 +5690,14 @@ export async function processPartialElection(supabase, nation, election, current
         }
     }));
 
-    // 3b. Load per-bloc approval data
+    // 3b. Load per-bloc preference data
     const { data: fbaRows } = await supabase
-        .from('faction_bloc_approval').select('faction_id, bloc_id, approval')
+        .from('faction_bloc_approval').select('faction_id, bloc_id, preference_score')
         .in('faction_id', factionIds);
     const allBlocApprovals = {};
     for (const row of (fbaRows || [])) {
         if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
-        allBlocApprovals[row.bloc_id][row.faction_id] = row.approval;
+        allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? 40;
     }
 
     // 4. Run election simulation for ONLY the delta seats
@@ -10576,7 +10576,7 @@ export async function adjustGovernmentApprovalEvent(supabase, nationId, amount, 
  *   35% — Outcomes: weighted trend+absolute blend across key nation stats
  *   20% — Events: transient modifier (decays 12%/tick), fed by adjustGovernmentApprovalEvent()
  *
- * Stores the result in nations.gov_approval (+ national_approval for backward compat).
+ * Stores the result in nations.gov_approval.
  * Caches component values in gov_approval_institutional, gov_approval_outcomes, gov_approval_events.
  * Triggers momentum feedback when gov approval shifts significantly.
  *
@@ -10661,7 +10661,7 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
         + eventsComponent * cfg.EVENTS_WEIGHT;
 
     const govApproval = Math.round(Math.max(0, Math.min(100, rawApproval)));
-    const prevGovApproval = Number(nation.gov_approval ?? nation.national_approval ?? 50);
+    const prevGovApproval = Number(nation.gov_approval ?? 50);
 
     // Store all components + composite on the nation
     await supabase.from('nations')
@@ -10669,8 +10669,7 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
             gov_approval: govApproval,
             gov_approval_institutional: Math.round(institutional * 10) / 10,
             gov_approval_outcomes: Math.round(outcomesScore * 10) / 10,
-            gov_approval_events: eventsRaw,  // preserve raw value (already decayed)
-            national_approval: govApproval   // backward compat
+            gov_approval_events: eventsRaw   // preserve raw value (already decayed)
         })
         .eq('id', nation.id);
 
@@ -10678,7 +10677,6 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
     nation.gov_approval = govApproval;
     nation.gov_approval_institutional = institutional;
     nation.gov_approval_outcomes = outcomesScore;
-    nation.national_approval = govApproval;
 
     // ─── Momentum feedback: significant gov approval shifts affect party momentum ───
     const delta = govApproval - prevGovApproval;
@@ -10759,7 +10757,7 @@ export async function processOngoingCosts(supabase, nation, currentTick) {
 // All columns that nations_history tracks (must match the DB table schema)
 export const HISTORY_SNAPSHOT_COLUMNS = [
     ...NATION_STAT_COLUMNS,
-    'national_approval',
+    'gov_approval',
     'competition_voters', 'liberty_voters', 'security_voters', 'globalism_voters',
     'progressive_voters', 'liberal_voters', 'moderate_voters', 'conservative_voters', 'nationalist_voters'
 ];
@@ -11496,7 +11494,7 @@ export async function processRevolution(supabase, nation, currentTick) {
     if (allFactions && allFactions.length > 0) {
         for (const faction of allFactions) {
             await supabase.from('faction_bloc_approval')
-                .update({ approval: 50 })
+                .update({ preference_score: 50, momentum: 0 })
                 .eq('faction_id', faction.id);
             await recalcDerivedApproval(supabase, faction.id);
         }
@@ -12920,15 +12918,14 @@ export async function runElectionPreview(supabase, nationId) {
     // 3b. Load per-bloc preference data from faction_bloc_approval (Three-Pillar system)
     const { data: fbaRows } = await supabase
         .from('faction_bloc_approval')
-        .select('faction_id, bloc_id, approval, preference_score')
+        .select('faction_id, bloc_id, preference_score')
         .in('faction_id', factionIds);
 
     // Build allBlocApprovals map: { blocId: { partyId: preference_score } }
-    // Uses preference_score (Three-Pillar system) with fallback to approval (legacy)
     const allBlocApprovals = {};
     for (const row of (fbaRows || [])) {
         if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
-        allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? row.approval ?? 40;
+        allBlocApprovals[row.bloc_id][row.faction_id] = row.preference_score ?? 40;
     }
 
     // 4. Run simulation with per-bloc approvals

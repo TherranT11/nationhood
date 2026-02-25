@@ -545,7 +545,7 @@ let _cpSelectedLogo = DEFAULT_PARTY_ICON;
             const rows = blocs.map(bloc => ({
                 faction_id: factionId,
                 bloc_id: bloc.id,
-                approval: 40
+                preference_score: 40
             }));
 
             const { error: upsertErr } = await _supabase

@@ -39,7 +39,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import { tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, adjustMomentumAll, callEarlyElectionsAction, closeAdministration, markFactionActive, nominateMinister, resignPM, rolloverAdministration } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, markFactionActive, nominateMinister, resignPM, rolloverAdministration } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 (function () {
     'use strict';
@@ -443,10 +443,10 @@ async function fetchMinistries() {
 async function calculateGovernmentApproval() {
     const { data: nation } = await _supabase
         .from('nations')
-        .select('national_approval')
+        .select('gov_approval')
         .eq('id', currentNation.id)
         .single();
-    return nation?.national_approval ?? 50;
+    return nation?.gov_approval ?? 50;
 }
 
 function getPartyNameById(partyId) {
@@ -2347,16 +2347,10 @@ async function resignPMAction() {
             embattled_since_tick: null
         }).eq('id', ministry.id);
 
-        // Apply +3 government approval bounce
-        const { data: nationRow } = await _supabase.from('nations')
-            .select('national_approval')
-            .eq('id', currentNation.id)
-            .single();
-        const curApproval = nationRow?.national_approval ?? 50;
-        const newApproval = Math.min(100, curApproval + 3);
-        await _supabase.from('nations').update({ national_approval: newApproval }).eq('id', currentNation.id);
+        // Apply +3 government approval event (processed next tick)
+        await adjustGovernmentApprovalEvent(_supabase, currentNation.id, 3, 'minister:fired');
 
-        alert(ministerName + ' has been dismissed from ' + ministryName + '.\nGovernment approval: ' + curApproval + '% → ' + newApproval + '%');
+        alert(ministerName + ' has been dismissed from ' + ministryName + '.\n+3 government approval event applied.');
         await renderGovernmentPage();
     } catch (e) {
         console.error('Fire minister error:', e);

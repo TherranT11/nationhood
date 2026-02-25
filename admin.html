@@ -1889,7 +1889,7 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
                     rows.push({
                         faction_id: party.id,
                         bloc_id: bloc.id,
-                        approval: Math.max(0, Math.min(100, 40 + jitter))
+                        preference_score: Math.max(0, Math.min(100, 40 + jitter))
                     });
                 }
             }
@@ -1901,7 +1901,7 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
             // Recalculate derived approval_rating for each party from the randomized per-bloc values
             for (const party of parties) {
                 const partyRows = rows.filter(r => r.faction_id === party.id);
-                await recalcDerivedApproval(_supabase, party.id, partyRows.map(r => ({ bloc_id: r.bloc_id, approval: r.approval })));
+                await recalcDerivedApproval(_supabase, party.id, partyRows.map(r => ({ bloc_id: r.bloc_id, preference_score: r.preference_score })));
             }
 
             statusEl.innerHTML = `<span style="color:#4CAF50;font-weight:bold;">✅ Initialized approval for ${parties.length} parties × ${voterBlocsCache.length} blocs (${rows.length} records, randomized 30–50%)</span>`;
