@@ -468,7 +468,7 @@ async function advanceTick(supabase) {
                 .eq('item_type', 'institution');
             statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs);
         }
-        const decayResults = await processStatDecay(supabase, nation, statInstMap);
+        const decayResults = await processStatDecay(supabase, nation, statInstMap, shutdown);
         if (decayResults.length > 0) {
             summary.decay = summary.decay || [];
             summary.decay.push({ nation: nation.name, effects: decayResults });
