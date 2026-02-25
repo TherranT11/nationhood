@@ -562,6 +562,16 @@ async function advanceTick(supabase) {
             summary.ministerApprovals.push({ nation: nation.name, results: ministerApprovalResults });
         }
 
+        // Decay gov_approval_events by 12% per tick (transient shocks fade naturally)
+        const oldEvents = Number(nation.gov_approval_events ?? 0);
+        if (Math.abs(oldEvents) > 0.01) {
+            const decayed = Math.round(oldEvents * (1 - GOV_APPROVAL_CONFIG.EVENTS_DECAY_RATE) * 100) / 100;
+            await supabase.from('nations')
+                .update({ gov_approval_events: decayed })
+                .eq('id', nation.id);
+            nation.gov_approval_events = decayed;
+        }
+
         // Layer 2: Calculate composite government approval
         const govApproval = await calculateGovernmentApprovalTick(supabase, nation, newTick);
 

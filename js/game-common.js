@@ -4778,36 +4778,57 @@ export function statApprovalContribution(statKey, value) {
 }
 
 export const GOV_APPROVAL_CONFIG = {
-    // Layer 2 component weights
-    MINISTER_WEIGHT: 0.60,
-    PM_STATS_WEIGHT: 0.20,
-    TRAJECTORY_WEIGHT: 0.20,
+    // ─── New spec weights (Phase 4) ───
+    INSTITUTIONAL_WEIGHT: 0.45,
+    OUTCOMES_WEIGHT: 0.35,
+    EVENTS_WEIGHT: 0.20,
 
-    // Trajectory lookback
-    TRAJECTORY_LOOKBACK: 5,
+    // Events component decay (12% per tick — transient shocks fade naturally)
+    EVENTS_DECAY_RATE: 0.12,
 
-    // PM-owned stats for Layer 2 scoring
-    PM_STATS: ['happiness', 'standard_of_living', 'stability'],
+    // Outcome stats: universal stats everyone cares about, with relative weights
+    OUTCOME_STATS: [
+        { stat: 'standard_of_living', weight: 0.18 },
+        { stat: 'unemployment',       weight: 0.15, inverted: true },
+        { stat: 'inflation',          weight: 0.12, inverted: true },
+        { stat: 'crime_rate',         weight: 0.10, inverted: true },
+        { stat: 'healthcare_quality', weight: 0.10 },
+        { stat: 'happiness',          weight: 0.10 },
+        { stat: 'poverty_rate',       weight: 0.08, inverted: true },
+        { stat: 'gdp_growth',         weight: 0.07 },
+        { stat: 'stability',          weight: 0.05 },
+        { stat: 'corruption',         weight: 0.05, inverted: true },
+    ],
+    OUTCOME_TREND_LOOKBACK: 8,
+    OUTCOME_TREND_WEIGHT: 0.6,    // 60% trend direction
+    OUTCOME_ABSOLUTE_WEIGHT: 0.4, // 40% absolute level
 
-    // Mood multiplier bounds (Layer 3)
-    MOOD_MULTIPLIER_MIN: 0.4,
-    MOOD_MULTIPLIER_MAX: 1.15,
+    // Gov approval → momentum feedback
+    FEEDBACK_THRESHOLD: 2,          // min delta to trigger feedback
+    FEEDBACK_COALITION_COEFF: 0.15, // coalition gets 15% of delta as momentum
+    FEEDBACK_OPPOSITION_COEFF: 0.08, // opposition gets inverse 8%
 
-    // Opposition boost
-    OPPOSITION_BOOST_THRESHOLD: 40,
-    OPPOSITION_BOOST_RATE: 0.05,
+    // Vacancy penalty per unfilled ministry
+    VACANCY_PENALTY: -5,
 
-    // Embattled / Crisis thresholds
+    // Embattled / Crisis thresholds (kept from original)
     EMBATTLED_THRESHOLD: 30,
     EMBATTLED_TICKS_REQUIRED: 5,
     EMBATTLED_GOV_PENALTY: -1,
     CRISIS_THRESHOLD: 20,
     CRISIS_GOV_PENALTY: -2,
 
-    // Minister firing
+    // Minister firing (kept from original)
     FIRE_MINISTER_AP_COST: 1,
     NEW_MINISTER_APPROVAL: 45,
     FIRE_GOV_APPROVAL_BONUS: 3,
+
+    // Legacy weights (still used by calculateThreePillarPreferences mood multiplier
+    // until Phase 6 removes it)
+    MOOD_MULTIPLIER_MIN: 0.4,
+    MOOD_MULTIPLIER_MAX: 1.15,
+    OPPOSITION_BOOST_THRESHOLD: 40,
+    OPPOSITION_BOOST_RATE: 0.05,
 };
 
 /**
@@ -10620,12 +10641,53 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
 // ==================== LAYER 2: GOVERNMENT APPROVAL (COMPOSITE) ====================
 
 /**
- * Calculate composite government approval from three components:
- *   60% — weighted average of minister approvals (+ embattled penalties)
- *   20% — PM-owned stat threshold scoring (happiness, standard_of_living, stability)
- *   20% — trajectory (are stats improving or declining over last N ticks?)
+ * Apply a one-time event modifier to the government approval events component.
+ * The events component decays 12% per tick, so transient shocks fade naturally.
+ * Clamped to [-50, +50]. Writes an audit row to gov_approval_log.
  *
- * Stores the result in nations.national_approval.
+ * @param {object} supabase
+ * @param {string} nationId
+ * @param {number} amount   - signed delta (positive = boost, negative = shock)
+ * @param {string} source   - audit tag, e.g. 'crisis:government_shutdown'
+ */
+export async function adjustGovernmentApprovalEvent(supabase, nationId, amount, source) {
+    if (amount === 0) return;
+
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('gov_approval_events')
+        .eq('id', nationId)
+        .single();
+
+    const current = Number(nation?.gov_approval_events ?? 0);
+    const updated = Math.round(Math.max(-50, Math.min(50, current + amount)) * 100) / 100;
+
+    await supabase.from('nations')
+        .update({ gov_approval_events: updated })
+        .eq('id', nationId);
+
+    // Audit log
+    const { data: shard } = await supabase
+        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    await supabase.from('gov_approval_log').insert({
+        nation_id: nationId,
+        amount,
+        source: source || 'unknown',
+        tick: shard?.current_tick || 0
+    });
+
+    console.log(`[GovApprovalEvent] ${amount > 0 ? '+' : ''}${amount} for nation ${nationId} — ${source}`);
+}
+
+/**
+ * Calculate composite government approval from three components:
+ *   45% — Institutional: minister approval avg + embattled penalties + vacancy penalty
+ *   35% — Outcomes: weighted trend+absolute blend across key nation stats
+ *   20% — Events: transient modifier (decays 12%/tick), fed by adjustGovernmentApprovalEvent()
+ *
+ * Stores the result in nations.gov_approval (+ national_approval for backward compat).
+ * Caches component values in gov_approval_institutional, gov_approval_outcomes, gov_approval_events.
+ * Triggers momentum feedback when gov approval shifts significantly.
  *
  * @param {object} supabase
  * @param {object} nation - nation row with current stat values
@@ -10633,6 +10695,8 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
  * @returns {number|null} the computed government approval (0-100), or null if no government
  */
 export async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
+    const cfg = GOV_APPROVAL_CONFIG;
+
     const { data: ministries } = await supabase
         .from('ministries')
         .select('ministry_key, minister_approval, minister_first_name, embattled_since_tick')
@@ -10641,11 +10705,10 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
 
     if (!ministries || ministries.length === 0) return null;
 
-    // Only count ministries with an appointed minister
     const filledMinistries = ministries.filter(m => m.minister_first_name);
-    if (filledMinistries.length === 0) return null;
+    const vacantCount = ministries.length - filledMinistries.length;
 
-    // ─── Component A (60%): Minister approval average + embattled penalties ───
+    // ─── Component A (45%): Institutional — minister avg + embattled + vacancy ───
     let ministerSum = 0;
     let embattledPenalty = 0;
 
@@ -10653,91 +10716,110 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
         const approval = m.minister_approval ?? 50;
         ministerSum += approval;
 
-        // Check embattled status penalties
         if (m.embattled_since_tick !== null && m.embattled_since_tick !== undefined && m.ministry_key !== 'prime_minister') {
             const ticksEmbattled = currentTick - m.embattled_since_tick;
-            if (ticksEmbattled >= GOV_APPROVAL_CONFIG.EMBATTLED_TICKS_REQUIRED) {
-                if (approval < GOV_APPROVAL_CONFIG.CRISIS_THRESHOLD) {
-                    embattledPenalty += GOV_APPROVAL_CONFIG.CRISIS_GOV_PENALTY;
+            if (ticksEmbattled >= cfg.EMBATTLED_TICKS_REQUIRED) {
+                if (approval < cfg.CRISIS_THRESHOLD) {
+                    embattledPenalty += cfg.CRISIS_GOV_PENALTY;
                 } else {
-                    embattledPenalty += GOV_APPROVAL_CONFIG.EMBATTLED_GOV_PENALTY;
+                    embattledPenalty += cfg.EMBATTLED_GOV_PENALTY;
                 }
             }
         }
     }
 
-    const ministerAvg = ministerSum / filledMinistries.length;
+    const ministerAvg = filledMinistries.length > 0 ? ministerSum / filledMinistries.length : 50;
+    const vacancyPenalty = vacantCount * (cfg.VACANCY_PENALTY || -5);
+    const institutional = Math.max(0, Math.min(100, ministerAvg + embattledPenalty + vacancyPenalty));
 
-    // ─── Component B (20%): PM stats threshold scoring ───
-    let pmContribSum = 0;
-    for (const statKey of GOV_APPROVAL_CONFIG.PM_STATS) {
-        const value = Number(nation[statKey] ?? 0);
-        pmContribSum += statApprovalContribution(statKey, value);
+    // ─── Component B (35%): Outcomes — weighted trend+absolute blend ───
+    const outcomeStatNames = cfg.OUTCOME_STATS.map(s => s.stat);
+    const trends = await statTrendBatch(supabase, nation.id, outcomeStatNames, cfg.OUTCOME_TREND_LOOKBACK);
+
+    let outcomesScore = 50; // neutral default
+    let weightSum = 0;
+    let blendedSum = 0;
+
+    for (const entry of cfg.OUTCOME_STATS) {
+        const rawVal = Number(nation[entry.stat] ?? 50);
+        // Normalize absolute value to 0-100 quality scale (inverted stats: lower is better)
+        const absQuality = entry.inverted ? (100 - rawVal) : rawVal;
+        // Normalize trend: positive trend = good. For inverted stats, a negative raw trend is good.
+        const rawTrend = trends[entry.stat] || 0;
+        const trendSign = entry.inverted ? -rawTrend : rawTrend;
+        // Map trend to 0-100 scale: clamp trend to [-5, +5] range then scale
+        const trendQuality = Math.max(0, Math.min(100, 50 + trendSign * 10));
+
+        const blended = absQuality * cfg.OUTCOME_ABSOLUTE_WEIGHT + trendQuality * cfg.OUTCOME_TREND_WEIGHT;
+        blendedSum += blended * entry.weight;
+        weightSum += entry.weight;
     }
-    const pmAvgContrib = pmContribSum / GOV_APPROVAL_CONFIG.PM_STATS.length;
-    // Map contribution range (-3 to +1.5) to 0-100 scale
-    // -3 → 15, -1.5 → 35, 0 → 50, +0.5 → 55, +1.5 → 75
-    const pmComponent = Math.max(0, Math.min(100, 50 + pmAvgContrib * (50 / 3)));
 
-    // ─── Component C (20%): Trajectory (are stats improving over last N ticks?) ───
-    let trajectoryComponent = 50; // default neutral
-    const lookback = GOV_APPROVAL_CONFIG.TRAJECTORY_LOOKBACK;
-
-    const { data: historyRows } = await supabase
-        .from('nations_history')
-        .select('*')
-        .eq('nation_id', nation.id)
-        .gte('tick', currentTick - lookback)
-        .order('tick', { ascending: true })
-        .limit(1);
-
-    if (historyRows && historyRows.length > 0) {
-        const oldSnapshot = historyRows[0];
-        let improving = 0;
-        let declining = 0;
-        let total = 0;
-
-        for (const statKey of NATION_STAT_COLUMNS) {
-            const sign = statDirectionSign(statKey);
-            if (sign === 0) continue;
-
-            const oldVal = Number(oldSnapshot[statKey] ?? 0);
-            const curVal = Number(nation[statKey] ?? 0);
-            const delta = curVal - oldVal;
-
-            if (delta === 0) continue;
-            total++;
-
-            // Is this stat moving in the "good" direction?
-            if (delta * sign > 0) improving++;
-            else declining++;
-        }
-
-        if (total > 0) {
-            // Net ratio: +1 = all improving, -1 = all declining
-            const netRatio = (improving - declining) / total;
-            // Map to 0-100: -1 → 15, 0 → 50, +1 → 85
-            trajectoryComponent = Math.max(0, Math.min(100, 50 + netRatio * 35));
-        }
+    if (weightSum > 0) {
+        outcomesScore = Math.max(0, Math.min(100, blendedSum / weightSum));
     }
+
+    // ─── Component C (20%): Events — transient modifier, decayed before this call ───
+    const eventsRaw = Number(nation.gov_approval_events ?? 0); // range: -50 to +50
+    // Map [-50, +50] → [0, 100]
+    const eventsComponent = Math.max(0, Math.min(100, 50 + eventsRaw));
 
     // ─── Composite ───
-    const rawApproval = ministerAvg * GOV_APPROVAL_CONFIG.MINISTER_WEIGHT
-        + pmComponent * GOV_APPROVAL_CONFIG.PM_STATS_WEIGHT
-        + trajectoryComponent * GOV_APPROVAL_CONFIG.TRAJECTORY_WEIGHT
-        + embattledPenalty;
+    const rawApproval = institutional * cfg.INSTITUTIONAL_WEIGHT
+        + outcomesScore * cfg.OUTCOMES_WEIGHT
+        + eventsComponent * cfg.EVENTS_WEIGHT;
 
     const govApproval = Math.round(Math.max(0, Math.min(100, rawApproval)));
+    const prevGovApproval = Number(nation.gov_approval ?? nation.national_approval ?? 50);
 
-    // Store on the nation
+    // Store all components + composite on the nation
     await supabase.from('nations')
-        .update({ national_approval: govApproval })
+        .update({
+            gov_approval: govApproval,
+            gov_approval_institutional: Math.round(institutional * 10) / 10,
+            gov_approval_outcomes: Math.round(outcomesScore * 10) / 10,
+            gov_approval_events: eventsRaw,  // preserve raw value (already decayed)
+            national_approval: govApproval   // backward compat
+        })
         .eq('id', nation.id);
 
-    // Update in-memory nation object so snapshot captures it
+    // Update in-memory nation object
+    nation.gov_approval = govApproval;
+    nation.gov_approval_institutional = institutional;
+    nation.gov_approval_outcomes = outcomesScore;
     nation.national_approval = govApproval;
 
-    console.log(`[calculateGovernmentApprovalTick] ${nation.name}: gov_approval=${govApproval} (ministers=${Math.round(ministerAvg)}, pm_stats=${Math.round(pmComponent)}, trajectory=${Math.round(trajectoryComponent)}, embattled_penalty=${embattledPenalty})`);
+    // ─── Momentum feedback: significant gov approval shifts affect party momentum ───
+    const delta = govApproval - prevGovApproval;
+    if (Math.abs(delta) > cfg.FEEDBACK_THRESHOLD) {
+        const coalition = await fetchActiveCoalition(supabase, nation.id);
+        const coalitionPartyIds = coalition?.party_ids || [];
+
+        // Coalition parties gain/lose momentum proportional to approval shift
+        for (const partyId of coalitionPartyIds) {
+            const momDelta = Math.round(delta * cfg.FEEDBACK_COALITION_COEFF * 100) / 100;
+            if (momDelta !== 0) {
+                await adjustMomentumAll(supabase, nation.id, partyId, momDelta, 'gov_approval_shift');
+            }
+        }
+
+        // Opposition benefits inversely (at reduced rate)
+        const { data: oppParties } = await supabase
+            .from('factions')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('faction_type', 'party')
+            .eq('is_npc', false);
+        for (const opp of (oppParties || [])) {
+            if (coalitionPartyIds.includes(opp.id)) continue;
+            const momDelta = Math.round(-delta * cfg.FEEDBACK_OPPOSITION_COEFF * 100) / 100;
+            if (momDelta !== 0) {
+                await adjustMomentumAll(supabase, nation.id, opp.id, momDelta, 'gov_approval_shift');
+            }
+        }
+    }
+
+    console.log(`[GovApproval] ${nation.name}: ${govApproval} (inst=${Math.round(institutional)}, outcomes=${Math.round(outcomesScore)}, events=${Math.round(eventsComponent)}, vacancies=${vacantCount}, embattled=${embattledPenalty})`);
 
     return govApproval;
 }
