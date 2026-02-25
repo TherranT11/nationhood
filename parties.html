@@ -85,49 +85,12 @@ async function renderAutocracyParties(el, f, n) {
         ministryCounts[m.party_id] = (ministryCounts[m.party_id] || 0) + 1;
     }
 
-    const maxAP = GAME_CONFIG.MAX_AP;
     const rulingId = n.ruling_faction_id;
     const isStrongman = f.id === rulingId;
     const currentTick = currentShard?.current_tick || 0;
 
-    // ── FACTION AP CARDS (shown to everyone) ──
-    let factionAPCards = '';
-    for (const faction of (allFactions || [])) {
-        const ap = Math.min(faction.action_points || 0, maxAP);
-        const apPct = Math.round((ap / maxAP) * 100);
-        const color = faction.party_color || '#ffcc00';
-        const logo = getPartyIconSVG(faction.party_logo, 28, color);
-        const isYou = faction.id === f.id;
-        const isRuler = faction.id === rulingId;
-        const name = faction.faction_name;
-        const abbr = faction.abbreviation ? `<span class="faction-ap-abbr">(${faction.abbreviation})</span>` : '';
-
-        let badge = '';
-        if (isRuler) badge = '<span class="faction-ap-badge faction-ap-ruler">RULER</span>';
-        else if (isYou) badge = '<span class="faction-ap-badge faction-ap-you">YOU</span>';
-
-        factionAPCards += `
-            <div class="faction-ap-card${isYou ? ' faction-ap-yours' : ''}" style="border-left-color:${color}">
-                <div class="faction-ap-name-row">
-                    <span class="faction-ap-logo" style="color:${color}">${logo}</span>
-                    <span class="faction-ap-name" style="color:${color}">${name}</span>
-                    ${abbr}
-                    ${badge}
-                </div>
-                <div class="ap-score-row">
-                    <span class="ap-value">${ap}</span>
-                    <span class="ap-max">/ ${maxAP}</span>
-                </div>
-                <div class="ap-bar-track">
-                    <div class="ap-bar-fill" style="width:${apPct}%;background:${color}"></div>
-                </div>
-            </div>`;
-    }
-
-    // ── STRONGMAN REGIME PANEL (only for ruling faction) ──
-    let regimePanel = '';
-    if (isStrongman) {
-        const hosFirst = n.head_of_state_first_name || 'Unknown';
+    // ── REGIME PANEL (visible to all — Grip numbers only for Strongman) ──
+    const hosFirst = n.head_of_state_first_name || 'Unknown';
         const hosLast = n.head_of_state_last_name || 'Unknown';
         const hosAge = n.head_of_state_age || '—';
         const govType = (n.government_type || 'Autocracy');
@@ -178,6 +141,13 @@ async function renderAutocracyParties(el, f, n) {
             return '#ff4444';
         }
 
+        function vitalLabel(val, invertedIsBetter) {
+            const v = invertedIsBetter ? (100 - val) : val;
+            if (v >= 70) return 'HIGH';
+            if (v >= 45) return 'MODERATE';
+            return 'LOW';
+        }
+
         function loyaltyColor(val) {
             if (val >= 70) return '#4CAF50';
             if (val >= 50) return '#8BC34A';
@@ -210,7 +180,7 @@ async function renderAutocracyParties(el, f, n) {
                     <div class="reg-intel-stats">
                         <span class="reg-intel-stat">
                             <span class="reg-intel-label">LOYALTY</span>
-                            <span class="reg-intel-val" style="color:${lColor}">${loy}</span>
+                            ${isStrongman ? `<span class="reg-intel-val" style="color:${lColor}">${loy}</span>` : ''}
                             <span class="reg-intel-tag" style="color:${lColor}">${lLabel}</span>
                         </span>
                         <span class="reg-intel-stat">
@@ -222,9 +192,9 @@ async function renderAutocracyParties(el, f, n) {
                             <span class="reg-intel-val">${mCount}</span>
                         </span>
                     </div>
-                    <div class="reg-intel-bar-track">
+                    ${isStrongman ? `<div class="reg-intel-bar-track">
                         <div class="reg-intel-bar-fill" style="width:${loyPct}%;background:${lColor}"></div>
-                    </div>
+                    </div>` : ''}
                 </div>`;
         }
 
@@ -240,9 +210,9 @@ async function renderAutocracyParties(el, f, n) {
         } else {
             // Check proximity to trigger (stability < 15, freedom_index > 50, civil_unrest > 70)
             const triggers = [];
-            if (stability < 25) triggers.push(`Stability critical (${stability})`);
-            if (freedomIdx > 40) triggers.push(`Freedom Index rising (${freedomIdx})`);
-            if (civilUnrest > 55) triggers.push(`Civil Unrest elevated (${civilUnrest})`);
+            if (stability < 25) triggers.push(isStrongman ? `Stability critical (${stability})` : 'Stability critical');
+            if (freedomIdx > 40) triggers.push(isStrongman ? `Freedom Index rising (${freedomIdx})` : 'Freedom Index rising');
+            if (civilUnrest > 55) triggers.push(isStrongman ? `Civil Unrest elevated (${civilUnrest})` : 'Civil Unrest elevated');
             if (triggers.length > 0) {
                 threatHtml = `
                     <div class="reg-threat reg-threat-warning">
@@ -259,7 +229,7 @@ async function renderAutocracyParties(el, f, n) {
             }
         }
 
-        regimePanel = `
+        let regimePanel = `
             <div class="reg-panel">
                 <div class="reg-header">
                     <div class="reg-header-left">
@@ -288,6 +258,7 @@ async function renderAutocracyParties(el, f, n) {
                     <div class="reg-col-left">
                         <div class="reg-section">
                             <div class="reg-section-title">GRIP ON POWER</div>
+                            ${isStrongman ? `
                             <div class="reg-grip-row">
                                 <span class="reg-grip-score" style="color:${gripColor}">${gripClamped}</span>
                                 <div class="reg-grip-bar-track">
@@ -317,6 +288,11 @@ async function renderAutocracyParties(el, f, n) {
                                     <span class="reg-grip-comp-weight">20%</span>
                                 </div>
                             </div>
+                            ` : `
+                            <div class="reg-grip-row">
+                                <span class="reg-grip-label-only" style="color:${gripColor}">${gripLabel}</span>
+                            </div>
+                            `}
                         </div>
 
                         <div class="reg-section">
@@ -324,27 +300,27 @@ async function renderAutocracyParties(el, f, n) {
                             <div class="reg-vitals-grid">
                                 <div class="reg-vital">
                                     <span class="reg-vital-label">STABILITY</span>
-                                    <span class="reg-vital-val" style="color:${vitalColor(stability, false)}">${stability}</span>
+                                    <span class="reg-vital-val" style="color:${vitalColor(stability, false)}">${isStrongman ? stability : vitalLabel(stability, false)}</span>
                                 </div>
                                 <div class="reg-vital">
                                     <span class="reg-vital-label">LEGITIMACY</span>
-                                    <span class="reg-vital-val" style="color:${vitalColor(legitimacy, false)}">${legitimacy}</span>
+                                    <span class="reg-vital-val" style="color:${vitalColor(legitimacy, false)}">${isStrongman ? legitimacy : vitalLabel(legitimacy, false)}</span>
                                 </div>
                                 <div class="reg-vital">
                                     <span class="reg-vital-label">CIVIL UNREST</span>
-                                    <span class="reg-vital-val" style="color:${vitalColor(civilUnrest, true)}">${civilUnrest}</span>
+                                    <span class="reg-vital-val" style="color:${vitalColor(civilUnrest, true)}">${isStrongman ? civilUnrest : vitalLabel(civilUnrest, true)}</span>
                                 </div>
                                 <div class="reg-vital">
                                     <span class="reg-vital-label">CORRUPTION</span>
-                                    <span class="reg-vital-val" style="color:${vitalColor(corruption, true)}">${corruption}</span>
+                                    <span class="reg-vital-val" style="color:${vitalColor(corruption, true)}">${isStrongman ? corruption : vitalLabel(corruption, true)}</span>
                                 </div>
                                 <div class="reg-vital">
                                     <span class="reg-vital-label">PRESS FREEDOM</span>
-                                    <span class="reg-vital-val" style="color:${vitalColor(pressF, true)}">${pressF}</span>
+                                    <span class="reg-vital-val" style="color:${vitalColor(pressF, true)}">${isStrongman ? pressF : vitalLabel(pressF, true)}</span>
                                 </div>
                                 <div class="reg-vital">
                                     <span class="reg-vital-label">FREEDOM INDEX</span>
-                                    <span class="reg-vital-val" style="color:${vitalColor(freedomIdx, true)}">${freedomIdx}</span>
+                                    <span class="reg-vital-val" style="color:${vitalColor(freedomIdx, true)}">${isStrongman ? freedomIdx : vitalLabel(freedomIdx, true)}</span>
                                 </div>
                             </div>
                         </div>
@@ -362,15 +338,10 @@ async function renderAutocracyParties(el, f, n) {
                     </div>
                 </div>
             </div>`;
-    }
 
     el.innerHTML = `
         <div class="parties-page">
             ${regimePanel}
-            <div class="section-header" style="margin-bottom:16px;">Faction Action Points</div>
-            <div class="faction-ap-grid">
-                ${factionAPCards}
-            </div>
         </div>`;
 }
 
