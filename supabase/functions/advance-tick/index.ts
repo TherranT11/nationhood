@@ -1585,7 +1585,7 @@ const TAX_CONFIG = [
         categoryClass: 'pill-consumption',
         revenueKey: 'salesRevenue',
         gdpMultiplier: 0.30,
-        maxRate: 30
+        maxRate: 50
     },
     {
         key: 'corporate_tax',
@@ -3946,6 +3946,32 @@ async function enactBill(supabase, bill, currentTick) {
         factionIdeologies
     );
     await applyEnactmentApproval(supabase, bill.nation_id, approvalDeltas);
+
+    // ── Corporate Tax → Business Owners bloc approval ──
+    // Raising corporate tax: -3 momentum with Business Owners for sponsoring party
+    // Lowering corporate tax: +2 momentum with Business Owners for sponsoring party (no party approval)
+    for (const art of (bill.bill_articles || [])) {
+        if (art.article_title !== 'Corporate Tax Rate Change') continue;
+        const match = (art.article_text || '').match(/from\s+(\d+)%\s+to\s+(\d+)%/);
+        if (!match) continue;
+        const oldRate = Number(match[1]);
+        const newRate = Number(match[2]);
+        if (oldRate === newRate) continue;
+        const isRaise = newRate > oldRate;
+        const blocDelta = isRaise ? -3 : 2;
+        // Find the Business Owners voter bloc for this nation
+        const { data: bizBloc } = await supabase
+            .from('voter_blocs')
+            .select('id')
+            .eq('nation_id', bill.nation_id)
+            .eq('bloc_name', 'Business Owners')
+            .eq('is_active', true)
+            .single();
+        if (bizBloc) {
+            await adjustMomentum(supabase, bill.nation_id, bill.proposed_by, bizBloc.id, blocDelta, 'tax:corporate_tax');
+            console.log(`[enactBill] Corporate tax ${isRaise ? 'raise' : 'cut'}: ${blocDelta > 0 ? '+' : ''}${blocDelta} momentum for sponsor ${bill.proposed_by} with Business Owners bloc ${bizBloc.id}`);
+        }
+    }
 }
 
 async function reversePolicy(supabase, nation, policy, passedTick, currentTick) {

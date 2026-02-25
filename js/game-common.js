@@ -1528,7 +1528,7 @@ export const TAX_CONFIG = [
         categoryClass: 'pill-consumption',
         revenueKey: 'salesRevenue',
         gdpMultiplier: 0.30,
-        maxRate: 30
+        maxRate: 50
     },
     {
         key: 'corporate_tax',
