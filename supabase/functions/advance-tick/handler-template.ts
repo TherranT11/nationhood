@@ -575,8 +575,8 @@ async function advanceTick(supabase) {
         // Layer 2: Calculate composite government approval
         const govApproval = await calculateGovernmentApprovalTick(supabase, nation, newTick);
 
-        // Three-pillar voter preference recalculation (Layer 3: mood multiplier from govApproval)
-        await calculateThreePillarPreferences(supabase, nation, newTick, govApproval);
+        // Three-pillar voter preference recalculation
+        await calculateThreePillarPreferences(supabase, nation, newTick);
 
         // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
         // (the original `shutdown` boolean was computed before bill resolution)
