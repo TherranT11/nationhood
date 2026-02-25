@@ -290,7 +290,10 @@ async function renderAutocracyParties(el, f, n) {
                             </div>
                             ` : `
                             <div class="reg-grip-row">
-                                <span class="reg-grip-label-only" style="color:${gripColor}">${gripLabel}</span>
+                                <div class="reg-grip-bar-track">
+                                    <div class="reg-grip-bar-fill" style="width:${gripClamped}%;background:${gripColor}"></div>
+                                </div>
+                                <span class="reg-grip-label" style="color:${gripColor}">${gripLabel}</span>
                             </div>
                             `}
                         </div>
