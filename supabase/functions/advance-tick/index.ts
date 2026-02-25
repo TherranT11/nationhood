@@ -10583,11 +10583,23 @@ async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
         }
     }
 
+    // ─── Government Shutdown penalty ───
+    // A government that can't pass a budget takes a direct approval hit,
+    // scaling with how long the shutdown has lasted (-2 per overdue tick, max -30).
+    let shutdownPenalty = 0;
+    if (isGovernmentShutdown(nation, currentTick)) {
+        const lastBudgetTick = nation.last_budget_tick;
+        const ticksSinceLastBudget = lastBudgetTick != null ? (currentTick - lastBudgetTick) : currentTick;
+        const ticksOverdue = ticksSinceLastBudget - GAME_CONFIG.TICKS_PER_YEAR;
+        shutdownPenalty = -Math.min(ticksOverdue * 2, 30);
+    }
+
     // ─── Composite ───
     const rawApproval = ministerAvg * GOV_APPROVAL_CONFIG.MINISTER_WEIGHT
         + pmComponent * GOV_APPROVAL_CONFIG.PM_STATS_WEIGHT
         + trajectoryComponent * GOV_APPROVAL_CONFIG.TRAJECTORY_WEIGHT
-        + embattledPenalty;
+        + embattledPenalty
+        + shutdownPenalty;
 
     const govApproval = Math.round(Math.max(0, Math.min(100, rawApproval)));
 
@@ -10599,7 +10611,7 @@ async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
     // Update in-memory nation object so snapshot captures it
     nation.national_approval = govApproval;
 
-    console.log(`[calculateGovernmentApprovalTick] ${nation.name}: gov_approval=${govApproval} (ministers=${Math.round(ministerAvg)}, pm_stats=${Math.round(pmComponent)}, trajectory=${Math.round(trajectoryComponent)}, embattled_penalty=${embattledPenalty})`);
+    console.log(`[calculateGovernmentApprovalTick] ${nation.name}: gov_approval=${govApproval} (ministers=${Math.round(ministerAvg)}, pm_stats=${Math.round(pmComponent)}, trajectory=${Math.round(trajectoryComponent)}, embattled_penalty=${embattledPenalty}${shutdownPenalty ? ', shutdown_penalty=' + shutdownPenalty : ''})`);
 
     return govApproval;
 }
