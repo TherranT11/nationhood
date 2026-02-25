@@ -4065,6 +4065,9 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
     if (delta !== 0) {
         // SEATS CHANGE — proportionally rescale all party seats to the new total
+        let redistributed = false;
+
+        // Attempt 1: use vote totals from last completed parliamentary election
         const { data: election } = await supabase
             .from('elections')
             .select('id, results')
@@ -4076,16 +4079,56 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             .maybeSingle();
 
         if (election?.results?.votes) {
-            const voteTotals = {};
-            for (const v of election.results.votes) {
-                voteTotals[v.party_id] = v.votes || 0;
+            const votes = election.results.votes;
+            const voteTotals: Record<string, number> = {};
+            // Handle both array format (SQL RPC) and object format (JS simulation)
+            if (Array.isArray(votes)) {
+                for (const v of votes) voteTotals[v.party_id] = v.votes || 0;
+            } else {
+                for (const [pid, v] of Object.entries(votes)) voteTotals[pid] = (v as number) || 0;
             }
-            const newSeats = allocateSeatsByVotes(voteTotals, newTotalSeats);
-
-            for (const [partyId, seats] of Object.entries(newSeats)) {
-                await supabase.from('factions').update({ seats }).eq('id', partyId);
+            if (Object.keys(voteTotals).length > 0) {
+                const newSeats = allocateSeatsByVotes(voteTotals, newTotalSeats);
+                for (const [partyId, seats] of Object.entries(newSeats)) {
+                    await supabase.from('factions').update({ seats }).eq('id', partyId);
+                }
+                redistributed = true;
+                console.log(`[enactFoundationalBill] Redistributed from election vote data.`);
             }
         }
+
+        // Fallback: proportionally scale existing faction seats to fill the new total
+        if (!redistributed) {
+            console.warn(`[enactFoundationalBill] No election vote data found — scaling existing seats proportionally.`);
+            const { data: factions } = await supabase
+                .from('factions')
+                .select('id, seats')
+                .eq('nation_id', bill.nation_id)
+                .eq('faction_type', 'party');
+
+            if (factions && factions.length > 0) {
+                const oldSum = factions.reduce((s: number, f: any) => s + (f.seats || 0), 0);
+                if (oldSum > 0) {
+                    // Use Largest Remainder to cleanly distribute newTotalSeats
+                    const seatTotals: Record<string, number> = {};
+                    for (const f of factions) seatTotals[f.id] = f.seats || 0;
+                    const newSeats = allocateSeatsByVotes(seatTotals, newTotalSeats);
+                    for (const [partyId, seats] of Object.entries(newSeats)) {
+                        await supabase.from('factions').update({ seats }).eq('id', partyId);
+                    }
+                } else {
+                    // All parties at 0 seats — distribute evenly
+                    const perParty = Math.floor(newTotalSeats / factions.length);
+                    let remainder = newTotalSeats - perParty * factions.length;
+                    for (const f of factions) {
+                        const seats = perParty + (remainder > 0 ? 1 : 0);
+                        if (remainder > 0) remainder--;
+                        await supabase.from('factions').update({ seats }).eq('id', f.id);
+                    }
+                }
+            }
+        }
+
         console.log(`[enactFoundationalBill] ${currentTotalSeats} -> ${newTotalSeats} (${delta > 0 ? '+' : ''}${delta}). Seats rescaled.`);
     } else {
         console.log(`[enactFoundationalBill] No seat change (already ${newTotalSeats}).`);
