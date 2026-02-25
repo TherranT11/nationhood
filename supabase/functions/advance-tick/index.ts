@@ -1873,14 +1873,18 @@ async function resolveBudgetBill(supabase, bill, currentTick) {
     }
 
     // Update nation
-    await supabase.from('nations').update({
+    const { error: updateErr } = await supabase.from('nations').update({
         debt: newDebt,
         budget_reserves: newReserves,
         last_budget_tick: currentTick,
         last_budget_bill_id: bill.id
     }).eq('id', nation.id);
 
-    console.log(`[resolveBudgetBill] Nation ${nation.name}: spending=$${(totalSpending/1e9).toFixed(2)}B, gap=$${(gap/1e9).toFixed(2)}B, newDebt=$${(newDebt/1e9).toFixed(2)}B`);
+    if (updateErr) {
+        console.error(`[resolveBudgetBill] CRITICAL: Failed to update nation ${nation.name} (last_budget_tick=${currentTick}):`, updateErr.message);
+    }
+
+    console.log(`[resolveBudgetBill] Nation ${nation.name}: spending=$${(totalSpending/1e9).toFixed(2)}B, gap=$${(gap/1e9).toFixed(2)}B, newDebt=$${(newDebt/1e9).toFixed(2)}B, last_budget_tick=${currentTick}`);
 }
 
 /**
@@ -1978,14 +1982,17 @@ async function processGovernmentShutdown(supabase, nation, currentTick) {
     console.log(`[GovernmentShutdown] ACTIVE for ${nation.name} — ${ticksSinceLastBudget} ticks since last budget (overdue by ${ticksOverdue} ticks)`);
 
     // --- 0. Activate crisis record (insert into active_crises if not already present) ---
-    const { data: existingCrisis } = await supabase
+    const { data: existingCrises, error: checkErr } = await supabase
         .from('active_crises')
         .select('id')
         .eq('nation_id', nation.id)
-        .eq('crisis_id', GOVERNMENT_SHUTDOWN_CRISIS_ID)
-        .maybeSingle();
+        .eq('crisis_id', GOVERNMENT_SHUTDOWN_CRISIS_ID);
 
-    if (!existingCrisis) {
+    if (checkErr) {
+        console.error(`[GovernmentShutdown] Failed to check existing crisis for ${nation.name}:`, checkErr.message);
+    }
+
+    if (!existingCrises || existingCrises.length === 0) {
         const { error: insertErr } = await supabase
             .from('active_crises')
             .insert({
@@ -2076,18 +2083,22 @@ async function processGovernmentShutdown(supabase, nation, currentTick) {
  * active_crises row if one exists, so it disappears from nation.html.
  */
 async function resolveGovernmentShutdown(supabase, nation, currentTick) {
-    const { data: existingCrisis } = await supabase
+    // Delete directly by nation_id + crisis_id (more robust than query-then-delete)
+    const { data: deleted, error: delErr } = await supabase
         .from('active_crises')
-        .select('id, started_at_tick')
+        .delete()
         .eq('nation_id', nation.id)
         .eq('crisis_id', GOVERNMENT_SHUTDOWN_CRISIS_ID)
-        .maybeSingle();
+        .select('id, started_at_tick');
 
-    if (!existingCrisis) return; // No active shutdown to resolve
+    if (delErr) {
+        console.error(`[GovernmentShutdown] CRITICAL: Failed to delete active_crises for ${nation.name}:`, delErr.message);
+        return;
+    }
 
-    await supabase.from('active_crises').delete().eq('id', existingCrisis.id);
+    if (!deleted || deleted.length === 0) return; // No active shutdown to resolve
 
-    const duration = currentTick - (existingCrisis.started_at_tick || 0);
+    const duration = currentTick - (deleted[0].started_at_tick || 0);
 
     await supabase.from('event_log').insert({
         nation_id: nation.id,
@@ -13397,6 +13408,10 @@ async function advanceTick(supabase) {
         // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
         // (the original `shutdown` boolean was computed before bill resolution)
         const shutdownNow = isGovernmentShutdown(nation, newTick);
+
+        if (shutdown && !shutdownNow) {
+            console.log(`[GovernmentShutdown] Shutdown ENDING for ${nation.name} at tick ${newTick} (last_budget_tick=${nation.last_budget_tick})`);
+        }
 
         // Government shutdown penalties (coalition momentum/approval + PM/President approval)
         if (shutdownNow) {
