@@ -10040,6 +10040,14 @@ const REGIME_PILLAR_DEFS = [
         { stat: 'freedom_index', threshold: 40, direction: 'below' },
         { stat: 'legitimacy', threshold: 50, direction: 'above' },
     ]},
+    { key: 'foreign_patrons', name: 'Foreign Patrons',  wants: [
+        { stat: 'international_reputation', threshold: 50, direction: 'above' },
+        { stat: 'foreign_investment', threshold: 50, direction: 'above' },
+    ]},
+    { key: 'religious',  name: 'Religious Establishment', wants: [
+        { stat: 'religious', threshold: 50, direction: 'above' },
+        { stat: 'freedom_index', threshold: 40, direction: 'below' },
+    ]},
 ];
 
 function d2() { return 1 + Math.floor(Math.random() * 2); } // 1 or 2
@@ -10137,21 +10145,36 @@ export async function processRegimePillars(supabase, nation) {
  * Map pillar_key → steward archetype.
  */
 export const PILLAR_TO_STEWARD_TYPE = {
-    bureaucracy: 'technocrat',
-    military:    'general',
-    party:       'party_chairman',
-    oligarchs:   'oligarch',
-    security:    'security_chief',
-    media:       'propaganda_chief',
+    bureaucracy:     'technocrat',
+    military:        'general',
+    party:           'party_chairman',
+    oligarchs:       'oligarch',
+    security:        'security_chief',
+    media:           'propaganda_chief',
+    foreign_patrons: 'intelligence_director',
+    religious:       'religious_authority',
 };
 
 export const STEWARD_TYPE_LABELS = {
-    technocrat:      'Technocrat',
-    general:         'General',
-    party_chairman:  'Party Chairman',
-    oligarch:        'Oligarch',
-    security_chief:  'Security Chief',
-    propaganda_chief:'Propaganda Chief',
+    technocrat:           'Technocrat',
+    general:              'General',
+    party_chairman:       'Party Chairman',
+    oligarch:             'Oligarch',
+    security_chief:       'Security Chief',
+    propaganda_chief:     'Propaganda Chief',
+    intelligence_director:'Intelligence Director',
+    religious_authority:  'Religious Authority',
+};
+
+export const STEWARD_TYPE_DESCRIPTIONS = {
+    technocrat:           'Administrative machinery of the state',
+    general:              'Armed forces and national defense',
+    party_chairman:       'Civilian party apparatus and regime legitimacy',
+    oligarch:             'Private capital and economic leverage',
+    security_chief:       'Internal security and surveillance apparatus',
+    propaganda_chief:     'State media and narrative control',
+    intelligence_director:'Foreign intelligence and covert operations',
+    religious_authority:  'Religious authority and moral legitimacy',
 };
 
 /**
