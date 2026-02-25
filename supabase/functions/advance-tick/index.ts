@@ -2059,7 +2059,7 @@ async function processGovernmentShutdown(supabase, nation, currentTick) {
     const coalitionPartyIds = coalition?.party_ids || [];
 
     for (const partyId of coalitionPartyIds) {
-        await adjustMomentum(supabase, partyId, -2);
+        await adjustMomentumAll(supabase, nation.id, partyId, -2, 'crisis:government_shutdown');
         await adjustBlocApproval(supabase, partyId, -2);
     }
     if (coalitionPartyIds.length > 0) {
@@ -2880,7 +2880,7 @@ async function applyNoVotePenalty(supabase, bill, nationId) {
     for (const faction of nonVoters) {
         // Momentum: lose 1d3+1 (2-4) across ALL blocs
         const momentumLoss = -(Math.floor(Math.random() * 3) + 2);
-        await adjustMomentum(supabase, faction.id, momentumLoss);
+        await adjustMomentumAll(supabase, nationId, faction.id, momentumLoss, 'penalty:no_vote');
 
         // Preference: -2 approval on matched blocs only
         if (affectedBlocIds.size > 0) {
@@ -7658,30 +7658,57 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick, go
 }
 
 /**
- * Add a momentum bonus (or penalty) to all bloc rows for a faction.
- * Called by game actions, ministry events, scandals, etc.
- * Momentum decays 20% per tick in calculateThreePillarPreferences().
+ * Adjust momentum for a faction, optionally targeting a specific voter bloc.
+ * Clamps to [-50, +50]. Writes an audit row to momentum_log.
  *
  * @param {object} supabase
- * @param {string} factionId
- * @param {number} delta - positive = boost, negative = penalty
+ * @param {string} nationId  - nation UUID (for audit log)
+ * @param {string} factionId - faction UUID
+ * @param {string|null} blocId - specific bloc UUID, or null for all blocs
+ * @param {number} amount    - positive = boost, negative = penalty
+ * @param {string} source    - audit tag, e.g. 'crisis:government_shutdown'
  */
-async function adjustMomentum(supabase, factionId, delta) {
-    const { data: rows } = await supabase
-        .from('faction_bloc_approval')
-        .select('id, momentum')
-        .eq('faction_id', factionId);
+async function adjustMomentum(supabase, nationId, factionId, blocId, amount, source) {
+    if (amount === 0) return;
 
+    const query = supabase
+        .from('faction_bloc_approval')
+        .select('id, bloc_id, momentum')
+        .eq('faction_id', factionId);
+    if (blocId) query.eq('bloc_id', blocId);
+
+    const { data: rows } = await query;
     if (!rows || rows.length === 0) return;
 
     for (const row of rows) {
-        const newMomentum = Math.round(((Number(row.momentum ?? 0)) + delta) * 100) / 100;
+        const old = Number(row.momentum ?? 0);
+        const clamped = Math.round(Math.max(-50, Math.min(50, old + amount)) * 100) / 100;
         await supabase.from('faction_bloc_approval')
-            .update({ momentum: newMomentum })
+            .update({ momentum: clamped })
             .eq('id', row.id);
     }
 
-    console.log(`[Momentum] Adjusted momentum by ${delta} for faction ${factionId} (${rows.length} bloc rows)`);
+    // Audit log (best-effort — don't fail the caller)
+    const { data: shard } = await supabase
+        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    await supabase.from('momentum_log').insert({
+        nation_id: nationId,
+        faction_id: factionId,
+        bloc_id: blocId || null,
+        amount,
+        source: source || 'unknown',
+        tick: shard?.current_tick || 0
+    });
+
+    console.log(`[Momentum] ${amount > 0 ? '+' : ''}${amount} for faction ${factionId}${blocId ? ` bloc ${blocId}` : ` (${rows.length} blocs)`} — ${source}`);
+}
+
+/**
+ * Convenience wrapper: adjust momentum uniformly across ALL blocs for a faction.
+ * Use this for events that affect a party's overall standing (crises, elections, etc.).
+ */
+async function adjustMomentumAll(supabase, nationId, factionId, amount, source) {
+    await adjustMomentum(supabase, nationId, factionId, null, amount, source);
 }
 
 
@@ -8357,11 +8384,11 @@ async function executePressConference(supabase, factionId, nationId, statKey, cu
     // ── 10. Apply momentum ──
     // Self momentum: apply to all our bloc rows
     if (selfMomentumDelta !== 0) {
-        await adjustMomentum(supabase, factionId, selfMomentumDelta);
+        await adjustMomentumAll(supabase, nationId, factionId, selfMomentumDelta, 'campaign:press_conference');
     }
     // Target momentum (attack mode)
     if (targetPartyId && targetMomentumDelta !== 0) {
-        await adjustMomentum(supabase, targetPartyId, targetMomentumDelta);
+        await adjustMomentumAll(supabase, nationId, targetPartyId, targetMomentumDelta, 'campaign:press_conference_target');
     }
 
     // ── 11. Deduct AP + money ──
@@ -9890,7 +9917,7 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
         }
 
         // +4 momentum
-        await adjustMomentum(supabase, promise.party_id, cfg.PROMISE_KEPT_MOMENTUM);
+        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.PROMISE_KEPT_MOMENTUM, 'promise:kept');
 
         // Update donor trust: +25% multiplier
         await supabase.from('donor_trust')
@@ -9947,7 +9974,7 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
         await adjustBlocApproval(supabase, promise.party_id, cfg.PROMISE_BROKEN_ALL_PREF);
 
         // -12 momentum
-        await adjustMomentum(supabase, promise.party_id, cfg.PROMISE_BROKEN_MOMENTUM);
+        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.PROMISE_BROKEN_MOMENTUM, 'promise:broken');
 
         // Lockout: bloc won't offer large donations for 30 ticks
         const { data: trust } = await supabase
