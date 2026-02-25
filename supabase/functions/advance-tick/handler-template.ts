@@ -461,7 +461,7 @@ async function advanceTick(supabase) {
                 .select('item_type, item_id, allocation_amount, needed_amount')
                 .eq('bill_id', nation.last_budget_bill_id)
                 .eq('item_type', 'institution');
-            statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs);
+            statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs, nation);
         }
         const decayResults = await processStatDecay(supabase, nation, statInstMap);
         if (decayResults.length > 0) {

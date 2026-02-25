@@ -4470,27 +4470,44 @@ function getInstitutionDecayRate(fundingPct, role) {
 /**
  * Build a map of statKey → array of { institutionId, role, fundingPct } from
  * institution config rows and budget_item_allocations for the active budget.
+ * Uses live cost calculations from current nation stats instead of stale
+ * needed_amount snapshots from bill creation time.
  *
  * @param {Array} instConfig - rows from ministry_institution_config
  * @param {Array} itemAllocations - rows from budget_item_allocations for the active bill
+ * @param {Object} nation - current nation data for live cost calculations
  * @returns {Object} e.g. { healthcare_quality: [{ id: 'workforce', role: 'primary', fundingPct: 85 }, ...] }
  */
-function buildStatInstitutionMap(instConfig, itemAllocations) {
+function buildStatInstitutionMap(instConfig, itemAllocations, nation) {
     const allocMap = {};
     for (const row of (itemAllocations || [])) {
         if (row.item_type === 'institution') {
             allocMap[row.item_id] = {
-                allocated: Number(row.allocation_amount || 0),
-                needed: Number(row.needed_amount || 0)
+                allocated: Number(row.allocation_amount || 0)
             };
         }
     }
 
+    const population = Number(nation?.population || 0);
+    const gdp = Number(nation?.gdp ?? nation?.GDP ?? 0);
+    const inflationMult = getInflationMultiplier(nation?.inflation);
+
     const statMap = {};
     for (const inst of (instConfig || [])) {
         const alloc = allocMap[inst.id];
-        const fundingPct = alloc && alloc.needed > 0
-            ? Math.min(100, Math.round((alloc.allocated / alloc.needed) * 100))
+        // Compute live needed cost from current nation stats
+        const baseVal = Number(inst.base_cost_per_capita || 0);
+        const scalingType = inst.scaling_type || 'population';
+        let liveNeeded;
+        if (scalingType === 'gdp') {
+            liveNeeded = (baseVal / 100) * gdp;
+        } else {
+            liveNeeded = baseVal * population;
+        }
+        liveNeeded *= inflationMult;
+
+        const fundingPct = alloc && liveNeeded > 0
+            ? Math.min(100, Math.round((alloc.allocated / liveNeeded) * 100))
             : 0;  // no allocation row = unfunded
 
         for (const role of ['primary', 'secondary']) {
@@ -13078,7 +13095,7 @@ async function advanceTick(supabase) {
                 .select('item_type, item_id, allocation_amount, needed_amount')
                 .eq('bill_id', nation.last_budget_bill_id)
                 .eq('item_type', 'institution');
-            statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs);
+            statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs, nation);
         }
         const decayResults = await processStatDecay(supabase, nation, statInstMap);
         if (decayResults.length > 0) {

@@ -40,7 +40,7 @@ if (new URLSearchParams(window.location.search).get('dev') === '1') {
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
-import { isGovernmentPresidential, isGovernmentAutocracy, calculateNationalBudget, GAME_CONFIG } from './js/game-common.js';
+import { isGovernmentPresidential, isGovernmentAutocracy, calculateNationalBudget, GAME_CONFIG, getInflationMultiplier } from './js/game-common.js';
 
 // ==================== CONSTANTS ====================
 
@@ -107,7 +107,7 @@ const MINISTRY_FISCAL_MAP = {
     healthcare:    'Healthcare',
     labor:         'Labor',
     justice:       'Justice',
-    trade:         'Interior',
+    trade:         'Trade',
     energy:        'Energy',
     transportation:'Transportation'
 };
@@ -729,7 +729,21 @@ function renderMinistryContent(key) {
     const icon = MINISTRY_ICONS[key] || '';
     const fiscalCat = MINISTRY_FISCAL_MAP[key];
     const alloc = budgetAllocations[fiscalCat] || { allocated: 0, needed: 0 };
-    const overallPct = alloc.needed > 0 ? Math.round((alloc.allocated / alloc.needed) * 100) : 0;
+    // Compute live needed from current nation stats instead of stale DB snapshot
+    const inflMult = getInflationMultiplier(currentNation.inflation);
+    const ministryInsts = MINISTRY_INSTITUTIONS[key] || [];
+    let liveNeeded = 0;
+    for (const inst of ministryInsts) {
+        if (inst.baseCostPerCapita) {
+            if (inst.scalingType === 'gdp') {
+                liveNeeded += (inst.baseCostPerCapita / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0) * inflMult;
+            } else {
+                liveNeeded += inst.baseCostPerCapita * (currentNation.population || 0) * inflMult;
+            }
+        }
+    }
+    const overallNeeded = liveNeeded > 0 ? liveNeeded : alloc.needed;
+    const overallPct = overallNeeded > 0 ? Math.round((alloc.allocated / overallNeeded) * 100) : 0;
     const overallFunding = getFundingLabel(overallPct);
     const institutions = MINISTRY_INSTITUTIONS[key] || [];
     const policies = MINISTRY_POLICIES[key] || [];
@@ -764,7 +778,7 @@ function renderMinistryContent(key) {
     h += '<div class="mdet-header-right">';
     h += '<div class="mdet-budget-label">MINISTRY BUDGET</div>';
     h += `<div class="mdet-budget-value" style="color:${overallFunding.color}">${fmtCurrency(alloc.allocated)}</div>`;
-    h += `<div class="mdet-budget-sub">of ${fmtCurrency(alloc.needed)} needed &mdash; <span style="color:${overallFunding.color};font-weight:700">${overallPct}% funded</span></div>`;
+    h += `<div class="mdet-budget-sub">of ${fmtCurrency(overallNeeded)} needed &mdash; <span style="color:${overallFunding.color};font-weight:700">${overallPct}% funded</span></div>`;
     h += '</div>';
 
     h += '</div>'; // .mdet-header-inner
@@ -811,25 +825,27 @@ function renderInstitutionsTab(ministryKey, institutions, alloc) {
         return h;
     }
 
+    const inflationMult = getInflationMultiplier(currentNation.inflation);
     for (const inst of institutions) {
-        // Use actual per-institution allocations from budget_item_allocations if available
+        // Use actual per-institution allocations for budgeted amount
         const itemAlloc = budgetItemAllocations[inst.id];
         let instAllocated, instNeeded;
         if (itemAlloc) {
             instAllocated = itemAlloc.allocated;
-            instNeeded = itemAlloc.needed;
         } else {
             // Fallback: estimate from ministry-level allocation × costShare
             instAllocated = alloc.allocated * inst.costShare;
-            if (inst.baseCostPerCapita) {
-                if (inst.scalingType === 'gdp') {
-                    instNeeded = (inst.baseCostPerCapita / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0);
-                } else {
-                    instNeeded = inst.baseCostPerCapita * (currentNation.population || 0);
-                }
+        }
+        // Always compute needed live from current nation stats (not stale DB snapshot)
+        if (inst.baseCostPerCapita) {
+            if (inst.scalingType === 'gdp') {
+                instNeeded = (inst.baseCostPerCapita / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0);
             } else {
-                instNeeded = alloc.needed * inst.costShare;
+                instNeeded = inst.baseCostPerCapita * (currentNation.population || 0);
             }
+            instNeeded *= inflationMult;
+        } else {
+            instNeeded = alloc.needed * inst.costShare;
         }
         const pct = instNeeded > 0 ? Math.round((instAllocated / instNeeded) * 100) : 0;
         const funding = getFundingLabel(pct);
