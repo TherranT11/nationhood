@@ -7583,7 +7583,7 @@ export async function adjustMomentumAll(supabase, nationId, factionId, amount, s
  * @param {Object|null} statInstitutionMap - from buildStatInstitutionMap(), or null to use natural rates
  * @returns {Array<object>}  Applied decay descriptors for tick summary
  */
-export async function processStatDecay(supabase, nation, statInstitutionMap) {
+export async function processStatDecay(supabase, nation, statInstitutionMap, isShutdown = false) {
     const appliedDecay = [];
     const nationUpdates = {};
 
@@ -7592,7 +7592,17 @@ export async function processStatDecay(supabase, nation, statInstitutionMap) {
 
         const currentVal = nation[statKey] !== undefined && nation[statKey] !== null
             ? Number(nation[statKey]) : 50;
-        const { target } = config;
+        let target = config.target;
+
+        // During a government shutdown, institution-covered stats decay toward
+        // worst-case values instead of their normal equilibrium targets.
+        // This ensures the shutdown has a catastrophic, tangible impact on stats
+        // even when they've already settled near their natural equilibrium.
+        if (isShutdown && statInstitutionMap && statInstitutionMap[statKey]) {
+            const sign = statDirectionSign(statKey);
+            if (sign === 1)       target = Math.min(target, 10);  // higher-is-better → tank toward 10
+            else if (sign === -1) target = Math.max(target, 90);  // lower-is-better → spike toward 90
+        }
 
         if (currentVal === target) continue;
 
