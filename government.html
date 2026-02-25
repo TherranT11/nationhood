@@ -39,7 +39,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import { tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, markFactionActive, nominateMinister, resignPM, rolloverAdministration } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 (function () {
     'use strict';
@@ -1849,7 +1849,7 @@ async function purgeMinister(ministryKey) {
         if (purgeCount >= 2) resultMsg += '\n\n🚨 Regime fatigue: 3rd+ purge in 6 ticks — no boost, double corruption.';
 
         alert(resultMsg);
-        await markFactionActive(_supabase, currentFaction.id);
+
         await renderGovernmentPage();
     } catch (e) {
         console.error('Purge error:', e);
@@ -1878,7 +1878,7 @@ async function requestMinistry(ministryKey) {
         });
         if (error) throw error;
 
-        await markFactionActive(_supabase, currentFaction.id);
+
         await renderGovernmentPage();
     } catch (e) {
         console.error('Request error:', e);
@@ -2068,7 +2068,7 @@ async function fileNoConfidence() {
             seat_count: mySeats
         }, { onConflict: 'bill_id,faction_id' });
 
-        await markFactionActive(_supabase, currentFaction.id);
+
 
         alert(`⚡ "${motionName}" has been filed!\n\nVoting is now open for ${GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS} ticks. All parties will vote.`);
         window.location.href = `bill.html?id=${bill.id}`;
@@ -2167,7 +2167,7 @@ async function callEarlyElections() {
             coalitionData.party_ids
         );
 
-        await markFactionActive(_supabase, currentFaction.id);
+
 
         // Bust coalition cache so re-render picks up caretaker status
         qCacheBust('coalition_');
