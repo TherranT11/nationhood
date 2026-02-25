@@ -4652,6 +4652,88 @@ export function statDirectionSign(statKey) {
     return 0;
 }
 
+// ==================== STAT TREND CALCULATION ====================
+
+/** Weights for weighted-average trend: most recent delta gets 0.40, oldest gets 0.05 */
+const TREND_WEIGHTS = [0.05, 0.05, 0.10, 0.15, 0.25, 0.40];
+
+/**
+ * Weighted trend for a single stat over the last `lookback` ticks.
+ * Returns a signed value: positive = rising, negative = falling.
+ * Requires stat_history rows populated by recordStatHistory().
+ *
+ * @param {object} supabase
+ * @param {string} nationId
+ * @param {string} statName  - nation stat key (e.g. 'unemployment')
+ * @param {number} [lookback=6] - how many tick-deltas to consider
+ * @returns {Promise<number>} weighted trend value
+ */
+export async function statTrend(supabase, nationId, statName, lookback = 6) {
+    const { data: rows } = await supabase
+        .from('stat_history')
+        .select('value, tick')
+        .eq('nation_id', nationId)
+        .eq('stat_name', statName)
+        .order('tick', { ascending: true })
+        .limit(lookback + 1);
+
+    if (!rows || rows.length < 2) return 0;
+
+    let weightedSum = 0;
+    const deltas = rows.length - 1;
+    for (let i = 1; i < rows.length; i++) {
+        const delta = rows[i].value - rows[i - 1].value;
+        const weightIdx = Math.max(0, TREND_WEIGHTS.length - deltas + i - 1);
+        weightedSum += delta * (TREND_WEIGHTS[weightIdx] || 0.10);
+    }
+    return weightedSum;
+}
+
+/**
+ * Batch version: compute weighted trends for multiple stats in a single query.
+ * Returns { statName: trendValue, ... }.
+ *
+ * @param {object} supabase
+ * @param {string} nationId
+ * @param {string[]} statNames - array of stat keys
+ * @param {number} [lookback=6]
+ * @returns {Promise<Object.<string, number>>}
+ */
+export async function statTrendBatch(supabase, nationId, statNames, lookback = 6) {
+    if (!statNames || statNames.length === 0) return {};
+
+    const { data: rows } = await supabase
+        .from('stat_history')
+        .select('stat_name, value, tick')
+        .eq('nation_id', nationId)
+        .in('stat_name', statNames)
+        .order('tick', { ascending: true });
+
+    if (!rows || rows.length === 0) return {};
+
+    // Group by stat_name
+    const byName = {};
+    for (const r of rows) {
+        if (!byName[r.stat_name]) byName[r.stat_name] = [];
+        byName[r.stat_name].push(r);
+    }
+
+    const trends = {};
+    for (const [name, vals] of Object.entries(byName)) {
+        const recent = vals.slice(-(lookback + 1));
+        if (recent.length < 2) { trends[name] = 0; continue; }
+        let weightedSum = 0;
+        const deltas = recent.length - 1;
+        for (let i = 1; i < recent.length; i++) {
+            const delta = recent[i].value - recent[i - 1].value;
+            const weightIdx = Math.max(0, TREND_WEIGHTS.length - deltas + i - 1);
+            weightedSum += delta * (TREND_WEIGHTS[weightIdx] || 0.10);
+        }
+        trends[name] = weightedSum;
+    }
+    return trends;
+}
+
 // ==================== MINISTER & GOVERNMENT APPROVAL SYSTEM ====================
 
 /**
@@ -10698,6 +10780,26 @@ export async function snapshotNationHistory(supabase, nation, currentTick) {
         console.error('[snapshotNationHistory] FAILED for nation', nation.id, 'tick', currentTick, ':', snapError.message);
     } else {
         console.log(`[snapshotNationHistory] Stored ${Object.keys(snapshot).length - 2} stats for nation ${nation.id} at tick ${currentTick}`);
+    }
+}
+
+/**
+ * Record current nation stat values into stat_history for trend calculations.
+ * Called once per tick, before minister/government approval calculations.
+ * Uses upsert to prevent duplicate rows if tick is re-processed.
+ */
+export async function recordStatHistory(supabase, nation, currentTick) {
+    const rows = [];
+    for (const statKey of NATION_STAT_COLUMNS) {
+        const val = nation[statKey];
+        if (val !== undefined && val !== null) {
+            rows.push({ nation_id: nation.id, stat_name: statKey, value: Number(val), tick: currentTick });
+        }
+    }
+    if (rows.length === 0) return;
+    const { error } = await supabase.from('stat_history').upsert(rows, { onConflict: 'nation_id,stat_name,tick' });
+    if (error) {
+        console.error('[recordStatHistory] FAILED for nation', nation.id, 'tick', currentTick, ':', error.message);
     }
 }
 

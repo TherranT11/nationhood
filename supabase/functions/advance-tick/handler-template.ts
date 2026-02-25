@@ -552,6 +552,9 @@ async function advanceTick(supabase) {
         const { data: preApprovalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (preApprovalNation) Object.assign(nation, preApprovalNation);
 
+        // Record stat history for trend calculations (Phase 2)
+        await recordStatHistory(supabase, nation, newTick);
+
         // Layer 1: Update minister approvals from stat thresholds
         const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick);
         if (ministerApprovalResults.length > 0) {

@@ -1562,6 +1562,42 @@ function applyTradeTariffOverride(budget, tradeTariffRevenue) {
     return budget;
 }
 
+// ==================== TAX CONFIG ====================
+
+/**
+ * Static metadata for each adjustable tax type.
+ * Effects are NOT hardcoded — they come from stat_connections at runtime.
+ */
+const TAX_CONFIG = [
+    {
+        key: 'income_tax',
+        name: 'Income Tax',
+        category: 'Income',
+        categoryClass: 'pill-income',
+        revenueKey: 'incomeRevenue',
+        gdpMultiplier: 0.40,
+        maxRate: 50
+    },
+    {
+        key: 'sales_tax',
+        name: 'Sales Tax',
+        category: 'Consumption',
+        categoryClass: 'pill-consumption',
+        revenueKey: 'salesRevenue',
+        gdpMultiplier: 0.30,
+        maxRate: 30
+    },
+    {
+        key: 'corporate_tax',
+        name: 'Corporate Tax',
+        category: 'Corporate',
+        categoryClass: 'pill-corporate',
+        revenueKey: 'corpRevenue',
+        gdpMultiplier: 0.10,
+        maxRate: 50
+    }
+];
+
 // ==================== BUDGET BILL HELPERS ====================
 
 /**
@@ -3269,9 +3305,8 @@ async function checkEarlyMajority(supabase, nationId) {
 
     if (error || !activeBills || activeBills.length === 0) return [];
 
-    const results = [];
-
     const quorumSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.QUORUM_THRESHOLD);
+    const results = [];
 
     for (const bill of activeBills) {
         let yesSeats = 0, noSeats = 0;
@@ -4672,6 +4707,88 @@ function statDirectionSign(statKey) {
     if (_HIGHER_IS_BETTER_SET.has(statKey)) return 1;
     if (_LOWER_IS_BETTER_SET.has(statKey)) return -1;
     return 0;
+}
+
+// ==================== STAT TREND CALCULATION ====================
+
+/** Weights for weighted-average trend: most recent delta gets 0.40, oldest gets 0.05 */
+const TREND_WEIGHTS = [0.05, 0.05, 0.10, 0.15, 0.25, 0.40];
+
+/**
+ * Weighted trend for a single stat over the last `lookback` ticks.
+ * Returns a signed value: positive = rising, negative = falling.
+ * Requires stat_history rows populated by recordStatHistory().
+ *
+ * @param {object} supabase
+ * @param {string} nationId
+ * @param {string} statName  - nation stat key (e.g. 'unemployment')
+ * @param {number} [lookback=6] - how many tick-deltas to consider
+ * @returns {Promise<number>} weighted trend value
+ */
+async function statTrend(supabase, nationId, statName, lookback = 6) {
+    const { data: rows } = await supabase
+        .from('stat_history')
+        .select('value, tick')
+        .eq('nation_id', nationId)
+        .eq('stat_name', statName)
+        .order('tick', { ascending: true })
+        .limit(lookback + 1);
+
+    if (!rows || rows.length < 2) return 0;
+
+    let weightedSum = 0;
+    const deltas = rows.length - 1;
+    for (let i = 1; i < rows.length; i++) {
+        const delta = rows[i].value - rows[i - 1].value;
+        const weightIdx = Math.max(0, TREND_WEIGHTS.length - deltas + i - 1);
+        weightedSum += delta * (TREND_WEIGHTS[weightIdx] || 0.10);
+    }
+    return weightedSum;
+}
+
+/**
+ * Batch version: compute weighted trends for multiple stats in a single query.
+ * Returns { statName: trendValue, ... }.
+ *
+ * @param {object} supabase
+ * @param {string} nationId
+ * @param {string[]} statNames - array of stat keys
+ * @param {number} [lookback=6]
+ * @returns {Promise<Object.<string, number>>}
+ */
+async function statTrendBatch(supabase, nationId, statNames, lookback = 6) {
+    if (!statNames || statNames.length === 0) return {};
+
+    const { data: rows } = await supabase
+        .from('stat_history')
+        .select('stat_name, value, tick')
+        .eq('nation_id', nationId)
+        .in('stat_name', statNames)
+        .order('tick', { ascending: true });
+
+    if (!rows || rows.length === 0) return {};
+
+    // Group by stat_name
+    const byName = {};
+    for (const r of rows) {
+        if (!byName[r.stat_name]) byName[r.stat_name] = [];
+        byName[r.stat_name].push(r);
+    }
+
+    const trends = {};
+    for (const [name, vals] of Object.entries(byName)) {
+        const recent = vals.slice(-(lookback + 1));
+        if (recent.length < 2) { trends[name] = 0; continue; }
+        let weightedSum = 0;
+        const deltas = recent.length - 1;
+        for (let i = 1; i < recent.length; i++) {
+            const delta = recent[i].value - recent[i - 1].value;
+            const weightIdx = Math.max(0, TREND_WEIGHTS.length - deltas + i - 1);
+            weightedSum += delta * (TREND_WEIGHTS[weightIdx] || 0.10);
+        }
+        trends[name] = weightedSum;
+    }
+    return trends;
 }
 
 // ==================== MINISTER & GOVERNMENT APPROVAL SYSTEM ====================
@@ -10723,6 +10840,26 @@ async function snapshotNationHistory(supabase, nation, currentTick) {
     }
 }
 
+/**
+ * Record current nation stat values into stat_history for trend calculations.
+ * Called once per tick, before minister/government approval calculations.
+ * Uses upsert to prevent duplicate rows if tick is re-processed.
+ */
+async function recordStatHistory(supabase, nation, currentTick) {
+    const rows = [];
+    for (const statKey of NATION_STAT_COLUMNS) {
+        const val = nation[statKey];
+        if (val !== undefined && val !== null) {
+            rows.push({ nation_id: nation.id, stat_name: statKey, value: Number(val), tick: currentTick });
+        }
+    }
+    if (rows.length === 0) return;
+    const { error } = await supabase.from('stat_history').upsert(rows, { onConflict: 'nation_id,stat_name,tick' });
+    if (error) {
+        console.error('[recordStatHistory] FAILED for nation', nation.id, 'tick', currentTick, ':', error.message);
+    }
+}
+
 
 // ==================== EVENT TICK PROCESSOR ====================
 
@@ -13392,6 +13529,9 @@ async function advanceTick(supabase) {
         const { data: preApprovalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (preApprovalNation) Object.assign(nation, preApprovalNation);
 
+        // Record stat history for trend calculations (Phase 2)
+        await recordStatHistory(supabase, nation, newTick);
+
         // Layer 1: Update minister approvals from stat thresholds
         const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick);
         if (ministerApprovalResults.length > 0) {
@@ -13408,10 +13548,6 @@ async function advanceTick(supabase) {
         // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
         // (the original `shutdown` boolean was computed before bill resolution)
         const shutdownNow = isGovernmentShutdown(nation, newTick);
-
-        if (shutdown && !shutdownNow) {
-            console.log(`[GovernmentShutdown] Shutdown ENDING for ${nation.name} at tick ${newTick} (last_budget_tick=${nation.last_budget_tick})`);
-        }
 
         // Government shutdown penalties (coalition momentum/approval + PM/President approval)
         if (shutdownNow) {
