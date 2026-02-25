@@ -1505,6 +1505,42 @@ export function applyTradeTariffOverride(budget, tradeTariffRevenue) {
     return budget;
 }
 
+// ==================== TAX CONFIG ====================
+
+/**
+ * Static metadata for each adjustable tax type.
+ * Effects are NOT hardcoded — they come from stat_connections at runtime.
+ */
+export const TAX_CONFIG = [
+    {
+        key: 'income_tax',
+        name: 'Income Tax',
+        category: 'Income',
+        categoryClass: 'pill-income',
+        revenueKey: 'incomeRevenue',
+        gdpMultiplier: 0.40,
+        maxRate: 50
+    },
+    {
+        key: 'sales_tax',
+        name: 'Sales Tax',
+        category: 'Consumption',
+        categoryClass: 'pill-consumption',
+        revenueKey: 'salesRevenue',
+        gdpMultiplier: 0.30,
+        maxRate: 30
+    },
+    {
+        key: 'corporate_tax',
+        name: 'Corporate Tax',
+        category: 'Corporate',
+        categoryClass: 'pill-corporate',
+        revenueKey: 'corpRevenue',
+        gdpMultiplier: 0.10,
+        maxRate: 50
+    }
+];
+
 // ==================== BUDGET BILL HELPERS ====================
 
 /**

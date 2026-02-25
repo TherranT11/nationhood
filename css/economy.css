@@ -2207,3 +2207,704 @@ body.light-mode .tariff-explainer {
 .trend-neutral { color: #6b6a5e; }
 .trend-up.inverted { color: var(--red, #ff4444); }
 .trend-down.inverted { color: var(--green, #4CAF50); }
+
+/* ===== TAXATION TAB ===== */
+
+/* ── Summary Bar ── */
+.tax-summary-bar {
+    display: flex;
+    gap: 36px;
+    padding: 14px 24px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    margin-bottom: 22px;
+}
+
+.tax-summary-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tax-summary-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #6b6a5e;
+}
+
+.tax-summary-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #e2e0d6;
+}
+
+.tax-summary-value.green { color: #6ab86a; }
+.tax-summary-value.yellow { color: #b8a63e; }
+.tax-summary-value.red { color: #c45c4a; }
+
+.tax-summary-detail {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #4a493f;
+    margin-top: 1px;
+}
+
+/* ── Submit Button + Spacer ── */
+.tax-summary-spacer { flex: 1; }
+
+.tax-submit-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #e2e0d6;
+    background: rgba(90, 154, 90, 0.15);
+    border: 1px solid rgba(90, 154, 90, 0.3);
+    border-radius: 2px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+    align-self: center;
+    white-space: nowrap;
+}
+
+.tax-submit-btn:hover:not(:disabled) {
+    background: rgba(90, 154, 90, 0.25);
+    border-color: rgba(90, 154, 90, 0.5);
+    color: #6ab86a;
+}
+
+.tax-submit-btn:disabled {
+    color: #4a493f;
+    background: rgba(255,255,255,0.02);
+    border-color: rgba(255,255,255,0.04);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+body.light-mode .tax-submit-btn {
+    color: #2d7a2d;
+    background: rgba(45, 122, 45, 0.08);
+    border-color: rgba(45, 122, 45, 0.2);
+}
+
+body.light-mode .tax-submit-btn:hover:not(:disabled) {
+    background: rgba(45, 122, 45, 0.15);
+    border-color: rgba(45, 122, 45, 0.4);
+}
+
+body.light-mode .tax-submit-btn:disabled {
+    color: #999;
+    background: rgba(0,0,0,0.02);
+    border-color: rgba(0,0,0,0.06);
+}
+
+/* ── Tax List ── */
+.tax-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 24px;
+}
+
+/* ── Info Callout (Presidential) ── */
+.tax-info-callout {
+    border: 1px solid rgba(90, 138, 154, 0.2);
+    background: rgba(90, 138, 154, 0.05);
+    border-radius: 3px;
+    padding: 10px 14px;
+    margin: 0 24px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.tax-info-callout-icon {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: #5a8a9a;
+    flex-shrink: 0;
+}
+
+.tax-info-callout-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    color: #5a8a9a;
+    line-height: 1.5;
+}
+
+.tax-info-callout-text strong {
+    color: #7ab0c0;
+}
+
+body.light-mode .tax-info-callout {
+    border-color: rgba(50, 100, 120, 0.2);
+    background: rgba(50, 100, 120, 0.05);
+}
+
+body.light-mode .tax-info-callout-icon { color: #3a6a7a; }
+body.light-mode .tax-info-callout-text { color: #3a6a7a; }
+body.light-mode .tax-info-callout-text strong { color: #2a5060; }
+
+/* ── Tax Card ── */
+.tax-card {
+    background: #1e1e1a;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 3px;
+    padding: 18px 20px;
+    transition: border-color 0.15s ease;
+}
+
+.tax-card:hover {
+    border-color: rgba(255,255,255,0.12);
+}
+
+/* ── Top Row ── */
+.tax-top {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.tax-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #e2e0d6;
+    min-width: 180px;
+}
+
+.tax-category-pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    padding: 3px 8px;
+    border-radius: 2px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+}
+
+.pill-income { color: #5a9a5a; background: rgba(90,154,90,0.12); border: 1px solid rgba(90,154,90,0.2); }
+.pill-consumption { color: #5a8a9a; background: rgba(90,138,154,0.12); border: 1px solid rgba(90,138,154,0.2); }
+.pill-corporate { color: #c48a3e; background: rgba(196,138,62,0.12); border: 1px solid rgba(196,138,62,0.2); }
+
+.tax-spacer { flex: 1; }
+
+/* ── Revenue Block ── */
+.tax-revenue-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+    min-width: 150px;
+}
+
+.tax-revenue-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #4a493f;
+}
+
+.tax-revenue-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #5a9a5a;
+}
+
+/* ── Slider Row ── */
+.tax-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.tax-rate-display {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #e2e0d6;
+    min-width: 70px;
+    text-align: right;
+}
+
+.tax-pct {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: #6b6a5e;
+}
+
+.tax-slider-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tax-slider-visual {
+    position: relative;
+    width: 100%;
+    height: 20px;
+}
+
+.tax-slider-track {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 100%;
+    height: 6px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 2px;
+    pointer-events: none;
+}
+
+.tax-slider-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.05s ease;
+}
+
+.tax-slider-fill.low { background: #5a9a5a; }
+.tax-slider-fill.mid { background: #b8a63e; }
+.tax-slider-fill.high { background: #c48a3e; }
+.tax-slider-fill.extreme { background: #c45c4a; }
+
+/* Range input overlays the visual track */
+.tax-rate-slider {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 2;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.tax-rate-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+}
+
+.tax-rate-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border: none;
+    background: transparent;
+}
+
+/* Visual thumb (positioned via fill width) */
+.tax-slider-track::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: -7px;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 14px;
+    background: #e2e0d6;
+    border: 2px solid #1e1e1a;
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+    z-index: 1;
+}
+
+.tax-slider-fill::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: -7px;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 14px;
+    background: #e2e0d6;
+    border: 2px solid #1e1e1a;
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+    z-index: 1;
+}
+
+/* Hide the track pseudo-element thumb; only use fill pseudo */
+.tax-slider-track::after { display: none; }
+
+.tax-slider-labels {
+    display: flex;
+    justify-content: space-between;
+}
+
+.tax-slider-min, .tax-slider-max {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    color: #4a493f;
+}
+
+/* ── Revenue Delta ── */
+.tax-revenue-delta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    font-weight: 500;
+}
+
+.tax-delta-positive { color: #6ab86a; }
+.tax-delta-negative { color: #c45c4a; }
+
+/* ── Changed Card Highlight ── */
+.tax-card-changed {
+    border-color: rgba(184, 166, 62, 0.25);
+}
+
+/* ── Reset Button ── */
+.tax-reset-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    font-weight: 500;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #8a8778;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 2px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.tax-reset-btn:hover {
+    color: #e2e0d6;
+    border-color: rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.06);
+}
+
+/* ── Effects & Hits Footer ── */
+.tax-bottom {
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.tax-effects-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin-bottom: 10px;
+}
+
+.tax-effect-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.tax-effect-arrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    font-weight: 600;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.tax-effect-arrow.up { color: #5a9a5a; background: rgba(90,154,90,0.12); }
+.tax-effect-arrow.down { color: #c45c4a; background: rgba(196,92,74,0.12); }
+
+.tax-effect-stat {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #8a8778;
+    letter-spacing: 0.3px;
+}
+
+.tax-effects-empty {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #4a493f;
+    font-style: italic;
+    margin-bottom: 10px;
+}
+
+.tax-hits-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.03);
+}
+
+.tax-hits-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    letter-spacing: 1px;
+    color: #4a493f;
+    text-transform: uppercase;
+    flex-shrink: 0;
+}
+
+.tax-hits-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.tax-hit-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    color: #4a493f;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 2px;
+    padding: 2px 6px;
+}
+
+/* ── Light Mode ── */
+body.light-mode .tax-summary-bar {
+    border-bottom-color: rgba(0,0,0,0.08);
+}
+
+body.light-mode .tax-summary-label { color: #666; }
+body.light-mode .tax-summary-value { color: #2a2a25; }
+body.light-mode .tax-summary-value.green { color: #2d7a2d; }
+body.light-mode .tax-summary-value.yellow { color: #8a7a1e; }
+body.light-mode .tax-summary-value.red { color: #b03020; }
+body.light-mode .tax-summary-detail { color: #999; }
+
+body.light-mode .tax-card {
+    background: #fff;
+    border-color: rgba(0,0,0,0.08);
+}
+
+body.light-mode .tax-card:hover { border-color: rgba(0,0,0,0.16); }
+body.light-mode .tax-name { color: #2a2a25; }
+body.light-mode .tax-rate-display { color: #2a2a25; }
+body.light-mode .tax-pct { color: #888; }
+body.light-mode .tax-revenue-label { color: #999; }
+body.light-mode .tax-revenue-value { color: #2d7a2d; }
+
+body.light-mode .tax-slider-track { background: rgba(0,0,0,0.06); }
+body.light-mode .tax-slider-fill::after {
+    background: #2a2a25;
+    border-color: #fff;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
+}
+body.light-mode .tax-slider-min,
+body.light-mode .tax-slider-max { color: #999; }
+body.light-mode .tax-delta-positive { color: #2d7a2d; }
+body.light-mode .tax-delta-negative { color: #b03020; }
+body.light-mode .tax-card-changed { border-color: rgba(140, 120, 30, 0.3); }
+body.light-mode .tax-reset-btn {
+    color: #666;
+    background: rgba(0,0,0,0.03);
+    border-color: rgba(0,0,0,0.08);
+}
+body.light-mode .tax-reset-btn:hover {
+    color: #2a2a25;
+    border-color: rgba(0,0,0,0.16);
+}
+
+body.light-mode .tax-bottom { border-top-color: rgba(0,0,0,0.06); }
+body.light-mode .tax-effect-stat { color: #555; }
+body.light-mode .tax-effects-empty { color: #999; }
+body.light-mode .tax-hits-row { border-top-color: rgba(0,0,0,0.04); }
+body.light-mode .tax-hits-label { color: #999; }
+body.light-mode .tax-hit-tag {
+    color: #666;
+    background: rgba(0,0,0,0.03);
+    border-color: rgba(0,0,0,0.06);
+}
+
+/* ── Sparkline ── */
+.tax-sparkline-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.tax-sparkline-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    color: #4a493f;
+    letter-spacing: 0.3px;
+}
+
+.tax-sparkline {
+    display: flex;
+    align-items: flex-end;
+    gap: 1px;
+    height: 20px;
+}
+
+.tax-spark-bar {
+    width: 3px;
+    border-radius: 1px;
+    background: rgba(255,255,255,0.08);
+    min-height: 2px;
+}
+
+.tax-spark-bar.current {
+    background: #8a8778;
+}
+
+body.light-mode .tax-spark-bar { background: rgba(0,0,0,0.08); }
+body.light-mode .tax-spark-bar.current { background: #555; }
+body.light-mode .tax-sparkline-label { color: #999; }
+
+/* ── Approval Impact Preview ── */
+.tax-approval-impact {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 2px;
+    margin-bottom: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    flex-wrap: wrap;
+}
+
+.tax-approval-increase {
+    background: rgba(90, 154, 90, 0.08);
+    border: 1px solid rgba(90, 154, 90, 0.2);
+}
+
+.tax-approval-decrease {
+    background: rgba(196, 92, 74, 0.08);
+    border: 1px solid rgba(196, 92, 74, 0.2);
+}
+
+.tax-approval-badge {
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 2px;
+}
+
+.tax-approval-increase .tax-approval-badge {
+    color: #5a9a5a;
+    background: rgba(90, 154, 90, 0.15);
+}
+
+.tax-approval-decrease .tax-approval-badge {
+    color: #c45c4a;
+    background: rgba(196, 92, 74, 0.15);
+}
+
+.tax-approval-value {
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.tax-approval-increase .tax-approval-value { color: #6ab86a; }
+.tax-approval-decrease .tax-approval-value { color: #c45c4a; }
+
+.tax-approval-explain {
+    font-size: 0.6rem;
+    color: #6b6a5e;
+}
+
+.tax-approval-scope {
+    font-size: 0.55rem;
+    color: #4a493f;
+    font-style: italic;
+    margin-left: auto;
+}
+
+body.light-mode .tax-approval-increase {
+    background: rgba(45, 122, 45, 0.05);
+    border-color: rgba(45, 122, 45, 0.15);
+}
+
+body.light-mode .tax-approval-decrease {
+    background: rgba(180, 60, 40, 0.05);
+    border-color: rgba(180, 60, 40, 0.15);
+}
+
+body.light-mode .tax-approval-increase .tax-approval-value { color: #2d7a2d; }
+body.light-mode .tax-approval-decrease .tax-approval-value { color: #b03020; }
+body.light-mode .tax-approval-explain { color: #888; }
+body.light-mode .tax-approval-scope { color: #999; }
+
+/* ── Pending Bill Banner ── */
+.tax-proposed-change {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(196, 138, 62, 0.06);
+    border: 1px solid rgba(196, 138, 62, 0.15);
+    border-radius: 3px;
+    padding: 10px 14px;
+    margin-top: 12px;
+    text-decoration: none;
+    transition: border-color 0.15s ease;
+}
+
+.tax-proposed-change:hover {
+    border-color: rgba(196, 138, 62, 0.3);
+}
+
+.tax-proposed-icon {
+    font-size: 0.7rem;
+    flex-shrink: 0;
+}
+
+.tax-proposed-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    color: #c48a3e;
+    flex: 1;
+}
+
+.tax-proposed-text strong {
+    color: #d9a54e;
+}
+
+.tax-proposed-status {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    font-weight: 500;
+    color: #c48a3e;
+    background: rgba(196, 138, 62, 0.12);
+    border: 1px solid rgba(196, 138, 62, 0.2);
+    border-radius: 2px;
+    padding: 3px 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
+
+body.light-mode .tax-proposed-change {
+    background: rgba(160, 110, 30, 0.05);
+    border-color: rgba(160, 110, 30, 0.15);
+}
+
+body.light-mode .tax-proposed-change:hover { border-color: rgba(160, 110, 30, 0.3); }
+body.light-mode .tax-proposed-text { color: #8a6a1e; }
+body.light-mode .tax-proposed-text strong { color: #6a5010; }
+body.light-mode .tax-proposed-status {
+    color: #8a6a1e;
+    background: rgba(160, 110, 30, 0.08);
+    border-color: rgba(160, 110, 30, 0.2);
+}
