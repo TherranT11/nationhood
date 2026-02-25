@@ -85,15 +85,16 @@ async function renderAutocracyParties(el, f, n) {
         ministryCounts[m.party_id] = (ministryCounts[m.party_id] || 0) + 1;
     }
 
-    // Fetch regime pillars
+    // Fetch regime pillars (including steward)
     const { data: regimePillars } = await _supabase
         .from('regime_pillars')
-        .select('pillar_key, pillar_name, support')
+        .select('id, pillar_key, pillar_name, support, steward_faction_id')
         .eq('nation_id', n.id)
         .order('pillar_key');
 
     const rulingId = n.ruling_faction_id;
     const isStrongman = f.id === rulingId;
+    const rulingFaction = (allFactions || []).find(p => p.id === rulingId);
     const currentTick = currentShard?.current_tick || 0;
 
     // ── REGIME PANEL (visible to all — Grip numbers only for Strongman) ──
@@ -270,8 +271,13 @@ async function renderAutocracyParties(el, f, n) {
         const pillarMap = {};
         for (const p of (regimePillars || [])) pillarMap[p.pillar_key] = p;
 
+        // Build pillar cards (only shown to non-strongman factions)
         let pillarCardsHtml = '';
-        if (regimePillars && regimePillars.length > 0) {
+        if (!isStrongman && regimePillars && regimePillars.length > 0) {
+            // Build a faction name lookup for steward display
+            const factionNameMap = {};
+            for (const fac of (allFactions || [])) factionNameMap[fac.id] = fac.faction_name;
+
             const cards = PILLAR_ORDER.map(key => {
                 const p = pillarMap[key];
                 if (!p) return '';
@@ -279,15 +285,28 @@ async function renderAutocracyParties(el, f, n) {
                 const pColor = pillarColor(val);
                 const pLabel = pillarLabel(val);
                 const icon = PILLAR_ICONS[key] || '';
+                const isMySteward = p.steward_faction_id === f.id;
+                const hasSteward = !!p.steward_faction_id;
+                const stewardName = hasSteward ? (factionNameMap[p.steward_faction_id] || 'Unknown') : null;
+
+                let stewardHtml;
+                if (isMySteward) {
+                    stewardHtml = `<div class="reg-pillar-steward reg-pillar-steward-mine">YOU ARE STEWARD</div>`;
+                } else if (hasSteward) {
+                    stewardHtml = `<div class="reg-pillar-steward">${escapeHtml(stewardName)}</div>`;
+                } else {
+                    stewardHtml = `<button class="reg-pillar-claim-btn" data-pillar-id="${p.id}" data-pillar-name="${escapeHtml(p.pillar_name)}">Become Steward</button>`;
+                }
+
                 return `
-                    <div class="reg-pillar-card">
+                    <div class="reg-pillar-card${isMySteward ? ' reg-pillar-card-mine' : ''}">
                         <div class="reg-pillar-icon">${icon}</div>
                         <div class="reg-pillar-name">${escapeHtml(p.pillar_name)}</div>
-                        ${isStrongman ? `<div class="reg-pillar-val" style="color:${pColor}">${val}</div>` : ''}
                         <div class="reg-pillar-bar-track">
                             <div class="reg-pillar-bar-fill" style="width:${val}%;background:${pColor}"></div>
                         </div>
                         <div class="reg-pillar-label" style="color:${pColor}">${pLabel}</div>
+                        ${stewardHtml}
                     </div>`;
             }).join('');
 
@@ -308,6 +327,7 @@ async function renderAutocracyParties(el, f, n) {
                     <div class="reg-header-right">
                         <div class="reg-strongman-label">STRONGMAN</div>
                         <div class="reg-strongman-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div>
+                        <div class="reg-strongman-faction">${rulingFaction ? escapeHtml(rulingFaction.faction_name) : 'Unknown'}</div>
                         <div class="reg-strongman-meta">Age ${hosAge}</div>
                     </div>
                 </div>
@@ -344,8 +364,6 @@ async function renderAutocracyParties(el, f, n) {
                             </div>
                             `}
                         </div>
-
-                        ${pillarCardsHtml}
 
                         <div class="reg-section">
                             <div class="reg-section-title">REGIME VITALS</div>
@@ -387,6 +405,7 @@ async function renderAutocracyParties(el, f, n) {
                                 ${factionIntelRows || '<div class="reg-intel-empty">No rival factions in the regime</div>'}
                             </div>
                         </div>
+                        ${pillarCardsHtml}
                     </div>
                 </div>
             </div>`;
@@ -395,6 +414,46 @@ async function renderAutocracyParties(el, f, n) {
         <div class="parties-page">
             ${regimePanel}
         </div>`;
+
+    // ── Steward claim handlers ──
+    el.querySelectorAll('.reg-pillar-claim-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const pillarId = btn.dataset.pillarId;
+            const pillarName = btn.dataset.pillarName;
+            btn.disabled = true;
+            btn.textContent = 'Claiming...';
+
+            // Check if this faction already stewards another pillar
+            const { data: existing } = await _supabase
+                .from('regime_pillars')
+                .select('id, pillar_name')
+                .eq('nation_id', n.id)
+                .eq('steward_faction_id', f.id)
+                .maybeSingle();
+
+            if (existing) {
+                // Release old pillar first
+                await _supabase.from('regime_pillars')
+                    .update({ steward_faction_id: null })
+                    .eq('id', existing.id);
+            }
+
+            const { error } = await _supabase
+                .from('regime_pillars')
+                .update({ steward_faction_id: f.id })
+                .eq('id', pillarId)
+                .is('steward_faction_id', null); // only claim if unclaimed
+
+            if (error) {
+                console.error('[pillar-claim]', error);
+                btn.textContent = 'Failed';
+                setTimeout(() => { btn.textContent = 'Become Steward'; btn.disabled = false; }, 2000);
+            } else {
+                // Re-render the page to reflect the new steward
+                await renderAutocracyParties(el, f, n);
+            }
+        });
+    });
 }
 
 async function renderParties() {

@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS regime_pillars (
     pillar_key TEXT NOT NULL,            -- e.g. 'military', 'security', 'party', 'oligarchs', 'bureaucracy', 'media'
     pillar_name TEXT NOT NULL,           -- display name
     support INTEGER NOT NULL DEFAULT 70, -- 0-100
+    steward_faction_id UUID REFERENCES factions(id) ON DELETE SET NULL, -- non-ruling faction that claimed this pillar
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now(),
     UNIQUE(nation_id, pillar_key)
