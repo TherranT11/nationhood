@@ -93,7 +93,7 @@ async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
     const ticksToElection = upcomingElection.election_tick - currentTick;
     console.log(`Campaign bonuses for incumbent ${president.first_name} ${president.last_name} in ${nation.name} (${ticksToElection} ticks to election)`);
 
-    await adjustBlocApproval(supabase, president.faction_id, 2);
+    await adjustMomentumAll(supabase, nation.id, president.faction_id, 2, 'campaign:incumbent_bonus');
 
     const { data: nationStats } = await supabase
         .from('nations')
@@ -274,7 +274,7 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
         if (!result || !result.decay_ticks_remaining || result.decay_ticks_remaining <= 0) continue;
 
         const decayRate = result.decay_rate || 1;
-        await adjustBlocApproval(supabase, action.party_id, -decayRate);
+        await adjustMomentumAll(supabase, nationId, action.party_id, -decayRate, 'purge:decay');
 
         const newRemaining = result.decay_ticks_remaining - 1;
         await supabase.from('campaign_actions')

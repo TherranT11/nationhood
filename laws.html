@@ -108,7 +108,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustBlocApproval, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, generateBudgetBill } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, generateBudgetBill } from './js/game-common.js';
 (function () {
     'use strict';
 let currentNation = null, currentFaction = null, currentSeats = 0;
@@ -991,7 +991,7 @@ async function vetoDecree(billId) {
     if (!confirm(`⛔ VETO this decree?\nYour faction loses -${GAME_CONFIG.VETO_APPROVAL_COST} Approval.\nProceed?`)) return;
     try {
         await _supabase.from('bills').update({ status: 'vetoed' }).eq('id', billId);
-        await adjustBlocApproval(_supabase, currentFaction.id, -GAME_CONFIG.VETO_APPROVAL_COST);
+        await adjustMomentumAll(_supabase, currentNation.id, currentFaction.id, -GAME_CONFIG.VETO_APPROVAL_COST, 'legislation:veto');
         currentFaction.approval_rating = Math.max(0, (currentFaction.approval_rating || 0) - GAME_CONFIG.VETO_APPROVAL_COST);
         alert(`⛔ Decree vetoed. Lost ${GAME_CONFIG.VETO_APPROVAL_COST}% approval.`);
         await loadLawsData(); renderLawsPage();
@@ -1245,7 +1245,7 @@ async function enactDecree(billId) {
             if (sponsorIdeology) {
                 const dynamicPenalty = calculateBillDynamicPenalty(sponsorIdeology, bill.bill_articles || []);
                 if (dynamicPenalty < 0) {
-                    await adjustBlocApproval(_supabase, bill.proposed_by, dynamicPenalty);
+                    await adjustMomentumAll(_supabase, currentNation.id, bill.proposed_by, dynamicPenalty, 'legislation:withdraw');
                     console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
                 }
             }
@@ -1817,7 +1817,7 @@ async function sendToFloor(billId) {
         if (bill && factionIdeology) {
             const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, bill.bill_articles || []);
             if (dynamicPenalty < 0) {
-                await adjustBlocApproval(_supabase, bill.proposed_by, dynamicPenalty);
+                await adjustMomentumAll(_supabase, currentNation.id, bill.proposed_by, dynamicPenalty, 'legislation:withdraw');
                 console.log(`Dynamic ideology penalty (floor): ${dynamicPenalty} for sponsor`);
             }
         }

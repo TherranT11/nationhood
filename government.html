@@ -39,7 +39,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import { tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, adjustBlocApproval, callEarlyElectionsAction, closeAdministration, markFactionActive, nominateMinister, resignPM, rolloverAdministration } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, adjustMomentumAll, callEarlyElectionsAction, closeAdministration, markFactionActive, nominateMinister, resignPM, rolloverAdministration } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 (function () {
     'use strict';
@@ -1492,7 +1492,7 @@ async function confirmAppointment() {
         }).eq('id', fresh.id);
         if (error) throw error;
 
-        await adjustBlocApproval(_supabase, selectedCandidate.partyId, 3);
+        await adjustMomentumAll(_supabase, currentNation.id, selectedCandidate.partyId, 3, 'government:pm_selected');
 
         closeAssignModal();
         await renderGovernmentPage();
