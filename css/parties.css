@@ -1856,11 +1856,7 @@ body.light-mode .ap-bar-track {
     text-align: right;
 }
 
-.reg-grip-label-only {
-    font-size: 1.3rem;
-    font-weight: 700;
-    letter-spacing: 2px;
-}
+
 
 .reg-grip-components {
     display: grid;
@@ -1894,6 +1890,64 @@ body.light-mode .ap-bar-track {
     color: #6b6a5e;
     width: 24px;
     text-align: right;
+}
+
+/* ── Pillars of the Regime ── */
+.reg-pillar-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+}
+
+.reg-pillar-card {
+    background: #1e1e1a;
+    border: 1px solid rgba(226, 224, 214, 0.06);
+    border-radius: 3px;
+    padding: 12px 14px;
+    text-align: center;
+}
+
+.reg-pillar-icon {
+    font-size: 1.2rem;
+    margin-bottom: 4px;
+    opacity: 0.7;
+}
+
+.reg-pillar-name {
+    font-size: 0.58rem;
+    color: #8a8778;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.reg-pillar-val {
+    font-size: 1.1rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 4px;
+}
+
+.reg-pillar-bar-track {
+    height: 4px;
+    background: #141412;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.reg-pillar-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.4s ease;
+}
+
+.reg-pillar-label {
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
 }
 
 /* ── Regime Vitals ── */
@@ -2076,6 +2130,7 @@ body.light-mode .ap-bar-track {
     .reg-body { flex-direction: column; }
     .reg-col-left { border-right: none; border-bottom: 1px solid rgba(226, 224, 214, 0.06); }
     .reg-vitals-grid { grid-template-columns: 1fr 1fr; }
+    .reg-pillar-grid { grid-template-columns: 1fr 1fr 1fr; }
     .reg-header { flex-direction: column; gap: 12px; }
     .reg-strongman-label,
     .reg-strongman-name,
@@ -2087,6 +2142,7 @@ body.light-mode .ap-bar-track {
     .reg-strip-item { border-right: none; border-bottom: 1px solid rgba(226, 224, 214, 0.06); }
     .reg-strip-item:last-child { border-bottom: none; }
     .reg-vitals-grid { grid-template-columns: 1fr 1fr; }
+    .reg-pillar-grid { grid-template-columns: 1fr 1fr; }
     .reg-grip-components { grid-template-columns: 1fr; }
 }
 
@@ -2114,6 +2170,9 @@ body.light-mode .reg-vital { background: #f0f0ee; border-color: #ddd; }
 body.light-mode .reg-intel-row { background: #f0f0ee; border-color: #ddd; }
 body.light-mode .reg-grip-bar-track { background: #e8e8e4; }
 body.light-mode .reg-intel-bar-track { background: #e8e8e4; }
+body.light-mode .reg-pillar-card { background: #f0f0ee; border-color: #ddd; }
+body.light-mode .reg-pillar-name { color: #888; }
+body.light-mode .reg-pillar-bar-track { background: #e8e8e4; }
 
 /* ===== RALLY PANEL ===== */
 .rally-panel {

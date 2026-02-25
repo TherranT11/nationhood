@@ -85,32 +85,44 @@ async function renderAutocracyParties(el, f, n) {
         ministryCounts[m.party_id] = (ministryCounts[m.party_id] || 0) + 1;
     }
 
+    // Fetch regime pillars
+    const { data: regimePillars } = await _supabase
+        .from('regime_pillars')
+        .select('pillar_key, pillar_name, support')
+        .eq('nation_id', n.id)
+        .order('pillar_key');
+
     const rulingId = n.ruling_faction_id;
     const isStrongman = f.id === rulingId;
     const currentTick = currentShard?.current_tick || 0;
 
     // ── REGIME PANEL (visible to all — Grip numbers only for Strongman) ──
     const hosFirst = n.head_of_state_first_name || 'Unknown';
-        const hosLast = n.head_of_state_last_name || 'Unknown';
-        const hosAge = n.head_of_state_age || '—';
-        const govType = (n.government_type || 'Autocracy');
-        const nationName = n.name || 'Unknown';
+    const hosLast = n.head_of_state_last_name || 'Unknown';
+    const hosAge = n.head_of_state_age || '—';
+    const govType = (n.government_type || 'Autocracy');
+    const nationName = n.name || 'Unknown';
 
-        // Compute Grip on Power (0-100)
-        const stability = Number(n.stability ?? 50);
-        const legitimacy = Number(n.legitimacy ?? 50);
-        const civilUnrest = Number(n.civil_unrest ?? 30);
-        const nonRuling = (allFactions || []).filter(p => p.id !== rulingId);
+    // Compute Grip on Power from pillar averages
+    const stability = Number(n.stability ?? 50);
+    const legitimacy = Number(n.legitimacy ?? 50);
+    const civilUnrest = Number(n.civil_unrest ?? 30);
+    const nonRuling = (allFactions || []).filter(p => p.id !== rulingId);
+
+    let gripClamped;
+    if (regimePillars && regimePillars.length > 0) {
+        const pillarSum = regimePillars.reduce((s, p) => s + (p.support ?? 0), 0);
+        gripClamped = Math.max(0, Math.min(100, Math.round(pillarSum / regimePillars.length)));
+    } else {
+        // Fallback if no pillars exist yet
         const avgLoyalty = nonRuling.length > 0
             ? nonRuling.reduce((s, p) => s + (p.loyalty ?? 50), 0) / nonRuling.length
             : 50;
-        const grip = Math.round(
-            stability * 0.30 +
-            avgLoyalty * 0.25 +
-            (100 - civilUnrest) * 0.25 +
-            legitimacy * 0.20
-        );
-        const gripClamped = Math.max(0, Math.min(100, grip));
+        gripClamped = Math.max(0, Math.min(100, Math.round(
+            stability * 0.30 + avgLoyalty * 0.25 +
+            (100 - civilUnrest) * 0.25 + legitimacy * 0.20
+        )));
+    }
 
         let gripLabel, gripColor;
         if (gripClamped >= 85) { gripLabel = 'IRON GRIP'; gripColor = '#4CAF50'; }
@@ -229,6 +241,63 @@ async function renderAutocracyParties(el, f, n) {
             }
         }
 
+        // ── PILLAR CARDS ──
+        const PILLAR_ICONS = {
+            military: '&#9876;',     // crossed swords
+            security: '&#128065;',   // eye
+            party: '&#9733;',        // star
+            oligarchs: '&#9830;',    // diamond
+            bureaucracy: '&#9881;',  // gear
+            media: '&#9000;',        // antenna
+        };
+        const PILLAR_ORDER = ['military', 'security', 'party', 'oligarchs', 'bureaucracy', 'media'];
+
+        function pillarColor(val) {
+            if (val >= 70) return '#4CAF50';
+            if (val >= 50) return '#8BC34A';
+            if (val >= 35) return '#ff9800';
+            if (val >= 20) return '#ff5722';
+            return '#ff1744';
+        }
+        function pillarLabel(val) {
+            if (val >= 70) return 'LOYAL';
+            if (val >= 50) return 'CONTENT';
+            if (val >= 35) return 'RESTLESS';
+            if (val >= 20) return 'HOSTILE';
+            return 'MUTINOUS';
+        }
+
+        const pillarMap = {};
+        for (const p of (regimePillars || [])) pillarMap[p.pillar_key] = p;
+
+        let pillarCardsHtml = '';
+        if (regimePillars && regimePillars.length > 0) {
+            const cards = PILLAR_ORDER.map(key => {
+                const p = pillarMap[key];
+                if (!p) return '';
+                const val = Math.max(0, Math.min(100, p.support));
+                const pColor = pillarColor(val);
+                const pLabel = pillarLabel(val);
+                const icon = PILLAR_ICONS[key] || '';
+                return `
+                    <div class="reg-pillar-card">
+                        <div class="reg-pillar-icon">${icon}</div>
+                        <div class="reg-pillar-name">${escapeHtml(p.pillar_name)}</div>
+                        ${isStrongman ? `<div class="reg-pillar-val" style="color:${pColor}">${val}</div>` : ''}
+                        <div class="reg-pillar-bar-track">
+                            <div class="reg-pillar-bar-fill" style="width:${val}%;background:${pColor}"></div>
+                        </div>
+                        <div class="reg-pillar-label" style="color:${pColor}">${pLabel}</div>
+                    </div>`;
+            }).join('');
+
+            pillarCardsHtml = `
+                <div class="reg-section">
+                    <div class="reg-section-title">PILLARS OF THE REGIME</div>
+                    <div class="reg-pillar-grid">${cards}</div>
+                </div>`;
+        }
+
         let regimePanel = `
             <div class="reg-panel">
                 <div class="reg-header">
@@ -266,34 +335,17 @@ async function renderAutocracyParties(el, f, n) {
                                 </div>
                                 <span class="reg-grip-label" style="color:${gripColor}">${gripLabel}</span>
                             </div>
-                            <div class="reg-grip-components">
-                                <div class="reg-grip-comp">
-                                    <span class="reg-grip-comp-label">Stability</span>
-                                    <span class="reg-grip-comp-val">${stability}</span>
-                                    <span class="reg-grip-comp-weight">30%</span>
-                                </div>
-                                <div class="reg-grip-comp">
-                                    <span class="reg-grip-comp-label">Avg Loyalty</span>
-                                    <span class="reg-grip-comp-val">${Math.round(avgLoyalty)}</span>
-                                    <span class="reg-grip-comp-weight">25%</span>
-                                </div>
-                                <div class="reg-grip-comp">
-                                    <span class="reg-grip-comp-label">Order</span>
-                                    <span class="reg-grip-comp-val">${100 - civilUnrest}</span>
-                                    <span class="reg-grip-comp-weight">25%</span>
-                                </div>
-                                <div class="reg-grip-comp">
-                                    <span class="reg-grip-comp-label">Legitimacy</span>
-                                    <span class="reg-grip-comp-val">${legitimacy}</span>
-                                    <span class="reg-grip-comp-weight">20%</span>
-                                </div>
-                            </div>
                             ` : `
                             <div class="reg-grip-row">
-                                <span class="reg-grip-label-only" style="color:${gripColor}">${gripLabel}</span>
+                                <div class="reg-grip-bar-track">
+                                    <div class="reg-grip-bar-fill" style="width:${gripClamped}%;background:${gripColor}"></div>
+                                </div>
+                                <span class="reg-grip-label" style="color:${gripColor}">${gripLabel}</span>
                             </div>
                             `}
                         </div>
+
+                        ${pillarCardsHtml}
 
                         <div class="reg-section">
                             <div class="reg-section-title">REGIME VITALS</div>

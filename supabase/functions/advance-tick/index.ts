@@ -3946,32 +3946,6 @@ async function enactBill(supabase, bill, currentTick) {
         factionIdeologies
     );
     await applyEnactmentApproval(supabase, bill.nation_id, approvalDeltas);
-
-    // ── Corporate Tax → Business Owners bloc approval ──
-    // Raising corporate tax: -3 momentum with Business Owners for sponsoring party
-    // Lowering corporate tax: +2 momentum with Business Owners for sponsoring party (no party approval)
-    for (const art of (bill.bill_articles || [])) {
-        if (art.article_title !== 'Corporate Tax Rate Change') continue;
-        const match = (art.article_text || '').match(/from\s+(\d+)%\s+to\s+(\d+)%/);
-        if (!match) continue;
-        const oldRate = Number(match[1]);
-        const newRate = Number(match[2]);
-        if (oldRate === newRate) continue;
-        const isRaise = newRate > oldRate;
-        const blocDelta = isRaise ? -3 : 2;
-        // Find the Business Owners voter bloc for this nation
-        const { data: bizBloc } = await supabase
-            .from('voter_blocs')
-            .select('id')
-            .eq('nation_id', bill.nation_id)
-            .eq('bloc_name', 'Business Owners')
-            .eq('is_active', true)
-            .single();
-        if (bizBloc) {
-            await adjustMomentum(supabase, bill.nation_id, bill.proposed_by, bizBloc.id, blocDelta, 'tax:corporate_tax');
-            console.log(`[enactBill] Corporate tax ${isRaise ? 'raise' : 'cut'}: ${blocDelta > 0 ? '+' : ''}${blocDelta} momentum for sponsor ${bill.proposed_by} with Business Owners bloc ${bizBloc.id}`);
-        }
-    }
 }
 
 async function reversePolicy(supabase, nation, policy, passedTick, currentTick) {
@@ -10068,6 +10042,129 @@ async function processLoyaltyTick(supabase, nation) {
 }
 
 
+// ==================== REGIME PILLARS TICK ====================
+
+/**
+ * The six pillars of an autocratic regime. Each pillar decays by 1d2 per tick
+ * and receives a 1d2 bonus per satisfied "want" condition.
+ * The average of all pillar support values = Grip on Power.
+ */
+const REGIME_PILLAR_DEFS = [
+    { key: 'military',    name: 'The Military',      wants: [
+        { stat: 'stability', threshold: 50, direction: 'above' },
+        { stat: '_armed_forces_funding', threshold: 90, direction: 'above' },
+    ]},
+    { key: 'security',    name: 'Security Services',  wants: [
+        { stat: 'crime_rate', threshold: 40, direction: 'below' },
+        { stat: 'corruption', threshold: 50, direction: 'above' },
+    ]},
+    { key: 'party',       name: 'The Party',          wants: [
+        { stat: 'legitimacy', threshold: 50, direction: 'above' },
+        { stat: 'standard_of_living', threshold: 50, direction: 'above' },
+    ]},
+    { key: 'oligarchs',   name: 'Oligarchs',          wants: [
+        { stat: 'gdp_growth', threshold: 50, direction: 'above' },
+        { stat: 'corporate_tax', threshold: 30, direction: 'below' },
+    ]},
+    { key: 'bureaucracy', name: 'Bureaucracy',        wants: [
+        { stat: 'efficiency', threshold: 50, direction: 'above' },
+        { stat: '_debt_ratio', threshold: 50, direction: 'below' },
+    ]},
+    { key: 'media',       name: 'State Media',        wants: [
+        { stat: 'freedom_index', threshold: 40, direction: 'below' },
+        { stat: 'legitimacy', threshold: 50, direction: 'above' },
+    ]},
+];
+
+function d2() { return 1 + Math.floor(Math.random() * 2); } // 1 or 2
+
+async function processRegimePillars(supabase, nation) {
+    if (!isAutocracy(nation)) return;
+
+    // Fetch existing pillars
+    const { data: pillars } = await supabase
+        .from('regime_pillars')
+        .select('id, pillar_key, support')
+        .eq('nation_id', nation.id);
+
+    // If no pillars yet (new autocracy), seed them
+    if (!pillars || pillars.length === 0) {
+        const rows = REGIME_PILLAR_DEFS.map(def => ({
+            nation_id: nation.id,
+            pillar_key: def.key,
+            pillar_name: def.name,
+            support: 55 + Math.floor(Math.random() * 31), // 55-85
+        }));
+        await supabase.from('regime_pillars').insert(rows);
+        return;
+    }
+
+    // Build a lookup of pillar_key → row
+    const pillarMap = {};
+    for (const p of pillars) pillarMap[p.pillar_key] = p;
+
+    // Compute special synthetic stats:
+    // _armed_forces_funding: % funding of the 'military' institution from the active budget
+    let armedForcesFunding = 0;
+    if (nation.last_budget_bill_id) {
+        const { data: milAlloc } = await supabase
+            .from('budget_item_allocations')
+            .select('allocation_amount, needed_amount')
+            .eq('bill_id', nation.last_budget_bill_id)
+            .eq('item_type', 'institution')
+            .eq('item_id', 'military')
+            .maybeSingle();
+        if (milAlloc && Number(milAlloc.needed_amount) > 0) {
+            armedForcesFunding = Math.min(100, Math.round(
+                (Number(milAlloc.allocation_amount) / Number(milAlloc.needed_amount)) * 100
+            ));
+        }
+    }
+
+    // _debt_ratio: simple 0-100 where lower is better
+    // Use debt relative to GDP: debt/gdp * 100, clamped 0-100
+    const gdp = Number(nation.gdp || 1);
+    const debt = Number(nation.debt || 0);
+    const debtRatio = Math.min(100, Math.max(0, Math.round((debt / Math.max(gdp, 1)) * 100)));
+
+    const syntheticStats = {
+        _armed_forces_funding: armedForcesFunding,
+        _debt_ratio: debtRatio,
+    };
+
+    // Process each pillar
+    for (const def of REGIME_PILLAR_DEFS) {
+        const row = pillarMap[def.key];
+        if (!row) continue;
+
+        let support = row.support;
+
+        // Natural decay: -1d2 per tick
+        support -= d2();
+
+        // Check each want: if satisfied, +1d2 bonus
+        for (const want of def.wants) {
+            const val = want.stat.startsWith('_')
+                ? (syntheticStats[want.stat] ?? 0)
+                : Number(nation[want.stat] ?? 50);
+
+            const satisfied = want.direction === 'above'
+                ? val >= want.threshold
+                : val <= want.threshold;
+
+            if (satisfied) {
+                support += d2();
+            }
+        }
+
+        support = Math.max(0, Math.min(100, support));
+
+        await supabase.from('regime_pillars')
+            .update({ support, updated_at: new Date().toISOString() })
+            .eq('id', row.id);
+    }
+}
+
 // ==================== SHAKEUP AUTO-RESOLVE ====================
 
 async function autoResolveStaleShakeups(supabase, nationId, currentTick) {
@@ -13599,6 +13696,11 @@ async function advanceTick(supabase) {
         // Faction loyalty (autocracy)
         if (isAutocracy(nation)) {
             await processLoyaltyTick(supabase, nation);
+        }
+
+        // Regime pillars decay & bonus (autocracy)
+        if (isAutocracy(nation)) {
+            await processRegimePillars(supabase, nation);
         }
 
         // Auto-resolve shakeups that are 1+ ticks old
