@@ -1856,6 +1856,12 @@ body.light-mode .ap-bar-track {
     text-align: right;
 }
 
+.reg-grip-label-only {
+    font-size: 1.3rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+}
+
 .reg-grip-components {
     display: grid;
     grid-template-columns: 1fr 1fr;
