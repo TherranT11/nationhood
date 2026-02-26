@@ -3069,6 +3069,32 @@ body.light-mode .reg-steward-status-gap strong { color: #2a2a28; }
 body.light-mode .reg-steward-status-gap-label { color: #888; }
 body.light-mode .reg-steward-status-empty { color: #888; }
 
+/* ── Steward Actions ── */
+.reg-steward-actions { display: flex; flex-direction: column; gap: 8px; }
+.reg-steward-action-btn {
+    display: block; width: 100%; text-align: left;
+    padding: 10px 14px; border-radius: 3px; cursor: pointer;
+    background: rgba(226,224,214,0.04); border: 1px solid rgba(226,224,214,0.08);
+    color: #e2e0d6; transition: background 0.15s;
+}
+.reg-steward-action-btn:hover:not(:disabled) { background: rgba(226,224,214,0.08); }
+.reg-steward-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.reg-steward-action-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.reg-steward-action-name { font-size: 0.62rem; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; }
+.reg-steward-action-cost { font-size: 0.55rem; color: #ff9800; font-weight: 700; }
+.reg-steward-action-desc { font-size: 0.55rem; color: #8a8778; line-height: 1.5; }
+.reg-steward-action-desc strong { color: #e2e0d6; }
+.reg-steward-action-risk { font-size: 0.5rem; color: #ff5722; margin-top: 4px; }
+.reg-steward-action-risk-val { font-weight: 700; }
+.reg-steward-action-req { font-size: 0.5rem; color: #6b6a5e; margin-top: 4px; }
+.reg-steward-action-seize { border-color: rgba(255,23,68,0.25); }
+.reg-steward-action-seize:not(:disabled) { border-color: rgba(255,23,68,0.5); }
+.reg-steward-action-seize:not(:disabled) .reg-steward-action-name { color: #ff1744; }
+.reg-steward-action-seize:not(:disabled) .reg-steward-action-req { color: #ff1744; }
+body.light-mode .reg-steward-action-btn { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.08); color: #2a2a28; }
+body.light-mode .reg-steward-action-desc { color: #666; }
+body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }
+
 /* ===== RALLY PANEL ===== */
 .rally-panel {
     background: var(--bg-panel, #1a1a1a);
