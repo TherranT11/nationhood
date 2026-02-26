@@ -1978,6 +1978,21 @@ export async function processGovernmentShutdown(supabase, nation, currentTick) {
                 effects_applied: [],
                 fired_at_tick: currentTick
             });
+
+            // Fire system event only on the activation tick (not every tick)
+            try {
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'government_shutdown',
+                    p_nation_id: nation.id,
+                    p_tick: currentTick,
+                    p_placeholders: {
+                        nation: nation.name || 'Unknown',
+                        ticks_overdue: String(ticksOverdue)
+                    }
+                });
+            } catch (e) {
+                console.warn(`[GovernmentShutdown] fire_system_event failed (template may not exist):`, e.message);
+            }
         }
     }
 
@@ -2016,23 +2031,7 @@ export async function processGovernmentShutdown(supabase, nation, currentTick) {
         }
     }
 
-    // --- 4. Fire system event (once per tick while shutdown is active) ---
-    try {
-        await supabase.rpc('fire_system_event', {
-            p_trigger_key: 'government_shutdown',
-            p_nation_id: nation.id,
-            p_tick: currentTick,
-            p_placeholders: {
-                nation: nation.name || 'Unknown',
-                ticks_overdue: String(ticksOverdue)
-            }
-        });
-    } catch (e) {
-        // Non-critical — don't block shutdown processing if event template doesn't exist
-        console.warn(`[GovernmentShutdown] fire_system_event failed (template may not exist):`, e.message);
-    }
-
-    // --- 5. Direct stat damage — government shutdown should be devastating ---
+    // --- 4. Direct stat damage — government shutdown should be devastating ---
     // The crisis_effects DB rows are display-only because the Government Shutdown
     // template has is_active=false (processCrises skips it). Apply deltas here.
     // A government shutdown cripples public services, tanks investor confidence,

@@ -106,6 +106,15 @@
         color: var(--red);
         font-weight: bold;
     }
+    .crisis-box.active .crisis-falling {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        margin-bottom: 4px;
+    }
+    .crisis-box.active .crisis-falling span {
+        color: var(--orange);
+        font-weight: bold;
+    }
 
     /* Revolution Banner */
     .revolution-banner {

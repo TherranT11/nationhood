@@ -428,9 +428,14 @@ async function renderCrisisSection(nationId, nation) {
             }
             var effects = t.crisis_effects || [];
             var risingStats = [];
+            var fallingStats = [];
             for (var k = 0; k < effects.length; k++) {
-                if (effects[k].target === 'nation' && effects[k].stat_key && effects[k].change_per_tick > 0) {
-                    risingStats.push(prettyStatName(effects[k].stat_key));
+                if (effects[k].target === 'nation' && effects[k].stat_key) {
+                    if (effects[k].change_per_tick > 0) {
+                        risingStats.push(prettyStatName(effects[k].stat_key));
+                    } else if (effects[k].change_per_tick < 0) {
+                        fallingStats.push(prettyStatName(effects[k].stat_key));
+                    }
                 }
             }
             h += '<div class="crisis-box active">';
@@ -438,6 +443,9 @@ async function renderCrisisSection(nationId, nation) {
             h += '<div class="crisis-desc">' + t.description + '</div>';
             if (risingStats.length > 0) {
                 h += '<div class="crisis-rising">Rising: <span>' + risingStats.join('</span>, <span>') + '</span></div>';
+            }
+            if (fallingStats.length > 0) {
+                h += '<div class="crisis-falling">Falling: <span>' + fallingStats.join('</span>, <span>') + '</span></div>';
             }
             if (statNames.length > 0) {
                 h += '<div class="crisis-recovery">Recovery: <span>' + statNames.join('</span>, <span>') + '</span></div>';
