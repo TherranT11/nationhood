@@ -1804,7 +1804,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-strongman-label {
-    font-size: 0.6rem;
+    font-size: 0.65rem;
     color: #6b6a5e;
     text-transform: uppercase;
     letter-spacing: 2px;
@@ -1820,7 +1820,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-strongman-faction {
-    font-size: 0.6rem;
+    font-size: 0.65rem;
     color: #ff4444;
     font-weight: 700;
     text-align: right;
@@ -1843,7 +1843,7 @@ body.light-mode .ap-bar-track {
 }
 .reg-ap-label {
     font-family: monospace;
-    font-size: 0.55rem;
+    font-size: 0.7rem;
     color: #6b6a5e;
     text-transform: uppercase;
     letter-spacing: 2px;
@@ -1882,7 +1882,7 @@ body.light-mode .ap-bar-track {
 .reg-strip-item:last-child { border-right: none; }
 
 .reg-strip-label {
-    font-size: 0.58rem;
+    font-size: 0.7rem;
     color: #6b6a5e;
     text-transform: uppercase;
     letter-spacing: 1.5px;
@@ -1920,7 +1920,7 @@ body.light-mode .ap-bar-track {
 .reg-section:last-child { margin-bottom: 0; }
 
 .reg-section-title {
-    font-size: 0.6rem;
+    font-size: 0.7rem;
     color: #6b6a5e;
     text-transform: uppercase;
     letter-spacing: 2px;
@@ -1958,7 +1958,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-grip-label {
-    font-size: 0.65rem;
+    font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 1px;
     min-width: 80px;
@@ -1980,7 +1980,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-grip-comp-label {
-    font-size: 0.6rem;
+    font-size: 0.7rem;
     color: #8a8778;
     flex: 1;
 }
@@ -1995,7 +1995,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-grip-comp-weight {
-    font-size: 0.55rem;
+    font-size: 0.65rem;
     color: #6b6a5e;
     width: 24px;
     text-align: right;
@@ -2023,7 +2023,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-pillar-name {
-    font-size: 0.58rem;
+    font-size: 0.7rem;
     color: #8a8778;
     text-transform: uppercase;
     letter-spacing: 1.5px;
@@ -2053,7 +2053,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-pillar-label {
-    font-size: 0.55rem;
+    font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -2068,7 +2068,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-pillar-steward {
-    font-size: 0.5rem;
+    font-size: 0.65rem;
     color: #6b6a5e;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -2083,7 +2083,7 @@ body.light-mode .ap-bar-track {
 .reg-pillar-claim-btn {
     margin-top: 8px;
     padding: 4px 12px;
-    font-size: 0.55rem;
+    font-size: 0.7rem;
     font-weight: 700;
     font-family: inherit;
     letter-spacing: 1px;
@@ -2123,7 +2123,7 @@ body.light-mode .ap-bar-track {
 
 .reg-vital-label {
     display: block;
-    font-size: 0.52rem;
+    font-size: 0.7rem;
     color: #6b6a5e;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -2200,7 +2200,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-threat-factor {
-    font-size: 0.58rem;
+    font-size: 0.7rem;
     color: #8a8778;
     background: rgba(255, 152, 0, 0.06);
     padding: 3px 8px;
@@ -2249,7 +2249,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-intel-label {
-    font-size: 0.5rem;
+    font-size: 0.65rem;
     color: #6b6a5e;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -2263,7 +2263,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-intel-tag {
-    font-size: 0.52rem;
+    font-size: 0.65rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -2337,13 +2337,13 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-steward-description {
-    font-size: 0.58rem;
+    font-size: 0.82rem;
     color: #8a8778;
     margin-top: 3px;
 }
 
 .reg-steward-meta {
-    font-size: 0.55rem;
+    font-size: 0.7rem;
     color: #6b6a5e;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -2351,7 +2351,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-steward-type-badge {
-    font-size: 0.5rem;
+    font-size: 0.65rem;
     font-weight: 700;
     color: #e2e0d6;
     text-transform: uppercase;
@@ -2382,7 +2382,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-steward-stat-label {
-    font-size: 0.5rem;
+    font-size: 0.7rem;
     color: #6b6a5e;
     text-transform: uppercase;
     letter-spacing: 1.2px;
@@ -2396,7 +2396,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-steward-stat-decay {
-    font-size: 0.48rem;
+    font-size: 0.7rem;
     color: #ff5722;
     font-weight: 700;
     letter-spacing: 0.5px;
@@ -2442,7 +2442,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-steward-visibility-label {
-    font-size: 0.45rem;
+    font-size: 0.65rem;
     color: #8a8778;
     text-transform: uppercase;
     letter-spacing: 1.5px;
@@ -2457,7 +2457,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-steward-private-banner {
-    font-size: 0.48rem;
+    font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1.5px;
@@ -2472,7 +2472,7 @@ body.light-mode .ap-bar-track {
 
 /* Loyalty gap advisory */
 .reg-steward-loyalty-gap {
-    font-size: 0.6rem;
+    font-size: 0.78rem;
     color: #8a8778;
     margin-top: 14px;
     padding-top: 12px;
@@ -2516,7 +2516,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-steward-status-badge {
-    font-size: 0.5rem;
+    font-size: 0.65rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1.2px;
@@ -2531,7 +2531,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-steward-status-desc {
-    font-size: 0.58rem;
+    font-size: 0.82rem;
     color: #8a8778;
     margin-top: 3px;
     font-style: italic;
@@ -2553,7 +2553,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-steward-status-ap-label {
-    font-size: 0.45rem;
+    font-size: 0.7rem;
     font-weight: 700;
     color: #6b6a5e;
     text-transform: uppercase;
@@ -2574,7 +2574,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-steward-status-stat-label {
-    font-size: 0.48rem;
+    font-size: 0.7rem;
     font-weight: 700;
     color: #6b6a5e;
     text-transform: uppercase;
@@ -2588,14 +2588,14 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-steward-status-stat-sub {
-    font-size: 0.5rem;
+    font-size: 0.7rem;
     color: #5a5950;
     letter-spacing: 0.3px;
     margin-top: 1px;
 }
 
 .reg-steward-status-gap {
-    font-size: 0.58rem;
+    font-size: 0.78rem;
     color: #8a8778;
     padding-top: 10px;
     border-top: 1px solid rgba(226, 224, 214, 0.06);
@@ -2612,7 +2612,7 @@ body.light-mode .ap-bar-track {
     color: #6b6a5e;
     text-transform: uppercase;
     letter-spacing: 0.8px;
-    font-size: 0.5rem;
+    font-size: 0.7rem;
     margin-right: 2px;
 }
 
@@ -2728,20 +2728,20 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-intel-steward-name {
-    font-size: 0.62rem;
+    font-size: 0.78rem;
     color: #e2e0d6;
     font-weight: 600;
 }
 
 .reg-intel-steward-type {
-    font-size: 0.48rem;
+    font-size: 0.65rem;
     color: #8a8778;
     text-transform: uppercase;
     letter-spacing: 1px;
 }
 
 .reg-intel-steward-faction {
-    font-size: 0.48rem;
+    font-size: 0.65rem;
     color: #8a8778;
     font-style: italic;
 }
@@ -2756,7 +2756,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-intel-ministry-tag {
-    font-size: 0.48rem;
+    font-size: 0.65rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -2768,7 +2768,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-intel-ministry-none {
-    font-size: 0.48rem;
+    font-size: 0.65rem;
     color: #6b6a5e;
     font-style: italic;
 }
@@ -2788,7 +2788,7 @@ body.light-mode .ap-bar-track {
     align-items: baseline;
     gap: 6px;
     padding: 5px 8px;
-    font-size: 0.58rem;
+    font-size: 0.7rem;
     border-bottom: 1px solid rgba(226, 224, 214, 0.04);
 }
 
@@ -2796,7 +2796,7 @@ body.light-mode .ap-bar-track {
 
 .reg-log-date {
     color: #6b6a5e;
-    font-size: 0.5rem;
+    font-size: 0.65rem;
     min-width: 90px;
     flex-shrink: 0;
 }
@@ -2804,21 +2804,21 @@ body.light-mode .ap-bar-track {
 .reg-log-faction {
     font-weight: 700;
     color: #e2e0d6;
-    font-size: 0.52rem;
+    font-size: 0.65rem;
     min-width: 40px;
 }
 
 .reg-log-label {
     font-weight: 600;
     color: #ff9800;
-    font-size: 0.5rem;
+    font-size: 0.65rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
 .reg-log-detail {
     color: #8a8778;
-    font-size: 0.52rem;
+    font-size: 0.65rem;
     flex: 1;
     min-width: 0;
 }
@@ -2839,7 +2839,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-demand-cost {
-    font-size: 0.55rem;
+    font-size: 0.7rem;
     color: #ff9800;
     font-weight: 700;
     letter-spacing: 0.5px;
@@ -2847,7 +2847,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-demand-desc {
-    font-size: 0.55rem;
+    font-size: 0.75rem;
     color: #8a8778;
     line-height: 1.6;
     margin-bottom: 12px;
@@ -2866,7 +2866,7 @@ body.light-mode .ap-bar-track {
 
 .reg-demand-target-btn {
     padding: 6px 10px;
-    font-size: 0.58rem;
+    font-size: 0.7rem;
     font-weight: 600;
     color: #e2e0d6;
     background: rgba(226, 224, 214, 0.04);
@@ -2892,7 +2892,7 @@ body.light-mode .ap-bar-track {
 .reg-demand-submit {
     width: 100%;
     padding: 8px;
-    font-size: 0.6rem;
+    font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 2px;
     text-transform: uppercase;
@@ -2914,7 +2914,7 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-demand-exhausted {
-    font-size: 0.55rem;
+    font-size: 0.7rem;
     color: #6b6a5e;
     font-style: italic;
     padding: 4px 0;
@@ -2944,13 +2944,13 @@ body.light-mode .ap-bar-track {
 }
 
 .reg-demand-banner-text {
-    font-size: 0.58rem;
+    font-size: 0.75rem;
     color: #8a8778;
     margin-bottom: 6px;
 }
 
 .reg-demand-banner-deadline {
-    font-size: 0.52rem;
+    font-size: 0.7rem;
     color: #ff5722;
     font-weight: 600;
     text-transform: uppercase;
@@ -2967,7 +2967,7 @@ body.light-mode .ap-bar-track {
 .reg-demand-refuse-btn {
     flex: 1;
     padding: 8px 12px;
-    font-size: 0.58rem;
+    font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -3111,12 +3111,12 @@ body.light-mode .reg-steward-status-empty { color: #888; }
 .reg-steward-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .reg-steward-action-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .reg-steward-action-name { font-size: 0.62rem; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; }
-.reg-steward-action-cost { font-size: 0.55rem; color: #ff9800; font-weight: 700; }
-.reg-steward-action-desc { font-size: 0.55rem; color: #8a8778; line-height: 1.5; }
+.reg-steward-action-cost { font-size: 0.7rem; color: #ff9800; font-weight: 700; }
+.reg-steward-action-desc { font-size: 0.75rem; color: #8a8778; line-height: 1.5; }
 .reg-steward-action-desc strong { color: #e2e0d6; }
-.reg-steward-action-risk { font-size: 0.5rem; color: #ff5722; margin-top: 4px; }
+.reg-steward-action-risk { font-size: 0.7rem; color: #ff5722; margin-top: 4px; }
 .reg-steward-action-risk-val { font-weight: 700; }
-.reg-steward-action-req { font-size: 0.5rem; color: #6b6a5e; margin-top: 4px; }
+.reg-steward-action-req { font-size: 0.7rem; color: #6b6a5e; margin-top: 4px; }
 .reg-steward-action-seize { border-color: rgba(255,23,68,0.25); }
 .reg-steward-action-seize:not(:disabled) { border-color: rgba(255,23,68,0.5); }
 .reg-steward-action-seize:not(:disabled) .reg-steward-action-name { color: #ff1744; }
@@ -3136,14 +3136,14 @@ body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }
     margin-bottom: 12px;
 }
 .reg-coalition-banner-title {
-    font-size: 0.6rem;
+    font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 1.5px;
     color: #2196F3;
     margin-bottom: 6px;
 }
 .reg-coalition-banner-text {
-    font-size: 0.55rem;
+    font-size: 0.75rem;
     color: #8a8778;
     line-height: 1.5;
     margin-bottom: 8px;
@@ -3155,7 +3155,7 @@ body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }
 .reg-coalition-accept-btn,
 .reg-coalition-decline-btn,
 .reg-coalition-betray-btn {
-    font-size: 0.5rem;
+    font-size: 0.65rem;
     font-weight: 700;
     letter-spacing: 1px;
     padding: 6px 14px;
@@ -3185,7 +3185,7 @@ body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }
 .cdd {
     flex: 1;
     position: relative;
-    font-size: 0.55rem;
+    font-size: 0.7rem;
 }
 .cdd-trigger {
     padding: 6px 24px 6px 8px;
@@ -3250,7 +3250,7 @@ body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }
 .cdd-menu::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
 
 .reg-coalition-propose-desc {
-    font-size: 0.5rem;
+    font-size: 0.7rem;
     color: #8a8778;
 }
 
@@ -3269,7 +3269,7 @@ body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }
 .reg-coalition-secret { border-left: 3px solid #9C27B0; }
 .reg-coalition-card-header { display: flex; align-items: center; gap: 8px; }
 .reg-coalition-type-tag {
-    font-size: 0.45rem;
+    font-size: 0.65rem;
     font-weight: 700;
     letter-spacing: 1px;
     padding: 2px 6px;
@@ -3279,27 +3279,27 @@ body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }
 .reg-coalition-detected { color: #ff5722; font-weight: 700; }
 .reg-coalition-pending { opacity: 0.65; }
 .reg-coalition-pending-tag {
-    font-size: 0.4rem;
+    font-size: 0.65rem;
     font-weight: 700;
     letter-spacing: 1px;
     color: #ffab00;
 }
 .reg-coalition-expiry-tag {
-    font-size: 0.4rem;
+    font-size: 0.65rem;
     font-weight: 600;
     letter-spacing: 0.5px;
     color: #8a8778;
     margin-left: auto;
 }
 .reg-coalition-type-fixed {
-    font-size: 0.45rem;
+    font-size: 0.65rem;
     font-weight: 700;
     letter-spacing: 1px;
     color: #2196F3;
     padding: 6px 0;
 }
 .reg-coalition-withdraw-btn {
-    font-size: 0.45rem;
+    font-size: 0.65rem;
     font-weight: 700;
     letter-spacing: 1px;
     padding: 4px 10px;
@@ -3310,11 +3310,11 @@ body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }
     color: #8a8778;
 }
 .reg-coalition-withdraw-btn:hover { color: #ff9800; border-color: #ff9800; }
-.reg-coalition-partner { font-size: 0.55rem; font-weight: 600; }
+.reg-coalition-partner { font-size: 0.7rem; font-weight: 600; }
 .reg-coalition-card-actions { display: flex; gap: 6px; }
 .reg-coalition-msg-btn,
 .reg-coalition-dissolve-btn {
-    font-size: 0.45rem;
+    font-size: 0.65rem;
     font-weight: 700;
     letter-spacing: 1px;
     padding: 4px 10px;
@@ -3334,13 +3334,13 @@ body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }
     justify-content: space-between;
     padding: 6px 10px;
     border-radius: 4px;
-    font-size: 0.55rem;
+    font-size: 0.7rem;
     background: rgba(226,224,214,0.03);
 }
 .reg-coalition-intel-public { border-left: 3px solid #2196F3; }
 .reg-coalition-intel-secret { border-left: 3px solid #ff5722; }
 .reg-coalition-intel-names { font-weight: 600; }
-.reg-coalition-intel-type { font-size: 0.45rem; font-weight: 700; letter-spacing: 1px; color: #8a8778; }
+.reg-coalition-intel-type { font-size: 0.65rem; font-weight: 700; letter-spacing: 1px; color: #8a8778; }
 
 /* ── Coalition Message Overlay ── */
 .reg-coalition-msg-overlay {
@@ -3363,7 +3363,7 @@ body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }
     flex-direction: column;
 }
 .reg-coalition-msg-title {
-    font-size: 0.6rem;
+    font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 1.5px;
     margin-bottom: 12px;
@@ -3377,25 +3377,25 @@ body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }
     flex-direction: column;
     gap: 6px;
 }
-.reg-coalition-msg { padding: 6px 8px; border-radius: 4px; font-size: 0.52rem; }
+.reg-coalition-msg { padding: 6px 8px; border-radius: 4px; font-size: 0.65rem; }
 .reg-coalition-msg.mine { background: rgba(33,150,243,0.1); text-align: right; }
 .reg-coalition-msg.theirs { background: rgba(226,224,214,0.05); }
-.reg-coalition-msg-sender { font-weight: 700; display: block; font-size: 0.48rem; color: #8a8778; }
+.reg-coalition-msg-sender { font-weight: 700; display: block; font-size: 0.65rem; color: #8a8778; }
 .reg-coalition-msg-text { display: block; margin-top: 2px; }
-.reg-coalition-msg-tick { display: block; font-size: 0.42rem; color: #555; margin-top: 2px; }
-.reg-coalition-msg-empty { font-size: 0.52rem; color: #555; text-align: center; padding: 20px; }
+.reg-coalition-msg-tick { display: block; font-size: 0.65rem; color: #555; margin-top: 2px; }
+.reg-coalition-msg-empty { font-size: 0.65rem; color: #555; text-align: center; padding: 20px; }
 .reg-coalition-msg-input-row { display: flex; gap: 6px; }
 .reg-coalition-msg-input {
     flex: 1;
     padding: 6px 8px;
-    font-size: 0.52rem;
+    font-size: 0.65rem;
     background: rgba(226,224,214,0.05);
     border: 1px solid rgba(226,224,214,0.12);
     border-radius: 4px;
     color: inherit;
 }
 .reg-coalition-msg-send-btn {
-    font-size: 0.5rem;
+    font-size: 0.65rem;
     font-weight: 700;
     padding: 6px 12px;
     border: 1px solid #2196F3;
@@ -3406,7 +3406,7 @@ body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }
 }
 .reg-coalition-msg-close {
     margin-top: 8px;
-    font-size: 0.5rem;
+    font-size: 0.65rem;
     font-weight: 700;
     padding: 6px;
     border: 1px solid rgba(226,224,214,0.15);
