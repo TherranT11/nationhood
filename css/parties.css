@@ -2803,7 +2803,10 @@ body.light-mode .ap-bar-track {
 
 /* ── Demand Loyalty panel (Strongman) ── */
 .reg-demand-panel {
-    padding: 8px 0 0;
+    padding: 12px 16px;
+    background: rgba(226, 224, 214, 0.04);
+    border: 1px solid rgba(226, 224, 214, 0.08);
+    border-radius: 3px;
 }
 
 .reg-demand-cost {
@@ -3045,6 +3048,7 @@ body.light-mode .reg-log-date { color: #888; }
 body.light-mode .reg-log-faction { color: #2a2a28; }
 body.light-mode .reg-log-detail { color: #666; }
 body.light-mode .reg-log-empty { color: #888; }
+body.light-mode .reg-demand-panel { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.08); }
 body.light-mode .reg-demand-desc { color: #666; }
 body.light-mode .reg-demand-desc strong { color: #2a2a28; }
 body.light-mode .reg-demand-target-btn { color: #2a2a28; background: rgba(0,0,0,0.03); border-color: rgba(0,0,0,0.08); }
