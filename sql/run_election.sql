@@ -6,9 +6,9 @@
 -- 1. Loads voter blocs + party ideology axes
 -- 2. For each bloc, loads per-bloc approval from faction_bloc_approval
 -- 3. ALL parties compete simultaneously for each bloc's voters:
---      weight = bloc_approval × ideology_multiplier
+--      softmax_weight = exp((preference_score - max) / K) × ideology_multiplier
 --      ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
--- 4. Votes distributed proportionally by weight (Largest Remainder)
+-- 4. Votes distributed proportionally by softmax weight (Largest Remainder)
 -- 5. Allocates seats via Largest Remainder (Hare Quota)
 -- 6. Writes results to elections table + syncs factions.seats
 -- ============================================================
@@ -310,13 +310,16 @@ $$;
 
 
 -- ============================================================
--- _election_process_bloc — Weighted Competition Model
+-- _election_process_bloc — Softmax Weighted Competition Model
 --
 -- ALL parties compete simultaneously for each voter bloc.
--- weight = bloc_approval × ideology_multiplier
--- ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
+-- Preference scores are sharpened via softmax before distribution:
+--   softmax_weight = exp((preference_score - max_score) / K) × ideology_multiplier
+--   ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
 --
--- No cascade steps. No leakage. One simple formula.
+-- K = 10 (softmax temperature, matching tick-system k_value).
+-- This exponential sharpening amplifies small differences in preference_score
+-- into meaningful vote share gaps, preventing near-uniform election results.
 -- ============================================================
 
 -- Drop all previous overloads
@@ -356,6 +359,10 @@ DECLARE
     c_IDEOLOGY_RATE  CONSTANT NUMERIC := 0.02;  -- multiplier per alignment unit
     c_MULT_MIN       CONSTANT NUMERIC := 0.2;   -- min ideology multiplier
     c_MULT_MAX       CONSTANT NUMERIC := 2.0;   -- max ideology multiplier
+    -- Softmax sharpening (matches tick-system k_value default)
+    c_K_TEMP         CONSTANT NUMERIC := 10;    -- softmax temperature
+    v_max_approval   NUMERIC := 0;
+    v_softmax_exp    NUMERIC;
     v_pid          TEXT;
     v_approval     NUMERIC;
     v_alignment    INT;
@@ -403,13 +410,22 @@ BEGIN
         RETURN;
     END IF;
 
-    -- ---- Weighted Competition: ALL parties compete simultaneously ----
-    -- weight = bloc_approval × ideology_multiplier
-    -- ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
+    -- ---- Softmax Weighted Competition: ALL parties compete simultaneously ----
+    -- First pass: find max approval for numerical stability
+    FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
+    LOOP
+        v_approval := COALESCE((p_bloc_approvals->>(v_party.value->>'id'))::NUMERIC, 40);
+        IF v_approval > v_max_approval THEN v_max_approval := v_approval; END IF;
+    END LOOP;
+
+    -- Second pass: compute softmax-sharpened weights
     FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
     LOOP
         v_pid := v_party.value->>'id';
         v_approval := COALESCE((p_bloc_approvals->>v_pid)::NUMERIC, 40);
+
+        -- Softmax sharpening: exp((approval - max) / k)
+        v_softmax_exp := EXP((v_approval - v_max_approval) / c_K_TEMP);
 
         -- Compute average alignment across bloc tags
         v_align_sum := 0;
@@ -422,7 +438,8 @@ BEGIN
         -- ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
         v_multiplier := GREATEST(c_MULT_MIN, LEAST(c_MULT_MAX, 1.0 + v_align_avg * c_IDEOLOGY_RATE));
 
-        v_weight := v_approval * v_multiplier;
+        -- Weight = softmax(approval) × ideology_multiplier
+        v_weight := v_softmax_exp * v_multiplier;
         IF v_weight < 0 THEN v_weight := 0; END IF;
 
         v_weights := v_weights || jsonb_build_object(v_pid, v_weight);
@@ -488,7 +505,8 @@ DROP FUNCTION IF EXISTS _election_distribute_votes(JSONB, TEXT[], TEXT[], BIGINT
 -- _election_distribute_votes_approval_only(parties, bloc_count, tally, bloc_approvals)
 -- -> JSONB (updated tally)
 --
--- For Unaligned blocs: distribute purely by per-bloc approval rating.
+-- For Unaligned blocs: distribute by softmax-sharpened approval rating.
+-- Uses same K=10 temperature as the main election model.
 -- ============================================================
 
 DROP FUNCTION IF EXISTS _election_distribute_votes_approval_only(JSONB, INT, JSONB);
@@ -509,8 +527,11 @@ DECLARE
     v_tally          JSONB := p_tally;
     v_party          RECORD;
     v_pid            TEXT;
-    v_total_approval NUMERIC := 0;
     v_approval       NUMERIC;
+    v_max_approval   NUMERIC := 0;
+    v_softmax_exp    NUMERIC;
+    v_total_weight   NUMERIC := 0;
+    v_weights        JSONB := '{}'::JSONB;
     v_exact          NUMERIC;
     v_floored        INT;
     v_allocated      INT := 0;
@@ -518,16 +539,28 @@ DECLARE
     v_remainder      INT;
     v_frac           RECORD;
     v_count          INT := 0;
+    c_K_TEMP         CONSTANT NUMERIC := 10;
 BEGIN
-    -- Sum all per-bloc approvals
+    -- First pass: find max approval for softmax numerical stability
     FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
     LOOP
-        v_total_approval := v_total_approval + COALESCE((p_bloc_approvals->>(v_party.value->>'id'))::NUMERIC, 40);
+        v_approval := COALESCE((p_bloc_approvals->>(v_party.value->>'id'))::NUMERIC, 40);
+        IF v_approval > v_max_approval THEN v_max_approval := v_approval; END IF;
         v_count := v_count + 1;
     END LOOP;
 
-    -- Edge case: all 0 approval
-    IF v_total_approval = 0 THEN
+    -- Second pass: compute softmax weights
+    FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
+    LOOP
+        v_pid := v_party.value->>'id';
+        v_approval := COALESCE((p_bloc_approvals->>v_pid)::NUMERIC, 40);
+        v_softmax_exp := EXP((v_approval - v_max_approval) / c_K_TEMP);
+        v_weights := v_weights || jsonb_build_object(v_pid, v_softmax_exp);
+        v_total_weight := v_total_weight + v_softmax_exp;
+    END LOOP;
+
+    -- Edge case: all weights are 0 (should not happen with softmax)
+    IF v_total_weight = 0 THEN
         DECLARE
             v_even INT := FLOOR(p_bloc_count::NUMERIC / v_count);
             v_rem  INT := p_bloc_count - v_even * v_count;
@@ -548,12 +581,12 @@ BEGIN
         END;
     END IF;
 
-    -- Distribute proportionally by per-bloc approval
+    -- Distribute proportionally by softmax-sharpened weights
     FOR v_party IN SELECT * FROM jsonb_array_elements(p_parties)
     LOOP
         v_pid := v_party.value->>'id';
-        v_approval := COALESCE((p_bloc_approvals->>v_pid)::NUMERIC, 40);
-        v_exact := (p_bloc_count::NUMERIC * v_approval) / v_total_approval;
+        v_softmax_exp := COALESCE((v_weights->>v_pid)::NUMERIC, 0);
+        v_exact := (p_bloc_count::NUMERIC * v_softmax_exp) / v_total_weight;
         v_floored := FLOOR(v_exact);
 
         v_tally := jsonb_set(v_tally, ARRAY[v_pid],
