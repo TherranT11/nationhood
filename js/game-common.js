@@ -10391,6 +10391,60 @@ export async function processStewardTick(supabase, nation) {
     }
 }
 
+// ==================== COALITION DETECTION ====================
+
+/**
+ * Process secret coalition detection each tick.
+ * Each active secret coalition has a 5% passive chance of being discovered.
+ * When detected, status changes to 'detected' and a campaign_actions entry is logged.
+ */
+export async function processCoalitionDetection(supabase, nation, currentTick) {
+    if (!isAutocracy(nation)) return;
+
+    const { data: secretCoalitions } = await supabase
+        .from('faction_coalitions')
+        .select('id, faction_a_id, faction_b_id')
+        .eq('nation_id', nation.id)
+        .eq('coalition_type', 'secret')
+        .eq('status', 'active');
+
+    if (!secretCoalitions || secretCoalitions.length === 0) return;
+
+    // Fetch faction names for logging
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, faction_name')
+        .eq('nation_id', nation.id);
+
+    const nameMap = {};
+    for (const fc of (factions || [])) nameMap[fc.id] = fc.faction_name;
+
+    for (const coalition of secretCoalitions) {
+        // 5% passive detection
+        if (Math.random() < 0.05) {
+            await supabase.from('faction_coalitions').update({
+                status: 'detected',
+                detected_at_tick: currentTick
+            }).eq('id', coalition.id);
+
+            // Log detection for the Strongman to see in regime log
+            await supabase.from('campaign_actions').insert({
+                party_id: nation.ruling_faction_id,
+                nation_id: nation.id,
+                action_type: 'coalition_detected',
+                tick_performed: currentTick,
+                result: {
+                    coalition_id: coalition.id,
+                    faction_a_name: nameMap[coalition.faction_a_id] || '???',
+                    faction_b_name: nameMap[coalition.faction_b_id] || '???',
+                    faction_a_id: coalition.faction_a_id,
+                    faction_b_id: coalition.faction_b_id
+                }
+            });
+        }
+    }
+}
+
 // ==================== SHAKEUP AUTO-RESOLVE ====================
 
 export async function autoResolveStaleShakeups(supabase, nationId, currentTick) {

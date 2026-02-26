@@ -179,6 +179,86 @@ async function renderAutocracyParties(el, f, n) {
             .map(d => d.target_faction_id)
     );
 
+    // ── FACTION COALITIONS ──
+    // Fetch active + recently resolved (for cooldown enforcement)
+    const COALITION_REPROPOSE_COOLDOWN = 3;
+    const { data: coalitionRows } = await _supabase
+        .from('faction_coalitions')
+        .select('id, faction_a_id, faction_b_id, coalition_type, status, proposed_by_faction_id, proposed_at_tick, resolved_at_tick, detected_at_tick')
+        .eq('nation_id', n.id)
+        .order('proposed_at_tick', { ascending: false });
+
+    // Auto-expire pending coalition proposals after 3 ticks
+    const COALITION_PROPOSAL_EXPIRY = 3;
+    const COALITION_ACTIVE_EXPIRY = 12;
+    for (const c of (coalitionRows || [])) {
+        if (c.status === 'pending' && currentTick >= c.proposed_at_tick + COALITION_PROPOSAL_EXPIRY) {
+            await _supabase.from('faction_coalitions').update({
+                status: 'declined', resolved_at_tick: currentTick
+            }).eq('id', c.id);
+            c.status = 'declined';
+        }
+        // Auto-expire active/detected coalitions after 12 ticks
+        if (['active', 'detected'].includes(c.status) && c.resolved_at_tick && currentTick >= c.resolved_at_tick + COALITION_ACTIVE_EXPIRY) {
+            await _supabase.from('faction_coalitions').update({
+                status: 'dissolved', resolved_at_tick: currentTick
+            }).eq('id', c.id);
+            c.status = 'dissolved';
+        }
+    }
+
+    // Auto-dissolve coalitions where the partner's steward is dead (Bug #8)
+    for (const c of (coalitionRows || [])) {
+        if (!['active', 'detected'].includes(c.status)) continue;
+        const stewardA = stewardByFaction[c.faction_a_id];
+        const stewardB = stewardByFaction[c.faction_b_id];
+        if (!stewardA || !stewardB) {
+            await _supabase.from('faction_coalitions').update({
+                status: 'dissolved', resolved_at_tick: currentTick
+            }).eq('id', c.id);
+            c.status = 'dissolved';
+        }
+    }
+
+    // My active coalitions (I am a member and it is active/detected)
+    const myActiveCoalitions = (coalitionRows || []).filter(c =>
+        (c.faction_a_id === f.id || c.faction_b_id === f.id) &&
+        ['active', 'detected'].includes(c.status)
+    );
+    // Pending requests targeted at me (I did NOT propose it)
+    const myPendingCoalitionRequests = (coalitionRows || []).filter(c =>
+        (c.faction_a_id === f.id || c.faction_b_id === f.id) &&
+        c.status === 'pending' &&
+        c.proposed_by_faction_id !== f.id
+    );
+    // Pending requests I proposed (outgoing, awaiting response)
+    const myPendingOutgoing = (coalitionRows || []).filter(c =>
+        (c.faction_a_id === f.id || c.faction_b_id === f.id) &&
+        c.status === 'pending' &&
+        c.proposed_by_faction_id === f.id
+    );
+    // All public coalitions (visible to everyone)
+    const publicCoalitions = (coalitionRows || []).filter(c =>
+        c.coalition_type === 'public' && ['active', 'detected'].includes(c.status)
+    );
+    // Detected secret coalitions (visible to strongman)
+    const detectedSecretCoalitions = (coalitionRows || []).filter(c =>
+        c.coalition_type === 'secret' && c.status === 'detected'
+    );
+    // Factions I already have an active/pending coalition with, or recently resolved (cooldown)
+    const existingCoalitionPartners = new Set();
+    for (const c of (coalitionRows || [])) {
+        if (c.faction_a_id === f.id || c.faction_b_id === f.id) {
+            const partnerId = c.faction_a_id === f.id ? c.faction_b_id : c.faction_a_id;
+            if (['pending', 'active', 'detected'].includes(c.status)) {
+                existingCoalitionPartners.add(partnerId);
+            } else if (c.resolved_at_tick && currentTick < c.resolved_at_tick + COALITION_REPROPOSE_COOLDOWN) {
+                // Cooldown: can't re-propose for 3 ticks after decline/dissolve/betray
+                existingCoalitionPartners.add(partnerId);
+            }
+        }
+    }
+
     // ── REGIME PANEL (visible to all — Grip numbers only for Strongman) ──
     const hosFirst = n.head_of_state_first_name || 'Unknown';
     const hosLast = n.head_of_state_last_name || 'Unknown';
@@ -560,6 +640,21 @@ async function renderAutocracyParties(el, f, n) {
             const canSeize = stCoupReadiness >= 50 && stTrueLoyalty < 30;
             const hasMinistry = (ministryByParty[f.id] || []).length > 0;
 
+            // Calculate coalition coup bonus for display
+            let displayCoupBonus = 0;
+            for (const c of myActiveCoalitions) {
+                const pid = c.faction_a_id === f.id ? c.faction_b_id : c.faction_a_id;
+                const ps = stewardByFaction[pid];
+                if (ps) {
+                    const mod = c.coalition_type === 'secret' ? 0.30 : 0.15;
+                    displayCoupBonus += Math.round((ps.power_base ?? 30) * mod);
+                }
+            }
+            const effectiveReadiness = Math.min(95, stCoupReadiness + displayCoupBonus);
+            const coupDisplayStr = displayCoupBonus > 0
+                ? `${effectiveReadiness}% (${stCoupReadiness}% + ${displayCoupBonus}% allies)`
+                : `${stCoupReadiness}%`;
+
             stewardActionsHtml = `
                 <div class="reg-section">
                     <div class="reg-section-title">STEWARD ACTIONS</div>
@@ -585,7 +680,7 @@ async function renderAutocracyParties(el, f, n) {
                             <div class="reg-steward-action-header">
                                 <span class="reg-steward-action-name">SEIZE POWER</span>
                             </div>
-                            <div class="reg-steward-action-desc">Launch a coup. <strong>Success: ${stCoupReadiness}%</strong></div>
+                            <div class="reg-steward-action-desc">Launch a coup. <strong>Success: ${coupDisplayStr}</strong></div>
                             <div class="reg-steward-action-req">${canSeize ? 'READY TO STRIKE' : `Requires: Loyalty < 30 (${stTrueLoyalty}) & Readiness \u2265 50 (${stCoupReadiness})`}</div>
                         </button>
                     </div>
@@ -650,7 +745,12 @@ async function renderAutocracyParties(el, f, n) {
             steward_detected_embezzle: 'EMBEZZLE DETECTED',
             steward_detected_conspire: 'CONSPIRE DETECTED',
             coup_success: 'COUP \u2014 SUCCESS',
-            coup_failed: 'COUP \u2014 FAILED'
+            coup_failed: 'COUP \u2014 FAILED',
+            coalition_proposed: 'COALITION PROPOSED',
+            coalition_accepted: 'COALITION FORMED',
+            coalition_betrayed: 'BETRAYAL',
+            coalition_detected: 'COALITION DETECTED',
+            coalition_dissolved: 'COALITION DISSOLVED'
         };
 
         let regimeLogHtml = '';
@@ -698,8 +798,27 @@ async function renderAutocracyParties(el, f, n) {
                     detail = `${r.steward_name} (${r.faction_name}) seized power!`;
                 } else if (entry.action_type === 'coup_failed') {
                     detail = `${r.steward_name} (${r.faction_name}) failed \u2014 executed`;
+                } else if (entry.action_type === 'coalition_proposed') {
+                    if (r.coalition_type === 'secret' && isStrongman) { detail = ''; label = ''; }
+                    else detail = `${r.coalition_type === 'public' ? 'Public' : 'Secret'} coalition proposed to ${r.target_faction}`;
+                } else if (entry.action_type === 'coalition_accepted') {
+                    if (r.coalition_type === 'secret' && isStrongman) { detail = ''; label = ''; }
+                    else detail = `${r.coalition_type === 'public' ? 'Public' : 'Secret'} coalition formed with ${r.partner_faction}`;
+                } else if (entry.action_type === 'coalition_betrayed') {
+                    // Only visible to the Strongman and the reporter — never the betrayed faction
+                    if (!isStrongman && r.reporter_faction_id !== f.id) return '';
+                    detail = isStrongman
+                        ? `${factionName} reported ${r.betrayed_faction} for secret dealings`
+                        : `You reported ${r.betrayed_faction} to the Strongman`;
+                } else if (entry.action_type === 'coalition_detected') {
+                    // Only the Strongman should know a coalition was detected
+                    if (!isStrongman) return '';
+                    detail = `Secret coalition: ${r.faction_a_name} + ${r.faction_b_name} discovered`;
+                } else if (entry.action_type === 'coalition_dissolved') {
+                    detail = r.partner_faction ? `Coalition with ${r.partner_faction} dissolved` : 'Coalition dissolved';
                 }
 
+                if (!label) return ''; // Hidden entry (e.g. secret coalition not visible to strongman)
                 return `<div class="reg-log-row">
                     <span class="reg-log-date">${escapeHtml(dateStr)}</span>
                     <span class="reg-log-faction">${escapeHtml(factionName)}</span>
@@ -763,6 +882,162 @@ async function renderAutocracyParties(el, f, n) {
                 </div>`;
         }
 
+        // ── COALITION REQUEST BANNER (non-strongman with pending request) ──
+        let coalitionBannerHtml = '';
+        if (myPendingCoalitionRequests.length > 0) {
+            const banners = myPendingCoalitionRequests.map(req => {
+                const partnerId = req.proposed_by_faction_id;
+                const partnerName = factionNameMap[partnerId] || 'Unknown';
+                const typeLabel = req.coalition_type === 'public' ? 'PUBLIC' : 'SECRET';
+                const typeDesc = req.coalition_type === 'public'
+                    ? 'This alliance will be visible to the Strongman and all players.'
+                    : 'This alliance will be hidden. You may also choose to betray the proposer to the Strongman.';
+                return `
+                    <div class="reg-coalition-banner">
+                        <div class="reg-coalition-banner-title">${typeLabel} COALITION REQUEST</div>
+                        <div class="reg-coalition-banner-text"><strong>${escapeHtml(partnerName)}</strong> proposes a ${typeLabel.toLowerCase()} coalition. ${typeDesc}</div>
+                        <div class="reg-coalition-banner-btns">
+                            <button class="reg-coalition-accept-btn" data-coalition-id="${req.id}">ACCEPT</button>
+                            <button class="reg-coalition-decline-btn" data-coalition-id="${req.id}">DECLINE</button>
+                            ${req.coalition_type === 'secret' ? `<button class="reg-coalition-betray-btn" data-coalition-id="${req.id}" data-proposer-id="${partnerId}">BETRAY</button>` : ''}
+                        </div>
+                    </div>`;
+            }).join('');
+            coalitionBannerHtml = banners;
+        }
+
+        // ── PROPOSE COALITION ──
+        let proposeCoalitionHtml = '';
+        const canPropose = isStrongman || mySteward;
+        if (canPropose) {
+            const stAP = f.action_points ?? 0;
+            const eligibleTargets = (isStrongman ? allFactions : nonRuling).filter(p =>
+                p.id !== f.id && !existingCoalitionPartners.has(p.id) && stewardByFaction[p.id]
+            );
+
+            if (eligibleTargets.length > 0) {
+                const targetOptions = eligibleTargets.map(p => {
+                    return `<option value="${p.id}">${escapeHtml(p.faction_name)}</option>`;
+                }).join('');
+
+                const typeSelectHtml = isStrongman
+                    ? `<input type="hidden" id="coalition-type-select" value="public">
+                       <span class="reg-coalition-type-fixed">PUBLIC ALLIANCE</span>`
+                    : `<select id="coalition-type-select" class="reg-coalition-select">
+                           <option value="public">Public (visible)</option>
+                           <option value="secret">Secret (hidden)</option>
+                       </select>`;
+
+                const descText = isStrongman
+                    ? 'Strongman alliances are always public. Lasts 12 ticks.'
+                    : 'Public: Visible to all players including the Strongman.';
+
+                proposeCoalitionHtml = `
+                    <div class="reg-section">
+                        <div class="reg-section-title">PROPOSE COALITION</div>
+                        <div class="reg-coalition-propose-panel">
+                            <div class="reg-coalition-propose-row">
+                                <select id="coalition-target-select" class="reg-coalition-select">
+                                    <option value="">Select faction...</option>
+                                    ${targetOptions}
+                                </select>
+                                ${typeSelectHtml}
+                            </div>
+                            <div class="reg-coalition-propose-desc">
+                                <span id="coalition-type-desc">${descText}</span>
+                            </div>
+                            <button class="reg-steward-action-btn" id="coalition-propose-btn" ${stAP < 1 ? 'disabled' : ''}>
+                                <div class="reg-steward-action-header">
+                                    <span class="reg-steward-action-name">PROPOSE</span>
+                                    <span class="reg-steward-action-cost">1 AP</span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>`;
+            }
+        }
+
+        // ── MY ACTIVE COALITIONS ──
+        let myCoalitionsHtml = '';
+        if (myActiveCoalitions.length > 0) {
+            const coalitionCards = myActiveCoalitions.map(c => {
+                const partnerId = c.faction_a_id === f.id ? c.faction_b_id : c.faction_a_id;
+                const partnerName = factionNameMap[partnerId] || 'Unknown';
+                const typeLabel = c.coalition_type === 'public' ? 'PUBLIC' : 'SECRET';
+                const typeClass = c.coalition_type === 'public' ? 'reg-coalition-public' : 'reg-coalition-secret';
+                const ticksLeft = c.resolved_at_tick ? Math.max(0, (c.resolved_at_tick + COALITION_ACTIVE_EXPIRY) - currentTick) : '?';
+                return `
+                    <div class="reg-coalition-card ${typeClass}">
+                        <div class="reg-coalition-card-header">
+                            <span class="reg-coalition-type-tag">${typeLabel}</span>
+                            <span class="reg-coalition-partner">${escapeHtml(partnerName)}</span>
+                            <span class="reg-coalition-expiry-tag">${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} left</span>
+                        </div>
+                        <div class="reg-coalition-card-actions">
+                            <button class="reg-coalition-msg-btn" data-coalition-id="${c.id}" data-partner-name="${escapeHtml(partnerName)}">MESSAGE</button>
+                            <button class="reg-coalition-dissolve-btn" data-coalition-id="${c.id}" data-partner-name="${escapeHtml(partnerName)}">DISSOLVE</button>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            myCoalitionsHtml = `
+                <div class="reg-section">
+                    <div class="reg-section-title">MY COALITIONS</div>
+                    <div class="reg-coalition-list">${coalitionCards}</div>
+                </div>`;
+        }
+
+        // ── MY PENDING OUTGOING PROPOSALS ──
+        let myPendingOutgoingHtml = '';
+        if (myPendingOutgoing.length > 0) {
+            const pendingCards = myPendingOutgoing.map(c => {
+                const targetId = c.faction_a_id === f.id ? c.faction_b_id : c.faction_a_id;
+                const targetName = factionNameMap[targetId] || 'Unknown';
+                const typeLabel = c.coalition_type === 'public' ? 'PUBLIC' : 'SECRET';
+                const typeClass = c.coalition_type === 'public' ? 'reg-coalition-public' : 'reg-coalition-secret';
+                return `
+                    <div class="reg-coalition-card reg-coalition-pending ${typeClass}">
+                        <div class="reg-coalition-card-header">
+                            <span class="reg-coalition-type-tag">${typeLabel}</span>
+                            <span class="reg-coalition-partner">${escapeHtml(targetName)}</span>
+                            <span class="reg-coalition-pending-tag">AWAITING RESPONSE</span>
+                        </div>
+                        <div class="reg-coalition-card-actions">
+                            <button class="reg-coalition-withdraw-btn" data-coalition-id="${c.id}" data-target-name="${escapeHtml(targetName)}">WITHDRAW</button>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            myPendingOutgoingHtml = `
+                <div class="reg-section">
+                    <div class="reg-section-title">PENDING PROPOSALS</div>
+                    <div class="reg-coalition-list">${pendingCards}</div>
+                </div>`;
+        }
+
+        // ── COALITION INTELLIGENCE (Strongman view) ──
+        let coalitionIntelHtml = '';
+        if (isStrongman) {
+            const visibleCoalitions = [...publicCoalitions, ...detectedSecretCoalitions];
+            if (visibleCoalitions.length > 0) {
+                const rows = visibleCoalitions.map(c => {
+                    const nameA = factionNameMap[c.faction_a_id] || '???';
+                    const nameB = factionNameMap[c.faction_b_id] || '???';
+                    const typeLabel = c.coalition_type === 'public' ? 'PUBLIC' : 'SECRET (DETECTED)';
+                    const typeClass = c.coalition_type === 'public' ? 'reg-coalition-intel-public' : 'reg-coalition-intel-secret';
+                    return `<div class="reg-coalition-intel-row ${typeClass}">
+                        <span class="reg-coalition-intel-names">${escapeHtml(nameA)} + ${escapeHtml(nameB)}</span>
+                        <span class="reg-coalition-intel-type">${typeLabel}</span>
+                    </div>`;
+                }).join('');
+                coalitionIntelHtml = `
+                    <div class="reg-section">
+                        <div class="reg-section-title">KNOWN COALITIONS</div>
+                        <div class="reg-coalition-intel-list">${rows}</div>
+                    </div>`;
+            }
+        }
+
         // Confirmation dialog overlay (hidden by default, activated by JS)
         const confirmOverlayHtml = !isStrongman ? `<div class="reg-steward-confirm-overlay" id="steward-confirm-overlay" style="display:none">
             <div class="reg-steward-confirm-box">
@@ -774,6 +1049,20 @@ async function renderAutocracyParties(el, f, n) {
                 </div>
             </div>
         </div>` : '';
+
+        // Coalition messaging overlay (hidden by default)
+        const coalitionMsgOverlayHtml = `
+        <div class="reg-coalition-msg-overlay" id="coalition-msg-overlay" style="display:none">
+            <div class="reg-coalition-msg-box">
+                <div class="reg-coalition-msg-title" id="coalition-msg-title">Coalition Messages</div>
+                <div class="reg-coalition-msg-list" id="coalition-msg-list"></div>
+                <div class="reg-coalition-msg-input-row">
+                    <input type="text" id="coalition-msg-input" class="reg-coalition-msg-input" placeholder="Type a message..." maxlength="280">
+                    <button id="coalition-msg-send" class="reg-coalition-msg-send-btn">SEND</button>
+                </div>
+                <button class="reg-coalition-msg-close" id="coalition-msg-close">CLOSE</button>
+            </div>
+        </div>`;
 
         let regimePanel = `
             <div class="reg-panel">
@@ -802,6 +1091,7 @@ async function renderAutocracyParties(el, f, n) {
                 </div>
 
                 ${demandBannerHtml}
+                ${coalitionBannerHtml}
 
                 <div class="reg-body">
                     <div class="reg-col-left">
@@ -827,6 +1117,9 @@ async function renderAutocracyParties(el, f, n) {
 
                         ${stewardStatusHtml}
                         ${stewardActionsHtml}
+                        ${proposeCoalitionHtml}
+                        ${myCoalitionsHtml}
+                        ${myPendingOutgoingHtml}
 
                         <div class="reg-section">
                             <div class="reg-section-title">REGIME VITALS</div>
@@ -871,6 +1164,10 @@ async function renderAutocracyParties(el, f, n) {
                             </div>
                         </div>
                         ${pillarCardsHtml}
+                        ${coalitionIntelHtml}
+                        ${isStrongman ? proposeCoalitionHtml : ''}
+                        ${isStrongman ? myCoalitionsHtml : ''}
+                        ${isStrongman ? myPendingOutgoingHtml : ''}
                         ${regimeLogHtml}
                     </div>
                 </div>
@@ -880,6 +1177,7 @@ async function renderAutocracyParties(el, f, n) {
         <div class="parties-page">
             ${regimePanel}
             ${confirmOverlayHtml}
+            ${coalitionMsgOverlayHtml}
         </div>`;
 
     // ── Steward claim handlers (with confirmation dialog) ──
@@ -1227,11 +1525,23 @@ async function renderAutocracyParties(el, f, n) {
             const trueLoyalty = mySteward.true_loyalty ?? 100;
             if (coupReadiness < 50 || trueLoyalty >= 30) return;
 
-            if (!confirm(`Launch coup attempt? Success chance: ${coupReadiness}%. Failure means death for your steward.`)) return;
+            // Calculate coalition coup bonus
+            let coalitionBonus = 0;
+            for (const c of myActiveCoalitions) {
+                const partnerId = c.faction_a_id === f.id ? c.faction_b_id : c.faction_a_id;
+                const partnerSteward = stewardByFaction[partnerId];
+                if (partnerSteward) {
+                    const modifier = c.coalition_type === 'secret' ? 0.30 : 0.15;
+                    coalitionBonus += Math.round((partnerSteward.power_base ?? 30) * modifier);
+                }
+            }
+            const effectiveCoupChance = Math.min(95, coupReadiness + coalitionBonus);
+
+            if (!confirm(`Launch coup attempt? Success chance: ${effectiveCoupChance}%${coalitionBonus > 0 ? ` (${coupReadiness}% base + ${coalitionBonus}% coalition)` : ''}. Failure means death for your steward.`)) return;
             seizeBtn.disabled = true;
             seizeBtn.querySelector('.reg-steward-action-name').textContent = 'SEIZING POWER...';
 
-            const success = Math.random() * 100 < coupReadiness;
+            const success = Math.random() * 100 < effectiveCoupChance;
 
             if (success) {
                 await _supabase.from('nations').update({ ruling_faction_id: f.id }).eq('id', n.id);
@@ -1252,15 +1562,281 @@ async function renderAutocracyParties(el, f, n) {
                 });
             }
 
+            // Dissolve all coalitions involving this faction (new ruler or dead steward)
+            for (const c of myActiveCoalitions) {
+                await _supabase.from('faction_coalitions').update({
+                    status: 'dissolved', resolved_at_tick: currentTick
+                }).eq('id', c.id);
+            }
+
             await renderAutocracyParties(el, f, n);
         });
     }
 
-    // ── TAB BADGE for pending demand ──
+    // ── COALITION HANDLERS ──
+
+    // Type select description update
+    const typeSelect = document.getElementById('coalition-type-select');
+    if (typeSelect) {
+        typeSelect.addEventListener('change', () => {
+            const descEl = document.getElementById('coalition-type-desc');
+            if (!descEl) return;
+            descEl.textContent = typeSelect.value === 'secret'
+                ? 'Secret: Hidden from Strongman. 5% detection risk per tick. Target can betray you.'
+                : 'Public: Visible to all players including the Strongman.';
+        });
+    }
+
+    // Propose coalition
+    const proposeBtn = document.getElementById('coalition-propose-btn');
+    if (proposeBtn) {
+        proposeBtn.addEventListener('click', async () => {
+            const targetId = document.getElementById('coalition-target-select')?.value;
+            const coalitionType = document.getElementById('coalition-type-select')?.value;
+            if (!targetId || !coalitionType) return;
+            if ((f.action_points || 0) < 1) { alert('Not enough AP (need 1).'); return; }
+
+            proposeBtn.disabled = true;
+            proposeBtn.querySelector('.reg-steward-action-name').textContent = 'PROPOSING...';
+
+            const apResult = await deductAP(_supabase, f.id, 1);
+            if (!apResult.success) { alert('Not enough AP.'); await renderAutocracyParties(el, f, n); return; }
+            f.action_points = apResult.newAp;
+
+            // Canonical ordering: faction_a < faction_b
+            const aId = f.id < targetId ? f.id : targetId;
+            const bId = f.id < targetId ? targetId : f.id;
+
+            await _supabase.from('faction_coalitions').insert({
+                nation_id: n.id,
+                faction_a_id: aId,
+                faction_b_id: bId,
+                coalition_type: coalitionType,
+                status: 'pending',
+                proposed_by_faction_id: f.id,
+                proposed_at_tick: currentTick
+            });
+
+            const targetName = factionNameMap[targetId] || 'Unknown';
+
+            // Only log public coalition proposals (secret ones stay hidden)
+            if (coalitionType === 'public') {
+                await _supabase.from('campaign_actions').insert({
+                    party_id: f.id, nation_id: n.id,
+                    action_type: 'coalition_proposed',
+                    tick_performed: currentTick,
+                    result: { target_faction: targetName, target_faction_id: targetId, coalition_type: coalitionType }
+                });
+            }
+
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
+    // Accept coalition
+    el.querySelectorAll('.reg-coalition-accept-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const coalitionId = btn.dataset.coalitionId;
+            btn.disabled = true;
+            btn.textContent = 'ACCEPTING...';
+
+            await _supabase.from('faction_coalitions').update({
+                status: 'active', resolved_at_tick: currentTick
+            }).eq('id', coalitionId);
+
+            const coalition = myPendingCoalitionRequests.find(c => c.id === coalitionId);
+            const partnerName = coalition ? factionNameMap[coalition.proposed_by_faction_id] || 'Unknown' : 'Unknown';
+
+            // Only log public coalition acceptance
+            if (coalition && coalition.coalition_type === 'public') {
+                await _supabase.from('campaign_actions').insert({
+                    party_id: f.id, nation_id: n.id,
+                    action_type: 'coalition_accepted',
+                    tick_performed: currentTick,
+                    result: { partner_faction: partnerName, coalition_type: coalition.coalition_type, coalition_id: coalitionId }
+                });
+            }
+
+            await renderAutocracyParties(el, f, n);
+        });
+    });
+
+    // Decline coalition
+    el.querySelectorAll('.reg-coalition-decline-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const coalitionId = btn.dataset.coalitionId;
+            btn.disabled = true;
+            btn.textContent = 'DECLINING...';
+
+            await _supabase.from('faction_coalitions').update({
+                status: 'declined', resolved_at_tick: currentTick
+            }).eq('id', coalitionId);
+
+            await renderAutocracyParties(el, f, n);
+        });
+    });
+
+    // Betray coalition (secret only)
+    el.querySelectorAll('.reg-coalition-betray-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!confirm('Betray this player? You will report their approach to the Strongman. They will not know they were betrayed.')) return;
+            const coalitionId = btn.dataset.coalitionId;
+            const proposerId = btn.dataset.proposerId;
+            btn.disabled = true;
+            btn.textContent = 'BETRAYING...';
+
+            // Mark coalition as betrayed (proposer sees it as 'declined')
+            await _supabase.from('faction_coalitions').update({
+                status: 'betrayed', resolved_at_tick: currentTick
+            }).eq('id', coalitionId);
+
+            // Reporter (me) gets: standing +8, estimated_loyalty +10
+            if (mySteward) {
+                await _supabase.from('stewards').update({
+                    standing: Math.min(100, (mySteward.standing ?? 50) + 8),
+                    estimated_loyalty: Math.min(100, (mySteward.estimated_loyalty ?? 55) + 10)
+                }).eq('id', mySteward.id);
+            }
+
+            // Target (proposer) gets: estimated_loyalty -15 (they don't know)
+            const targetSteward = stewardByFaction[proposerId];
+            if (targetSteward) {
+                await _supabase.from('stewards').update({
+                    estimated_loyalty: Math.max(0, (targetSteward.estimated_loyalty ?? 55) - 15)
+                }).eq('id', targetSteward.id);
+            }
+
+            const proposerName = factionNameMap[proposerId] || 'Unknown';
+            await _supabase.from('campaign_actions').insert({
+                party_id: f.id, nation_id: n.id,
+                action_type: 'coalition_betrayed',
+                tick_performed: currentTick,
+                result: { betrayed_faction: proposerName, betrayed_faction_id: proposerId, reporter_faction_id: f.id }
+            });
+
+            await renderAutocracyParties(el, f, n);
+        });
+    });
+
+    // Dissolve coalition
+    el.querySelectorAll('.reg-coalition-dissolve-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!confirm('Dissolve this coalition? This cannot be undone.')) return;
+            const coalitionId = btn.dataset.coalitionId;
+            const partnerName = btn.dataset.partnerName || 'Unknown';
+            btn.disabled = true;
+            btn.textContent = 'DISSOLVING...';
+
+            await _supabase.from('faction_coalitions').update({
+                status: 'dissolved', resolved_at_tick: currentTick
+            }).eq('id', coalitionId);
+
+            await _supabase.from('campaign_actions').insert({
+                party_id: f.id, nation_id: n.id,
+                action_type: 'coalition_dissolved',
+                tick_performed: currentTick,
+                result: { partner_faction: partnerName }
+            });
+
+            await renderAutocracyParties(el, f, n);
+        });
+    });
+
+    // Withdraw pending coalition proposal
+    el.querySelectorAll('.reg-coalition-withdraw-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!confirm('Withdraw this coalition proposal?')) return;
+            const coalitionId = btn.dataset.coalitionId;
+            btn.disabled = true;
+            btn.textContent = 'WITHDRAWING...';
+
+            await _supabase.from('faction_coalitions').update({
+                status: 'declined', resolved_at_tick: currentTick
+            }).eq('id', coalitionId);
+
+            await renderAutocracyParties(el, f, n);
+        });
+    });
+
+    // Coalition messaging
+    el.querySelectorAll('.reg-coalition-msg-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const coalitionId = btn.dataset.coalitionId;
+            const partnerName = btn.dataset.partnerName;
+            const overlay = document.getElementById('coalition-msg-overlay');
+            const titleEl = document.getElementById('coalition-msg-title');
+            const listEl = document.getElementById('coalition-msg-list');
+            const inputEl = document.getElementById('coalition-msg-input');
+            const sendBtn = document.getElementById('coalition-msg-send');
+            const closeBtn = document.getElementById('coalition-msg-close');
+            if (!overlay || !listEl) return;
+
+            titleEl.textContent = `Messages \u2014 ${partnerName}`;
+            overlay.style.display = 'flex';
+
+            async function loadMessages() {
+                const { data: msgs } = await _supabase
+                    .from('coalition_messages')
+                    .select('faction_id, message, tick_posted')
+                    .eq('coalition_id', coalitionId)
+                    .order('created_at', { ascending: true })
+                    .limit(50);
+
+                listEl.innerHTML = (msgs || []).map(m => {
+                    const isMine = m.faction_id === f.id;
+                    const senderName = isMine ? f.faction_name : partnerName;
+                    return `<div class="reg-coalition-msg ${isMine ? 'mine' : 'theirs'}">
+                        <span class="reg-coalition-msg-sender">${escapeHtml(senderName)}</span>
+                        <span class="reg-coalition-msg-text">${escapeHtml(m.message)}</span>
+                        <span class="reg-coalition-msg-tick">Tick ${m.tick_posted}</span>
+                    </div>`;
+                }).join('') || '<div class="reg-coalition-msg-empty">No messages yet.</div>';
+
+                listEl.scrollTop = listEl.scrollHeight;
+            }
+
+            await loadMessages();
+
+            // Clone buttons and input to remove old listeners
+            const newSend = sendBtn.cloneNode(true);
+            const newClose = closeBtn.cloneNode(true);
+            const newInput = inputEl.cloneNode(true);
+            sendBtn.replaceWith(newSend);
+            closeBtn.replaceWith(newClose);
+            inputEl.replaceWith(newInput);
+
+            newClose.addEventListener('click', () => { overlay.style.display = 'none'; });
+
+            newSend.addEventListener('click', async () => {
+                const text = newInput.value.trim();
+                if (!text) return;
+                newSend.disabled = true;
+
+                await _supabase.from('coalition_messages').insert({
+                    coalition_id: coalitionId,
+                    faction_id: f.id,
+                    message: text,
+                    tick_posted: currentTick
+                });
+
+                newInput.value = '';
+                newSend.disabled = false;
+                await loadMessages();
+            });
+
+            // Allow enter key to send
+            newInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); newSend.click(); }
+            });
+        });
+    });
+
+    // ── TAB BADGE for pending demand or coalition request ──
     const partiesTab = document.querySelector('.nav-tab[data-tab="parties"]');
     if (partiesTab) {
         const existingBadge = partiesTab.querySelector('.reg-tab-badge');
-        if (myPendingDemand) {
+        const hasPending = myPendingDemand || myPendingCoalitionRequests.length > 0;
+        if (hasPending) {
             if (!existingBadge) {
                 const badge = document.createElement('span');
                 badge.className = 'reg-tab-badge';
