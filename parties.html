@@ -187,6 +187,17 @@ async function renderAutocracyParties(el, f, n) {
         .in('status', ['pending', 'active', 'detected'])
         .order('proposed_at_tick', { ascending: false });
 
+    // Auto-expire pending coalition proposals after 3 ticks
+    const COALITION_EXPIRY_TICKS = 3;
+    for (const c of (coalitionRows || [])) {
+        if (c.status === 'pending' && currentTick >= c.proposed_at_tick + COALITION_EXPIRY_TICKS) {
+            await _supabase.from('faction_coalitions').update({
+                status: 'declined', resolved_at_tick: currentTick
+            }).eq('id', c.id);
+            c.status = 'declined'; // update local copy so filters below exclude it
+        }
+    }
+
     // My active coalitions (I am a member and it is active/detected)
     const myActiveCoalitions = (coalitionRows || []).filter(c =>
         (c.faction_a_id === f.id || c.faction_b_id === f.id) &&
@@ -774,6 +785,8 @@ async function renderAutocracyParties(el, f, n) {
                         ? `${factionName} reported ${r.betrayed_faction} for secret dealings`
                         : `You reported ${r.betrayed_faction} to the Strongman`;
                 } else if (entry.action_type === 'coalition_detected') {
+                    // Only the Strongman should know a coalition was detected
+                    if (!isStrongman) return '';
                     detail = `Secret coalition: ${r.faction_a_name} + ${r.faction_b_name} discovered`;
                 } else if (entry.action_type === 'coalition_dissolved') {
                     detail = r.partner_faction ? `Coalition with ${r.partner_faction} dissolved` : 'Coalition dissolved';
@@ -916,11 +929,10 @@ async function renderAutocracyParties(el, f, n) {
                 const partnerName = factionNameMap[partnerId] || 'Unknown';
                 const typeLabel = c.coalition_type === 'public' ? 'PUBLIC' : 'SECRET';
                 const typeClass = c.coalition_type === 'public' ? 'reg-coalition-public' : 'reg-coalition-secret';
-                const detectedTag = c.status === 'detected' ? ' <span class="reg-coalition-detected">DETECTED</span>' : '';
                 return `
                     <div class="reg-coalition-card ${typeClass}">
                         <div class="reg-coalition-card-header">
-                            <span class="reg-coalition-type-tag">${typeLabel}${detectedTag}</span>
+                            <span class="reg-coalition-type-tag">${typeLabel}</span>
                             <span class="reg-coalition-partner">${escapeHtml(partnerName)}</span>
                         </div>
                         <div class="reg-coalition-card-actions">
@@ -1737,16 +1749,18 @@ async function renderAutocracyParties(el, f, n) {
 
             await loadMessages();
 
-            // Clone buttons to remove old listeners
+            // Clone buttons and input to remove old listeners
             const newSend = sendBtn.cloneNode(true);
             const newClose = closeBtn.cloneNode(true);
+            const newInput = inputEl.cloneNode(true);
             sendBtn.replaceWith(newSend);
             closeBtn.replaceWith(newClose);
+            inputEl.replaceWith(newInput);
 
             newClose.addEventListener('click', () => { overlay.style.display = 'none'; });
 
             newSend.addEventListener('click', async () => {
-                const text = inputEl.value.trim();
+                const text = newInput.value.trim();
                 if (!text) return;
                 newSend.disabled = true;
 
@@ -1757,13 +1771,13 @@ async function renderAutocracyParties(el, f, n) {
                     tick_posted: currentTick
                 });
 
-                inputEl.value = '';
+                newInput.value = '';
                 newSend.disabled = false;
                 await loadMessages();
             });
 
             // Allow enter key to send
-            inputEl.addEventListener('keydown', (e) => {
+            newInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') { e.preventDefault(); newSend.click(); }
             });
         });
