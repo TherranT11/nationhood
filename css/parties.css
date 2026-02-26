@@ -3151,15 +3151,74 @@ body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }
     display: flex;
     gap: 8px;
 }
-.reg-coalition-select {
+/* ── Custom Dropdown (cdd) ── */
+.cdd {
     flex: 1;
-    padding: 6px 8px;
+    position: relative;
     font-size: 0.55rem;
-    background: rgba(226,224,214,0.05);
-    border: 1px solid rgba(226,224,214,0.12);
-    border-radius: 4px;
-    color: inherit;
 }
+.cdd-trigger {
+    padding: 6px 24px 6px 8px;
+    background: #1e1e1a;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 4px;
+    color: #e2e0d6;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.cdd-trigger::after {
+    content: '▾';
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.5rem;
+    color: #6b6a5e;
+    pointer-events: none;
+}
+.cdd.open .cdd-trigger {
+    border-color: rgba(255,255,255,0.15);
+}
+.cdd-trigger.cdd-placeholder {
+    color: #6b6a5e;
+}
+.cdd-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    right: 0;
+    background: #1e1e1a;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    z-index: 1000;
+    max-height: 200px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+.cdd.open .cdd-menu {
+    display: block;
+}
+.cdd-item {
+    padding: 6px 8px;
+    color: #e2e0d6;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.cdd-item:hover {
+    background: #25251f;
+}
+.cdd-item.selected {
+    background: rgba(255,255,255,0.1);
+}
+.cdd-menu::-webkit-scrollbar { width: 4px; }
+.cdd-menu::-webkit-scrollbar-track { background: transparent; }
+.cdd-menu::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
 .reg-coalition-propose-desc {
     font-size: 0.5rem;
     color: #8a8778;
@@ -3330,7 +3389,13 @@ body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }
 
 /* ── Coalition light mode overrides ── */
 body.light-mode .reg-coalition-banner { background: rgba(33,150,243,0.04); }
-body.light-mode .reg-coalition-select { background: rgba(0,0,0,0.03); border-color: rgba(0,0,0,0.08); }
+body.light-mode .cdd-trigger { background: #fafafa; border-color: rgba(0,0,0,0.1); color: #2a2a28; }
+body.light-mode .cdd-trigger.cdd-placeholder { color: #999; }
+body.light-mode .cdd-trigger::after { color: #999; }
+body.light-mode .cdd-menu { background: #fafafa; border-color: rgba(0,0,0,0.1); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+body.light-mode .cdd-item { color: #2a2a28; }
+body.light-mode .cdd-item:hover { background: rgba(0,0,0,0.04); }
+body.light-mode .cdd-item.selected { background: rgba(0,0,0,0.08); }
 body.light-mode .reg-coalition-card { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.08); }
 body.light-mode .reg-coalition-msg-box { background: #fff; }
 body.light-mode .reg-coalition-intel-row { background: rgba(0,0,0,0.02); }
