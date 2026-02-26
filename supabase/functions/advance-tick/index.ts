@@ -2058,17 +2058,13 @@ async function processGovernmentShutdown(supabase, nation, currentTick) {
         console.log(`[GovernmentShutdown] Applied -4 Momentum to ${coalitionPartyIds.length} coalition parties for ${nation.name}`);
     }
 
-    // --- 2. PM party extra penalty: -3/tick momentum ---
+    // --- 2. PM party extra penalty: -3/tick + gov approval event ---
     const pmPartyId = coalition?.lead_party_id;
     if (pmPartyId) {
         await adjustMomentumAll(supabase, nation.id, pmPartyId, -3, 'crisis:government_shutdown_pm');
-        console.log(`[GovernmentShutdown] Applied -3 Momentum to PM party ${pmPartyId} for ${nation.name}`);
+        await adjustGovernmentApprovalEvent(supabase, nation.id, -3, 'crisis:government_shutdown');
+        console.log(`[GovernmentShutdown] Applied -3 Momentum to PM party ${pmPartyId} + -3 gov approval event for ${nation.name}`);
     }
-
-    // --- 2b. Gov approval event penalty: unconditional -3/tick ---
-    // Applied regardless of coalition status — a shutdown hurts government approval no matter what
-    await adjustGovernmentApprovalEvent(supabase, nation.id, -3, 'crisis:government_shutdown');
-    console.log(`[GovernmentShutdown] Applied -3 gov approval event for ${nation.name}`);
 
     // --- 3. President approval penalty: -3/tick (presidential systems) ---
     if (isPresidentialRepublic(nation)) {
@@ -4084,12 +4080,12 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
         if (election?.results?.votes) {
             const votes = election.results.votes;
-            const voteTotals: Record<string, number> = {};
+            const voteTotals = {};
             // Handle both array format (SQL RPC) and object format (JS simulation)
             if (Array.isArray(votes)) {
                 for (const v of votes) voteTotals[v.party_id] = v.votes || 0;
             } else {
-                for (const [pid, v] of Object.entries(votes)) voteTotals[pid] = (v as number) || 0;
+                for (const [pid, v] of Object.entries(votes)) voteTotals[pid] = v || 0;
             }
             if (Object.keys(voteTotals).length > 0) {
                 const newSeats = allocateSeatsByVotes(voteTotals, newTotalSeats);
@@ -4111,10 +4107,10 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
                 .eq('faction_type', 'party');
 
             if (factions && factions.length > 0) {
-                const oldSum = factions.reduce((s: number, f: any) => s + (f.seats || 0), 0);
+                const oldSum = factions.reduce((s, f) => s + (f.seats || 0), 0);
                 if (oldSum > 0) {
                     // Use Largest Remainder to cleanly distribute newTotalSeats
-                    const seatTotals: Record<string, number> = {};
+                    const seatTotals = {};
                     for (const f of factions) seatTotals[f.id] = f.seats || 0;
                     const newSeats = allocateSeatsByVotes(seatTotals, newTotalSeats);
                     for (const [partyId, seats] of Object.entries(newSeats)) {
@@ -10452,6 +10448,60 @@ async function processStewardTick(supabase, nation) {
     }
 }
 
+// ==================== COALITION DETECTION ====================
+
+/**
+ * Process secret coalition detection each tick.
+ * Each active secret coalition has a 5% passive chance of being discovered.
+ * When detected, status changes to 'detected' and a campaign_actions entry is logged.
+ */
+async function processCoalitionDetection(supabase, nation, currentTick) {
+    if (!isAutocracy(nation)) return;
+
+    const { data: secretCoalitions } = await supabase
+        .from('faction_coalitions')
+        .select('id, faction_a_id, faction_b_id')
+        .eq('nation_id', nation.id)
+        .eq('coalition_type', 'secret')
+        .eq('status', 'active');
+
+    if (!secretCoalitions || secretCoalitions.length === 0) return;
+
+    // Fetch faction names for logging
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, faction_name')
+        .eq('nation_id', nation.id);
+
+    const nameMap = {};
+    for (const fc of (factions || [])) nameMap[fc.id] = fc.faction_name;
+
+    for (const coalition of secretCoalitions) {
+        // 5% passive detection
+        if (Math.random() < 0.05) {
+            await supabase.from('faction_coalitions').update({
+                status: 'detected',
+                detected_at_tick: currentTick
+            }).eq('id', coalition.id);
+
+            // Log detection for the Strongman to see in regime log
+            await supabase.from('campaign_actions').insert({
+                party_id: nation.ruling_faction_id,
+                nation_id: nation.id,
+                action_type: 'coalition_detected',
+                tick_performed: currentTick,
+                result: {
+                    coalition_id: coalition.id,
+                    faction_a_name: nameMap[coalition.faction_a_id] || '???',
+                    faction_b_name: nameMap[coalition.faction_b_id] || '???',
+                    faction_a_id: coalition.faction_a_id,
+                    faction_b_id: coalition.faction_b_id
+                }
+            });
+        }
+    }
+}
+
 // ==================== SHAKEUP AUTO-RESOLVE ====================
 
 async function autoResolveStaleShakeups(supabase, nationId, currentTick) {
@@ -10925,7 +10975,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
  * @param {number} currentTick
  * @returns {Array} results for logging
  */
-async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown = false) {
+async function updateMinisterApprovals(supabase, nation, currentTick) {
     const { data: ministries } = await supabase
         .from('ministries')
         .select('id, ministry_key, minister_approval, minister_first_name, embattled_since_tick, party_id')
@@ -10960,11 +11010,8 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
         if (statCount === 0) continue;
 
         const avgDelta = contributionSum / statCount;
-        // During a government shutdown, all ministries take a direct -3/tick approval hit.
-        // This ensures visible, immediate impact — the shutdown is the most punishing domestic crisis.
-        const shutdownPenalty = isShutdown ? -3 : 0;
         const oldApproval = ministry.minister_approval ?? 50;
-        const newApproval = Math.round(Math.max(0, Math.min(100, oldApproval + avgDelta + shutdownPenalty)) * 10) / 10;
+        const newApproval = Math.round(Math.max(0, Math.min(100, oldApproval + avgDelta)) * 10) / 10;
 
         // Track embattled status
         let embattledSinceTick = ministry.embattled_since_tick;
@@ -10987,7 +11034,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
             ministry_key: ministry.ministry_key,
             old: oldApproval,
             new: newApproval,
-            delta: Math.round((avgDelta + shutdownPenalty) * 10) / 10,
+            delta: Math.round(avgDelta * 10) / 10,
             embattled: embattledSinceTick !== null
         });
     }
@@ -13796,7 +13843,8 @@ async function advanceTick(supabase) {
         await recordStatHistory(supabase, nation, newTick);
 
         // Layer 1: Update minister approvals from stat thresholds
-        const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick);
+        // During government shutdown, all ministers take a direct -3/tick approval penalty
+        const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick, shutdownNow);
         if (ministerApprovalResults.length > 0) {
             summary.ministerApprovals = summary.ministerApprovals || [];
             summary.ministerApprovals.push({ nation: nation.name, results: ministerApprovalResults });
@@ -13831,6 +13879,11 @@ async function advanceTick(supabase) {
         // Steward stats tick (autocracy)
         if (isAutocracy(nation)) {
             await processStewardTick(supabase, nation);
+        }
+
+        // Secret coalition detection (autocracy)
+        if (isAutocracy(nation)) {
+            await processCoalitionDetection(supabase, nation, newTick);
         }
 
         // Auto-resolve shakeups that are 1+ ticks old

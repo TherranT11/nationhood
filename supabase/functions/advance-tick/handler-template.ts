@@ -619,6 +619,11 @@ async function advanceTick(supabase) {
             await processStewardTick(supabase, nation);
         }
 
+        // Secret coalition detection (autocracy)
+        if (isAutocracy(nation)) {
+            await processCoalitionDetection(supabase, nation, newTick);
+        }
+
         // Auto-resolve shakeups that are 1+ ticks old
         if (isAutocracy(nation)) {
             await autoResolveStaleShakeups(supabase, nation.id, newTick);
