@@ -13042,3 +13042,202 @@ export async function runElectionPreview(supabase, nationId) {
         partyNames
     };
 }
+
+/**
+ * Client-side presidential election preview (non-destructive).
+ * Loads candidates, builds virtual-party objects, runs the simulation,
+ * and checks for runoff (top candidate <=50% with >2 candidates).
+ * If a runoff would trigger, re-runs with only the top 2 candidates.
+ */
+export async function runPresidentialElectionPreview(supabase, nationId) {
+    // 1. Load nation
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('id, name, total_seats, eligible_voters')
+        .eq('id', nationId)
+        .single();
+    if (!nation) throw new Error('Nation not found');
+
+    // 2. Load voter blocs
+    const { data: blocs } = await supabase
+        .from('voter_blocs')
+        .select('*')
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+    if (!blocs || blocs.length === 0) throw new Error('No voter blocs found for this nation');
+
+    // Scale bloc voter_counts so total matches eligible_voters
+    const eligibleVoters = nation.eligible_voters || 0;
+    const totalBlocVoters = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
+    if (totalBlocVoters > 0 && eligibleVoters > 0) {
+        const scale = eligibleVoters / totalBlocVoters;
+        let scaledSum = 0;
+        for (const b of blocs) {
+            b.voter_count = Math.round((b.voter_count || 0) * scale);
+            scaledSum += b.voter_count;
+        }
+        const diff = eligibleVoters - scaledSum;
+        if (diff !== 0) {
+            const largest = blocs.reduce((a, b) => (b.voter_count > a.voter_count ? b : a), blocs[0]);
+            largest.voter_count += diff;
+        }
+    }
+
+    // 3. Load selected presidential candidates
+    const { data: candidates } = await supabase
+        .from('pm_candidates')
+        .select('id, first_name, last_name, faction_id, ideology, ideology_axis, ideology_direction, trait_key')
+        .eq('nation_id', nationId)
+        .eq('candidate_type', 'presidential')
+        .eq('selected', true);
+    if (!candidates || candidates.length === 0) throw new Error('No selected presidential candidates found. Generate and select candidates first.');
+
+    // 4. Load faction data + ideology axes for each candidate's party
+    const factionIds = [...new Set(candidates.map(c => c.faction_id))];
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id, faction_name')
+        .in('id', factionIds);
+    const factionMap = {};
+    for (const f of (factions || [])) factionMap[f.id] = f;
+
+    const { data: ideologies } = await supabase
+        .from('faction_ideology')
+        .select('*')
+        .in('faction_id', factionIds);
+    const ideoMap = {};
+    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
+
+    // 5. Build "virtual party" objects per candidate (mirrors SQL RPC logic)
+    const AXES = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
+    function buildCandidateParty(cand) {
+        const factionIdeo = ideoMap[cand.faction_id] || {};
+        const axes = {};
+        for (const axis of AXES) {
+            let val = factionIdeo[axis] || 0;
+            if (cand.ideology_axis === axis) {
+                // Candidate gets +15 bonus on their personal axis
+                // For globalism_nationalism, negate direction (convention mismatch)
+                const dir = axis === 'globalism_nationalism' ? cand.ideology_direction * -1 : cand.ideology_direction;
+                val += 15 * dir;
+            }
+            axes[axis] = Math.max(-100, Math.min(100, val));
+        }
+        const faction = factionMap[cand.faction_id] || {};
+        return {
+            id: cand.id,
+            faction_name: `${cand.first_name} ${cand.last_name}`,
+            party_name: faction.faction_name || 'Independent',
+            faction_id: cand.faction_id,
+            ideology: cand.ideology,
+            trait_key: cand.trait_key,
+            axes
+        };
+    }
+    const allCandidateParties = candidates.map(buildCandidateParty);
+
+    // 6. Load per-bloc approval data (keyed by faction, same as parliamentary)
+    const { data: fbaRows } = await supabase
+        .from('faction_bloc_approval')
+        .select('faction_id, bloc_id, preference_score')
+        .in('faction_id', factionIds);
+    const allBlocApprovals = {};
+    for (const row of (fbaRows || [])) {
+        if (!allBlocApprovals[row.bloc_id]) allBlocApprovals[row.bloc_id] = {};
+        // Map faction approval to candidate id (candidate inherits faction approval)
+        for (const cand of candidates) {
+            if (cand.faction_id === row.faction_id) {
+                allBlocApprovals[row.bloc_id][cand.id] = row.preference_score ?? 40;
+            }
+        }
+    }
+
+    // 7. Run Round 1 simulation (use totalSeats=0 — we only care about votes)
+    const round1 = runElectionSimulation(blocs, allCandidateParties, 0, allBlocApprovals);
+
+    // Build Round 1 candidate results
+    const totalBlocWeight = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
+    function buildCandidateResults(parties, simResult) {
+        return parties.map(p => {
+            let weightedApproval = 40;
+            if (totalBlocWeight > 0) {
+                let wSum = 0;
+                for (const bloc of blocs) {
+                    const ba = allBlocApprovals[bloc.id];
+                    const approval = (ba && ba[p.id] != null) ? ba[p.id] : 40;
+                    wSum += approval * (bloc.voter_count || 0);
+                }
+                weightedApproval = Math.round(wSum / totalBlocWeight * 100) / 100;
+            }
+            return {
+                candidate_id: p.id,
+                candidate_name: p.faction_name,
+                party_name: p.party_name,
+                faction_id: p.faction_id,
+                ideology: p.ideology,
+                trait_key: p.trait_key,
+                approval: weightedApproval,
+                votes: simResult.votes[p.id] || 0,
+                vote_percentage: simResult.totalVotesCast > 0
+                    ? Math.round(((simResult.votes[p.id] || 0) / simResult.totalVotesCast) * 10000) / 100
+                    : 0
+            };
+        }).sort((a, b) => b.votes - a.votes);
+    }
+
+    const round1Results = buildCandidateResults(allCandidateParties, round1);
+
+    // 8. Check for runoff
+    const topPct = round1Results[0]?.vote_percentage || 0;
+    let wasRunoff = false;
+    let runoffResults = null;
+    let round2Details = null;
+    let winner;
+
+    if (topPct > 50 || allCandidateParties.length <= 2) {
+        // Clear winner — no runoff
+        winner = round1Results[0];
+        winner.winner = true;
+    } else {
+        // Runoff: top 2 advance, re-run simulation
+        wasRunoff = true;
+        const top2Ids = new Set([round1Results[0].candidate_id, round1Results[1].candidate_id]);
+        const runoffParties = allCandidateParties.filter(p => top2Ids.has(p.id));
+
+        // Build runoff-specific bloc approvals (only top 2 candidates)
+        const runoffBlocApprovals = {};
+        for (const [blocId, approvals] of Object.entries(allBlocApprovals)) {
+            runoffBlocApprovals[blocId] = {};
+            for (const p of runoffParties) {
+                runoffBlocApprovals[blocId][p.id] = approvals[p.id] ?? 40;
+            }
+        }
+
+        const round2 = runElectionSimulation(blocs, runoffParties, 0, runoffBlocApprovals);
+        runoffResults = buildCandidateResults(runoffParties, round2);
+        round2Details = round2.details;
+        winner = runoffResults[0];
+        winner.winner = true;
+    }
+
+    // Build candidate name lookup
+    const candidateNames = {};
+    for (const p of allCandidateParties) candidateNames[p.id] = p.faction_name;
+
+    return {
+        nation: nation.name,
+        eligible_voters: eligibleVoters,
+        total_votes_cast: round1.totalVotesCast,
+        total_abstentions: round1.totalAbstentions,
+        turnout_pct: eligibleVoters
+            ? Math.round((round1.totalVotesCast / eligibleVoters) * 10000) / 100
+            : 0,
+        round_1_results: round1Results,
+        round_1_details: round1.details,
+        was_runoff: wasRunoff,
+        runoff_results: runoffResults,
+        runoff_details: round2Details,
+        winner,
+        candidateNames
+    };
+}
