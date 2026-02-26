@@ -1940,9 +1940,12 @@ export function buildShutdownStatInstMap(institutionConfig) {
  * Called each tick when isGovernmentShutdown() returns true.
  *
  * Effects (in addition to Collapsed institution decay handled by the main loop):
- *   - All coalition parties: -2 Momentum and -2 Approval per voter bloc per tick
- *   - Prime Minister's party: additional -3 Approval/tick
- *   - President's party (presidential systems): -3 Approval/tick
+ *   - All coalition parties: -6 Momentum per tick
+ *   - Prime Minister's party: additional -5 Momentum/tick + -5 gov approval event
+ *   - President's party (presidential systems): -5 Momentum/tick
+ *   - All ministers: -3/tick approval penalty (via updateMinisterApprovals)
+ *   - Direct stat damage: civil_unrest +3.5, corruption +2.5, stability -3.0,
+ *     happiness -2.0, standard_of_living -1.5, unemployment +1.5
  *   - Inserts an active_crises row so it shows on nation.html
  *   - Fires a system event notification
  */
@@ -1990,26 +1993,26 @@ export async function processGovernmentShutdown(supabase, nation, currentTick) {
         }
     }
 
-    // --- 1. Coalition party penalties: -2 Momentum and -2 Approval per voter bloc ---
+    // --- 1. Coalition party penalties: devastating momentum loss ---
     const coalition = await fetchActiveCoalition(supabase, nation.id);
     const coalitionPartyIds = coalition?.party_ids || [];
 
     for (const partyId of coalitionPartyIds) {
-        await adjustMomentumAll(supabase, nation.id, partyId, -4, 'crisis:government_shutdown');
+        await adjustMomentumAll(supabase, nation.id, partyId, -6, 'crisis:government_shutdown');
     }
     if (coalitionPartyIds.length > 0) {
-        console.log(`[GovernmentShutdown] Applied -4 Momentum to ${coalitionPartyIds.length} coalition parties for ${nation.name}`);
+        console.log(`[GovernmentShutdown] Applied -6 Momentum to ${coalitionPartyIds.length} coalition parties for ${nation.name}`);
     }
 
-    // --- 2. PM party extra penalty: -3/tick + gov approval event ---
+    // --- 2. PM party extra penalty: -5/tick + -5 gov approval event ---
     const pmPartyId = coalition?.lead_party_id;
     if (pmPartyId) {
-        await adjustMomentumAll(supabase, nation.id, pmPartyId, -3, 'crisis:government_shutdown_pm');
-        await adjustGovernmentApprovalEvent(supabase, nation.id, -3, 'crisis:government_shutdown');
-        console.log(`[GovernmentShutdown] Applied -3 Momentum to PM party ${pmPartyId} + -3 gov approval event for ${nation.name}`);
+        await adjustMomentumAll(supabase, nation.id, pmPartyId, -5, 'crisis:government_shutdown_pm');
+        await adjustGovernmentApprovalEvent(supabase, nation.id, -5, 'crisis:government_shutdown');
+        console.log(`[GovernmentShutdown] Applied -5 Momentum to PM party ${pmPartyId} + -5 gov approval event for ${nation.name}`);
     }
 
-    // --- 3. President approval penalty: -3/tick (presidential systems) ---
+    // --- 3. President approval penalty: -5/tick (presidential systems) ---
     if (isPresidentialRepublic(nation)) {
         const { data: president } = await supabase
             .from('presidents')
@@ -2020,8 +2023,8 @@ export async function processGovernmentShutdown(supabase, nation, currentTick) {
             .limit(1)
             .maybeSingle();
         if (president) {
-            await adjustMomentumAll(supabase, nation.id, president.faction_id, -3, 'crisis:government_shutdown_president');
-            console.log(`[GovernmentShutdown] Applied -3 Momentum to President party ${president.faction_id} for ${nation.name}`);
+            await adjustMomentumAll(supabase, nation.id, president.faction_id, -5, 'crisis:government_shutdown_president');
+            console.log(`[GovernmentShutdown] Applied -5 Momentum to President party ${president.faction_id} for ${nation.name}`);
         }
     }
 
@@ -2041,13 +2044,18 @@ export async function processGovernmentShutdown(supabase, nation, currentTick) {
         console.warn(`[GovernmentShutdown] fire_system_event failed (template may not exist):`, e.message);
     }
 
-    // --- 5. Direct stat damage (matches crisis_effects display on nation.html) ---
-    // The crisis_effects DB rows (civil_unrest +2.7, corruption +1.7) are display-only
-    // because the Government Shutdown template has is_active=false (processCrises skips it).
-    // Apply the same deltas here so the actual stat changes match what the UI shows.
+    // --- 5. Direct stat damage — government shutdown should be devastating ---
+    // The crisis_effects DB rows are display-only because the Government Shutdown
+    // template has is_active=false (processCrises skips it). Apply deltas here.
+    // A government shutdown cripples public services, tanks investor confidence,
+    // and erodes trust across every dimension of governance.
     const shutdownStatEffects = [
-        { stat: 'civil_unrest', delta: 2.7 },
-        { stat: 'corruption',   delta: 1.7 },
+        { stat: 'civil_unrest',        delta:  3.5 },
+        { stat: 'corruption',          delta:  2.5 },
+        { stat: 'stability',           delta: -3.0 },
+        { stat: 'happiness',           delta: -2.0 },
+        { stat: 'standard_of_living',  delta: -1.5 },
+        { stat: 'unemployment',        delta:  1.5 },
     ];
     const nationUpdates = {};
     for (const { stat, delta } of shutdownStatEffects) {
@@ -10920,7 +10928,7 @@ export async function processMinistryActions(supabase, nation, currentTick) {
  * @param {number} currentTick
  * @returns {Array} results for logging
  */
-export async function updateMinisterApprovals(supabase, nation, currentTick) {
+export async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown = false) {
     const { data: ministries } = await supabase
         .from('ministries')
         .select('id, ministry_key, minister_approval, minister_first_name, embattled_since_tick, party_id')
@@ -10928,6 +10936,11 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
         .eq('is_active', true);
 
     if (!ministries || ministries.length === 0) return [];
+
+    // During government shutdown, every minister takes a direct -3/tick approval hit
+    // on top of their normal stat-based scoring. This represents public outrage at
+    // the government's inability to function.
+    const SHUTDOWN_MINISTER_PENALTY = -3;
 
     const results = [];
 
@@ -10954,7 +10967,13 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
 
         if (statCount === 0) continue;
 
-        const avgDelta = contributionSum / statCount;
+        let avgDelta = contributionSum / statCount;
+
+        // Government shutdown: stack a direct penalty on top of stat-based scoring
+        if (isShutdown) {
+            avgDelta += SHUTDOWN_MINISTER_PENALTY;
+        }
+
         const oldApproval = ministry.minister_approval ?? 50;
         const newApproval = Math.round(Math.max(0, Math.min(100, oldApproval + avgDelta)) * 10) / 10;
 
@@ -10985,7 +11004,8 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
     }
 
     if (results.length > 0) {
-        console.log(`[updateMinisterApprovals] ${nation.name}: ${results.map(r => `${r.ministry_key} ${r.old}→${r.new} (${r.delta >= 0 ? '+' : ''}${r.delta})`).join(', ')}`);
+        const shutdownTag = isShutdown ? ' [SHUTDOWN -3/tick penalty active]' : '';
+        console.log(`[updateMinisterApprovals] ${nation.name}:${shutdownTag} ${results.map(r => `${r.ministry_key} ${r.old}→${r.new} (${r.delta >= 0 ? '+' : ''}${r.delta})`).join(', ')}`);
     }
 
     return results;
