@@ -108,6 +108,14 @@ async function renderAutocracyParties(el, f, n) {
         .select('id, faction_id, pillar_key, steward_type, first_name, last_name, age, standing, power_base, true_loyalty, estimated_loyalty, personal_wealth, exit_readiness, coup_readiness, is_alive')
         .eq('nation_id', n.id);
 
+    // Fetch regime log — all player actions for this nation (most recent first)
+    const { data: regimeLogData } = await _supabase
+        .from('campaign_actions')
+        .select('action_type, party_id, tick_performed, result, factions(faction_name, abbreviation)')
+        .eq('nation_id', n.id)
+        .order('tick_performed', { ascending: false })
+        .limit(30);
+
     // Build lookup: faction → living steward only
     const stewardByFaction = {};
     for (const s of (stewardRows || [])) {
@@ -123,6 +131,46 @@ async function renderAutocracyParties(el, f, n) {
     const isStrongman = f.id === rulingId;
     const rulingFaction = (allFactions || []).find(p => p.id === rulingId);
     const currentTick = currentShard?.current_tick || 0;
+    const nonRuling = (allFactions || []).filter(p => p.id !== rulingId);
+
+    // ── LOYALTY DEMANDS ──
+    const { data: loyaltyDemands } = await _supabase
+        .from('loyalty_demands')
+        .select('id, strongman_faction_id, target_faction_id, demanded_at_tick, deadline_tick, status')
+        .eq('nation_id', n.id)
+        .order('demanded_at_tick', { ascending: false });
+
+    // Auto-expire pending demands past deadline (treat as Refuse)
+    for (const d of (loyaltyDemands || [])) {
+        if (d.status === 'pending' && currentTick >= d.deadline_tick) {
+            const targetSteward = stewardByFaction[d.target_faction_id];
+            if (targetSteward) {
+                await _supabase.from('stewards').update({
+                    estimated_loyalty: targetSteward.true_loyalty,
+                    standing: Math.max(0, (targetSteward.standing ?? 50) - 10)
+                }).eq('id', targetSteward.id);
+            }
+            await _supabase.from('loyalty_demands').update({
+                status: 'expired', resolved_at_tick: currentTick
+            }).eq('id', d.id);
+            d.status = 'expired';
+            const targetName = (allFactions || []).find(p => p.id === d.target_faction_id)?.faction_name || 'Unknown';
+            await _supabase.from('campaign_actions').insert({
+                party_id: d.target_faction_id, nation_id: n.id,
+                action_type: 'loyalty_demand_expired',
+                tick_performed: currentTick,
+                result: { target_faction: targetName }
+            });
+        }
+    }
+
+    const myPendingDemand = (loyaltyDemands || []).find(
+        d => d.target_faction_id === f.id && d.status === 'pending'
+    );
+    const demandedThisTick = new Set(
+        (loyaltyDemands || []).filter(d => d.demanded_at_tick === currentTick)
+            .map(d => d.target_faction_id)
+    );
 
     // ── REGIME PANEL (visible to all — Grip numbers only for Strongman) ──
     const hosFirst = n.head_of_state_first_name || 'Unknown';
@@ -534,6 +582,124 @@ async function renderAutocracyParties(el, f, n) {
                 </div>`;
         }
 
+        // ── REGIME LOG ──
+        const ACTION_LABELS = {
+            rally: 'RALLY',
+            press_conference: 'PRESS CONFERENCE',
+            outreach: 'VOTER OUTREACH',
+            fundraiser: 'FUNDRAISER',
+            purge_minister: 'PURGE',
+            claim_power: 'SEIZED POWER',
+            no_confidence_failed: 'NO CONFIDENCE FAILED',
+            assign_minister: 'MINISTER APPOINTED',
+            fire_minister: 'MINISTER DISMISSED',
+            steward_claim: 'STEWARD CLAIMED',
+            demand_loyalty: 'DEMAND LOYALTY',
+            loyalty_demand_complied: 'COMPLIED',
+            loyalty_demand_refused: 'REFUSED',
+            loyalty_demand_expired: 'DEMAND EXPIRED'
+        };
+
+        let regimeLogHtml = '';
+        if (regimeLogData && regimeLogData.length > 0) {
+            const logRows = regimeLogData.map(entry => {
+                const dateStr = tickToDate(entry.tick_performed);
+                const factionName = entry.factions?.abbreviation || entry.factions?.faction_name || '???';
+                const label = ACTION_LABELS[entry.action_type] || entry.action_type.replace(/_/g, ' ').toUpperCase();
+                const r = entry.result || {};
+
+                let detail = '';
+                if (entry.action_type === 'purge_minister') {
+                    detail = `${r.minister_name || 'Unknown'} purged from ${MINISTRY_SHORT[r.ministry_key] || r.target_party || 'ministry'}`;
+                } else if (entry.action_type === 'assign_minister') {
+                    detail = `${r.minister_name || 'Unknown'} appointed as ${MINISTRY_SHORT[r.ministry_key] || 'minister'}` + (r.party_name ? ` (${r.party_name})` : '');
+                } else if (entry.action_type === 'fire_minister') {
+                    detail = `${r.minister_name || 'Unknown'} dismissed from ${MINISTRY_SHORT[r.ministry_key] || 'ministry'}`;
+                } else if (entry.action_type === 'press_conference') {
+                    detail = r.headline || r.stat || '';
+                } else if (entry.action_type === 'rally') {
+                    detail = r.headline || '';
+                } else if (entry.action_type === 'outreach') {
+                    detail = r.bloc_name ? `Targeted ${r.bloc_name}` : '';
+                } else if (entry.action_type === 'fundraiser') {
+                    detail = r.headline || (r.amount ? `Raised $${Number(r.amount).toLocaleString()}` : '');
+                } else if (entry.action_type === 'steward_claim') {
+                    detail = r.pillar_name ? `Claimed ${r.pillar_name}` : '';
+                } else if (entry.action_type === 'demand_loyalty') {
+                    detail = r.target_faction ? `Demanded loyalty from ${r.target_faction}` : '';
+                } else if (entry.action_type === 'loyalty_demand_complied') {
+                    detail = r.faction_name ? `${r.faction_name} complied` : 'Complied with demand';
+                } else if (entry.action_type === 'loyalty_demand_refused') {
+                    detail = r.faction_name ? `${r.faction_name} refused` : 'Refused demand';
+                } else if (entry.action_type === 'loyalty_demand_expired') {
+                    detail = r.target_faction ? `${r.target_faction} ignored demand` : 'Demand expired';
+                } else if (entry.action_type === 'claim_power') {
+                    detail = r.method || '';
+                }
+
+                return `<div class="reg-log-row">
+                    <span class="reg-log-date">${escapeHtml(dateStr)}</span>
+                    <span class="reg-log-faction">${escapeHtml(factionName)}</span>
+                    <span class="reg-log-label">${escapeHtml(label)}</span>
+                    ${detail ? `<span class="reg-log-detail">${escapeHtml(detail)}</span>` : ''}
+                </div>`;
+            }).join('');
+
+            regimeLogHtml = `
+                <div class="reg-section">
+                    <div class="reg-section-title">REGIME LOG</div>
+                    <div class="reg-log-list">${logRows}</div>
+                </div>`;
+        } else {
+            regimeLogHtml = `
+                <div class="reg-section">
+                    <div class="reg-section-title">REGIME LOG</div>
+                    <div class="reg-log-empty">No actions recorded yet.</div>
+                </div>`;
+        }
+
+        // ── DEMAND LOYALTY PANEL (Strongman only) ──
+        let demandLoyaltyHtml = '';
+        if (isStrongman) {
+            const availableTargets = nonRuling.filter(p => !demandedThisTick.has(p.id));
+            const targetBtns = availableTargets.map(p => {
+                const pColor = p.party_color || '#666';
+                return `<button class="reg-demand-target-btn" data-faction-id="${p.id}" data-faction-name="${escapeHtml(p.faction_name)}" style="border-left-color:${pColor}">${escapeHtml(p.faction_name)}</button>`;
+            }).join('');
+
+            demandLoyaltyHtml = `
+                <div class="reg-section">
+                    <div class="reg-section-title">DEMAND LOYALTY</div>
+                    <div class="reg-demand-panel">
+                        <div class="reg-demand-cost">2 AP &middot; Target one player</div>
+                        <div class="reg-demand-desc">
+                            <strong>Comply:</strong> Loyalty +8. They submitted.<br>
+                            <strong>Refuse:</strong> True loyalty revealed. Standing &minus;10.
+                        </div>
+                        ${availableTargets.length > 0 ? `
+                            <div class="reg-demand-targets">${targetBtns}</div>
+                            <button class="reg-demand-submit" id="demand-loyalty-btn" disabled>DEMAND</button>
+                        ` : `<div class="reg-demand-exhausted">All factions have been demanded this tick.</div>`}
+                    </div>
+                </div>`;
+        }
+
+        // ── DEMAND BANNER (non-strongman with pending demand) ──
+        let demandBannerHtml = '';
+        if (!isStrongman && myPendingDemand) {
+            const ticksLeft = Math.max(0, myPendingDemand.deadline_tick - currentTick);
+            demandBannerHtml = `
+                <div class="reg-demand-banner">
+                    <div class="reg-demand-banner-title">&#9888; THE STRONGMAN DEMANDS YOUR LOYALTY</div>
+                    <div class="reg-demand-banner-text">You must Comply or Refuse. Silence will be treated as Refusal.</div>
+                    <div class="reg-demand-banner-deadline">${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} remaining</div>
+                    <div class="reg-demand-banner-btns">
+                        <button class="reg-demand-comply-btn" id="demand-comply-btn" data-demand-id="${myPendingDemand.id}">COMPLY</button>
+                        <button class="reg-demand-refuse-btn" id="demand-refuse-btn" data-demand-id="${myPendingDemand.id}">REFUSE</button>
+                    </div>
+                </div>`;
+        }
+
         // Confirmation dialog overlay (hidden by default, activated by JS)
         const confirmOverlayHtml = !isStrongman ? `<div class="reg-steward-confirm-overlay" id="steward-confirm-overlay" style="display:none">
             <div class="reg-steward-confirm-box">
@@ -571,6 +737,8 @@ async function renderAutocracyParties(el, f, n) {
                         <span class="reg-strip-value" style="color:${successionColor}">${escapeHtml(successionLabel)}</span>
                     </div>
                 </div>
+
+                ${demandBannerHtml}
 
                 <div class="reg-body">
                     <div class="reg-col-left">
@@ -627,6 +795,7 @@ async function renderAutocracyParties(el, f, n) {
                         </div>
 
                         ${threatHtml}
+                        ${demandLoyaltyHtml}
                     </div>
 
                     <div class="reg-col-right">
@@ -638,6 +807,7 @@ async function renderAutocracyParties(el, f, n) {
                             </div>
                         </div>
                         ${pillarCardsHtml}
+                        ${regimeLogHtml}
                     </div>
                 </div>
             </div>`;
@@ -741,6 +911,15 @@ async function renderAutocracyParties(el, f, n) {
 
                 if (stewardErr) {
                     console.error('[steward-insert]', stewardErr);
+                } else {
+                    // Log steward claim to campaign_actions for the Regime Log
+                    await _supabase.from('campaign_actions').insert({
+                        party_id: f.id,
+                        nation_id: n.id,
+                        action_type: 'steward_claim',
+                        tick_performed: currentTick,
+                        result: { pillar_key: pillarKey, pillar_name: pillarName, steward_type: stewardType, steward_name: `${firstName} ${lastName}` }
+                    });
                 }
 
                 // Re-render the page to reflect the new steward
@@ -748,6 +927,136 @@ async function renderAutocracyParties(el, f, n) {
             });
         });
     });
+
+    // ── DEMAND LOYALTY handlers ──
+
+    // Strongman: target selection
+    let selectedDemandTarget = null;
+    el.querySelectorAll('.reg-demand-target-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            el.querySelectorAll('.reg-demand-target-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            selectedDemandTarget = btn.dataset.factionId;
+            const submitBtn = document.getElementById('demand-loyalty-btn');
+            if (submitBtn) submitBtn.disabled = false;
+        });
+    });
+
+    // Strongman: submit demand
+    const demandBtn = document.getElementById('demand-loyalty-btn');
+    if (demandBtn) {
+        demandBtn.addEventListener('click', async () => {
+            if (!selectedDemandTarget) return;
+            if ((f.action_points || 0) < 2) { alert('Not enough AP (need 2).'); return; }
+            demandBtn.disabled = true;
+            demandBtn.textContent = 'DEMANDING...';
+
+            const apResult = await deductAP(_supabase, f.id, 2);
+            if (!apResult.success) { alert('Not enough AP.'); demandBtn.textContent = 'DEMAND'; demandBtn.disabled = false; return; }
+            f.action_points = apResult.newAp;
+
+            const targetName = (allFactions || []).find(p => p.id === selectedDemandTarget)?.faction_name || 'Unknown';
+            await _supabase.from('loyalty_demands').insert({
+                nation_id: n.id,
+                strongman_faction_id: f.id,
+                target_faction_id: selectedDemandTarget,
+                demanded_at_tick: currentTick,
+                deadline_tick: currentTick + 2,
+                status: 'pending'
+            });
+            await _supabase.from('campaign_actions').insert({
+                party_id: f.id, nation_id: n.id,
+                action_type: 'demand_loyalty',
+                tick_performed: currentTick,
+                result: { target_faction: targetName, target_faction_id: selectedDemandTarget }
+            });
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
+    // Target: comply
+    const complyBtn = document.getElementById('demand-comply-btn');
+    if (complyBtn) {
+        complyBtn.addEventListener('click', async () => {
+            const demandId = complyBtn.dataset.demandId;
+            complyBtn.disabled = true;
+            complyBtn.textContent = 'COMPLYING...';
+            const refuseBtn = document.getElementById('demand-refuse-btn');
+            if (refuseBtn) refuseBtn.disabled = true;
+
+            // Update demand status
+            await _supabase.from('loyalty_demands').update({
+                status: 'complied', resolved_at_tick: currentTick
+            }).eq('id', demandId);
+
+            // Loyalty +8
+            const mySteward = stewardByFaction[f.id];
+            if (mySteward) {
+                await _supabase.from('stewards').update({
+                    true_loyalty: Math.min(100, (mySteward.true_loyalty ?? 50) + 8)
+                }).eq('id', mySteward.id);
+            }
+
+            await _supabase.from('campaign_actions').insert({
+                party_id: f.id, nation_id: n.id,
+                action_type: 'loyalty_demand_complied',
+                tick_performed: currentTick,
+                result: { faction_name: f.faction_name }
+            });
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
+    // Target: refuse
+    const refuseBtn = document.getElementById('demand-refuse-btn');
+    if (refuseBtn) {
+        refuseBtn.addEventListener('click', async () => {
+            const demandId = refuseBtn.dataset.demandId;
+            refuseBtn.disabled = true;
+            refuseBtn.textContent = 'REFUSING...';
+            const complyBtnRef = document.getElementById('demand-comply-btn');
+            if (complyBtnRef) complyBtnRef.disabled = true;
+
+            // Update demand status
+            await _supabase.from('loyalty_demands').update({
+                status: 'refused', resolved_at_tick: currentTick
+            }).eq('id', demandId);
+
+            // Reveal true loyalty, standing -10
+            const mySteward = stewardByFaction[f.id];
+            if (mySteward) {
+                await _supabase.from('stewards').update({
+                    estimated_loyalty: mySteward.true_loyalty,
+                    standing: Math.max(0, (mySteward.standing ?? 50) - 10)
+                }).eq('id', mySteward.id);
+            }
+
+            await _supabase.from('campaign_actions').insert({
+                party_id: f.id, nation_id: n.id,
+                action_type: 'loyalty_demand_refused',
+                tick_performed: currentTick,
+                result: { faction_name: f.faction_name }
+            });
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
+    // ── TAB BADGE for pending demand ──
+    const partiesTab = document.querySelector('.nav-tab[data-tab="parties"]');
+    if (partiesTab) {
+        const existingBadge = partiesTab.querySelector('.reg-tab-badge');
+        if (myPendingDemand) {
+            if (!existingBadge) {
+                const badge = document.createElement('span');
+                badge.className = 'reg-tab-badge';
+                badge.textContent = '!';
+                partiesTab.style.position = 'relative';
+                partiesTab.appendChild(badge);
+            }
+        } else if (existingBadge) {
+            existingBadge.remove();
+        }
+    }
 }
 
 async function renderParties() {

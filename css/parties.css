@@ -2744,6 +2744,251 @@ body.light-mode .ap-bar-track {
     font-style: italic;
 }
 
+/* Regime Log */
+.reg-log-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.reg-log-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
+    padding: 5px 8px;
+    font-size: 0.58rem;
+    border-bottom: 1px solid rgba(226, 224, 214, 0.04);
+}
+
+.reg-log-row:last-child { border-bottom: none; }
+
+.reg-log-date {
+    color: #6b6a5e;
+    font-size: 0.5rem;
+    min-width: 90px;
+    flex-shrink: 0;
+}
+
+.reg-log-faction {
+    font-weight: 700;
+    color: #e2e0d6;
+    font-size: 0.52rem;
+    min-width: 40px;
+}
+
+.reg-log-label {
+    font-weight: 600;
+    color: #ff9800;
+    font-size: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.reg-log-detail {
+    color: #8a8778;
+    font-size: 0.52rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.reg-log-empty {
+    font-size: 0.62rem;
+    color: #6b6a5e;
+    padding: 12px 0;
+    font-style: italic;
+}
+
+/* ── Demand Loyalty panel (Strongman) ── */
+.reg-demand-panel {
+    padding: 8px 0 0;
+}
+
+.reg-demand-cost {
+    font-size: 0.55rem;
+    color: #ff9800;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+
+.reg-demand-desc {
+    font-size: 0.55rem;
+    color: #8a8778;
+    line-height: 1.6;
+    margin-bottom: 12px;
+}
+
+.reg-demand-desc strong {
+    color: #e2e0d6;
+}
+
+.reg-demand-targets {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+}
+
+.reg-demand-target-btn {
+    padding: 6px 10px;
+    font-size: 0.58rem;
+    font-weight: 600;
+    color: #e2e0d6;
+    background: rgba(226, 224, 214, 0.04);
+    border: 1px solid rgba(226, 224, 214, 0.08);
+    border-left: 3px solid #666;
+    border-radius: 3px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.reg-demand-target-btn:hover {
+    background: rgba(226, 224, 214, 0.1);
+}
+
+.reg-demand-target-btn.selected {
+    background: rgba(255, 152, 0, 0.12);
+    border-color: rgba(255, 152, 0, 0.3);
+    border-left-color: #ff9800;
+    color: #ff9800;
+}
+
+.reg-demand-submit {
+    width: 100%;
+    padding: 8px;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #ff9800;
+    background: rgba(255, 152, 0, 0.1);
+    border: 1px solid rgba(255, 152, 0, 0.3);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.reg-demand-submit:hover:not(:disabled) {
+    background: rgba(255, 152, 0, 0.2);
+}
+
+.reg-demand-submit:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.reg-demand-exhausted {
+    font-size: 0.55rem;
+    color: #6b6a5e;
+    font-style: italic;
+    padding: 4px 0;
+}
+
+/* ── Demand Banner (Target notification) ── */
+.reg-demand-banner {
+    padding: 14px 20px;
+    background: rgba(255, 152, 0, 0.06);
+    border-top: 1px solid rgba(255, 152, 0, 0.2);
+    border-bottom: 1px solid rgba(255, 152, 0, 0.2);
+    animation: reg-demand-glow 2s ease-in-out infinite;
+}
+
+@keyframes reg-demand-glow {
+    0%, 100% { border-top-color: rgba(255, 152, 0, 0.2); border-bottom-color: rgba(255, 152, 0, 0.2); }
+    50% { border-top-color: rgba(255, 152, 0, 0.5); border-bottom-color: rgba(255, 152, 0, 0.5); }
+}
+
+.reg-demand-banner-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #ff9800;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 4px;
+}
+
+.reg-demand-banner-text {
+    font-size: 0.58rem;
+    color: #8a8778;
+    margin-bottom: 6px;
+}
+
+.reg-demand-banner-deadline {
+    font-size: 0.52rem;
+    color: #ff5722;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+}
+
+.reg-demand-banner-btns {
+    display: flex;
+    gap: 10px;
+}
+
+.reg-demand-comply-btn,
+.reg-demand-refuse-btn {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 1px solid;
+    transition: background 0.15s;
+}
+
+.reg-demand-comply-btn {
+    color: #4CAF50;
+    background: rgba(76, 175, 80, 0.1);
+    border-color: rgba(76, 175, 80, 0.3);
+}
+
+.reg-demand-comply-btn:hover:not(:disabled) {
+    background: rgba(76, 175, 80, 0.2);
+}
+
+.reg-demand-refuse-btn {
+    color: #ff4444;
+    background: rgba(255, 68, 68, 0.1);
+    border-color: rgba(255, 68, 68, 0.3);
+}
+
+.reg-demand-refuse-btn:hover:not(:disabled) {
+    background: rgba(255, 68, 68, 0.2);
+}
+
+.reg-demand-comply-btn:disabled,
+.reg-demand-refuse-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ── Tab badge ── */
+.reg-tab-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 16px;
+    height: 16px;
+    background: #ff5722;
+    color: #fff;
+    font-size: 0.5rem;
+    font-weight: 700;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
 /* Light mode overrides */
 body.light-mode .reg-panel { background: #fafaf8; border-color: #ddd; }
 body.light-mode .reg-header { border-bottom-color: #ddd; }
@@ -2795,6 +3040,17 @@ body.light-mode .reg-intel-steward-type { color: #888; }
 body.light-mode .reg-intel-steward-faction { color: #888; }
 body.light-mode .reg-intel-ministry-tag { color: #2a2a28; background: rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.1); }
 body.light-mode .reg-intel-ministry-none { color: #888; }
+body.light-mode .reg-log-row { border-bottom-color: rgba(0,0,0,0.06); }
+body.light-mode .reg-log-date { color: #888; }
+body.light-mode .reg-log-faction { color: #2a2a28; }
+body.light-mode .reg-log-detail { color: #666; }
+body.light-mode .reg-log-empty { color: #888; }
+body.light-mode .reg-demand-desc { color: #666; }
+body.light-mode .reg-demand-desc strong { color: #2a2a28; }
+body.light-mode .reg-demand-target-btn { color: #2a2a28; background: rgba(0,0,0,0.03); border-color: rgba(0,0,0,0.08); }
+body.light-mode .reg-demand-exhausted { color: #888; }
+body.light-mode .reg-demand-banner { background: rgba(255,152,0,0.04); }
+body.light-mode .reg-demand-banner-text { color: #666; }
 body.light-mode .reg-steward-status { background: #f0f0ee; border-color: #ddd; }
 body.light-mode .reg-steward-status-name { color: #2a2a28; }
 body.light-mode .reg-steward-status-badge { color: #2a2a28; background: rgba(0,0,0,0.05); border-color: #ccc; }
