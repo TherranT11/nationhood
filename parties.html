@@ -768,7 +768,11 @@ async function renderAutocracyParties(el, f, n) {
                     if (r.coalition_type === 'secret' && isStrongman) { detail = ''; label = ''; }
                     else detail = `${r.coalition_type === 'public' ? 'Public' : 'Secret'} coalition formed with ${r.partner_faction}`;
                 } else if (entry.action_type === 'coalition_betrayed') {
-                    detail = `Reported ${r.betrayed_faction} to the Strongman`;
+                    // Only visible to the Strongman and the reporter — never the betrayed faction
+                    if (!isStrongman && r.reporter_faction_id !== f.id) return '';
+                    detail = isStrongman
+                        ? `${factionName} reported ${r.betrayed_faction} for secret dealings`
+                        : `You reported ${r.betrayed_faction} to the Strongman`;
                 } else if (entry.action_type === 'coalition_detected') {
                     detail = `Secret coalition: ${r.faction_a_name} + ${r.faction_b_name} discovered`;
                 } else if (entry.action_type === 'coalition_dissolved') {
@@ -1647,7 +1651,7 @@ async function renderAutocracyParties(el, f, n) {
                 party_id: f.id, nation_id: n.id,
                 action_type: 'coalition_betrayed',
                 tick_performed: currentTick,
-                result: { betrayed_faction: proposerName, betrayed_faction_id: proposerId }
+                result: { betrayed_faction: proposerName, betrayed_faction_id: proposerId, reporter_faction_id: f.id }
             });
 
             await renderAutocracyParties(el, f, n);
