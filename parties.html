@@ -198,6 +198,12 @@ async function renderAutocracyParties(el, f, n) {
         c.status === 'pending' &&
         c.proposed_by_faction_id !== f.id
     );
+    // Pending requests I proposed (outgoing, awaiting response)
+    const myPendingOutgoing = (coalitionRows || []).filter(c =>
+        (c.faction_a_id === f.id || c.faction_b_id === f.id) &&
+        c.status === 'pending' &&
+        c.proposed_by_faction_id === f.id
+    );
     // All public coalitions (visible to everyone)
     const publicCoalitions = (coalitionRows || []).filter(c =>
         c.coalition_type === 'public' && ['active', 'detected'].includes(c.status)
@@ -927,6 +933,34 @@ async function renderAutocracyParties(el, f, n) {
                 </div>`;
         }
 
+        // ── MY PENDING OUTGOING PROPOSALS (non-strongman) ──
+        let myPendingOutgoingHtml = '';
+        if (!isStrongman && myPendingOutgoing.length > 0) {
+            const pendingCards = myPendingOutgoing.map(c => {
+                const targetId = c.faction_a_id === f.id ? c.faction_b_id : c.faction_a_id;
+                const targetName = factionNameMap[targetId] || 'Unknown';
+                const typeLabel = c.coalition_type === 'public' ? 'PUBLIC' : 'SECRET';
+                const typeClass = c.coalition_type === 'public' ? 'reg-coalition-public' : 'reg-coalition-secret';
+                return `
+                    <div class="reg-coalition-card reg-coalition-pending ${typeClass}">
+                        <div class="reg-coalition-card-header">
+                            <span class="reg-coalition-type-tag">${typeLabel}</span>
+                            <span class="reg-coalition-partner">${escapeHtml(targetName)}</span>
+                            <span class="reg-coalition-pending-tag">AWAITING RESPONSE</span>
+                        </div>
+                        <div class="reg-coalition-card-actions">
+                            <button class="reg-coalition-withdraw-btn" data-coalition-id="${c.id}" data-target-name="${escapeHtml(targetName)}">WITHDRAW</button>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            myPendingOutgoingHtml = `
+                <div class="reg-section">
+                    <div class="reg-section-title">PENDING PROPOSALS</div>
+                    <div class="reg-coalition-list">${pendingCards}</div>
+                </div>`;
+        }
+
         // ── COALITION INTELLIGENCE (Strongman view) ──
         let coalitionIntelHtml = '';
         if (isStrongman) {
@@ -1031,6 +1065,7 @@ async function renderAutocracyParties(el, f, n) {
                         ${stewardActionsHtml}
                         ${proposeCoalitionHtml}
                         ${myCoalitionsHtml}
+                        ${myPendingOutgoingHtml}
 
                         <div class="reg-section">
                             <div class="reg-section-title">REGIME VITALS</div>
@@ -1638,6 +1673,22 @@ async function renderAutocracyParties(el, f, n) {
                 tick_performed: currentTick,
                 result: { partner_faction: partnerName }
             });
+
+            await renderAutocracyParties(el, f, n);
+        });
+    });
+
+    // Withdraw pending coalition proposal
+    el.querySelectorAll('.reg-coalition-withdraw-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!confirm('Withdraw this coalition proposal?')) return;
+            const coalitionId = btn.dataset.coalitionId;
+            btn.disabled = true;
+            btn.textContent = 'WITHDRAWING...';
+
+            await _supabase.from('faction_coalitions').update({
+                status: 'declined', resolved_at_tick: currentTick
+            }).eq('id', coalitionId);
 
             await renderAutocracyParties(el, f, n);
         });
