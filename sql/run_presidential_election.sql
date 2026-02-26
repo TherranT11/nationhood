@@ -185,7 +185,7 @@ BEGIN
         FROM (
             SELECT
                 (c.value->>'id') AS candidate_id,
-                COALESCE(fba.approval, 40) AS approval
+                COALESCE(fba.preference_score, 40) AS approval
             FROM jsonb_array_elements(v_candidates) AS c(value)
             LEFT JOIN faction_bloc_approval fba
                 ON fba.faction_id = (c.value->>'faction_id')::UUID
@@ -215,7 +215,7 @@ BEGIN
             cid TEXT := v_cand.value->>'id';
             cvotes BIGINT := COALESCE((v_tally->>cid)::BIGINT, 0);
             capproval NUMERIC := COALESCE(
-                (SELECT AVG(fba.approval)
+                (SELECT AVG(fba.preference_score)
                  FROM faction_bloc_approval fba
                  WHERE fba.faction_id = (v_cand.value->>'faction_id')::UUID),
                 40
