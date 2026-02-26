@@ -81,9 +81,19 @@ async function renderAutocracyParties(el, f, n) {
         .not('party_id', 'is', null);
 
     const ministryCounts = {};
+    const ministryByParty = {};
     for (const m of (ministries || [])) {
         ministryCounts[m.party_id] = (ministryCounts[m.party_id] || 0) + 1;
+        if (!ministryByParty[m.party_id]) ministryByParty[m.party_id] = [];
+        ministryByParty[m.party_id].push(m.ministry_key);
     }
+
+    const MINISTRY_SHORT = {
+        prime_minister: 'PM', interior: 'Interior', foreign: 'Foreign',
+        defense: 'Defense', finance: 'Finance', education: 'Education',
+        healthcare: 'Health', labor: 'Labor', justice: 'Justice',
+        transportation: 'Transport', security: 'Security'
+    };
 
     // Fetch regime pillars (including steward)
     const { data: regimePillars } = await _supabase
@@ -192,6 +202,10 @@ async function renderAutocracyParties(el, f, n) {
             return 'DISLOYAL';
         }
 
+        // Build a faction name lookup (needed by steward display in faction intel)
+        const factionNameMap = {};
+        for (const fac of (allFactions || [])) factionNameMap[fac.id] = fac.faction_name;
+
         // Build faction intelligence rows — ruling party first with [Your Party] tag
         let factionIntelRows = '';
         const sortedFactions = [...(allFactions || [])].sort((a, b) => {
@@ -209,23 +223,29 @@ async function renderAutocracyParties(el, f, n) {
             const seats = faction.seats || 0;
             const fColor = faction.party_color || '#666';
 
-            // Steward info for Strongman view
+            // Steward info — visible to all players; EST. LOYALTY only for Strongman
             const factionSteward = stewardByFaction[faction.id];
             let stewardIntelHtml = '';
-            if (isStrongman && factionSteward) {
+            if (factionSteward) {
                 const sTypeLabel = STEWARD_TYPE_LABELS[factionSteward.steward_type] || '';
-                const estLoy = factionSteward.estimated_loyalty ?? 55;
-                const estColor = loyaltyColor(estLoy);
+                const claimedFactionName = factionNameMap[factionSteward.faction_id] || faction.faction_name;
                 stewardIntelHtml = `
                     <div class="reg-intel-steward">
                         <span class="reg-intel-steward-name">${escapeHtml(factionSteward.first_name)} ${escapeHtml(factionSteward.last_name)}</span>
                         <span class="reg-intel-steward-type">${escapeHtml(sTypeLabel)}</span>
-                        <span class="reg-intel-stat">
+                        <span class="reg-intel-steward-faction">${escapeHtml(claimedFactionName)}</span>
+                        ${isStrongman ? `<span class="reg-intel-stat">
                             <span class="reg-intel-label">EST. LOYALTY</span>
-                            <span class="reg-intel-val" style="color:${estColor}">${estLoy}</span>
-                        </span>
+                            <span class="reg-intel-val" style="color:${loyaltyColor(factionSteward.estimated_loyalty ?? 55)}">${factionSteward.estimated_loyalty ?? 55}</span>
+                        </span>` : ''}
                     </div>`;
             }
+
+            // Build ministry name badges
+            const factionMinistryKeys = ministryByParty[faction.id] || [];
+            const ministryBadgesHtml = factionMinistryKeys.length === 0
+                ? '<span class="reg-intel-ministry-none">None</span>'
+                : factionMinistryKeys.map(k => `<span class="reg-intel-ministry-tag">${MINISTRY_SHORT[k] || k}</span>`).join('');
 
             factionIntelRows += `
                 <div class="reg-intel-row" style="border-left: 3px solid ${fColor}">
@@ -240,10 +260,10 @@ async function renderAutocracyParties(el, f, n) {
                             <span class="reg-intel-label">SEATS</span>
                             <span class="reg-intel-val">${seats}</span>
                         </span>
-                        <span class="reg-intel-stat">
-                            <span class="reg-intel-label">MINISTRIES</span>
-                            <span class="reg-intel-val">${mCount}</span>
-                        </span>
+                    </div>
+                    <div class="reg-intel-ministries">
+                        <span class="reg-intel-label">MINISTRIES</span>
+                        ${ministryBadgesHtml}
                     </div>
                     ${stewardIntelHtml}
                     ${isStrongman ? `<div class="reg-intel-bar-track">
@@ -313,10 +333,6 @@ async function renderAutocracyParties(el, f, n) {
 
         const pillarMap = {};
         for (const p of (regimePillars || [])) pillarMap[p.pillar_key] = p;
-
-        // Build a faction name lookup for steward display
-        const factionNameMap = {};
-        for (const fac of (allFactions || [])) factionNameMap[fac.id] = fac.faction_name;
 
         // Determine the pillar name map for description display
         const pillarNameMap = {};

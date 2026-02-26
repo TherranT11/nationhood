@@ -2711,6 +2711,39 @@ body.light-mode .ap-bar-track {
     letter-spacing: 1px;
 }
 
+.reg-intel-steward-faction {
+    font-size: 0.48rem;
+    color: #8a8778;
+    font-style: italic;
+}
+
+/* Ministry name badges in faction intel */
+.reg-intel-ministries {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px;
+    margin-bottom: 4px;
+}
+
+.reg-intel-ministry-tag {
+    font-size: 0.48rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #e2e0d6;
+    background: rgba(226, 224, 214, 0.08);
+    border: 1px solid rgba(226, 224, 214, 0.12);
+    border-radius: 2px;
+    padding: 1px 5px;
+}
+
+.reg-intel-ministry-none {
+    font-size: 0.48rem;
+    color: #6b6a5e;
+    font-style: italic;
+}
+
 /* Light mode overrides */
 body.light-mode .reg-panel { background: #fafaf8; border-color: #ddd; }
 body.light-mode .reg-header { border-bottom-color: #ddd; }
@@ -2759,6 +2792,9 @@ body.light-mode .reg-steward-confirm-text { color: #666; }
 body.light-mode .reg-steward-confirm-no { background: rgba(0,0,0,0.04); color: #888; border-color: #ccc; }
 body.light-mode .reg-intel-steward-name { color: #2a2a28; }
 body.light-mode .reg-intel-steward-type { color: #888; }
+body.light-mode .reg-intel-steward-faction { color: #888; }
+body.light-mode .reg-intel-ministry-tag { color: #2a2a28; background: rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.1); }
+body.light-mode .reg-intel-ministry-none { color: #888; }
 body.light-mode .reg-steward-status { background: #f0f0ee; border-color: #ddd; }
 body.light-mode .reg-steward-status-name { color: #2a2a28; }
 body.light-mode .reg-steward-status-badge { color: #2a2a28; background: rgba(0,0,0,0.05); border-color: #ccc; }
