@@ -489,6 +489,91 @@ async function renderAutocracyParties(el, f, n) {
             }
         }
 
+        // Build compact steward status panel for left column (above Regime Vitals)
+        let stewardStatusHtml = '';
+        if (!isStrongman) {
+            if (mySteward) {
+                const stTypeLabel = STEWARD_TYPE_LABELS[mySteward.steward_type] || mySteward.steward_type;
+                const stTypeDesc = STEWARD_TYPE_DESCRIPTIONS[mySteward.steward_type] || '';
+                const stTrueLoyalty = mySteward.true_loyalty ?? 50;
+                const stEstimatedLoyalty = mySteward.estimated_loyalty ?? 55;
+                const stPersonalWealth = Math.round(Number(mySteward.personal_wealth) || 0);
+                const stExitReadiness = mySteward.exit_readiness ?? 0;
+                const stCoupReadiness = mySteward.coup_readiness ?? 0;
+                const stAP = f.action_points ?? 0;
+
+                // Coup readiness sub-label
+                const coupSub = stCoupReadiness >= 60
+                    ? 'READY TO STRIKE'
+                    : `NEED 60 \u2014 ${60 - stCoupReadiness} MORE`;
+
+                // Exit readiness sub-label
+                const exitSub = stExitReadiness >= 50
+                    ? 'ESCAPE PLAN READY'
+                    : stExitReadiness >= 25
+                        ? 'PLANNING ESCAPE'
+                        : 'NO ESCAPE PLAN';
+
+                // Loyalty gap advice
+                const stGapAdvice = stEstimatedLoyalty > stTrueLoyalty + 10
+                    ? 'He overestimates you. Use this.'
+                    : stEstimatedLoyalty < stTrueLoyalty - 10
+                        ? 'He underestimates you. Tread carefully.'
+                        : 'His read is close. Stay alert.';
+
+                stewardStatusHtml = `
+                    <div class="reg-section">
+                        <div class="reg-section-title">STEWARD STATUS</div>
+                        <div class="reg-steward-status">
+                            <div class="reg-steward-status-header">
+                                <div class="reg-steward-status-identity">
+                                    <div class="reg-steward-status-name">${escapeHtml(mySteward.first_name)} ${escapeHtml(mySteward.last_name)}, Age ${mySteward.age} <span class="reg-steward-status-badge">${escapeHtml(stTypeLabel)}</span></div>
+                                    <div class="reg-steward-status-desc">${escapeHtml(stTypeDesc)}</div>
+                                </div>
+                                <div class="reg-steward-status-ap">
+                                    <span class="reg-steward-status-ap-val">${stAP}</span>
+                                    <span class="reg-steward-status-ap-label">AP</span>
+                                </div>
+                            </div>
+
+                            <div class="reg-steward-status-grid">
+                                <div class="reg-steward-status-stat">
+                                    <span class="reg-steward-status-stat-label">TRUE LOYALTY</span>
+                                    <span class="reg-steward-status-stat-val" style="color:${stewardStatColor(stTrueLoyalty)}">${stTrueLoyalty}</span>
+                                    <span class="reg-steward-status-stat-sub">-2/tick natural decay</span>
+                                </div>
+                                <div class="reg-steward-status-stat">
+                                    <span class="reg-steward-status-stat-label">COUP READINESS</span>
+                                    <span class="reg-steward-status-stat-val" style="color:${coupColor(stCoupReadiness)}">${stCoupReadiness}</span>
+                                    <span class="reg-steward-status-stat-sub">${coupSub}</span>
+                                </div>
+                                <div class="reg-steward-status-stat">
+                                    <span class="reg-steward-status-stat-label">PERSONAL WEALTH</span>
+                                    <span class="reg-steward-status-stat-val reg-steward-wealth">$${stPersonalWealth}M</span>
+                                    <span class="reg-steward-status-stat-sub">Embezzled funds</span>
+                                </div>
+                                <div class="reg-steward-status-stat">
+                                    <span class="reg-steward-status-stat-label">EXIT READINESS</span>
+                                    <span class="reg-steward-status-stat-val" style="color:${coupColor(stExitReadiness)}">${stExitReadiness}</span>
+                                    <span class="reg-steward-status-stat-sub">${exitSub}</span>
+                                </div>
+                            </div>
+
+                            <div class="reg-steward-status-gap">
+                                <span class="reg-steward-status-gap-label">LOYALTY GAP:</span>
+                                Strongman believes you are at <strong>${stEstimatedLoyalty}</strong> loyalty. Your true loyalty is <strong>${stTrueLoyalty}</strong>. ${stGapAdvice}
+                            </div>
+                        </div>
+                    </div>`;
+            } else {
+                stewardStatusHtml = `
+                    <div class="reg-section">
+                        <div class="reg-section-title reg-steward-title-pulse">CHOOSE STEWARD</div>
+                        <div class="reg-steward-status-empty">Select a pillar of the regime to serve as its steward.</div>
+                    </div>`;
+            }
+        }
+
         // Build pillar cards for Strongman view (support values, no claim buttons)
         let pillarCardsHtml = '';
         if (isStrongman && regimePillars && regimePillars.length > 0) {
@@ -585,6 +670,8 @@ async function renderAutocracyParties(el, f, n) {
                             </div>
                             `}
                         </div>
+
+                        ${stewardStatusHtml}
 
                         <div class="reg-section">
                             <div class="reg-section-title">REGIME VITALS</div>
