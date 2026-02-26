@@ -2058,13 +2058,17 @@ async function processGovernmentShutdown(supabase, nation, currentTick) {
         console.log(`[GovernmentShutdown] Applied -4 Momentum to ${coalitionPartyIds.length} coalition parties for ${nation.name}`);
     }
 
-    // --- 2. PM party extra penalty: -3/tick + gov approval event ---
+    // --- 2. PM party extra penalty: -3/tick momentum ---
     const pmPartyId = coalition?.lead_party_id;
     if (pmPartyId) {
         await adjustMomentumAll(supabase, nation.id, pmPartyId, -3, 'crisis:government_shutdown_pm');
-        await adjustGovernmentApprovalEvent(supabase, nation.id, -3, 'crisis:government_shutdown');
-        console.log(`[GovernmentShutdown] Applied -3 Momentum to PM party ${pmPartyId} + -3 gov approval event for ${nation.name}`);
+        console.log(`[GovernmentShutdown] Applied -3 Momentum to PM party ${pmPartyId} for ${nation.name}`);
     }
+
+    // --- 2b. Gov approval event penalty: unconditional -3/tick ---
+    // Applied regardless of coalition status — a shutdown hurts government approval no matter what
+    await adjustGovernmentApprovalEvent(supabase, nation.id, -3, 'crisis:government_shutdown');
+    console.log(`[GovernmentShutdown] Applied -3 gov approval event for ${nation.name}`);
 
     // --- 3. President approval penalty: -3/tick (presidential systems) ---
     if (isPresidentialRepublic(nation)) {
@@ -10921,7 +10925,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
  * @param {number} currentTick
  * @returns {Array} results for logging
  */
-async function updateMinisterApprovals(supabase, nation, currentTick) {
+async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown = false) {
     const { data: ministries } = await supabase
         .from('ministries')
         .select('id, ministry_key, minister_approval, minister_first_name, embattled_since_tick, party_id')
@@ -10956,8 +10960,11 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
         if (statCount === 0) continue;
 
         const avgDelta = contributionSum / statCount;
+        // During a government shutdown, all ministries take a direct -3/tick approval hit.
+        // This ensures visible, immediate impact — the shutdown is the most punishing domestic crisis.
+        const shutdownPenalty = isShutdown ? -3 : 0;
         const oldApproval = ministry.minister_approval ?? 50;
-        const newApproval = Math.round(Math.max(0, Math.min(100, oldApproval + avgDelta)) * 10) / 10;
+        const newApproval = Math.round(Math.max(0, Math.min(100, oldApproval + avgDelta + shutdownPenalty)) * 10) / 10;
 
         // Track embattled status
         let embattledSinceTick = ministry.embattled_since_tick;
@@ -10980,7 +10987,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
             ministry_key: ministry.ministry_key,
             old: oldApproval,
             new: newApproval,
-            delta: Math.round(avgDelta * 10) / 10,
+            delta: Math.round((avgDelta + shutdownPenalty) * 10) / 10,
             embattled: embattledSinceTick !== null
         });
     }

@@ -581,7 +581,8 @@ async function advanceTick(supabase) {
         await recordStatHistory(supabase, nation, newTick);
 
         // Layer 1: Update minister approvals from stat thresholds
-        const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick);
+        // During government shutdown, all ministers take a direct -3/tick approval penalty
+        const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick, shutdownNow);
         if (ministerApprovalResults.length > 0) {
             summary.ministerApprovals = summary.ministerApprovals || [];
             summary.ministerApprovals.push({ nation: nation.name, results: ministerApprovalResults });
