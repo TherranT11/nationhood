@@ -5898,27 +5898,29 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
         .limit(1)
         .maybeSingle();
 
+    let completedElectionId;
     if (scheduledElection) {
         await supabase.from('elections')
             .update({ status: 'completed', results: electionResults, election_tick: currentTick })
             .eq('id', scheduledElection.id);
+        completedElectionId = scheduledElection.id;
     } else {
-        await supabase.from('elections').insert({
+        const { data: inserted, error: insertErr } = await supabase.from('elections').insert({
             nation_id: nation.id,
             election_tick: currentTick,
             election_type: normalizedElectionType,
             status: 'completed',
             results: electionResults
-        });
+        }).select('id').single();
+        if (insertErr) throw insertErr;
+        completedElectionId = inserted.id;
     }
 
+    // Fetch the specific election we just completed (not a generic "most recent" query)
     const { data: completedElection, error: electionError } = await supabase
         .from('elections')
         .select('id, election_tick, election_type, results, created_at')
-        .eq('nation_id', nation.id)
-        .eq('status', 'completed')
-        .order('created_at', { ascending: false })
-        .limit(1)
+        .eq('id', completedElectionId)
         .single();
     if (electionError) throw electionError;
 
@@ -5947,7 +5949,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
             .eq('status', 'president_desk')
             .select('id, bill_type, ambassador_id');
         await syncAmbassadorsForFailedConfirmationBills(supabase, deskBills);
-        await processPresidentialElectionResult(supabase, nation, completedElection, currentTick);
+        await processPresidentialElectionResult(supabase, nation, completedElection, currentTick, completedElection.id);
     } else if (isPresidential && normalizedElectionType === 'parliamentary') {
         // Midterm parliamentary election — seats reshuffled, president stays
         console.log(`Manual midterm parliamentary election for ${nation.name} — president stays in office`);
@@ -6109,15 +6111,9 @@ export async function processElections(supabase, nation, currentTick) {
             .update({ status: 'completed', results: data })
             .eq('id', election.id);
 
-        // Sync seats back to factions table from the completed election results
-        const { data: completedElection } = await supabase
-            .from('elections').select('results')
-            .eq('nation_id', nation.id)
-            .eq('status', 'completed')
-            .not('results', 'is', null)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+        // Use the specific election we just completed (not a generic "most recent" query
+        // which could return a different election type processed earlier in this tick)
+        const completedElection = { id: election.id, results: data };
 
         if (completedElection?.results?.seats) {
             for (const r of completedElection.results.seats) {
@@ -6155,7 +6151,7 @@ export async function processElections(supabase, nation, currentTick) {
                 console.log(`Failed ${deskBills.length} bill(s) on president's desk after presidential election for ${nation.name}`);
             }
 
-            await processPresidentialElectionResult(supabase, nation, completedElection, currentTick);
+            await processPresidentialElectionResult(supabase, nation, completedElection, currentTick, election.id);
         } else if (isPresidential && electionType === 'parliamentary') {
             // Midterm parliamentary election — seats reshuffled, president stays, desk bills remain
             console.log(`Midterm parliamentary election for ${nation.name} — president stays in office`);
@@ -6287,7 +6283,7 @@ export async function processElections(supabase, nation, currentTick) {
  * Presidential election result: read candidate-level popular vote results
  * and inaugurate the winning candidate.
  */
-export async function processPresidentialElectionResult(supabase, nation, completedElection, currentTick) {
+export async function processPresidentialElectionResult(supabase, nation, completedElection, currentTick, electionId = null) {
     let candidateResults = completedElection?.results?.presidential_candidates || [];
     if (candidateResults.length === 0) {
         console.warn(`No candidate vote data for presidential election in ${nation.name}`);
@@ -6359,12 +6355,15 @@ export async function processPresidentialElectionResult(supabase, nation, comple
                 runoff_candidates: runoffResults,
                 was_runoff: true
             };
-            await supabase.from('elections')
-                .update({ results: combinedResults })
-                .eq('nation_id', nation.id)
-                .eq('status', 'completed')
-                .order('created_at', { ascending: false })
-                .limit(1);
+            const runoffUpdateQuery = supabase.from('elections')
+                .update({ results: combinedResults });
+            if (electionId) {
+                await runoffUpdateQuery.eq('id', electionId);
+            } else {
+                // Fallback: target by nation + completed election ID from completedElection
+                await runoffUpdateQuery
+                    .eq('id', completedElection.id);
+            }
         }
     }
 
@@ -7052,7 +7051,8 @@ export async function triggerPresidentialCandidateSelection(supabase, nation, cu
 
     const leadTicks = GAME_CONFIG.PRESIDENTIAL_CANDIDATE_LEAD_TICKS;
 
-    // Find scheduled presidential elections that are exactly leadTicks away
+    // Find scheduled presidential elections that are within leadTicks away
+    // (use lte instead of eq to handle missed ticks from server downtime)
     const targetTick = currentTick + leadTicks;
     const { data: upcomingElection } = await supabase
         .from('elections')
@@ -7060,7 +7060,9 @@ export async function triggerPresidentialCandidateSelection(supabase, nation, cu
         .eq('nation_id', nation.id)
         .eq('status', 'scheduled')
         .eq('election_type', 'presidential')
-        .eq('election_tick', targetTick)
+        .gt('election_tick', currentTick)
+        .lte('election_tick', targetTick)
+        .order('election_tick', { ascending: true })
         .limit(1)
         .maybeSingle();
 
