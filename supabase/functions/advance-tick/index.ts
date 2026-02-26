@@ -902,8 +902,6 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     return { processed: nationCount, totalVolume: totalGlobalVolume };
 }
 
-// Canonical government types used by nation state + ministry event template variants.
-const MINISTRY_EVENT_GOV_TYPES = Object.freeze(['Democracy', 'Autocracy', 'Presidential']);
 
 /**
  * Update GAME_CONFIG with nation-specific seat values.
@@ -1016,17 +1014,6 @@ function canonicalizeNationGovType(govType) {
     return legacyAliasMap[govType] || govType;
 }
 
-function templateSupportsNationGovType(templateGovTypes, nationGovTypeRaw) {
-    const nationGovTypeCanonical = canonicalizeNationGovType(nationGovTypeRaw);
-    const templateGovTypesRaw = Array.isArray(templateGovTypes) ? templateGovTypes : [];
-    const templateGovTypesCanonical = [...new Set(templateGovTypesRaw.map(canonicalizeNationGovType).filter(Boolean))];
-    return {
-        matches: !!nationGovTypeCanonical && templateGovTypesCanonical.includes(nationGovTypeCanonical),
-        nationGovTypeCanonical,
-        templateGovTypesRaw,
-        templateGovTypesCanonical
-    };
-}
 
 // ==================== DIPLOMACY CONSTANTS ====================
 
@@ -12100,261 +12087,6 @@ async function processRevolution(supabase, nation, currentTick) {
 }
 
 
-// ==================== MINISTRY INBOX EVENTS ====================
-
-/**
- * Process ministry inbox events from templates.
- * For each nation:
- *  - Loads active ministry_event_templates
- *  - Filters by government type and active ministries
- *  - Checks cooldowns against previously fired inbox events
- *  - Evaluates weight conditions against nation stats
- *  - Rolls probability (boosted when weight conditions are met)
- *  - Creates ministry_events rows with randomly selected variants
- *  - Also expires overdue active ministry events
- */
-async function processMinistryInboxEvents(supabase, nation, currentTick) {
-    const firedEvents = [];
-    const dbg = (msg) => console.log(`[MinistryEvents][${nation.name}][tick ${currentTick}] ${msg}`);
-
-    // --- 1. Expire overdue active ministry events ---
-    const { data: overdueEvents } = await supabase
-        .from('ministry_events')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('status', 'active')
-        .lt('expires_at_tick', currentTick);
-
-    if (overdueEvents && overdueEvents.length > 0) {
-        const overdueIds = overdueEvents.map(e => e.id);
-        await supabase.from('ministry_events')
-            .update({ status: 'expired' })
-            .in('id', overdueIds);
-    }
-
-    // --- 2. Load all active templates ---
-    const { data: templates, error: templateError } = await supabase
-        .from('ministry_event_templates')
-        .select('*')
-        .eq('is_active', true);
-
-    if (templateError) {
-        dbg(`BLOCKED: failed to load ministry_event_templates: ${templateError.message}`);
-        return firedEvents;
-    }
-
-    if (!templates || templates.length === 0) {
-        dbg('BLOCKED: No active ministry_event_templates found in DB.');
-        return firedEvents;
-    }
-    dbg(`Loaded ${templates.length} active template(s): [${templates.map(t => t.event_key).join(', ')}]`);
-
-    // --- 3. Filter by government type ---
-    const govTypeRaw = nation.government_type || '';
-    const govType = getCanonicalGovernmentType(nation);
-    const eligible = templates.filter(t => (t.gov_types || []).includes(govType));
-    if (eligible.length === 0) {
-        dbg(`BLOCKED: 0/${templates.length} templates match gov_type raw="${govTypeRaw}" canonical="${govType}". Template gov_types: ${templates.map(t => {
-            const matchInfo = templateSupportsNationGovType(t.gov_types, govTypeRaw);
-            return `${t.event_key}=raw:${JSON.stringify(matchInfo.templateGovTypesRaw)} canonical:${JSON.stringify(matchInfo.templateGovTypesCanonical)}`;
-        }).join(', ')}. Canonical source of truth: ${JSON.stringify(canonicalNationGovTypes)}.`);
-        return firedEvents;
-    }
-    dbg(`${eligible.length}/${templates.length} template(s) match gov_type raw="${govTypeRaw}" canonical="${govType}": [${eligible.map(t => t.event_key).join(', ')}]`);
-
-    // --- 4. Load active ministries for this nation ---
-    const { data: ministries } = await supabase
-        .from('ministries')
-        .select('ministry_key, party_id')
-        .eq('nation_id', nation.id)
-        .eq('is_active', true);
-
-    if (!ministries || ministries.length === 0) {
-        dbg('BLOCKED: No active ministries found for this nation.');
-        return firedEvents;
-    }
-    dbg(`Active ministries: [${ministries.map(m => `${m.ministry_key}(party=${m.party_id})`).join(', ')}]`);
-
-    // For Presidential nations with pending-confirmation ministers, party_id may be null.
-    // Fall back to the PM/President's faction so events can still fire.
-    let fallbackFactionId = null;
-    if (govType === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC) {
-        const { data: president } = await supabase
-            .from('presidents')
-            .select('party_id')
-            .eq('nation_id', nation.id)
-            .eq('is_active', true)
-            .maybeSingle();
-        fallbackFactionId = president?.party_id || null;
-    }
-
-    const ministryMap = {};
-    for (const m of ministries) {
-        ministryMap[m.ministry_key] = m.party_id || fallbackFactionId;
-    }
-    dbg(`Ministry map: ${JSON.stringify(ministryMap)}`);
-
-    // --- 5. Check cooldowns: find last fired tick for each template ---
-    const templateIds = eligible.map(t => t.id);
-    const { data: recentEvents } = await supabase
-        .from('ministry_events')
-        .select('template_id, created_at_tick')
-        .eq('nation_id', nation.id)
-        .in('template_id', templateIds)
-        .order('created_at_tick', { ascending: false });
-
-    const lastFiredMap = {};
-    for (const entry of (recentEvents || [])) {
-        if (entry.template_id && !lastFiredMap[entry.template_id]) {
-            lastFiredMap[entry.template_id] = entry.created_at_tick;
-        }
-    }
-
-    // --- 6. Also check how many active (unresolved) events already exist per ministry ---
-    const { data: activeEvents } = await supabase
-        .from('ministry_events')
-        .select('ministry_key')
-        .eq('nation_id', nation.id)
-        .eq('status', 'active');
-
-    const activeCountByMinistry = {};
-    for (const ae of (activeEvents || [])) {
-        activeCountByMinistry[ae.ministry_key] = (activeCountByMinistry[ae.ministry_key] || 0) + 1;
-    }
-
-    // --- 7. Process each eligible template ---
-    dbg(`Processing ${eligible.length} eligible template(s)…`);
-    for (const tmpl of eligible) {
-        const tKey = tmpl.event_key;
-
-        // Skip if this ministry doesn't exist or isn't staffed
-        const controllingFactionId = ministryMap[tmpl.ministry_key];
-        if (!controllingFactionId) {
-            dbg(`  [${tKey}] SKIP: ministry "${tmpl.ministry_key}" not in ministryMap or has null faction. Map keys: [${Object.keys(ministryMap).join(', ')}]`);
-            continue;
-        }
-
-        // Skip if ministry already has 3+ active events (prevent inbox flood)
-        const activeCount = activeCountByMinistry[tmpl.ministry_key] || 0;
-        if (activeCount >= 3) {
-            dbg(`  [${tKey}] SKIP: ministry "${tmpl.ministry_key}" already has ${activeCount} active events (max 3).`);
-            continue;
-        }
-
-        // Check cooldown
-        const lastFired = lastFiredMap[tmpl.id];
-        if (lastFired !== undefined) {
-            const ticksSince = currentTick - lastFired;
-            if (ticksSince < (tmpl.cooldown_ticks || 6)) {
-                dbg(`  [${tKey}] SKIP: cooldown — last fired tick ${lastFired}, ${ticksSince} ticks ago, need ${tmpl.cooldown_ticks || 6}.`);
-                continue;
-            }
-        }
-
-        // --- 8. Evaluate weight conditions ---
-        const variants = tmpl.variants || {};
-        const weightConditions = variants.weight_conditions || [];
-
-        // Fall back to old flat columns if no array conditions
-        if (weightConditions.length === 0 && tmpl.weight_stat) {
-            weightConditions.push({
-                stat: tmpl.weight_stat,
-                op: tmpl.weight_operator || '>',
-                value: tmpl.weight_value
-            });
-        }
-
-        let allConditionsMet = true;
-        if (weightConditions.length > 0) {
-            for (const cond of weightConditions) {
-                const statVal = nation[cond.stat];
-                if (statVal === null || statVal === undefined) {
-                    dbg(`  [${tKey}] Weight cond: nation.${cond.stat} is ${statVal} (missing!) — condition FAILED`);
-                    allConditionsMet = false;
-                    break;
-                }
-                const val = Number(statVal);
-                const threshold = Number(cond.value);
-                const passed = (cond.op === '>' && val > threshold) ||
-                               (cond.op === '<' && val < threshold) ||
-                               (cond.op === '>=' && val >= threshold) ||
-                               (cond.op === '<=' && val <= threshold);
-                dbg(`  [${tKey}] Weight cond: nation.${cond.stat}=${val} ${cond.op} ${threshold} → ${passed ? 'PASS' : 'FAIL'}`);
-                if (!passed) { allConditionsMet = false; break; }
-            }
-        }
-
-        // --- 9. Probability roll ---
-        // Base chance: 25% per tick if conditions met, 5% if not
-        // (Events with no conditions always use base 25%)
-        let fireProbability;
-        if (weightConditions.length === 0) {
-            fireProbability = 25;
-        } else if (allConditionsMet) {
-            fireProbability = 40;
-        } else {
-            fireProbability = 5;
-        }
-
-        const roll = Math.random() * 100;
-        dbg(`  [${tKey}] Probability: ${fireProbability}% (conditions=${weightConditions.length}, met=${allConditionsMet}), roll=${roll.toFixed(1)} → ${roll < fireProbability ? 'FIRE!' : 'SKIP (bad roll)'}`);
-        if (roll >= fireProbability) continue;
-
-        // --- 10. Pick random variants ---
-        const titles = variants.titles || [tmpl.title];
-        const chosenTitle = titles[Math.floor(Math.random() * titles.length)] || tmpl.title;
-
-        const govVariant = variants[govTypeCanonical] || {};
-        const bodies = govVariant.bodies || [];
-        const chosenBody = bodies.length > 0
-            ? bodies[Math.floor(Math.random() * bodies.length)]
-            : '';
-
-        const options = govVariant.options || [];
-
-        // --- 11. Insert into ministry_events ---
-        const expiresAtTick = currentTick + (tmpl.deadline_ticks || 3);
-
-        const { error } = await supabase.from('ministry_events').insert({
-            nation_id: nation.id,
-            ministry_key: tmpl.ministry_key,
-            controlling_faction_id: controllingFactionId,
-            template_id: tmpl.id,
-            event_key: tmpl.event_key,
-            title: chosenTitle,
-            sender: tmpl.sender || 'Ministry Office',
-            body: chosenBody,
-            priority: tmpl.priority || 'routine',
-            status: 'active',
-            created_at_tick: currentTick,
-            expires_at_tick: expiresAtTick,
-            options: options,
-            chosen_option: null,
-            resolved_effects: null,
-            resolved_at_tick: null
-        });
-
-        if (error) {
-            dbg(`  [${tKey}] ERROR inserting ministry_event: ${error.message}`);
-        } else {
-            // Update active count to prevent flooding within same tick
-            activeCountByMinistry[tmpl.ministry_key] = (activeCountByMinistry[tmpl.ministry_key] || 0) + 1;
-
-            firedEvents.push({
-                templateKey: tmpl.event_key,
-                title: chosenTitle,
-                ministry: tmpl.ministry_key,
-                conditionsMet: allConditionsMet
-            });
-
-            dbg(`  [${tKey}] ✓ FIRED: "${chosenTitle}" → ${tmpl.ministry_key}`);
-        }
-    }
-
-    dbg(`Done. Fired ${firedEvents.length} event(s) this tick.`);
-    return firedEvents;
-}
-
 
 // ==================== UTILITY FORMATTERS ====================
 
@@ -13948,12 +13680,6 @@ async function advanceTick(supabase) {
             summary.promises.push({ nation: nation.name, promises: promiseResults });
         }
 
-        // Ministry inbox events (fire from templates + expire overdue)
-        const ministryEventResults = await processMinistryInboxEvents(supabase, freshNation || nation, newTick);
-        if (ministryEventResults.length > 0) {
-            summary.ministryEvents = summary.ministryEvents || [];
-            summary.ministryEvents.push({ nation: nation.name, events: ministryEventResults });
-        }
 
         // Ambassador term limits (retirements + warnings)
         const retirementResults = await processAmbassadorRetirements(supabase, freshNation || nation, newTick);
@@ -13975,77 +13701,6 @@ async function advanceTick(supabase) {
     return summary;
 }
 
-// ===== INTEGRITY CHECKS =====
-
-const CANONICAL_TEMPLATE_GOV_TYPES = ['Democracy', 'Autocracy', 'Presidential'];
-const TEMPLATE_GOV_TYPE_ALIASES = {
-    democracy: 'Democracy',
-    democratic: 'Democracy',
-    parliamentary: 'Democracy',
-    parliamentarian: 'Democracy',
-    'parliamentary democracy': 'Democracy',
-    autocracy: 'Autocracy',
-    authoritarian: 'Autocracy',
-    authoritarianism: 'Autocracy',
-    dictatorship: 'Autocracy',
-    dictatorial: 'Autocracy',
-    'military junta': 'Autocracy',
-    presidential: 'Presidential',
-    'presidential republic': 'Presidential',
-    'executive presidency': 'Presidential'
-};
-
-async function runMinistryEventTemplateGovTypeIntegrityCheck(supabase) {
-    try {
-        const { data: templates, error } = await supabase
-            .from('ministry_event_templates')
-            .select('id, event_key, gov_types, is_active');
-
-        if (error) {
-            console.error('[Integrity][ministry_event_templates] Failed to load template gov types:', error.message);
-            return;
-        }
-
-        const unknownByTemplate = [];
-        const distinctGovTypes = new Set();
-
-        for (const tmpl of (templates || [])) {
-            const values = Array.isArray(tmpl.gov_types) ? tmpl.gov_types : [];
-            const unknown = [];
-            for (const raw of values) {
-                const trimmed = String(raw || '').trim();
-                if (!trimmed) continue;
-                distinctGovTypes.add(trimmed);
-                const isCanonical = CANONICAL_TEMPLATE_GOV_TYPES.includes(trimmed);
-                const isAlias = Object.prototype.hasOwnProperty.call(TEMPLATE_GOV_TYPE_ALIASES, trimmed.toLowerCase());
-                if (!isCanonical && !isAlias) unknown.push(trimmed);
-            }
-            if (unknown.length > 0) {
-                unknownByTemplate.push({
-                    id: tmpl.id,
-                    event_key: tmpl.event_key,
-                    is_active: tmpl.is_active,
-                    unknown_gov_types: [...new Set(unknown)].sort()
-                });
-            }
-        }
-
-        const distinctList = [...distinctGovTypes].sort();
-        console.log('[Integrity][ministry_event_templates] Distinct template gov_types:', JSON.stringify(distinctList));
-        console.log('[Integrity][ministry_event_templates] Canonical gov_types:', JSON.stringify(CANONICAL_TEMPLATE_GOV_TYPES));
-
-        if (unknownByTemplate.length > 0) {
-            console.error(
-                `[Integrity][ministry_event_templates] UNKNOWN gov_types detected in ${unknownByTemplate.length} template(s). ` +
-                `Canonical values: ${CANONICAL_TEMPLATE_GOV_TYPES.join(', ')}. ` +
-                'Offenders:',
-                JSON.stringify(unknownByTemplate)
-            );
-        }
-    } catch (e) {
-        console.error('[Integrity][ministry_event_templates] Integrity check failed unexpectedly:', e?.message || e);
-    }
-}
 
 // ===== EDGE FUNCTION HANDLER =====
 
@@ -14076,7 +13731,6 @@ Deno.serve(async (req) => {
     try {
         // 0. Startup checks
         await ensureApRpcAvailability(supabase);
-        await runMinistryEventTemplateGovTypeIntegrityCheck(supabase);
 
         // 1. Check for force parameter (admin manual trigger)
         let force = false;

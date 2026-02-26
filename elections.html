@@ -1646,21 +1646,6 @@ async function formGovernment() {
                     shard?.current_tick || 0
                 );
 
-                // Create ministry inbox event so PM party is notified
-                try {
-                    await _supabase.from('ministry_events').insert({
-                        nation_id: currentNation.id,
-                        ministry_key: 'prime_minister',
-                        controlling_faction_id: pmPartyId,
-                        title: '👑 Select Your Prime Minister',
-                        sender: 'Coalition Government',
-                        body: 'Your party has been awarded the Prime Minister post. You must now choose who will lead the nation. Visit the PM selection page to review candidates and make your appointment.',
-                        status: 'active',
-                        created_at_tick: shard?.current_tick || 0
-                    });
-                } catch (inboxErr) {
-                    console.warn('Could not create PM selection inbox event:', inboxErr);
-                }
             }
 
             alert('🏛️ ' + data.message);

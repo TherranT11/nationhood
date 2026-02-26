@@ -496,7 +496,7 @@
 <script type="module">
 const { createClient } = supabase;
 import { fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runManualElectionByGovernmentType, DONOR_DEMANDS, formatStatName } from './js/game-common.js';
+import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runManualElectionByGovernmentType, DONOR_DEMANDS, formatStatName } from './js/game-common.js';
 const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
     const _supabase = createClient(supabaseUrl, supabaseKey);
@@ -622,10 +622,6 @@ const supabaseUrl = 'https://pbumjalxclmegzckhqqr.supabase.co';
             if (summary.effects?.length) parts.push(`${summary.effects.reduce((s,e) => s + e.effects.length, 0)} law effects`);
             if (summary.ministryActions?.length) parts.push(`${summary.ministryActions.reduce((s,e) => s + e.effects.length, 0)} ministry effects`);
             if (summary.costs?.length) parts.push(`${summary.costs.length} cost deductions`);
-            if (summary.ministryEvents?.length) {
-                const mEvtCount = summary.ministryEvents.reduce((s,e) => s + e.events.length, 0);
-                parts.push(`${mEvtCount} ministry inbox event(s) fired`);
-            }
             if (summary.apDistributed !== undefined) parts.push(`${summary.apDistributed} AP distributed`);
             if (summary.apFailed > 0) parts.push(`${summary.apFailed} AP failures`);
             if (parts.length) msg += ' — ' + parts.join(', ');

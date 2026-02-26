@@ -1492,45 +1492,6 @@ async function confirmAssign() {
             }
         }
 
-        // Create welcome event in ministry inbox
-        const welcomeMessages = {
-            prime_minister: { title: "Welcome to the Prime Minister's Office", sender: "Prime Minister", body: "Congratulations on your appointment to the highest executive office. As Prime Minister, you oversee all government operations, set the national agenda, and coordinate between ministries. Your decisions will shape the direction of the entire nation. Use your authority wisely — every action has consequences." },
-            interior: { title: "Welcome to the Ministry of the Interior", sender: "Minister of the Interior", body: "You now oversee domestic governance, civil administration, and internal order. Your ministry handles regional affairs, public safety infrastructure, and citizen services. The stability of the nation's internal affairs rests in your hands. Monitor civil unrest and act decisively to maintain order." },
-            foreign: { title: "Welcome to the Ministry of Foreign Affairs", sender: "Foreign Minister", body: "You are now responsible for the nation's international relations, diplomatic missions, and treaty negotiations. Foreign policy decisions will affect trade, alliances, and the nation's standing on the world stage. Navigate carefully between cooperation and sovereignty." },
-            defense: { title: "Welcome to the Ministry of Defense", sender: "Minister of Defense", body: "The armed forces are now under your civilian oversight. You manage military readiness, defense spending, and strategic planning. Balancing national security with fiscal responsibility will be your greatest challenge. The safety of the nation depends on your judgment." },
-            finance: { title: "Welcome to the Ministry of Finance", sender: "Minister of Finance", body: "You now control the national budget, taxation policy, and economic planning. Every ministry depends on your fiscal decisions. Manage debt carefully, stimulate growth where possible, and ensure the nation's economic stability. The numbers never lie." },
-            education: { title: "Welcome to the Ministry of Education", sender: "Minister of Education", body: "The future of the nation's workforce and intellectual capital is in your hands. You oversee schools, universities, research funding, and literacy programs. Investing in education pays dividends across every sector — but results take time. Plan for the long term." },
-            healthcare: { title: "Welcome to the Ministry of Healthcare", sender: "Minister of Healthcare", body: "Public health, hospitals, disease prevention, and medical research now fall under your authority. Healthcare quality directly affects citizen happiness, life expectancy, and workforce productivity. Every policy decision here is measured in lives saved or lost." },
-            labor: { title: "Welcome to the Ministry of Labor", sender: "Minister of Labor", body: "Workers' rights, employment policy, and labor market regulation are now your responsibility. You must balance the interests of employers and employees while keeping unemployment low and wages fair. The economy's backbone depends on a healthy labor force." },
-            justice: { title: "Welcome to the Ministry of Justice", sender: "Minister of Justice", body: "The rule of law is now your charge. You oversee the courts, law enforcement policy, and the criminal justice system. Judicial independence, crime reduction, and civil liberties must be balanced carefully. Justice must be both firm and fair." },
-            trade: { title: "Welcome to the Ministry of Trade", sender: "Minister of Trade", body: "International commerce, trade agreements, tariff policy, and economic partnerships are now your responsibility. You must negotiate favorable terms for your nation while maintaining productive relationships with trading partners. Every deal shapes the economic landscape for years to come." },
-            energy: { title: "Welcome to the Ministry of Energy", sender: "Minister of Energy", body: "Power generation, renewable energy development, emissions regulation, and environmental policy are now under your authority. The nation depends on reliable, affordable energy — but the planet demands cleaner sources. Balancing economic growth with environmental stewardship will define your tenure." },
-            transportation: { title: "Welcome to the Ministry of Transportation", sender: "Minister of Transportation", body: "Roads, railways, ports, and public transit systems are now under your management. Transportation infrastructure drives economic growth and connects communities. Aging systems need maintenance, growing cities need expansion — and budgets are always tight." },
-            security: { title: "Welcome to the Ministry of Security", sender: "Minister of Security", body: "National security, intelligence operations, counter-terrorism, and cybersecurity are now your domain. You walk a fine line between protecting citizens and preserving civil liberties. Threats are constant and often invisible — vigilance is your greatest asset." }
-        };
-        try {
-            const w = welcomeMessages[assignMinistryKey];
-            if (w) {
-                await _supabase.from('ministry_events').insert({
-                    nation_id: currentNation.id,
-                    ministry_key: assignMinistryKey,
-                    controlling_faction_id: selectedCandidate.partyId,
-                    title: w.title,
-                    sender: w.sender,
-                    body: w.body,
-                    priority: 'low',
-                    status: 'resolved',
-                    created_at_tick: currentTick,
-                    expires_at_tick: null,
-                    options: [],
-                    chosen_option: null,
-                    resolved_effects: null,
-                    resolved_at_tick: currentTick
-                });
-            }
-        } catch (welcomeErr) {
-            console.warn('Could not create welcome event:', welcomeErr);
-        }
 
         closeAssignModal();
         alert('✦ ' + selectedCandidate.firstName + ' ' + selectedCandidate.lastName + ' appointed to ' + (MINISTRY_NAMES[assignMinistryKey] || assignMinistryKey) + '!');
