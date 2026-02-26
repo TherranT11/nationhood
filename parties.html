@@ -180,11 +180,12 @@ async function renderAutocracyParties(el, f, n) {
     );
 
     // ── FACTION COALITIONS ──
+    // Fetch active + recently resolved (for cooldown enforcement)
+    const COALITION_REPROPOSE_COOLDOWN = 3;
     const { data: coalitionRows } = await _supabase
         .from('faction_coalitions')
         .select('id, faction_a_id, faction_b_id, coalition_type, status, proposed_by_faction_id, proposed_at_tick, resolved_at_tick, detected_at_tick')
         .eq('nation_id', n.id)
-        .in('status', ['pending', 'active', 'detected'])
         .order('proposed_at_tick', { ascending: false });
 
     // Auto-expire pending coalition proposals after 3 ticks
@@ -244,12 +245,16 @@ async function renderAutocracyParties(el, f, n) {
     const detectedSecretCoalitions = (coalitionRows || []).filter(c =>
         c.coalition_type === 'secret' && c.status === 'detected'
     );
-    // Factions I already have an active/pending coalition with
+    // Factions I already have an active/pending coalition with, or recently resolved (cooldown)
     const existingCoalitionPartners = new Set();
     for (const c of (coalitionRows || [])) {
         if (c.faction_a_id === f.id || c.faction_b_id === f.id) {
+            const partnerId = c.faction_a_id === f.id ? c.faction_b_id : c.faction_a_id;
             if (['pending', 'active', 'detected'].includes(c.status)) {
-                existingCoalitionPartners.add(c.faction_a_id === f.id ? c.faction_b_id : c.faction_a_id);
+                existingCoalitionPartners.add(partnerId);
+            } else if (c.resolved_at_tick && currentTick < c.resolved_at_tick + COALITION_REPROPOSE_COOLDOWN) {
+                // Cooldown: can't re-propose for 3 ticks after decline/dissolve/betray
+                existingCoalitionPartners.add(partnerId);
             }
         }
     }
