@@ -842,7 +842,7 @@ async function renderAutocracyParties(el, f, n) {
                 const typeLabel = req.coalition_type === 'public' ? 'PUBLIC' : 'SECRET';
                 const typeDesc = req.coalition_type === 'public'
                     ? 'This alliance will be visible to the Strongman and all players.'
-                    : 'This alliance will be hidden. You may also choose to <strong>betray</strong> the proposer to the Strongman.';
+                    : 'This alliance will be hidden. You may also choose to betray the proposer to the Strongman.';
                 return `
                     <div class="reg-coalition-banner">
                         <div class="reg-coalition-banner-title">${typeLabel} COALITION REQUEST</div>
