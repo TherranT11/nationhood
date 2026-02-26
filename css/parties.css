@@ -3195,6 +3195,20 @@ body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }
     letter-spacing: 1px;
     color: #ffab00;
 }
+.reg-coalition-expiry-tag {
+    font-size: 0.4rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: #8a8778;
+    margin-left: auto;
+}
+.reg-coalition-type-fixed {
+    font-size: 0.45rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #2196F3;
+    padding: 6px 0;
+}
 .reg-coalition-withdraw-btn {
     font-size: 0.45rem;
     font-weight: 700;

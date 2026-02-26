@@ -182,19 +182,40 @@ async function renderAutocracyParties(el, f, n) {
     // ── FACTION COALITIONS ──
     const { data: coalitionRows } = await _supabase
         .from('faction_coalitions')
-        .select('id, faction_a_id, faction_b_id, coalition_type, status, proposed_by_faction_id, proposed_at_tick, detected_at_tick')
+        .select('id, faction_a_id, faction_b_id, coalition_type, status, proposed_by_faction_id, proposed_at_tick, resolved_at_tick, detected_at_tick')
         .eq('nation_id', n.id)
         .in('status', ['pending', 'active', 'detected'])
         .order('proposed_at_tick', { ascending: false });
 
     // Auto-expire pending coalition proposals after 3 ticks
-    const COALITION_EXPIRY_TICKS = 3;
+    const COALITION_PROPOSAL_EXPIRY = 3;
+    const COALITION_ACTIVE_EXPIRY = 12;
     for (const c of (coalitionRows || [])) {
-        if (c.status === 'pending' && currentTick >= c.proposed_at_tick + COALITION_EXPIRY_TICKS) {
+        if (c.status === 'pending' && currentTick >= c.proposed_at_tick + COALITION_PROPOSAL_EXPIRY) {
             await _supabase.from('faction_coalitions').update({
                 status: 'declined', resolved_at_tick: currentTick
             }).eq('id', c.id);
-            c.status = 'declined'; // update local copy so filters below exclude it
+            c.status = 'declined';
+        }
+        // Auto-expire active/detected coalitions after 12 ticks
+        if (['active', 'detected'].includes(c.status) && c.resolved_at_tick && currentTick >= c.resolved_at_tick + COALITION_ACTIVE_EXPIRY) {
+            await _supabase.from('faction_coalitions').update({
+                status: 'dissolved', resolved_at_tick: currentTick
+            }).eq('id', c.id);
+            c.status = 'dissolved';
+        }
+    }
+
+    // Auto-dissolve coalitions where the partner's steward is dead (Bug #8)
+    for (const c of (coalitionRows || [])) {
+        if (!['active', 'detected'].includes(c.status)) continue;
+        const stewardA = stewardByFaction[c.faction_a_id];
+        const stewardB = stewardByFaction[c.faction_b_id];
+        if (!stewardA || !stewardB) {
+            await _supabase.from('faction_coalitions').update({
+                status: 'dissolved', resolved_at_tick: currentTick
+            }).eq('id', c.id);
+            c.status = 'dissolved';
         }
     }
 
@@ -858,7 +879,7 @@ async function renderAutocracyParties(el, f, n) {
 
         // ── COALITION REQUEST BANNER (non-strongman with pending request) ──
         let coalitionBannerHtml = '';
-        if (!isStrongman && myPendingCoalitionRequests.length > 0) {
+        if (myPendingCoalitionRequests.length > 0) {
             const banners = myPendingCoalitionRequests.map(req => {
                 const partnerId = req.proposed_by_faction_id;
                 const partnerName = factionNameMap[partnerId] || 'Unknown';
@@ -880,11 +901,12 @@ async function renderAutocracyParties(el, f, n) {
             coalitionBannerHtml = banners;
         }
 
-        // ── PROPOSE COALITION (non-strongman with steward only) ──
+        // ── PROPOSE COALITION ──
         let proposeCoalitionHtml = '';
-        if (!isStrongman && mySteward) {
+        const canPropose = isStrongman || mySteward;
+        if (canPropose) {
             const stAP = f.action_points ?? 0;
-            const eligibleTargets = nonRuling.filter(p =>
+            const eligibleTargets = (isStrongman ? allFactions : nonRuling).filter(p =>
                 p.id !== f.id && !existingCoalitionPartners.has(p.id) && stewardByFaction[p.id]
             );
 
@@ -892,6 +914,18 @@ async function renderAutocracyParties(el, f, n) {
                 const targetOptions = eligibleTargets.map(p => {
                     return `<option value="${p.id}">${escapeHtml(p.faction_name)}</option>`;
                 }).join('');
+
+                const typeSelectHtml = isStrongman
+                    ? `<input type="hidden" id="coalition-type-select" value="public">
+                       <span class="reg-coalition-type-fixed">PUBLIC ALLIANCE</span>`
+                    : `<select id="coalition-type-select" class="reg-coalition-select">
+                           <option value="public">Public (visible)</option>
+                           <option value="secret">Secret (hidden)</option>
+                       </select>`;
+
+                const descText = isStrongman
+                    ? 'Strongman alliances are always public. Lasts 12 ticks.'
+                    : 'Public: Visible to all players including the Strongman.';
 
                 proposeCoalitionHtml = `
                     <div class="reg-section">
@@ -902,13 +936,10 @@ async function renderAutocracyParties(el, f, n) {
                                     <option value="">Select faction...</option>
                                     ${targetOptions}
                                 </select>
-                                <select id="coalition-type-select" class="reg-coalition-select">
-                                    <option value="public">Public (visible)</option>
-                                    <option value="secret">Secret (hidden)</option>
-                                </select>
+                                ${typeSelectHtml}
                             </div>
                             <div class="reg-coalition-propose-desc">
-                                <span id="coalition-type-desc">Public: Visible to all players including the Strongman.</span>
+                                <span id="coalition-type-desc">${descText}</span>
                             </div>
                             <button class="reg-steward-action-btn" id="coalition-propose-btn" ${stAP < 1 ? 'disabled' : ''}>
                                 <div class="reg-steward-action-header">
@@ -921,19 +952,21 @@ async function renderAutocracyParties(el, f, n) {
             }
         }
 
-        // ── MY ACTIVE COALITIONS (non-strongman) ──
+        // ── MY ACTIVE COALITIONS ──
         let myCoalitionsHtml = '';
-        if (!isStrongman && myActiveCoalitions.length > 0) {
+        if (myActiveCoalitions.length > 0) {
             const coalitionCards = myActiveCoalitions.map(c => {
                 const partnerId = c.faction_a_id === f.id ? c.faction_b_id : c.faction_a_id;
                 const partnerName = factionNameMap[partnerId] || 'Unknown';
                 const typeLabel = c.coalition_type === 'public' ? 'PUBLIC' : 'SECRET';
                 const typeClass = c.coalition_type === 'public' ? 'reg-coalition-public' : 'reg-coalition-secret';
+                const ticksLeft = c.resolved_at_tick ? Math.max(0, (c.resolved_at_tick + COALITION_ACTIVE_EXPIRY) - currentTick) : '?';
                 return `
                     <div class="reg-coalition-card ${typeClass}">
                         <div class="reg-coalition-card-header">
                             <span class="reg-coalition-type-tag">${typeLabel}</span>
                             <span class="reg-coalition-partner">${escapeHtml(partnerName)}</span>
+                            <span class="reg-coalition-expiry-tag">${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} left</span>
                         </div>
                         <div class="reg-coalition-card-actions">
                             <button class="reg-coalition-msg-btn" data-coalition-id="${c.id}" data-partner-name="${escapeHtml(partnerName)}">MESSAGE</button>
@@ -949,9 +982,9 @@ async function renderAutocracyParties(el, f, n) {
                 </div>`;
         }
 
-        // ── MY PENDING OUTGOING PROPOSALS (non-strongman) ──
+        // ── MY PENDING OUTGOING PROPOSALS ──
         let myPendingOutgoingHtml = '';
-        if (!isStrongman && myPendingOutgoing.length > 0) {
+        if (myPendingOutgoing.length > 0) {
             const pendingCards = myPendingOutgoing.map(c => {
                 const targetId = c.faction_a_id === f.id ? c.faction_b_id : c.faction_a_id;
                 const targetName = factionNameMap[targetId] || 'Unknown';
@@ -1013,7 +1046,7 @@ async function renderAutocracyParties(el, f, n) {
         </div>` : '';
 
         // Coalition messaging overlay (hidden by default)
-        const coalitionMsgOverlayHtml = !isStrongman ? `
+        const coalitionMsgOverlayHtml = `
         <div class="reg-coalition-msg-overlay" id="coalition-msg-overlay" style="display:none">
             <div class="reg-coalition-msg-box">
                 <div class="reg-coalition-msg-title" id="coalition-msg-title">Coalition Messages</div>
@@ -1024,7 +1057,7 @@ async function renderAutocracyParties(el, f, n) {
                 </div>
                 <button class="reg-coalition-msg-close" id="coalition-msg-close">CLOSE</button>
             </div>
-        </div>` : '';
+        </div>`;
 
         let regimePanel = `
             <div class="reg-panel">
@@ -1127,6 +1160,9 @@ async function renderAutocracyParties(el, f, n) {
                         </div>
                         ${pillarCardsHtml}
                         ${coalitionIntelHtml}
+                        ${isStrongman ? proposeCoalitionHtml : ''}
+                        ${isStrongman ? myCoalitionsHtml : ''}
+                        ${isStrongman ? myPendingOutgoingHtml : ''}
                         ${regimeLogHtml}
                     </div>
                 </div>
@@ -1519,6 +1555,13 @@ async function renderAutocracyParties(el, f, n) {
                     tick_performed: currentTick,
                     result: { steward_name: `${mySteward.first_name} ${mySteward.last_name}`, faction_name: f.faction_name }
                 });
+            }
+
+            // Dissolve all coalitions involving this faction (new ruler or dead steward)
+            for (const c of myActiveCoalitions) {
+                await _supabase.from('faction_coalitions').update({
+                    status: 'dissolved', resolved_at_tick: currentTick
+                }).eq('id', c.id);
             }
 
             await renderAutocracyParties(el, f, n);
