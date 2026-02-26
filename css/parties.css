@@ -2201,6 +2201,13 @@ body.light-mode .ap-bar-track {
     margin-bottom: 8px;
 }
 
+.reg-intel-your-party {
+    font-weight: 600;
+    font-size: 0.65rem;
+    color: #8a8778;
+    margin-left: 4px;
+}
+
 .reg-intel-stats {
     display: flex;
     gap: 16px;
@@ -2585,6 +2592,7 @@ body.light-mode .reg-intel-label { color: #888; }
 body.light-mode .reg-grip-comp-val,
 body.light-mode .reg-intel-val,
 body.light-mode .reg-intel-name { color: #2a2a28; }
+body.light-mode .reg-intel-your-party { color: #999; }
 body.light-mode .reg-vital { background: #f0f0ee; border-color: #ddd; }
 body.light-mode .reg-intel-row { background: #f0f0ee; border-color: #ddd; }
 body.light-mode .reg-grip-bar-track { background: #e8e8e4; }

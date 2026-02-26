@@ -192,10 +192,15 @@ async function renderAutocracyParties(el, f, n) {
             return 'DISLOYAL';
         }
 
-        // Build faction intelligence rows
+        // Build faction intelligence rows — ruling party first with [Your Party] tag
         let factionIntelRows = '';
-        for (const faction of (allFactions || [])) {
-            if (faction.id === rulingId) continue;
+        const sortedFactions = [...(allFactions || [])].sort((a, b) => {
+            if (a.id === rulingId) return -1;
+            if (b.id === rulingId) return 1;
+            return 0;
+        });
+        for (const faction of sortedFactions) {
+            const isYourParty = faction.id === rulingId;
             const loy = Math.round(faction.loyalty ?? 50);
             const loyPct = Math.max(0, Math.min(100, loy));
             const lColor = loyaltyColor(loy);
@@ -224,7 +229,7 @@ async function renderAutocracyParties(el, f, n) {
 
             factionIntelRows += `
                 <div class="reg-intel-row" style="border-left: 3px solid ${fColor}">
-                    <div class="reg-intel-name">${escapeHtml(faction.faction_name)}</div>
+                    <div class="reg-intel-name">${escapeHtml(faction.faction_name)}${isYourParty ? ' <span class="reg-intel-your-party">[Your Party]</span>' : ''}</div>
                     <div class="reg-intel-stats">
                         <span class="reg-intel-stat">
                             <span class="reg-intel-label">LOYALTY</span>
@@ -619,7 +624,7 @@ async function renderAutocracyParties(el, f, n) {
                         <div class="reg-section">
                             <div class="reg-section-title">FACTION INTELLIGENCE</div>
                             <div class="reg-intel-list">
-                                ${factionIntelRows || '<div class="reg-intel-empty">No rival factions in the regime</div>'}
+                                ${factionIntelRows || '<div class="reg-intel-empty">No factions in the regime</div>'}
                             </div>
                         </div>
                         ${pillarCardsHtml}
