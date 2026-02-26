@@ -183,7 +183,6 @@ async function renderAutocracyParties(el, f, n) {
     const stability = Number(n.stability ?? 50);
     const legitimacy = Number(n.legitimacy ?? 50);
     const civilUnrest = Number(n.civil_unrest ?? 30);
-    const nonRuling = (allFactions || []).filter(p => p.id !== rulingId);
 
     let gripClamped;
     if (regimePillars && regimePillars.length > 0) {
