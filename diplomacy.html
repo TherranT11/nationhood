@@ -20,6 +20,11 @@
 <!-- ===== CONTENT AREA ===== -->
 <div id="content-area">
     <div id="diplomacy-content">
+        <!-- ===== MAP TOGGLE (mobile only) ===== -->
+        <button id="diplo-map-toggle" onclick="toggleDiploMap()">
+            <span id="diplo-map-toggle-icon">&#9650;</span> VIEW MAP
+        </button>
+
         <!-- ===== MAP PANEL (60%) ===== -->
         <div id="diplo-map-container">
             <!-- Toolbar -->
@@ -420,6 +425,19 @@ async function updateTabBadges() {
         console.warn('Error updating tab badges:', e);
     }
 }
+
+// ==================== MAP TOGGLE (mobile) ====================
+
+function toggleDiploMap() {
+    const container = document.getElementById('diplo-map-container');
+    const icon = document.getElementById('diplo-map-toggle-icon');
+    const btn = document.getElementById('diplo-map-toggle');
+    if (!container) return;
+    const expanded = container.classList.toggle('diplo-map-expanded');
+    icon.innerHTML = expanded ? '&#9660;' : '&#9650;';
+    btn.classList.toggle('active', expanded);
+}
+window.toggleDiploMap = toggleDiploMap;
 
 // ==================== TAB SWITCHING ====================
 
