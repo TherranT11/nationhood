@@ -1440,6 +1440,19 @@ async function confirmAssign() {
         await _supabase.from('ministry_requests').delete()
             .eq('nation_id', currentNation.id).eq('ministry_key', assignMinistryKey);
 
+        // Log minister appointment for Regime Log
+        await _supabase.from('campaign_actions').insert({
+            party_id: currentFaction.id,
+            nation_id: currentNation.id,
+            action_type: 'assign_minister',
+            tick_performed: currentTick,
+            result: {
+                minister_name: `${selectedCandidate.firstName} ${selectedCandidate.lastName}`,
+                ministry_key: assignMinistryKey,
+                party_name: selectedCandidate.partyName
+            }
+        });
+
         // If assigning PM, also update head_of_government and roll over administration
         if (assignMinistryKey === 'prime_minister') {
             // Deactivate any current PM
@@ -1550,6 +1563,19 @@ async function confirmAppointment() {
         if (error) throw error;
 
         await adjustMomentumAll(_supabase, currentNation.id, selectedCandidate.partyId, 3, 'government:pm_selected');
+
+        // Log minister appointment for Regime Log
+        await _supabase.from('campaign_actions').insert({
+            party_id: currentFaction.id,
+            nation_id: currentNation.id,
+            action_type: 'assign_minister',
+            tick_performed: currentTick,
+            result: {
+                minister_name: `${selectedCandidate.firstName} ${selectedCandidate.lastName}`,
+                ministry_key: assignMinistryKey,
+                party_name: selectedCandidate.partyName
+            }
+        });
 
         closeAssignModal();
         await renderGovernmentPage();
@@ -1824,6 +1850,7 @@ async function purgeMinister(ministryKey) {
             tick_performed: tick,
             result: {
                 minister_name: ministerName,
+                ministry_key: ministryKey,
                 target_party: partyName,
                 target_party_id: ministry.party_id,
                 loyalty_loss: loyaltyLoss,
@@ -2403,6 +2430,15 @@ async function resignPMAction() {
             minister_approval: 45,
             embattled_since_tick: null
         }).eq('id', ministry.id);
+
+        // Log minister dismissal for Regime Log
+        await _supabase.from('campaign_actions').insert({
+            party_id: currentFaction.id,
+            nation_id: currentNation.id,
+            action_type: 'fire_minister',
+            tick_performed: currentTick,
+            result: { minister_name: ministerName, ministry_key: ministryKey }
+        });
 
         // Apply +3 government approval event (processed next tick)
         await adjustGovernmentApprovalEvent(_supabase, currentNation.id, 3, 'minister:fired');

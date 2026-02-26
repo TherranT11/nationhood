@@ -108,6 +108,14 @@ async function renderAutocracyParties(el, f, n) {
         .select('id, faction_id, pillar_key, steward_type, first_name, last_name, age, standing, power_base, true_loyalty, estimated_loyalty, personal_wealth, exit_readiness, coup_readiness, is_alive')
         .eq('nation_id', n.id);
 
+    // Fetch regime log — all player actions for this nation (most recent first)
+    const { data: regimeLogData } = await _supabase
+        .from('campaign_actions')
+        .select('action_type, party_id, tick_performed, result, factions(faction_name, abbreviation)')
+        .eq('nation_id', n.id)
+        .order('tick_performed', { ascending: false })
+        .limit(30);
+
     // Build lookup: faction → living steward only
     const stewardByFaction = {};
     for (const s of (stewardRows || [])) {
@@ -534,6 +542,70 @@ async function renderAutocracyParties(el, f, n) {
                 </div>`;
         }
 
+        // ── REGIME LOG ──
+        const ACTION_LABELS = {
+            rally: 'RALLY',
+            press_conference: 'PRESS CONFERENCE',
+            outreach: 'VOTER OUTREACH',
+            fundraiser: 'FUNDRAISER',
+            purge_minister: 'PURGE',
+            claim_power: 'SEIZED POWER',
+            no_confidence_failed: 'NO CONFIDENCE FAILED',
+            assign_minister: 'MINISTER APPOINTED',
+            fire_minister: 'MINISTER DISMISSED',
+            steward_claim: 'STEWARD CLAIMED'
+        };
+
+        let regimeLogHtml = '';
+        if (regimeLogData && regimeLogData.length > 0) {
+            const logRows = regimeLogData.map(entry => {
+                const dateStr = tickToDate(entry.tick_performed);
+                const factionName = entry.factions?.abbreviation || entry.factions?.faction_name || '???';
+                const label = ACTION_LABELS[entry.action_type] || entry.action_type.replace(/_/g, ' ').toUpperCase();
+                const r = entry.result || {};
+
+                let detail = '';
+                if (entry.action_type === 'purge_minister') {
+                    detail = `${r.minister_name || 'Unknown'} purged from ${MINISTRY_SHORT[r.ministry_key] || r.target_party || 'ministry'}`;
+                } else if (entry.action_type === 'assign_minister') {
+                    detail = `${r.minister_name || 'Unknown'} appointed as ${MINISTRY_SHORT[r.ministry_key] || 'minister'}` + (r.party_name ? ` (${r.party_name})` : '');
+                } else if (entry.action_type === 'fire_minister') {
+                    detail = `${r.minister_name || 'Unknown'} dismissed from ${MINISTRY_SHORT[r.ministry_key] || 'ministry'}`;
+                } else if (entry.action_type === 'press_conference') {
+                    detail = r.headline || r.stat || '';
+                } else if (entry.action_type === 'rally') {
+                    detail = r.headline || '';
+                } else if (entry.action_type === 'outreach') {
+                    detail = r.bloc_name ? `Targeted ${r.bloc_name}` : '';
+                } else if (entry.action_type === 'fundraiser') {
+                    detail = r.headline || (r.amount ? `Raised $${Number(r.amount).toLocaleString()}` : '');
+                } else if (entry.action_type === 'steward_claim') {
+                    detail = r.pillar_name ? `Claimed ${r.pillar_name}` : '';
+                } else if (entry.action_type === 'claim_power') {
+                    detail = r.method || '';
+                }
+
+                return `<div class="reg-log-row">
+                    <span class="reg-log-date">${escapeHtml(dateStr)}</span>
+                    <span class="reg-log-faction">${escapeHtml(factionName)}</span>
+                    <span class="reg-log-label">${escapeHtml(label)}</span>
+                    ${detail ? `<span class="reg-log-detail">${escapeHtml(detail)}</span>` : ''}
+                </div>`;
+            }).join('');
+
+            regimeLogHtml = `
+                <div class="reg-section">
+                    <div class="reg-section-title">REGIME LOG</div>
+                    <div class="reg-log-list">${logRows}</div>
+                </div>`;
+        } else {
+            regimeLogHtml = `
+                <div class="reg-section">
+                    <div class="reg-section-title">REGIME LOG</div>
+                    <div class="reg-log-empty">No actions recorded yet.</div>
+                </div>`;
+        }
+
         // Confirmation dialog overlay (hidden by default, activated by JS)
         const confirmOverlayHtml = !isStrongman ? `<div class="reg-steward-confirm-overlay" id="steward-confirm-overlay" style="display:none">
             <div class="reg-steward-confirm-box">
@@ -638,6 +710,7 @@ async function renderAutocracyParties(el, f, n) {
                             </div>
                         </div>
                         ${pillarCardsHtml}
+                        ${regimeLogHtml}
                     </div>
                 </div>
             </div>`;
@@ -741,6 +814,15 @@ async function renderAutocracyParties(el, f, n) {
 
                 if (stewardErr) {
                     console.error('[steward-insert]', stewardErr);
+                } else {
+                    // Log steward claim to campaign_actions for the Regime Log
+                    await _supabase.from('campaign_actions').insert({
+                        party_id: f.id,
+                        nation_id: n.id,
+                        action_type: 'steward_claim',
+                        tick_performed: currentTick,
+                        result: { pillar_key: pillarKey, pillar_name: pillarName, steward_type: stewardType, steward_name: `${firstName} ${lastName}` }
+                    });
                 }
 
                 // Re-render the page to reflect the new steward

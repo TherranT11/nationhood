@@ -2744,6 +2744,63 @@ body.light-mode .ap-bar-track {
     font-style: italic;
 }
 
+/* Regime Log */
+.reg-log-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.reg-log-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
+    padding: 5px 8px;
+    font-size: 0.58rem;
+    border-bottom: 1px solid rgba(226, 224, 214, 0.04);
+}
+
+.reg-log-row:last-child { border-bottom: none; }
+
+.reg-log-date {
+    color: #6b6a5e;
+    font-size: 0.5rem;
+    min-width: 90px;
+    flex-shrink: 0;
+}
+
+.reg-log-faction {
+    font-weight: 700;
+    color: #e2e0d6;
+    font-size: 0.52rem;
+    min-width: 40px;
+}
+
+.reg-log-label {
+    font-weight: 600;
+    color: #ff9800;
+    font-size: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.reg-log-detail {
+    color: #8a8778;
+    font-size: 0.52rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.reg-log-empty {
+    font-size: 0.62rem;
+    color: #6b6a5e;
+    padding: 12px 0;
+    font-style: italic;
+}
+
 /* Light mode overrides */
 body.light-mode .reg-panel { background: #fafaf8; border-color: #ddd; }
 body.light-mode .reg-header { border-bottom-color: #ddd; }
@@ -2795,6 +2852,11 @@ body.light-mode .reg-intel-steward-type { color: #888; }
 body.light-mode .reg-intel-steward-faction { color: #888; }
 body.light-mode .reg-intel-ministry-tag { color: #2a2a28; background: rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.1); }
 body.light-mode .reg-intel-ministry-none { color: #888; }
+body.light-mode .reg-log-row { border-bottom-color: rgba(0,0,0,0.06); }
+body.light-mode .reg-log-date { color: #888; }
+body.light-mode .reg-log-faction { color: #2a2a28; }
+body.light-mode .reg-log-detail { color: #666; }
+body.light-mode .reg-log-empty { color: #888; }
 body.light-mode .reg-steward-status { background: #f0f0ee; border-color: #ddd; }
 body.light-mode .reg-steward-status-name { color: #2a2a28; }
 body.light-mode .reg-steward-status-badge { color: #2a2a28; background: rgba(0,0,0,0.05); border-color: #ccc; }
