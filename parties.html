@@ -916,17 +916,20 @@ async function renderAutocracyParties(el, f, n) {
             );
 
             if (eligibleTargets.length > 0) {
-                const targetOptions = eligibleTargets.map(p => {
-                    return `<option value="${p.id}">${escapeHtml(p.faction_name)}</option>`;
+                const targetItems = eligibleTargets.map(p => {
+                    return `<div class="cdd-item" data-value="${p.id}">${escapeHtml(p.faction_name)}</div>`;
                 }).join('');
 
                 const typeSelectHtml = isStrongman
                     ? `<input type="hidden" id="coalition-type-select" value="public">
                        <span class="reg-coalition-type-fixed">PUBLIC ALLIANCE</span>`
-                    : `<select id="coalition-type-select" class="reg-coalition-select">
-                           <option value="public">Public (visible)</option>
-                           <option value="secret">Secret (hidden)</option>
-                       </select>`;
+                    : `<div class="cdd" id="coalition-type-select" data-value="public">
+                           <div class="cdd-trigger">Public (visible)</div>
+                           <div class="cdd-menu">
+                               <div class="cdd-item selected" data-value="public">Public (visible)</div>
+                               <div class="cdd-item" data-value="secret">Secret (hidden)</div>
+                           </div>
+                       </div>`;
 
                 const descText = isStrongman
                     ? 'Strongman alliances are always public. Lasts 12 ticks.'
@@ -937,10 +940,12 @@ async function renderAutocracyParties(el, f, n) {
                         <div class="reg-section-title">PROPOSE COALITION</div>
                         <div class="reg-coalition-propose-panel">
                             <div class="reg-coalition-propose-row">
-                                <select id="coalition-target-select" class="reg-coalition-select">
-                                    <option value="">Select faction...</option>
-                                    ${targetOptions}
-                                </select>
+                                <div class="cdd" id="coalition-target-select" data-value="">
+                                    <div class="cdd-trigger cdd-placeholder">Select faction...</div>
+                                    <div class="cdd-menu">
+                                        ${targetItems}
+                                    </div>
+                                </div>
                                 ${typeSelectHtml}
                             </div>
                             <div class="reg-coalition-propose-desc">
@@ -1575,13 +1580,45 @@ async function renderAutocracyParties(el, f, n) {
 
     // ── COALITION HANDLERS ──
 
+    // ── Custom Dropdown (cdd) init ──
+    el.querySelectorAll('.cdd').forEach(cdd => {
+        const trigger = cdd.querySelector('.cdd-trigger');
+        const menu = cdd.querySelector('.cdd-menu');
+        if (!trigger || !menu) return;
+
+        trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            // Close other open dropdowns first
+            el.querySelectorAll('.cdd.open').forEach(other => { if (other !== cdd) other.classList.remove('open'); });
+            cdd.classList.toggle('open');
+        });
+
+        menu.querySelectorAll('.cdd-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const val = item.dataset.value;
+                cdd.dataset.value = val;
+                trigger.textContent = item.textContent;
+                trigger.classList.remove('cdd-placeholder');
+                menu.querySelectorAll('.cdd-item').forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+                cdd.classList.remove('open');
+                cdd.dispatchEvent(new Event('change'));
+            });
+        });
+    });
+    // Close dropdowns on outside click
+    document.addEventListener('click', () => {
+        el.querySelectorAll('.cdd.open').forEach(cdd => cdd.classList.remove('open'));
+    });
+
     // Type select description update
     const typeSelect = document.getElementById('coalition-type-select');
-    if (typeSelect) {
+    if (typeSelect && typeSelect.classList.contains('cdd')) {
         typeSelect.addEventListener('change', () => {
             const descEl = document.getElementById('coalition-type-desc');
             if (!descEl) return;
-            descEl.textContent = typeSelect.value === 'secret'
+            descEl.textContent = typeSelect.dataset.value === 'secret'
                 ? 'Secret: Hidden from Strongman. 5% detection risk per tick. Target can betray you.'
                 : 'Public: Visible to all players including the Strongman.';
         });
@@ -1591,8 +1628,10 @@ async function renderAutocracyParties(el, f, n) {
     const proposeBtn = document.getElementById('coalition-propose-btn');
     if (proposeBtn) {
         proposeBtn.addEventListener('click', async () => {
-            const targetId = document.getElementById('coalition-target-select')?.value;
-            const coalitionType = document.getElementById('coalition-type-select')?.value;
+            const targetEl = document.getElementById('coalition-target-select');
+            const typeEl = document.getElementById('coalition-type-select');
+            const targetId = targetEl?.dataset?.value || targetEl?.value || '';
+            const coalitionType = typeEl?.dataset?.value || typeEl?.value || '';
             if (!targetId || !coalitionType) return;
             if ((f.action_points || 0) < 1) { alert('Not enough AP (need 1).'); return; }
 

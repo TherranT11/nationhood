@@ -805,7 +805,9 @@ function updateSeatPreview() {
     previewThreshold.style.color = meets ? '#4CAF50' : '#888';
 }
 
+let _proposalSubmitting = false;
 async function createProposal() {
+    if (_proposalSubmitting) return;
     if (getPartySeats(currentFaction.id) === 0) {
         alert('Your party has no seats — you cannot propose a coalition.');
         return;
@@ -819,33 +821,56 @@ async function createProposal() {
         return;
     }
 
-    const { data: shard } = await _supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-    const gameYear = shard?.current_date || '';
-
-    const { data, error } = await _supabase
+    // Check for existing active proposal by this faction (prevent duplicates)
+    const { data: existing } = await _supabase
         .from('government_formations')
-        .insert({
-            nation_id: currentNation.id,
-            election_id: currentElectionId,
-            proposed_by: currentFaction.id,
-            party_ids: partyIds,
-            status: 'active',
-            game_year: gameYear
-        })
-        .select()
-        .single();
+        .select('id')
+        .eq('election_id', currentElectionId)
+        .eq('proposed_by', currentFaction.id)
+        .eq('status', 'active')
+        .limit(1);
+    if (existing && existing.length > 0) {
+        alert('You already have an active proposal for this election.');
+        return;
+    }
 
-    if (error) { alert('❌ Error creating proposal: ' + error.message); return; }
+    // Disable button and lock submission
+    _proposalSubmitting = true;
+    const btn = document.querySelector('#create-proposal-section .action-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
 
-    const { error: supportError } = await _supabase.rpc('toggle_formation_support', {
-        p_formation_id: data.id,
-        p_faction_id: currentFaction.id,
-        p_supports: true
-    });
-    if (supportError) console.warn('Auto-support failed (non-blocking):', supportError);
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+        const gameYear = shard?.current_date || '';
 
-    proposalSelectedParties = [];
-    openFormation(data.id);
+        const { data, error } = await _supabase
+            .from('government_formations')
+            .insert({
+                nation_id: currentNation.id,
+                election_id: currentElectionId,
+                proposed_by: currentFaction.id,
+                party_ids: partyIds,
+                status: 'active',
+                game_year: gameYear
+            })
+            .select()
+            .single();
+
+        if (error) { alert('Error creating proposal: ' + error.message); return; }
+
+        const { error: supportError } = await _supabase.rpc('toggle_formation_support', {
+            p_formation_id: data.id,
+            p_faction_id: currentFaction.id,
+            p_supports: true
+        });
+        if (supportError) console.warn('Auto-support failed (non-blocking):', supportError);
+
+        proposalSelectedParties = [];
+        openFormation(data.id);
+    } finally {
+        _proposalSubmitting = false;
+        if (btn) { btn.disabled = false; btn.textContent = 'Submit Proposal'; }
+    }
 }
 
 
