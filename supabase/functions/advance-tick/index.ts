@@ -13013,12 +13013,24 @@ function distributeVotes(parties, tags, blocCount, tally, blocApprovals, ideolog
     const voters = blocCount - abstentions;
     if (voters <= 0) return blocCount;
 
-    // ---- Calculate weights for ALL parties ----
+    // ---- Calculate softmax-sharpened weights for ALL parties ----
+    const K_TEMP = 10;  // softmax temperature (matches tick-system k_value)
+
+    // Find max approval for numerical stability
+    let maxApproval = 0;
+    for (const party of parties) {
+        const a = getApproval(party.id);
+        if (a > maxApproval) maxApproval = a;
+    }
+
     const weights = [];
     let totalWeight = 0;
 
     for (const party of parties) {
         const approval = getApproval(party.id);
+        // Softmax sharpening: exp((approval - max) / k)
+        const softmaxExp = Math.exp((approval - maxApproval) / K_TEMP);
+
         let multiplier = 1.0;
 
         if (upperTags.length > 0) {
@@ -13028,7 +13040,8 @@ function distributeVotes(parties, tags, blocCount, tally, blocApprovals, ideolog
             multiplier = Math.max(MULT_MIN, Math.min(MULT_MAX, 1.0 + alignAvg * IDEOLOGY_RATE));
         }
 
-        const w = Math.max(0, approval * multiplier);
+        // Weight = softmax(approval) × ideology_multiplier
+        const w = Math.max(0, softmaxExp * multiplier);
         weights.push({ id: party.id, weight: w });
         totalWeight += w;
     }
