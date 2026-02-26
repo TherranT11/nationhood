@@ -170,7 +170,7 @@ BEGIN
         FROM (
             SELECT
                 (p.value->>'id') AS party_id,
-                COALESCE(fba.approval, 40) AS approval
+                COALESCE(fba.preference_score, 40) AS approval
             FROM jsonb_array_elements(v_parties) AS p(value)
             LEFT JOIN faction_bloc_approval fba
                 ON fba.faction_id = (p.value->>'id')::UUID
