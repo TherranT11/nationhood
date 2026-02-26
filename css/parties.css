@@ -2456,6 +2456,145 @@ body.light-mode .ap-bar-track {
     font-variant-numeric: tabular-nums;
 }
 
+/* ── Compact Steward Status Panel (left column, above Regime Vitals) ── */
+
+.reg-steward-status {
+    background: #1e1e1a;
+    border: 1px solid rgba(226, 224, 214, 0.1);
+    border-radius: 3px;
+    padding: 14px 16px;
+}
+
+.reg-steward-status-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(226, 224, 214, 0.06);
+}
+
+.reg-steward-status-identity {
+    flex: 1;
+    min-width: 0;
+}
+
+.reg-steward-status-name {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #e2e0d6;
+    letter-spacing: 0.3px;
+}
+
+.reg-steward-status-badge {
+    font-size: 0.5rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: #e2e0d6;
+    background: rgba(226, 224, 214, 0.06);
+    border: 1px solid rgba(226, 224, 214, 0.2);
+    border-radius: 2px;
+    padding: 2px 7px;
+    margin-left: 8px;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.reg-steward-status-desc {
+    font-size: 0.58rem;
+    color: #8a8778;
+    margin-top: 3px;
+    font-style: italic;
+}
+
+.reg-steward-status-ap {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+.reg-steward-status-ap-val {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #e2e0d6;
+    font-variant-numeric: tabular-nums;
+}
+
+.reg-steward-status-ap-label {
+    font-size: 0.45rem;
+    font-weight: 700;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.reg-steward-status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 20px;
+    margin-bottom: 12px;
+}
+
+.reg-steward-status-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.reg-steward-status-stat-label {
+    font-size: 0.48rem;
+    font-weight: 700;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+}
+
+.reg-steward-status-stat-val {
+    font-size: 0.95rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.reg-steward-status-stat-sub {
+    font-size: 0.5rem;
+    color: #5a5950;
+    letter-spacing: 0.3px;
+    margin-top: 1px;
+}
+
+.reg-steward-status-gap {
+    font-size: 0.58rem;
+    color: #8a8778;
+    padding-top: 10px;
+    border-top: 1px solid rgba(226, 224, 214, 0.06);
+    line-height: 1.5;
+}
+
+.reg-steward-status-gap strong {
+    color: #e2e0d6;
+    font-variant-numeric: tabular-nums;
+}
+
+.reg-steward-status-gap-label {
+    font-weight: 700;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-size: 0.5rem;
+    margin-right: 2px;
+}
+
+.reg-steward-status-empty {
+    font-size: 0.68rem;
+    color: #8a8778;
+    font-style: italic;
+    padding: 16px 0;
+    text-align: center;
+}
+
 /* Pulsing title for "BECOME A STEWARD" */
 .reg-steward-title-pulse {
     color: #bb86fc;
@@ -2620,6 +2759,18 @@ body.light-mode .reg-steward-confirm-text { color: #666; }
 body.light-mode .reg-steward-confirm-no { background: rgba(0,0,0,0.04); color: #888; border-color: #ccc; }
 body.light-mode .reg-intel-steward-name { color: #2a2a28; }
 body.light-mode .reg-intel-steward-type { color: #888; }
+body.light-mode .reg-steward-status { background: #f0f0ee; border-color: #ddd; }
+body.light-mode .reg-steward-status-name { color: #2a2a28; }
+body.light-mode .reg-steward-status-badge { color: #2a2a28; background: rgba(0,0,0,0.05); border-color: #ccc; }
+body.light-mode .reg-steward-status-desc { color: #888; }
+body.light-mode .reg-steward-status-ap-val { color: #2a2a28; }
+body.light-mode .reg-steward-status-ap-label { color: #888; }
+body.light-mode .reg-steward-status-stat-label { color: #888; }
+body.light-mode .reg-steward-status-stat-sub { color: #aaa; }
+body.light-mode .reg-steward-status-gap { color: #888; }
+body.light-mode .reg-steward-status-gap strong { color: #2a2a28; }
+body.light-mode .reg-steward-status-gap-label { color: #888; }
+body.light-mode .reg-steward-status-empty { color: #888; }
 
 /* ===== RALLY PANEL ===== */
 .rally-panel {
