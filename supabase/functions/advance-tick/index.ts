@@ -4065,6 +4065,9 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
     if (delta !== 0) {
         // SEATS CHANGE — proportionally rescale all party seats to the new total
+        let redistributed = false;
+
+        // Attempt 1: use vote totals from last completed parliamentary election
         const { data: election } = await supabase
             .from('elections')
             .select('id, results')
@@ -4076,16 +4079,56 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             .maybeSingle();
 
         if (election?.results?.votes) {
-            const voteTotals = {};
-            for (const v of election.results.votes) {
-                voteTotals[v.party_id] = v.votes || 0;
+            const votes = election.results.votes;
+            const voteTotals: Record<string, number> = {};
+            // Handle both array format (SQL RPC) and object format (JS simulation)
+            if (Array.isArray(votes)) {
+                for (const v of votes) voteTotals[v.party_id] = v.votes || 0;
+            } else {
+                for (const [pid, v] of Object.entries(votes)) voteTotals[pid] = (v as number) || 0;
             }
-            const newSeats = allocateSeatsByVotes(voteTotals, newTotalSeats);
-
-            for (const [partyId, seats] of Object.entries(newSeats)) {
-                await supabase.from('factions').update({ seats }).eq('id', partyId);
+            if (Object.keys(voteTotals).length > 0) {
+                const newSeats = allocateSeatsByVotes(voteTotals, newTotalSeats);
+                for (const [partyId, seats] of Object.entries(newSeats)) {
+                    await supabase.from('factions').update({ seats }).eq('id', partyId);
+                }
+                redistributed = true;
+                console.log(`[enactFoundationalBill] Redistributed from election vote data.`);
             }
         }
+
+        // Fallback: proportionally scale existing faction seats to fill the new total
+        if (!redistributed) {
+            console.warn(`[enactFoundationalBill] No election vote data found — scaling existing seats proportionally.`);
+            const { data: factions } = await supabase
+                .from('factions')
+                .select('id, seats')
+                .eq('nation_id', bill.nation_id)
+                .eq('faction_type', 'party');
+
+            if (factions && factions.length > 0) {
+                const oldSum = factions.reduce((s: number, f: any) => s + (f.seats || 0), 0);
+                if (oldSum > 0) {
+                    // Use Largest Remainder to cleanly distribute newTotalSeats
+                    const seatTotals: Record<string, number> = {};
+                    for (const f of factions) seatTotals[f.id] = f.seats || 0;
+                    const newSeats = allocateSeatsByVotes(seatTotals, newTotalSeats);
+                    for (const [partyId, seats] of Object.entries(newSeats)) {
+                        await supabase.from('factions').update({ seats }).eq('id', partyId);
+                    }
+                } else {
+                    // All parties at 0 seats — distribute evenly
+                    const perParty = Math.floor(newTotalSeats / factions.length);
+                    let remainder = newTotalSeats - perParty * factions.length;
+                    for (const f of factions) {
+                        const seats = perParty + (remainder > 0 ? 1 : 0);
+                        if (remainder > 0) remainder--;
+                        await supabase.from('factions').update({ seats }).eq('id', f.id);
+                    }
+                }
+            }
+        }
+
         console.log(`[enactFoundationalBill] ${currentTotalSeats} -> ${newTotalSeats} (${delta > 0 ? '+' : ''}${delta}). Seats rescaled.`);
     } else {
         console.log(`[enactFoundationalBill] No seat change (already ${newTotalSeats}).`);
@@ -10097,6 +10140,14 @@ const REGIME_PILLAR_DEFS = [
         { stat: 'freedom_index', threshold: 40, direction: 'below' },
         { stat: 'legitimacy', threshold: 50, direction: 'above' },
     ]},
+    { key: 'foreign_patrons', name: 'Foreign Patrons',  wants: [
+        { stat: 'international_reputation', threshold: 50, direction: 'above' },
+        { stat: 'foreign_investment', threshold: 50, direction: 'above' },
+    ]},
+    { key: 'religious',  name: 'Religious Establishment', wants: [
+        { stat: 'religious', threshold: 50, direction: 'above' },
+        { stat: 'freedom_index', threshold: 40, direction: 'below' },
+    ]},
 ];
 
 function d2() { return 1 + Math.floor(Math.random() * 2); } // 1 or 2
@@ -10194,29 +10245,47 @@ async function processRegimePillars(supabase, nation) {
  * Map pillar_key → steward archetype.
  */
 const PILLAR_TO_STEWARD_TYPE = {
-    bureaucracy: 'technocrat',
-    military:    'general',
-    party:       'party_chairman',
-    oligarchs:   'oligarch',
-    security:    'security_chief',
-    media:       'propaganda_chief',
+    bureaucracy:     'technocrat',
+    military:        'general',
+    party:           'party_chairman',
+    oligarchs:       'oligarch',
+    security:        'security_chief',
+    media:           'propaganda_chief',
+    foreign_patrons: 'intelligence_director',
+    religious:       'religious_authority',
 };
 
 const STEWARD_TYPE_LABELS = {
-    technocrat:      'Technocrat',
-    general:         'General',
-    party_chairman:  'Party Chairman',
-    oligarch:        'Oligarch',
-    security_chief:  'Security Chief',
-    propaganda_chief:'Propaganda Chief',
+    technocrat:           'Technocrat',
+    general:              'General',
+    party_chairman:       'Party Chairman',
+    oligarch:             'Oligarch',
+    security_chief:       'Security Chief',
+    propaganda_chief:     'Propaganda Chief',
+    intelligence_director:'Intelligence Director',
+    religious_authority:  'Religious Authority',
+};
+
+const STEWARD_TYPE_DESCRIPTIONS = {
+    technocrat:           'Administrative machinery of the state',
+    general:              'Armed forces and national defense',
+    party_chairman:       'Civilian party apparatus and regime legitimacy',
+    oligarch:             'Private capital and economic leverage',
+    security_chief:       'Internal security and surveillance apparatus',
+    propaganda_chief:     'State media and narrative control',
+    intelligence_director:'Foreign intelligence and covert operations',
+    religious_authority:  'Religious authority and moral legitimacy',
 };
 
 /**
- * Process steward stats each tick for all stewards in an autocracy nation.
+ * Process steward stats each tick for all living stewards in an autocracy nation.
  *
  * Standing: political influence within the regime
  * Power Base: institutional support and resources
- * True Loyalty: actual allegiance (hidden from strongman, may diverge from faction loyalty)
+ * True Loyalty: actual allegiance (hidden from strongman) — decays at -2/tick naturally
+ * Estimated Loyalty: the Strongman's imperfect read — drifts toward true loyalty
+ * Personal Wealth: embezzled funds ($M)
+ * Exit Readiness: preparedness to flee (0-100)
  * Coup Readiness: preparedness to seize power (only grows when conditions align)
  */
 async function processStewardTick(supabase, nation) {
@@ -10224,8 +10293,9 @@ async function processStewardTick(supabase, nation) {
 
     const { data: stewards } = await supabase
         .from('stewards')
-        .select('id, faction_id, pillar_key, standing, power_base, true_loyalty, coup_readiness')
-        .eq('nation_id', nation.id);
+        .select('id, faction_id, pillar_key, steward_type, standing, power_base, true_loyalty, estimated_loyalty, personal_wealth, exit_readiness, coup_readiness')
+        .eq('nation_id', nation.id)
+        .eq('is_alive', true);
 
     if (!stewards || stewards.length === 0) return;
 
@@ -10304,11 +10374,38 @@ async function processStewardTick(supabase, nation) {
 
         // ── True Loyalty ──
         let trueLoyalty = steward.true_loyalty;
-        // Drift toward faction's displayed loyalty
-        if (trueLoyalty > factionLoyalty) trueLoyalty -= 1;
-        else if (trueLoyalty < factionLoyalty) trueLoyalty += 1;
-        // Regime crumbling → steward may turn disloyal
+        // Natural decay: -2/tick (loyalty erodes without active maintenance)
+        trueLoyalty -= 2;
+        // Regime crumbling → steward may turn disloyal faster
         if (pillarSupport < 35) trueLoyalty -= d2();
+
+        // ── Estimated Loyalty (Strongman's imperfect view) ──
+        let estimatedLoyalty = steward.estimated_loyalty ?? 55;
+        // 80% chance of drifting toward true loyalty each tick
+        if (Math.random() < 0.8) {
+            if (estimatedLoyalty > trueLoyalty) estimatedLoyalty -= 1;
+            else if (estimatedLoyalty < trueLoyalty) estimatedLoyalty += 1;
+        }
+
+        // ── Personal Wealth (embezzlement) ──
+        let personalWealth = Number(steward.personal_wealth) || 0;
+        // Ministry holders can embezzle
+        if (ministryCount > 0) {
+            personalWealth += 1 + Math.floor(Math.random() * 5); // +$1M-5M/tick
+        }
+        // Oligarchs have business income
+        if (steward.steward_type === 'oligarch') {
+            personalWealth += 5 + Math.floor(Math.random() * 11); // +$5M-15M/tick
+        }
+
+        // ── Exit Readiness ──
+        let exitReadiness = steward.exit_readiness ?? 0;
+        // Grows when steward has means and motive to flee
+        if (trueLoyalty < 30 && personalWealth > 50) exitReadiness += 1;
+        // Planning contingencies alongside coup
+        if (steward.coup_readiness > 30) exitReadiness += 1;
+        // Loyal stewards don't plan exits
+        if (trueLoyalty > 60 && exitReadiness > 0) exitReadiness -= 1;
 
         // ── Coup Readiness ──
         let coupReadiness = steward.coup_readiness;
@@ -10332,6 +10429,8 @@ async function processStewardTick(supabase, nation) {
         standing = Math.max(0, Math.min(100, standing));
         powerBase = Math.max(0, Math.min(100, powerBase));
         trueLoyalty = Math.max(0, Math.min(100, trueLoyalty));
+        estimatedLoyalty = Math.max(0, Math.min(100, estimatedLoyalty));
+        exitReadiness = Math.max(0, Math.min(100, exitReadiness));
         coupReadiness = Math.max(0, Math.min(100, coupReadiness));
 
         await supabase.from('stewards')
@@ -10339,6 +10438,9 @@ async function processStewardTick(supabase, nation) {
                 standing,
                 power_base: powerBase,
                 true_loyalty: trueLoyalty,
+                estimated_loyalty: estimatedLoyalty,
+                personal_wealth: personalWealth,
+                exit_readiness: exitReadiness,
                 coup_readiness: coupReadiness,
                 updated_at: new Date().toISOString()
             })
