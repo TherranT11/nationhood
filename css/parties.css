@@ -1836,6 +1836,33 @@ body.light-mode .ap-bar-track {
     margin-top: 2px;
 }
 
+/* ── Action Points (header center) ── */
+.reg-header-ap {
+    text-align: center;
+    align-self: center;
+}
+.reg-ap-label {
+    font-family: monospace;
+    font-size: 0.55rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+.reg-ap-value {
+    margin-top: 2px;
+    font-family: monospace;
+    line-height: 1;
+}
+.reg-ap-current {
+    font-size: 1.4rem;
+    font-weight: 700;
+}
+.reg-ap-max {
+    font-size: 0.7rem;
+    color: #6b6a5e;
+    margin-left: 2px;
+}
+
 /* ── Status Strip ── */
 .reg-strip {
     display: flex;
@@ -2269,6 +2296,7 @@ body.light-mode .ap-bar-track {
     .reg-vitals-grid { grid-template-columns: 1fr 1fr; }
     .reg-pillar-grid { grid-template-columns: 1fr 1fr; }
     .reg-header { flex-direction: column; gap: 12px; }
+    .reg-header-ap { text-align: left; }
     .reg-strongman-label,
     .reg-strongman-name,
     .reg-strongman-faction,
@@ -3001,6 +3029,8 @@ body.light-mode .reg-strip-item { border-right-color: #ddd; }
 body.light-mode .reg-col-left { border-right-color: #ddd; }
 body.light-mode .reg-nation-name { color: #2a2a28; }
 body.light-mode .reg-strongman-name { color: #2a2a28; }
+body.light-mode .reg-ap-label,
+body.light-mode .reg-ap-max { color: #999; }
 body.light-mode .reg-gov-type,
 body.light-mode .reg-strongman-label,
 body.light-mode .reg-strongman-meta,

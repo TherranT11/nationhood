@@ -1076,6 +1076,13 @@ async function renderAutocracyParties(el, f, n) {
                         <div class="reg-nation-name">${escapeHtml(nationName)}</div>
                         <div class="reg-gov-type">${escapeHtml(govType)} &middot; TICK ${currentTick}</div>
                     </div>
+                    <div class="reg-header-ap">
+                        <div class="reg-ap-label">ACTION POINTS</div>
+                        <div class="reg-ap-value">
+                            <span class="reg-ap-current" style="color:${(f.action_points ?? 0) < 5 ? ((f.action_points ?? 0) < 2 ? '#c45454' : '#d4944a') : '#e2e0d6'}">${f.action_points ?? 0}</span>
+                            <span class="reg-ap-max">/ ${GAME_CONFIG.MAX_AP}</span>
+                        </div>
+                    </div>
                     <div class="reg-header-right">
                         <div class="reg-strongman-label">STRONGMAN</div>
                         <div class="reg-strongman-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div>
