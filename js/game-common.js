@@ -42,6 +42,7 @@ export const GAME_CONFIG = {
     VETO_OVERRIDE_THRESHOLD: 2/3,
     PRESIDENT_DESK_TICKS: 6,
     MINISTER_CONFIRMATION_VOTING_TICKS: 6,
+    PRESIDENTIAL_TERM_LIMIT: 2,           // max terms before incumbent must step aside
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
     MAX_AP: 20,  // maximum action points a party can accumulate
     TICKS_PER_YEAR: 12,
@@ -7093,66 +7094,80 @@ export async function triggerPresidentialCandidateSelection(supabase, nation, cu
 
     if (!allParties || allParties.length === 0) return;
 
-    for (const party of allParties) {
-        if (incumbentPresident && party.id === incumbentPresident.faction_id) {
-            // === INCUMBENT LOCK-IN: auto-create incumbent as their party's candidate ===
-            // The incumbent president is automatically locked in as their faction's nominee.
-            // No player choice — they must run for re-election. Player must impeach/resign to change.
-            const factionIdeology = await loadFactionIdeology(supabase, incumbentPresident.faction_id);
+    const termLimit = GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT || 2;
 
-            // Determine the incumbent's ideology axis from faction ideology
-            // Use the faction's strongest axis as a proxy since we don't store axis on presidents
-            let ideologyAxis = 'tradition_progress';
-            let ideologyDirection = 1;
-            if (factionIdeology) {
-                const axes = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
-                let maxAbs = 0;
-                for (const axis of axes) {
-                    const val = Math.abs(factionIdeology[axis] || 0);
-                    if (val > maxAbs) {
-                        maxAbs = val;
-                        ideologyAxis = axis;
-                        ideologyDirection = (factionIdeology[axis] || 0) >= 0 ? 1 : -1;
+    for (const party of allParties) {
+        try {
+            const isIncumbentParty = incumbentPresident && party.id === incumbentPresident.faction_id;
+            const isTermLimited = isIncumbentParty && (incumbentPresident.terms_served || 1) >= termLimit;
+
+            if (isIncumbentParty && isTermLimited) {
+                // === TERM-LIMITED: incumbent has served max terms, party must pick a new candidate ===
+                console.log(`TERM LIMIT: President ${incumbentPresident.first_name} ${incumbentPresident.last_name} has served ${incumbentPresident.terms_served} term(s) (limit: ${termLimit}). ${party.faction_name} must choose a new candidate. (${nation.name})`);
+                await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
+            } else if (isIncumbentParty) {
+                // === INCUMBENT LOCK-IN: auto-create incumbent as their party's candidate ===
+                // The incumbent president is automatically locked in as their faction's nominee.
+                // No player choice — they must run for re-election. Player must impeach/resign to change.
+                const factionIdeology = await loadFactionIdeology(supabase, incumbentPresident.faction_id);
+
+                // Determine the incumbent's ideology axis from faction ideology
+                // Use the faction's strongest axis as a proxy since we don't store axis on presidents
+                let ideologyAxis = 'tradition_progress';
+                let ideologyDirection = 1;
+                if (factionIdeology) {
+                    const axes = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
+                    let maxAbs = 0;
+                    for (const axis of axes) {
+                        const val = Math.abs(factionIdeology[axis] || 0);
+                        if (val > maxAbs) {
+                            maxAbs = val;
+                            ideologyAxis = axis;
+                            ideologyDirection = (factionIdeology[axis] || 0) >= 0 ? 1 : -1;
+                        }
                     }
                 }
-            }
 
-            // Clear any existing unselected presidential candidates for this faction
-            await supabase.from('pm_candidates').delete()
-                .eq('nation_id', nation.id)
-                .eq('faction_id', incumbentPresident.faction_id)
-                .eq('candidate_type', 'presidential')
-                .eq('selected', false);
+                // Clear any existing unselected presidential candidates for this faction
+                await supabase.from('pm_candidates').delete()
+                    .eq('nation_id', nation.id)
+                    .eq('faction_id', incumbentPresident.faction_id)
+                    .eq('candidate_type', 'presidential')
+                    .eq('selected', false);
 
-            // Insert the incumbent as a pre-selected candidate
-            const { error: incumbentErr } = await supabase.from('pm_candidates').insert({
-                nation_id: nation.id,
-                faction_id: incumbentPresident.faction_id,
-                first_name: incumbentPresident.first_name,
-                last_name: incumbentPresident.last_name,
-                age: incumbentPresident.age,
-                ideology: incumbentPresident.ideology || 'PROGRESS',
-                ideology_axis: ideologyAxis,
-                ideology_direction: ideologyDirection,
-                trait_key: incumbentPresident.trait || PM_TRAIT_KEYS[0],
-                created_at_tick: currentTick,
-                candidate_type: 'presidential',
-                selected: true // Auto-selected — locked in
-            });
+                // Insert the incumbent as a pre-selected candidate
+                const { error: incumbentErr } = await supabase.from('pm_candidates').insert({
+                    nation_id: nation.id,
+                    faction_id: incumbentPresident.faction_id,
+                    first_name: incumbentPresident.first_name,
+                    last_name: incumbentPresident.last_name,
+                    age: incumbentPresident.age,
+                    ideology: incumbentPresident.ideology || 'PROGRESS',
+                    ideology_axis: ideologyAxis,
+                    ideology_direction: ideologyDirection,
+                    trait_key: incumbentPresident.trait || PM_TRAIT_KEYS[0],
+                    created_at_tick: currentTick,
+                    candidate_type: 'presidential',
+                    selected: true // Auto-selected — locked in
+                });
 
-            if (incumbentErr) {
-                console.error(`Error creating incumbent candidate for ${incumbentPresident.first_name} ${incumbentPresident.last_name}:`, incumbentErr);
+                if (incumbentErr) {
+                    console.error(`Error creating incumbent candidate for ${incumbentPresident.first_name} ${incumbentPresident.last_name}:`, incumbentErr);
+                } else {
+                    console.log(`INCUMBENT LOCK-IN: President ${incumbentPresident.first_name} ${incumbentPresident.last_name} auto-locked as ${party.faction_name}'s candidate (${nation.name})`);
+                }
             } else {
-                console.log(`INCUMBENT LOCK-IN: President ${incumbentPresident.first_name} ${incumbentPresident.last_name} auto-locked as ${party.faction_name}'s candidate (${nation.name})`);
+                // Normal candidate generation for non-incumbent parties
+                await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
             }
-        } else {
-            // Normal candidate generation for non-incumbent parties
-            await generatePresidentCandidates(supabase, nation.id, party.id, currentTick, 'presidential');
+        } catch (partyErr) {
+            console.error(`Error generating presidential candidate for party ${party.faction_name} (${party.id}) in ${nation.name}:`, partyErr);
         }
     }
 
-    // Fire system event for incumbent lock-in
-    if (incumbentPresident) {
+    // Fire system event for incumbent lock-in (only if not term-limited)
+    const incumbentIsTermLimited = incumbentPresident && (incumbentPresident.terms_served || 1) >= termLimit;
+    if (incumbentPresident && !incumbentIsTermLimited) {
         try {
             await supabase.rpc('fire_system_event', {
                 p_trigger_key: 'incumbent_lockin',
