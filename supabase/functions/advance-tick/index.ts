@@ -7152,20 +7152,21 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
             console.log(`Runoff winner: ${winner.candidate_name} (${winner.party_name}) with ${winner.vote_percentage}% (${nation.name})`);
 
             // Update the election record with combined round data
+            // Replace presidential_candidates with runoff results so the UI shows the final outcome
             const combinedResults = {
                 ...completedElection.results,
+                presidential_candidates: runoffResults,
                 round_1_candidates: candidateResults,
                 runoff_candidates: runoffResults,
+                total_votes_cast: runoffData?.total_votes_cast || completedElection.results?.total_votes_cast,
                 was_runoff: true
             };
-            const runoffUpdateQuery = supabase.from('elections')
-                .update({ results: combinedResults });
-            if (electionId) {
-                await runoffUpdateQuery.eq('id', electionId);
-            } else {
-                // Fallback: target by nation + completed election ID from completedElection
-                await runoffUpdateQuery
-                    .eq('id', completedElection.id);
+            const targetId = electionId || completedElection.id;
+            const { error: runoffUpdateErr } = await supabase.from('elections')
+                .update({ results: combinedResults })
+                .eq('id', targetId);
+            if (runoffUpdateErr) {
+                console.error(`[PresElection] Failed to update election ${targetId} with runoff results for ${nation.name}:`, runoffUpdateErr.message);
             }
         }
     }
@@ -7179,11 +7180,14 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
     const isChallengerWin = incumbentFactionId && winner.faction_id !== incumbentFactionId;
 
     // Deactivate previous president
-    await supabase
+    const { error: deactErr } = await supabase
         .from('presidents')
         .update({ is_active: false })
         .eq('nation_id', nation.id)
         .eq('is_active', true);
+    if (deactErr) {
+        console.error(`[processPresidentialElectionResult] Failed to deactivate previous presidents for ${nation.name}:`, deactErr.message);
+    }
 
     // Close previous administration
     try {
@@ -7201,17 +7205,20 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
         .eq('id', nation.id);
 
     // Look up the winning candidate from pm_candidates by candidate_id
-    const { data: winningCandidate } = await supabase
+    console.log(`[PresElection] Looking up candidate ${winner.candidate_id} for ${winner.candidate_name} (${nation.name})`);
+    const { data: winningCandidate, error: candErr } = await supabase
         .from('pm_candidates')
         .select('*')
         .eq('id', winner.candidate_id)
         .maybeSingle();
+    if (candErr) console.warn(`[PresElection] Candidate lookup error for ${winner.candidate_id}:`, candErr.message);
 
     if (winningCandidate) {
         await inauguratePresident(supabase, winningCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
         console.log(`President inaugurated: ${winner.candidate_name} (${winner.party_name})`);
     } else {
-        // Fallback: candidate may have been cleaned up, try by faction
+        // Fallback 1: candidate may have been cleaned up, try by faction
+        console.warn(`[PresElection] Primary lookup returned null for candidate_id=${winner.candidate_id}, trying faction fallback`);
         const { data: fallbackCandidate } = await supabase
             .from('pm_candidates')
             .select('*')
@@ -7226,12 +7233,27 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
             await inauguratePresident(supabase, fallbackCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
             console.log(`President inaugurated (fallback): ${fallbackCandidate.first_name} ${fallbackCandidate.last_name} (${winner.party_name})`);
         } else {
-            // No candidates at all — generate one and inaugurate immediately
-            console.warn(`No presidential candidate found for winner ${winner.candidate_name} in ${nation.name} — generating emergency candidate`);
+            // Fallback 2: generate fresh candidate
+            console.warn(`[PresElection] Faction fallback also null for ${winner.candidate_name} in ${nation.name} — generating emergency candidate`);
             const emergencyCandidates = await generatePresidentCandidates(supabase, nation.id, winner.faction_id, currentTick, 'presidential');
             if (emergencyCandidates && emergencyCandidates.length > 0) {
                 await inauguratePresident(supabase, emergencyCandidates[0], nation.id, winner.faction_id, currentTick, outgoingPresident);
                 console.log(`Emergency president inaugurated: ${emergencyCandidates[0].first_name} ${emergencyCandidates[0].last_name}`);
+            } else {
+                // Fallback 3 (last resort): create president directly from election result data
+                // This ensures a president is ALWAYS created after a presidential election
+                console.error(`[PresElection] ALL candidate lookups failed for ${winner.candidate_name} in ${nation.name} — direct inauguration from election data`);
+                const directCandidate = {
+                    first_name: winner.candidate_name?.split(' ')[0] || 'Unknown',
+                    last_name: winner.candidate_name?.split(' ').slice(1).join(' ') || 'President',
+                    age: 50,
+                    ideology: winner.ideology || 'PROGRESS',
+                    trait_key: winner.trait_key || null,
+                    ideology_axis: 'tradition_progress',
+                    ideology_direction: 1
+                };
+                await inauguratePresident(supabase, directCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
+                console.log(`Direct president inaugurated from election data: ${directCandidate.first_name} ${directCandidate.last_name}`);
             }
         }
     }
@@ -7322,10 +7344,13 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
  */
 async function inauguratePresident(supabase, candidate, nationId, factionId, currentTick, outgoingPresident = null) {
     // Deactivate any previous president
-    await supabase.from('presidents')
+    const { error: deactErr } = await supabase.from('presidents')
         .update({ is_active: false })
         .eq('nation_id', nationId)
         .eq('is_active', true);
+    if (deactErr) {
+        console.error(`[inauguratePresident] Failed to deactivate previous presidents for ${nationId}:`, deactErr.message);
+    }
 
     // Look up trait data for trait_upside / trait_downside
     const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', candidate.trait_key).maybeSingle();
