@@ -135,6 +135,7 @@ UPDATE nations SET
 WHERE LOWER(name) = 'palvera';
 
 -- Step 4: Save seed_stats snapshot for shard reset
+-- Split into two jsonb_build_object calls merged with || to stay under 100-arg limit
 UPDATE nations
 SET seed_stats = jsonb_build_object(
     'government_type', 'Presidential',
@@ -182,7 +183,8 @@ SET seed_stats = jsonb_build_object(
     'rail_network', 22,
     'urbanization', 55,
     'energy_generation', 35,
-    'renewable_energy_percentage', 58,
+    'renewable_energy_percentage', 58
+) || jsonb_build_object(
     'arable_land', 25,
     'rare_minerals', 12,
     'oil_and_gas', 8,
