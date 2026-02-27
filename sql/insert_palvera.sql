@@ -11,10 +11,12 @@
 -- Step 1: Rename Veldaria → Palvera if it exists
 UPDATE nations SET name = 'Palvera' WHERE LOWER(name) = 'veldaria';
 
--- Step 2: Check if Palvera now exists; if not, insert it
-INSERT INTO nations (name, government_type, total_seats, max_parties, capital)
-SELECT 'Palvera', 'Presidential', 120, 8, 'Valcosta'
-WHERE NOT EXISTS (SELECT 1 FROM nations WHERE LOWER(name) = 'palvera');
+-- Step 2: Check if Palvera now exists; if not, insert it (with Alpha Shard FK)
+INSERT INTO nations (name, government_type, total_seats, max_parties, capital, shard_id)
+SELECT 'Palvera', 'Presidential', 120, 8, 'Valcosta', s.id
+FROM shard s
+WHERE s.name = 'Alpha Shard'
+AND NOT EXISTS (SELECT 1 FROM nations WHERE LOWER(name) = 'palvera');
 
 -- Step 3: Set all stats
 UPDATE nations SET
