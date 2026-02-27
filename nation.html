@@ -502,7 +502,7 @@ async function renderNationPage(nation) {
     // ECONOMIC
     h += sectorBlock('💰', 'Economic', [
         renderStatBox('GDP', 'gdp', nation.gdp, 'Gross domestic product', 'gdp', false, scaleRawToDollars(nation.gdp)),
-        renderStatBox('GDP Growth', 'gdp_growth', nation.gdp_growth, 'Annual economic growth rate'),
+        renderStatBox('GDP Growth', 'gdp_growth', nation.gdp_growth, 'Monthly economic growth rate', null, false, formatGdpGrowth(nation.gdp_growth)),
         renderStatBox('National Debt', 'debt', nation.debt, 'Government debt obligations', 'currency', true, scaleRawToDollars(nation.debt)),
         renderStatBox('Debt Growth', 'debt_growth', nation.debt_growth, 'Rate of debt accumulation', null, true),
         renderStatBox('Inflation', 'inflation', nation.inflation, 'Rate of price increases', null, true),
@@ -693,6 +693,15 @@ function buildAffectedByContent(statKey) {
  */
 function sectorBlock(icon, title, boxes) {
     return '<div class="sector-block"><div class="sector-header"><span class="sector-icon">' + icon + '</span> ' + title + '</div><div class="stat-boxes">' + boxes.join('') + '</div></div>';
+}
+
+/**
+ * Convert gdp_growth (0-100) to display percentage: 0 = -1.00%, 50 = 0.00%, 100 = +1.00%
+ */
+function formatGdpGrowth(rawValue) {
+    var v = Number(rawValue ?? 50);
+    var pct = (v - 50) / 50;
+    return (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
 }
 
 /**
