@@ -5393,3 +5393,37 @@ body.light-mode .edit-logo-option:hover {
         height: 36px;
     }
 }
+
+/* ===== DISBAND PARTY ===== */
+.disband-party-section {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(255, 60, 60, 0.15);
+    text-align: center;
+}
+.disband-party-btn {
+    background: transparent;
+    color: #b33;
+    border: 1px solid rgba(180, 50, 50, 0.4);
+    border-radius: 6px;
+    padding: 10px 32px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.disband-party-btn:hover:not(:disabled) {
+    background: rgba(180, 50, 50, 0.15);
+    border-color: #b33;
+    color: #e44;
+}
+.disband-party-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+.disband-party-note {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--text-muted, #777);
+}

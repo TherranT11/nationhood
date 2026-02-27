@@ -20,7 +20,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
 import { tickToDate, escapeHtml } from './js/utils.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty } from './js/game-common.js';
 import { getPartyIconSVG, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -1228,9 +1228,17 @@ async function renderAutocracyParties(el, f, n) {
                 </div>
             </div>`;
 
+    const disbandDisabledAutocracy = isStrongman ? ' disabled title="The ruling faction cannot disband"' : '';
+    const disbandBtnHtml = `
+        <div class="disband-party-section">
+            <button class="disband-party-btn" id="disband-party-btn"${disbandDisabledAutocracy}>Disband Party</button>
+            <div class="disband-party-note">${isStrongman ? 'The ruling faction cannot disband.' : 'Permanently disband your party and leave the game.'}</div>
+        </div>`;
+
     el.innerHTML = `
         <div class="parties-page">
             ${regimePanel}
+            ${disbandBtnHtml}
             ${confirmOverlayHtml}
             ${coalitionMsgOverlayHtml}
         </div>`;
@@ -2070,6 +2078,27 @@ async function renderAutocracyParties(el, f, n) {
         } else if (existingBadge) {
             existingBadge.remove();
         }
+    }
+
+    // ── DISBAND PARTY handler ──
+    const disbandBtn = document.getElementById('disband-party-btn');
+    if (disbandBtn && !disbandBtn.disabled) {
+        disbandBtn.addEventListener('click', async () => {
+            if (!confirm('Are you sure you want to disband your party? This is permanent — your party will be removed from the game after the next tick.')) return;
+            if (!confirm('This cannot be undone. Disband your party?')) return;
+            disbandBtn.disabled = true;
+            disbandBtn.textContent = 'Disbanding...';
+            try {
+                await disbandParty(_supabase, n.id, f.id, currentTick);
+                sessionStorage.removeItem('nationhood_state');
+                await _supabase.auth.signOut();
+                window.location.href = 'index.html';
+            } catch (err) {
+                alert(err.message || 'Failed to disband party.');
+                disbandBtn.disabled = false;
+                disbandBtn.textContent = 'Disband Party';
+            }
+        });
     }
 }
 
@@ -2926,6 +2955,11 @@ async function renderParties() {
             </div>
         </div>
 
+        <div class="disband-party-section">
+            <button class="disband-party-btn" id="disband-party-btn">Disband Party</button>
+            <div class="disband-party-note">Permanently disband your party and leave the game.</div>
+        </div>
+
         </div>
     `;
 
@@ -3059,6 +3093,28 @@ async function renderParties() {
             saveBtn.textContent = 'Save Changes';
         });
     })();
+
+    // ── DISBAND PARTY handler ──
+    const disbandBtn = document.getElementById('disband-party-btn');
+    if (disbandBtn) {
+        disbandBtn.addEventListener('click', async () => {
+            if (!confirm('Are you sure you want to disband your party? This is permanent — your party will be removed from the game after the next tick.')) return;
+            if (!confirm('This cannot be undone. Disband your party?')) return;
+            disbandBtn.disabled = true;
+            disbandBtn.textContent = 'Disbanding...';
+            try {
+                const currentTick = currentShard?.current_tick || 0;
+                await disbandParty(_supabase, n.id, f.id, currentTick);
+                sessionStorage.removeItem('nationhood_state');
+                await _supabase.auth.signOut();
+                window.location.href = 'index.html';
+            } catch (err) {
+                alert(err.message || 'Failed to disband party.');
+                disbandBtn.disabled = false;
+                disbandBtn.textContent = 'Disband Party';
+            }
+        });
+    }
 
     // ── Ideology Comparison: chip toggle logic ──
     const ideoSection = document.getElementById('ideology-section');
