@@ -38,7 +38,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
-import { tickToDate } from './js/utils.js';
+import { escapeHtml, tickToDate } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 (function () {
@@ -569,7 +569,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                 </div>
                 <div class="administration-content" style="display:block; text-align:center; padding: 24px;">
                     <div style="font-size:0.9rem; color:var(--text-secondary); margin-bottom: 20px;">
-                        The nation has no ruling faction. The Head of State, <strong style="color:var(--text-primary);">${hosFirst} ${hosLast}</strong>, awaits a faction bold enough to seize the reins of government.
+                        The nation has no ruling faction. The Head of State, <strong style="color:var(--text-primary);">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</strong>, awaits a faction bold enough to seize the reins of government.
                     </div>
                     <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom: 20px;">
                         Claiming power will make your faction the ruling faction, granting control over all ministries and the Prime Minister's office.
@@ -595,14 +595,14 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         return `
             <div class="administration-box">
                 <div class="administration-header">
-                    <div class="administration-title">${adminLast} Administration</div>
+                    <div class="administration-title">${escapeHtml(adminLast)} Administration</div>
                     <div class="administration-subtitle">National Government</div>
                 </div>
                 <div class="administration-content">
                     <div class="admin-leaders-column">
                         <div class="admin-section">
                             <div class="admin-section-title">Prime Minister</div>
-                            <div class="admin-person-name">${activeHOG ? `${activeHOG.first_name} ${activeHOG.last_name}` : pmName}</div>
+                            <div class="admin-person-name">${activeHOG ? `${escapeHtml(activeHOG.first_name)} ${escapeHtml(activeHOG.last_name)}` : escapeHtml(pmName)}</div>
                             <div class="admin-person-details">${activeHOG ? `Age ${activeHOG.age} • ` : (pmAge !== '—' ? `Age ${pmAge} • ` : '')}<span class="admin-person-party">${activeHOG ? (allParties.find(p => p.id === activeHOG.faction_id)?.faction_name || pmPartyName) : pmPartyName}</span></div>
                             ${activeHOG ? `
                                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
@@ -615,8 +615,8 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                         </div>
                         <div class="admin-section">
                             <div class="admin-section-title">Head of State</div>
-                            <div class="admin-person-name">${hosFirst} ${hosLast}</div>
-                            <div class="admin-person-details">Age ${hosAge} · <span class="admin-person-party">${rulingPartyName}</span></div>
+                            <div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div>
+                            <div class="admin-person-details">Age ${hosAge} · <span class="admin-person-party">${escapeHtml(rulingPartyName)}</span></div>
                             <div style="color: #ff4444; font-size: 0.75rem; margin-top: 6px; font-weight: bold;">Rules until dead or deposed</div>
                         </div>
                     </div>
@@ -689,7 +689,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
             <div class="administration-box">
                 <div class="administration-header">
                     <div>
-                        <div class="administration-title">${presidentData.last_name} Administration</div>
+                        <div class="administration-title">${escapeHtml(presidentData.last_name)} Administration</div>
                         <div class="administration-subtitle">Presidential Government · <span style="color:${govStatusColor};font-weight:bold;">${govStatus}</span></div>
                     </div>
                     ${approvalHTML}
@@ -698,8 +698,8 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                     <div class="admin-leaders-column">
                         <div class="admin-section">
                             <div class="admin-section-title">President${presidentData.terms_served ? ` — ${presidentData.terms_served === 1 ? '1st' : '2nd'} Term` : ''}</div>
-                            <div class="admin-person-name">${presidentData.first_name} ${presidentData.last_name}</div>
-                            <div class="admin-person-details">Age ${presidentData.age} · <span class="admin-person-party">${presPartyName}</span></div>
+                            <div class="admin-person-name">${escapeHtml(presidentData.first_name)} ${escapeHtml(presidentData.last_name)}</div>
+                            <div class="admin-person-details">Age ${presidentData.age} · <span class="admin-person-party">${escapeHtml(presPartyName)}</span></div>
                             <div style="margin-top:8px;">
                                 <div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:4px;">${termRemaining <= 0 ? termRemainingDisplay : `Term Remaining: ${termRemainingDisplay}`}</div>
                                 <div style="height:4px;background:#333;border-radius:2px;overflow:hidden;">
@@ -710,14 +710,14 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                         </div>
                         <div class="admin-section">
                             <div class="admin-section-title">Vice President</div>
-                            <div class="admin-person-name">${hosFirst} ${hosLast}</div>
+                            <div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div>
                             <div class="admin-person-details">Age ${hosAge}</div>
                         </div>
                     </div>
                     ${renderAdminChat()}
                 </div>
                 <div class="coalition-parties">
-                    <div class="coalition-party-tag" style="border-left:3px solid ${getPartyColorById(presidentFactionId)};padding-left:8px;">${getPartyLogoById(presidentFactionId) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(getPartyLogoById(presidentFactionId), 16, getPartyColorById(presidentFactionId))}</span>` : ''}${presPartyName}<span class="seats">${presPartySeats} Seats</span></div>
+                    <div class="coalition-party-tag" style="border-left:3px solid ${getPartyColorById(presidentFactionId)};padding-left:8px;">${getPartyLogoById(presidentFactionId) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(getPartyLogoById(presidentFactionId), 16, getPartyColorById(presidentFactionId))}</span>` : ''}${escapeHtml(presPartyName)}<span class="seats">${presPartySeats} Seats</span></div>
                 </div>
             </div>`;
     }
@@ -728,11 +728,11 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         if (majorityParty) {
             return `
                 <div class="administration-box">
-                    <div class="administration-header"><div><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">Single Party Government</div></div>${approvalHTML}</div>
+                    <div class="administration-header"><div><div class="administration-title">${escapeHtml(adminLast)} Administration</div><div class="administration-subtitle">Single Party Government</div></div>${approvalHTML}</div>
                     <div class="administration-content">
                         <div class="admin-leaders-column">
-                            <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${safePmName(primeMinister)}</div><div class="admin-person-details">${primeMinister?.minister_age ? `Age ${primeMinister.minister_age} • ` : ''}<span class="admin-person-party">${majorityParty.party_name}</span></div></div>
-                            <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${hosFirst} ${hosLast}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${majorityParty.party_name}</span></div></div>
+                            <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${escapeHtml(safePmName(primeMinister))}</div><div class="admin-person-details">${primeMinister?.minister_age ? `Age ${primeMinister.minister_age} • ` : ''}<span class="admin-person-party">${escapeHtml(majorityParty.party_name)}</span></div></div>
+                            <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${escapeHtml(majorityParty.party_name)}</span></div></div>
                         </div>
                         ${renderAdminChat()}
                     </div>
@@ -757,13 +757,13 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         const coalitionParties = coalition.party_ids.map(id => { const p = parties.find(x => x.party_id === id); const fallbackName = allParties.find(f => f.id === id)?.faction_name || 'Unknown'; return p ? { ...p, seats: allPartySeats[id] || p.seats || 0 } : { party_name: fallbackName, seats: allPartySeats[id] || 0 }; }).sort((a,b) => b.seats - a.seats);
         return `
             <div class="administration-box">
-                <div class="administration-header"><div><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">${coalition.status === 'caretaker' ? 'Caretaker Government' : 'Coalition Government'}</div></div>${approvalHTML}</div>
+                <div class="administration-header"><div><div class="administration-title">${escapeHtml(adminLast)} Administration</div><div class="administration-subtitle">${coalition.status === 'caretaker' ? 'Caretaker Government' : 'Coalition Government'}</div></div>${approvalHTML}</div>
                 <div class="administration-content">
                     <div class="admin-leaders-column">
                         <div class="admin-section">
                             <div class="admin-section-title">Prime Minister</div>
-                            <div class="admin-person-name">${activeHOG ? `${activeHOG.first_name} ${activeHOG.last_name}` : pmName}</div>
-                            <div class="admin-person-details">${activeHOG ? `Age ${activeHOG.age} • ` : (pmAge !== '—' ? `Age ${pmAge} • ` : '')}<span class="admin-person-party">${pmParty}</span></div>
+                            <div class="admin-person-name">${activeHOG ? `${escapeHtml(activeHOG.first_name)} ${escapeHtml(activeHOG.last_name)}` : escapeHtml(pmName)}</div>
+                            <div class="admin-person-details">${activeHOG ? `Age ${activeHOG.age} • ` : (pmAge !== '—' ? `Age ${pmAge} • ` : '')}<span class="admin-person-party">${escapeHtml(pmParty)}</span></div>
                             ${activeHOG ? `
                                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
                                     <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:#9C27B0;color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
@@ -776,7 +776,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                                 ` : ''}
                             ` : ''}
                         </div>
-                        <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${hosFirst} ${hosLast}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${leadPartyName}</span></div></div>
+                        <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${escapeHtml(leadPartyName)}</span></div></div>
                     </div>
                     ${renderAdminChat()}
                 </div>
@@ -785,7 +785,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                         const cpColor = getPartyColorById(p.party_id || allParties.find(x => x.faction_name === p.party_name)?.id);
                         const cpLogo = getPartyLogoById(p.party_id || allParties.find(x => x.faction_name === p.party_name)?.id);
                         const cpLogoHtml = cpLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(cpLogo, 16, cpColor)}</span>` : '';
-                        return `${i > 0 ? '<span class="coalition-divider">|</span>' : ''}<div class="coalition-party-tag" style="border-left:3px solid ${cpColor};padding-left:8px;">${cpLogoHtml}${p.party_name}<span class="seats">${p.seats} Seats</span></div>`;
+                        return `${i > 0 ? '<span class="coalition-divider">|</span>' : ''}<div class="coalition-party-tag" style="border-left:3px solid ${cpColor};padding-left:8px;">${cpLogoHtml}${escapeHtml(p.party_name)}<span class="seats">${p.seats} Seats</span></div>`;
                     }).join('')}
                 </div>
                 ${coalition.status === 'caretaker' ? renderCaretakerBanner() : `
@@ -796,7 +796,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
     }
 
     return `<div class="administration-box">
-        <div class="administration-header"><div class="administration-title">${adminLast} Administration</div><div class="administration-subtitle">Caretaker Government</div></div>
+        <div class="administration-header"><div class="administration-title">${escapeHtml(adminLast)} Administration</div><div class="administration-subtitle">Caretaker Government</div></div>
         <div class="coalition-parties"><div class="coalition-party-tag" style="background:var(--bg-hover);color:var(--text-secondary);">Awaiting Election Results</div></div>
         ${renderCaretakerBanner()}
     </div>`;
@@ -884,11 +884,7 @@ function renderChatMessages() {
     container.scrollTop = container.scrollHeight;
 }
 
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-}
+// escapeHtml imported from utils.js
 
 function formatChatTime(isoStr) {
     if (!isoStr) return '';
@@ -1081,7 +1077,7 @@ function renderCabinet(ministries, coalition) {
                 const mLogoHtml = mLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(mLogo, 16, mColor)}</span>` : '';
                 const appr = m.minister_approval ?? 50;
                 const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
-                return `<div class="ministry-card" style="border-top:3px solid ${mColor};padding:10px 12px;"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${m.minister_first_name} ${m.minister_last_name}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party" style="color:${mColor};">${mLogoHtml}${partyName}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests, m)}</div>`;
+                return `<div class="ministry-card" style="border-top:3px solid ${mColor};padding:10px 12px;"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${escapeHtml(m.minister_first_name)} ${escapeHtml(m.minister_last_name)}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party" style="color:${mColor};">${mLogoHtml}${escapeHtml(partyName)}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests, m)}</div>`;
             } else {
                 return `<div class="ministry-card vacant" style="padding:10px 12px;"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests, null)}</div>`;
             }
@@ -1145,8 +1141,8 @@ function renderCabinet(ministries, coalition) {
         return '<div class="ministry-card" style="border-top-color:' + mColor + ';">'
             + '<div class="ministry-header"><div class="ministry-title">' + (m.ministry_name || title) + '</div>' + statusBadge + '</div>'
             + '<div class="ministry-body">'
-            + '<div class="minister-name">' + name + '</div>'
-            + '<div class="minister-details">' + (m.minister_age ? 'Age ' + m.minister_age + ' &bull; ' : '') + '<span class="minister-party" style="color:' + mColor + ';">' + mLogoHtml + partyName + '</span></div>'
+            + '<div class="minister-name">' + escapeHtml(name) + '</div>'
+            + '<div class="minister-details">' + (m.minister_age ? 'Age ' + m.minister_age + ' &bull; ' : '') + '<span class="minister-party" style="color:' + mColor + ';">' + mLogoHtml + escapeHtml(partyName) + '</span></div>'
             + '<div class="minister-approval">Approval: <span class="' + apprCls + '">' + Math.round(appr) + '%</span></div>'
             + resignBtn + fireBtn + '</div></div>';
     }).join('');
@@ -1301,7 +1297,7 @@ function openNominateModal(ministryKey) {
         const candColor = getPartyColorById(c.partyId);
         const candLogo = getPartyLogoById(c.partyId);
         const candLogoHtml = candLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyIconSVG(candLogo, 14, candColor)}</span>` : '';
-        return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};"><div><div class="candidate-name">${c.firstName} ${c.lastName}</div><div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag ${isPres ? 'ruling' : 'other'}">${candLogoHtml}${c.partyName}</span></div></div>${isPres ? '<span class="ruling-label">PRESIDENT</span>' : ''}</div>`;
+        return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};"><div><div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div><div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag ${isPres ? 'ruling' : 'other'}">${candLogoHtml}${escapeHtml(c.partyName)}</span></div></div>${isPres ? '<span class="ruling-label">PRESIDENT</span>' : ''}</div>`;
     }).join('');
 
     document.getElementById('assign-modal').classList.add('active');
@@ -1359,7 +1355,7 @@ function openAssignModal(ministryKey) {
         const candColor = getPartyColorById(c.partyId);
         const candLogo = getPartyLogoById(c.partyId);
         const candLogoHtml = candLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyIconSVG(candLogo, 14, candColor)}</span>` : '';
-        return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};"><div><div class="candidate-name">${c.firstName} ${c.lastName}</div><div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag ${isRuling ? 'ruling' : 'other'}">${candLogoHtml}${c.partyName}</span></div></div>${isRuling ? '<span class="ruling-label">RULING</span>' : ''}</div>`;
+        return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};"><div><div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div><div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag ${isRuling ? 'ruling' : 'other'}">${candLogoHtml}${escapeHtml(c.partyName)}</span></div></div>${isRuling ? '<span class="ruling-label">RULING</span>' : ''}</div>`;
     }).join('');
 
     document.getElementById('assign-modal').classList.add('active');
@@ -1394,8 +1390,8 @@ function openAppointModal(ministryKey) {
         const candLogo = getPartyLogoById(c.partyId);
         const candLogoHtml = candLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyIconSVG(candLogo, 14, candColor)}</span>` : '';
         return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};">` +
-        `<div><div class="candidate-name">${c.firstName} ${c.lastName}</div>` +
-        `<div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag other">${candLogoHtml}${c.partyName}</span></div></div></div>`;
+        `<div><div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div>` +
+        `<div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag other">${candLogoHtml}${escapeHtml(c.partyName)}</span></div></div></div>`;
     }).join('');
 
     document.getElementById('assign-modal').classList.add('active');
@@ -2264,7 +2260,7 @@ function drawParliament(parties, options = {}) {
                 const legParty = allParties.find(x => x.faction_name === p.name);
                 const legLogo = legParty?.party_logo;
                 const legLogoHtml = legLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyIconSVG(legLogo, 14, p.color)}</span>` : '';
-                return `<div class="legend-item"><span class="legend-swatch" style="background:${p.color};"></span><span class="legend-name">${legLogoHtml}${p.name}</span><span class="legend-seats">${p.seats}</span></div>`;
+                return `<div class="legend-item"><span class="legend-swatch" style="background:${p.color};"></span><span class="legend-name">${legLogoHtml}${escapeHtml(p.name)}</span><span class="legend-seats">${p.seats}</span></div>`;
             }).join('');
         }
     }
@@ -2687,12 +2683,12 @@ function renderAdminCard(admin, isCurrent) {
     detailHTML += `<div class="past-admin-detail-grid">
         <div class="pad-info-box">
             <div class="pad-info-label">Head of State</div>
-            <div class="pad-info-value">${admin.head_of_state || 'Unknown'}</div>
+            <div class="pad-info-value">${escapeHtml(admin.head_of_state || 'Unknown')}</div>
         </div>
         <div class="pad-info-box">
             <div class="pad-info-label">Prime Minister</div>
-            <div class="pad-info-value">${admin.prime_minister || 'Not yet selected'}</div>
-            <div class="pad-info-sub">${admin.pm_party_name || ''}</div>
+            <div class="pad-info-value">${escapeHtml(admin.prime_minister || 'Not yet selected')}</div>
+            <div class="pad-info-sub">${escapeHtml(admin.pm_party_name || '')}</div>
         </div>
         <div class="pad-info-box">
             <div class="pad-info-label">Coalition</div>
@@ -2760,11 +2756,11 @@ function renderAdminCard(admin, isCurrent) {
         detailHTML += `<div class="pad-section-title">Flagship Legislation</div>`;
         if (billsPassed.length > 0) {
             detailHTML += `<div style="font-size:0.72rem;color:var(--text-secondary);font-weight:bold;margin-bottom:4px;">Bills Passed (${billsPassed.length})</div>`;
-            detailHTML += billsPassed.map(b => `<div class="pad-legislation-item"><span class="bill-name">${b.bill_name || 'Unnamed'}</span><span class="bill-date">${tickToDate(b.passed_tick)}</span></div>`).join('');
+            detailHTML += billsPassed.map(b => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(b.bill_name || 'Unnamed')}</span><span class="bill-date">${tickToDate(b.passed_tick)}</span></div>`).join('');
         }
         if (lawsRepealed.length > 0) {
             detailHTML += `<div style="font-size:0.72rem;color:var(--red);font-weight:bold;margin:6px 0 4px;">Laws Repealed (${lawsRepealed.length})</div>`;
-            detailHTML += lawsRepealed.map(b => `<div class="pad-legislation-item"><span class="bill-name">${b.bill_name || 'Unnamed'}</span><span class="bill-date">${b.repealed_tick != null ? tickToDate(b.repealed_tick) : (b.repealed_date || '')}</span></div>`).join('');
+            detailHTML += lawsRepealed.map(b => `<div class="pad-legislation-item"><span class="bill-name">${escapeHtml(b.bill_name || 'Unnamed')}</span><span class="bill-date">${b.repealed_tick != null ? tickToDate(b.repealed_tick) : (b.repealed_date || '')}</span></div>`).join('');
         }
     }
 

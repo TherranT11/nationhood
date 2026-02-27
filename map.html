@@ -69,6 +69,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, loadGameState, updateTopBarInfo, scaleRawToDollars } from './js/common.js';
 import { initGameConfigForNation } from './js/game-common.js';
+import { escapeHtml } from './js/utils.js';
 let currentUser = null;
     let currentFaction = null;
     let selectedNation = null; // Track currently selected nation
@@ -201,8 +202,8 @@ if (!faction) {
                 // Display nation stats
                 document.getElementById('details').innerHTML = `
                     <div style="margin-bottom: 20px;">
-                        <h2 style="color: #ffcc00; margin: 0 0 5px 0; font-size: 1.5rem;">${nation.name}</h2>
-                        <div style="color: #888; font-size: 0.85rem; margin-bottom: 15px;">Capital: ${nation.capital || 'Unknown'}</div>
+                        <h2 style="color: #ffcc00; margin: 0 0 5px 0; font-size: 1.5rem;">${escapeHtml(nation.name)}</h2>
+                        <div style="color: #888; font-size: 0.85rem; margin-bottom: 15px;">Capital: ${escapeHtml(nation.capital || 'Unknown')}</div>
                     </div>
                     
                     <div style="display: grid; gap: 12px;">
