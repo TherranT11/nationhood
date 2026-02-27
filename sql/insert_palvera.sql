@@ -12,8 +12,8 @@
 UPDATE nations SET name = 'Palvera' WHERE LOWER(name) = 'veldaria';
 
 -- Step 2: Check if Palvera now exists; if not, insert it
-INSERT INTO nations (name, government_type, total_seats, max_parties)
-SELECT 'Palvera', 'Presidential', 120, 8
+INSERT INTO nations (name, government_type, total_seats, max_parties, capital)
+SELECT 'Palvera', 'Presidential', 120, 8, 'Valcosta'
 WHERE NOT EXISTS (SELECT 1 FROM nations WHERE LOWER(name) = 'palvera');
 
 -- Step 3: Set all stats
@@ -21,6 +21,7 @@ UPDATE nations SET
     government_type = 'Presidential',
     total_seats = 120,
     max_parties = 8,
+    capital = 'Valcosta',
 
     -- GDP & Debt (dollar-scale)
     gdp = 106000000000,
@@ -137,6 +138,7 @@ SET seed_stats = jsonb_build_object(
     'government_type', 'Presidential',
     'total_seats', 120,
     'max_parties', 8,
+    'capital', 'Valcosta',
     'gdp', 106000000000,
     'debt', 48000000000,
     'gdp_growth', 40,
