@@ -651,13 +651,13 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             nations = data || [];
             const select = document.getElementById('election-nation-select');
             select.innerHTML = '<option value="">-- Choose a nation --</option>';
-            nations.forEach(n => { select.innerHTML += `<option value="${n.id}">${n.name}</option>`; });
+            nations.forEach(n => { select.innerHTML += `<option value="${n.id}">${escHtml(n.name)}</option>`; });
 
             // Populate schedule-election nation dropdown
             const schedSelect = document.getElementById('schedule-nation-select');
             schedSelect.innerHTML = '<option value="__all__">All Nations (Democracies)</option>';
             nations.filter(n => !isGovernmentAutocracy(n)).forEach(n => {
-                schedSelect.innerHTML += `<option value="${n.id}">${n.name} (${getCanonicalGovernmentType(n)})</option>`;
+                schedSelect.innerHTML += `<option value="${n.id}">${escHtml(n.name)} (${getCanonicalGovernmentType(n)})</option>`;
             });
         } catch (error) { console.error(error); }
     }
@@ -794,7 +794,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 resultsContent.innerHTML = sorted.map(c => {
                     const isWinner = c.winner;
                     return `<div class="result-party" style="${isWinner ? 'border-left:3px solid #4CAF50;padding-left:8px;' : ''}">
-                        <div><div class="result-party-name">${isWinner ? '&#x2713; ' : ''}${c.candidate_name} (${c.party_name})</div>
+                        <div><div class="result-party-name">${isWinner ? '&#x2713; ' : ''}${escHtml(c.candidate_name)} (${escHtml(c.party_name)})</div>
                         <div style="font-size:0.75rem;color:#888;">${c.ideology || ''}</div>
                         <div class="result-bar" style="width:200px;"><div class="result-bar-fill" style="width:${c.vote_percentage || 0}%"></div></div></div>
                         <div class="result-party-seats">${(c.votes || 0).toLocaleString()} votes (${c.vote_percentage || 0}%)</div>
@@ -805,7 +805,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 const totalSeats = selectedElectionNation.total_seats || 120;
                 resultsContent.innerHTML = runResult.seatResults
                     .sort((a, b) => b.seats - a.seats)
-                    .map(r => `<div class="result-party"><div><div class="result-party-name">${r.party_name}</div><div class="result-bar" style="width:200px;"><div class="result-bar-fill" style="width:${(r.seats/totalSeats)*100}%"></div></div></div><div class="result-party-seats">${r.seats} seats</div></div>`)
+                    .map(r => `<div class="result-party"><div><div class="result-party-name">${escHtml(r.party_name)}</div><div class="result-bar" style="width:200px;"><div class="result-bar-fill" style="width:${(r.seats/totalSeats)*100}%"></div></div></div><div class="result-party-seats">${r.seats} seats</div></div>`)
                     .join('');
                 resultsDiv.classList.remove('hidden');
             }
@@ -870,7 +870,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             previewContent.innerHTML = result.results.map(r => `
                 <div class="result-party">
                     <div>
-                        <div class="result-party-name">${r.party_name} <span style="color:#888; font-size:0.75rem;">(${r.approval}% approval)</span></div>
+                        <div class="result-party-name">${escHtml(r.party_name)} <span style="color:#888; font-size:0.75rem;">(${r.approval}% approval)</span></div>
                         <div class="result-bar" style="width:200px;">
                             <div class="result-bar-fill" style="width:${(r.seats/totalSeats)*100}%"></div>
                         </div>
@@ -909,10 +909,10 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             const w = result.winner;
             let html = `<div style="background:#1a2e1a; border:1px solid #4CAF50; border-radius:6px; padding:10px 14px; margin-bottom:12px;">
                 <div style="color:#4CAF50; font-weight:bold; font-size:0.9rem; margin-bottom:4px;">
-                    🏆 Projected Winner${result.was_runoff ? ' (Runoff)' : ''}: ${w.candidate_name}
+                    🏆 Projected Winner${result.was_runoff ? ' (Runoff)' : ''}: ${escHtml(w.candidate_name)}
                 </div>
                 <div style="color:#aaa; font-size:0.8rem;">
-                    ${w.party_name} · ${w.ideology || ''} · ${w.vote_percentage}% (${w.votes.toLocaleString()} votes)
+                    ${escHtml(w.party_name)} · ${w.ideology || ''} · ${w.vote_percentage}% (${w.votes.toLocaleString()} votes)
                 </div>
             </div>`;
 
@@ -963,8 +963,8 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             return `<div class="result-party" style="${isWinner ? 'border-left:3px solid #4CAF50; padding-left:8px;' : ''}">
                 <div>
                     <div class="result-party-name">
-                        ${isWinner ? '&#x2713; ' : ''}${c.candidate_name}
-                        <span style="color:#888; font-size:0.75rem;">(${c.party_name})</span>
+                        ${isWinner ? '&#x2713; ' : ''}${escHtml(c.candidate_name)}
+                        <span style="color:#888; font-size:0.75rem;">(${escHtml(c.party_name)})</span>
                         <span style="background:#333; color:#ddd; font-size:0.65rem; padding:1px 5px; border-radius:8px; margin-left:4px;">${c.ideology || ''}</span>
                     </div>
                     <div class="result-bar" style="width:200px;">
@@ -996,7 +996,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 const barW = maxVotes > 0 ? (e.votes / maxVotes) * 100 : 0;
                 const isBold = e.votes === maxVotes ? 'font-weight:bold; color:#ffcc00;' : 'color:#aaa;';
                 return `<div style="display:flex; align-items:center; gap:6px; margin:2px 0; font-size:0.7rem;">
-                    <span style="width:120px; ${isBold} white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${e.name}</span>
+                    <span style="width:120px; ${isBold} white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escHtml(e.name)}</span>
                     <div style="flex:1; height:8px; background:#222; border-radius:3px; overflow:hidden;">
                         <div style="width:${barW}%; height:100%; background:${e.votes === maxVotes ? '#ffcc00' : '#555'}; border-radius:3px;"></div>
                     </div>
@@ -1018,7 +1018,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                     ${blocDetails.sort((a,b) => b.voter_count - a.voter_count).map(d => `
                         <details style="border-bottom:1px solid #222; padding:4px 0;">
                             <summary style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; color:${d.step === 4 ? '#ff6666' : '#ccc'};">
-                                <span style="flex:1;">${d.bloc_name}</span>
+                                <span style="flex:1;">${escHtml(d.bloc_name)}</span>
                                 <span style="width:80px; text-align:right;">${d.voter_count.toLocaleString()}</span>
                                 <span style="width:90px; text-align:center; color:#888;">${stepLabels[d.step] || d.step}</span>
                                 <span style="width:50px; text-align:right;">${d.eligible_count || '-'}</span>
@@ -1192,10 +1192,10 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             const hasNation = !!player.nation_id;
             const borderColor = hasNation ? '#4CAF50' : '#ff4444';
             const statusBadge = hasNation
-                ? `<span style="background:#1a2a1a; color:#4CAF50; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">${player.nation || 'Unknown'}</span>`
+                ? `<span style="background:#1a2a1a; color:#4CAF50; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">${escHtml(player.nation || 'Unknown')}</span>`
                 : `<span style="background:#2a1a1a; color:#ff4444; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NO NATION</span>`;
             const statsHTML = hasNation ? `<div style="display:flex; gap:12px; margin-top:6px; font-size:0.75rem; color:#888;"><span>Seats: <strong style="color:#ffcc00;">${player.seats||0}</strong></span><span>Approval: <strong style="color:#ffcc00;">${player.approval_rating||0}%</strong></span><span>AP: <strong style="color:#ffcc00;">${player.action_points||0}</strong></span></div>` : `<div style="margin-top:6px; font-size:0.75rem; color:#ff4444; font-style:italic;">Not assigned to any nation</div>`;
-            return `<div class="player-item" style="border-left-color:${borderColor}; margin-bottom:10px;"><div class="player-info" style="flex:1;"><div style="display:flex; align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap;"><span class="player-party">${player.faction_name||'Unnamed'} ${player.abbreviation ? '['+player.abbreviation+']' : ''}</span>${statusBadge}</div><div class="player-id">ID: ${player.id}</div>${statsHTML}</div><div style="display:flex; gap:6px; flex-direction:column;">${hasNation ? `<button class="btn-remove" style="font-size:0.75rem; padding:6px 12px;" onclick="removePlayer('${player.id}', '${player.nation_id}', '${(player.faction_name||'').replace(/'/g,"\\'")}')">KICK</button>` : ''}<button class="btn-remove" style="background:#aa0000; font-size:0.75rem; padding:6px 12px;" onclick="deleteParty('${player.id}', '${(player.faction_name||'').replace(/'/g,"\\'")}')">DELETE</button></div></div>`;
+            return `<div class="player-item" style="border-left-color:${borderColor}; margin-bottom:10px;"><div class="player-info" style="flex:1;"><div style="display:flex; align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap;"><span class="player-party">${escHtml(player.faction_name||'Unnamed')} ${player.abbreviation ? '['+escHtml(player.abbreviation)+']' : ''}</span>${statusBadge}</div><div class="player-id">ID: ${player.id}</div>${statsHTML}</div><div style="display:flex; gap:6px; flex-direction:column;">${hasNation ? `<button class="btn-remove" style="font-size:0.75rem; padding:6px 12px;" onclick="removePlayer('${player.id}', '${player.nation_id}', '${(player.faction_name||'').replace(/'/g,"\\'")}')">KICK</button>` : ''}<button class="btn-remove" style="background:#aa0000; font-size:0.75rem; padding:6px 12px;" onclick="deleteParty('${player.id}', '${(player.faction_name||'').replace(/'/g,"\\'")}')">DELETE</button></div></div>`;
         }).join('');
     }
     async function removePlayer(playerId, nationId, partyName) {
@@ -1639,7 +1639,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             <div class="bloc-card" id="bloc-card-${bloc.id}">
                 <div class="bloc-card-header" onclick="toggleBlocDetail('${bloc.id}')">
                     <div class="bloc-card-left">
-                        <div class="bloc-card-name">${bloc.bloc_name}</div>
+                        <div class="bloc-card-name">${escHtml(bloc.bloc_name)}</div>
                         <div class="bloc-card-meta">
                             <span class="bloc-card-weight">${parseFloat(bloc.population_weight || 0).toFixed(1)}%</span>
                             <span>${axisSummary || '<span style="color:#666;">Centrist</span>'}</span>
@@ -1663,7 +1663,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                             <div class="bloc-axis-label bloc-axis-label-right" style="color:${val > 50 ? '#CE93D8' : '#666'}">${a.right}</div>
                         </div>`;
                     }).join('')}
-                    ${bloc.description ? `<div style="margin-top:8px;font-size:0.8rem;color:#888;font-style:italic;">${bloc.description}</div>` : ''}
+                    ${bloc.description ? `<div style="margin-top:8px;font-size:0.8rem;color:#888;font-style:italic;">${escHtml(bloc.description)}</div>` : ''}
                 </div>
             </div>
         `;
@@ -1704,7 +1704,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 <div class="bloc-form-row">
                     <div class="bloc-form-field" style="flex:2;">
                         <label>Bloc Name</label>
-                        <input type="text" id="bloc-form-name" value="${bloc.bloc_name || ''}" placeholder="e.g. Rural Traditionalists">
+                        <input type="text" id="bloc-form-name" value="${escHtml(bloc.bloc_name || '')}" placeholder="e.g. Rural Traditionalists">
                     </div>
                     <div class="bloc-form-field" style="flex:1;">
                         <label>Population Weight (%)</label>
@@ -1713,7 +1713,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 </div>
                 <div class="bloc-form-field" style="margin-bottom:12px;">
                     <label>Description</label>
-                    <input type="text" id="bloc-form-desc" value="${bloc.description || ''}" placeholder="Brief description of this voter demographic">
+                    <input type="text" id="bloc-form-desc" value="${escHtml(bloc.description || '')}" placeholder="Brief description of this voter demographic">
                 </div>
 
                 <label style="font-size:0.75rem;color:#888;text-transform:uppercase;font-weight:bold;margin-bottom:8px;display:block;">Ideology Axes (0 = Left Pole, 100 = Right Pole)</label>
@@ -2246,7 +2246,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         let condSummary = '';
         if (cond.stat_key) condSummary += `${cond.stat_key} ${cond.direction || ''} ${cond.delta ? ('delta ' + cond.delta) : ''} ${cond.absolute_target !== undefined ? ('target ' + cond.absolute_target) : ''} `;
         if (cond.ministry_key) condSummary += `ministry: ${cond.ministry_key} `;
-        if (cond.bill_name) condSummary += `bill: ${cond.bill_name} `;
+        if (cond.bill_name) condSummary += `bill: ${escHtml(cond.bill_name)} `;
         if (cond.bill_tags) condSummary += `bill tags: [${cond.bill_tags.join(', ')}] `;
         if (cond.protected_stat) condSummary += `protect: ${cond.protected_stat} `;
         if (cond.blocked_tag) condSummary += `block tag: ${cond.blocked_tag} `;
@@ -2258,7 +2258,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             <div class="bloc-card" id="demand-card-${demand.id}" style="${misaligned ? 'border-left:3px solid #ff9800;' : ''}${!demand.is_active ? 'opacity:0.5;' : ''}">
                 <div class="bloc-card-header" onclick="toggleDemandDetail('${demand.id}')">
                     <div class="bloc-card-left">
-                        <div class="bloc-card-name">${demand.demand_name}${alignWarning}</div>
+                        <div class="bloc-card-name">${escHtml(demand.demand_name)}${alignWarning}</div>
                         <div class="bloc-card-meta">
                             <span style="color:#CE93D8;font-size:0.75rem;">${typeLabel}</span>
                             <span style="color:#888;font-size:0.75rem;">| ${demand.deadline} ticks</span>
@@ -2272,7 +2272,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                     </div>
                 </div>
                 <div class="bloc-detail hidden" id="demand-detail-${demand.id}">
-                    <div style="font-size:0.85rem;color:#ccc;margin-bottom:8px;"><strong>Text:</strong> ${demand.demand_text}</div>
+                    <div style="font-size:0.85rem;color:#ccc;margin-bottom:8px;"><strong>Text:</strong> ${escHtml(demand.demand_text)}</div>
                     ${condSummary ? `<div style="font-size:0.8rem;color:#888;"><strong>Conditions:</strong> ${condSummary}</div>` : ''}
                     <div style="font-size:0.75rem;color:#666;margin-top:4px;"><strong>Raw:</strong> <code>${JSON.stringify(demand.conditions)}</code></div>
                 </div>
@@ -2315,7 +2315,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 <div class="bloc-form-row">
                     <div class="bloc-form-field" style="flex:2;">
                         <label>Demand Name</label>
-                        <input type="text" id="demand-form-name" value="${demand.demand_name || ''}" placeholder="e.g. Free Enterprise Deregulation Act">
+                        <input type="text" id="demand-form-name" value="${escHtml(demand.demand_name || '')}" placeholder="e.g. Free Enterprise Deregulation Act">
                     </div>
                     <div class="bloc-form-field" style="flex:1;">
                         <label>Demand Type</label>

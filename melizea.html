@@ -77,6 +77,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
+import { escapeHtml } from './js/utils.js';
 
     const NATION_NAME = 'Melizea';
     let nationData = null;
@@ -210,13 +211,13 @@ import { _supabase } from './js/supabase-client.js';
                 return `
                     <div class="interest-group-card">
                         <div class="interest-group-header">
-                            <span class="interest-group-name">${group.group_name || group.name || 'Unknown Group'} <span class="interest-group-pop">(${formatNumber(group.population)})</span></span>
+                            <span class="interest-group-name">${escapeHtml(group.group_name || group.name || 'Unknown Group')} <span class="interest-group-pop">(${formatNumber(group.population)})</span></span>
                         </div>
                         <div class="interest-group-ideologies">
                             ${ideologyHTML || '<span style="color: #666;">No ideologies defined</span>'}
                         </div>
                         <div class="interest-group-desc">
-                            "${group.description || 'No description available.'}"
+                            "${escapeHtml(group.description || 'No description available.')}"
                         </div>
                     </div>
                 `;
@@ -251,7 +252,7 @@ import { _supabase } from './js/supabase-client.js';
         if (allParties.length > 0) {
             partiesContainer.innerHTML = allParties.map(party => `
                 <div class="party-item">
-                    <span class="party-name">${party.name}${party.isPlayer ? ' (Player)' : ''}</span>
+                    <span class="party-name">${escapeHtml(party.name)}${party.isPlayer ? ' (Player)' : ''}</span>
                     <span class="party-seats">${party.seats || 0} Seats</span>
                 </div>
             `).join('');

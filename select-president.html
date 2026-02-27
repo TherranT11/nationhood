@@ -25,7 +25,7 @@
 
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
-import { getIdeologyClass } from './js/utils.js';
+import { getIdeologyClass, escapeHtml } from './js/utils.js';
 import { initGameConfigForNation, selectPresidentCandidate, GAME_CONFIG, isPresidentialRepublic } from './js/game-common.js';
 let currentNation = null;
 let currentFaction = null;
@@ -157,7 +157,7 @@ function renderCandidates() {
             <p>Choose your party's presidential nominee for the upcoming election. Your candidate will compete against nominees from other parties in the popular vote.</p>
             <div class="pm-party-badge">
                 <div class="pm-party-dot"></div>
-                <span>Nominating for <strong>${currentFaction.faction_name}</strong></span>
+                <span>Nominating for <strong>${escapeHtml(currentFaction.faction_name)}</strong></span>
             </div>
             ${ticksUntil ? `<div style="color:var(--text-secondary);font-size:0.8rem;margin-top:8px;">${ticksUntil}</div>` : ''}
         </div>
@@ -186,7 +186,7 @@ function selectCandidate(candidateId) {
     const trait = traits[candidate.trait_key] || {};
 
     document.getElementById('pm-confirm-summary').innerHTML =
-        `Nominate <strong>${candidate.first_name} ${candidate.last_name}</strong> — ` +
+        `Nominate <strong>${escapeHtml(candidate.first_name)} ${escapeHtml(candidate.last_name)}</strong> — ` +
         `<span style="color:var(--accent)">${trait.trait_name || candidate.trait_key}</span> · ` +
         `${candidate.ideology}`;
 

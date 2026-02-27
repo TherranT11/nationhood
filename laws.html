@@ -108,6 +108,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
+import { escapeHtml } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, generateBudgetBill } from './js/game-common.js';
 (function () {
     'use strict';
@@ -457,10 +458,10 @@ function filterAllLaws() {
 
         return `<div class="law-card ${isActive ? 'law-active' : 'law-inactive'}">
             <div class="law-card-header">
-                <div class="law-card-name">${p.policy_name} ${isActive ? '<span style="color:#4CAF50;font-size:0.75rem;">● ACTIVE</span>' : '<span style="color:#666;font-size:0.75rem;">○ INACTIVE</span>'}</div>
+                <div class="law-card-name">${escapeHtml(p.policy_name)} ${isActive ? '<span style="color:#4CAF50;font-size:0.75rem;">● ACTIVE</span>' : '<span style="color:#666;font-size:0.75rem;">○ INACTIVE</span>'}</div>
                 <div class="law-card-sector">${p.major_sector || '—'}</div>
             </div>
-            ${p.description ? `<div class="law-card-desc">${p.description}</div>` : ''}
+            ${p.description ? `<div class="law-card-desc">${escapeHtml(p.description)}</div>` : ''}
             <div class="law-card-meta">
                 ${ideoHTML} ${effectsHTML} ${costHTML.length > 0 ? `<span style="color:#ff9800;">${costHTML.join(' · ')}</span>` : ''}
             </div>
@@ -1098,7 +1099,7 @@ function renderArchiveBill(bill) {
         : '<span class="archive-badge failed">FAILED</span>';
 
     // Sponsor info
-    const sponsorName = bill.factions?.abbreviation || bill.factions?.faction_name || 'Unknown';
+    const sponsorName = escapeHtml(bill.factions?.abbreviation || bill.factions?.faction_name || 'Unknown');
     const sponsorColor = bill.factions?.party_color || '#888';
 
     // Vote tally
@@ -1111,7 +1112,7 @@ function renderArchiveBill(bill) {
         .filter(s => ['yes', 'no', 'abstain'].includes(s.stance))
         .sort((a, b) => (b.seat_count || 0) - (a.seat_count || 0));
     const partyBreakdown = supports.map(s => {
-        const pName = s.factions?.abbreviation || s.factions?.faction_name || '?';
+        const pName = escapeHtml(s.factions?.abbreviation || s.factions?.faction_name || '?');
         const pColor = s.factions?.party_color || '#888';
         const stanceLabel = s.stance.toUpperCase();
         const dotColor = s.stance === 'yes' ? '#4CAF50' : (s.stance === 'no' ? '#ff4444' : '#888');
@@ -1171,7 +1172,7 @@ function renderArchiveBill(bill) {
         <div class="archive-bill clickable-bill ${isPassed ? 'archive-passed' : 'archive-failed'}" onclick="window.location.href='bill.html?id=${bill.id}'">
             <div class="archive-bill-header">
                 <div class="archive-bill-title">
-                    <span class="archive-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${typeLabel}</span>
+                    <span class="archive-bill-name">${escapeHtml(bill.bill_name || 'Unnamed ' + termBill)}${typeLabel}</span>
                     ${statusBadge}
                 </div>
                 <div class="archive-bill-meta">
@@ -1480,7 +1481,7 @@ function renderPolicyOptions(policies, containerId, buttonId) {
             const cls = policy.stat_direction === 'UP' ? 'effect-up' : 'effect-down';
             effectHTML = `${formatStatName(policy.target_stat)} <span class="${cls}">${dir}</span>`;
         }
-        return `<div class="policy-option${opposedClass}${pendingClass}" data-policy-id="${policy.id}" onclick="${isEnacted ? '' : `selectPolicyOption('${policy.id}','${buttonId}')`}"><div class="policy-option-name">${policy.policy_name} ${ideoHTML} ${opposedBadge}${pendingBadge}${enactedBadge}</div><div class="policy-option-desc">${policy.description || ''}</div><div class="policy-option-effects">${effectHTML}</div>${opposedWarn}</div>`;
+        return `<div class="policy-option${opposedClass}${pendingClass}" data-policy-id="${policy.id}" onclick="${isEnacted ? '' : `selectPolicyOption('${policy.id}','${buttonId}')`}"><div class="policy-option-name">${escapeHtml(policy.policy_name)} ${ideoHTML} ${opposedBadge}${pendingBadge}${enactedBadge}</div><div class="policy-option-desc">${escapeHtml(policy.description || '')}</div><div class="policy-option-effects">${effectHTML}</div>${opposedWarn}</div>`;
     }).join('');
 }
 
@@ -1574,8 +1575,8 @@ function renderDraftArticles() {
             return `<div class="draft-article-card" style="border-left:3px solid #2196F3;">
                 <div class="draft-article-info">
                     <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:#2196F3;">Text</span></div>
-                    <div class="draft-article-name">${art.textTitle}</div>
-                    <div class="draft-article-meta">${art.textBody.length > 120 ? art.textBody.substring(0, 120) + '…' : art.textBody}</div>
+                    <div class="draft-article-name">${escapeHtml(art.textTitle)}</div>
+                    <div class="draft-article-meta">${escapeHtml(art.textBody.length > 120 ? art.textBody.substring(0, 120) + '…' : art.textBody)}</div>
                 </div>
                 <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
             </div>`;

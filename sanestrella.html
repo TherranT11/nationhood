@@ -107,6 +107,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
+import { escapeHtml } from './js/utils.js';
 
 const NATION_NAME = 'San Estrella';
 let nation = null;
@@ -441,7 +442,7 @@ function renderGovernment(factions, parties) {
     for (var i = 0; i < allParties.length; i++) {
         var c = colors[i % colors.length];
         h += '<div class="party-card" style="border-left-color:' + c + ';">';
-        h += '<div class="party-card-name">' + allParties[i].name;
+        h += '<div class="party-card-name">' + escapeHtml(allParties[i].name);
         if (i === 0 && allParties[i].seats > 0) h += '<span class="party-card-tag">Leading</span>';
         h += '</div>';
         h += '<div class="party-card-seats">' + allParties[i].seats + ' seats</div>';
@@ -468,7 +469,7 @@ function renderRelations(relations) {
         if (!other) continue;
         var embStatus = (r.nation_a && r.nation_a.id === nation.id) ? r.embassy_status_a : r.embassy_status_b;
         h += '<div class="relation-card">';
-        h += '<div class="relation-nation">' + other.name + '</div>';
+        h += '<div class="relation-nation">' + escapeHtml(other.name) + '</div>';
         h += '<span class="relation-type ' + (r.relation_type || 'neutral') + '">' + (r.relation_type || 'neutral') + '</span>';
         h += '<div class="relation-score">Score: ' + (r.relation_score != null ? r.relation_score : '?') + ' / 100</div>';
         h += '<div class="relation-embassy">Embassy: ' + (embStatus || 'open') + '</div>';

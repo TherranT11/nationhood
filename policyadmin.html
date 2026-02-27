@@ -238,6 +238,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
+import { escapeHtml } from './js/utils.js';
 // ==================== CONFIG ====================
 const ADMIN_PW = 'nationhood2000';
 
@@ -451,7 +452,7 @@ function renderPolicyTable() {
         const law = p.law_category || p.minor_sector || '';
 
         return `<tr>
-            <td class="policy-name-cell">${p.policy_name || '—'}</td>
+            <td class="policy-name-cell">${escapeHtml(p.policy_name || '—')}</td>
             <td><span class="tag tag-sector">${p.major_sector || '—'}</span><br><span style="font-size:0.75rem;color:#888;">${law}</span></td>
             <td>${effectsHTML}</td>
             <td>${ideoHTML}</td>
@@ -948,7 +949,7 @@ function updatePrereqPreview() {
     if (!p) { preview.style.display = 'none'; return; }
     preview.style.display = 'block';
     preview.innerHTML = `<div class="formula-preview">
-        🔗 <strong>Requires:</strong> "${p.policy_name}" (${p.major_sector} › ${p.law_category || p.minor_sector || '—'})<br>
+        🔗 <strong>Requires:</strong> "${escapeHtml(p.policy_name)}" (${p.major_sector} › ${p.law_category || p.minor_sector || '—'})<br>
         <span style="color:#888;">Players must have this law active before they can include this policy in a bill.</span>
     </div>`;
 }

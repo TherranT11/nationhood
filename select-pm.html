@@ -25,7 +25,7 @@
 
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
-import { getIdeologyClass } from './js/utils.js';
+import { getIdeologyClass, escapeHtml } from './js/utils.js';
 import { initGameConfigForNation, generatePMCandidates, selectPMCandidate, GAME_CONFIG } from './js/game-common.js';
 let currentNation = null;
 let currentFaction = null;
@@ -177,7 +177,7 @@ function renderCandidates() {
             <p>Your coalition has formed and your party holds the Prime Minister post. Choose who will lead the nation.</p>
             <div class="pm-party-badge">
                 <div class="pm-party-dot"></div>
-                <span>Appointing for <strong>${currentFaction.faction_name}</strong></span>
+                <span>Appointing for <strong>${escapeHtml(currentFaction.faction_name)}</strong></span>
             </div>
         </div>
 
@@ -207,7 +207,7 @@ function selectCandidate(candidateId) {
     const trait = traits[candidate.trait_key] || {};
 
     document.getElementById('pm-confirm-summary').innerHTML =
-        `Appoint <strong>${candidate.first_name} ${candidate.last_name}</strong> — ` +
+        `Appoint <strong>${escapeHtml(candidate.first_name)} ${escapeHtml(candidate.last_name)}</strong> — ` +
         `<span style="color:${getTraitColor(trait)}">${trait.trait_name || candidate.trait_key}</span> · ` +
         `${candidate.ideology} (+5 shift)`;
 

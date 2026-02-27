@@ -26,6 +26,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
+import { escapeHtml } from './js/utils.js';
 /**
  * Factions & Demands Page
  * Shows voter blocs, active demands, and demand history
@@ -194,7 +195,7 @@ async function loadActiveDemands() {
                 <div class="demand-card ${cardClass}">
                     <div class="demand-header">
                         <div>
-                            <div class="demand-bloc-name">${demand.bloc_name}</div>
+                            <div class="demand-bloc-name">${escapeHtml(demand.bloc_name)}</div>
                             <div class="demand-bloc-voters">${voterCount.toLocaleString()} voters in this bloc</div>
                         </div>
                         <div class="demand-deadline">
@@ -206,7 +207,7 @@ async function loadActiveDemands() {
                     </div>
                     
                     <div class="demand-body">
-                        "${demand.demand_text}"
+                        "${escapeHtml(demand.demand_text)}"
                     </div>
                     
                     <div class="demand-requirement">
@@ -275,8 +276,8 @@ async function loadVoterBlocs() {
             return `
                 <div class="bloc-card">
                     <div class="bloc-card-left">
-                        <div class="bloc-card-name">${bloc.bloc_name}</div>
-                        ${bloc.description ? `<div class="bloc-card-desc">"${bloc.description}"</div>` : ''}
+                        <div class="bloc-card-name">${escapeHtml(bloc.bloc_name)}</div>
+                        ${bloc.description ? `<div class="bloc-card-desc">"${escapeHtml(bloc.description)}"</div>` : ''}
                         <div class="bloc-ideology-tags">
                             ${ideologies.map(i => `<span class="bloc-ideology-tag">${i}</span>`).join('')}
                         </div>
@@ -330,7 +331,7 @@ async function loadHistory() {
             return `
                 <div class="history-row">
                     <div>
-                        <span class="history-bloc">${item.bloc_name}</span>
+                        <span class="history-bloc">${escapeHtml(item.bloc_name)}</span>
                         <span class="history-stat"> — wanted ${statDisplay} to be ${item.desired_range}</span>
                     </div>
                     <div>

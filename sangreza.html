@@ -108,6 +108,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
+import { escapeHtml } from './js/utils.js';
 
     const NATION_NAME = 'Sangreza';
     let nationData = null;
@@ -211,7 +212,7 @@ import { _supabase } from './js/supabase-client.js';
             factionsContainer.innerHTML = factions.map((f, i) => `
                 <div class="faction-item ${i === 0 ? 'ruling' : 'other'}">
                     <span class="faction-name">
-                        ${f.faction_name}
+                        ${escapeHtml(f.faction_name)}
                         ${i === 0 ? '<span class="faction-ruling-tag">RULING</span>' : ''}
                     </span>
                     <span class="faction-seats">${f.seats || 0} Seats</span>
@@ -240,12 +241,12 @@ import { _supabase } from './js/supabase-client.js';
                 return `
                     <div class="interest-group-card">
                         <div class="interest-group-header">
-                            <span class="interest-group-name">${group.group_name || group.name || 'Unknown'} <span class="interest-group-pop">(${fmt(group.population)})</span></span>
+                            <span class="interest-group-name">${escapeHtml(group.group_name || group.name || 'Unknown')} <span class="interest-group-pop">(${fmt(group.population)})</span></span>
                         </div>
                         <div class="interest-group-ideologies">
                             ${ideologyHTML || '<span style="color: #666;">No ideologies</span>'}
                         </div>
-                        <div class="interest-group-desc">"${group.description || 'No description.'}"</div>
+                        <div class="interest-group-desc">"${escapeHtml(group.description || 'No description.')}"</div>
                     </div>
                 `;
             }).join('');

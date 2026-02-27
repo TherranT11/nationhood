@@ -25,6 +25,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, getAdminNationOverride, getAdminFactionOverride } from './js/common.js';
 import { adjustMomentumAll, fetchActiveCoalition, isGovernmentAutocracy, loadSeats, syncVoteTallies } from './js/game-common.js';
+import { escapeHtml } from './js/utils.js';
 (function () {
     'use strict';
 const FIRST_NAMES_POOL = [
@@ -186,10 +187,10 @@ function renderCandidates() {
         <div class="amb-header">
             <span class="amb-header-icon">🏛️</span>
             <h1>Appoint Ambassador</h1>
-            <p>Select a candidate to serve as your nation's Ambassador to <strong>${targetNation.name}</strong>.</p>
+            <p>Select a candidate to serve as your nation's Ambassador to <strong>${escapeHtml(targetNation.name)}</strong>.</p>
             <div class="amb-party-badge">
                 <div class="amb-party-dot"></div>
-                <span>Foreign Minister: <strong>${currentFaction.faction_name}</strong></span>
+                <span>Foreign Minister: <strong>${escapeHtml(currentFaction.faction_name)}</strong></span>
             </div>
         </div>
 
@@ -218,7 +219,7 @@ function selectCandidate(index) {
 
     const c = candidates[index];
     document.getElementById('amb-confirm-summary').innerHTML =
-        `Nominate <strong>${c.firstName} ${c.lastName}</strong> (${c.partyName}) as Ambassador to <strong>${targetNation.name}</strong>`;
+        `Nominate <strong>${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</strong> (${escapeHtml(c.partyName)}) as Ambassador to <strong>${escapeHtml(targetNation.name)}</strong>`;
     document.getElementById('amb-confirm-btn').disabled = false;
 }
 
