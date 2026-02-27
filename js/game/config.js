@@ -32,6 +32,11 @@ export const GAME_CONFIG = {
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
     MAX_AP: 20,  // maximum action points a party can accumulate
     TICKS_PER_YEAR: 12,
+    // Inactivity decay — penalties for factions that don't spend AP
+    INACTIVITY_GRACE_TICKS: 6,            // no penalty for first 6 ticks of inactivity
+    INACTIVITY_MOMENTUM_DECAY: 5,         // -5 momentum per voter bloc per tick while inactive
+    INACTIVITY_APPROVAL_DECAY: 3,         // -3 approval per voter bloc per tick while inactive
+    INACTIVITY_DISBAND_TICKS: 12,         // auto-disband after 12 ticks of inactivity
     BUDGET_EARLY_WINDOW_TICKS: 3,    // ticks before budget due date that early proposal opens
     BUDGET_BILL_VOTING_TICKS: null,   // budget bills persist until passed (never expire)
     NO_BUDGET_PENALTY_TICKS: 24,     // how many ticks without a budget before max penalty
@@ -67,7 +72,22 @@ export async function deductAP(supabase, factionId, cost) {
     if (data === -1) {
         return { success: false, error: 'Insufficient AP' };
     }
+    // Mark faction as active (reset inactivity timer)
+    markFactionActive(supabase, factionId);
     return { success: true, newAp: data };
+}
+
+/**
+ * Update last_ap_spent_tick to the current shard tick.
+ * Called automatically by deductAP() so every AP-spending action resets the inactivity timer.
+ */
+export async function markFactionActive(supabase, factionId) {
+    const { data: shard } = await supabase
+        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const tick = shard?.current_tick ?? 0;
+    await supabase.from('factions')
+        .update({ last_ap_spent_tick: tick })
+        .eq('id', factionId);
 }
 
 /**

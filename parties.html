@@ -20,7 +20,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
 import { tickToDate, escapeHtml } from './js/utils.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize } from './js/game-common.js';
 import { getPartyIconSVG, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -657,6 +657,7 @@ async function renderAutocracyParties(el, f, n) {
 
             const isGeneral = mySteward.steward_type === 'general';
             const isSecurityChief = mySteward.steward_type === 'security_chief';
+            const isPartyChairman = mySteward.steward_type === 'party_chairman' && !isStrongman;
 
             // Build surveillance target buttons (other factions with living stewards, excluding self and strongman)
             let surveillanceTargetsHtml = '';
@@ -693,6 +694,27 @@ async function renderAutocracyParties(el, f, n) {
                             <div class="reg-steward-action-desc">Investigate a target. Tap communications. Follow movements. Review financial records.</div>
                             <div class="reg-steward-action-effects">Reveals: <strong>True Loyalty</strong> (exact) &middot; <strong>Secret Coalitions</strong></div>
                             ${stAP >= 1 ? surveillanceTargetsHtml : '<div class="reg-steward-action-req">Not enough AP</div>'}
+                        </div>` : ''}
+                        ${isPartyChairman ? `<div class="reg-steward-action-btn reg-steward-action-party" id="steward-mobilize-panel">
+                            <div class="reg-steward-action-header">
+                                <span class="reg-steward-action-name">MOBILIZE</span>
+                                <span class="reg-steward-action-cost">${MOBILIZE_CONFIG.AP_COST} AP</span>
+                            </div>
+                            <div class="reg-steward-action-desc">Organize crowds and demonstrations. Choose your purpose.</div>
+                            ${stAP >= MOBILIZE_CONFIG.AP_COST ? `
+                            <div class="reg-mobilize-modes">
+                                <button class="reg-mobilize-mode-btn" data-mode="rally_regime">
+                                    <div class="reg-mobilize-mode-name">Rally for the Regime</div>
+                                    <div class="reg-mobilize-mode-desc">Flags, banners, crowds chanting the Strongman's name.</div>
+                                    <div class="reg-steward-action-effects">Legitimacy: <strong>+3</strong> · Standing: <strong>+3</strong></div>
+                                </button>
+                                <button class="reg-mobilize-mode-btn" data-mode="rally_self">
+                                    <div class="reg-mobilize-mode-name">Rally for Yourself</div>
+                                    <div class="reg-mobilize-mode-desc">Your portrait is getting bigger. Your speeches are about YOUR vision.</div>
+                                    <div class="reg-steward-action-effects">Coup Readiness: <strong>+5</strong> · Grip on Power: <strong>-2</strong></div>
+                                    <div class="reg-steward-action-risk">Detection Risk: <span class="reg-steward-action-risk-val">15%</span> · If caught: Standing <strong>-10</strong></div>
+                                </button>
+                            </div>` : '<div class="reg-steward-action-req">Not enough AP</div>'}
                         </div>` : ''}
                         <button class="reg-steward-action-btn" id="steward-embezzle-btn" ${(stAP < 1 || !hasMinistry) ? 'disabled' : ''}>
                             <div class="reg-steward-action-header">
@@ -1598,6 +1620,60 @@ async function renderAutocracyParties(el, f, n) {
 
             await renderAutocracyParties(el, f, n);
         });
+    }
+
+    // MOBILIZE (Party Chairman, non-ruling only)
+    const mobilizePanel = document.getElementById('steward-mobilize-panel');
+    if (mobilizePanel) {
+        const modeBtns = mobilizePanel.querySelectorAll('.reg-mobilize-mode-btn');
+        for (const btn of modeBtns) {
+            btn.addEventListener('click', async () => {
+                const mode = btn.dataset.mode;
+                if ((f.action_points || 0) < MOBILIZE_CONFIG.AP_COST) return;
+
+                // Disable all mode buttons during execution
+                for (const b of modeBtns) b.disabled = true;
+                mobilizePanel.querySelector('.reg-steward-action-name').textContent = 'MOBILIZING...';
+
+                const result = await executeMobilize(_supabase, f.id, n.id, mode, currentTick);
+                if (!result.success) {
+                    alert(result.error);
+                    await renderAutocracyParties(el, f, n);
+                    return;
+                }
+
+                f.action_points = result.newAp;
+
+                // Show result overlay
+                let resultHtml = '';
+                if (mode === 'rally_regime') {
+                    resultHtml = `
+                        <div class="reg-steward-action-result">
+                            <div class="reg-steward-action-result-title">Rally for the Regime</div>
+                            <div>Legitimacy: <strong>+${result.legitimacy_change}</strong> → ${result.newLegitimacy}</div>
+                            <div>Standing: <strong>+${result.standing_change}</strong> → ${result.newStanding}</div>
+                            <div style="margin-top:0.5rem;opacity:0.7">The Strongman sees you delivering.</div>
+                        </div>`;
+                } else if (mode === 'rally_self') {
+                    resultHtml = `
+                        <div class="reg-steward-action-result">
+                            <div class="reg-steward-action-result-title">Rally for Yourself</div>
+                            <div>Coup Readiness: <strong>+${result.coup_readiness_change}</strong> → ${result.newCoupReadiness}</div>
+                            <div>Grip on Power: <strong>${result.party_pillar_change || 0}</strong></div>
+                            ${result.detected ? `<div style="color:#ff1744;font-weight:bold;margin-top:0.5rem">DETECTED! The Strongman noticed your ambition. Standing: <strong>${result.standing_penalty}</strong></div>` : `<div style="color:#4CAF50;margin-top:0.5rem">Undetected. Your ambition remains hidden.</div>`}
+                        </div>`;
+                }
+                const overlay = document.createElement('div');
+                overlay.className = 'reg-steward-result-overlay';
+                overlay.innerHTML = `${resultHtml}<button class="reg-surv-report-close" id="mobilize-result-close">DISMISS</button>`;
+                mobilizePanel.style.position = 'relative';
+                mobilizePanel.appendChild(overlay);
+                document.getElementById('mobilize-result-close').addEventListener('click', async () => {
+                    overlay.remove();
+                    await renderAutocracyParties(el, f, n);
+                });
+            });
+        }
     }
 
     const embezzleBtn = document.getElementById('steward-embezzle-btn');
