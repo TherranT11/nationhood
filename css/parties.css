@@ -3121,6 +3121,11 @@ body.light-mode .reg-steward-status-empty { color: #888; }
 .reg-steward-action-seize:not(:disabled) { border-color: rgba(255,23,68,0.5); }
 .reg-steward-action-seize:not(:disabled) .reg-steward-action-name { color: #ff1744; }
 .reg-steward-action-seize:not(:disabled) .reg-steward-action-req { color: #ff1744; }
+.reg-steward-action-general { border-color: rgba(76,175,80,0.25); }
+.reg-steward-action-general:not(:disabled) { border-color: rgba(76,175,80,0.5); }
+.reg-steward-action-general:not(:disabled) .reg-steward-action-name { color: #4CAF50; }
+.reg-steward-action-effects { font-size: 0.7rem; color: #8a8778; margin-top: 4px; }
+.reg-steward-action-effects strong { color: #ff9800; }
 body.light-mode .reg-steward-action-btn { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.08); color: #2a2a28; }
 body.light-mode .reg-steward-action-desc { color: #666; }
 body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }

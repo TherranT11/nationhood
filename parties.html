@@ -655,10 +655,20 @@ async function renderAutocracyParties(el, f, n) {
                 ? `${effectiveReadiness}% (${stCoupReadiness}% + ${displayCoupBonus}% allies)`
                 : `${stCoupReadiness}%`;
 
+            const isGeneral = mySteward.steward_type === 'general';
+
             stewardActionsHtml = `
                 <div class="reg-section">
                     <div class="reg-section-title">STEWARD ACTIONS</div>
                     <div class="reg-steward-actions">
+                        ${isGeneral ? `<button class="reg-steward-action-btn reg-steward-action-general" id="steward-showofforce-btn" ${stAP < 3 ? 'disabled' : ''}>
+                            <div class="reg-steward-action-header">
+                                <span class="reg-steward-action-name">SHOW OF FORCE</span>
+                                <span class="reg-steward-action-cost">3 AP</span>
+                            </div>
+                            <div class="reg-steward-action-desc">Troops in the capital. Military checkpoints. Armored vehicles at government buildings.</div>
+                            <div class="reg-steward-action-effects">All rivals: <strong>-5</strong> Coup Readiness · Unrest <strong>-2</strong> · Happiness <strong>-3</strong></div>
+                        </button>` : ''}
                         <button class="reg-steward-action-btn" id="steward-embezzle-btn" ${(stAP < 1 || !hasMinistry) ? 'disabled' : ''}>
                             <div class="reg-steward-action-header">
                                 <span class="reg-steward-action-name">EMBEZZLE</span>
@@ -740,6 +750,7 @@ async function renderAutocracyParties(el, f, n) {
             loyalty_demand_complied: 'COMPLIED',
             loyalty_demand_refused: 'REFUSED',
             loyalty_demand_expired: 'DEMAND EXPIRED',
+            steward_show_of_force: 'SHOW OF FORCE',
             steward_embezzle: 'EMBEZZLED',
             steward_conspire: 'CONSPIRED',
             steward_detected_embezzle: 'EMBEZZLE DETECTED',
@@ -788,6 +799,8 @@ async function renderAutocracyParties(el, f, n) {
                     detail = r.target_faction ? `${r.target_faction} ignored demand` : 'Demand expired';
                 } else if (entry.action_type === 'claim_power') {
                     detail = r.method || '';
+                } else if (entry.action_type === 'steward_show_of_force') {
+                    detail = `${r.steward_name} deployed troops. Rivals: coup readiness ${r.rivals_coup_readiness}, unrest ${r.civil_unrest}, happiness ${r.happiness}`;
                 } else if (entry.action_type === 'steward_embezzle') {
                     detail = `Embezzled $${r.embezzled}M from ${MINISTRY_SHORT[r.ministry] || r.ministry}${r.detected ? ' \u2014 DETECTED' : ''}`;
                 } else if (entry.action_type === 'steward_conspire') {
@@ -1416,6 +1429,57 @@ async function renderAutocracyParties(el, f, n) {
     }
 
     // ── STEWARD ACTION HANDLERS ──
+
+    // SHOW OF FORCE (General only)
+    const showOfForceBtn = document.getElementById('steward-showofforce-btn');
+    if (showOfForceBtn) {
+        showOfForceBtn.addEventListener('click', async () => {
+            if ((f.action_points || 0) < 3) return;
+            showOfForceBtn.disabled = true;
+            showOfForceBtn.querySelector('.reg-steward-action-name').textContent = 'DEPLOYING...';
+
+            const apResult = await deductAP(_supabase, f.id, 3);
+            if (!apResult.success) { alert('Not enough AP.'); await renderAutocracyParties(el, f, n); return; }
+            f.action_points = apResult.newAp;
+
+            // 1. All OTHER stewards: coup_readiness -5
+            const otherStewards = (stewardRows || []).filter(s => s.faction_id !== f.id && s.is_alive !== false);
+            for (const os of otherStewards) {
+                const newCR = Math.max(0, (os.coup_readiness ?? 0) - 5);
+                await _supabase.from('stewards').update({ coup_readiness: newCR }).eq('id', os.id);
+            }
+
+            // 2. Nation: civil_unrest -2, happiness -3
+            const newUnrest = Math.max(0, Number(n.civil_unrest ?? 30) - 2);
+            const newHappiness = Math.max(0, Number(n.happiness ?? 50) - 3);
+            await _supabase.from('nations').update({ civil_unrest: newUnrest, happiness: newHappiness }).eq('id', n.id);
+
+            // 3. Strongman grip bonus: +3 to military pillar support
+            const milPillar = (regimePillars || []).find(p => p.pillar_key === 'military');
+            if (milPillar) {
+                const newSupport = Math.min(100, (milPillar.support ?? 50) + 3);
+                await _supabase.from('regime_pillars').update({ support: newSupport }).eq('id', milPillar.id);
+            }
+
+            // 4. Log to regime log
+            await _supabase.from('campaign_actions').insert({
+                party_id: f.id, nation_id: n.id,
+                action_type: 'steward_show_of_force',
+                tick_performed: currentTick,
+                result: {
+                    steward_name: `${mySteward.first_name} ${mySteward.last_name}`,
+                    faction_name: f.faction_name,
+                    rivals_coup_readiness: -5,
+                    civil_unrest: -2,
+                    happiness: -3,
+                    military_pillar_support: milPillar ? '+3' : 'no pillar'
+                }
+            });
+
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
     const embezzleBtn = document.getElementById('steward-embezzle-btn');
     if (embezzleBtn) {
         embezzleBtn.addEventListener('click', async () => {
