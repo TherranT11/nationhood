@@ -171,6 +171,14 @@ const FLAG_URLS = {
     'Palvera': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Palvera.png'
 };
 
+// Nation wiki page URLs (encyclopedia pages)
+const WIKI_URLS = {
+    'Melizea': 'melizea.html',
+    'Avelia': 'avelia.html',
+    'Sangreza': 'sangreza.html',
+    'San Estrella': 'sanestrella.html'
+};
+
 // ==================== INIT ====================
 
 initPage('diplomacy', async (state) => {
@@ -1720,6 +1728,12 @@ async function renderNationCardBody(nationId) {
                 </div>
             </div>
         `;
+
+        // Nation Info link
+        const wikiUrl = WIKI_URLS[targetNation.name];
+        if (wikiUrl) {
+            html += `<a href="${wikiUrl}" class="nation-info-link">Nation Info</a>`;
+        }
 
         // Relation section
         html += renderRelationSection(tier.label, tier.cssClass, embassyStatus, ambassador);
