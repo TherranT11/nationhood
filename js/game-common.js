@@ -11445,9 +11445,11 @@ export async function updateMinisterApprovals(supabase, nation, currentTick, isS
             }
         }
 
-        if (statCount === 0) continue;
+        // Skip ministers with no stat contributions UNLESS shutdown is active
+        // (shutdown penalty must apply to all ministers regardless of stat data)
+        if (statCount === 0 && !isShutdown) continue;
 
-        let avgDelta = contributionSum / statCount;
+        let avgDelta = statCount > 0 ? contributionSum / statCount : 0;
 
         // Government shutdown: stack a direct penalty on top of stat-based scoring
         if (isShutdown) {
@@ -11467,12 +11469,22 @@ export async function updateMinisterApprovals(supabase, nation, currentTick, isS
             embattledSinceTick = null;
         }
 
-        await supabase.from('ministries')
+        // Update minister approval + embattled tracking
+        // Use error-checked update with fallback: if embattled_since_tick column
+        // doesn't exist yet (migration not applied), retry with just minister_approval
+        const { error: updateErr } = await supabase.from('ministries')
             .update({
                 minister_approval: newApproval,
                 embattled_since_tick: embattledSinceTick
             })
             .eq('id', ministry.id);
+
+        if (updateErr) {
+            // Fallback: update just minister_approval (embattled column may not exist)
+            await supabase.from('ministries')
+                .update({ minister_approval: newApproval })
+                .eq('id', ministry.id);
+        }
 
         results.push({
             ministry_key: ministry.ministry_key,
@@ -11515,19 +11527,26 @@ export async function adjustGovernmentApprovalEvent(supabase, nationId, amount, 
     const current = Number(nation?.gov_approval_events ?? 0);
     const updated = Math.round(Math.max(-50, Math.min(50, current + amount)) * 100) / 100;
 
-    await supabase.from('nations')
+    const { error: updateErr } = await supabase.from('nations')
         .update({ gov_approval_events: updated })
         .eq('id', nationId);
 
-    // Audit log
-    const { data: shard } = await supabase
-        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    await supabase.from('gov_approval_log').insert({
-        nation_id: nationId,
-        amount,
-        source: source || 'unknown',
-        tick: shard?.current_tick || 0
-    });
+    if (updateErr) {
+        console.error(`[GovApprovalEvent] Failed to update gov_approval_events for ${nationId}: ${updateErr.message}`);
+        return;
+    }
+
+    // Audit log (non-fatal — table may not exist if migration not applied)
+    try {
+        const { data: shard } = await supabase
+            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        await supabase.from('gov_approval_log').insert({
+            nation_id: nationId,
+            amount,
+            source: source || 'unknown',
+            tick: shard?.current_tick || 0
+        });
+    } catch (e) { /* non-blocking */ }
 
     console.log(`[GovApprovalEvent] ${amount > 0 ? '+' : ''}${amount} for nation ${nationId} — ${source}`);
 }
@@ -11626,7 +11645,9 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
     const prevGovApproval = Number(nation.gov_approval ?? 50);
 
     // Store all components + composite on the nation
-    await supabase.from('nations')
+    // Use error-checked update with fallback: if component columns don't exist yet
+    // (migration not applied), fall back to updating just gov_approval
+    const { error: govUpdErr } = await supabase.from('nations')
         .update({
             gov_approval: govApproval,
             gov_approval_institutional: Math.round(institutional * 10) / 10,
@@ -11634,6 +11655,13 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
             gov_approval_events: eventsRaw   // preserve raw value (already decayed)
         })
         .eq('id', nation.id);
+
+    if (govUpdErr) {
+        // Fallback: component columns may not exist yet
+        await supabase.from('nations')
+            .update({ gov_approval: govApproval })
+            .eq('id', nation.id);
+    }
 
     // Update in-memory nation object
     nation.gov_approval = govApproval;
