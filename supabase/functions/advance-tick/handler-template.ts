@@ -652,6 +652,13 @@ async function advanceTick(supabase) {
         }
 
 
+        // Economic aid condition reviews (annual, at year boundaries)
+        const aidReviewResults = await processAidConditionReview(supabase, freshNation || nation, newTick);
+        if (aidReviewResults.length > 0) {
+            summary.aidReviews = summary.aidReviews || [];
+            summary.aidReviews.push({ nation: nation.name, reviews: aidReviewResults });
+        }
+
         // Ambassador term limits (retirements + warnings)
         const retirementResults = await processAmbassadorRetirements(supabase, freshNation || nation, newTick);
         if (retirementResults.length > 0) {

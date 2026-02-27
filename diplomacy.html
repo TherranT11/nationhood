@@ -90,7 +90,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { isGovernmentAutocracy, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES } from './js/game-common.js';
+import { isGovernmentAutocracy, fetchActiveCoalition, detectHeadFaction, DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, deductAP, loadSeats, GAME_CONFIG, adjustMomentumAll, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS } from './js/game-common.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -157,7 +157,8 @@ const TRADE_TYPE_ICONS = {
     handshake: '&#129309;',  // handshake emoji
     chart: '&#128200;',      // chart
     truck: '&#9981;',        // fuel pump
-    money: '&#128176;'       // money bag
+    money: '&#128176;',      // money bag
+    aid: '&#127793;'         // seedling (growth/aid)
 };
 
 // Flag URLs (shared across all rendering functions)
@@ -2846,6 +2847,18 @@ function renderWizardStep2() {
         </div>
     `;
 
+    // Economic Aid category
+    html += `
+        <div class="type-card" data-category="economic_aid" onclick="wizardSelectCategory('economic_aid')">
+            <div class="type-card-title" style="color:#4caf50;">Economic Aid</div>
+            <div class="type-card-desc">Offer or request financial assistance. The donor provides annual funding to the recipient's budget, with optional conditions.</div>
+            <div class="type-card-effects">
+                <span class="trade-type-tag bilateral">BILATERAL</span>
+                <span class="trade-type-tag" style="background:rgba(76,175,80,0.15);color:#4caf50;">CONDITIONAL</span>
+            </div>
+        </div>
+    `;
+
     html += '</div>';
     html += `<div class="wizard-nav">
         <button class="wizard-back-btn" onclick="wizardBackToStep1()">Back</button>
@@ -2897,6 +2910,10 @@ async function wizardGoToStep3() {
     updateWizardStepIndicators(3);
     if (wizardCategory === 'diplomatic') {
         await renderWizardStep3Diplomatic();
+    } else if (wizardCategory === 'economic_aid') {
+        // Economic aid skips type selection — go straight to proposal with pre-set type
+        wizardAgreementType = 'economic_aid';
+        await renderWizardStep3AidProposal();
     } else {
         await renderWizardStep3TradeProposal();
     }
@@ -3141,9 +3158,213 @@ async function renderWizardStep3TradeProposal() {
     panel.innerHTML = html;
 }
 
+// ==================== STEP 3C: PROPOSE ECONOMIC AID NEGOTIATIONS ====================
+async function renderWizardStep3AidProposal() {
+    const panel = document.getElementById('wizard-panel-3');
+    if (!panel) return;
+
+    panel.innerHTML = '<p style="color:#888;font-style:italic;font-size:0.82rem;">Loading...</p>';
+
+    // Fetch target nation name
+    const { data: targetNation } = await _supabase.from('nations').select('id, name').eq('id', wizardTargetNation).single();
+    const targetName = targetNation?.name || 'Unknown';
+
+    // Check for existing aid negotiations
+    const aId = currentNation.id < wizardTargetNation ? currentNation.id : wizardTargetNation;
+    const bId = currentNation.id < wizardTargetNation ? wizardTargetNation : currentNation.id;
+    const { data: existingNegs } = await _supabase
+        .from('trade_negotiations')
+        .select('id, status, agreement_name, agreement_type')
+        .in('status', ['open', 'active'])
+        .eq('nation_a_id', aId)
+        .eq('nation_b_id', bId)
+        .eq('agreement_type', 'economic_aid');
+
+    if (existingNegs && existingNegs.length > 0) {
+        panel.innerHTML = `
+            <div class="trade-info-box warning">
+                You already have active aid negotiations with ${escapeHtml(targetName)}. Open the existing negotiation from the list above.
+            </div>
+            <div class="wizard-nav" style="margin-top:12px;">
+                <button class="wizard-back-btn" onclick="wizardBackToStep2()">Back</button>
+            </div>
+        `;
+        return;
+    }
+
+    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
+    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isFM;
+    const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
+
+    let html = `
+        <div class="trade-article-builder">
+            <div class="trade-article-header">
+                <span class="trade-article-title" style="color:#4caf50;">Propose Economic Aid Agreement</span>
+            </div>
+
+            <p style="font-size:0.78rem;color:var(--text-muted);line-height:1.5;margin-bottom:14px;">
+                Open negotiations for economic aid with ${escapeHtml(targetName)}. Choose whether you are offering or requesting aid.
+                Once open, both sides can negotiate the amount, duration, and conditions.
+            </p>
+
+            <div class="trade-field">
+                <label>Agreement Name</label>
+                <input type="text" id="aid-neg-name" placeholder="e.g. ${escapeHtml(currentNation.name)} Aid Package for ${escapeHtml(targetName)}" maxlength="120" />
+            </div>
+
+            <div class="trade-field" style="margin-top:12px;">
+                <label>Direction</label>
+                <div class="type-card-grid" style="gap:8px;">
+                    <div class="type-card" id="aid-dir-offer" style="padding:10px;cursor:pointer;" onclick="selectAidDirection('offer')">
+                        <div class="type-card-title" style="font-size:0.82rem;color:#4caf50;">Offering Aid</div>
+                        <div class="type-card-desc" style="font-size:0.72rem;">We provide financial assistance to ${escapeHtml(targetName)}</div>
+                    </div>
+                    <div class="type-card" id="aid-dir-request" style="padding:10px;cursor:pointer;" onclick="selectAidDirection('request')">
+                        <div class="type-card-title" style="font-size:0.82rem;color:#2196f3;">Requesting Aid</div>
+                        <div class="type-card-desc" style="font-size:0.72rem;">${escapeHtml(targetName)} provides financial assistance to us</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="font-size:0.78rem;color:var(--text-muted);margin:12px 0;line-height:1.6;">
+                <strong>What happens next:</strong><br/>
+                1. You propose aid negotiations (${apCost} AP)<br/>
+                2. ${escapeHtml(targetName)}'s ambassador or FM accepts (1 AP)<br/>
+                3. Negotiation table opens &mdash; draft aid terms, duration, and conditions<br/>
+                4. FM (1 AP) and PM (2 AP) can join the negotiation<br/>
+                5. Both sides draft and agree on articles<br/>
+                6. Highest representative on each side approves<br/>
+                7. Ratification bill auto-generated in both parliaments
+            </div>
+
+            <div class="trade-info-box info">
+                The specific aid amount, conditions, and duration are negotiated at the table, not now. This proposal just opens the channel and sets who is the donor vs. recipient.
+            </div>
+        </div>
+
+        <div class="wizard-nav" style="margin-top:12px;">
+            <button class="wizard-back-btn" onclick="wizardBackToStep2()">Back</button>
+            <button class="wizard-next-btn" id="aid-propose-btn" disabled onclick="submitAidProposal()">
+                Propose Aid Negotiations (${apCost} AP)
+            </button>
+        </div>
+    `;
+
+    panel.innerHTML = html;
+}
+
+var wizardAidDirection = null;
+
+function selectAidDirection(direction) {
+    wizardAidDirection = direction;
+    // Toggle card selection
+    const offerCard = document.getElementById('aid-dir-offer');
+    const requestCard = document.getElementById('aid-dir-request');
+    if (offerCard) offerCard.classList.toggle('selected', direction === 'offer');
+    if (requestCard) requestCard.classList.toggle('selected', direction === 'request');
+    // Enable the propose button
+    const btn = document.getElementById('aid-propose-btn');
+    if (btn) btn.disabled = false;
+}
+
+async function submitAidProposal() {
+    if (!wizardAidDirection) return;
+    const btn = document.getElementById('aid-propose-btn');
+    if (btn) btn.disabled = true;
+
+    const nameInput = document.getElementById('aid-neg-name');
+    const agreementName = (nameInput?.value || '').trim() || 'Economic Aid Negotiations';
+
+    const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
+    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isFM;
+    const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
+
+    // Deduct AP
+    const apResult = await deductAP(currentFaction.id, apCost);
+    if (!apResult.success) {
+        alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (currentFaction.action_points || 0));
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    // Determine role
+    let myRole = 'ambassador';
+    if (diplomaticRoles.isFM) myRole = 'foreign_minister';
+    if (diplomaticRoles.isHoG) myRole = 'prime_minister';
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Canonical ordering
+    const aId = currentNation.id < wizardTargetNation ? currentNation.id : wizardTargetNation;
+    const bId = currentNation.id < wizardTargetNation ? wizardTargetNation : currentNation.id;
+
+    // Determine donor based on direction selection
+    const donorNationId = wizardAidDirection === 'offer' ? currentNation.id : wizardTargetNation;
+
+    // Create the trade_negotiations row with type pre-set to economic_aid
+    const { data: neg, error: negErr } = await _supabase.from('trade_negotiations').insert({
+        nation_a_id: aId,
+        nation_b_id: bId,
+        agreement_type: 'economic_aid',
+        status: 'open',
+        participants: [{ faction_id: currentFaction.id, role: myRole, joined_at_tick: currentTick, nation_id: currentNation.id }],
+        draft_articles: [{
+            type: 'aid_terms',
+            data: { donor_nation_id: donorNationId, annual_amount: 0, gdp_cap_pct: 10 }
+        }],
+        agreement_name: agreementName,
+        expires_at_tick: currentTick + DIPLOMACY_CONFIG.NEGOTIATION_DEFAULT_DURATION,
+        opened_at_tick: currentTick
+    }).select('id').single();
+
+    if (negErr) {
+        console.error('Error creating aid negotiation:', negErr);
+        alert('Failed to create negotiation: ' + negErr.message);
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    // Create the diplomatic proposal so the target nation sees it in their inbox
+    await _supabase.from('diplomatic_proposals').insert({
+        proposing_nation_id: currentNation.id,
+        target_nation_id: wizardTargetNation,
+        proposed_by_faction_id: currentFaction.id,
+        proposal_type: 'trade_negotiation',
+        proposal_tier: 1,
+        status: 'proposed',
+        proposal_data: {
+            name: agreementName,
+            negotiation_id: neg.id,
+            proposer_nation_name: currentNation.name,
+            target_nation_name: (await _supabase.from('nations').select('name').eq('id', wizardTargetNation).single()).data?.name || '',
+            expires_at_tick: currentTick + DIPLOMACY_CONFIG.NEGOTIATION_DEFAULT_DURATION,
+            agreement_type: 'economic_aid',
+            aid_direction: wizardAidDirection,
+            donor_nation_id: donorNationId
+        },
+        proposed_at_tick: currentTick
+    });
+
+    // Fire event
+    try {
+        await _supabase.rpc('fire_system_event', {
+            p_trigger_key: 'trade_negotiation_proposed',
+            p_nation_id: currentNation.id,
+            p_tick: currentTick,
+            p_placeholders: { nation: currentNation.name, agreement_name: agreementName, target_nation: '' }
+        });
+    } catch (e) { /* non-blocking */ }
+
+    // Redirect to the negotiation
+    alert('Aid negotiation proposed! Awaiting acceptance from ' + ((await _supabase.from('nations').select('name').eq('id', wizardTargetNation).single()).data?.name || 'the target nation') + '.');
+    openTradeNegotiation(neg.id);
+}
+
 function wizardBackToStep2() {
     wizardStep = 2;
     wizardAgreementType = null;
+    wizardAidDirection = null;
     updateWizardStepIndicators(2);
 }
 
@@ -4095,6 +4316,12 @@ function renderTradeArticleEditor(container, articleType, negotiationId) {
         case 'text_article':
             html += renderTextArticleEditor();
             break;
+        case 'aid_terms':
+            html += renderAidTermsEditor();
+            break;
+        case 'aid_condition':
+            html += renderAidConditionEditor();
+            break;
     }
 
     html += `
@@ -4427,6 +4654,143 @@ function renderTextArticleEditor() {
     `;
 }
 
+// ── Aid Terms Editor ──
+function renderAidTermsEditor() {
+    return `
+        <div class="trade-field">
+            <label>Annual Aid Amount ($)</label>
+            <input type="number" id="aid-amount" value="10000000000" min="1000000000" step="1000000000" />
+            <div style="font-size:0.62rem;color:var(--text-dim);margin-top:2px;">
+                Minimum: $1B. Enter in raw dollars (e.g. 10000000000 = $10B).
+                <span id="aid-amount-display" style="color:var(--accent);font-weight:bold;"></span>
+            </div>
+            <script>
+                (function() {
+                    const inp = document.getElementById('aid-amount');
+                    const disp = document.getElementById('aid-amount-display');
+                    function update() {
+                        const v = Number(inp.value || 0);
+                        disp.textContent = v >= 1e9 ? ' = $' + (v/1e9).toFixed(1) + 'B' : v >= 1e6 ? ' = $' + (v/1e6).toFixed(0) + 'M' : '';
+                    }
+                    inp.addEventListener('input', update);
+                    update();
+                })();
+            </script>
+        </div>
+        <div class="trade-field">
+            <label>GDP Cap (%)</label>
+            <div class="trade-slider-value" id="aid-gdp-cap-display">10%</div>
+            <input type="range" class="trade-slider" id="aid-gdp-cap" min="1" max="25" value="10" oninput="document.getElementById('aid-gdp-cap-display').textContent=this.value+'%'" />
+            <div class="trade-slider-labels">
+                <span>1%</span><span>10%</span><span>25%</span>
+            </div>
+            <div class="trade-info-box info" style="margin-top:6px;">
+                Maximum percentage of the donor's GDP that can be allocated as aid each year. Re-evaluated annually — if the donor's economy shrinks, aid amount may be reduced.
+            </div>
+        </div>
+        <div class="trade-info-box info">
+            The donor/recipient direction was set when the negotiation was proposed. Both parliaments must ratify the agreement.
+        </div>
+    `;
+}
+
+// ── Aid Condition Editor ──
+function renderAidConditionEditor() {
+    const categories = {};
+    for (const s of AID_CONDITION_STATS) {
+        if (!categories[s.category]) categories[s.category] = [];
+        categories[s.category].push(s);
+    }
+
+    let statOpts = '';
+    for (const [cat, stats] of Object.entries(categories)) {
+        statOpts += '<optgroup label="' + escapeHtml(cat) + '">';
+        for (const s of stats) {
+            statOpts += '<option value="' + s.key + '" data-default-op="' + s.default_operator + '">' + escapeHtml(s.label) + '</option>';
+        }
+        statOpts += '</optgroup>';
+    }
+
+    return `
+        <div class="trade-field">
+            <label>Stat to Monitor</label>
+            <select id="cond-stat" onchange="updateConditionDefaults()">
+                ${statOpts}
+            </select>
+        </div>
+        <div class="trade-field">
+            <label>Condition</label>
+            <div class="trade-radio-group">
+                <label class="trade-radio-option selected" onclick="this.querySelector('input').checked=true">
+                    <input type="radio" name="cond-op" value="gte" checked />
+                    <div>
+                        <div class="trade-radio-label">Must be &ge; threshold</div>
+                        <div class="trade-radio-hint">Stat must stay at or above the value</div>
+                    </div>
+                </label>
+                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                    <input type="radio" name="cond-op" value="lte" />
+                    <div>
+                        <div class="trade-radio-label">Must be &le; threshold</div>
+                        <div class="trade-radio-hint">Stat must stay at or below the value</div>
+                    </div>
+                </label>
+            </div>
+        </div>
+        <div class="trade-field">
+            <label>Threshold (0-100)</label>
+            <div class="trade-slider-value" id="cond-threshold-display">50</div>
+            <input type="range" class="trade-slider" id="cond-threshold" min="0" max="100" value="50" oninput="document.getElementById('cond-threshold-display').textContent=this.value" />
+            <div class="trade-slider-labels">
+                <span>0</span><span>50</span><span>100</span>
+            </div>
+        </div>
+        <div class="trade-field">
+            <label>If Condition Fails</label>
+            <div class="trade-radio-group">
+                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                    <input type="radio" name="cond-fail" value="suspend" checked />
+                    <div>
+                        <div class="trade-radio-label">Suspend Aid</div>
+                        <div class="trade-radio-hint">Pause payments. Resumes if condition is met again at next review.</div>
+                    </div>
+                </label>
+                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                    <input type="radio" name="cond-fail" value="reduce" />
+                    <div>
+                        <div class="trade-radio-label">Reduce Aid</div>
+                        <div class="trade-radio-hint">Halve payments each failed review. Terminated after 3 consecutive failures.</div>
+                    </div>
+                </label>
+                <label class="trade-radio-option" onclick="this.querySelector('input').checked=true">
+                    <input type="radio" name="cond-fail" value="terminate" />
+                    <div>
+                        <div class="trade-radio-label">Terminate Agreement</div>
+                        <div class="trade-radio-hint">Immediately end the entire aid agreement.</div>
+                    </div>
+                </label>
+            </div>
+        </div>
+        <div class="trade-field">
+            <label>Grace Period (annual reviews)</label>
+            <select id="cond-grace">
+                <option value="0">None — enforce immediately</option>
+                <option value="1" selected>1 year — warn first, then enforce</option>
+                <option value="2">2 years — two warnings before enforcement</option>
+            </select>
+        </div>
+    `;
+}
+
+function updateConditionDefaults() {
+    const sel = document.getElementById('cond-stat');
+    if (!sel) return;
+    const opt = sel.options[sel.selectedIndex];
+    const defaultOp = opt?.getAttribute('data-default-op') || 'gte';
+    const radio = document.querySelector('input[name="cond-op"][value="' + defaultOp + '"]');
+    if (radio) radio.checked = true;
+}
+
 // ── Save Article (reads editor values and appends to negotiation) ──
 async function saveTradeArticle(negotiationId, articleType) {
     let articleData = {};
@@ -4496,14 +4860,56 @@ async function saveTradeArticle(negotiationId, articleType) {
             articleData = { title: title, body: body };
             break;
         }
+        case 'aid_terms': {
+            const amount = Number(document.getElementById('aid-amount')?.value || 0);
+            const gdpCap = parseInt(document.getElementById('aid-gdp-cap')?.value || '10');
+            if (amount < DIPLOMACY_CONFIG.AID_MIN_AMOUNT) {
+                alert('Minimum aid amount is $' + (DIPLOMACY_CONFIG.AID_MIN_AMOUNT / 1e9).toFixed(0) + 'B.');
+                return;
+            }
+            // Fetch existing aid_terms to get the donor_nation_id (set at proposal time)
+            const { data: existingNeg } = await _supabase.from('trade_negotiations').select('draft_articles').eq('id', negotiationId).single();
+            const existingTerms = (existingNeg?.draft_articles || []).find(a => a.type === 'aid_terms');
+            const donorId = existingTerms?.data?.donor_nation_id || currentNation.id;
+            articleData = { donor_nation_id: donorId, annual_amount: amount, gdp_cap_pct: gdpCap };
+            break;
+        }
+        case 'aid_condition': {
+            const statKey = document.getElementById('cond-stat')?.value;
+            const operator = document.querySelector('input[name="cond-op"]:checked')?.value || 'gte';
+            const threshold = parseInt(document.getElementById('cond-threshold')?.value || '50');
+            const onFailure = document.querySelector('input[name="cond-fail"]:checked')?.value || 'suspend';
+            const grace = parseInt(document.getElementById('cond-grace')?.value || '1');
+            if (!statKey) { alert('Please select a stat to monitor.'); return; }
+            // Check max conditions
+            const { data: condNeg } = await _supabase.from('trade_negotiations').select('draft_articles').eq('id', negotiationId).single();
+            const existingConditions = (condNeg?.draft_articles || []).filter(a => a.type === 'aid_condition');
+            if (existingConditions.length >= DIPLOMACY_CONFIG.AID_MAX_CONDITIONS) {
+                alert('Maximum ' + DIPLOMACY_CONFIG.AID_MAX_CONDITIONS + ' conditions per agreement.');
+                return;
+            }
+            articleData = { stat_key: statKey, operator: operator, threshold: threshold, on_failure: onFailure, grace_periods: grace };
+            break;
+        }
     }
 
-    // Fetch current articles and append
+    // Fetch current articles and append (or replace for non-repeatable types)
     const { data: neg } = await _supabase.from('trade_negotiations').select('draft_articles').eq('id', negotiationId).single();
     if (!neg) { alert('Negotiation not found.'); return; }
 
     const articles = neg.draft_articles || [];
-    articles.push({ type: articleType, data: articleData });
+    const artDef = TRADE_ARTICLE_TYPES[articleType];
+    if (artDef && !artDef.repeatable) {
+        // Non-repeatable: replace existing article of this type
+        const existingIdx = articles.findIndex(a => a.type === articleType);
+        if (existingIdx >= 0) {
+            articles[existingIdx] = { type: articleType, data: articleData };
+        } else {
+            articles.push({ type: articleType, data: articleData });
+        }
+    } else {
+        articles.push({ type: articleType, data: articleData });
+    }
 
     const { error } = await _supabase.from('trade_negotiations').update({ draft_articles: articles }).eq('id', negotiationId);
     if (error) {
@@ -5168,6 +5574,10 @@ window.wizardRemoveArticle = wizardRemoveArticle;
 window.wizardUpdateArticleText = wizardUpdateArticleText;
 window.wizardUpdatePreview = wizardUpdatePreview;
 window.wizardSubmit = wizardSubmit;
+// Economic aid exports
+window.selectAidDirection = selectAidDirection;
+window.submitAidProposal = submitAidProposal;
+window.updateConditionDefaults = updateConditionDefaults;
 // Trade negotiation exports
 window.submitTradeProposal = submitTradeProposal;
 window.openTradeNegotiation = openTradeNegotiation;

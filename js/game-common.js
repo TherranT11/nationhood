@@ -1017,17 +1017,63 @@ export const DIPLOMACY_CONFIG = {
     NEGOTIATION_DEFAULT_DURATION: 4,      // ticks until negotiation expires
     NEGOTIATION_EXTENSION_TICKS: 12,      // ticks added per extension (1 month)
     NEGOTIATION_MAX_EXTENSIONS: 3,        // max times negotiations can be extended
-    TRADE_RATIFICATION_VOTING_TICKS: 6    // ticks for parliament to vote on trade bill
+    TRADE_RATIFICATION_VOTING_TICKS: 6,   // ticks for parliament to vote on trade bill
+
+    // Economic Aid
+    AID_MAX_GDP_PCT: 25,                  // max annual aid as % of donor's GDP
+    AID_MIN_AMOUNT: 1000000000,           // min $1B annual aid (to prevent trivial agreements)
+    AID_DURATION_MIN_TICKS: 12,           // min 1 year
+    AID_DURATION_MAX_TICKS: 120,          // max 10 years
+    AID_MAX_CONDITIONS: 5,                // max condition articles per agreement
+    AID_ANNUAL_REVIEW_INTERVAL: 12,       // check conditions every 12 ticks (1 year)
+    AID_RELATION_BONUS: 8                 // relation boost when aid agreement is ratified
 };
+
+/**
+ * Curated list of nation stats that can be used as conditions in Economic Aid agreements.
+ * Grouped by category for the UI. default_operator indicates the "natural" direction
+ * (gte = stat should be high, lte = stat should be low).
+ */
+export const AID_CONDITION_STATS = [
+    // Governance
+    { key: 'corruption', label: 'Corruption', default_operator: 'lte', category: 'Governance' },
+    { key: 'press_freedom', label: 'Press Freedom', default_operator: 'gte', category: 'Governance' },
+    { key: 'freedom_index', label: 'Freedom Index', default_operator: 'gte', category: 'Governance' },
+    { key: 'judicial_independence', label: 'Judicial Independence', default_operator: 'gte', category: 'Governance' },
+    { key: 'efficiency', label: 'Bureaucratic Efficiency', default_operator: 'gte', category: 'Governance' },
+    // Economic
+    { key: 'inflation', label: 'Inflation', default_operator: 'lte', category: 'Economic' },
+    { key: 'tariffs', label: 'Tariff Rate', default_operator: 'lte', category: 'Economic' },
+    { key: 'unemployment', label: 'Unemployment', default_operator: 'lte', category: 'Economic' },
+    { key: 'poverty_rate', label: 'Poverty Rate', default_operator: 'lte', category: 'Economic' },
+    { key: 'income_inequality', label: 'Income Inequality', default_operator: 'lte', category: 'Economic' },
+    // Social
+    { key: 'literacy', label: 'Literacy', default_operator: 'gte', category: 'Social' },
+    { key: 'healthcare_accessibility', label: 'Healthcare Access', default_operator: 'gte', category: 'Social' },
+    { key: 'education_accessibility', label: 'Education Access', default_operator: 'gte', category: 'Social' },
+    { key: 'standard_of_living', label: 'Standard of Living', default_operator: 'gte', category: 'Social' },
+    { key: 'happiness', label: 'Happiness', default_operator: 'gte', category: 'Social' },
+    // Environmental
+    { key: 'renewable_energy_percentage', label: 'Renewable Energy %', default_operator: 'gte', category: 'Environmental' },
+    { key: 'pollution', label: 'Pollution', default_operator: 'lte', category: 'Environmental' },
+    { key: 'carbon_emissions', label: 'Carbon Emissions', default_operator: 'lte', category: 'Environmental' },
+    // Security
+    { key: 'stability', label: 'Stability', default_operator: 'gte', category: 'Security' },
+    { key: 'civil_unrest', label: 'Civil Unrest', default_operator: 'lte', category: 'Security' },
+    { key: 'terrorism', label: 'Terrorism', default_operator: 'lte', category: 'Security' },
+    // International
+    { key: 'international_reputation', label: 'International Reputation', default_operator: 'gte', category: 'International' }
+];
 
 /**
  * Trade Agreement types that can be negotiated as Diplomatic Initiatives.
  *
- * 4 types:
+ * 5 types:
  *   FTA  — Free Trade Agreement: comprehensive tariff elimination
  *   PTA  — Preferential Tariff Agreement: sector-specific tariff reduction
  *   RSC  — Resource Supply Contract: guaranteed purchase commitment
  *   ES   — Export Subsidy: unilateral, no partner needed
+ *   AID  — Economic Aid Agreement: financial assistance with optional conditions
  */
 export const TRADE_AGREEMENT_TYPES = {
     fta: {
@@ -1069,6 +1115,17 @@ export const TRADE_AGREEMENT_TYPES = {
         required_articles: ['subsidized_sector', 'duration', 'funding_source'],
         optional_articles: ['text_article'],
         icon: 'money'
+    },
+    economic_aid: {
+        key: 'economic_aid',
+        label: 'Economic Aid Agreement',
+        shortLabel: 'AID',
+        description: 'Financial assistance from one nation to another. The donor commits annual funding that appears as revenue in the recipient\'s budget. Optional conditions can require the recipient to maintain governance, economic, or social benchmarks.',
+        bilateral: true,
+        required_articles: ['aid_terms', 'duration'],
+        optional_articles: ['aid_condition', 'text_article'],
+        icon: 'aid',
+        requires_mot: false  // FM/PM/Ambassador negotiate — no Minister of Trade needed
     }
 };
 
@@ -1203,13 +1260,43 @@ export const TRADE_ARTICLE_TYPES = {
         }
     },
 
+    // ── Aid Terms (Economic Aid, required) ──
+    aid_terms: {
+        key: 'aid_terms',
+        label: 'Aid Terms',
+        description: 'The core financial terms: who gives, who receives, how much.',
+        repeatable: false,
+        applies_to: ['economic_aid'],
+        schema: {
+            donor_nation_id: 'uuid',            // which nation is giving the aid
+            annual_amount: 'number',             // annual aid in raw dollars (e.g. 25e9 = $25B)
+            gdp_cap_pct: 'number'               // max % of donor GDP (1-25), re-evaluated yearly
+        }
+    },
+
+    // ── Aid Condition (Economic Aid, optional, repeatable) ──
+    aid_condition: {
+        key: 'aid_condition',
+        label: 'Condition',
+        description: 'A stat-based condition the recipient must maintain for aid to continue.',
+        repeatable: true,
+        applies_to: ['economic_aid'],
+        schema: {
+            stat_key: 'string',                 // any nation stat key from NATION_STAT_COLUMNS
+            operator: 'gte|lte',                // ≥ threshold or ≤ threshold
+            threshold: 'number',                // 0-100 stat value
+            on_failure: 'suspend|terminate|reduce',  // consequence when condition fails at annual review
+            grace_periods: 'number'             // 0-2: how many annual reviews can fail before enforcement
+        }
+    },
+
     // ── Text Article (optional for all types) ──
     text_article: {
         key: 'text_article',
         label: 'Text Article',
         description: 'Free-text article for flavor/RP. No mechanical effect.',
         repeatable: true,
-        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy'],
+        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy', 'economic_aid'],
         schema: {
             title: 'string',
             body: 'string'
@@ -1632,13 +1719,21 @@ export function computeMinistryInstitutionCost(institutions, fiscalCategory, nat
 
 /**
  * Build full budget data for a nation: revenue, expenditures per ministry, debt service, etc.
+ * @param {Object} aidData - Optional { received: number, given: number, agreements: [...] }
  */
-export function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions) {
+export function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions, aidData) {
     const budget = calculateNationalBudget(nation);
     applyTradeTariffOverride(budget, tradeTariffRevenue);
     const inflationStat = Number(nation.inflation || 50);
     const inflationPct = (inflationStat - 50) / 2;
     const reserves = Number(nation.budget_reserves || 0);
+
+    // Foreign aid: received adds to revenue, given is a mandatory expenditure
+    const aidReceived = Number(aidData?.received || 0);
+    const aidGiven = Number(aidData?.given || 0);
+    budget.aidReceived = aidReceived;
+    budget.aidGiven = aidGiven;
+    budget.grossRevenue += aidReceived;
 
     const ministries = {};
     let totalExpenditure = 0;
@@ -1658,13 +1753,17 @@ export function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institut
         totalExpenditure += fulfilledCost;
     }
 
-    const available = budget.grossRevenue + reserves - budget.debtService;
+    // Aid commitments are mandatory (like debt service) — reduce available budget
+    const available = budget.grossRevenue + reserves - budget.debtService - aidGiven;
 
     return {
         ...budget,
         inflationPct,
         inflationStat,
         reserves,
+        aidReceived,
+        aidGiven,
+        aidAgreements: aidData?.agreements || [],
         ministries,
         totalExpenditure,
         available,
@@ -1694,7 +1793,13 @@ export async function generateBudgetBill(supabase, nation, currentTick, activeLa
     const { data: instRows } = await supabase.from('ministry_institution_config')
         .select('*');
 
-    const budgetData = buildBudgetData(nation, activeLaws, tradeTariffRevenue, instRows || []);
+    // Query active economic aid agreements for this nation
+    let aidData = { received: 0, given: 0, agreements: [] };
+    try {
+        aidData = await getActiveAidForNation(supabase, nation.id);
+    } catch (e) { /* no aid data yet */ }
+
+    const budgetData = buildBudgetData(nation, activeLaws, tradeTariffRevenue, instRows || [], aidData);
 
     const gameYear = 2000 + Math.floor(currentTick / 12);
     const billName = `Budget Act of ${gameYear}`;
@@ -1805,8 +1910,14 @@ export async function resolveBudgetBill(supabase, bill, currentTick) {
     } catch (e) { /* no trade data yet */ }
     applyTradeTariffOverride(budget, tradeTariffRevenue);
 
+    // Include economic aid in budget resolution
+    let aidData = { received: 0, given: 0 };
+    try {
+        aidData = await getActiveAidForNation(supabase, nation.id);
+    } catch (e) { /* no aid data yet */ }
+
     const reserves = Number(nation.budget_reserves || 0);
-    const available = budget.grossRevenue + reserves - budget.debtService;
+    const available = budget.grossRevenue + aidData.received + reserves - budget.debtService - aidData.given;
 
     let totalSpending = 0;
     for (const alloc of (allocations || [])) {
@@ -1845,6 +1956,247 @@ export async function resolveBudgetBill(supabase, bill, currentTick) {
     }
 
     console.log(`[resolveBudgetBill] Nation ${nation.name}: spending=$${(totalSpending/1e9).toFixed(2)}B, gap=$${(gap/1e9).toFixed(2)}B, newDebt=$${(newDebt/1e9).toFixed(2)}B, last_budget_tick=${currentTick}`);
+}
+
+// ==================== ECONOMIC AID HELPERS ====================
+
+/**
+ * Query active economic aid agreements involving a nation.
+ * Returns { received: totalDollarsReceived, given: totalDollarsGiven, agreements: [...] }
+ */
+export async function getActiveAidForNation(supabase, nationId) {
+    const { data: aidStates } = await supabase.from('aid_agreement_state')
+        .select('*, trade_agreements!inner(status, agreement_type, articles, agreement_name, nation_a_id, nation_b_id)')
+        .or(`donor_nation_id.eq.${nationId},recipient_nation_id.eq.${nationId}`)
+        .eq('trade_agreements.status', 'active')
+        .eq('trade_agreements.agreement_type', 'economic_aid')
+        .eq('is_suspended', false);
+
+    let received = 0;
+    let given = 0;
+    const agreements = [];
+
+    for (const state of (aidStates || [])) {
+        const amount = Number(state.current_annual_amount || 0);
+        if (state.recipient_nation_id === nationId) {
+            received += amount;
+        }
+        if (state.donor_nation_id === nationId) {
+            given += amount;
+        }
+        agreements.push(state);
+    }
+
+    return { received, given, agreements };
+}
+
+/**
+ * Process annual condition reviews for all active economic aid agreements
+ * where this nation is the RECIPIENT. Called once per year (when tick % 12 === 0).
+ *
+ * For each agreement:
+ *   1. Check all aid_condition articles against the recipient nation's current stats
+ *   2. Track consecutive failures per condition
+ *   3. Apply on_failure actions (suspend, terminate, reduce) after grace periods expire
+ *   4. Log the review to aid_condition_reviews
+ */
+export async function processAidConditionReview(supabase, nation, currentTick) {
+    // Only run at annual boundaries
+    if (currentTick % DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL !== 0) return [];
+
+    const { data: aidStates } = await supabase.from('aid_agreement_state')
+        .select('*, trade_agreements!inner(id, status, agreement_type, articles, agreement_name, nation_a_id, nation_b_id)')
+        .eq('recipient_nation_id', nation.id)
+        .eq('trade_agreements.status', 'active')
+        .eq('trade_agreements.agreement_type', 'economic_aid')
+        .eq('is_suspended', false);
+
+    if (!aidStates || aidStates.length === 0) return [];
+
+    const results = [];
+
+    for (const state of aidStates) {
+        const agreement = state.trade_agreements;
+        const articles = agreement.articles || [];
+        const conditions = articles.filter(a => a.type === 'aid_condition');
+
+        if (conditions.length === 0) {
+            // No conditions — just update review tick
+            await supabase.from('aid_agreement_state').update({
+                last_review_tick: currentTick,
+                next_review_tick: currentTick + DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL
+            }).eq('agreement_id', state.agreement_id);
+            continue;
+        }
+
+        const conditionFailures = state.condition_failures || {};
+        const conditionsChecked = [];
+        const actionsTaken = [];
+        let shouldSuspend = false;
+        let shouldTerminate = false;
+        let reductionFactor = 1.0;
+
+        for (let i = 0; i < conditions.length; i++) {
+            const cond = conditions[i].data;
+            const statKey = cond.stat_key;
+            const operator = cond.operator;     // 'gte' or 'lte'
+            const threshold = Number(cond.threshold);
+            const onFailure = cond.on_failure;  // 'suspend', 'terminate', 'reduce'
+            const gracePeriods = Number(cond.grace_periods || 0);
+
+            const currentValue = Number(nation[statKey] ?? 50);
+            const met = operator === 'gte' ? currentValue >= threshold : currentValue <= threshold;
+
+            const prevFailures = Number(conditionFailures[String(i)] || 0);
+            const newFailures = met ? 0 : prevFailures + 1;  // reset on success
+            conditionFailures[String(i)] = newFailures;
+
+            conditionsChecked.push({
+                stat_key: statKey, operator, threshold, current_value: currentValue,
+                met, on_failure: onFailure, grace_periods: gracePeriods,
+                consecutive_failures: newFailures
+            });
+
+            // Apply consequence only if failures exceed grace period
+            if (!met && newFailures > gracePeriods) {
+                if (onFailure === 'terminate') {
+                    shouldTerminate = true;
+                    actionsTaken.push({
+                        condition_index: i, action: 'terminate',
+                        reason: `${statKey} ${operator === 'gte' ? '<' : '>'} ${threshold} (current: ${currentValue.toFixed(1)}) for ${newFailures} reviews`
+                    });
+                } else if (onFailure === 'suspend') {
+                    shouldSuspend = true;
+                    actionsTaken.push({
+                        condition_index: i, action: 'suspend',
+                        reason: `${statKey} ${operator === 'gte' ? '<' : '>'} ${threshold} (current: ${currentValue.toFixed(1)})`
+                    });
+                } else if (onFailure === 'reduce') {
+                    // Each consecutive failure beyond grace halves the aid
+                    const reductionSteps = newFailures - gracePeriods;
+                    if (reductionSteps >= 3) {
+                        shouldTerminate = true;
+                        actionsTaken.push({
+                            condition_index: i, action: 'terminate',
+                            reason: `${statKey} failed ${reductionSteps} times after grace — aid terminated`
+                        });
+                    } else {
+                        const factor = Math.pow(0.5, reductionSteps);
+                        reductionFactor = Math.min(reductionFactor, factor);
+                        actionsTaken.push({
+                            condition_index: i, action: 'reduce',
+                            reason: `${statKey} failed — aid reduced to ${(factor * 100).toFixed(0)}%`
+                        });
+                    }
+                }
+            } else if (!met) {
+                // Within grace period — warn only
+                actionsTaken.push({
+                    condition_index: i, action: 'warn',
+                    reason: `${statKey} ${operator === 'gte' ? '<' : '>'} ${threshold} (grace: ${newFailures}/${gracePeriods})`
+                });
+            }
+        }
+
+        // Apply consequences
+        let newAmount = state.current_annual_amount;
+        let aidContinued = true;
+
+        if (shouldTerminate) {
+            // Terminate the agreement
+            await supabase.from('trade_agreements').update({
+                status: 'terminated',
+                withdrawn_at_tick: currentTick
+            }).eq('id', state.agreement_id);
+
+            await supabase.from('aid_agreement_state').update({
+                is_suspended: true,
+                suspended_at_tick: currentTick,
+                suspension_reason: 'Terminated: conditions not met',
+                last_review_tick: currentTick,
+                condition_failures: conditionFailures
+            }).eq('agreement_id', state.agreement_id);
+
+            aidContinued = false;
+            newAmount = 0;
+
+            // Fire event for both nations
+            try {
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'aid_terminated',
+                    p_nation_id: nation.id,
+                    p_tick: currentTick,
+                    p_placeholders: { agreement_name: agreement.agreement_name || 'Economic Aid', nation: nation.name }
+                });
+            } catch (e) { /* non-blocking */ }
+        } else if (shouldSuspend) {
+            await supabase.from('aid_agreement_state').update({
+                is_suspended: true,
+                suspended_at_tick: currentTick,
+                suspension_reason: 'Suspended: conditions not met',
+                last_review_tick: currentTick,
+                next_review_tick: currentTick + DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL,
+                condition_failures: conditionFailures
+            }).eq('agreement_id', state.agreement_id);
+
+            aidContinued = false;
+            newAmount = 0;
+
+            try {
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'aid_suspended',
+                    p_nation_id: nation.id,
+                    p_tick: currentTick,
+                    p_placeholders: { agreement_name: agreement.agreement_name || 'Economic Aid', nation: nation.name }
+                });
+            } catch (e) { /* non-blocking */ }
+        } else {
+            // Apply reductions if any
+            newAmount = Number(state.original_annual_amount) * reductionFactor;
+
+            // Cap at donor's GDP × max pct
+            const aidTerms = articles.find(a => a.type === 'aid_terms');
+            if (aidTerms) {
+                const gdpCapPct = Number(aidTerms.data.gdp_cap_pct || DIPLOMACY_CONFIG.AID_MAX_GDP_PCT);
+                const { data: donorNation } = await supabase.from('nations')
+                    .select('gdp').eq('id', state.donor_nation_id).single();
+                if (donorNation) {
+                    const maxAmount = Number(donorNation.gdp || 0) * (gdpCapPct / 100);
+                    newAmount = Math.min(newAmount, maxAmount);
+                }
+            }
+
+            await supabase.from('aid_agreement_state').update({
+                current_annual_amount: newAmount,
+                last_review_tick: currentTick,
+                next_review_tick: currentTick + DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL,
+                condition_failures: conditionFailures
+            }).eq('agreement_id', state.agreement_id);
+        }
+
+        // Log the review
+        await supabase.from('aid_condition_reviews').insert({
+            agreement_id: state.agreement_id,
+            review_tick: currentTick,
+            donor_nation_id: state.donor_nation_id,
+            recipient_nation_id: state.recipient_nation_id,
+            conditions_checked: conditionsChecked,
+            actions_taken: actionsTaken,
+            aid_continued: aidContinued,
+            new_annual_amount: newAmount
+        });
+
+        results.push({
+            agreement_id: state.agreement_id,
+            agreement_name: agreement.agreement_name,
+            conditions_checked: conditionsChecked.length,
+            actions_taken: actionsTaken,
+            aid_continued: aidContinued,
+            new_amount: newAmount
+        });
+    }
+
+    return results;
 }
 
 /**
@@ -3652,7 +4004,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         const nB = neg.nation_a_id < neg.nation_b_id ? neg.nation_b_id : neg.nation_a_id;
 
                         // Insert into trade_agreements
-                        await supabase.from('trade_agreements').insert({
+                        const { data: newAgreement } = await supabase.from('trade_agreements').insert({
                             nation_a_id: nA,
                             nation_b_id: nB,
                             negotiation_id: neg.id,
@@ -3668,7 +4020,29 @@ export async function resolveExpiredVotes(supabase, nationId) {
                             status: 'active',
                             enacted_at_tick: currentTick,
                             expires_at_tick: isPermanent ? null : (durationTicks ? currentTick + durationTicks : null)
-                        });
+                        }).select('id').single();
+
+                        // For economic aid agreements, create the aid_agreement_state row
+                        if (neg.agreement_type === 'economic_aid' && newAgreement) {
+                            const aidTerms = articles.find(a => a.type === 'aid_terms');
+                            if (aidTerms) {
+                                const donorId = aidTerms.data.donor_nation_id;
+                                const recipientId = donorId === nA ? nB : nA;
+                                const annualAmount = Number(aidTerms.data.annual_amount || 0);
+
+                                await supabase.from('aid_agreement_state').insert({
+                                    agreement_id: newAgreement.id,
+                                    donor_nation_id: donorId,
+                                    recipient_nation_id: recipientId,
+                                    current_annual_amount: annualAmount,
+                                    original_annual_amount: annualAmount,
+                                    next_review_tick: currentTick + DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL,
+                                    condition_failures: {}
+                                });
+
+                                console.log(`[resolveExpiredVotes] Economic aid agreement activated: donor=${donorId}, recipient=${recipientId}, amount=$${(annualAmount/1e9).toFixed(2)}B`);
+                            }
+                        }
 
                         // Mark negotiation as concluded
                         await supabase.from('trade_negotiations')
@@ -3680,7 +4054,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                             .select('id, relation_score, active_treaties')
                             .eq('nation_a_id', nA).eq('nation_b_id', nB).maybeSingle();
                         if (rel) {
-                            const bonus = 5; // relation boost for ratified trade agreement
+                            const bonus = neg.agreement_type === 'economic_aid' ? DIPLOMACY_CONFIG.AID_RELATION_BONUS : 5;
                             const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + bonus));
                             await supabase.from('diplomatic_relations')
                                 .update({ relation_score: newScore }).eq('id', rel.id);
