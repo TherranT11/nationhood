@@ -121,6 +121,9 @@ let coalitionLeadPartyId = null;
 let isCaretaker = false;
 let isNoGovernment = false;
 let showBudgetBadge = false;
+let budgetEarlyWindow = false;   // true when in the 3-tick early proposal window
+let nextBudgetDueTick = null;    // tick when budget is officially due
+let currentTickGlobal = 0;       // cached current tick for early-window checks
 let draftArticles = [], selectedPolicy = null;
 let committeeSelectedPolicy = null, currentCommitteeBillId = null;
 let pendingPolicyIds = new Set();
@@ -209,11 +212,27 @@ initPage('laws', async (state) => {
     }
 
     // Check if budget bill badge should show (no passed budget and not on cooldown)
+    // Also detect early proposal window (3 ticks before due date)
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const tick = shard?.current_tick || 0;
+        currentTickGlobal = tick;
         const lastBudgetTick = Number(nation.last_budget_tick || 0);
-        const onCooldown = lastBudgetTick > 0 && (tick - lastBudgetTick) < 12;
+        const cycleLen = GAME_CONFIG.TICKS_PER_YEAR;
+        const earlyWindow = GAME_CONFIG.BUDGET_EARLY_WINDOW_TICKS;
+
+        // Calculate next budget due tick
+        if (lastBudgetTick > 0) {
+            nextBudgetDueTick = lastBudgetTick + cycleLen;
+        } else {
+            // No budget ever passed: due at tick 12 (first cycle)
+            nextBudgetDueTick = cycleLen;
+        }
+
+        const ticksUntilDue = nextBudgetDueTick - tick;
+        const onCooldown = ticksUntilDue > earlyWindow; // still in hard cooldown (more than 3 ticks away)
+        budgetEarlyWindow = ticksUntilDue > 0 && ticksUntilDue <= earlyWindow; // in early window (1-3 ticks before due)
+
         const { data: pendingBudget } = await _supabase.from('bills')
             .select('id')
             .eq('nation_id', nation.id)
@@ -222,7 +241,7 @@ initPage('laws', async (state) => {
             .limit(1);
         const hasPending = pendingBudget && pendingBudget.length > 0;
         showBudgetBadge = !onCooldown && !hasPending;
-    } catch (e) { showBudgetBadge = false; }
+    } catch (e) { showBudgetBadge = false; budgetEarlyWindow = false; }
 
     renderLawsPage();
 });
@@ -328,7 +347,7 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
                 <div class="section-header" style="margin-bottom:0;border-bottom:none;">${pageTitle}</div>
                 <div class="laws-header-buttons">
                     <button class="passed-laws-btn" onclick="togglePassedLaws()">📜 Passed Laws</button>
-                    <button class="budget-bill-btn" onclick="toggleBudgetBill()">💰 Budget Bill${showBudgetBadge ? '<span class="budget-badge">1</span>' : ''}</button>
+                    <button class="budget-bill-btn" onclick="toggleBudgetBill()" ${budgetEarlyWindow ? 'title="Budget Bill is due in ' + (nextBudgetDueTick - currentTickGlobal) + ' tick(s). The PM/President can propose a budget now."' : ''}>💰 Budget Bill${showBudgetBadge ? (budgetEarlyWindow ? '<span class="budget-badge budget-badge-yellow" title="Budget due in ' + (nextBudgetDueTick - currentTickGlobal) + ' ticks">DUE</span>' : (nextBudgetDueTick !== null && currentTickGlobal >= nextBudgetDueTick ? '<span class="budget-badge budget-badge-red">!</span>' : '<span class="budget-badge">1</span>')) : ''}</button>
                     <button class="all-laws-btn" onclick="toggleAllLaws()">📋 All Laws</button>
                     <button class="draft-btn ${lawsIsAutocracy ? 'autocracy-btn' : ''}" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'} ${noSeatsTitle}>
                         ${termPropose} <span class="ap-cost">${GAME_CONFIG.DRAFT_BILL_AP_COST} AP</span>
@@ -604,11 +623,16 @@ async function renderBudgetBillContent() {
         const nextJanTick = Math.ceil((currentTick + 1) / 12) * 12;
         const gameYear = 2000 + Math.floor(nextJanTick / 12);
 
-        // Check 12-tick cooldown: find the most recent passed budget bill
+        // Check budget cycle: cooldown vs early window vs due
         const lastBudgetTick = Number(currentNation.last_budget_tick || 0);
-        const ticksSinceBudget = currentTick - lastBudgetTick;
-        const budgetOnCooldown = lastBudgetTick > 0 && ticksSinceBudget < 12;
-        const cooldownRemaining = budgetOnCooldown ? 12 - ticksSinceBudget : 0;
+        const cycleLen = GAME_CONFIG.TICKS_PER_YEAR;
+        const earlyWindow = GAME_CONFIG.BUDGET_EARLY_WINDOW_TICKS;
+        const dueTick = lastBudgetTick > 0 ? lastBudgetTick + cycleLen : cycleLen;
+        const ticksUntilDue = dueTick - currentTick;
+        const inEarlyWindow = ticksUntilDue > 0 && ticksUntilDue <= earlyWindow;
+        const budgetOnCooldown = ticksUntilDue > earlyWindow; // hard cooldown (more than 3 ticks away)
+        const cooldownRemaining = budgetOnCooldown ? ticksUntilDue - earlyWindow : 0;
+        const budgetOverdue = ticksUntilDue <= 0;
 
         // Check if a budget bill is already on the floor
         const { data: existingBudget } = await _supabase.from('bills')
@@ -773,6 +797,9 @@ async function renderBudgetBillContent() {
         } else if (isCaretaker || isNoGovernment) {
             h += '<div class="bp-submit-notice bp-submit-disabled">Cannot submit budget bills while the legislature is dissolved.</div>';
         } else {
+            if (inEarlyWindow) {
+                h += '<div class="bp-submit-notice bp-submit-early-window">⏳ Early proposal window — budget is due in ' + ticksUntilDue + ' tick(s). You can draft and submit now, but voting opens when the budget is officially due.</div>';
+            }
             h += '<button id="submit-budget-btn" class="bp-submit-btn">Send Budget Bill to Committee</button>';
         }
         h += '<div id="budget-submit-status" class="bp-submit-status"></div>';

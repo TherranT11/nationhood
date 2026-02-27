@@ -520,16 +520,30 @@ function renderBill() {
     const hasMajority = sponsorSeats >= GAME_CONFIG.MAJORITY_SEATS;
     const hasCosponsor = (bill.bill_support || []).some(s => s.faction_id !== bill.proposed_by && s.stance === 'accept');
     const isFoundational = bill.bill_type === 'foundational';
-    const canSendToFloor = !isNoGovernment && (isFoundational ? hasCosponsor : (hasMajority || hasCosponsor));
+    let canSendToFloor = !isNoGovernment && (isFoundational ? hasCosponsor : (hasMajority || hasCosponsor));
+
+    // Budget bills: block Send to Floor during early proposal window (before due date)
+    let budgetEarlyWindowMsg = '';
+    if (isBudgetBill && canSendToFloor) {
+        const lastBT = Number(currentNation.last_budget_tick || 0);
+        const cycleLen = GAME_CONFIG.TICKS_PER_YEAR;
+        const earlyWin = GAME_CONFIG.BUDGET_EARLY_WINDOW_TICKS;
+        const dueTick = lastBT > 0 ? lastBT + cycleLen : cycleLen;
+        const ticksUntilDue = dueTick - currentShardTick;
+        if (ticksUntilDue > 0 && ticksUntilDue <= earlyWin) {
+            canSendToFloor = false;
+            budgetEarlyWindowMsg = '<div style="color:#ffb300;font-size:0.78rem;margin-top:10px;text-align:center;" title="Budget vote opens in ' + ticksUntilDue + ' tick(s)">⏳ Budget vote opens in ' + ticksUntilDue + ' tick(s). You can edit and gather support until then.</div>';
+        }
+    }
 
     const disabledAttr = canSendToFloor ? '' : 'disabled';
-    const reason = isNoGovernment
+    const reason = budgetEarlyWindowMsg ? budgetEarlyWindowMsg : (isNoGovernment
         ? '<div style="color:#4fc3f7;font-size:0.78rem;margin-top:10px;text-align:center;">🏛️ Legislature is suspended until a new government is formed.</div>'
         : (canSendToFloor ? '' : isFoundational
         ? '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ Foundational laws require at least one co-sponsor to advance.</div>'
-        : '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or a simple majority of seats to send this to the floor.</div>');
+        : '<div style="color:#ff8888;font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or a simple majority of seats to send this to the floor.</div>'));
 
-    el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">Send to Floor</button>${isBudgetBill ? '' : '<button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>'}` + reason;
+    el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">Send to Floor</button>${isBudgetBill ? '<button class="sponsor-btn retract" onclick="retractBudgetBill()">Withdraw Budget</button>' : '<button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>'}` + reason;
 }
     }
 
@@ -1597,6 +1611,19 @@ async function sendToFloor() {
     );
     if (!currentFaction || (currentBill.proposed_by !== currentFaction.id && !isBudgetHeadOfGov)) return;
     if (isNoGovernment) { alert('Legislature is suspended. A new government must be formed before bills can advance.'); return; }
+
+    // Budget bills: block during early proposal window
+    if (currentBill.bill_type === 'budget') {
+        const lastBT = Number(currentNation.last_budget_tick || 0);
+        const cycleLen = GAME_CONFIG.TICKS_PER_YEAR;
+        const earlyWin = GAME_CONFIG.BUDGET_EARLY_WINDOW_TICKS;
+        const dueTick = lastBT > 0 ? lastBT + cycleLen : cycleLen;
+        const ticksUntilDue = dueTick - currentShardTick;
+        if (ticksUntilDue > 0 && ticksUntilDue <= earlyWin) {
+            alert('Budget vote opens in ' + ticksUntilDue + ' tick(s). The budget cannot be sent to the floor until it is officially due.');
+            return;
+        }
+    }
 
     // Prompt to rename the bill before sending to floor
     const newName = prompt('Rename this Bill?', currentBill.bill_name || '');
