@@ -5246,8 +5246,8 @@ export const GOV_APPROVAL_CONFIG = {
     OUTCOMES_WEIGHT: 0.35,
     EVENTS_WEIGHT: 0.20,
 
-    // Events component decay (12% per tick — transient shocks fade naturally)
-    EVENTS_DECAY_RATE: 0.12,
+    // Events component decay (5% per tick — transient shocks fade gradually)
+    EVENTS_DECAY_RATE: 0.05,
 
     // Outcome stats: universal stats everyone cares about, with relative weights
     OUTCOME_STATS: [
