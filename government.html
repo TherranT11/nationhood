@@ -301,7 +301,7 @@ async function renderGovernmentPage() {
         if (isPresidential) {
             const { data: activePresident } = await _supabase
                 .from('presidents')
-                .select('id, faction_id, first_name, last_name, age, ideology, trait, elected_tick, term_ends_tick')
+                .select('id, faction_id, first_name, last_name, age, ideology, trait, elected_tick, term_ends_tick, terms_served')
                 .eq('nation_id', currentNation.id).eq('is_active', true)
                 .order('elected_tick', { ascending: false })
                 .limit(1).maybeSingle();
@@ -370,6 +370,7 @@ async function renderGovernmentPage() {
         }
 
         const revolutionBannerHtml = await renderRevolutionBannerGov();
+        const administrationBoxHtml = await renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress, allPartySeats);
 
         document.getElementById('content-area').innerHTML = `
             <div class="panel-padding">
@@ -390,7 +391,7 @@ async function renderGovernmentPage() {
         <div style="margin-top:12px;display:inline-block;padding:8px 24px;background:var(--accent);color:#121212;border-radius:6px;font-weight:bold;font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;">Nominate Now →</div>
     </div>
 ` : ''}
-                ${renderAdministrationBox(coalition, partyData, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress, allPartySeats)}
+                ${administrationBoxHtml}
 
                 <div class="section-header">Government Structure</div>
                 <div class="info-block">
@@ -477,7 +478,7 @@ function getPartyLogoById(partyId) {
 
 // ==================== ADMINISTRATION BOX ====================
 
-function renderAdministrationBox(coalition, parties, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress, allPartySeats) {
+async function renderAdministrationBox(coalition, parties, primeMinister, governmentApproval, activeHOG, coalitionFormationInProgress, allPartySeats) {
     allPartySeats = allPartySeats || {};
     const hosFirst = currentNation.head_of_state_first_name || 'Unknown';
     const hosLast = currentNation.head_of_state_last_name || 'Unknown';
@@ -647,9 +648,29 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
         const govStatus = hasMajority ? 'Unified Government' : 'Divided Government';
         const govStatusColor = hasMajority ? '#4CAF50' : '#ff9800';
 
-        const termRemaining = presidentData.term_ends_tick - currentTick;
-        const termTotal = GAME_CONFIG.PRESIDENTIAL_TERM_TICKS || 24;
+        // Fetch fresh tick to avoid stale-tick issues
+        const { data: freshShard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const freshTick = freshShard?.current_tick || currentTick;
+        const termRemaining = presidentData.term_ends_tick - freshTick;
+        const termTotal = GAME_CONFIG.PRESIDENTIAL_TERM_TICKS || 48;
         const termPct = Math.max(0, Math.min(100, Math.round((termRemaining / termTotal) * 100)));
+
+        // Convert remaining ticks to human-readable format (TICKS_PER_YEAR = 12, so 1 tick = 1 month)
+        let termRemainingDisplay;
+        if (termRemaining <= 0) {
+            termRemainingDisplay = 'Term Ended — Election Pending';
+        } else {
+            const totalMonths = termRemaining; // 1 tick = 1 month
+            const years = Math.floor(totalMonths / 12);
+            const months = Math.round(totalMonths % 12);
+            if (years > 0) {
+                termRemainingDisplay = `${years} Year${years !== 1 ? 's' : ''}, ${months} Month${months !== 1 ? 's' : ''}`;
+            } else if (months > 0) {
+                termRemainingDisplay = `${months} Month${months !== 1 ? 's' : ''}`;
+            } else {
+                termRemainingDisplay = '< 1 Month';
+            }
+        }
 
         // Fetch president's trait info (already cached or inline)
         let traitHTML = '';
@@ -676,11 +697,11 @@ function renderAdministrationBox(coalition, parties, primeMinister, governmentAp
                 <div class="administration-content">
                     <div class="admin-leaders-column">
                         <div class="admin-section">
-                            <div class="admin-section-title">President</div>
+                            <div class="admin-section-title">President${presidentData.terms_served ? ` — ${presidentData.terms_served === 1 ? '1st' : '2nd'} Term` : ''}</div>
                             <div class="admin-person-name">${presidentData.first_name} ${presidentData.last_name}</div>
                             <div class="admin-person-details">Age ${presidentData.age} · <span class="admin-person-party">${presPartyName}</span></div>
                             <div style="margin-top:8px;">
-                                <div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:4px;">Term Remaining: ${termRemaining} tick${termRemaining !== 1 ? 's' : ''}</div>
+                                <div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:4px;">${termRemaining <= 0 ? termRemainingDisplay : `Term Remaining: ${termRemainingDisplay}`}</div>
                                 <div style="height:4px;background:#333;border-radius:2px;overflow:hidden;">
                                     <div style="height:100%;width:${termPct}%;background:${termPct > 25 ? 'var(--accent)' : '#ff4444'};border-radius:2px;transition:width 0.3s;"></div>
                                 </div>
