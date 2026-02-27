@@ -4,7 +4,7 @@
         #Sangreza.land { fill: #5599ff; }
         #Montequilla.land { fill: #aade87; }
         #SanEstrella.land { fill: #ffb380; }
-        #Veldaria.land { fill: #87cdde; }
+        #Palvera.land { fill: #dea0a0; }
 
         /* Selected overrides */
         #Melizea.land.selected-nation { fill: #ccff00; }
@@ -12,4 +12,4 @@
         #Sangreza.land.selected-nation { fill: #2277ff; }
         #Montequilla.land.selected-nation { fill: #66cc44; }
         #SanEstrella.land.selected-nation { fill: #ff8833; }
-        #Veldaria.land.selected-nation { fill: #44bbd4; }
+        #Palvera.land.selected-nation { fill: #d47070; }
