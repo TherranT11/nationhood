@@ -206,12 +206,13 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES } from './js/game-common.js';
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
 let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
 let factionIdeology = null; // Dynamic ideology scores for current player
+let currentShardTick = 0; // Current shard tick for deadline proximity checks
 let isNoGovernment = false;
 let coalitionPartyIds = []; // For budget bill editing permissions
 let coalitionLeadPartyId = null; // PM's party in parliamentary systems
@@ -347,6 +348,10 @@ async function loadBillData() {
         if (bill.bill_type === 'budget') {
             await loadBudgetData(bill);
         }
+
+        // Fetch current tick for deadline proximity checks
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        currentShardTick = shard?.current_tick || 0;
 
         renderBill();
     } catch (error) {
@@ -1264,7 +1269,144 @@ function renderSidebar() {
         let f=0,a=0,ab=0;
         support.forEach(s => { if(s.stance==='yes')f+=s.seat_count; else if(s.stance==='no')a+=s.seat_count; else if(s.stance==='abstain')ab+=s.seat_count; });
 
-        // Per-party vote breakdown
+        const totalSeats = GAME_CONFIG.TOTAL_SEATS;
+        const undeclared = totalSeats - f - a - ab;
+
+        // Use the new evaluateBillVote for authoritative status
+        const evalResult = evaluateBillVote({
+            votes_for: f, votes_against: a, votes_abstain: ab, bill_type: bill.bill_type
+        }, totalSeats);
+
+        // ── Determine if this is an absolute-threshold bill (no quorum, fixed target) ──
+        const isAbsoluteThreshold = bill.bill_type === 'foundational' || bill.bill_type === 'veto_override'
+            || bill.bill_type === 'impeachment_conviction' || bill.bill_type === 'no_confidence'
+            || bill.bill_type === 'impeachment_motion';
+        const isSupermajority = bill.bill_type === 'foundational' || bill.bill_type === 'veto_override'
+            || bill.bill_type === 'impeachment_conviction';
+
+        // ── Build status label and color ──
+        let statusLabel, statusColor;
+        if (bill.early_resolution_status) {
+            // Server already confirmed — don't override
+            statusLabel = '';
+            statusColor = '';
+        } else if (evalResult.status === 'will_pass') {
+            statusLabel = 'WILL PASS';
+            statusColor = '#4CAF50';
+        } else if (evalResult.status === 'will_fail') {
+            statusLabel = evalResult.reason === 'quorum_impossible' ? 'WILL FAIL — QUORUM IMPOSSIBLE' : 'WILL FAIL';
+            statusColor = '#ff4444';
+        } else if (evalResult.status === 'passing') {
+            const quorumLabel = evalResult.quorumMet ? `${evalResult.quorumCurrent} / ${evalResult.quorumThreshold} quorum met` : '';
+            statusLabel = `PASSING${quorumLabel ? ' — ' + quorumLabel : ''}`;
+            statusColor = '#8BC34A';
+        } else if (evalResult.status === 'failing') {
+            statusLabel = 'FAILING';
+            statusColor = '#ff6644';
+        } else if (evalResult.status === 'tied') {
+            statusLabel = 'TIED — bill will fail unless more yes votes are cast';
+            statusColor = '#ff9800';
+        } else if (evalResult.status === 'quorum_not_met') {
+            statusLabel = `QUORUM NOT MET — ${evalResult.quorumCurrent} / ${evalResult.quorumThreshold} participating`;
+            statusColor = '#ffcc00';
+        } else if (evalResult.status === 'pending' && isAbsoluteThreshold) {
+            statusLabel = `${evalResult.neededFor} more YES needed of ${evalResult.thresholdNeeded} required`;
+            statusColor = '#ffcc00';
+        } else {
+            statusLabel = 'UNDECIDED';
+            statusColor = '#888';
+        }
+
+        // ── Build progress bars ──
+        let progressBarHTML = '';
+        if (!isAbsoluteThreshold) {
+            // Ordinary bill: two bars — quorum + vote split
+            const quorumThreshold = evalResult.quorumThreshold || Math.ceil(totalSeats * 0.5);
+            const participating = f + a + ab;
+            const quorumPct = Math.min(100, Math.round((participating / totalSeats) * 100));
+            const quorumLinePct = Math.round((quorumThreshold / totalSeats) * 100);
+            const quorumBarColor = participating >= quorumThreshold ? '#4CAF50' : '#ffcc00';
+
+            const yesPct = Math.round((f / totalSeats) * 100);
+            const noPct = Math.round((a / totalSeats) * 100);
+            const majorityLinePct = 50; // visual center for simple majority
+
+            progressBarHTML = `
+                <div class="vote-progress-section">
+                    <div class="vote-progress-label">Quorum: <span style="color:${quorumBarColor};">${participating} / ${quorumThreshold} needed</span></div>
+                    <div class="vote-progress-bar">
+                        <div class="vote-progress-fill" style="width:${quorumPct}%;background:${quorumBarColor};"></div>
+                        <div class="vote-progress-marker" style="left:${quorumLinePct}%;" title="Quorum line (50%)"></div>
+                    </div>
+                    <div class="vote-progress-label" style="margin-top:8px;">Votes: <span style="color:#4CAF50;">${f} yes</span> / <span style="color:#ff4444;">${a} no</span></div>
+                    <div class="vote-progress-bar">
+                        <div class="vote-progress-fill vote-yes-fill" style="width:${yesPct}%;"></div>
+                        <div class="vote-progress-fill vote-no-fill" style="width:${noPct}%;left:${100 - noPct}%;"></div>
+                        <div class="vote-progress-marker" style="left:${majorityLinePct}%;" title="Majority line"></div>
+                    </div>
+                </div>`;
+        } else {
+            // Absolute threshold bill: single bar toward target
+            const threshold = evalResult.thresholdNeeded || (isSupermajority ? Math.ceil(totalSeats * 2/3) : Math.floor(totalSeats / 2) + 1);
+            const yesPct = Math.round((f / totalSeats) * 100);
+            const thresholdPct = Math.round((threshold / totalSeats) * 100);
+
+            progressBarHTML = `
+                <div class="vote-progress-section">
+                    <div class="vote-progress-label">Yes votes: <span style="color:#4CAF50;">${f}</span> / <span style="color:#ffcc00;">${threshold} needed</span> (${isSupermajority ? '2/3' : '50%+1'} of ${totalSeats})</div>
+                    <div class="vote-progress-bar">
+                        <div class="vote-progress-fill vote-yes-fill" style="width:${yesPct}%;"></div>
+                        <div class="vote-progress-marker" style="left:${thresholdPct}%;" title="${isSupermajority ? '2/3 supermajority' : 'Absolute majority'} threshold"></div>
+                    </div>
+                </div>`;
+        }
+
+        // ── Quorum / Passage summary rows ──
+        let quorumRow = '', passageRow = '';
+        if (!isAbsoluteThreshold) {
+            const quorumThreshold = evalResult.quorumThreshold || Math.ceil(totalSeats * 0.5);
+            const participating = f + a + ab;
+            const qMet = participating >= quorumThreshold;
+            const qLabel = qMet ? 'MET' : 'NOT MET';
+            const qColor = qMet ? '#4CAF50' : '#ffcc00';
+            quorumRow = `<div class="vote-tally-row" style="border-top:1px solid #444;padding-top:8px;">
+                <span class="vote-tally-label">Quorum</span>
+                <span class="vote-tally-value" style="color:var(--text-secondary);">${participating} / ${quorumThreshold} needed <span class="vote-status-chip" style="background:${qColor};color:#000;">${qLabel}</span></span>
+            </div>`;
+            const pLabel = evalResult.status === 'will_pass' ? 'WILL PASS'
+                : evalResult.status === 'will_fail' ? 'WILL FAIL'
+                : evalResult.status === 'passing' ? 'PASSING'
+                : evalResult.status === 'failing' ? 'FAILING'
+                : evalResult.status === 'tied' ? 'TIED'
+                : 'UNDECIDED';
+            const pColor = evalResult.status === 'will_pass' || evalResult.status === 'passing' ? '#4CAF50'
+                : evalResult.status === 'will_fail' || evalResult.status === 'failing' ? '#ff4444'
+                : evalResult.status === 'tied' ? '#ff9800'
+                : '#888';
+            passageRow = `<div class="vote-tally-row">
+                <span class="vote-tally-label">Passage</span>
+                <span class="vote-tally-value" style="color:var(--text-secondary);">Simple Majority <span class="vote-status-chip" style="background:${pColor};color:#fff;">${pLabel}</span></span>
+            </div>`;
+        } else {
+            const threshold = evalResult.thresholdNeeded || (isSupermajority ? Math.ceil(totalSeats * 2/3) : Math.floor(totalSeats / 2) + 1);
+            const pLabel = evalResult.status === 'will_pass' ? 'WILL PASS'
+                : evalResult.status === 'will_fail' ? 'WILL FAIL'
+                : `${f} / ${threshold}`;
+            const pColor = evalResult.status === 'will_pass' ? '#4CAF50'
+                : evalResult.status === 'will_fail' ? '#ff4444' : '#ffcc00';
+            passageRow = `<div class="vote-tally-row" style="border-top:1px solid #444;padding-top:8px;">
+                <span class="vote-tally-label">${isSupermajority ? '2/3 Supermajority' : 'Absolute Majority'}</span>
+                <span class="vote-tally-value" style="color:var(--text-secondary);">${f} / ${threshold} needed <span class="vote-status-chip" style="background:${pColor};color:${pColor === '#ffcc00' ? '#000' : '#fff'};">${evalResult.status === 'will_pass' ? 'WILL PASS' : evalResult.status === 'will_fail' ? 'WILL FAIL' : 'IN PROGRESS'}</span></span>
+            </div>`;
+        }
+
+        // ── Per-party vote breakdown with quorum + deadline enhancements ──
+        const quorumThreshold = !isAbsoluteThreshold ? (evalResult.quorumThreshold || Math.ceil(totalSeats * 0.5)) : 0;
+        const participating = f + a + ab;
+        const quorumMet = isAbsoluteThreshold || participating >= quorumThreshold;
+        const ticksToDeadline = bill.voting_ends_tick ? bill.voting_ends_tick - currentShardTick : 999;
+        const nearDeadline = ticksToDeadline <= 2 && ticksToDeadline > 0;
+
         const partyVotesHTML = allParties.map(party => {
             const seats = allPartySeats[party.id] || 0;
             const vote = support.find(s => s.faction_id === party.id);
@@ -1272,57 +1414,42 @@ function renderSidebar() {
             let stanceLabel, stanceClass;
             if (vote) {
                 stanceLabel = vote.stance.toUpperCase();
-                stanceClass = vote.stance; // 'yes', 'no', 'abstain'
+                stanceClass = vote.stance;
             } else {
                 stanceLabel = 'NO VOTE';
                 stanceClass = '';
             }
-            return `<div class="party-vote-item">
+
+            // Highlight parties that haven't voted when quorum is close or deadline is near
+            const hasNotVoted = !vote;
+            const wouldFixQuorum = hasNotVoted && !quorumMet && !isAbsoluteThreshold && (participating + seats >= quorumThreshold);
+            const deadlineWarning = hasNotVoted && nearDeadline;
+            const highlightClass = deadlineWarning ? 'party-vote-deadline-warning' : (wouldFixQuorum ? 'party-vote-quorum-needed' : '');
+            const quorumHint = wouldFixQuorum ? ' <span class="quorum-needed-hint">(needed for quorum)</span>' : '';
+
+            return `<div class="party-vote-item ${highlightClass}">
                 <div>
                     <span class="party-vote-name">${party.faction_name}</span>
                     <span class="party-vote-seats">(${seats})</span>
                     ${isSp ? ` <span style="color:#ffcc00;font-size:0.7rem;">★ ${currentBill.bill_type === 'no_confidence' ? 'FILER' : 'SPONSOR'}</span>` : ''}
                 </div>
-                ${vote ? `<span class="support-status ${stanceClass}">${stanceLabel}</span>` : `<span class="party-vote-no-vote">${stanceLabel}</span>`}
+                ${vote ? `<span class="support-status ${stanceClass}">${stanceLabel}</span>` : `<span class="party-vote-no-vote">${stanceLabel}${quorumHint}</span>`}
             </div>`;
         }).join('');
 
-        const isFoundationalBill = bill.bill_type === 'foundational';
-        const isNoConfidenceBill = bill.bill_type === 'no_confidence';
-        const isSimple = isSimpleMajorityBill(bill.bill_type);
-        const undeclared = GAME_CONFIG.TOTAL_SEATS - f - a - ab;
-
-        // For simple-majority bills the threshold is dynamic: YES must exceed NO.
-        // Show the number of YES seats still needed (NO + 1 - current YES), min 0.
-        const requiredSeats = isSimple ? (a + 1) : getRequiredSeats(bill.bill_type);
-        const thresholdLabel = isFoundationalBill ? '2/3 Supermajority' : 'Simple Majority';
-        const thresholdDisplay = isSimple
-            ? (f > a ? 'Passing' : f === a ? `${a + 1 - f} more needed` : `${a + 1 - f} more needed`)
-            : `${requiredSeats} needed`;
-        const thresholdMet = isSimple ? (f > a) : (f >= requiredSeats);
-
-        // Cosmetic early-majority hint (client-side check before server confirms)
-        const noBlocksPassage = isSimple
-            ? (a >= f + undeclared)                        // NO can't be overcome even if all undeclared vote YES
-            : (a > (GAME_CONFIG.TOTAL_SEATS - requiredSeats));
-        const majorityLocked = isSimple
-            ? (f > a + undeclared)                         // YES wins even if all undeclared vote NO
-            : (f >= requiredSeats);
-        const earlyHint = bill.early_resolution_status
-            ? '' // Server already confirmed — banner handles it
-            : majorityLocked
-                ? '<div style="color:#4CAF50;font-size:0.78rem;margin-top:6px;text-align:center;">Majority threshold met</div>'
-                : noBlocksPassage
-                    ? '<div style="color:#ff4444;font-size:0.78rem;margin-top:6px;text-align:center;">Passage blocked by opposition</div>'
-                    : '';
+        // ── Status label (shown only if server hasn't already confirmed early resolution) ──
+        const statusHTML = statusLabel
+            ? `<div class="vote-status-banner" style="background:${statusColor}20;border:1px solid ${statusColor};color:${statusColor};">${statusLabel}</div>`
+            : '';
 
         html = `<div class="vote-tally"><div class="vote-tally-header"><div class="vote-tally-title">Current Tally</div></div><div class="vote-tally-content">
             <div class="vote-tally-row"><span class="vote-tally-label">For</span><span class="vote-tally-value for">${f} seats</span></div>
             <div class="vote-tally-row"><span class="vote-tally-label">Against</span><span class="vote-tally-value against">${a} seats</span></div>
             <div class="vote-tally-row"><span class="vote-tally-label">Abstain</span><span class="vote-tally-value abstain">${ab} seats</span></div>
             <div class="vote-tally-row"><span class="vote-tally-label">Undeclared</span><span class="vote-tally-value" style="color:var(--text-secondary);">${undeclared} seats</span></div>
-            <div class="vote-tally-row" style="border-top:1px solid #444;padding-top:8px;"><span class="vote-tally-label">${thresholdLabel}</span><span class="vote-tally-value" style="color:${thresholdMet ? '#4CAF50' : '#9C27B0'};">${thresholdDisplay}</span></div>
-            ${earlyHint}
+            ${quorumRow}${passageRow}
+            ${statusHTML}
+            ${progressBarHTML}
         </div>
         <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Party Votes</div></div>
         <div class="party-votes-list">${partyVotesHTML}</div>
