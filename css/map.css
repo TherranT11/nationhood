@@ -71,7 +71,7 @@ body { margin: 0; padding: 0; background-color: #121212; color: #e0e0e0; font-fa
         #Sangreza { fill: #5599ff; }
         #Montequilla { fill: #aade87; }
         #SanEstrella { fill: #ffb380; }
-        #Veldaria { fill: #87cdde; }
+        #Palvera { fill: #dea0a0; }
 
         /* Hover colors */
         #Melizea:hover { fill: #f5ffcc; filter: drop-shadow(0 0 10px rgba(238,255,170,0.5)); }
@@ -79,7 +79,7 @@ body { margin: 0; padding: 0; background-color: #121212; color: #e0e0e0; font-fa
         #Sangreza:hover { fill: #77bbff; filter: drop-shadow(0 0 10px rgba(85,153,255,0.5)); }
         #Montequilla:hover { fill: #bbee99; filter: drop-shadow(0 0 10px rgba(170,222,135,0.5)); }
         #SanEstrella:hover { fill: #ffc499; filter: drop-shadow(0 0 10px rgba(255,179,128,0.5)); }
-        #Veldaria:hover { fill: #a0dde9; filter: drop-shadow(0 0 10px rgba(135,205,222,0.5)); }
+        #Palvera:hover { fill: #eab5b5; filter: drop-shadow(0 0 10px rgba(222,160,160,0.5)); }
 
         .selected-nation {
             filter: drop-shadow(0 0 15px rgba(255, 204, 0, 0.8)) !important;
@@ -92,7 +92,7 @@ body { margin: 0; padding: 0; background-color: #121212; color: #e0e0e0; font-fa
         #Sangreza.selected-nation { fill: #2277ff !important; filter: drop-shadow(0 0 15px rgba(34,119,255,0.8)) !important; }
         #Montequilla.selected-nation { fill: #66cc44 !important; filter: drop-shadow(0 0 15px rgba(102,204,68,0.8)) !important; }
         #SanEstrella.selected-nation { fill: #ff8833 !important; filter: drop-shadow(0 0 15px rgba(255,136,51,0.8)) !important; }
-        #Veldaria.selected-nation { fill: #44bbd4 !important; filter: drop-shadow(0 0 15px rgba(68,187,212,0.8)) !important; }
+        #Palvera.selected-nation { fill: #d47070 !important; filter: drop-shadow(0 0 15px rgba(212,112,112,0.8)) !important; }
         
         /* Capital markers */
         .capital-dot {

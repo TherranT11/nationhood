@@ -422,21 +422,21 @@ body.light-mode .coalition-party-card.locked { background: #fff3e0; }
 #Sangreza { fill: #5599ff; }
 #Montequilla { fill: #aade87; }
 #SanEstrella { fill: #ffb380; }
-#Veldaria { fill: #87cdde; }
+#Palvera { fill: #dea0a0; }
 /* Per-nation hover states */
 #Melizea:hover { fill: #f5ffcc; filter: drop-shadow(0 0 8px rgba(238,255,170,0.5)); }
 #Avelia:hover { fill: #eeccf2; filter: drop-shadow(0 0 8px rgba(221,175,233,0.5)); }
 #Sangreza:hover { fill: #77bbff; filter: drop-shadow(0 0 8px rgba(85,153,255,0.5)); }
 #Montequilla:hover { fill: #bbee99; filter: drop-shadow(0 0 8px rgba(170,222,135,0.5)); }
 #SanEstrella:hover { fill: #ffc499; filter: drop-shadow(0 0 8px rgba(255,179,128,0.5)); }
-#Veldaria:hover { fill: #a0dde9; filter: drop-shadow(0 0 8px rgba(135,205,222,0.5)); }
+#Palvera:hover { fill: #eab5b5; filter: drop-shadow(0 0 8px rgba(222,160,160,0.5)); }
 /* Per-nation selected states */
 #Melizea.selected-nation { fill: #ccff00 !important; filter: drop-shadow(0 0 15px rgba(204,255,0,0.8)) !important; }
 #Avelia.selected-nation { fill: #d070d8 !important; filter: drop-shadow(0 0 15px rgba(208,112,216,0.8)) !important; }
 #Sangreza.selected-nation { fill: #2277ff !important; filter: drop-shadow(0 0 15px rgba(34,119,255,0.8)) !important; }
 #Montequilla.selected-nation { fill: #66cc44 !important; filter: drop-shadow(0 0 15px rgba(102,204,68,0.8)) !important; }
 #SanEstrella.selected-nation { fill: #ff8833 !important; filter: drop-shadow(0 0 15px rgba(255,136,51,0.8)) !important; }
-#Veldaria.selected-nation { fill: #44bbd4 !important; filter: drop-shadow(0 0 15px rgba(68,187,212,0.8)) !important; }
+#Palvera.selected-nation { fill: #d47070 !important; filter: drop-shadow(0 0 15px rgba(212,112,112,0.8)) !important; }
 .capital-dot { fill: var(--bg-panel); pointer-events: none; }
 .capital-name { fill: var(--bg-panel); font-size: 4px; font-family: sans-serif; font-weight: bold; pointer-events: none; }
 #world-sidebar {
