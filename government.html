@@ -2700,7 +2700,7 @@ function renderAdminCard(admin, isCurrent) {
     // Coalition parties
     if (coalitionParties.length > 0) {
         detailHTML += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
-            ${coalitionParties.map(p => `<span class="coalition-party-tag">${p.party_name}<span class="seats">${p.seats}</span></span>`).join('<span class="coalition-divider">+</span>')}
+            ${coalitionParties.map(p => `<span class="coalition-party-tag">${p.party_name}${p.seats ? '<span class="seats">' + p.seats + '</span>' : ''}</span>`).join('<span class="coalition-divider">+</span>')}
         </div>`;
     }
 
