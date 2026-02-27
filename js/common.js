@@ -262,7 +262,7 @@ export function renderNavTabs(activeTab) {
         if (overrideFactionId) params.push('faction_id=' + overrideFactionId);
         if (params.length) href += '?' + params.join('&');
         const badgeHtml = tab.id === 'laws'
-            ? '<span class="nav-badge" id="bills-badge" style="display:none;"></span>'
+            ? '<span class="nav-badge" id="bills-badge" style="display:none;"></span><span class="nav-badge-budget" id="budget-due-badge" style="display:none;"></span>'
             : '';
         return `
             <a href="${href}"
@@ -298,6 +298,7 @@ export function cleanSeenBills(activeFloorIds) {
 
 async function updateBillsBadge(faction, nation, shard) {
     const badge = document.getElementById('bills-badge');
+    const budgetDueBadge = document.getElementById('budget-due-badge');
     if (!badge || !faction || !nation) return;
     try {
         const { data: floorBills } = await _supabase
@@ -314,11 +315,17 @@ async function updateBillsBadge(faction, nation, shard) {
             if (!hasVoted && !hasSeen) count++;
         }
 
-        // Check if budget bill badge should show (no passed budget, not on cooldown, none pending)
+        // Budget cycle detection: cooldown vs early window vs overdue
         const currentTick = shard?.current_tick || 0;
         const lastBudgetTick = Number(nation.last_budget_tick || 0);
-        const budgetOnCooldown = lastBudgetTick > 0 && (currentTick - lastBudgetTick) < 12;
+        const dueTick = lastBudgetTick > 0 ? lastBudgetTick + 12 : 12;
+        const ticksUntilDue = dueTick - currentTick;
+        const inEarlyWindow = ticksUntilDue > 0 && ticksUntilDue <= 3;
+        const budgetOverdue = ticksUntilDue <= 0;
+        const budgetOnCooldown = ticksUntilDue > 3; // hard cooldown
+
         const hasPendingBudget = (floorBills || []).some(b => b.bill_type === 'budget');
+        let hasPendingCommittee = false;
         if (!budgetOnCooldown && !hasPendingBudget) {
             // Also check committee
             const { data: committeeBudget } = await _supabase.from('bills')
@@ -327,7 +334,8 @@ async function updateBillsBadge(faction, nation, shard) {
                 .eq('bill_type', 'budget')
                 .eq('status', 'committee')
                 .limit(1);
-            if (!committeeBudget || committeeBudget.length === 0) {
+            hasPendingCommittee = committeeBudget && committeeBudget.length > 0;
+            if (!hasPendingCommittee) {
                 count++;
             }
         }
@@ -337,6 +345,21 @@ async function updateBillsBadge(faction, nation, shard) {
             badge.style.display = '';
         } else {
             badge.style.display = 'none';
+        }
+
+        // Budget Due badge on nav tab (yellow = early window, red = overdue)
+        if (budgetDueBadge) {
+            const budgetPassedThisCycle = hasPendingBudget || hasPendingCommittee || budgetOnCooldown;
+            if (!budgetPassedThisCycle && (inEarlyWindow || budgetOverdue)) {
+                budgetDueBadge.textContent = budgetOverdue ? 'OVERDUE' : 'DUE';
+                budgetDueBadge.className = 'nav-badge-budget ' + (budgetOverdue ? 'nav-badge-budget-red' : 'nav-badge-budget-yellow');
+                budgetDueBadge.title = budgetOverdue
+                    ? 'Budget is overdue! Propose and pass a budget to avoid penalties.'
+                    : 'Budget Bill is due in ' + ticksUntilDue + ' tick(s). The PM/President can propose a budget now.';
+                budgetDueBadge.style.display = '';
+            } else {
+                budgetDueBadge.style.display = 'none';
+            }
         }
     } catch (e) {
         console.error('Error updating bills badge:', e);

@@ -32,6 +32,7 @@ export const GAME_CONFIG = {
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
     MAX_AP: 20,  // maximum action points a party can accumulate
     TICKS_PER_YEAR: 12,
+    BUDGET_EARLY_WINDOW_TICKS: 3,    // ticks before budget due date that early proposal opens
     BUDGET_BILL_VOTING_TICKS: null,   // budget bills persist until passed (never expire)
     NO_BUDGET_PENALTY_TICKS: 24,     // how many ticks without a budget before max penalty
 };

@@ -87,6 +87,7 @@ const GAME_CONFIG = {
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
     MAX_AP: 20,  // maximum action points a party can accumulate
     TICKS_PER_YEAR: 12,
+    BUDGET_EARLY_WINDOW_TICKS: 3,    // ticks before budget due date that early proposal opens
     BUDGET_BILL_VOTING_TICKS: null,   // budget bills persist until passed (never expire)
     NO_BUDGET_PENALTY_TICKS: 24,     // how many ticks without a budget before max penalty
 };
@@ -6939,6 +6940,17 @@ async function processElections(supabase, nation, currentTick) {
 
         if (dissolvedBills?.length > 0) {
             console.log(`Dissolved ${dissolvedBills.length} pending bill(s) after election for ${nation.name}`);
+        }
+
+        // If a budget bill was dissolved, reset the budget cycle so the new government
+        // gets a fresh 12-tick window (prevents inheriting overdue penalties)
+        const hadBudgetBill = (dissolvedBills || []).some(b => b.bill_type === 'budget');
+        if (hadBudgetBill) {
+            await supabase.from('nations')
+                .update({ last_budget_tick: currentTick })
+                .eq('id', nation.id);
+            nation.last_budget_tick = currentTick;
+            console.log(`[resolveElection] Reset budget cycle for ${nation.name} after dissolving pending budget bill`);
         }
 
         // === PRESIDENTIAL SYSTEM: handle presidential vs parliamentary elections ===
