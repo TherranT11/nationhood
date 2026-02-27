@@ -101,8 +101,8 @@ function initGameConfigForNation(nation) {
     }
 }
 
-const FORMATION_DEADLINE_TICKS = 6; // ticks before snap election when no government
-const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 8 — if two elections are this close, it's a snap cycle
+const FORMATION_DEADLINE_TICKS = 3; // ticks per formation window before escalation
+const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 5 — general snap cycle guard (overridden by formation escalation)
 
 /**
  * Atomic AP deduction via database RPC.
@@ -3721,6 +3721,7 @@ async function fetchActiveCoalition(supabase, nationId) {
             ministry_allocations: newGov.ministry_assignments || {},
             formed_at: newGov.formed_at,
             status: newGov.status,
+            formation_type: newGov.formation_type || 'coalition',
             _source: 'government_formations'
         };
         await inferCaretakerStatus(result);
@@ -4381,6 +4382,10 @@ async function checkEarlyMajority(supabase, nationId) {
     const quorumSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.QUORUM_THRESHOLD);
     const results = [];
 
+    // Check for emergency minority government penalty (once per nation per tick)
+    const earlyCoalition = await fetchActiveCoalition(supabase, nationId);
+    const minorityPenalty = earlyCoalition?.formation_type === 'emergency_minority';
+
     for (const bill of activeBills) {
         let yesSeats = 0, noSeats = 0;
         (bill.bill_support || []).forEach(s => {
@@ -4389,6 +4394,12 @@ async function checkEarlyMajority(supabase, nationId) {
             else if (stance === 'no') noSeats += s.seat_count;
         });
 
+        // Apply emergency minority penalty to effective YES votes
+        let effectiveYes = yesSeats;
+        if (minorityPenalty) {
+            effectiveYes = Math.floor(yesSeats * 0.8);
+        }
+
         let earlyStatus = null;
         const totalVoted = yesSeats + noSeats;
         const undeclaredSeats = GAME_CONFIG.TOTAL_SEATS - totalVoted;
@@ -4396,16 +4407,19 @@ async function checkEarlyMajority(supabase, nationId) {
         // ── Check 1: Mathematical lock (outcome impossible to change) ──
         if (isSimpleMajorityBill(bill.bill_type)) {
             // Locked YES: even if ALL undeclared vote NO, YES still wins.
-            if (yesSeats > noSeats + undeclaredSeats) {
+            // Use effectiveYes for the minority penalty
+            if (effectiveYes > noSeats + undeclaredSeats) {
                 earlyStatus = 'majority_reached';
-            // Locked NO: even if ALL undeclared vote YES, NO still wins/ties.
-            } else if (noSeats >= yesSeats + undeclaredSeats) {
+            // Locked NO: even if ALL undeclared vote YES (with penalty), NO still wins/ties.
+            } else if (minorityPenalty
+                ? noSeats >= Math.floor((yesSeats + undeclaredSeats) * 0.8)
+                : noSeats >= yesSeats + undeclaredSeats) {
                 earlyStatus = 'majority_opposed';
             }
         } else {
             // Supermajority: fixed seat threshold
             const requiredSeats = getRequiredSeats(bill.bill_type);
-            if (yesSeats >= requiredSeats) {
+            if (effectiveYes >= requiredSeats) {
                 earlyStatus = 'majority_reached';
             } else if (noSeats > GAME_CONFIG.TOTAL_SEATS - requiredSeats) {
                 earlyStatus = 'majority_opposed';
@@ -4418,15 +4432,15 @@ async function checkEarlyMajority(supabase, nationId) {
         // Gives remaining parties a 1-tick grace period to cast their vote.
         if (!earlyStatus && totalVoted >= quorumSeats) {
             if (isSimpleMajorityBill(bill.bill_type)) {
-                if (yesSeats > noSeats) {
+                if (effectiveYes > noSeats) {
                     earlyStatus = 'quorum_reached';
-                } else if (noSeats > yesSeats) {
+                } else if (noSeats > effectiveYes) {
                     earlyStatus = 'quorum_opposed';
                 }
                 // Exact tie at quorum: wait for more votes or deadline
             } else {
                 const requiredSeats = getRequiredSeats(bill.bill_type);
-                if (yesSeats >= requiredSeats) {
+                if (effectiveYes >= requiredSeats) {
                     earlyStatus = 'quorum_reached';
                 } else {
                     earlyStatus = 'quorum_opposed';
@@ -4493,6 +4507,14 @@ async function resolveExpiredVotes(supabase, nationId) {
 
         const totalVoted = votesFor + votesAgainst;
 
+        // Emergency minority government penalty: -20% effective YES votes
+        const activeCoalition = await fetchActiveCoalition(supabase, bill.nation_id);
+        let effectiveVotesFor = votesFor;
+        if (activeCoalition?.formation_type === 'emergency_minority') {
+            effectiveVotesFor = Math.floor(votesFor * 0.8);
+            console.log(`[MinorityPenalty] ${bill.bill_name}: votesFor ${votesFor} → ${effectiveVotesFor} (emergency minority -20%)`);
+        }
+
         // Determine pass/fail — re-verify actual votes even if early lock was set,
         // since voters may change their stance between the lock tick and resolution tick
         const isNoConfidence = bill.bill_type === 'no_confidence';
@@ -4502,10 +4524,10 @@ async function resolveExpiredVotes(supabase, nationId) {
             passed = false;
         } else if (bill.bill_type === 'foundational' || bill.bill_type === 'veto_override') {
             // Supermajority bills require their threshold
-            passed = votesFor >= getRequiredSeats(bill.bill_type);
+            passed = effectiveVotesFor >= getRequiredSeats(bill.bill_type);
         } else {
             // All other bills: relative majority — YES > NO passes
-            passed = votesFor > votesAgainst;
+            passed = effectiveVotesFor > votesAgainst;
         }
 
         if (isNoConfidence) {
@@ -6084,17 +6106,27 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
 }
 
 
-// ==================== GOVERNMENT VACANCY PENALTIES ====================
+// ==================== GOVERNMENT VACANCY & FORMATION ESCALATION ====================
 
 /**
- * Process government vacancy penalties for democracies.
+ * Process government vacancy with 3-stage escalation for parliamentary democracies.
  *
- * When a democracy has no active coalition after an election:
- *   - Every tick: -2 approval to ALL parties, -1 stability to nation
- *   - At FORMATION_DEADLINE_TICKS: snap election triggered
- *     - Largest party: -10% approval before snap vote
- *     - Second largest: -5% approval before snap vote
- *     - New election scheduled for next tick
+ * After an election with no majority party:
+ *   Stage 0 — Formation window (ticks 1 to FORMATION_DEADLINE_TICKS):
+ *     - Every tick: -2 momentum to ALL parties, -1 stability to nation
+ *     - Tick 1: notification "Formation underway, N ticks to form coalition"
+ *     - Tick (FORMATION_DEADLINE_TICKS - 1): warning "1 tick remaining"
+ *
+ *   Stage 1 — Snap election (at FORMATION_DEADLINE_TICKS, failed_formation_attempts < 1):
+ *     - Top 2 parties by seats: -6 momentum each
+ *     - Non-responsive coalition invitees: -3 momentum each
+ *     - Snap election scheduled for next tick
+ *     - failed_formation_attempts set to 1
+ *
+ *   Stage 2 — Emergency minority government (at FORMATION_DEADLINE_TICKS, failed_formation_attempts >= 1):
+ *     - Largest party auto-installed as minority government
+ *     - formation_type = 'emergency_minority' (permanent -20% legislative penalty)
+ *     - failed_formation_attempts reset to 0
  *
  * @param {object} supabase    - Supabase client
  * @param {object} nation      - Full nation row
@@ -6104,7 +6136,7 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
 async function processGovernmentVacancy(supabase, nation, currentTick) {
     // Only applies to parliamentary democracies
     if (isAutocracy(nation)) return null;
-    if (isPresidentialRepublic(nation)) return null; // No coalition formation needed
+    if (isPresidentialRepublic(nation)) return null;
 
     // Check for active coalition
     const coalition = await fetchActiveCoalition(supabase, nation.id);
@@ -6124,7 +6156,6 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
         if (overdueElection) {
             const overdueBy = currentTick - overdueElection.election_tick;
             if (overdueBy >= 2) {
-                // Election has been stuck for 2+ ticks — reschedule to next tick
                 await supabase.from('elections')
                     .update({ election_tick: currentTick + 1 })
                     .eq('id', overdueElection.id);
@@ -6136,8 +6167,7 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
 
     if (coalition) return null;
 
-    // Get latest completed election (filter out records without results to avoid
-    // picking up scheduled-turned-completed records that lack election data)
+    // Get latest completed election (filter out records without results)
     const { data: election } = await supabase
         .from('elections')
         .select('id, election_tick, results')
@@ -6151,7 +6181,6 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
     if (!election) return null;
 
     // Check if any party has outright majority (no coalition needed)
-    // Use nation-specific total_seats for correct majority threshold
     const majoritySeatThreshold = Math.floor((nation.total_seats || GAME_CONFIG.TOTAL_SEATS) / 2) + 1;
     const votes = election.results?.votes || [];
     const majorityParty = votes.find(p => p.seats >= majoritySeatThreshold);
@@ -6169,52 +6198,112 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
         stabilityLoss: -1
     };
 
-    // ===== SNAP ELECTION CHECK =====
-    // Doom-loop guard: if the two most recent completed elections happened within
-    // SNAP_COOLDOWN_GAP ticks of each other, the last one was a snap election.
-    // Block further snap elections to prevent an infinite cycle.
-    let snapBlocked = false;
-    if (ticksElapsed >= FORMATION_DEADLINE_TICKS) {
-        const { data: recentElections } = await supabase
-            .from('elections')
-            .select('id, election_tick')
-            .eq('nation_id', nation.id)
-            .eq('status', 'completed')
-            .not('results', 'is', null)
-            .order('election_tick', { ascending: false })
-            .limit(2);
+    // ===== ONGOING PENALTIES (every tick during vacancy) =====
+    const { data: allParties } = await supabase
+        .from('factions')
+        .select('id, faction_name, seats')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party')
+        .order('seats', { ascending: false });
 
-        if (recentElections && recentElections.length >= 2) {
-            const gap = recentElections[0].election_tick - recentElections[1].election_tick;
-            if (gap <= SNAP_COOLDOWN_GAP) {
-                snapBlocked = true;
-                console.log(`SNAP ELECTION COOLDOWN for ${nation.name} — last two elections were ${gap} ticks apart (snap cycle detected). Continuing penalties only.`);
-            }
-        }
+    for (const party of (allParties || [])) {
+        await adjustMomentumAll(supabase, nation.id, party.id, -2, 'government_vacancy:ongoing');
     }
 
-    if (ticksElapsed >= FORMATION_DEADLINE_TICKS && !snapBlocked) {
-        console.log(`SNAP ELECTION triggered for ${nation.name} — ${ticksElapsed} ticks without government`);
+    // -1 stability to nation
+    const newStability = Math.max(0, (nation.stability ?? 50) - 1);
+    await supabase.from('nations')
+        .update({ stability: newStability })
+        .eq('id', nation.id);
+    nation.stability = newStability;
 
-        // Get all parties sorted by seats for penalty targeting
-        const { data: parties } = await supabase
-            .from('factions')
-            .select('id, faction_name, approval_rating, seats')
-            .eq('nation_id', nation.id)
-            .eq('faction_type', 'party')
-            .order('seats', { ascending: false });
+    console.log(`Government vacancy: ${nation.name} tick ${ticksElapsed}/${FORMATION_DEADLINE_TICKS} — all parties -2 momentum, nation -1 stability (→ ${newStability})`);
 
-        if (parties && parties.length > 0) {
-            // Largest party: -10 momentum
-            const largest = parties[0];
-            await adjustMomentumAll(supabase, nation.id, largest.id, -10, 'snap_election:largest_penalty');
-            console.log(`  Snap penalty: ${largest.faction_name} -10 momentum`);
+    // ===== FORMATION WINDOW NOTIFICATIONS =====
+    if (ticksElapsed === 1) {
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'FORMATION_WINDOW_START',
+            description_used: `Coalition formation underway in ${nation.name}. Parties have ${FORMATION_DEADLINE_TICKS} ticks to form a government.`,
+            category: 'POLITICAL',
+            effects_applied: { ticks_remaining: FORMATION_DEADLINE_TICKS, ongoing_penalty: -2 },
+            fired_at_tick: currentTick
+        }).then(({ error }) => {
+            if (error) console.warn('Formation window start event log failed:', error.message);
+        });
+    } else if (ticksElapsed === FORMATION_DEADLINE_TICKS - 1) {
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'FORMATION_DEADLINE_WARNING',
+            description_used: `1 tick remaining before emergency elections in ${nation.name}. Form a coalition now or face snap elections.`,
+            category: 'POLITICAL',
+            effects_applied: { ticks_remaining: 1 },
+            fired_at_tick: currentTick
+        }).then(({ error }) => {
+            if (error) console.warn('Formation deadline warning event log failed:', error.message);
+        });
+    }
 
-            // Second largest: -5 momentum
-            if (parties.length > 1) {
-                const second = parties[1];
-                await adjustMomentumAll(supabase, nation.id, second.id, -5, 'snap_election:second_penalty');
-                console.log(`  Snap penalty: ${second.faction_name} -5 momentum`);
+    // ===== ESCALATION CHECK =====
+    if (ticksElapsed < FORMATION_DEADLINE_TICKS) {
+        return result;
+    }
+
+    const failedAttempts = nation.failed_formation_attempts || 0;
+
+    // ===== STAGE 1: SNAP ELECTION =====
+    if (failedAttempts < 1) {
+        console.log(`STAGE 1: SNAP ELECTION triggered for ${nation.name} — ${ticksElapsed} ticks without government (attempt ${failedAttempts + 1})`);
+
+        // Top 2 parties: -6 momentum each
+        if (allParties && allParties.length > 0) {
+            const largest = allParties[0];
+            await adjustMomentumAll(supabase, nation.id, largest.id, -6, 'formation_failure:top_party');
+            console.log(`  Snap penalty: ${largest.faction_name} -6 momentum`);
+
+            if (allParties.length > 1) {
+                const second = allParties[1];
+                await adjustMomentumAll(supabase, nation.id, second.id, -6, 'formation_failure:top_party');
+                console.log(`  Snap penalty: ${second.faction_name} -6 momentum`);
+            }
+        }
+
+        // Non-responsive invitee penalty: -3 momentum
+        // Find parties invited to formations but never gave support
+        const { data: formations } = await supabase
+            .from('government_formations')
+            .select('id, party_ids, proposed_by')
+            .eq('election_id', election.id)
+            .in('status', ['active', 'rejected', 'expired']);
+
+        if (formations && formations.length > 0) {
+            // Collect all invited parties (from party_ids, excluding the proposer)
+            const invitedPartyIds = new Set();
+            for (const f of formations) {
+                for (const pid of (f.party_ids || [])) {
+                    if (pid !== f.proposed_by) {
+                        invitedPartyIds.add(pid);
+                    }
+                }
+            }
+
+            // Check which invitees gave support to ANY formation in this election
+            const formationIds = formations.map(f => f.id);
+            const { data: supportRecords } = await supabase
+                .from('government_formation_support')
+                .select('faction_id, supports')
+                .in('formation_id', formationIds)
+                .eq('supports', true);
+
+            const respondedPartyIds = new Set((supportRecords || []).map(s => s.faction_id));
+
+            // Penalize non-responsive invitees
+            for (const pid of invitedPartyIds) {
+                if (!respondedPartyIds.has(pid)) {
+                    await adjustMomentumAll(supabase, nation.id, pid, -3, 'formation_failure:non_responsive');
+                    const partyName = allParties?.find(p => p.id === pid)?.faction_name || pid;
+                    console.log(`  Non-responsive penalty: ${partyName} -3 momentum`);
+                }
             }
         }
 
@@ -6241,66 +6330,160 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
             console.log(`  Scheduled snap election for tick ${currentTick + 1}`);
         }
 
-        // Log the snap election event
+        // Increment failed formation attempts
+        await supabase.from('nations')
+            .update({ failed_formation_attempts: failedAttempts + 1 })
+            .eq('id', nation.id);
+        nation.failed_formation_attempts = failedAttempts + 1;
+
+        // Log event
         await supabase.from('event_log').insert({
             nation_id: nation.id,
-            event_name: 'SNAP_ELECTION',
-            description_used: `Snap election called in ${nation.name} after ${ticksElapsed} ticks without a government.`,
+            event_name: 'FORMATION_SNAP_ELECTION',
+            description_used: `Snap election called in ${nation.name} after coalition formation failed. Parties had ${FORMATION_DEADLINE_TICKS} ticks to negotiate.`,
             category: 'POLITICAL',
             effects_applied: {
-                largest_party: parties?.[0]?.faction_name,
-                largest_penalty: -10,
-                second_party: parties?.[1]?.faction_name,
-                second_penalty: -5,
-                ticks_without_gov: ticksElapsed
+                stage: 1,
+                largest_party: allParties?.[0]?.faction_name,
+                second_party: allParties?.[1]?.faction_name,
+                top_party_penalty: -6,
+                ticks_without_gov: ticksElapsed,
+                failed_attempts: failedAttempts + 1
             },
             fired_at_tick: currentTick
         }).then(({ error }) => {
-            if (error) console.warn('Snap election event log failed:', error.message);
+            if (error) console.warn('Formation snap election event log failed:', error.message);
         });
+
+        // Fire system notification
+        try {
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: 'formation_snap_election',
+                p_nation_id: nation.id,
+                p_tick: currentTick,
+                p_placeholders: {
+                    nation: nation.name,
+                    ticks: String(ticksElapsed)
+                }
+            });
+        } catch (e) {
+            console.warn('fire_system_event (formation_snap_election) failed:', e.message);
+        }
 
         result.snapElection = true;
         result.snapTick = currentTick + 1;
+        result.stage = 1;
         return result;
     }
 
-    // ===== ONGOING PENALTIES =====
-    // -2 momentum to ALL parties
-    const { data: parties } = await supabase
-        .from('factions')
-        .select('id, faction_name')
-        .eq('nation_id', nation.id)
-        .eq('faction_type', 'party');
+    // ===== STAGE 2: EMERGENCY MINORITY GOVERNMENT =====
+    console.log(`STAGE 2: EMERGENCY MINORITY GOVERNMENT for ${nation.name} — second formation window expired`);
 
-    for (const party of (parties || [])) {
-        await adjustMomentumAll(supabase, nation.id, party.id, -2, 'government_vacancy:ongoing');
-    }
-
-    // -1 stability to nation
-    const newStability = Math.max(0, (nation.stability ?? 50) - 1);
-    await supabase.from('nations')
-        .update({ stability: newStability })
-        .eq('id', nation.id);
-
-    // Update in-memory nation object for downstream processors
-    nation.stability = newStability;
-
-    console.log(`Government vacancy: ${nation.name} tick ${ticksElapsed}/${FORMATION_DEADLINE_TICKS} — all parties -2 approval, nation -1 stability (→ ${newStability})`);
-
-    if (snapBlocked) {
-        await supabase.from('event_log').insert({
-            nation_id: nation.id,
-            event_name: 'SNAP_ELECTION_COOLDOWN',
-            description_used: `Snap election cooldown in ${nation.name}. ${ticksElapsed} ticks without government; previous snap too recent.`,
-            category: 'POLITICAL',
-            effects_applied: { ticks_without_gov: ticksElapsed, snap_blocked: true },
-            fired_at_tick: currentTick
-        }).then(({ error }) => {
-            if (error) console.warn('Snap cooldown event log failed:', error.message);
+    // Identify largest party (tiebreak: higher total votes from election, then lower faction_id)
+    const electionVotes = election.results?.votes || [];
+    let largestParty = null;
+    if (allParties && allParties.length > 0) {
+        // Sort by seats DESC, then total_votes DESC, then faction_id ASC
+        const partiesWithVotes = allParties.map(p => {
+            const voteRecord = electionVotes.find(v => v.party_id === p.id);
+            return { ...p, total_votes: voteRecord?.total_votes || 0 };
         });
-        result.snapBlocked = true;
+        partiesWithVotes.sort((a, b) => {
+            if (b.seats !== a.seats) return b.seats - a.seats;
+            if (b.total_votes !== a.total_votes) return b.total_votes - a.total_votes;
+            return a.id < b.id ? -1 : 1; // lower UUID first
+        });
+        largestParty = partiesWithVotes[0];
     }
 
+    if (!largestParty) {
+        console.error(`EMERGENCY MINORITY: No parties found for ${nation.name} — cannot form government`);
+        return result;
+    }
+
+    console.log(`  Installing ${largestParty.faction_name} as emergency minority government`);
+
+    // Create government_formations record
+    const { data: emergencyGov, error: govError } = await supabase
+        .from('government_formations')
+        .insert({
+            nation_id: nation.id,
+            election_id: election.id,
+            proposed_by: largestParty.id,
+            party_ids: [largestParty.id],
+            status: 'formed',
+            formation_type: 'emergency_minority',
+            formed_at: new Date().toISOString(),
+            ministry_assignments: { prime_minister: largestParty.id }
+        })
+        .select()
+        .single();
+
+    if (govError) {
+        console.error(`EMERGENCY MINORITY: Failed to create government formation for ${nation.name}:`, govError.message);
+        return result;
+    }
+
+    // Set ruling faction
+    await supabase.from('nations')
+        .update({
+            ruling_faction_id: largestParty.id,
+            failed_formation_attempts: 0
+        })
+        .eq('id', nation.id);
+    nation.failed_formation_attempts = 0;
+
+    // Create administration record
+    try {
+        const coalitionObj = {
+            id: emergencyGov.id,
+            party_ids: [largestParty.id],
+            lead_party_id: largestParty.id,
+            ministry_allocations: { prime_minister: largestParty.id },
+            status: 'formed',
+            formation_type: 'emergency_minority'
+        };
+        await createAdministration(supabase, nation.id, nation, coalitionObj, allParties || [], currentTick, null, null);
+    } catch (adminErr) {
+        console.warn(`EMERGENCY MINORITY: Administration creation failed for ${nation.name}:`, adminErr.message);
+    }
+
+    // Log event
+    await supabase.from('event_log').insert({
+        nation_id: nation.id,
+        event_name: 'EMERGENCY_MINORITY_GOVERNMENT',
+        description_used: `${largestParty.faction_name} installed as emergency minority government in ${nation.name} after two failed formation windows. Legislative effectiveness reduced by 20%.`,
+        category: 'POLITICAL',
+        effects_applied: {
+            stage: 2,
+            ruling_party: largestParty.faction_name,
+            ruling_party_id: largestParty.id,
+            formation_type: 'emergency_minority',
+            legislative_penalty: '-20%'
+        },
+        fired_at_tick: currentTick
+    }).then(({ error }) => {
+        if (error) console.warn('Emergency minority government event log failed:', error.message);
+    });
+
+    // Fire system notification
+    try {
+        await supabase.rpc('fire_system_event', {
+            p_trigger_key: 'emergency_minority_government',
+            p_nation_id: nation.id,
+            p_tick: currentTick,
+            p_placeholders: {
+                nation: nation.name,
+                party: largestParty.faction_name
+            }
+        });
+    } catch (e) {
+        console.warn('fire_system_event (emergency_minority_government) failed:', e.message);
+    }
+
+    result.emergencyMinority = true;
+    result.rulingParty = largestParty.faction_name;
+    result.stage = 2;
     return result;
 }
 
@@ -6969,20 +7152,21 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
             console.log(`Runoff winner: ${winner.candidate_name} (${winner.party_name}) with ${winner.vote_percentage}% (${nation.name})`);
 
             // Update the election record with combined round data
+            // Replace presidential_candidates with runoff results so the UI shows the final outcome
             const combinedResults = {
                 ...completedElection.results,
+                presidential_candidates: runoffResults,
                 round_1_candidates: candidateResults,
                 runoff_candidates: runoffResults,
+                total_votes_cast: runoffData?.total_votes_cast || completedElection.results?.total_votes_cast,
                 was_runoff: true
             };
-            const runoffUpdateQuery = supabase.from('elections')
-                .update({ results: combinedResults });
-            if (electionId) {
-                await runoffUpdateQuery.eq('id', electionId);
-            } else {
-                // Fallback: target by nation + completed election ID from completedElection
-                await runoffUpdateQuery
-                    .eq('id', completedElection.id);
+            const targetId = electionId || completedElection.id;
+            const { error: runoffUpdateErr } = await supabase.from('elections')
+                .update({ results: combinedResults })
+                .eq('id', targetId);
+            if (runoffUpdateErr) {
+                console.error(`[PresElection] Failed to update election ${targetId} with runoff results for ${nation.name}:`, runoffUpdateErr.message);
             }
         }
     }
@@ -6996,11 +7180,14 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
     const isChallengerWin = incumbentFactionId && winner.faction_id !== incumbentFactionId;
 
     // Deactivate previous president
-    await supabase
+    const { error: deactErr } = await supabase
         .from('presidents')
         .update({ is_active: false })
         .eq('nation_id', nation.id)
         .eq('is_active', true);
+    if (deactErr) {
+        console.error(`[processPresidentialElectionResult] Failed to deactivate previous presidents for ${nation.name}:`, deactErr.message);
+    }
 
     // Close previous administration
     try {
@@ -7018,17 +7205,20 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
         .eq('id', nation.id);
 
     // Look up the winning candidate from pm_candidates by candidate_id
-    const { data: winningCandidate } = await supabase
+    console.log(`[PresElection] Looking up candidate ${winner.candidate_id} for ${winner.candidate_name} (${nation.name})`);
+    const { data: winningCandidate, error: candErr } = await supabase
         .from('pm_candidates')
         .select('*')
         .eq('id', winner.candidate_id)
         .maybeSingle();
+    if (candErr) console.warn(`[PresElection] Candidate lookup error for ${winner.candidate_id}:`, candErr.message);
 
     if (winningCandidate) {
         await inauguratePresident(supabase, winningCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
         console.log(`President inaugurated: ${winner.candidate_name} (${winner.party_name})`);
     } else {
-        // Fallback: candidate may have been cleaned up, try by faction
+        // Fallback 1: candidate may have been cleaned up, try by faction
+        console.warn(`[PresElection] Primary lookup returned null for candidate_id=${winner.candidate_id}, trying faction fallback`);
         const { data: fallbackCandidate } = await supabase
             .from('pm_candidates')
             .select('*')
@@ -7043,12 +7233,27 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
             await inauguratePresident(supabase, fallbackCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
             console.log(`President inaugurated (fallback): ${fallbackCandidate.first_name} ${fallbackCandidate.last_name} (${winner.party_name})`);
         } else {
-            // No candidates at all — generate one and inaugurate immediately
-            console.warn(`No presidential candidate found for winner ${winner.candidate_name} in ${nation.name} — generating emergency candidate`);
+            // Fallback 2: generate fresh candidate
+            console.warn(`[PresElection] Faction fallback also null for ${winner.candidate_name} in ${nation.name} — generating emergency candidate`);
             const emergencyCandidates = await generatePresidentCandidates(supabase, nation.id, winner.faction_id, currentTick, 'presidential');
             if (emergencyCandidates && emergencyCandidates.length > 0) {
                 await inauguratePresident(supabase, emergencyCandidates[0], nation.id, winner.faction_id, currentTick, outgoingPresident);
                 console.log(`Emergency president inaugurated: ${emergencyCandidates[0].first_name} ${emergencyCandidates[0].last_name}`);
+            } else {
+                // Fallback 3 (last resort): create president directly from election result data
+                // This ensures a president is ALWAYS created after a presidential election
+                console.error(`[PresElection] ALL candidate lookups failed for ${winner.candidate_name} in ${nation.name} — direct inauguration from election data`);
+                const directCandidate = {
+                    first_name: winner.candidate_name?.split(' ')[0] || 'Unknown',
+                    last_name: winner.candidate_name?.split(' ').slice(1).join(' ') || 'President',
+                    age: 50,
+                    ideology: winner.ideology || 'PROGRESS',
+                    trait_key: winner.trait_key || null,
+                    ideology_axis: 'tradition_progress',
+                    ideology_direction: 1
+                };
+                await inauguratePresident(supabase, directCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident);
+                console.log(`Direct president inaugurated from election data: ${directCandidate.first_name} ${directCandidate.last_name}`);
             }
         }
     }
@@ -7139,10 +7344,13 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
  */
 async function inauguratePresident(supabase, candidate, nationId, factionId, currentTick, outgoingPresident = null) {
     // Deactivate any previous president
-    await supabase.from('presidents')
+    const { error: deactErr } = await supabase.from('presidents')
         .update({ is_active: false })
         .eq('nation_id', nationId)
         .eq('is_active', true);
+    if (deactErr) {
+        console.error(`[inauguratePresident] Failed to deactivate previous presidents for ${nationId}:`, deactErr.message);
+    }
 
     // Look up trait data for trait_upside / trait_downside
     const { data: trait } = await supabase.from('leader_traits').select('*').eq('trait_key', candidate.trait_key).maybeSingle();

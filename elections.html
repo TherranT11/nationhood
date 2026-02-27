@@ -1534,6 +1534,11 @@ async function formGovernment() {
             // Exclude the new formation so it isn't dissolved along with the old one
             await dissolveCoalition(_supabase, currentNation.id, activeFormationId);
 
+            // Reset formation failure counter (proper coalition formed)
+            await _supabase.from('nations')
+                .update({ failed_formation_attempts: 0 })
+                .eq('id', currentNation.id);
+
             // Cancel any other active formation proposals for this nation
             await _supabase.from('government_formations')
                 .update({ status: 'cancelled' })

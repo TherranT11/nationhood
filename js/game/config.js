@@ -46,8 +46,8 @@ export function initGameConfigForNation(nation) {
     }
 }
 
-export const FORMATION_DEADLINE_TICKS = 6; // ticks before snap election when no government
-export const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 8 — if two elections are this close, it's a snap cycle
+export const FORMATION_DEADLINE_TICKS = 3; // ticks per formation window before escalation
+export const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 5 — general snap cycle guard (overridden by formation escalation)
 
 /**
  * Atomic AP deduction via database RPC.

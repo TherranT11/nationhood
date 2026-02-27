@@ -9,6 +9,7 @@ import { DIPLOMACY_CONFIG } from './diplomacy-constants.js';
 import { IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology } from './ideology.js';
 import { adjustMomentumAll } from './momentum.js';
 import { resolveBudgetBill } from './budget.js';
+import { fetchActiveCoalition } from './government-structure.js';
 import { resolveNoConfidence } from './elections.js';
 import { PM_FIRST_NAMES, PM_LAST_NAMES } from './political-actions.js';
 import { allocateSeatsByVotes } from './election-simulation.js';
@@ -594,6 +595,10 @@ export async function checkEarlyMajority(supabase, nationId) {
     const quorumSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.QUORUM_THRESHOLD);
     const results = [];
 
+    // Check for emergency minority government penalty (once per nation per tick)
+    const earlyCoalition = await fetchActiveCoalition(supabase, nationId);
+    const minorityPenalty = earlyCoalition?.formation_type === 'emergency_minority';
+
     for (const bill of activeBills) {
         let yesSeats = 0, noSeats = 0;
         (bill.bill_support || []).forEach(s => {
@@ -602,6 +607,12 @@ export async function checkEarlyMajority(supabase, nationId) {
             else if (stance === 'no') noSeats += s.seat_count;
         });
 
+        // Apply emergency minority penalty to effective YES votes
+        let effectiveYes = yesSeats;
+        if (minorityPenalty) {
+            effectiveYes = Math.floor(yesSeats * 0.8);
+        }
+
         let earlyStatus = null;
         const totalVoted = yesSeats + noSeats;
         const undeclaredSeats = GAME_CONFIG.TOTAL_SEATS - totalVoted;
@@ -609,16 +620,19 @@ export async function checkEarlyMajority(supabase, nationId) {
         // ── Check 1: Mathematical lock (outcome impossible to change) ──
         if (isSimpleMajorityBill(bill.bill_type)) {
             // Locked YES: even if ALL undeclared vote NO, YES still wins.
-            if (yesSeats > noSeats + undeclaredSeats) {
+            // Use effectiveYes for the minority penalty
+            if (effectiveYes > noSeats + undeclaredSeats) {
                 earlyStatus = 'majority_reached';
-            // Locked NO: even if ALL undeclared vote YES, NO still wins/ties.
-            } else if (noSeats >= yesSeats + undeclaredSeats) {
+            // Locked NO: even if ALL undeclared vote YES (with penalty), NO still wins/ties.
+            } else if (minorityPenalty
+                ? noSeats >= Math.floor((yesSeats + undeclaredSeats) * 0.8)
+                : noSeats >= yesSeats + undeclaredSeats) {
                 earlyStatus = 'majority_opposed';
             }
         } else {
             // Supermajority: fixed seat threshold
             const requiredSeats = getRequiredSeats(bill.bill_type);
-            if (yesSeats >= requiredSeats) {
+            if (effectiveYes >= requiredSeats) {
                 earlyStatus = 'majority_reached';
             } else if (noSeats > GAME_CONFIG.TOTAL_SEATS - requiredSeats) {
                 earlyStatus = 'majority_opposed';
@@ -631,15 +645,15 @@ export async function checkEarlyMajority(supabase, nationId) {
         // Gives remaining parties a 1-tick grace period to cast their vote.
         if (!earlyStatus && totalVoted >= quorumSeats) {
             if (isSimpleMajorityBill(bill.bill_type)) {
-                if (yesSeats > noSeats) {
+                if (effectiveYes > noSeats) {
                     earlyStatus = 'quorum_reached';
-                } else if (noSeats > yesSeats) {
+                } else if (noSeats > effectiveYes) {
                     earlyStatus = 'quorum_opposed';
                 }
                 // Exact tie at quorum: wait for more votes or deadline
             } else {
                 const requiredSeats = getRequiredSeats(bill.bill_type);
-                if (yesSeats >= requiredSeats) {
+                if (effectiveYes >= requiredSeats) {
                     earlyStatus = 'quorum_reached';
                 } else {
                     earlyStatus = 'quorum_opposed';
@@ -706,6 +720,14 @@ export async function resolveExpiredVotes(supabase, nationId) {
 
         const totalVoted = votesFor + votesAgainst;
 
+        // Emergency minority government penalty: -20% effective YES votes
+        const activeCoalition = await fetchActiveCoalition(supabase, bill.nation_id);
+        let effectiveVotesFor = votesFor;
+        if (activeCoalition?.formation_type === 'emergency_minority') {
+            effectiveVotesFor = Math.floor(votesFor * 0.8);
+            console.log(`[MinorityPenalty] ${bill.bill_name}: votesFor ${votesFor} → ${effectiveVotesFor} (emergency minority -20%)`);
+        }
+
         // Determine pass/fail — re-verify actual votes even if early lock was set,
         // since voters may change their stance between the lock tick and resolution tick
         const isNoConfidence = bill.bill_type === 'no_confidence';
@@ -715,10 +737,10 @@ export async function resolveExpiredVotes(supabase, nationId) {
             passed = false;
         } else if (bill.bill_type === 'foundational' || bill.bill_type === 'veto_override') {
             // Supermajority bills require their threshold
-            passed = votesFor >= getRequiredSeats(bill.bill_type);
+            passed = effectiveVotesFor >= getRequiredSeats(bill.bill_type);
         } else {
             // All other bills: relative majority — YES > NO passes
-            passed = votesFor > votesAgainst;
+            passed = effectiveVotesFor > votesAgainst;
         }
 
         if (isNoConfidence) {

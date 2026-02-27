@@ -190,6 +190,7 @@ export async function fetchActiveCoalition(supabase, nationId) {
             ministry_allocations: newGov.ministry_assignments || {},
             formed_at: newGov.formed_at,
             status: newGov.status,
+            formation_type: newGov.formation_type || 'coalition',
             _source: 'government_formations'
         };
         await inferCaretakerStatus(result);
