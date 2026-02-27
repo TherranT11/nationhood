@@ -548,39 +548,22 @@ export function showLoading(containerId = 'content-area') {
 
 // ===== POPULATION GROWTH CALCULATION =====
 //
-// Population growth is derived from two components:
-//   1. Natural growth:  birth_rate - death_rate   (60% weight)
-//   2. Migration:       immigration - emigration  (40% weight)
+// Population growth base is derived from birth_rate - death_rate.
+// Policies and crises can shift population_growth up or down from this base.
 //
-// A standard-of-living modifier applies a slight demographic-transition
-// drag (high SoL = slower growth, low SoL = faster growth, ~5pt max).
-//
-// population_growth is a 0-100 stat where 50 = equilibrium.
-// It then drives actual population change at up to +/- 1% per tick.
+// population_growth is a 0-100 stat where:
+//   0   = max population decline (-1% per tick)
+//   50  = equilibrium (no change)
+//   100 = max population growth  (+1% per tick)
 
 export function calculatePopulationGrowth(nation) {
     const birthRate = Number(nation.birth_rate ?? 50);
     const deathRate = Number(nation.death_rate ?? 50);
-    const immigration = Number(nation.immigration ?? 50);
-    const emigration = Number(nation.emigration ?? 50);
-    const sol = Number(nation.standard_of_living ?? 50);
 
-    // Component deltas: each ranges -100 to +100
-    const natural = birthRate - deathRate;
-    const migration = immigration - emigration;
+    // Base: maps (birth_rate - death_rate) from -100..+100 onto 0..100
+    const base = 50 + (birthRate - deathRate) / 2;
 
-    // Weighted blend (60% natural, 40% migration)
-    const raw = natural * 0.6 + migration * 0.4;
-
-    // Standard-of-living modifier: demographic transition effect
-    // At SoL 50 = no effect. At SoL 80 = -3pt drag. At SoL 20 = +3pt boost.
-    const solModifier = ((50 - sol) / 50) * 5;
-
-    // Map to 0-100 scale. Divide by 4 to keep values in a playable range:
-    // e.g. birth=80, death=20 (delta=60) -> 50 + (60*0.6)/4 = 59
-    const growth = 50 + (raw / 4) + solModifier;
-
-    return Math.round(Math.max(0, Math.min(100, growth)));
+    return Math.round(Math.max(0, Math.min(100, base)) * 10) / 10;
 }
 
 export function calculatePopulationChange(population, growthScore, maxRate = 0.01) {
