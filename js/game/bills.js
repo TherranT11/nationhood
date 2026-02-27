@@ -35,18 +35,20 @@ export async function syncVoteTallies(supabase, billId) {
         .select('stance, seat_count')
         .eq('bill_id', billId);
 
-    let votesFor = 0, votesAgainst = 0;
+    let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
     (allVotes || []).forEach(v => {
-        if (v.stance === 'yes')       votesFor += v.seat_count;
-        else if (v.stance === 'no')   votesAgainst += v.seat_count;
+        if (v.stance === 'yes')            votesFor += v.seat_count;
+        else if (v.stance === 'no')        votesAgainst += v.seat_count;
+        else if (v.stance === 'abstain')   votesAbstain += v.seat_count;
     });
 
     await supabase.from('bills').update({
         votes_for: votesFor,
-        votes_against: votesAgainst
+        votes_against: votesAgainst,
+        votes_abstain: votesAbstain
     }).eq('id', billId);
 
-    return { votesFor, votesAgainst };
+    return { votesFor, votesAgainst, votesAbstain };
 }
 
 
@@ -504,11 +506,20 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
 // ==================== BILL RESOLUTION ENGINE ====================
 
 /**
- * Returns true if this bill type uses simple/relative majority (YES > NO)
- * rather than an absolute seat threshold.
+ * Returns true if this bill type uses quorum + simple majority (YES > NO of
+ * votes cast) rather than an absolute seat threshold.
+ *
+ * Absolute-threshold types (return false):
+ *   - foundational / veto_override: 67% of total seats
+ *   - no_confidence / impeachment_motion: 50%+1 of total seats
+ *   - impeachment_conviction: 67% of total seats
  */
 export function isSimpleMajorityBill(billType) {
-    return billType !== 'foundational' && billType !== 'veto_override';
+    return billType !== 'foundational'
+        && billType !== 'veto_override'
+        && billType !== 'no_confidence'
+        && billType !== 'impeachment_motion'
+        && billType !== 'impeachment_conviction';
 }
 
 /**
@@ -523,12 +534,137 @@ export function isSimpleMajorityBill(billType) {
  * absolute half-chamber number for backward compat.
  */
 export function getRequiredSeats(billType, votesAgainst) {
-    if (billType === 'foundational')
+    if (billType === 'foundational' || billType === 'impeachment_conviction')
         return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD);
     if (billType === 'veto_override')
         return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
+    if (billType === 'no_confidence' || billType === 'impeachment_motion')
+        return Math.floor(GAME_CONFIG.TOTAL_SEATS / 2) + 1;
+    // Ordinary bills: simple majority of votes cast
     if (votesAgainst != null) return votesAgainst + 1;
     return GAME_CONFIG.MAJORITY_SEATS;
+}
+
+/**
+ * Evaluate the current state of a bill vote using the two-step quorum + majority system.
+ *
+ * Returns an object describing the vote status:
+ *   { status, reason, quorumMet, quorumNeeded, quorumCurrent, thresholdNeeded, ... }
+ *
+ * Status values:
+ *   'will_pass'      — mathematically locked in, cannot change
+ *   'will_fail'      — mathematically impossible to pass
+ *   'passing'        — quorum met, yes currently leads, but not locked
+ *   'failing'        — quorum met, no currently leads, but not locked
+ *   'tied'           — quorum met, yes === no
+ *   'quorum_not_met' — not enough participation yet
+ *   'pending'        — for absolute-threshold bills, in progress
+ *
+ * @param {object} bill - Bill with votes_for, votes_against, votes_abstain, bill_type
+ * @param {number} totalSeats - Total parliamentary seats (from nation)
+ */
+export function evaluateBillVote(bill, totalSeats) {
+    const forSeats = bill.votes_for || 0;
+    const againstSeats = bill.votes_against || 0;
+    const abstainSeats = bill.votes_abstain || 0;
+    const participating = forSeats + againstSeats + abstainSeats;
+    const undeclaredSeats = totalSeats - participating;
+    const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
+
+    // ── Foundational / veto_override / impeachment_conviction: 67% absolute supermajority, no quorum ──
+    if (bill.bill_type === 'foundational' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
+        const threshold = Math.ceil(totalSeats * 2 / 3);
+        if (forSeats >= threshold) {
+            return { status: 'will_pass', reason: 'supermajority_reached', thresholdNeeded: threshold, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
+        }
+        if (forSeats + undeclaredSeats < threshold) {
+            return { status: 'will_fail', reason: 'supermajority_impossible', thresholdNeeded: threshold, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
+        }
+        return { status: 'pending', reason: 'supermajority_in_progress', thresholdNeeded: threshold, neededFor: threshold - forSeats, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
+    }
+
+    // ── Impeachment motion / confidence: 50%+1 absolute majority, no quorum ──
+    if (bill.bill_type === 'impeachment_motion' || bill.bill_type === 'no_confidence') {
+        const threshold = Math.floor(totalSeats / 2) + 1;
+        if (forSeats >= threshold) {
+            return { status: 'will_pass', reason: 'absolute_majority_reached', thresholdNeeded: threshold, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
+        }
+        if (forSeats + undeclaredSeats < threshold) {
+            return { status: 'will_fail', reason: 'absolute_majority_impossible', thresholdNeeded: threshold, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
+        }
+        return { status: 'pending', reason: 'absolute_majority_in_progress', thresholdNeeded: threshold, neededFor: threshold - forSeats, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
+    }
+
+    // ── Ordinary bills: quorum (50% participation) + simple majority of votes cast ──
+    const quorumMet = participating >= quorumThreshold;
+
+    if (!quorumMet) {
+        // Check if quorum is even possible
+        if (participating + undeclaredSeats < quorumThreshold) {
+            return { status: 'will_fail', reason: 'quorum_impossible', quorumMet: false, quorumThreshold, quorumCurrent: participating, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
+        }
+        return { status: 'quorum_not_met', reason: 'awaiting_quorum', quorumMet: false, quorumThreshold, quorumCurrent: participating, quorumNeeded: quorumThreshold - participating, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
+    }
+
+    // Quorum met — check simple majority of votes cast (yes vs no, abstain excluded)
+    // "Will Pass": yes > no AND yes > no + all_undeclared (locked)
+    if (forSeats > againstSeats + undeclaredSeats) {
+        return { status: 'will_pass', reason: 'majority_locked', quorumMet: true, quorumThreshold, quorumCurrent: participating, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
+    }
+    // "Will Fail": against >= for + all_undeclared (locked) — even all undeclared voting yes can't flip it
+    if (againstSeats >= forSeats + undeclaredSeats) {
+        return { status: 'will_fail', reason: 'defeat_locked', quorumMet: true, quorumThreshold, quorumCurrent: participating, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
+    }
+    // Not locked — show current leader
+    if (forSeats > againstSeats) {
+        return { status: 'passing', reason: 'majority_current', quorumMet: true, quorumThreshold, quorumCurrent: participating, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
+    }
+    if (againstSeats > forSeats) {
+        return { status: 'failing', reason: 'minority_current', quorumMet: true, quorumThreshold, quorumCurrent: participating, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
+    }
+    // Exact tie: bill will fail unless more yes votes are cast
+    return { status: 'tied', reason: 'tied_votes', quorumMet: true, quorumThreshold, quorumCurrent: participating, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
+}
+
+/**
+ * Resolve a bill vote at deadline (or early resolution).
+ * Returns: 'passed', 'failed', 'failed_no_quorum', or 'deferred'.
+ *
+ * @param {object} bill - Bill row with votes_for, votes_against, votes_abstain, bill_type, quorum_failures
+ * @param {number} totalSeats - Total parliamentary seats
+ */
+export function resolveBillVote(bill, totalSeats) {
+    const forSeats = bill.votes_for || 0;
+    const againstSeats = bill.votes_against || 0;
+    const abstainSeats = bill.votes_abstain || 0;
+    const participating = forSeats + againstSeats + abstainSeats;
+    const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
+
+    // Foundational / veto_override / impeachment_conviction: 67% absolute supermajority
+    if (bill.bill_type === 'foundational' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
+        const threshold = Math.ceil(totalSeats * 2 / 3);
+        return forSeats >= threshold ? 'passed' : 'failed';
+    }
+
+    // No-confidence / impeachment_motion: 50%+1 absolute majority
+    if (bill.bill_type === 'no_confidence' || bill.bill_type === 'impeachment_motion') {
+        const threshold = Math.floor(totalSeats / 2) + 1;
+        return forSeats >= threshold ? 'passed' : 'failed';
+    }
+
+    // Ordinary bills: quorum + simple majority
+    if (participating < quorumThreshold) {
+        if ((bill.quorum_failures || 0) >= 1) {
+            return 'failed_no_quorum'; // second failure, bill dies
+        }
+        return 'deferred'; // first failure, extend by 1 tick
+    }
+
+    // All abstain edge case: 0 yes, 0 no → bill fails (need affirmative support)
+    if (forSeats === 0 && againstSeats === 0) return 'failed';
+
+    // Ties fail — status quo wins
+    return forSeats > againstSeats ? 'passed' : 'failed';
 }
 
 /**
@@ -600,11 +736,12 @@ export async function checkEarlyMajority(supabase, nationId) {
     const minorityPenalty = earlyCoalition?.formation_type === 'emergency_minority';
 
     for (const bill of activeBills) {
-        let yesSeats = 0, noSeats = 0;
+        let yesSeats = 0, noSeats = 0, abstainSeats = 0;
         (bill.bill_support || []).forEach(s => {
             const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
             if (stance === 'yes') yesSeats += s.seat_count;
             else if (stance === 'no') noSeats += s.seat_count;
+            else if (stance === 'abstain') abstainSeats += s.seat_count;
         });
 
         // Apply emergency minority penalty to effective YES votes
@@ -614,50 +751,53 @@ export async function checkEarlyMajority(supabase, nationId) {
         }
 
         let earlyStatus = null;
-        const totalVoted = yesSeats + noSeats;
-        const undeclaredSeats = GAME_CONFIG.TOTAL_SEATS - totalVoted;
+        const participating = yesSeats + noSeats + abstainSeats;
+        const undeclaredSeats = GAME_CONFIG.TOTAL_SEATS - participating;
 
         // ── Check 1: Mathematical lock (outcome impossible to change) ──
-        if (isSimpleMajorityBill(bill.bill_type)) {
-            // Locked YES: even if ALL undeclared vote NO, YES still wins.
-            // Use effectiveYes for the minority penalty
+        if (bill.bill_type === 'foundational' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
+            // Absolute supermajority: 67% of total seats, no quorum
+            const requiredSeats = getRequiredSeats(bill.bill_type);
+            if (effectiveYes >= requiredSeats) {
+                earlyStatus = 'majority_reached';
+            } else if (effectiveYes + undeclaredSeats < requiredSeats) {
+                earlyStatus = 'majority_opposed';
+            }
+        } else if (bill.bill_type === 'no_confidence' || bill.bill_type === 'impeachment_motion') {
+            // Absolute majority: 50%+1 of total seats, no quorum
+            const threshold = Math.floor(GAME_CONFIG.TOTAL_SEATS / 2) + 1;
+            if (effectiveYes >= threshold) {
+                earlyStatus = 'majority_reached';
+            } else if (effectiveYes + undeclaredSeats < threshold) {
+                earlyStatus = 'majority_opposed';
+            }
+        } else {
+            // Ordinary bill: quorum (50% participation) + simple majority of votes cast
+            // Math-lock: YES wins even if all undeclared vote NO
             if (effectiveYes > noSeats + undeclaredSeats) {
                 earlyStatus = 'majority_reached';
-            // Locked NO: even if ALL undeclared vote YES (with penalty), NO still wins/ties.
+            // Math-lock: NO wins/ties even if all undeclared vote YES
             } else if (minorityPenalty
                 ? noSeats >= Math.floor((yesSeats + undeclaredSeats) * 0.8)
                 : noSeats >= yesSeats + undeclaredSeats) {
                 earlyStatus = 'majority_opposed';
             }
-        } else {
-            // Supermajority: fixed seat threshold
-            const requiredSeats = getRequiredSeats(bill.bill_type);
-            if (effectiveYes >= requiredSeats) {
-                earlyStatus = 'majority_reached';
-            } else if (noSeats > GAME_CONFIG.TOTAL_SEATS - requiredSeats) {
-                earlyStatus = 'majority_opposed';
-            }
         }
 
-        // ── Check 2: Quorum-based early resolution ──
-        // If not math-locked but quorum (60% of seats) has voted,
-        // resolve based on the majority among those who voted.
-        // Gives remaining parties a 1-tick grace period to cast their vote.
-        if (!earlyStatus && totalVoted >= quorumSeats) {
-            if (isSimpleMajorityBill(bill.bill_type)) {
+        // ── Check 2: Quorum-based early resolution (ordinary bills only) ──
+        // If not math-locked but quorum is met and a clear majority exists,
+        // trigger early resolution with a 1-tick grace period.
+        if (!earlyStatus && participating >= quorumSeats) {
+            if (bill.bill_type !== 'foundational' && bill.bill_type !== 'veto_override'
+                && bill.bill_type !== 'no_confidence' && bill.bill_type !== 'impeachment_motion'
+                && bill.bill_type !== 'impeachment_conviction') {
+                // Ordinary bill: simple majority of votes cast
                 if (effectiveYes > noSeats) {
                     earlyStatus = 'quorum_reached';
                 } else if (noSeats > effectiveYes) {
                     earlyStatus = 'quorum_opposed';
                 }
                 // Exact tie at quorum: wait for more votes or deadline
-            } else {
-                const requiredSeats = getRequiredSeats(bill.bill_type);
-                if (effectiveYes >= requiredSeats) {
-                    earlyStatus = 'quorum_reached';
-                } else {
-                    earlyStatus = 'quorum_opposed';
-                }
             }
         }
 
@@ -706,19 +846,19 @@ export async function resolveExpiredVotes(supabase, nationId) {
     for (const bill of expiredBills) {
         const { data: nation } = await supabase
             .from('nations')
-            .select('name, government_type')
+            .select('name, government_type, total_seats')
             .eq('id', bill.nation_id)
             .single();
-        let votesFor = 0, votesAgainst = 0;
+        const totalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+        let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
 
         (bill.bill_support || []).forEach(s => {
             // Normalize committee stances: 'accept' → 'yes', 'reject' → 'no'
             const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
             if (stance === 'yes') votesFor += s.seat_count;
             else if (stance === 'no') votesAgainst += s.seat_count;
+            else if (stance === 'abstain') votesAbstain += s.seat_count;
         });
-
-        const totalVoted = votesFor + votesAgainst;
 
         // Emergency minority government penalty: -20% effective YES votes
         const activeCoalition = await fetchActiveCoalition(supabase, bill.nation_id);
@@ -728,20 +868,75 @@ export async function resolveExpiredVotes(supabase, nationId) {
             console.log(`[MinorityPenalty] ${bill.bill_name}: votesFor ${votesFor} → ${effectiveVotesFor} (emergency minority -20%)`);
         }
 
-        // Determine pass/fail — re-verify actual votes even if early lock was set,
-        // since voters may change their stance between the lock tick and resolution tick
+        // Determine pass/fail using new quorum + majority system
+        // Build a bill-like object with effective votes for the resolve function
+        const resolveBill = {
+            ...bill,
+            votes_for: effectiveVotesFor,
+            votes_against: votesAgainst,
+            votes_abstain: votesAbstain,
+            quorum_failures: bill.quorum_failures || 0
+        };
+        const resolution = resolveBillVote(resolveBill, totalSeats);
+
+        // Handle quorum deferral: extend vote by 1 tick
+        if (resolution === 'deferred') {
+            const newDeadline = currentTick + 1;
+            await supabase.from('bills').update({
+                quorum_failures: (bill.quorum_failures || 0) + 1,
+                voting_ends_tick: newDeadline
+            }).eq('id', bill.id);
+
+            // Notify all party leaders about quorum failure
+            const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
+            const participating = votesFor + votesAgainst + votesAbstain;
+            try {
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'quorum_failed',
+                    p_nation_id: bill.nation_id,
+                    p_tick: currentTick,
+                    p_placeholders: {
+                        bill_name: bill.bill_name,
+                        participating: String(participating),
+                        quorum_needed: String(quorumThreshold),
+                        nation: nation?.name || 'Unknown'
+                    }
+                });
+            } catch (e) { /* non-blocking if event key doesn't exist yet */ }
+
+            console.log(`[resolveExpiredVotes] ${bill.bill_name}: quorum not met (${participating}/${quorumThreshold}), deferred to tick ${newDeadline}`);
+            results.push({ billId: bill.id, billName: bill.bill_name, result: 'deferred', votesFor, votesAgainst, votesAbstain, type: bill.bill_type });
+            continue;
+        }
+
+        // Handle second quorum failure: bill dies
+        if (resolution === 'failed_no_quorum') {
+            await failBill(supabase, bill);
+            const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
+            const participating = votesFor + votesAgainst + votesAbstain;
+            try {
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'bill_failed',
+                    p_nation_id: bill.nation_id,
+                    p_tick: currentTick,
+                    p_placeholders: {
+                        nation: nation?.name || 'Unknown',
+                        bill_name: bill.bill_name,
+                        sponsor: bill.factions?.faction_name || 'Unknown',
+                        votes_for: String(votesFor),
+                        votes_against: String(votesAgainst),
+                        reason: `quorum not met after two attempts (${participating}/${quorumThreshold} participating)`
+                    }
+                });
+            } catch (e) { /* non-blocking */ }
+            console.log(`[resolveExpiredVotes] ${bill.bill_name}: quorum failed twice (${participating}/${quorumThreshold}), bill dies`);
+            results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_no_quorum', votesFor, votesAgainst, votesAbstain, type: bill.bill_type });
+            continue;
+        }
+
+        const passed = resolution === 'passed';
         const isNoConfidence = bill.bill_type === 'no_confidence';
         const isFoundational = bill.bill_type === 'foundational';
-        let passed;
-        if (totalVoted === 0) {
-            passed = false;
-        } else if (bill.bill_type === 'foundational' || bill.bill_type === 'veto_override') {
-            // Supermajority bills require their threshold
-            passed = effectiveVotesFor >= getRequiredSeats(bill.bill_type);
-        } else {
-            // All other bills: relative majority — YES > NO passes
-            passed = effectiveVotesFor > votesAgainst;
-        }
 
         if (isNoConfidence) {
             // Handle no-confidence resolution (pass or fail)

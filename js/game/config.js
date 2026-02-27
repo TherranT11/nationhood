@@ -9,7 +9,7 @@ export const GAME_CONFIG = {
     TOTAL_SEATS: 120,
     MAJORITY_SEATS: 61,
     VOTING_WINDOW_TICKS: 6,
-    QUORUM_THRESHOLD: 0.6,           // 60% of seats must vote before quorum-based early resolution
+    QUORUM_THRESHOLD: 0.5,           // 50% of seats must participate (yes+no+abstain) for quorum
     COMMITTEE_EXPIRY_TICKS: 6,
     DRAFT_BILL_AP_COST: 2,
     VETO_APPROVAL_COST: 3,
