@@ -2394,19 +2394,35 @@ const GOVERNMENT_SHUTDOWN_CRISIS_ID = '00000000-0000-0000-0000-000000000001';
 
 /**
  * Check if a government shutdown is active for this nation.
- * Shutdown triggers when 2+ ticks have passed since the budget expired
- * (i.e., ticksSinceLastBudget >= TICKS_PER_YEAR + 2).
+ * Shutdown triggers when there is an open Budget Bill (committee or floor)
+ * that has been sitting unresolved for at least 2 ticks.
+ * Ends automatically when the Budget Bill is passed (no open budget bills remain).
  *
- * @returns {boolean} true if shutdown is active
+ * @returns {{ active: boolean, openBillId?: string, ticksOpen?: number }}
  */
-function isGovernmentShutdown(nation, currentTick) {
-    // Grace period: no shutdown in the first fiscal year + 2 ticks
-    if (currentTick < GAME_CONFIG.TICKS_PER_YEAR + 2) return false;
+async function isGovernmentShutdown(supabase, nation, currentTick) {
+    // Find the oldest open budget bill for this nation
+    const { data: openBudgetBills } = await supabase
+        .from('bills')
+        .select('id, proposed_tick')
+        .eq('nation_id', nation.id)
+        .eq('bill_type', 'budget')
+        .in('status', ['committee', 'floor'])
+        .order('proposed_tick', { ascending: true })
+        .limit(1);
 
-    const lastBudgetTick = nation.last_budget_tick;
-    const ticksSinceLastBudget = lastBudgetTick != null ? (currentTick - lastBudgetTick) : currentTick;
+    if (!openBudgetBills || openBudgetBills.length === 0) {
+        return { active: false };
+    }
 
-    return ticksSinceLastBudget >= GAME_CONFIG.TICKS_PER_YEAR + 2;
+    const bill = openBudgetBills[0];
+    const ticksOpen = currentTick - bill.proposed_tick;
+
+    return {
+        active: ticksOpen >= 2,
+        openBillId: bill.id,
+        ticksOpen
+    };
 }
 
 /**
@@ -2428,25 +2444,21 @@ function buildShutdownStatInstMap(institutionConfig) {
 }
 
 /**
- * Government Shutdown Crisis — coalition/approval/momentum penalties + active_crises management.
- * Called each tick when isGovernmentShutdown() returns true.
+ * Government Shutdown Crisis — approval penalties + active_crises management.
+ * Called each tick when isGovernmentShutdown() returns active.
  *
- * Effects (in addition to Collapsed institution decay handled by the main loop):
- *   - All coalition parties: -6 Momentum per tick
- *   - Prime Minister's party: additional -5 Momentum/tick + -5 gov approval event
- *   - President's party (presidential systems): -5 Momentum/tick
- *   - All ministers: -3/tick approval penalty (via updateMinisterApprovals)
- *   - Direct stat damage: civil_unrest +3.5, corruption +2.5, stability -3.0,
- *     happiness -2.0, standard_of_living -1.5, unemployment +1.5
+ * Effects (in addition to Collapsed institution decay for unfunded ministries):
+ *   - Direct stat damage: stability -1.0 per tick
+ *   - PM/President approval: -2 per tick (via gov approval event)
+ *   - All ministers: -1/tick approval penalty (via updateMinisterApprovals)
+ *   - Unfunded ministries suffer collapsing effect (handled by buildShutdownStatInstMap)
  *   - Inserts an active_crises row so it shows on nation.html
  *   - Fires a system event notification
  */
-async function processGovernmentShutdown(supabase, nation, currentTick) {
-    const lastBudgetTick = nation.last_budget_tick;
-    const ticksSinceLastBudget = lastBudgetTick != null ? (currentTick - lastBudgetTick) : currentTick;
-    const ticksOverdue = ticksSinceLastBudget - GAME_CONFIG.TICKS_PER_YEAR;
+async function processGovernmentShutdown(supabase, nation, currentTick, shutdownInfo) {
+    const ticksOpen = shutdownInfo?.ticksOpen ?? 0;
 
-    console.log(`[GovernmentShutdown] ACTIVE for ${nation.name} — ${ticksSinceLastBudget} ticks since last budget (overdue by ${ticksOverdue} ticks)`);
+    console.log(`[GovernmentShutdown] ACTIVE for ${nation.name} — budget bill open for ${ticksOpen} ticks`);
 
     // --- 0. Activate crisis record (insert into active_crises if not already present) ---
     const { data: existingCrises, error: checkErr } = await supabase
@@ -2491,7 +2503,7 @@ async function processGovernmentShutdown(supabase, nation, currentTick) {
                     p_tick: currentTick,
                     p_placeholders: {
                         nation: nation.name || 'Unknown',
-                        ticks_overdue: String(ticksOverdue)
+                        ticks_open: String(ticksOpen)
                     }
                 });
             } catch (e) {
@@ -2500,71 +2512,26 @@ async function processGovernmentShutdown(supabase, nation, currentTick) {
         }
     }
 
-    // --- 1. Coalition party penalties: devastating momentum loss ---
-    const coalition = await fetchActiveCoalition(supabase, nation.id);
-    const coalitionPartyIds = coalition?.party_ids || [];
+    // --- 1. PM/President approval: -2 per tick via gov approval event ---
+    await adjustGovernmentApprovalEvent(supabase, nation.id, -2, 'crisis:government_shutdown');
+    console.log(`[GovernmentShutdown] Applied -2 gov approval event for ${nation.name}`);
 
-    for (const partyId of coalitionPartyIds) {
-        await adjustMomentumAll(supabase, nation.id, partyId, -6, 'crisis:government_shutdown');
-    }
-    if (coalitionPartyIds.length > 0) {
-        console.log(`[GovernmentShutdown] Applied -6 Momentum to ${coalitionPartyIds.length} coalition parties for ${nation.name}`);
-    }
+    // --- 2. Direct stat damage: -1 Stability per tick ---
+    const currentStability = Number(nation.stability ?? 50);
+    const newStability = Math.round(Math.max(0, currentStability - 1.0) * 10) / 10;
+    await supabase.from('nations').update({ stability: newStability }).eq('id', nation.id);
+    nation.stability = newStability;
+    console.log(`[GovernmentShutdown] Applied -1 stability for ${nation.name}: ${currentStability} → ${newStability}`);
 
-    // --- 2. PM party extra penalty: -5/tick + -5 gov approval event ---
-    const pmPartyId = coalition?.lead_party_id;
-    if (pmPartyId) {
-        await adjustMomentumAll(supabase, nation.id, pmPartyId, -5, 'crisis:government_shutdown_pm');
-        await adjustGovernmentApprovalEvent(supabase, nation.id, -5, 'crisis:government_shutdown');
-        console.log(`[GovernmentShutdown] Applied -5 Momentum to PM party ${pmPartyId} + -5 gov approval event for ${nation.name}`);
-    }
+    // --- 3. Ministry approval penalty: -1/tick for all ministers ---
+    // (handled by updateMinisterApprovals via the isShutdown flag — SHUTDOWN_MINISTER_PENALTY = -1)
 
-    // --- 3. President approval penalty: -5/tick (presidential systems) ---
-    if (isPresidentialRepublic(nation)) {
-        const { data: president } = await supabase
-            .from('presidents')
-            .select('id, faction_id')
-            .eq('nation_id', nation.id)
-            .eq('is_active', true)
-            .order('elected_tick', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        if (president) {
-            await adjustMomentumAll(supabase, nation.id, president.faction_id, -5, 'crisis:government_shutdown_president');
-            console.log(`[GovernmentShutdown] Applied -5 Momentum to President party ${president.faction_id} for ${nation.name}`);
-        }
-    }
-
-    // --- 4. Direct stat damage — government shutdown should be devastating ---
-    // The crisis_effects DB rows are display-only because the Government Shutdown
-    // template has is_active=false (processCrises skips it). Apply deltas here.
-    // A government shutdown cripples public services, tanks investor confidence,
-    // and erodes trust across every dimension of governance.
-    const shutdownStatEffects = [
-        { stat: 'civil_unrest',        delta:  3.5 },
-        { stat: 'corruption',          delta:  2.5 },
-        { stat: 'stability',           delta: -3.0 },
-        { stat: 'happiness',           delta: -2.0 },
-        { stat: 'standard_of_living',  delta: -1.5 },
-        { stat: 'unemployment',        delta:  1.5 },
-    ];
-    const nationUpdates = {};
-    for (const { stat, delta } of shutdownStatEffects) {
-        const current = Number(nation[stat] ?? 50);
-        const newVal = Math.round(Math.max(0, Math.min(100, current + delta)) * 10) / 10;
-        nationUpdates[stat] = newVal;
-        nation[stat] = newVal;
-    }
-    if (Object.keys(nationUpdates).length > 0) {
-        await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
-        console.log(`[GovernmentShutdown] Applied stat effects for ${nation.name}:`, nationUpdates);
-    }
+    // --- 4. Unfunded ministries suffer collapsing effect ---
+    // (handled by buildShutdownStatInstMap forcing all institutions to 0% funding in the main loop)
 
     return {
         active: true,
-        ticksSinceLastBudget,
-        ticksOverdue,
-        coalitionPartiesAffected: coalitionPartyIds.length
+        ticksOpen: ticksOpen
     };
 }
 
@@ -11487,10 +11454,9 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
 
     if (!ministries || ministries.length === 0) return [];
 
-    // During government shutdown, every minister takes a direct -3/tick approval hit
-    // on top of their normal stat-based scoring. This represents public outrage at
-    // the government's inability to function.
-    const SHUTDOWN_MINISTER_PENALTY = -3;
+    // During government shutdown, every minister takes a direct -1/tick approval hit
+    // on top of their normal stat-based scoring.
+    const SHUTDOWN_MINISTER_PENALTY = -1;
 
     const results = [];
 
@@ -14257,7 +14223,8 @@ async function advanceTick(supabase) {
             const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
             _institutionConfig = icRows || [];
         }
-        const shutdown = isGovernmentShutdown(nation, newTick);
+        const shutdownCheck = await isGovernmentShutdown(supabase, nation, newTick);
+        const shutdown = shutdownCheck.active;
         let statInstMap = null;
         if (shutdown && _institutionConfig.length > 0) {
             // Government shutdown: force ALL institutions to 0% funding → Collapsed decay rates
@@ -14352,12 +14319,13 @@ async function advanceTick(supabase) {
 
         // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
         // (the original `shutdown` boolean was computed before bill resolution)
-        const shutdownNow = isGovernmentShutdown(nation, newTick);
+        const shutdownCheckNow = await isGovernmentShutdown(supabase, nation, newTick);
+        const shutdownNow = shutdownCheckNow.active;
 
-        // Government shutdown penalties (coalition momentum/approval + PM/President approval + stat damage)
+        // Government shutdown penalties (approval + stability + unfunded ministry collapsing)
         // Runs BEFORE approval calculations so stat/event effects propagate in the same tick.
         if (shutdownNow) {
-            const shutdownResult = await processGovernmentShutdown(supabase, nation, newTick);
+            const shutdownResult = await processGovernmentShutdown(supabase, nation, newTick, shutdownCheckNow);
             if (shutdownResult) {
                 summary.governmentShutdowns = summary.governmentShutdowns || [];
                 summary.governmentShutdowns.push({ nation: nation.name, ...shutdownResult });
@@ -14383,7 +14351,7 @@ async function advanceTick(supabase) {
         await recordStatHistory(supabase, nation, newTick);
 
         // Layer 1: Update minister approvals from stat thresholds
-        // During government shutdown, all ministers take a direct -3/tick approval penalty
+        // During government shutdown, all ministers take a direct -1/tick approval penalty
         const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick, shutdownNow);
         if (ministerApprovalResults.length > 0) {
             summary.ministerApprovals = summary.ministerApprovals || [];
