@@ -2530,6 +2530,7 @@ function formatStatValue(val, key) {
     if (['gdp', 'debt'].includes(key)) return (val / 1e9).toFixed(1) + 'B';
     if (key === 'population') return (val / 1e6).toFixed(2) + 'M';
     if (key === 'gdp_growth') { var p = (val - 50) / 50; return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; }
+    if (key === 'trade_balance') { var v = Math.round(val); return v === 50 ? 'Balanced' : v + '% Exp / ' + (100-v) + '% Imp'; }
     if (Math.abs(val) < 1 && val !== 0) return val.toFixed(2);
     return String(Math.round(val * 10) / 10);
 }

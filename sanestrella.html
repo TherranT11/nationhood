@@ -209,7 +209,7 @@ var STAT_SECTIONS = [
         ['Debt Growth', 'debt_growth', 'Rate of debt increase', null, true],
         ['Inflation', 'inflation', 'Price increase rate', null, true],
         ['Interest Rates', 'interest_rates', 'Central bank rate'],
-        ['Trade Balance', 'trade_balance', 'Exports minus imports'],
+        ['Trade Balance', 'trade_balance', 'Exports minus imports', null, false, function(n){ var v = Math.round(Number(n.trade_balance ?? 50)); if (v === 50) return 'Balanced'; return v + '% Exp / ' + (100-v) + '% Imp'; }],
         ['Currency Strength', 'currency_strength', 'National currency value'],
         ['Foreign Investment', 'foreign_investment', 'International capital inflow'],
         ['Credit Rating', 'credit', 'Creditworthiness']

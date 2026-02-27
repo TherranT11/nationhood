@@ -507,7 +507,7 @@ async function renderNationPage(nation) {
         renderStatBox('Debt Growth', 'debt_growth', nation.debt_growth, 'Rate of debt accumulation', null, true),
         renderStatBox('Inflation', 'inflation', nation.inflation, 'Rate of price increases', null, true),
         renderStatBox('Interest Rates', 'interest_rates', nation.interest_rates, 'Central bank lending rate'),
-        renderStatBox('Trade Balance', 'trade_balance', nation.trade_balance, 'Exports minus imports'),
+        renderStatBox('Trade Balance', 'trade_balance', nation.trade_balance, 'Exports minus imports', null, false, formatTradeBalance(nation.trade_balance)),
         renderStatBox('Currency Strength', 'currency_strength', nation.currency_strength, 'Value of national currency'),
         renderStatBox('Foreign Investment', 'foreign_investment', nation.foreign_investment, 'International capital inflow'),
         renderStatBox('Credit Rating', 'credit', nation.credit, 'National creditworthiness')
@@ -702,6 +702,26 @@ function formatGdpGrowth(rawValue) {
     var v = Number(rawValue ?? 50);
     var pct = (v - 50) / 50;
     return (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
+}
+
+/**
+ * Convert trade_balance (0-100) to export/import split display.
+ * 0 = 100% Imports, 50 = Balanced, 100 = 100% Exports
+ */
+function formatTradeBalance(rawValue) {
+    var v = Math.round(Number(rawValue ?? 50));
+    if (v >= 50) {
+        var expPct = v;
+        var impPct = 100 - v;
+        if (impPct === 0) return '100% Exports';
+        if (expPct === impPct) return 'Balanced';
+        return expPct + '% Exp / ' + impPct + '% Imp';
+    } else {
+        var impPct = 100 - v;
+        var expPct = v;
+        if (expPct === 0) return '100% Imports';
+        return expPct + '% Exp / ' + impPct + '% Imp';
+    }
 }
 
 /**
