@@ -1485,6 +1485,17 @@ export async function enactBill(supabase, bill, currentTick) {
             const policy = art.policies;
             if (!policy) continue;
 
+            // Repeal article — reverse and delete the targeted active law
+            if (art.repeal_active_law_id) {
+                const targetLaw = (currentActiveLaws || []).find(l => l.id === art.repeal_active_law_id);
+                if (targetLaw && targetLaw.policies) {
+                    await reversePolicy(supabase, nation, targetLaw.policies, targetLaw.passed_tick, currentTick);
+                    await supabase.from('active_laws').delete().eq('id', art.repeal_active_law_id);
+                    console.log(`[enactBill] Repealed active law ${art.repeal_active_law_id} (${policy.policy_name})`);
+                }
+                continue;
+            }
+
             if (policy.opposed_policy_ids && Array.isArray(policy.opposed_policy_ids)) {
                 for (const opposedId of policy.opposed_policy_ids) {
                     const opposedLaw = (currentActiveLaws || []).find(l => l.policy_id === opposedId);
