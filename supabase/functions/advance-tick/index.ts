@@ -14304,7 +14304,11 @@ async function advanceTick(supabase) {
     while (nextTickAt.getTime() <= now) {
         nextTickAt = new Date(nextTickAt.getTime() + intervalMs);
     }
-    const newDate = advanceMonth(shard.current_date || 'January, 2000');
+    // Compute date directly from tick number to prevent drift between
+    // shard.current_date (string-based) and tickToDate() (tick-based).
+    const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+    const newDate = `${MONTHS[newTick % 12]}, ${2000 + Math.floor(newTick / 12)}`;
 
     // 2. Load all nations
     const { data: nations } = await supabase.from('nations').select('*');
