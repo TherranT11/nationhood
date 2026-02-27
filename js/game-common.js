@@ -13086,15 +13086,41 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         throw new Error(`Disband is on cooldown for ${remaining} more tick${remaining !== 1 ? 's' : ''}.`);
     }
 
-    // 2. Autocracy ruling faction guard
+    // 2. Fetch nation for autocracy/ruling checks
     const { data: nation } = await supabase
         .from('nations')
         .select('ruling_faction_id, government_type')
         .eq('id', nationId)
         .single();
 
+    // 2b. Autocracy ruling faction succession — transfer power to next most loyal faction
     if (isAutocracy(nation) && nation.ruling_faction_id === factionId) {
-        throw new Error('The ruling faction cannot disband.');
+        const { data: otherFactions } = await supabase
+            .from('factions')
+            .select('id, loyalty')
+            .eq('nation_id', nationId)
+            .eq('faction_type', 'party')
+            .neq('id', factionId)
+            .order('loyalty', { ascending: false })
+            .limit(1);
+
+        const successor = otherFactions?.[0];
+        if (successor) {
+            await supabase.from('nations')
+                .update({ ruling_faction_id: successor.id })
+                .eq('id', nationId);
+        } else {
+            // No other factions — clear ruling faction
+            await supabase.from('nations')
+                .update({ ruling_faction_id: null })
+                .eq('id', nationId);
+        }
+
+        // Remove departing faction's steward
+        await supabase.from('stewards')
+            .update({ is_alive: false })
+            .eq('nation_id', nationId)
+            .eq('faction_id', factionId);
     }
 
     // 3. PM check — if this faction is the active PM, resign first
