@@ -2,117 +2,53 @@
 
 ## Overview
 
-Factions that don't spend AP for extended periods will suffer automatic penalties during tick processing: approval rating decay, seat erosion, and eventually auto-disbanding. This incentivizes active play and naturally clears out abandoned factions.
+Factions that don't spend AP for extended periods will suffer automatic penalties during tick processing: momentum decay, approval loss with every voter bloc, and eventually auto-disbanding right before elections. This incentivizes active play and naturally clears out abandoned factions.
 
 ---
 
-## Existing Infrastructure
+## Rules (IMPLEMENTED)
 
-Already in place:
-- **`factions.last_ap_spent_tick`** column — tracks when a faction last spent AP
-- **`markFactionActive(supabase, factionId, currentTick)`** in `game-common.js:11643` — updates the column
-- **`markFactionActive` is only called from `government.html`** (purge, fire minister, no-confidence, early elections)
-- **NOT called from**: campaign actions (rally, press conf, outreach, fundraiser), bill drafting, bill voting, diplomacy
+- **After 6 ticks** of no AP spent: lose **5 Momentum** and **3 Approval** with **every voter bloc**, **every tick**
+- **After 12 ticks** of no AP spent: party **auto-disbands** (runs right before elections in the tick loop)
+- Spending any AP resets the inactivity timer (`last_ap_spent_tick` updated automatically by `deductAP()`)
 
 ---
 
-## Step 1: Expand `markFactionActive` Coverage
-
-**Goal**: Every AP-spending action should update `last_ap_spent_tick`.
-
-### 1a. Integrate into `deductAP()` itself (game-common.js:869)
-Instead of sprinkling `markFactionActive` calls everywhere, call it automatically inside `deductAP()` after a successful deduction. This catches ALL current and future AP-costing actions in one place.
-
-**File**: `js/game-common.js` — `deductAP()` function (~line 869)
-**Change**: After a successful `deduct_ap` RPC (data !== -1), call `markFactionActive(supabase, factionId)`.
-
-This makes the existing 4 manual calls in `government.html` redundant but harmless (they'll just re-set the same tick).
-
-### 1b. Initialize `last_ap_spent_tick` for existing factions
-**File**: `sql/add_inactivity_decay.sql` (new migration)
-**Change**: For any faction where `last_ap_spent_tick IS NULL AND nation_id IS NOT NULL`, backfill it to the current shard tick so existing active players aren't immediately penalized.
-
----
-
-## Step 2: Add Inactivity Decay Config
-
-**File**: `js/game-common.js` — add to `GAME_CONFIG` (~line 20)
+## Config Constants (in `js/game/config.js` → `GAME_CONFIG`)
 
 ```javascript
-// Inactivity decay
-INACTIVITY_GRACE_TICKS: 12,        // No penalty for first 12 ticks of inactivity
-INACTIVITY_APPROVAL_DECAY: 3,      // -3 approval per tick while inactive
-INACTIVITY_SEAT_LOSS_THRESHOLD: 24, // After 24 ticks inactive, start losing seats
-INACTIVITY_SEAT_LOSS_PER_TICK: 1,  // -1 seat per tick once past threshold
-INACTIVITY_DISBAND_THRESHOLD: 48,  // After 48 ticks inactive, auto-disband
+INACTIVITY_GRACE_TICKS: 6,            // no penalty for first 6 ticks of inactivity
+INACTIVITY_MOMENTUM_DECAY: 5,         // -5 momentum per voter bloc per tick while inactive
+INACTIVITY_APPROVAL_DECAY: 3,         // -3 approval per voter bloc per tick while inactive
+INACTIVITY_DISBAND_TICKS: 12,         // auto-disband after 12 ticks of inactivity
 ```
 
 ---
 
-## Step 3: Implement `processInactivityDecay()`
+## Implementation Summary
 
-**File**: `js/game-common.js` — new exported function (after the `markFactionActive` function ~line 11653)
+### 1. `markFactionActive()` in `deductAP()` — `js/game/config.js`
+Every AP-spending action automatically updates `last_ap_spent_tick` to the current shard tick.
 
-```
-processInactivityDecay(supabase, nationId, currentTick)
-```
+### 2. `processInactivityDecay()` — `js/game/political-actions.js`
+Per-nation function called each tick. For each non-NPC faction:
+1. Compute `ticksInactive = currentTick - (last_ap_spent_tick || founded_tick || 0)`
+2. Skip if `ticksInactive <= 6`
+3. If `ticksInactive >= 12`: auto-disband (nation_id = null, abandoned_at = now, 24-tick cooldown)
+4. Otherwise: -5 momentum and -3 approval on every `faction_bloc_approval` row
 
-**Logic**:
-1. Query all non-NPC party factions in the nation that have `nation_id` set
-2. For each faction, compute `ticksInactive = currentTick - (faction.last_ap_spent_tick || faction.founded_tick || 0)`
-3. Skip if `ticksInactive <= INACTIVITY_GRACE_TICKS`
-4. **Approval decay**: Reduce `approval_rating` by `INACTIVITY_APPROVAL_DECAY` per tick (floor at 0)
-5. **Seat loss** (if `ticksInactive > INACTIVITY_SEAT_LOSS_THRESHOLD`): Reduce `seats` by `INACTIVITY_SEAT_LOSS_PER_TICK` (floor at 0)
-6. **Auto-disband** (if `ticksInactive > INACTIVITY_DISBAND_THRESHOLD`): Remove from nation (`nation_id = null`, `abandoned_at = now()`, set `disband_cooldown_until_tick`). Log to `campaign_actions` with `action_type: 'auto_disbanded_inactivity'`
-7. Return array of `{ factionId, factionName, ticksInactive, approvalLost, seatsLost, disbanded }` for summary logging
+### 3. Tick Loop Placement — `handler-template.ts`
+Runs right BEFORE `processElections()` so disbanded parties lose their seats in the upcoming election.
 
----
+### 4. Admin Dashboard — `admin.html`
+- Fetches `last_ap_spent_tick` and `founded_tick` in player query
+- Color-coded inactivity badge on each player card (orange = decaying, red = will disband)
+- "Inactive" filter button alongside existing All / In Nation / No Nation filters
+- Kick/DELETE buttons fixed (window scope exports added)
 
-## Step 4: Wire Into Tick Processing
-
-**File**: `supabase/functions/advance-tick/handler-template.ts` — inside the per-nation loop (~line 632, after ambassador retirements, before final snapshot)
-
-```javascript
-// Inactivity decay (approval + seat erosion for idle factions)
-const inactivityResults = await processInactivityDecay(supabase, nation.id, newTick);
-if (inactivityResults.length > 0) {
-    summary.inactivityDecay = summary.inactivityDecay || [];
-    summary.inactivityDecay.push({ nation: nation.name, factions: inactivityResults });
-}
-```
-
-Then run `node scripts/sync-edge-function.js` to regenerate `index.ts`.
-
----
-
-## Step 5: Admin Dashboard — Show Inactivity Status
-
-**File**: `admin.html`
-
-### 5a. Fetch `last_ap_spent_tick` in player query (~line 1071)
-Add `last_ap_spent_tick` to the select fields.
-
-### 5b. Show inactivity indicator in player cards (~line 1091)
-- Fetch `current_tick` from shard once at load time
-- For each player card, compute ticks inactive and show a color-coded badge:
-  - Green: active (within grace period)
-  - Yellow: "Inactive X ticks" (past grace, before seat loss)
-  - Orange: "Losing seats — X ticks idle" (past seat loss threshold)
-  - Red: "Will auto-disband in X ticks" (approaching disband threshold)
-
-### 5c. Add "Inactive" filter button alongside existing All / In Nation / No Nation filters (~line 160)
-Filters to factions past the grace period.
-
-### 5d. Show inactivity decay results in tick summary (~line 629)
-Display count of factions penalized and any auto-disbands in the tick processing summary.
-
----
-
-## Step 6: Regenerate Edge Function
-
-```bash
-node scripts/sync-edge-function.js
-```
+### 5. SQL Migration — `sql/add_inactivity_decay.sql`
+- `ALTER TABLE factions ADD COLUMN IF NOT EXISTS last_ap_spent_tick INTEGER DEFAULT NULL`
+- Backfill to current shard tick for all active factions
 
 ---
 
@@ -120,12 +56,9 @@ node scripts/sync-edge-function.js
 
 | File | Changes |
 |------|---------|
-| `js/game-common.js` | Add config constants, `processInactivityDecay()`, update `deductAP()` to call `markFactionActive` |
-| `supabase/functions/advance-tick/handler-template.ts` | Wire `processInactivityDecay` into per-nation tick loop |
-| `admin.html` | Fetch + display inactivity status, add filter, show in tick summary |
-| `sql/add_inactivity_decay.sql` | Backfill migration for `last_ap_spent_tick` |
+| `js/game/config.js` | Add inactivity constants to GAME_CONFIG, `markFactionActive()` in `deductAP()` |
+| `js/game/political-actions.js` | `processInactivityDecay()` function |
+| `supabase/functions/advance-tick/handler-template.ts` | Wire `processInactivityDecay` before elections |
+| `admin.html` | Inactivity badges, Inactive filter, fix Kick/DELETE window scope |
+| `sql/add_inactivity_decay.sql` | Column creation + backfill migration |
 | `supabase/functions/advance-tick/index.ts` | Auto-regenerated by sync script |
-
-## Files NOT Modified (no new file creation beyond the SQL migration)
-
-No new HTML pages, no new JS modules — everything fits into existing structure.

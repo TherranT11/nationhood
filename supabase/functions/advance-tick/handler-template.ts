@@ -577,6 +577,14 @@ async function advanceTick(supabase) {
         // PM trait effects
         await processPMTraitEffects(supabase, nation, newTick);
 
+        // Inactivity decay — penalise factions that haven't spent AP
+        // Runs RIGHT BEFORE elections so auto-disbanded parties lose seats in the upcoming election
+        const inactivityResults = await processInactivityDecay(supabase, nation.id, newTick);
+        if (inactivityResults.length > 0) {
+            summary.inactivityDecay = summary.inactivityDecay || [];
+            summary.inactivityDecay.push({ nation: nation.name, factions: inactivityResults });
+        }
+
         // Elections (democracy only)
         const electionResults = await processElections(supabase, nation, newTick);
         if (electionResults.length > 0) {
