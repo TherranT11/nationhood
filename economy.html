@@ -35,6 +35,7 @@ var currentTick = 0;
 var expenditureData = null;
 var expenditureDetails = null;
 var tradeData = null;
+var aidData = null;  // { received: number, given: number, agreements: [...] }
 var currentNation = null;
 var allNations = null;
 var gameYear = 0;
@@ -76,6 +77,7 @@ initPage('economy', async function(state) {
         loadTradeData(nation.id),
         loadAllNationsData(),
         loadTradeAgreements(nation.id),
+        loadAidData(nation.id),
         loadTaxConnections(),
         loadTaxVoterBlocs(nation.id),
         loadTaxAdminFunding(nation),
@@ -379,6 +381,35 @@ async function loadTradeAgreements(nationId) {
         tradeAgreements = data || [];
     } catch (e) {
         tradeAgreements = [];
+    }
+}
+
+// ==================== ECONOMIC AID DATA ====================
+async function loadAidData(nationId) {
+    try {
+        var { data: aidStates } = await _supabase.from('aid_agreement_state')
+            .select('*, trade_agreements!inner(status, agreement_type, articles, agreement_name, nation_a_id, nation_b_id)')
+            .or('donor_nation_id.eq.' + nationId + ',recipient_nation_id.eq.' + nationId)
+            .eq('trade_agreements.status', 'active')
+            .eq('trade_agreements.agreement_type', 'economic_aid')
+            .eq('is_suspended', false);
+
+        var received = 0;
+        var given = 0;
+        var agreements = [];
+
+        for (var i = 0; i < (aidStates || []).length; i++) {
+            var state = aidStates[i];
+            var amount = Number(state.current_annual_amount || 0);
+            if (state.recipient_nation_id === nationId) received += amount;
+            if (state.donor_nation_id === nationId) given += amount;
+            agreements.push(state);
+        }
+
+        aidData = { received: received, given: given, agreements: agreements };
+    } catch (e) {
+        console.warn('[loadAidData] Error:', e);
+        aidData = { received: 0, given: 0, agreements: [] };
     }
 }
 
@@ -1286,6 +1317,13 @@ function renderBudgetPanel(nation) {
         budget.grossRevenue = budget.grossRevenue - oldTariff + budget.tariffRevenue;
     }
 
+    // Add foreign aid revenue
+    var aidReceived = aidData ? Number(aidData.received || 0) : 0;
+    var aidGiven = aidData ? Number(aidData.given || 0) : 0;
+    budget.aidReceived = aidReceived;
+    budget.aidGiven = aidGiven;
+    budget.grossRevenue += aidReceived;
+
     var prevBudget = null;
     if (previousYearData) {
         prevBudget = calculateNationalBudget(previousYearData);
@@ -1298,6 +1336,9 @@ function renderBudgetPanel(nation) {
         }
     }
     expenditures['Interest on Debt'] = budget.debtService;
+    if (aidGiven > 0) {
+        expenditures['Foreign Aid Commitments'] = aidGiven;
+    }
 
     var totalExpenditure = 0;
     for (var key in expenditures) {
@@ -1347,6 +1388,9 @@ function renderBudgetPanel(nation) {
     h += budgetLineItem('Sales Tax', budget.salesRevenue, prevBudget ? prevBudget.salesRevenue : null, previousYear);
     h += budgetLineItem('Trade & Tariffs', budget.tariffRevenue, prevBudget ? prevBudget.tariffRevenue : null, previousYear);
     h += budgetLineItem('State Enterprises', budget.oilRevenue, prevBudget ? prevBudget.oilRevenue : null, previousYear);
+    if (aidReceived > 0) {
+        h += budgetLineItem('Foreign Aid Received', aidReceived, null, previousYear);
+    }
     h += budgetTotalLine(budget.grossRevenue);
     h += '</div>';
 
@@ -1357,6 +1401,9 @@ function renderBudgetPanel(nation) {
         'Transportation', 'Energy', 'Justice', 'Foreign Ministry', 'Finance',
         'Defense', 'Trade', 'Interest on Debt'
     ];
+    if (aidGiven > 0) {
+        expenditureItems.push('Foreign Aid Commitments');
+    }
     for (var i = 0; i < expenditureItems.length; i++) {
         var catAmount = expenditures[expenditureItems[i]] || 0;
         if (expenditureItems[i] !== 'Interest on Debt') {

@@ -14,28 +14,16 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { GAME_CONFIG, MINISTRY_EVENT_GOV_TYPES, MAJOR_SECTORS, NATION_STAT_COLUMNS, formatStatName, normalizeNationStatKey, templateSupportsNationGovType, canonicalNationGovTypes } from './js/game-common.js';
+import { GAME_CONFIG, MAJOR_SECTORS, NATION_STAT_COLUMNS, formatStatName, normalizeNationStatKey } from './js/game-common.js';
 import { escapeHtml, escapeAttr } from './js/utils.js';
 // ==================== STATE ====================
 var allEvents = [];
-var allMinistryTemplates = [];
 var currentEvent = null;
-var currentMinistryTemplate = null;
 var isNewEvent = false;
-var isNewMinistry = false;
 var editorDescriptions = [];
 var editorTriggers = [];
 var editorEffects = [];
 var deletedDescIds = [], deletedTriggerIds = [], deletedEffectIds = [];
-var currentMode = 'events'; // 'events' or 'ministry'
-var CANONICAL_GOV_TYPES = (typeof MINISTRY_EVENT_GOV_TYPES !== 'undefined' && Array.isArray(MINISTRY_EVENT_GOV_TYPES))
-    ? MINISTRY_EVENT_GOV_TYPES.slice()
-    : ['Democracy', 'Autocracy', 'Presidential'];
-var GOV_TYPE_META = {
-    Democracy: { icon: '🗳️' },
-    Autocracy: { icon: '👑' },
-    Presidential: { icon: '🏛️' }
-};
 
 // ==================== CONSTANTS ====================
 // Canonical nation stat keys — must match NATION_STAT_COLUMNS in game-common.js
@@ -106,33 +94,6 @@ var EVENT_CATEGORIES = [
     'Economic', 'Military', 'Diplomatic', 'Natural Disaster'
 ];
 
-var MINISTRIES = [
-    { key: 'prime_minister', label: '🏛️ Prime Minister', icon: '🏛️' },
-    { key: 'interior', label: '🏠 Interior', icon: '🏠' },
-    { key: 'foreign', label: '🌐 Foreign Affairs', icon: '🌐' },
-    { key: 'defense', label: '🛡️ Defense', icon: '🛡️' },
-    { key: 'finance', label: '💰 Finance', icon: '💰' },
-    { key: 'education', label: '📚 Education', icon: '📚' },
-    { key: 'healthcare', label: '🏥 Healthcare', icon: '🏥' },
-    { key: 'labor', label: '👷 Labor', icon: '👷' },
-    { key: 'justice', label: '⚖️ Justice', icon: '⚖️' },
-    { key: 'transportation', label: '🚄 Transportation', icon: '🚄' }
-];
-
-var PRIORITIES = [
-    { key: 'urgent', label: '🔴 Urgent', color: '#ff4444' },
-    { key: 'routine', label: '🟡 Routine', color: '#ff9800' },
-    { key: 'opportunity', label: '🟢 Opportunity', color: '#4CAF50' }
-];
-
-var MINISTRY_PLACEHOLDERS = [
-    { tag: '{nation}', hint: 'Nation name' },
-    { tag: '{minister}', hint: 'Minister name' },
-    { tag: '{party}', hint: 'Controlling faction' },
-    { tag: '{sender}', hint: 'Event sender' },
-    { tag: '{outcome}', hint: 'Outcome label' },
-    { tag: '{cost}', hint: 'Money cost' }
-];
 
 var SYSTEM_TRIGGERS = [
     { key: 'election_completed', label: 'Election Completed', desc: 'Fires when an election finishes and results are tallied.',
@@ -196,8 +157,7 @@ var SYSTEM_TRIGGERS = [
 // ==================== INIT ====================
 (async function() {
     await loadAllEvents();
-    await loadAllMinistryTemplates();
-    renderModeTabs();
+    renderListView();
 })();
 
 async function loadAllEvents() {
@@ -208,36 +168,7 @@ async function loadAllEvents() {
     allEvents = (r.error ? [] : r.data) || [];
 }
 
-async function loadAllMinistryTemplates() {
-    var r = await _supabase
-        .from('ministry_event_templates')
-        .select('*')
-        .order('ministry_key', { ascending: true });
-    if (r.error) {
-        console.warn('ministry_event_templates table may not exist yet:', r.error.message);
-        allMinistryTemplates = [];
-    } else {
-        allMinistryTemplates = r.data || [];
-    }
-}
 
-// ==================== MODE TABS (TOP-LEVEL) ====================
-function renderModeTabs() {
-    var c = document.getElementById('content-area');
-    c.innerHTML =
-        '<div class="mode-tabs">' +
-            '<button class="mode-tab ' + (currentMode === 'events' ? 'active' : '') + '" onclick="switchMode(\'events\')">⚡ Random & System Events</button>' +
-            '<button class="mode-tab ' + (currentMode === 'ministry' ? 'active' : '') + '" onclick="switchMode(\'ministry\')">🏛️ Ministry Inbox Events</button>' +
-        '</div>' +
-        '<div id="mode-content"></div>';
-    if (currentMode === 'events') renderListView();
-    else renderMinistryListView();
-}
-
-function switchMode(mode) {
-    currentMode = mode;
-    renderModeTabs();
-}
 
 // ======================================================================
 //  SECTION 1: RANDOM & SYSTEM EVENTS (original functionality)
@@ -245,7 +176,7 @@ function switchMode(mode) {
 
 function renderListView() {
     currentEvent = null;
-    document.getElementById('mode-content').innerHTML =
+    document.getElementById('content-area').innerHTML =
         '<div class="admin-header"><div>' +
             '<div class="admin-title">⚡ Event Manager</div>' +
             '<div class="admin-subtitle">Random (stat-triggered) and System (game action–triggered) events</div>' +
@@ -336,7 +267,7 @@ function editEvent(id) {
 }
 
 function renderEditor() {
-    var c = document.getElementById('mode-content');
+    var c = document.getElementById('content-area');
     var title = isNewEvent ? 'Create New Event' : 'Edit Event';
     var isSys = currentEvent.event_type === 'system';
 
@@ -483,19 +414,19 @@ async function saveEvent() {
         if (!isSys) { for (var t of editorTriggers.filter(function(t) { return t.stat_key; })) { var tp = { event_id: eventId, stat_key: t.stat_key, min_value: t.min_value, max_value: t.max_value }; if (t.isNew || !t.id) await _supabase.from('event_triggers').insert(tp); else await _supabase.from('event_triggers').update(tp).eq('id', t.id); } }
         for (var e of editorEffects.filter(function(e) { return e.stat_key; })) { var ep = { event_id: eventId, stat_key: e.stat_key, change_value: e.change_value || 0, target: e.target || 'nation' }; if (e.isNew || !e.id) await _supabase.from('event_effects').insert(ep); else await _supabase.from('event_effects').update(ep).eq('id', e.id); }
         alert(isNewEvent ? 'Event created!' : 'Event saved!');
-        await loadAllEvents(); renderModeTabs();
+        await loadAllEvents(); renderListView();
     } catch (err) { console.error('Save error:', err); alert('Error: ' + err.message); }
 }
 
 async function deleteEvent(id) {
     if (!confirm('Delete this event and all its data? This cannot be undone.')) return;
-    try { var r = await _supabase.from('event_templates').delete().eq('id', id); if (r.error) throw r.error; alert('Event deleted.'); await loadAllEvents(); renderModeTabs(); }
+    try { var r = await _supabase.from('event_templates').delete().eq('id', id); if (r.error) throw r.error; alert('Event deleted.'); await loadAllEvents(); renderListView(); }
     catch (err) { console.error('Delete error:', err); alert('Error: ' + err.message); }
 }
 
 async function viewRecentLog() {
-    document.getElementById('mode-content').innerHTML =
-        '<button class="btn-back" onclick="renderModeTabs()">← Back to Events</button>' +
+    document.getElementById('content-area').innerHTML =
+        '<button class="btn-back" onclick="renderListView()">← Back to Events</button>' +
         '<div class="admin-header" style="border-bottom-color:#2196F3;"><div><div class="admin-title" style="color:#2196F3;">📋 Recent Event Log</div><div class="admin-subtitle">Last 50 events across all nations</div></div></div>' +
         '<div id="log-entries"><div style="text-align:center;padding:40px;color:#888;">Loading...</div></div>';
     var r = await _supabase.from('event_log').select('*, nations(name)').order('fired_at_tick', { ascending: false }).limit(50);
@@ -507,629 +438,12 @@ async function viewRecentLog() {
     }).join('');
 }
 
-function cancelEditor() { renderModeTabs(); }
+function cancelEditor() { renderListView(); }
 
 
-// ======================================================================
-//  SECTION 2: MINISTRY INBOX EVENTS
-// ======================================================================
-
-// State for ministry editor
-var mEditorVariants = { titles: [''] };
-var mEditorWeightConditions = [];
-
-function getDefaultMinistryVariant() {
-    return { bodies: [''], options: [{ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] }] };
-}
-
-function canonicalGovType(govType) {
-    if (!govType) return null;
-    for (var i = 0; i < CANONICAL_GOV_TYPES.length; i++) {
-        if (CANONICAL_GOV_TYPES[i].toLowerCase() === String(govType).toLowerCase()) return CANONICAL_GOV_TYPES[i];
-    }
-    return null;
-}
-
-function normalizeGovTypeList(list) {
-    var deduped = [];
-    (list || []).forEach(function(g) {
-        var canonical = canonicalGovType(g);
-        if (canonical && deduped.indexOf(canonical) === -1) deduped.push(canonical);
-    });
-    return deduped;
-}
-
-function getSelectedGovTypesFromForm() {
-    var selected = [];
-    document.querySelectorAll('.me-gov-checkbox:checked').forEach(function(el) {
-        selected.push(el.getAttribute('data-gov-type'));
-    });
-    return selected;
-}
-
-function setGovTypeError(msg) {
-    var el = document.getElementById('me-gov-error');
-    if (el) el.textContent = msg || '';
-}
-
-function renderMinistryListView() {
-    document.getElementById('mode-content').innerHTML =
-        '<div class="admin-header"><div>' +
-            '<div class="admin-title">🏛️ Ministry Inbox Events</div>' +
-            '<div class="admin-subtitle">Events that appear in ministry inboxes during tick processing</div>' +
-        '</div><div class="admin-actions">' +
-            '<button class="btn btn-primary" onclick="createNewMinistryEvent()">+ New Ministry Event</button>' +
-        '</div></div>' +
-        '<div class="filters">' +
-            '<input type="text" id="m-filter-search" placeholder="Search events..." oninput="applyMinistryFilters()">' +
-            '<select id="m-filter-ministry" onchange="applyMinistryFilters()"><option value="">All Ministries</option>' +
-                MINISTRIES.map(function(m) { return '<option value="' + m.key + '">' + m.label + '</option>'; }).join('') +
-            '</select>' +
-            '<select id="m-filter-priority" onchange="applyMinistryFilters()"><option value="">All Priorities</option>' +
-                PRIORITIES.map(function(p) { return '<option value="' + p.key + '">' + p.label + '</option>'; }).join('') +
-            '</select>' +
-            '<span class="event-count" id="m-event-count">' + allMinistryTemplates.length + ' events</span>' +
-        '</div>' +
-        '<div id="m-event-list"></div>';
-    renderMinistryEventList(allMinistryTemplates);
-}
-
-function renderMinistryEventList(events) {
-    var c = document.getElementById('m-event-list');
-    if (!events.length) {
-        c.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div>No ministry events yet. Create one to get started.</div>';
-        return;
-    }
-    c.innerHTML = events.map(function(ev) {
-        var ministry = MINISTRIES.find(function(m) { return m.key === ev.ministry_key; });
-        var priority = PRIORITIES.find(function(p) { return p.key === ev.priority; });
-        var govTypes = (ev.gov_types || []).join(', ');
-        var optCount = 0;
-        if (ev.variants) {
-            CANONICAL_GOV_TYPES.forEach(function(govType) {
-                if (ev.variants[govType]) optCount += (ev.variants[govType].options || []).length;
-            });
-        }
-        var weightConditions = (ev.variants && ev.variants.weight_conditions) || [];
-        if (!weightConditions.length && ev.weight_stat) {
-            weightConditions = [{ stat: ev.weight_stat, op: ev.weight_operator || '>', value: ev.weight_value }];
-        }
-        var weightInfo = weightConditions.length > 0
-            ? '<span style="color:#888;">⚖ ' + weightConditions.map(function(c) { return c.stat + ' ' + c.op + ' ' + c.value; }).join(' & ') + '</span>'
-            : '';
-
-        return '<div class="event-card ' + (ev.is_active ? 'active' : 'inactive') + '" onclick="editMinistryEvent(\'' + ev.id + '\')">' +
-            '<div class="event-card-left"><div class="event-card-name">' + escapeHtml(ev.title) + '</div>' +
-            '<div class="event-card-meta">' +
-                '<span class="tag tag-ministry">' + (ministry ? ministry.icon + ' ' + ministry.key : ev.ministry_key) + '</span>' +
-                '<span class="tag tag-' + ev.priority + '">' + (priority ? priority.label : ev.priority) + '</span>' +
-                '<span class="tag tag-cooldown">' + ev.deadline_ticks + 't deadline</span>' +
-                '<span class="tag tag-cooldown">' + ev.cooldown_ticks + 't cd</span>' +
-                '<span style="color:#666;">' + govTypes + ' · ' + optCount + ' options</span>' +
-                weightInfo +
-            '</div></div>' +
-            '<div class="event-card-right"><span class="tag ' + (ev.is_active ? 'tag-active' : 'tag-inactive') + '">' + (ev.is_active ? 'ACTIVE' : 'INACTIVE') + '</span></div></div>';
-    }).join('');
-}
-
-function applyMinistryFilters() {
-    var search = (document.getElementById('m-filter-search').value || '').toLowerCase();
-    var ministry = document.getElementById('m-filter-ministry').value;
-    var priority = document.getElementById('m-filter-priority').value;
-    var filtered = allMinistryTemplates.filter(function(ev) {
-        if (search && ev.title.toLowerCase().indexOf(search) === -1 && ev.event_key.toLowerCase().indexOf(search) === -1) return false;
-        if (ministry && ev.ministry_key !== ministry) return false;
-        if (priority && ev.priority !== priority) return false;
-        return true;
-    });
-    document.getElementById('m-event-count').textContent = filtered.length + ' events';
-    renderMinistryEventList(filtered);
-}
-
-function createNewMinistryEvent() {
-    isNewMinistry = true;
-    var defaultVariants = { titles: [''] };
-    CANONICAL_GOV_TYPES.forEach(function(govType) {
-        defaultVariants[govType] = getDefaultMinistryVariant();
-    });
-    currentMinistryTemplate = {
-        event_key: '', ministry_key: 'justice', title: '', sender: '',
-        priority: 'routine', deadline_ticks: 3, cooldown_ticks: 6,
-        gov_types: CANONICAL_GOV_TYPES.slice(), is_active: true,
-        weight_stat: '', weight_operator: '>', weight_value: null,
-        variants: defaultVariants
-    };
-    mEditorVariants = JSON.parse(JSON.stringify(defaultVariants));
-    mEditorWeightConditions = [];
-    renderMinistryEditor();
-}
-
-function editMinistryEvent(id) {
-    var ev = allMinistryTemplates.find(function(e) { return e.id === id; });
-    if (!ev) return;
-    isNewMinistry = false;
-    currentMinistryTemplate = JSON.parse(JSON.stringify(ev));
-    var v = ev.variants || {};
-    var normalizedGovTypes = normalizeGovTypeList(ev.gov_types || []);
-    if (!normalizedGovTypes.length) normalizedGovTypes = CANONICAL_GOV_TYPES.slice();
-    currentMinistryTemplate.gov_types = normalizedGovTypes;
-
-    // Migrate old format: single body → bodies array, single title → titles array, non-canonical keys → canonical keys
-    mEditorVariants = { titles: v.titles || (ev.title ? [ev.title] : ['']) };
-    CANONICAL_GOV_TYPES.forEach(function(govType) {
-        var direct = v[govType];
-        var legacyKey = Object.keys(v).find(function(k) { return canonicalGovType(k) === govType; });
-        var sourceVariant = direct || (legacyKey ? v[legacyKey] : null);
-        mEditorVariants[govType] = sourceVariant ? {
-            bodies: sourceVariant.bodies || (sourceVariant.body ? [sourceVariant.body] : ['']),
-            options: sourceVariant.options || []
-        } : { bodies: [''], options: [] };
-    });
-
-    // Load weight conditions from variants (new format) or migrate from old flat columns
-    var wc = v.weight_conditions;
-    if (wc && wc.length > 0) {
-        mEditorWeightConditions = wc.map(function(c) { return { stat: c.stat, op: c.op, value: c.value }; });
-    } else if (ev.weight_stat) {
-        mEditorWeightConditions = [{ stat: ev.weight_stat, op: ev.weight_operator || '>', value: ev.weight_value }];
-    } else {
-        mEditorWeightConditions = [];
-    }
-    renderMinistryEditor();
-}
-
-function renderMinistryEditor() {
-    var c = document.getElementById('mode-content');
-    var tmpl = currentMinistryTemplate;
-    var title = isNewMinistry ? 'Create Ministry Event' : 'Edit Ministry Event';
-    var selectedGovTypes = normalizeGovTypeList(tmpl.gov_types || CANONICAL_GOV_TYPES);
-    if (!selectedGovTypes.length) selectedGovTypes = CANONICAL_GOV_TYPES.slice();
-
-    c.innerHTML =
-        '<button class="btn-back" onclick="cancelMinistryEditor()">← Back to Ministry Events</button>' +
-        '<div class="editor">' +
-            '<div class="editor-header"><div class="editor-title">' + title + '</div>' +
-                (!isNewMinistry ? '<button class="btn btn-danger btn-small" onclick="deleteMinistryEvent(\'' + tmpl.id + '\')">🗑 Delete</button>' : '') +
-            '</div>' +
-            '<div class="editor-body">' +
-
-                // Row 1: Event key + Title
-                '<div class="form-row">' +
-                    '<div class="form-group"><label class="form-label">Event Key (unique)</label><input type="text" class="form-input" id="me-key" value="' + escapeAttr(tmpl.event_key) + '" placeholder="e.g., prison_riot"></div>' +
-                    '<div class="form-group"><label class="form-label">Sender</label><input type="text" class="form-input" id="me-sender" value="' + escapeAttr(tmpl.sender) + '" placeholder="e.g., Federal Prison Authority"></div>' +
-                '</div>' +
-
-                // Title variants
-                '<div class="editor-section"><div class="editor-section-header"><div class="editor-section-title">📨 Subject Lines (Inbox Titles)</div><button class="btn btn-ghost btn-small" onclick="addMTitle()">+ Add Variant</button></div>' +
-                '<div class="form-hint" style="margin-bottom:12px;">Multiple subject lines — one randomly chosen each time the event fires. First entry is the primary title.</div>' +
-                '<div id="me-titles-list">' + renderMTitles() + '</div></div>' +
-
-                // Row 2: Ministry + Priority + Deadline
-                '<div class="form-row-3">' +
-                    '<div class="form-group"><label class="form-label">Ministry</label><select class="form-select" id="me-ministry">' +
-                        MINISTRIES.map(function(m) { return '<option value="' + m.key + '"' + (tmpl.ministry_key === m.key ? ' selected' : '') + '>' + m.label + '</option>'; }).join('') +
-                    '</select></div>' +
-                    '<div class="form-group"><label class="form-label">Priority</label><select class="form-select" id="me-priority">' +
-                        PRIORITIES.map(function(p) { return '<option value="' + p.key + '"' + (tmpl.priority === p.key ? ' selected' : '') + '>' + p.label + '</option>'; }).join('') +
-                    '</select></div>' +
-                    '<div class="form-group"><label class="form-label">Deadline (ticks)</label><input type="number" class="form-input" id="me-deadline" value="' + (tmpl.deadline_ticks || 3) + '" min="1" max="10"></div>' +
-                '</div>' +
-
-                // Row 3: Cooldown + Status + Gov types
-                '<div class="form-row-3">' +
-                    '<div class="form-group"><label class="form-label">Cooldown (ticks)</label><input type="number" class="form-input" id="me-cooldown" value="' + (tmpl.cooldown_ticks || 6) + '" min="0"></div>' +
-                    '<div class="form-group"><label class="form-label">Status</label><div class="toggle-wrapper" style="margin-top:8px;"><label class="toggle"><input type="checkbox" id="me-active" ' + (tmpl.is_active ? 'checked' : '') + '><span class="toggle-slider"></span></label><span class="toggle-label">' + (tmpl.is_active ? 'Active' : 'Inactive') + '</span></div></div>' +
-                    '<div class="form-group"><label class="form-label">Government Types</label><div class="checkbox-row" style="margin-top:8px;">' +
-                        CANONICAL_GOV_TYPES.map(function(govType) {
-                            var checked = selectedGovTypes.indexOf(govType) !== -1;
-                            var icon = (GOV_TYPE_META[govType] || {}).icon || '🏛️';
-                            var inputId = 'me-gov-' + govType.toLowerCase();
-                            return '<div class="checkbox-item"><input type="checkbox" class="me-gov-checkbox" data-gov-type="' + govType + '" id="' + inputId + '" ' + (checked ? 'checked' : '') + '><label for="' + inputId + '">' + icon + ' ' + govType + '</label></div>';
-                        }).join('') +
-                    '</div><div id="me-gov-error" style="color:#ff6b6b;font-size:0.78rem;margin-top:6px;"></div></div>' +
-                '</div>' +
-
-                // Weight conditions (multiple)
-                '<div class="editor-section"><div class="editor-section-header"><div class="editor-section-title">🎯 Weight Conditions (optional)</div><button class="btn btn-ghost btn-small" onclick="addWeightCondition()">+ Add Condition</button></div>' +
-                    '<div class="form-hint" style="margin-bottom:12px;">Event is more likely to fire when ALL stat conditions are met. Leave empty for equal chance.</div>' +
-                    '<div id="weight-conditions-list">' + renderWeightConditions() + '</div>' +
-                '</div>' +
-
-                // Placeholder reference
-                '<div class="placeholder-ref">' +
-                    '<div class="placeholder-ref-title">Available Placeholders — click to copy</div>' +
-                    '<div class="placeholder-ref-grid">' +
-                        MINISTRY_PLACEHOLDERS.map(function(p) {
-                            return '<span class="placeholder-ref-item" onclick="copyPlaceholder(\'' + p.tag + '\')" title="Click to copy">' + p.tag + '<span class="ph-hint">' + p.hint + '</span></span>';
-                        }).join('') +
-                    '</div>' +
-                    '<div class="form-hint" style="margin-top:8px;">Use these in email bodies and outcome messages. Resolved at runtime with actual game data.</div>' +
-                '</div>' +
-
-                // Variants
-                selectedGovTypes.map(function(govType) { return renderVariantSection(govType); }).join('') +
-
-            '</div>' +
-            '<div class="editor-footer"><button class="btn btn-ghost" onclick="cancelMinistryEditor()">Cancel</button><button class="btn btn-primary" onclick="saveMinistryEvent()">💾 Save Ministry Event</button></div>' +
-        '</div>';
-}
-
-function renderVariantSection(govType) {
-    var variant = mEditorVariants[govType] || { bodies: [''], options: [] };
-    var cssClass = govType.toLowerCase();
-    var icon = (GOV_TYPE_META[govType] || {}).icon || '🏛️';
-    var optionsHTML = (variant.options || []).map(function(opt, oi) {
-        var letter = String.fromCharCode(65 + oi);
-
-        // Migrate old format: flat effects → single outcome at 100%
-        if (!opt.outcomes && opt.effects) {
-            opt.outcomes = [{ chance: 100, label: 'Result', effects: opt.effects }];
-            delete opt.effects;
-            mEditorVariants[govType].options[oi] = opt;
-        }
-        if (!opt.outcomes) opt.outcomes = [{ chance: 100, label: 'Result', effects: [] }];
-
-        // Calculate chance sum for validation
-        var chanceSum = opt.outcomes.reduce(function(s, o) { return s + (o.chance || 0); }, 0);
-        var chanceSumClass = chanceSum === 100 ? 'valid' : 'invalid';
-        var chanceSumLabel = chanceSum === 100 ? '✓ 100%' : '⚠ ' + chanceSum + '%';
-
-        // Render each outcome
-        var outcomesHTML = opt.outcomes.map(function(outcome, ri) {
-            var effectsHTML = (outcome.effects || []).map(function(eff, ei) {
-                return '<div class="ministry-effect-row">' +
-                    '<select class="form-select" onchange="updateOutcomeEffect(\'' + govType + '\',' + oi + ',' + ri + ',' + ei + ',\'stat_key\',this.value)"><option value="">-- Stat --</option>' +
-                        NATION_STATS.concat(FACTION_STATS).concat([{key:'minister_approval',label:'Minister Approval'}]).map(function(s) { return '<option value="' + s.key + '"' + (eff.stat_key === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
-                    '</select>' +
-                    '<input type="number" class="form-input" value="' + (eff.change != null ? eff.change : '') + '" placeholder="+/-" step="1" onchange="updateOutcomeEffect(\'' + govType + '\',' + oi + ',' + ri + ',' + ei + ',\'change\',Number(this.value))">' +
-                    '<select class="form-select" onchange="updateOutcomeEffect(\'' + govType + '\',' + oi + ',' + ri + ',' + ei + ',\'target\',this.value)"><option value="nation"' + ((eff.target || 'nation') === 'nation' ? ' selected' : '') + '>Nation</option><option value="faction"' + (eff.target === 'faction' ? ' selected' : '') + '>Controlling Faction</option><option value="minister"' + (eff.target === 'minister' ? ' selected' : '') + '>Minister</option></select>' +
-                    '<button class="btn-icon" onclick="removeOutcomeEffect(\'' + govType + '\',' + oi + ',' + ri + ',' + ei + ')">✕</button>' +
-                '</div>';
-            }).join('');
-
-            return '<div class="outcome-card">' +
-                '<div class="outcome-header">' +
-                    '<div class="outcome-chance">' +
-                        '<input type="number" class="form-input" value="' + (outcome.chance || 0) + '" min="0" max="100" onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'chance\',Number(this.value))">' +
-                        '<span class="outcome-chance-pct">%</span>' +
-                    '</div>' +
-                    '<input type="text" class="form-input outcome-label-input" value="' + escapeAttr(outcome.label || '') + '" placeholder="Outcome label (e.g., Order Restored)" onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'label\',this.value)">' +
-                    (opt.outcomes.length > 1 ? '<button class="btn-icon" onclick="removeOutcome(\'' + govType + '\',' + oi + ',' + ri + ')">✕</button>' : '') +
-                '</div>' +
-                '<textarea class="outcome-message-area" placeholder="Outcome message — describe what happens (supports placeholders)..." onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'message\',this.value)">' + escapeHtml(outcome.message || '') + '</textarea>' +
-                effectsHTML +
-                '<button class="btn btn-ghost btn-small" onclick="addOutcomeEffect(\'' + govType + '\',' + oi + ',' + ri + ')" style="margin-top:4px;">+ Add Effect</button>' +
-                // Civic Event Field — optional public news story generated from this outcome
-                '<div class="civic-event-box">' +
-                    '<label class="civic-event-toggle">' +
-                        '<input type="checkbox" ' + (outcome.civic_event_text ? 'checked' : '') + ' onchange="toggleCivicEvent(\'' + govType + '\',' + oi + ',' + ri + ',this.checked)">' +
-                        '📰 Generate CIVIC News Event' +
-                    '</label>' +
-                    (outcome.civic_event_text || outcome.civic_event_text === '' ? (
-                        '<div class="civic-event-fields">' +
-                            '<label class="form-label">Category</label>' +
-                            '<select class="form-select" style="background:#0e1117;border-color:#3a3a5c;color:#e2e6eb;" onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'civic_event_category\',this.value)">' +
-                                EVENT_CATEGORIES.map(function(c) { return '<option value="' + c + '"' + ((outcome.civic_event_category || 'General') === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') +
-                            '</select>' +
-                            '<label class="form-label">News Headline / Event Name</label>' +
-                            '<input type="text" class="form-input" style="background:#0e1117;border-color:#3a3a5c;color:#e2e6eb;" value="' + escapeAttr(outcome.civic_event_name || '') + '" placeholder="e.g., Prison Break Quelled in {nation}" onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'civic_event_name\',this.value)">' +
-                            '<label class="form-label">News Story (appears in CIVIC feed — supports placeholders)</label>' +
-                            '<textarea class="civic-event-textarea" placeholder="e.g., A prison break was successfully put down in {nation} when the Minister of Justice {minister} ordered soldiers to..." onchange="updateOutcome(\'' + govType + '\',' + oi + ',' + ri + ',\'civic_event_text\',this.value)">' + escapeHtml(outcome.civic_event_text || '') + '</textarea>' +
-                        '</div>'
-                    ) : '') +
-                '</div>' +
-            '</div>';
-        }).join('');
-
-        return '<div class="ministry-option-card">' +
-            '<div class="ministry-option-header">' +
-                '<div class="ministry-option-label"><span class="ministry-option-letter">' + letter + '</span> ' +
-                    '<input type="text" class="form-input" style="display:inline;width:300px;margin-left:8px;" value="' + escapeAttr(opt.label) + '" placeholder="Option label..." onchange="updateMOpt(\'' + govType + '\',' + oi + ',\'label\',this.value)">' +
-                '</div>' +
-                '<button class="btn-icon" onclick="removeMOption(\'' + govType + '\',' + oi + ')">✕</button>' +
-            '</div>' +
-            '<div class="form-row-3" style="margin-bottom:8px;">' +
-                '<div class="form-group" style="margin-bottom:0;"><label class="form-label">AP Cost</label><input type="number" class="form-input" value="' + (opt.ap || 0) + '" min="0" onchange="updateMOpt(\'' + govType + '\',' + oi + ',\'ap\',Number(this.value))"></div>' +
-                '<div class="form-group" style="margin-bottom:0;"><label class="form-label">Money ($M base)</label><input type="number" class="form-input" value="' + (opt.money || 0) + '" min="0" onchange="updateMOpt(\'' + govType + '\',' + oi + ',\'money\',Number(this.value))"></div>' +
-                '<div class="form-group" style="margin-bottom:0;"><label class="form-label">Money Scaling Stat</label><select class="form-select" onchange="updateMOpt(\'' + govType + '\',' + oi + ',\'money_scaling_stat\',this.value)"><option value="">None (flat cost)</option>' +
-                    NATION_STATS.map(function(s) { return '<option value="' + s.key + '"' + (opt.money_scaling_stat === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
-                '</select></div>' +
-            '</div>' +
-            '<div style="display:flex;align-items:center;margin-bottom:8px;">' +
-                '<label class="form-label" style="margin-bottom:0;">Possible Outcomes</label>' +
-                '<span class="chance-sum ' + chanceSumClass + '">' + chanceSumLabel + '</span>' +
-                '<button class="btn btn-ghost btn-small" onclick="addOutcome(\'' + govType + '\',' + oi + ')" style="margin-left:auto;">+ Add Outcome</button>' +
-            '</div>' +
-            outcomesHTML +
-        '</div>';
-    }).join('');
-
-    return '<div class="variant-section ' + cssClass + '">' +
-        '<div class="variant-header ' + cssClass + '">' + icon + ' ' + govType + ' Variant</div>' +
-        '<div class="editor-section" style="border:none;padding:0;margin-bottom:12px;background:none;"><div class="editor-section-header"><div class="editor-section-title" style="font-size:0.78rem;">📄 Email Body Variants</div><button class="btn btn-ghost btn-small" onclick="addMBody(\'' + govType + '\')">+ Add Variant</button></div>' +
-        '<div class="form-hint" style="margin-bottom:8px;">Multiple body texts — one randomly chosen. Keeps repeat events feeling fresh.</div>' +
-        '<div id="me-bodies-' + govType + '">' + renderMBodies(govType) + '</div></div>' +
-        '<label class="form-label">Response Options</label>' +
-        '<div id="me-options-' + govType + '">' + optionsHTML + '</div>' +
-        '<button class="btn btn-ghost btn-small" onclick="addMOption(\'' + govType + '\')" style="margin-top:8px;">+ Add Option</button>' +
-    '</div>';
-}
-
-// Ministry variant helpers
-function updateMOpt(govType, oi, field, value) { mEditorVariants[govType].options[oi][field] = value; }
-
-// Civic event toggle — enables/disables the civic news fields on an outcome
-function toggleCivicEvent(govType, oi, ri, checked) {
-    var outcome = mEditorVariants[govType].options[oi].outcomes[ri];
-    if (checked) {
-        outcome.civic_event_text = outcome.civic_event_text || '';
-        outcome.civic_event_name = outcome.civic_event_name || '';
-        outcome.civic_event_category = outcome.civic_event_category || 'General';
-    } else {
-        delete outcome.civic_event_text;
-        delete outcome.civic_event_name;
-        delete outcome.civic_event_category;
-    }
-    syncMinistryBody();
-    renderMinistryEditor();
-}
-
-// Outcome helpers
-function updateOutcome(govType, oi, ri, field, value) {
-    mEditorVariants[govType].options[oi].outcomes[ri][field] = value;
-    // Update the chance sum display live
-    if (field === 'chance') {
-        var sum = mEditorVariants[govType].options[oi].outcomes.reduce(function(s, o) { return s + (o.chance || 0); }, 0);
-        // Re-render just to update the sum badge — a bit heavy but reliable
-        syncMinistryBody();
-        renderMinistryEditor();
-    }
-}
-
-function updateOutcomeEffect(govType, oi, ri, ei, field, value) {
-    mEditorVariants[govType].options[oi].outcomes[ri].effects[ei][field] = value;
-}
-
-function addOutcome(govType, oi) {
-    var outcomes = mEditorVariants[govType].options[oi].outcomes;
-    var remaining = 100 - outcomes.reduce(function(s, o) { return s + (o.chance || 0); }, 0);
-    outcomes.push({ chance: Math.max(0, remaining), label: '', effects: [] });
-    syncMinistryBody();
-    renderMinistryEditor();
-}
-
-function removeOutcome(govType, oi, ri) {
-    mEditorVariants[govType].options[oi].outcomes.splice(ri, 1);
-    syncMinistryBody();
-    renderMinistryEditor();
-}
-
-function addOutcomeEffect(govType, oi, ri) {
-    mEditorVariants[govType].options[oi].outcomes[ri].effects.push({ stat_key: '', change: 0, target: 'nation' });
-    syncMinistryBody();
-    renderMinistryEditor();
-}
-
-function removeOutcomeEffect(govType, oi, ri, ei) {
-    mEditorVariants[govType].options[oi].outcomes[ri].effects.splice(ei, 1);
-    syncMinistryBody();
-    renderMinistryEditor();
-}
-
-function addMOption(govType) {
-    mEditorVariants[govType].options.push({ label: '', ap: 2, money: 0, money_scaling_stat: '', outcomes: [{ chance: 100, label: 'Result', effects: [] }] });
-    syncMinistryBody();
-    renderMinistryEditor();
-}
-
-function removeMOption(govType, oi) {
-    mEditorVariants[govType].options.splice(oi, 1);
-    syncMinistryBody();
-    renderMinistryEditor();
-}
-
-// Weight condition list helpers
-function renderWeightConditions() {
-    if (!mEditorWeightConditions.length) return '<div class="empty-state" style="padding:12px;">No weight conditions. Event will have equal chance to fire.</div>';
-    return mEditorWeightConditions.map(function(c, i) {
-        return '<div class="trigger-item">' +
-            '<select class="form-select" onchange="mEditorWeightConditions[' + i + '].stat=this.value"><option value="">-- Select Stat --</option>' +
-                NATION_STATS.map(function(s) { return '<option value="' + s.key + '"' + (c.stat === s.key ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') +
-            '</select>' +
-            '<select class="form-select" onchange="mEditorWeightConditions[' + i + '].op=this.value">' +
-                ['>', '<', '>=', '<='].map(function(op) { return '<option value="' + op + '"' + (c.op === op ? ' selected' : '') + '>' + op + '</option>'; }).join('') +
-            '</select>' +
-            '<input type="number" class="form-input" value="' + (c.value != null ? c.value : '') + '" placeholder="e.g., 60" onchange="mEditorWeightConditions[' + i + '].value=this.value===\'\'?null:Number(this.value)">' +
-            '<button class="btn-icon" onclick="removeWeightCondition(' + i + ')">✕</button>' +
-        '</div>';
-    }).join('');
-}
-
-function addWeightCondition() {
-    mEditorWeightConditions.push({ stat: '', op: '>', value: null });
-    document.getElementById('weight-conditions-list').innerHTML = renderWeightConditions();
-}
-
-function removeWeightCondition(i) {
-    mEditorWeightConditions.splice(i, 1);
-    document.getElementById('weight-conditions-list').innerHTML = renderWeightConditions();
-}
-
-function syncMinistryBody() {
-    // Sync title variants
-    document.querySelectorAll('#me-titles-list input').forEach(function(el, i) {
-        if (mEditorVariants.titles[i] !== undefined) mEditorVariants.titles[i] = el.value;
-    });
-    // Sync body variants per gov type
-    CANONICAL_GOV_TYPES.forEach(function(govType) {
-        document.querySelectorAll('#me-bodies-' + govType + ' textarea').forEach(function(el, i) {
-            if (mEditorVariants[govType] && mEditorVariants[govType].bodies[i] !== undefined) mEditorVariants[govType].bodies[i] = el.value;
-        });
-    });
-}
-
-// Title variant helpers
-function renderMTitles() {
-    var titles = mEditorVariants.titles || [''];
-    if (!titles.length) return '<div class="empty-state" style="padding:12px;">No titles. Add at least one.</div>';
-    return titles.map(function(t, i) {
-        return '<div class="desc-item">' +
-            '<input type="text" class="form-input" style="flex:1;" value="' + escapeAttr(t) + '" placeholder="' + (i === 0 ? 'Primary subject line...' : 'Alternate subject line...') + '" onchange="mEditorVariants.titles[' + i + ']=this.value">' +
-            (titles.length > 1 ? '<button class="btn-icon" onclick="removeMTitle(' + i + ')">✕</button>' : '') +
-        '</div>';
-    }).join('');
-}
-
-function addMTitle() {
-    syncMinistryBody();
-    mEditorVariants.titles.push('');
-    document.getElementById('me-titles-list').innerHTML = renderMTitles();
-}
-
-function removeMTitle(i) {
-    syncMinistryBody();
-    mEditorVariants.titles.splice(i, 1);
-    document.getElementById('me-titles-list').innerHTML = renderMTitles();
-}
-
-// Body variant helpers
-function renderMBodies(govType) {
-    var bodies = (mEditorVariants[govType] || {}).bodies || [''];
-    if (!bodies.length) return '<div class="empty-state" style="padding:12px;">No body texts. Add at least one.</div>';
-    return bodies.map(function(b, i) {
-        return '<div class="desc-item">' +
-            '<textarea class="form-textarea" style="flex:1;min-height:80px;" placeholder="' + (i === 0 ? 'Primary email body text...' : 'Alternate email body text...') + '">' + escapeHtml(b) + '</textarea>' +
-            (bodies.length > 1 ? '<button class="btn-icon" onclick="removeMBody(\'' + govType + '\',' + i + ')">✕</button>' : '') +
-        '</div>';
-    }).join('');
-}
-
-function addMBody(govType) {
-    syncMinistryBody();
-    if (!mEditorVariants[govType]) mEditorVariants[govType] = { bodies: [], options: [] };
-    mEditorVariants[govType].bodies.push('');
-    document.getElementById('me-bodies-' + govType).innerHTML = renderMBodies(govType);
-}
-
-function removeMBody(govType, i) {
-    syncMinistryBody();
-    mEditorVariants[govType].bodies.splice(i, 1);
-    document.getElementById('me-bodies-' + govType).innerHTML = renderMBodies(govType);
-}
-
-async function saveMinistryEvent() {
-    syncMinistryBody();
-    var tmpl = currentMinistryTemplate;
-
-    // Read form fields
-    var eventKey = (document.getElementById('me-key').value || '').trim();
-    syncMinistryBody();
-    var validTitles = (mEditorVariants.titles || []).filter(function(t) { return t.trim(); });
-    var titleVal = validTitles.length > 0 ? validTitles[0] : '';
-    var ministry = document.getElementById('me-ministry').value;
-    var sender = (document.getElementById('me-sender').value || '').trim();
-    var priority = document.getElementById('me-priority').value;
-    var deadline = parseInt(document.getElementById('me-deadline').value) || 3;
-    var cooldown = parseInt(document.getElementById('me-cooldown').value) || 6;
-    var isActive = document.getElementById('me-active').checked;
-    var selectedGovTypes = getSelectedGovTypesFromForm();
-    // Collect weight conditions from editor state
-    var validConditions = mEditorWeightConditions.filter(function(c) { return c.stat; });
-    // Backward compat: write first condition to old flat columns
-    var weightStat = validConditions.length > 0 ? validConditions[0].stat : null;
-    var weightOp = validConditions.length > 0 ? validConditions[0].op : '>';
-    var weightVal = validConditions.length > 0 ? validConditions[0].value : null;
-
-    if (!eventKey) { alert('Event key is required.'); return; }
-    if (!titleVal) { alert('At least one subject line is required.'); return; }
-    if (!sender) { alert('Sender is required.'); return; }
-
-    if (!selectedGovTypes.length) {
-        setGovTypeError('Select at least one government type.');
-        alert('Select at least one government type.');
-        return;
-    }
-
-    for (var sgi = 0; sgi < selectedGovTypes.length; sgi++) {
-        var maybeGovType = selectedGovTypes[sgi];
-        if (CANONICAL_GOV_TYPES.indexOf(maybeGovType) === -1) {
-            var invalidMsg = 'Government type "' + maybeGovType + '" is not recognized. Valid types: [' + CANONICAL_GOV_TYPES.join(', ') + '].';
-            setGovTypeError(invalidMsg);
-            alert(invalidMsg);
-            return;
-        }
-    }
-    setGovTypeError('');
-
-    // Validate outcome chances sum to 100 for each option
-    for (var gi = 0; gi < selectedGovTypes.length; gi++) {
-        var gType = selectedGovTypes[gi];
-        var opts = (mEditorVariants[gType] || {}).options || [];
-        for (var oii = 0; oii < opts.length; oii++) {
-            var outcomes = opts[oii].outcomes || [];
-            if (outcomes.length > 0) {
-                var sum = outcomes.reduce(function(s, o) { return s + (o.chance || 0); }, 0);
-                if (sum !== 100) {
-                    var letter = String.fromCharCode(65 + oii);
-                    alert(gType + ' Option ' + letter + ': Outcome chances sum to ' + sum + '%, must equal 100%.');
-                    return;
-                }
-            }
-        }
-    }
-
-    var govTypes = selectedGovTypes.slice();
-
-    // Clean variants — only include enabled canonical gov types, store title variants + weight conditions
-    var cleanVariants = { titles: validTitles };
-    govTypes.forEach(function(govType) {
-        cleanVariants[govType] = mEditorVariants[govType] || { bodies: [''], options: [] };
-    });
-    if (validConditions.length > 0) cleanVariants.weight_conditions = validConditions;
-
-    var payload = {
-        event_key: eventKey, ministry_key: ministry, title: titleVal, sender: sender,
-        priority: priority, deadline_ticks: deadline, cooldown_ticks: cooldown,
-        gov_types: govTypes, is_active: isActive,
-        weight_stat: weightStat, weight_operator: weightOp, weight_value: weightVal,
-        variants: cleanVariants
-    };
-
-    try {
-        if (isNewMinistry) {
-            var r = await _supabase.from('ministry_event_templates').insert(payload).select().single();
-            if (r.error) throw r.error;
-        } else {
-            var r2 = await _supabase.from('ministry_event_templates').update(payload).eq('id', tmpl.id);
-            if (r2.error) throw r2.error;
-        }
-        alert(isNewMinistry ? 'Ministry event created!' : 'Ministry event saved!');
-        await loadAllMinistryTemplates();
-        renderModeTabs();
-    } catch (err) {
-        console.error('Save error:', err);
-        alert('Error: ' + err.message);
-    }
-}
-
-async function deleteMinistryEvent(id) {
-    if (!confirm('Delete this ministry event and all fired instances? This cannot be undone.')) return;
-    try {
-        // Cascade: delete child rows in ministry_events that reference this template
-        await _supabase.from('ministry_events').delete().eq('template_id', id);
-        var r = await _supabase.from('ministry_event_templates').delete().eq('id', id);
-        if (r.error) throw r.error;
-        alert('Ministry event deleted.');
-        await loadAllMinistryTemplates();
-        renderModeTabs();
-    } catch (err) { console.error('Delete error:', err); alert('Error: ' + err.message); }
-}
-
-function cancelMinistryEditor() { renderModeTabs(); }
 
 
 // Expose functions for HTML onclick/onchange handlers
-window.switchMode = switchMode;
 window.viewRecentLog = viewRecentLog;
 window.createNewEvent = createNewEvent;
 window.applyFilters = applyFilters;
@@ -1144,29 +458,7 @@ window.copyPlaceholder = copyPlaceholder;
 window.removeDescription = removeDescription;
 window.removeTrigger = removeTrigger;
 window.removeEffect = removeEffect;
-window.addWeightCondition = addWeightCondition;
-window.removeWeightCondition = removeWeightCondition;
-window.addMTitle = addMTitle;
-window.removeMTitle = removeMTitle;
-window.addMBody = addMBody;
-window.removeMBody = removeMBody;
 window.saveEvent = saveEvent;
-window.createNewMinistryEvent = createNewMinistryEvent;
-window.applyMinistryFilters = applyMinistryFilters;
-window.editMinistryEvent = editMinistryEvent;
-window.cancelMinistryEditor = cancelMinistryEditor;
-window.deleteMinistryEvent = deleteMinistryEvent;
-window.updateOutcomeEffect = updateOutcomeEffect;
-window.removeOutcomeEffect = removeOutcomeEffect;
-window.updateOutcome = updateOutcome;
-window.removeOutcome = removeOutcome;
-window.addOutcomeEffect = addOutcomeEffect;
-window.toggleCivicEvent = toggleCivicEvent;
-window.updateMOpt = updateMOpt;
-window.addOutcome = addOutcome;
-window.addMOption = addMOption;
-window.removeMOption = removeMOption;
-window.saveMinistryEvent = saveMinistryEvent;
 </script>
 </body>
 </html>

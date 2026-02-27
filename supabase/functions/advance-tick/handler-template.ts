@@ -430,6 +430,17 @@ async function advanceTick(supabase) {
         console.error('[advanceTick] Trade processing failed (non-fatal):', tradeErr);
     }
 
+    // 3.6 Expire trade agreements (including economic aid) that have passed their expires_at_tick
+    try {
+        const expiredAgreements = await processExpiredTradeAgreements(supabase, newTick);
+        if (expiredAgreements.length > 0) {
+            summary.expiredAgreements = expiredAgreements;
+            console.log(`[advanceTick] Expired ${expiredAgreements.length} trade agreement(s)`);
+        }
+    } catch (expErr) {
+        console.error('[advanceTick] Agreement expiration check failed (non-fatal):', expErr);
+    }
+
     // 4. Process each nation
     for (const nation of nationList) {
       try {
@@ -651,11 +662,12 @@ async function advanceTick(supabase) {
             summary.promises.push({ nation: nation.name, promises: promiseResults });
         }
 
-        // Ministry inbox events (fire from templates + expire overdue)
-        const ministryEventResults = await processMinistryInboxEvents(supabase, freshNation || nation, newTick);
-        if (ministryEventResults.length > 0) {
-            summary.ministryEvents = summary.ministryEvents || [];
-            summary.ministryEvents.push({ nation: nation.name, events: ministryEventResults });
+
+        // Economic aid condition reviews (annual, at year boundaries)
+        const aidReviewResults = await processAidConditionReview(supabase, freshNation || nation, newTick);
+        if (aidReviewResults.length > 0) {
+            summary.aidReviews = summary.aidReviews || [];
+            summary.aidReviews.push({ nation: nation.name, reviews: aidReviewResults });
         }
 
         // Ambassador term limits (retirements + warnings)
@@ -678,77 +690,6 @@ async function advanceTick(supabase) {
     return summary;
 }
 
-// ===== INTEGRITY CHECKS =====
-
-const CANONICAL_TEMPLATE_GOV_TYPES = ['Democracy', 'Autocracy', 'Presidential'];
-const TEMPLATE_GOV_TYPE_ALIASES = {
-    democracy: 'Democracy',
-    democratic: 'Democracy',
-    parliamentary: 'Democracy',
-    parliamentarian: 'Democracy',
-    'parliamentary democracy': 'Democracy',
-    autocracy: 'Autocracy',
-    authoritarian: 'Autocracy',
-    authoritarianism: 'Autocracy',
-    dictatorship: 'Autocracy',
-    dictatorial: 'Autocracy',
-    'military junta': 'Autocracy',
-    presidential: 'Presidential',
-    'presidential republic': 'Presidential',
-    'executive presidency': 'Presidential'
-};
-
-async function runMinistryEventTemplateGovTypeIntegrityCheck(supabase) {
-    try {
-        const { data: templates, error } = await supabase
-            .from('ministry_event_templates')
-            .select('id, event_key, gov_types, is_active');
-
-        if (error) {
-            console.error('[Integrity][ministry_event_templates] Failed to load template gov types:', error.message);
-            return;
-        }
-
-        const unknownByTemplate = [];
-        const distinctGovTypes = new Set();
-
-        for (const tmpl of (templates || [])) {
-            const values = Array.isArray(tmpl.gov_types) ? tmpl.gov_types : [];
-            const unknown = [];
-            for (const raw of values) {
-                const trimmed = String(raw || '').trim();
-                if (!trimmed) continue;
-                distinctGovTypes.add(trimmed);
-                const isCanonical = CANONICAL_TEMPLATE_GOV_TYPES.includes(trimmed);
-                const isAlias = Object.prototype.hasOwnProperty.call(TEMPLATE_GOV_TYPE_ALIASES, trimmed.toLowerCase());
-                if (!isCanonical && !isAlias) unknown.push(trimmed);
-            }
-            if (unknown.length > 0) {
-                unknownByTemplate.push({
-                    id: tmpl.id,
-                    event_key: tmpl.event_key,
-                    is_active: tmpl.is_active,
-                    unknown_gov_types: [...new Set(unknown)].sort()
-                });
-            }
-        }
-
-        const distinctList = [...distinctGovTypes].sort();
-        console.log('[Integrity][ministry_event_templates] Distinct template gov_types:', JSON.stringify(distinctList));
-        console.log('[Integrity][ministry_event_templates] Canonical gov_types:', JSON.stringify(CANONICAL_TEMPLATE_GOV_TYPES));
-
-        if (unknownByTemplate.length > 0) {
-            console.error(
-                `[Integrity][ministry_event_templates] UNKNOWN gov_types detected in ${unknownByTemplate.length} template(s). ` +
-                `Canonical values: ${CANONICAL_TEMPLATE_GOV_TYPES.join(', ')}. ` +
-                'Offenders:',
-                JSON.stringify(unknownByTemplate)
-            );
-        }
-    } catch (e) {
-        console.error('[Integrity][ministry_event_templates] Integrity check failed unexpectedly:', e?.message || e);
-    }
-}
 
 // ===== EDGE FUNCTION HANDLER =====
 
@@ -779,7 +720,6 @@ Deno.serve(async (req) => {
     try {
         // 0. Startup checks
         await ensureApRpcAvailability(supabase);
-        await runMinistryEventTemplateGovTypeIntegrityCheck(supabase);
 
         // 1. Check for force parameter (admin manual trigger)
         let force = false;

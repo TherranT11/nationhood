@@ -34,7 +34,6 @@ DECLARE
         'active_laws',
         'elections',
         -- Events & crises
-        'ministry_events',
         'active_crises',
         'event_log',
         -- History

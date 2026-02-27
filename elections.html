@@ -518,8 +518,12 @@ async function renderElectionBreakdown(election) {
  */
 async function renderPresidentialResults(election) {
     if (!election || !election.results) return;
-    const candidates = election.results.presidential_candidates || [];
-    if (candidates.length === 0) {
+    const wasRunoff = election.results.was_runoff || false;
+    const round1Candidates = election.results.round_1_candidates || [];
+    const runoffCandidates = election.results.runoff_candidates || [];
+    // Final results: if runoff happened, show runoff results as the main table; otherwise show presidential_candidates
+    const candidates = wasRunoff ? runoffCandidates : (election.results.presidential_candidates || []);
+    if (candidates.length === 0 && round1Candidates.length === 0) {
         const el = document.getElementById('presidential-results-list');
         if (el) el.innerHTML = '<div style="color:#888;padding:12px 0;">No presidential election results yet.</div>';
         return;
@@ -541,9 +545,6 @@ async function renderPresidentialResults(election) {
         if (yearEl) yearEl.textContent = dateStr;
     }
 
-    const sorted = [...candidates].sort((a, b) => b.votes - a.votes);
-    const winner = sorted[0];
-
     const ideologyColors = {
         'LIBERTY': '#9C27B0', 'EQUALITY': '#E91E63', 'FREEDOM': '#2196F3',
         'SECURITY': '#FF9800', 'INDIVIDUALISM': '#eab308', 'COLLECTIVISM': '#ec4899',
@@ -551,15 +552,58 @@ async function renderPresidentialResults(election) {
         'GLOBALISM': '#3F51B5'
     };
 
-    // Winner banner
+    function renderCandidateTable(candidateList, tableLabel) {
+        const sorted = [...candidateList].sort((a, b) => b.votes - a.votes);
+        const tableWinner = sorted[0];
+        let tbl = '';
+
+        // Header row
+        tbl += `
+            <div style="font-size:0.78rem;color:#aaa;text-transform:uppercase;letter-spacing:1px;font-weight:bold;margin:12px 0 6px 0;">${tableLabel}</div>
+            <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 0.8fr;gap:12px;padding:8px 0;border-bottom:2px solid #333;font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:1px;">
+                <span>Candidate</span>
+                <span>Party</span>
+                <span style="text-align:right;">Votes</span>
+                <span style="text-align:right;">%</span>
+            </div>`;
+
+        tbl += sorted.map((c, cIdx) => {
+            const ideo = (c.ideology || '').toUpperCase();
+            const color = ideologyColors[ideo] || '#888';
+            const isWinner = c.winner || c.candidate_id === tableWinner.candidate_id;
+            const cPartyColor = getPartyColor(c.party_id, cIdx);
+            const cLogo = getPartyLogo(c.party_id);
+            const cLogoHtml = cLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(cLogo, 16, cPartyColor)}</span>` : '';
+            return `
+                <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 0.8fr;gap:12px;padding:12px 0;border-bottom:1px solid #222;align-items:center;border-left:3px solid ${cPartyColor};padding-left:10px;">
+                    <span style="font-size:0.9rem;color:${isWinner ? '#4CAF50' : '#e0e0e0'};font-weight:bold;">
+                        ${isWinner ? '&#x2713; ' : ''}${c.candidate_name}
+                        <span style="display:inline-block;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;color:#fff;background:${color};margin-left:6px;vertical-align:middle;">${c.ideology}</span>
+                    </span>
+                    <span style="font-size:0.85rem;color:#aaa;">${cLogoHtml}${c.party_name}</span>
+                    <span style="font-size:0.85rem;color:#aaa;text-align:right;">${(c.votes || 0).toLocaleString()}</span>
+                    <span style="font-size:0.85rem;color:#aaa;text-align:right;">${c.vote_percentage || 0}%</span>
+                </div>`;
+        }).join('');
+
+        return tbl;
+    }
+
+    // Determine the overall winner from final results
+    const finalCandidates = candidates.length > 0 ? candidates : round1Candidates;
+    const sorted = [...finalCandidates].sort((a, b) => b.votes - a.votes);
+    const winner = sorted[0];
+
     const winnerIdeology = (winner.ideology || '').toUpperCase();
     const winnerColor = ideologyColors[winnerIdeology] || '#888';
     const winnerPartyColor = getPartyColor(winner.party_id, 0);
     const winnerLogo = getPartyLogo(winner.party_id);
     const winnerLogoHtml = winnerLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:8px;">${getPartyIconSVG(winnerLogo, 22, winnerPartyColor)}</span>` : '';
+
+    // Winner banner
     let html = `
         <div style="background:linear-gradient(135deg,#1a2a1a,#0a1a0a);border:2px solid #4CAF50;border-radius:8px;padding:16px;margin-bottom:16px;border-left:4px solid ${winnerPartyColor};">
-            <div style="font-size:0.75rem;color:#4CAF50;text-transform:uppercase;letter-spacing:1px;font-weight:bold;margin-bottom:6px;">Presidential Election Winner</div>
+            <div style="font-size:0.75rem;color:#4CAF50;text-transform:uppercase;letter-spacing:1px;font-weight:bold;margin-bottom:6px;">Presidential Election Winner${wasRunoff ? ' (Runoff)' : ''}</div>
             <div style="font-size:1.1rem;color:#fff;font-weight:bold;">${winner.candidate_name}</div>
             <div style="font-size:0.85rem;color:#aaa;margin-top:4px;">
                 ${winnerLogoHtml}${winner.party_name}
@@ -568,34 +612,31 @@ async function renderPresidentialResults(election) {
             <div style="font-size:0.82rem;color:#aaa;margin-top:4px;">${(winner.votes || 0).toLocaleString()} votes (${winner.vote_percentage || 0}%)</div>
         </div>`;
 
-    // Header row
-    html += `
-        <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 0.8fr;gap:12px;padding:8px 0;border-bottom:2px solid #333;font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:1px;">
-            <span>Candidate</span>
-            <span>Party</span>
-            <span style="text-align:right;">Votes</span>
-            <span style="text-align:right;">%</span>
-        </div>`;
-
-    // Candidate rows
-    html += sorted.map((c, cIdx) => {
-        const ideo = (c.ideology || '').toUpperCase();
-        const color = ideologyColors[ideo] || '#888';
-        const isWinner = c.winner || c.candidate_id === winner.candidate_id;
-        const cPartyColor = getPartyColor(c.party_id, cIdx);
-        const cLogo = getPartyLogo(c.party_id);
-        const cLogoHtml = cLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(cLogo, 16, cPartyColor)}</span>` : '';
-        return `
-            <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 0.8fr;gap:12px;padding:12px 0;border-bottom:1px solid #222;align-items:center;border-left:3px solid ${cPartyColor};padding-left:10px;">
-                <span style="font-size:0.9rem;color:${isWinner ? '#4CAF50' : '#e0e0e0'};font-weight:bold;">
-                    ${isWinner ? '&#x2713; ' : ''}${c.candidate_name}
-                    <span style="display:inline-block;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;color:#fff;background:${color};margin-left:6px;vertical-align:middle;">${c.ideology}</span>
-                </span>
-                <span style="font-size:0.85rem;color:#aaa;">${cLogoHtml}${c.party_name}</span>
-                <span style="font-size:0.85rem;color:#aaa;text-align:right;">${(c.votes || 0).toLocaleString()}</span>
-                <span style="font-size:0.85rem;color:#aaa;text-align:right;">${c.vote_percentage || 0}%</span>
+    if (wasRunoff) {
+        // Runoff banner
+        html += `
+            <div style="background:linear-gradient(135deg,#2a1a0a,#1a0a00);border:1px solid #FF9800;border-radius:6px;padding:10px 14px;margin-bottom:16px;">
+                <span style="font-size:0.75rem;color:#FF9800;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">Runoff Election</span>
+                <span style="font-size:0.78rem;color:#aaa;margin-left:8px;">No candidate won a majority in Round 1. The top two advanced to a runoff.</span>
             </div>`;
-    }).join('');
+
+        // Runoff results table (final round)
+        if (runoffCandidates.length > 0) {
+            html += renderCandidateTable(runoffCandidates, 'Runoff Results');
+        }
+
+        // Round 1 results table (collapsed by default)
+        if (round1Candidates.length > 0) {
+            html += `
+                <details style="margin-top:16px;">
+                    <summary style="cursor:pointer;font-size:0.78rem;color:#888;text-transform:uppercase;letter-spacing:1px;font-weight:bold;padding:8px 0;">Round 1 Results (${round1Candidates.length} candidates)</summary>
+                    <div style="opacity:0.8;">${renderCandidateTable(round1Candidates, 'Round 1')}</div>
+                </details>`;
+        }
+    } else {
+        // Standard single-round results
+        html += renderCandidateTable(candidates, 'Results');
+    }
 
     // Turnout info
     const turnout = election.results.turnout_pct || 0;
@@ -1646,21 +1687,6 @@ async function formGovernment() {
                     shard?.current_tick || 0
                 );
 
-                // Create ministry inbox event so PM party is notified
-                try {
-                    await _supabase.from('ministry_events').insert({
-                        nation_id: currentNation.id,
-                        ministry_key: 'prime_minister',
-                        controlling_faction_id: pmPartyId,
-                        title: '👑 Select Your Prime Minister',
-                        sender: 'Coalition Government',
-                        body: 'Your party has been awarded the Prime Minister post. You must now choose who will lead the nation. Visit the PM selection page to review candidates and make your appointment.',
-                        status: 'active',
-                        created_at_tick: shard?.current_tick || 0
-                    });
-                } catch (inboxErr) {
-                    console.warn('Could not create PM selection inbox event:', inboxErr);
-                }
             }
 
             alert('🏛️ ' + data.message);

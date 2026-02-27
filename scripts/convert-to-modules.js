@@ -92,7 +92,7 @@ const imports = {
   // GROUP B: CDN + supabase-client + game-common (no common.js)
   'eventadmin.html': [
     `import { _supabase } from './js/supabase-client.js';`,
-    `import { GAME_CONFIG, MINISTRY_EVENT_GOV_TYPES, MAJOR_SECTORS, NATION_STAT_COLUMNS, formatStatName, normalizeNationStatKey, templateSupportsNationGovType, canonicalNationGovTypes } from './js/game-common.js';`,
+    `import { GAME_CONFIG, MAJOR_SECTORS, NATION_STAT_COLUMNS, formatStatName, normalizeNationStatKey } from './js/game-common.js';`,
   ],
   'crisisadmin.html': [
     `import { _supabase } from './js/supabase-client.js';`,
@@ -102,7 +102,7 @@ const imports = {
   // GROUP C: CDN + game-common only
   'admin.html': [
     `import { createClient } from '@supabase/supabase-js';`,
-    `import { GAME_CONFIG, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processMinistryInboxEvents, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES } from './js/game-common.js';`,
+    `import { GAME_CONFIG, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES } from './js/game-common.js';`,
   ],
 
   // GROUP D: CDN + inline client (auth pages)
