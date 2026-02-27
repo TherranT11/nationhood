@@ -7,10 +7,17 @@
 -- These rows are for DISPLAY on nation.html (actual deltas applied
 -- programmatically in processGovernmentShutdown inside advance-tick).
 
--- Update template description
-UPDATE crisis_templates
-SET description = 'The government has shut down because the Budget Bill has not been passed. Stability drops each tick, PM/President approval falls, all ministers take approval penalties, and unfunded ministries operate at collapsed capacity. Pass the Budget Bill to end the shutdown.'
-WHERE id = '00000000-0000-0000-0000-000000000001';
+-- Update template description (upsert to ensure template exists)
+INSERT INTO crisis_templates (id, name, description, is_active, crisis_type)
+VALUES (
+    '00000000-0000-0000-0000-000000000001',
+    'Government Shutdown',
+    'The government has shut down because the Budget Bill has not been passed. Stability drops each tick, PM/President approval falls, all ministers take approval penalties, and unfunded ministries operate at collapsed capacity. Pass the Budget Bill to end the shutdown.',
+    false,
+    'stat'
+)
+ON CONFLICT (id) DO UPDATE SET
+    description = EXCLUDED.description;
 
 -- Remove all old display effects
 DELETE FROM crisis_effects
