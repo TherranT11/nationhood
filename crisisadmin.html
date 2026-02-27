@@ -297,6 +297,9 @@ function createNewCrisis() {
     editorTriggers = [];
     editorEffects = [];
     editorEndTriggers = [];
+    window.editorTriggers = editorTriggers;
+    window.editorEffects = editorEffects;
+    window.editorEndTriggers = editorEndTriggers;
     deletedTriggerIds = [];
     deletedEffectIds = [];
     deletedEndTriggerIds = [];
@@ -311,6 +314,9 @@ function editCrisis(id) {
     editorTriggers = (cr.crisis_triggers || []).map(function(t) { return Object.assign({}, t, { isNew: false }); });
     editorEffects = (cr.crisis_effects || []).map(function(e) { return Object.assign({}, e, { isNew: false }); });
     editorEndTriggers = (cr.crisis_end_triggers || []).map(function(t) { return Object.assign({}, t, { isNew: false }); });
+    window.editorTriggers = editorTriggers;
+    window.editorEffects = editorEffects;
+    window.editorEndTriggers = editorEndTriggers;
     deletedTriggerIds = [];
     deletedEffectIds = [];
     deletedEndTriggerIds = [];
@@ -700,6 +706,7 @@ function createNewMC() {
         recovery_threshold_pct: 75, institution_ids: []
     };
     mcEditorEffects = [];
+    window.mcEditorEffects = mcEditorEffects;
     mcDeletedEffectIds = [];
     renderMCEditor();
 }
@@ -712,6 +719,7 @@ function editMC(id) {
         institution_ids: cr.institution_ids || []
     });
     mcEditorEffects = (cr.crisis_effects || []).map(function(e) { return Object.assign({}, e, { isNew: false }); });
+    window.mcEditorEffects = mcEditorEffects;
     mcDeletedEffectIds = [];
     renderMCEditor();
 }
@@ -1002,6 +1010,12 @@ async function deleteMC(id) {
     }
 }
 
+// Expose state arrays for HTML inline onchange handlers (module-scoped vars aren't global)
+window.editorTriggers = editorTriggers;
+window.editorEffects = editorEffects;
+window.editorEndTriggers = editorEndTriggers;
+window.mcEditorEffects = mcEditorEffects;
+
 // Expose functions for HTML onclick/onchange handlers
 window.switchTab = switchTab;
 window.createNewCrisis = createNewCrisis;
@@ -1016,6 +1030,7 @@ window.saveCrisis = saveCrisis;
 window.removeTrigger = removeTrigger;
 window.removeEffect = removeEffect;
 window.removeEndTrigger = removeEndTrigger;
+window.updateEffectTarget = updateEffectTarget;
 // Ministry crisis
 window.createNewMC = createNewMC;
 window.editMC = editMC;
