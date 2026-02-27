@@ -55,24 +55,8 @@ async function ensureApRpcAvailability(supabase) {
 
 // ===== GAME LOGIC (from js/game-common.js) =====
 
-/**
- * game-common.js — Shared game logic for Nationhood Alpha
- *
- * Single source of truth for:
- *   - Seat loading (autocracy vs democracy)
- *   - Head faction detection
- *   - Coalition fetching (government_formations → active_coalitions)
- *   - Policy compatibility filtering
- *   - Bill support calculation
- *   - Vote tally syncing
- *   - Enactment approval impact
- *   - Dynamic Ideology System (axes, labels, shifts, drift, penalties)
- *   - Government vacancy penalties & snap elections
- *   - Random event processing
- *   - Game constants & utility formatters
- *
- * Used by: laws.html, bill.html, government.html, parties.html
- */
+// ────────── config ──────────
+
 
 // ==================== CONSTANTS ====================
 
@@ -106,6 +90,123 @@ const GAME_CONFIG = {
     BUDGET_BILL_VOTING_TICKS: null,   // budget bills persist until passed (never expire)
     NO_BUDGET_PENALTY_TICKS: 24,     // how many ticks without a budget before max penalty
 };
+/**
+ * Update GAME_CONFIG with nation-specific seat values.
+ * Call after loading the nation on each page.
+ */
+function initGameConfigForNation(nation) {
+    if (nation && nation.total_seats) {
+        GAME_CONFIG.TOTAL_SEATS = nation.total_seats;
+        GAME_CONFIG.MAJORITY_SEATS = Math.floor(nation.total_seats / 2) + 1;
+    }
+}
+
+const FORMATION_DEADLINE_TICKS = 6; // ticks before snap election when no government
+const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 8 — if two elections are this close, it's a snap cycle
+
+/**
+ * Atomic AP deduction via database RPC.
+ * Returns { success: true, newAp } on success, or { success: false, error } on failure.
+ * The DB function checks balance and deducts in a single UPDATE, preventing race conditions.
+ */
+async function deductAP(supabase, factionId, cost) {
+    const { data, error } = await supabase.rpc('deduct_ap', {
+        p_faction_id: factionId,
+        p_cost: cost
+    });
+    if (error) {
+        console.error(`[deductAP] RPC failed for faction ${factionId}, cost ${cost}:`, error.message);
+        return { success: false, error: error.message };
+    }
+    if (data === -1) {
+        return { success: false, error: 'Insufficient AP' };
+    }
+    return { success: true, newAp: data };
+}
+
+/**
+ * Atomic AP accumulation via database RPC.
+ * Returns { success: true, newAp } on success, or { success: false, error } on failure.
+ * The DB function atomically increments AP capped at max, preventing race conditions
+ * with concurrent deductions.
+ * Retries up to 2 additional times on transient RPC failure with short backoff.
+ */
+async function accumulateAP(supabase, factionId, gain, maxAp = GAME_CONFIG.MAX_AP) {
+    const { data, error } = await supabase.rpc('accumulate_ap', {
+        p_faction_id: factionId,
+        p_gain: gain,
+        p_max_ap: maxAp
+    });
+    if (error) {
+        console.error(`[accumulateAP] RPC failed for faction ${factionId}, gain ${gain}:`, error.message);
+        return { success: false, error: error.message };
+    }
+    if (data === -1) {
+        return { success: false, error: 'Faction not found' };
+    }
+    return { success: true, newAp: data };
+}
+
+// ────────── government-types ──────────
+
+
+/**
+ * Government type helpers.
+ * Call with a nation object (must have government_type field).
+ */
+const CANONICAL_GOVERNMENT_TYPES = Object.freeze({
+    PARLIAMENTARY_DEMOCRACY: 'Democracy',
+    AUTOCRACY: 'Autocracy',
+    PRESIDENTIAL_REPUBLIC: 'Presidential'
+});
+
+const GOVERNMENT_TYPE_ALIASES = Object.freeze({
+    democracy: CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
+    democratic: CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
+    parliamentary: CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
+    parliamentarian: CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
+    'parliamentary democracy': CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
+    autocracy: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
+    authoritarian: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
+    authoritarianism: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
+    dictatorship: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
+    dictatorial: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
+    'military junta': CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
+    presidential: CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC,
+    'presidential republic': CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC,
+    'executive presidency': CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC
+});
+
+function getCanonicalGovernmentType(input, fallbackType = CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY) {
+    const govType = typeof input === 'string' ? input : input?.government_type;
+    if (typeof govType !== 'string') return fallbackType;
+    return GOVERNMENT_TYPE_ALIASES[govType.trim().toLowerCase()] || fallbackType;
+}
+
+function isAutocracy(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.AUTOCRACY; }
+function isParliamentaryDemocracy(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY; }
+function isPresidentialRepublic(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC; }
+
+function isGovernmentAutocracy(nation) { return isAutocracy(nation); }
+function isGovernmentPresidential(nation) { return isPresidentialRepublic(nation); }
+
+// Canonical government types used by nations and ministry event templates.
+const canonicalNationGovTypes = ['Autocracy', 'Parliamentary Republic', 'Presidential'];
+
+// Temporary aliases to support migration from legacy gov-type strings.
+// TODO(next migration stub): remove aliases and require strict canonical-only values.
+const legacyAliasMap = {
+    Democracy: 'Parliamentary Republic'
+};
+
+function canonicalizeNationGovType(govType) {
+    if (!govType) return null;
+    return legacyAliasMap[govType] || govType;
+}
+
+
+// ────────── trade-constants ──────────
+
 
 // ==================== TRADE SYSTEM CONSTANTS ====================
 
@@ -903,117 +1004,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     return { processed: nationCount, totalVolume: totalGlobalVolume };
 }
 
-
-/**
- * Update GAME_CONFIG with nation-specific seat values.
- * Call after loading the nation on each page.
- */
-function initGameConfigForNation(nation) {
-    if (nation && nation.total_seats) {
-        GAME_CONFIG.TOTAL_SEATS = nation.total_seats;
-        GAME_CONFIG.MAJORITY_SEATS = Math.floor(nation.total_seats / 2) + 1;
-    }
-}
-
-const FORMATION_DEADLINE_TICKS = 6; // ticks before snap election when no government
-const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 8 — if two elections are this close, it's a snap cycle
-
-/**
- * Atomic AP deduction via database RPC.
- * Returns { success: true, newAp } on success, or { success: false, error } on failure.
- * The DB function checks balance and deducts in a single UPDATE, preventing race conditions.
- */
-async function deductAP(supabase, factionId, cost) {
-    const { data, error } = await supabase.rpc('deduct_ap', {
-        p_faction_id: factionId,
-        p_cost: cost
-    });
-    if (error) {
-        console.error(`[deductAP] RPC failed for faction ${factionId}, cost ${cost}:`, error.message);
-        return { success: false, error: error.message };
-    }
-    if (data === -1) {
-        return { success: false, error: 'Insufficient AP' };
-    }
-    return { success: true, newAp: data };
-}
-
-/**
- * Atomic AP accumulation via database RPC.
- * Returns { success: true, newAp } on success, or { success: false, error } on failure.
- * The DB function atomically increments AP capped at max, preventing race conditions
- * with concurrent deductions.
- * Retries up to 2 additional times on transient RPC failure with short backoff.
- */
-async function accumulateAP(supabase, factionId, gain, maxAp = GAME_CONFIG.MAX_AP) {
-    const { data, error } = await supabase.rpc('accumulate_ap', {
-        p_faction_id: factionId,
-        p_gain: gain,
-        p_max_ap: maxAp
-    });
-    if (error) {
-        console.error(`[accumulateAP] RPC failed for faction ${factionId}, gain ${gain}:`, error.message);
-        return { success: false, error: error.message };
-    }
-    if (data === -1) {
-        return { success: false, error: 'Faction not found' };
-    }
-    return { success: true, newAp: data };
-}
-
-/**
- * Government type helpers.
- * Call with a nation object (must have government_type field).
- */
-const CANONICAL_GOVERNMENT_TYPES = Object.freeze({
-    PARLIAMENTARY_DEMOCRACY: 'Democracy',
-    AUTOCRACY: 'Autocracy',
-    PRESIDENTIAL_REPUBLIC: 'Presidential'
-});
-
-const GOVERNMENT_TYPE_ALIASES = Object.freeze({
-    democracy: CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
-    democratic: CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
-    parliamentary: CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
-    parliamentarian: CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
-    'parliamentary democracy': CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY,
-    autocracy: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
-    authoritarian: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
-    authoritarianism: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
-    dictatorship: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
-    dictatorial: CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
-    'military junta': CANONICAL_GOVERNMENT_TYPES.AUTOCRACY,
-    presidential: CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC,
-    'presidential republic': CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC,
-    'executive presidency': CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC
-});
-
-function getCanonicalGovernmentType(input, fallbackType = CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY) {
-    const govType = typeof input === 'string' ? input : input?.government_type;
-    if (typeof govType !== 'string') return fallbackType;
-    return GOVERNMENT_TYPE_ALIASES[govType.trim().toLowerCase()] || fallbackType;
-}
-
-function isAutocracy(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.AUTOCRACY; }
-function isParliamentaryDemocracy(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY; }
-function isPresidentialRepublic(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC; }
-
-function isGovernmentAutocracy(nation) { return isAutocracy(nation); }
-function isGovernmentPresidential(nation) { return isPresidentialRepublic(nation); }
-
-// Canonical government types used by nations and ministry event templates.
-const canonicalNationGovTypes = ['Autocracy', 'Parliamentary Republic', 'Presidential'];
-
-// Temporary aliases to support migration from legacy gov-type strings.
-// TODO(next migration stub): remove aliases and require strict canonical-only values.
-const legacyAliasMap = {
-    Democracy: 'Parliamentary Republic'
-};
-
-function canonicalizeNationGovType(govType) {
-    if (!govType) return null;
-    return legacyAliasMap[govType] || govType;
-}
+// ────────── diplomacy-constants ──────────
 
 
 // ==================== DIPLOMACY CONSTANTS ====================
@@ -1569,6 +1560,952 @@ const RAW_SCALING_DIVISORS = {
     gdp: 1_000_000_000,
     debt: 1_000_000_000
 };
+
+
+// ────────── ideology ──────────
+
+
+// Ideology spectrum opposites
+const IDEOLOGY_OPPOSITES = {
+    'LIBERTY': 'EQUALITY',           'EQUALITY': 'LIBERTY',
+    'FREEDOM': 'SECURITY',           'SECURITY': 'FREEDOM',
+    'TRADITION': 'PROGRESS',         'PROGRESS': 'TRADITION',
+    'GLOBALISM': 'NATIONALISM',      'NATIONALISM': 'GLOBALISM',
+    'INDIVIDUALISM': 'COLLECTIVISM', 'COLLECTIVISM': 'INDIVIDUALISM'
+};
+
+// Audit: detect stances with opposed poles on the same axis
+for (const [sector, stances] of Object.entries(POLICY_STANCES)) {
+    for (const stance of stances) {
+        if (stance.poles.length === 2 && IDEOLOGY_OPPOSITES[stance.poles[0]] === stance.poles[1]) {
+            console.error(`STANCE CONFLICT: ${sector}.${stance.key} has opposed poles: ${stance.poles.join(' vs ')}`);
+        }
+    }
+}
+
+// ==================== DYNAMIC IDEOLOGY SYSTEM ====================
+
+const IDEOLOGY_AXES = [
+    {
+        key: 'liberty_equality',
+        left: 'LIBERTY',       right: 'EQUALITY',
+        leftLabel: 'Liberty',  rightLabel: 'Equality',
+        leftColor: '#3b82f6',  rightColor: '#ef4444',
+        description: 'Individual rights vs. collective fairness'
+    },
+    {
+        key: 'tradition_progress',
+        left: 'TRADITION',      right: 'PROGRESS',
+        leftLabel: 'Tradition', rightLabel: 'Progress',
+        leftColor: '#a855f7',   rightColor: '#22c55e',
+        description: 'Cultural conservatism vs. social reform'
+    },
+    {
+        key: 'security_freedom',
+        left: 'SECURITY',      right: 'FREEDOM',
+        leftLabel: 'Security', rightLabel: 'Freedom',
+        leftColor: '#f59e0b',  rightColor: '#06b6d4',
+        description: 'State protection vs. personal autonomy'
+    },
+    {
+        key: 'globalism_nationalism',
+        left: 'GLOBALISM',       right: 'NATIONALISM',
+        leftLabel: 'Globalism',  rightLabel: 'Nationalism',
+        leftColor: '#14b8a6',    rightColor: '#f97316',
+        description: 'International integration vs. national sovereignty'
+    },
+    {
+        key: 'individualism_collectivism',
+        left: 'INDIVIDUALISM',       right: 'COLLECTIVISM',
+        leftLabel: 'Individualism',  rightLabel: 'Collectivism',
+        leftColor: '#eab308',        rightColor: '#ec4899',
+        description: 'Personal self-reliance vs. communal structures'
+    }
+];
+
+const IDEOLOGY_TO_AXIS = {};
+for (const axis of IDEOLOGY_AXES) {
+    IDEOLOGY_TO_AXIS[axis.left]  = { axisKey: axis.key, direction: -1 };
+    IDEOLOGY_TO_AXIS[axis.right] = { axisKey: axis.key, direction: +1 };
+}
+
+
+/**
+ * Return an alignment CSS class ('aligned', 'opposed', 'neutral') for
+ * an ideology tag relative to a faction's ideology scores.
+ */
+function getIdeologyChipClass(ideologyTag, factionIdeology) {
+    if (!factionIdeology) return 'neutral';
+    const tag = (ideologyTag || '').toUpperCase();
+    const mapping = IDEOLOGY_TO_AXIS[tag];
+    if (!mapping) return 'neutral';
+    const score = factionIdeology[mapping.axisKey] || 0;
+    const alignment = score * mapping.direction;
+    if (alignment > 10) return 'aligned';
+    if (alignment < -10) return 'opposed';
+    return 'neutral';
+}
+
+// ==================== IDEOLOGY LABELS ====================
+
+const IDEOLOGY_LABEL_THRESHOLDS = [
+    { min: 0,  max: 10,  label: 'Centrist' },
+    { min: 11, max: 30,  label: 'Leaning' },
+    { min: 31, max: 60,  label: 'Strong' },
+    { min: 61, max: 100, label: 'Radical' }
+];
+
+function getIdeologyLabel(score, axisDef) {
+    const abs = Math.abs(score);
+    const threshold = IDEOLOGY_LABEL_THRESHOLDS.find(t => abs >= t.min && abs <= t.max);
+    const intensityLabel = threshold ? threshold.label : 'Centrist';
+
+    if (intensityLabel === 'Centrist') return 'Centrist';
+
+    const sideName = score < 0 ? axisDef.leftLabel : axisDef.rightLabel;
+    return `${intensityLabel} ${sideName}`;
+}
+
+function getFullIdeologyProfile(ideologyRow) {
+    return IDEOLOGY_AXES.map(axis => {
+        const score = ideologyRow[axis.key] || 0;
+        return {
+            axisKey: axis.key,
+            axisDef: axis,
+            score: score,
+            label: getIdeologyLabel(score, axis)
+        };
+    });
+}
+
+
+// ==================== DYNAMIC OPPOSITION PENALTY ====================
+
+function calculateDynamicOppositionPenalty(factionIdeology, policyIdeologyTag, basePenalty = 2) {
+    const tag = policyIdeologyTag.toUpperCase();
+    const mapping = IDEOLOGY_TO_AXIS[tag];
+    if (!mapping) return 0;
+
+    const factionScore = factionIdeology[mapping.axisKey] || 0;
+    const policyDirection = mapping.direction;
+    const oppositionScore = -policyDirection * factionScore;
+
+    if (oppositionScore <= 0) return 0;
+
+    const penaltyScale = oppositionScore / 100;
+    return -Math.round(basePenalty * penaltyScale * 10) / 10;
+}
+
+function calculateBillDynamicPenalty(factionIdeology, articles, basePenalty = 2) {
+    let totalPenalty = 0;
+
+    for (const art of articles) {
+        const p = art.policies || art;
+        if (!p) continue;
+
+        const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
+            ? p.ideologies.map(i => i.toUpperCase())
+            : (p.ideology ? [p.ideology.toUpperCase()] : []);
+
+        for (const tag of ideos) {
+            totalPenalty += calculateDynamicOppositionPenalty(factionIdeology, tag, basePenalty);
+        }
+    }
+
+    return totalPenalty;
+}
+
+
+// ==================== IDEOLOGY ALIGNMENT (DYNAMIC SCORES) ====================
+
+/**
+ * Compute ideology alignment (0-100) between a faction and a voter bloc
+ * using the faction's dynamic axis scores.
+ *
+ * Returns 50 for a fully centrist party (neutral), >50 for alignment,
+ * <50 for opposition. Axes are weighted by how strongly the party
+ * leans on each axis, so centrist axes are naturally ignored.
+ *
+ * @param {object} factionIdeology - Row from faction_ideology (keys: liberty_equality, etc.)
+ * @param {object} bloc - Voter bloc row with axis_* columns (0-100 scale, 50 = neutral)
+ * @returns {number} 0-100 alignment score
+ */
+function computeIdeologyAlignment(factionIdeology, bloc) {
+    const AXIS_KEYS = [
+        'liberty_equality', 'tradition_progress', 'security_freedom',
+        'globalism_nationalism', 'individualism_collectivism'
+    ];
+
+    let weightedAlignment = 0;
+    let totalWeight = 0;
+
+    for (const axisKey of AXIS_KEYS) {
+        const partyScore = factionIdeology[axisKey] || 0; // -100 to +100
+        const blocScore = bloc['axis_' + axisKey] ?? 50;  // 0-100
+
+        // How strongly the party leans on this axis (0 = centrist, 1 = extreme)
+        const partyStrength = Math.abs(partyScore) / 100;
+        if (partyStrength < 0.01) continue; // Skip negligible positions
+
+        // Convert party score to 0-100 scale to match bloc
+        const partyNorm = (partyScore + 100) / 2; // -100→0, 0→50, +100→100
+
+        // Alignment = 1 when identical, 0 when at opposite ends
+        const alignment = 1 - Math.abs(partyNorm - blocScore) / 100;
+
+        weightedAlignment += alignment * partyStrength;
+        totalWeight += partyStrength;
+    }
+
+    if (totalWeight === 0) return 50; // Fully centrist → neutral
+    return (weightedAlignment / totalWeight) * 100;
+}
+
+
+// ==================== IDEOLOGY DATABASE HELPERS ====================
+
+async function loadFactionIdeology(supabase, factionId) {
+    const cacheKey = 'faction_ideo_' + factionId;
+    if (typeof qCache === 'function') {
+        const cached = qCache(cacheKey);
+        if (cached) return cached;
+    }
+    const { data, error } = await supabase
+        .from('faction_ideology')
+        .select('*')
+        .eq('faction_id', factionId)
+        .maybeSingle();
+
+    if (error) {
+        console.error('Error loading faction ideology:', error);
+        return null;
+    }
+    if (data && typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 2 * 60 * 1000);
+    return data;
+}
+
+async function loadNationIdeologies(supabase, nationId) {
+    const cacheKey = 'nation_ideos_' + nationId;
+    if (typeof qCache === 'function') {
+        const cached = qCache(cacheKey);
+        if (cached) return cached;
+    }
+    const { data: factions } = await supabase
+        .from('factions')
+        .select('id')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party');
+
+    if (!factions || factions.length === 0) return [];
+
+    const factionIds = factions.map(f => f.id);
+    const { data, error } = await supabase
+        .from('faction_ideology')
+        .select('*, factions(id, faction_name, faction_type, is_npc, nation_id)')
+        .in('faction_id', factionIds);
+
+    if (error) {
+        console.error('Error loading nation ideologies:', error);
+        return [];
+    }
+    const result = data || [];
+    if (result.length && typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 2 * 60 * 1000);
+    return result;
+}
+
+function extractAxisScores(ideologyRow) {
+    const scores = {};
+    for (const axis of IDEOLOGY_AXES) {
+        scores[axis.key] = ideologyRow[axis.key] || 0;
+    }
+    return scores;
+}
+
+// ────────── stats ──────────
+
+
+// ==================== ADMINISTRATION LIFECYCLE ====================
+
+/**
+ * Canonical nation stat columns — the SINGLE SOURCE OF TRUTH.
+ *
+ * Every stat key in every effect table (policies, crises, events, ministry
+ * actions, PM traits, diplomacy) MUST match one of these keys exactly.
+ * If a legacy key exists in the database, add it to STAT_KEY_ALIASES below
+ * so normalizeNationStatKey() can resolve it.
+ *
+ * Used by: processStatEffects, processCrises, processEvents,
+ *          processMinistryActions, processPMTraitEffects, auditStatKeys,
+ *          snapshotNationHistory, administration snapshots.
+ *
+ * CANONICAL STAT KEY REFERENCE:
+ *   --- Economic ---
+ *   gdp                        GDP ($B)
+ *   gdp_growth                 Annual economic growth rate
+ *   debt                       Government debt obligations ($B)
+ *   debt_growth                Rate of debt accumulation
+ *   inflation                  Rate of price increases
+ *   interest_rates             Central bank lending rate
+ *   trade_balance              Exports minus imports
+ *   currency_strength          Value of national currency
+ *   foreign_investment         International capital inflow
+ *   credit                     National creditworthiness
+ *   --- Taxation ---
+ *   income_tax                 Tax rate on personal income
+ *   corporate_tax              Tax rate on business profits
+ *   sales_tax                  Tax on goods and services
+ *   tariffs                    Import/export duties
+ *   --- Labor & Employment ---
+ *   unemployment               Percentage without work
+ *   labor_force_participation  Working-age adults employed
+ *   minimum_wage               Lowest legal hourly wage
+ *   union_strength             Power of labor unions
+ *   poverty_rate               Population below poverty line
+ *   income_inequality          Gap between rich and poor
+ *   --- Demographics ---
+ *   population                 Total population (raw number)
+ *   population_growth          Rate of population change
+ *   birth_rate                 Births per 1,000 people
+ *   death_rate                 Deaths per 1,000 people
+ *   median_age                 Average age of population
+ *   eligible_voters            Citizens able to vote
+ *   ethnic_diversity           Cultural heterogeneity
+ *   --- Healthcare ---
+ *   healthcare_quality         Overall medical care standard
+ *   healthcare_accessibility   Access to medical services
+ *   beds_per_100k              Hospital beds per 100,000 people  (NOT "hospital_beds")
+ *   lifespan                   Average lifespan in years         (NOT "life_expectancy")
+ *   drug_use                   Substance abuse prevalence
+ *   --- Education ---
+ *   literacy                   Population able to read/write     (NOT "literacy_rate")
+ *   higher_education           University graduation rate        (NOT "education_quality")
+ *   education_accessibility    Access to schooling
+ *   academic_immigration       Scholars attracted to nation
+ *   --- Infrastructure ---
+ *   physical_infrastructure    Roads, bridges, ports, public works (NOT "infrastructure")
+ *   digital_infrastructure     Internet and tech networks        (NOT "technology")
+ *   rail_network               Train connectivity
+ *   urbanization               Population in cities
+ *   energy_generation          Power production capacity
+ *   renewable_energy_percentage Clean energy percentage
+ *   --- Resources ---
+ *   arable_land                Farmable land area
+ *   rare_minerals              Strategic mineral reserves
+ *   oil_and_gas                Fossil fuel reserves
+ *   fuel_prices                Consumer fuel costs
+ *   --- Environment ---
+ *   pollution                  Environmental contamination
+ *   carbon_emissions           CO2 output
+ *   --- Social ---
+ *   standard_of_living         Quality of life index
+ *   happiness                  Population wellbeing
+ *   social_mobility            Ability to change economic class
+ *   benefits                   Government welfare programs
+ *   crime_rate                 Criminal activity level           (NOT "crime")
+ *   incarceration_rate         Prison population per capita
+ *   --- Religion ---
+ *   religious                  Religiosity index
+ *   --- Governance ---
+ *   stability                  Political stability               (also used for "military_strength")
+ *   legitimacy                 Government legitimacy
+ *   efficiency                 Bureaucratic efficiency
+ *   corruption                 Government corruption
+ *   press_freedom              Media independence
+ *   judicial_independence      Court system independence
+ *   freedom_index              Civil liberties composite
+ *   polarization               Political division
+ *   --- Security ---
+ *   civil_unrest               Public disorder
+ *   terrorism                  Terrorist threat level
+ *   political_violence         Political violence
+ *   --- Immigration ---
+ *   immigration                Legal immigration rate
+ *   illegal_immigration        Unauthorized entry rate
+ *   emigration                 Citizens leaving
+ *   --- International ---
+ *   international_reputation   Global standing                   (NOT "diplomatic_standing")
+ *   trade_agreements           Number of trade agreements        (NOT "trade")
+ *   sanctions                  Active sanctions against nation
+ */
+const NATION_STAT_COLUMNS = [
+    'gdp', 'gdp_growth', 'debt', 'debt_growth', 'inflation', 'interest_rates',
+    'trade_balance', 'currency_strength', 'foreign_investment', 'credit',
+    'income_tax', 'corporate_tax', 'sales_tax', 'tariffs',
+    'unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength',
+    'poverty_rate', 'income_inequality',
+    'population', 'population_growth', 'birth_rate', 'death_rate', 'median_age', 'eligible_voters', 'ethnic_diversity',
+    'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use',
+    'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
+    'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage',
+    'arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices',
+    'pollution', 'carbon_emissions',
+    'standard_of_living', 'happiness', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate',
+    'religious',
+    'stability', 'legitimacy', 'efficiency', 'corruption', 'press_freedom', 'judicial_independence',
+    'freedom_index', 'polarization',
+    'civil_unrest', 'terrorism', 'political_violence',
+    'immigration', 'illegal_immigration', 'emigration',
+    'international_reputation', 'trade_agreements', 'sanctions'
+];
+
+const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
+
+const STAT_KEY_ALIASES = {
+    intl_reputation: 'international_reputation',
+    diplomatic_standing: 'international_reputation',
+    credit_rating: 'credit',
+    credit_score: 'credit',
+    trade: 'trade_balance',
+    trade_volume: 'trade_balance',
+    education: 'higher_education',
+    education_quality: 'higher_education',
+    military_strength: 'stability',
+    literacy_rate: 'literacy',
+    hospital_beds: 'beds_per_100k',
+    technology: 'digital_infrastructure',
+    infrastructure: 'physical_infrastructure',
+    tourism: 'international_reputation'
+};
+
+function normalizeNationStatKey(statKey) {
+    if (!statKey || typeof statKey !== 'string') return null;
+    return STAT_KEY_ALIASES[statKey] || statKey;
+}
+
+/**
+ * Stats where HIGHER values are better (increase = achievement).
+ */
+const STATS_HIGHER_IS_BETTER = [
+    'gdp', 'gdp_growth', 'currency_strength', 'foreign_investment', 'credit',
+    'labor_force_participation', 'minimum_wage', 'union_strength',
+    'population_growth', 'eligible_voters', 'ethnic_diversity',
+    'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan',
+    'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
+    'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation', 'renewable_energy_percentage',
+    'arable_land', 'rare_minerals',
+    'standard_of_living', 'happiness', 'social_mobility', 'benefits',
+    'stability', 'legitimacy', 'efficiency', 'press_freedom', 'judicial_independence', 'freedom_index',
+    'immigration', 'international_reputation', 'trade_agreements'
+];
+
+/**
+ * Stats where LOWER values are better (decrease = achievement).
+ */
+const STATS_LOWER_IS_BETTER = [
+    'debt', 'debt_growth', 'inflation', 'interest_rates',
+    'unemployment', 'poverty_rate', 'income_inequality', 'death_rate',
+    'drug_use', 'fuel_prices', 'pollution', 'carbon_emissions',
+    'crime_rate', 'incarceration_rate', 'corruption', 'polarization',
+    'civil_unrest', 'terrorism', 'political_violence',
+    'illegal_immigration', 'emigration', 'sanctions'
+];
+
+// ==================== STAT DECAY CONFIGURATION ====================
+
+const DECAY_SPEED = { VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
+
+/**
+ * Stats that decay each tick. Two types:
+ *   - 'equilibrium': drifts toward a midpoint (requires constant governing effort)
+ *   - 'erosion': degrades toward a bad floor (punishes neglect)
+ * Stats not listed are persistent — they hold value indefinitely.
+ */
+const STAT_DECAY_CONFIG = {
+    // ── Equilibrium (drift back to midpoint) ──
+    inflation:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
+    interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
+    currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
+    civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.FAST },
+    polarization:        { type: 'equilibrium', target: 30, speed: DECAY_SPEED.SLOW },
+    terrorism:           { type: 'equilibrium', target: 10, speed: DECAY_SPEED.SLOW },
+    political_violence:  { type: 'equilibrium', target: 10, speed: DECAY_SPEED.MEDIUM },
+    happiness:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
+    foreign_investment:  { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
+    trade_balance:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
+    gdp_growth:          { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
+    immigration:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
+    illegal_immigration: { type: 'equilibrium', target: 30, speed: DECAY_SPEED.SLOW },
+    emigration:          { type: 'equilibrium', target: 30, speed: DECAY_SPEED.MEDIUM },
+    fuel_prices:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
+    debt_growth:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
+
+    // ── Erosion (degrade toward bad floor if neglected) ──
+    physical_infrastructure:  { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
+    digital_infrastructure:   { type: 'erosion', target: 0,  speed: DECAY_SPEED.SLOW },
+    rail_network:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
+    energy_generation:        { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
+    efficiency:               { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
+    corruption:               { type: 'erosion', target: 70, speed: DECAY_SPEED.SLOW },
+    healthcare_quality:       { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
+    healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
+    beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.VERY_SLOW },
+    education_accessibility:  { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
+    press_freedom:            { type: 'erosion', target: 40, speed: DECAY_SPEED.SLOW },
+    judicial_independence:    { type: 'erosion', target: 40, speed: DECAY_SPEED.SLOW },
+    freedom_index:            { type: 'erosion', target: 40, speed: DECAY_SPEED.VERY_SLOW },
+    standard_of_living:       { type: 'erosion', target: 40, speed: DECAY_SPEED.VERY_SLOW },
+    social_mobility:          { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
+    benefits:                 { type: 'erosion', target: 0,  speed: DECAY_SPEED.MEDIUM },
+};
+
+// Validate decay config keys at module load
+for (const key of Object.keys(STAT_DECAY_CONFIG)) {
+    if (!NATION_STAT_COLUMN_SET.has(key)) {
+        console.error(`[STAT_DECAY_CONFIG] Invalid stat key: "${key}" — not in NATION_STAT_COLUMNS`);
+    }
+}
+
+// ==================== INSTITUTION FUNDING DECAY TIERS ====================
+// Institutions counteract natural stat decay. At 100% funding, decay is fully
+// blocked. Below 100%, the rates below REPLACE the natural decay rate for stats
+// covered by that institution. When multiple institutions cover the same stat,
+// their rates are averaged.
+
+const INSTITUTION_DECAY_TIERS = [
+    { minPct: 100, primary: 0,    secondary: 0    },  // Fully Funded
+    { minPct: 90,  primary: 0.3,  secondary: 0    },  // Stretched
+    { minPct: 75,  primary: 0.5,  secondary: 0.2  },  // Strained
+    { minPct: 50,  primary: 0.9,  secondary: 0.5  },  // Underfunded
+    { minPct: 25,  primary: 1.7,  secondary: 0.9  },  // Critical
+    { minPct: 0,   primary: 2.7,  secondary: 1.7  },  // Collapsed
+];
+
+/**
+ * Look up the institution decay rate for a given funding percentage.
+ * @param {number} fundingPct - 0-100 funding percentage
+ * @param {'primary'|'secondary'} role - whether this stat is the institution's primary or secondary
+ * @returns {number} decay rate per tick (0 = no decay)
+ */
+function getInstitutionDecayRate(fundingPct, role) {
+    for (const tier of INSTITUTION_DECAY_TIERS) {
+        if (fundingPct >= tier.minPct) return tier[role];
+    }
+    return INSTITUTION_DECAY_TIERS[INSTITUTION_DECAY_TIERS.length - 1][role];
+}
+
+/**
+ * Build a map of statKey → array of { institutionId, role, fundingPct } from
+ * institution config rows and budget_item_allocations for the active budget.
+ *
+ * @param {Array} instConfig - rows from ministry_institution_config
+ * @param {Array} itemAllocations - rows from budget_item_allocations for the active bill
+ * @returns {Object} e.g. { healthcare_quality: [{ id: 'workforce', role: 'primary', fundingPct: 85 }, ...] }
+ */
+function buildStatInstitutionMap(instConfig, itemAllocations) {
+    const allocMap = {};
+    for (const row of (itemAllocations || [])) {
+        if (row.item_type === 'institution') {
+            allocMap[row.item_id] = {
+                allocated: Number(row.allocation_amount || 0),
+                needed: Number(row.needed_amount || 0)
+            };
+        }
+    }
+
+    const statMap = {};
+    for (const inst of (instConfig || [])) {
+        const alloc = allocMap[inst.id];
+        const fundingPct = alloc && alloc.needed > 0
+            ? Math.min(100, Math.round((alloc.allocated / alloc.needed) * 100))
+            : 0;  // no allocation row = unfunded
+
+        for (const role of ['primary', 'secondary']) {
+            const statKey = inst[`${role}_stat`];
+            if (!statKey) continue;
+            if (!statMap[statKey]) statMap[statKey] = [];
+            statMap[statKey].push({ id: inst.id, role, fundingPct });
+        }
+    }
+    return statMap;
+}
+
+/**
+ * For a given stat, compute the effective institution decay rate by averaging
+ * all institutions that cover it (as primary or secondary).
+ *
+ * @param {Array} institutions - entries from buildStatInstitutionMap()[statKey]
+ * @returns {number|null} averaged decay rate, or null if no institutions cover this stat
+ */
+function getAveragedInstitutionDecay(institutions) {
+    if (!institutions || institutions.length === 0) return null;
+    let total = 0;
+    for (const inst of institutions) {
+        total += getInstitutionDecayRate(inst.fundingPct, inst.role);
+    }
+    return total / institutions.length;
+}
+
+// ==================== THREE-PILLAR VOTING SYSTEM MAPPINGS ====================
+
+/**
+ * Maps each nation stat to the ministry responsible for it.
+ * Used by performance perception to credit/blame ministry-holding parties.
+ */
+const STAT_TO_MINISTRY = {
+    // Finance
+    gdp: 'finance', gdp_growth: 'finance', debt: 'finance', debt_growth: 'finance',
+    inflation: 'finance', interest_rates: 'finance',
+    currency_strength: 'finance', credit: 'finance',
+    income_tax: 'finance', corporate_tax: 'finance', sales_tax: 'finance',
+    // Healthcare
+    healthcare_quality: 'healthcare', healthcare_accessibility: 'healthcare',
+    beds_per_100k: 'healthcare', lifespan: 'healthcare', drug_use: 'healthcare',
+    death_rate: 'healthcare',
+    // Education
+    literacy: 'education', higher_education: 'education',
+    education_accessibility: 'education', academic_immigration: 'education',
+    // Labor
+    unemployment: 'labor', labor_force_participation: 'labor',
+    minimum_wage: 'labor', union_strength: 'labor',
+    poverty_rate: 'labor', income_inequality: 'labor',
+    // Interior
+    stability: 'interior', civil_unrest: 'interior',
+    crime_rate: 'interior', incarceration_rate: 'interior',
+    immigration: 'interior', illegal_immigration: 'interior',
+    // Justice
+    corruption: 'justice', judicial_independence: 'justice',
+    press_freedom: 'justice', freedom_index: 'justice',
+    // Energy
+    energy_generation: 'energy', renewable_energy_percentage: 'energy',
+    pollution: 'energy', carbon_emissions: 'energy',
+    // Transportation
+    physical_infrastructure: 'transportation', digital_infrastructure: 'transportation',
+    rail_network: 'transportation', urbanization: 'transportation',
+    // Defense
+    terrorism: 'defense', political_violence: 'defense',
+    // Trade
+    trade_balance: 'trade', trade_agreements: 'trade',
+    tariffs: 'trade', foreign_investment: 'trade',
+    // Foreign
+    international_reputation: 'foreign',
+    sanctions: 'foreign', emigration: 'foreign',
+    // Prime Minister (general governance & quality of life)
+    legitimacy: 'prime_minister', efficiency: 'prime_minister', polarization: 'prime_minister',
+    happiness: 'prime_minister', standard_of_living: 'prime_minister',
+    social_mobility: 'prime_minister', benefits: 'prime_minister',
+    fuel_prices: 'prime_minister'
+};
+
+/**
+ * Maps voter-bloc priority issue categories to the nation stats they care about.
+ * Each bloc has 1-2 priority_issues (e.g., ['Economics', 'Labor']).
+ */
+const ISSUE_CATEGORY_STATS = {
+    Agriculture:     ['arable_land', 'fuel_prices', 'trade_balance', 'poverty_rate'],
+    Economics:       ['gdp', 'gdp_growth', 'inflation', 'unemployment', 'currency_strength', 'trade_balance', 'debt'],
+    Education:       ['literacy', 'higher_education', 'education_accessibility', 'academic_immigration'],
+    Governance:      ['stability', 'legitimacy', 'efficiency', 'corruption', 'freedom_index'],
+    Healthcare:      ['healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use'],
+    Immigration:     ['immigration', 'illegal_immigration', 'emigration', 'ethnic_diversity'],
+    Infrastructure:  ['physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation', 'renewable_energy_percentage'],
+    International:   ['international_reputation', 'trade_agreements', 'sanctions', 'foreign_investment'],
+    Labor:           ['unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength', 'poverty_rate', 'income_inequality'],
+    Military:        ['terrorism', 'political_violence', 'civil_unrest', 'stability'],
+    Social:          ['standard_of_living', 'happiness', 'social_mobility', 'crime_rate', 'pollution', 'benefits']
+};
+
+const _HIGHER_IS_BETTER_SET = new Set(STATS_HIGHER_IS_BETTER);
+const _LOWER_IS_BETTER_SET  = new Set(STATS_LOWER_IS_BETTER);
+
+/**
+ * Returns +1 if a positive delta is "good", -1 if negative delta is "good", 0 if neutral.
+ */
+function statDirectionSign(statKey) {
+    if (_HIGHER_IS_BETTER_SET.has(statKey)) return 1;
+    if (_LOWER_IS_BETTER_SET.has(statKey)) return -1;
+    return 0;
+}
+
+// ==================== STAT TREND CALCULATION ====================
+
+/** Weights for weighted-average trend: most recent delta gets 0.40, oldest gets 0.05 */
+const TREND_WEIGHTS = [0.05, 0.05, 0.10, 0.15, 0.25, 0.40];
+
+/**
+ * Weighted trend for a single stat over the last `lookback` ticks.
+ * Returns a signed value: positive = rising, negative = falling.
+ * Requires stat_history rows populated by recordStatHistory().
+ *
+ * @param {object} supabase
+ * @param {string} nationId
+ * @param {string} statName  - nation stat key (e.g. 'unemployment')
+ * @param {number} [lookback=6] - how many tick-deltas to consider
+ * @returns {Promise<number>} weighted trend value
+ */
+async function statTrend(supabase, nationId, statName, lookback = 6) {
+    const { data: rows } = await supabase
+        .from('stat_history')
+        .select('value, tick')
+        .eq('nation_id', nationId)
+        .eq('stat_name', statName)
+        .order('tick', { ascending: true })
+        .limit(lookback + 1);
+
+    if (!rows || rows.length < 2) return 0;
+
+    let weightedSum = 0;
+    const deltas = rows.length - 1;
+    for (let i = 1; i < rows.length; i++) {
+        const delta = rows[i].value - rows[i - 1].value;
+        const weightIdx = Math.max(0, TREND_WEIGHTS.length - deltas + i - 1);
+        weightedSum += delta * (TREND_WEIGHTS[weightIdx] || 0.10);
+    }
+    return weightedSum;
+}
+
+/**
+ * Batch version: compute weighted trends for multiple stats in a single query.
+ * Returns { statName: trendValue, ... }.
+ *
+ * @param {object} supabase
+ * @param {string} nationId
+ * @param {string[]} statNames - array of stat keys
+ * @param {number} [lookback=6]
+ * @returns {Promise<Object.<string, number>>}
+ */
+async function statTrendBatch(supabase, nationId, statNames, lookback = 6) {
+    if (!statNames || statNames.length === 0) return {};
+
+    const { data: rows } = await supabase
+        .from('stat_history')
+        .select('stat_name, value, tick')
+        .eq('nation_id', nationId)
+        .in('stat_name', statNames)
+        .order('tick', { ascending: true });
+
+    if (!rows || rows.length === 0) return {};
+
+    // Group by stat_name
+    const byName = {};
+    for (const r of rows) {
+        if (!byName[r.stat_name]) byName[r.stat_name] = [];
+        byName[r.stat_name].push(r);
+    }
+
+    const trends = {};
+    for (const [name, vals] of Object.entries(byName)) {
+        const recent = vals.slice(-(lookback + 1));
+        if (recent.length < 2) { trends[name] = 0; continue; }
+        let weightedSum = 0;
+        const deltas = recent.length - 1;
+        for (let i = 1; i < recent.length; i++) {
+            const delta = recent[i].value - recent[i - 1].value;
+            const weightIdx = Math.max(0, TREND_WEIGHTS.length - deltas + i - 1);
+            weightedSum += delta * (TREND_WEIGHTS[weightIdx] || 0.10);
+        }
+        trends[name] = weightedSum;
+    }
+    return trends;
+}
+
+// ==================== MINISTER & GOVERNMENT APPROVAL SYSTEM ====================
+
+/**
+ * Reverse map: ministry_key → [stat_keys] derived from STAT_TO_MINISTRY.
+ * Used by the per-tick minister approval calculation to find which stats
+ * each minister "owns".
+ */
+const MINISTRY_TO_STATS = {};
+for (const [statKey, ministryKey] of Object.entries(STAT_TO_MINISTRY)) {
+    if (!MINISTRY_TO_STATS[ministryKey]) MINISTRY_TO_STATS[ministryKey] = [];
+    MINISTRY_TO_STATS[ministryKey].push(statKey);
+}
+
+/**
+ * Threshold-based approval contribution for a single stat.
+ * Returns how much a stat's current value helps or hurts the responsible minister.
+ *
+ * Normal stats (higher=better): >=70 → +1.5, 50-69 → +0.5, 30-49 → -1.5, <30 → -3.0
+ * Inverse stats (lower=better): <=15 → +1.5, 16-30 → +0.5, 31-50 → -1.5, >50  → -3.0
+ *
+ * @param {string} statKey - nation stat key
+ * @param {number} value   - current stat value
+ * @returns {number} approval contribution (-3.0 to +1.5)
+ */
+function statApprovalContribution(statKey, value) {
+    const sign = statDirectionSign(statKey);
+    if (sign === 0) return 0;
+
+    if (sign === 1) {
+        // Higher is better
+        if (value >= 70) return 1.5;
+        if (value >= 50) return 0.5;
+        if (value >= 30) return -1.5;
+        return -3.0;
+    } else {
+        // Lower is better (inverse)
+        if (value <= 15) return 1.5;
+        if (value <= 30) return 0.5;
+        if (value <= 50) return -1.5;
+        return -3.0;
+    }
+}
+
+const GOV_APPROVAL_CONFIG = {
+    // ─── New spec weights (Phase 4) ───
+    INSTITUTIONAL_WEIGHT: 0.45,
+    OUTCOMES_WEIGHT: 0.35,
+    EVENTS_WEIGHT: 0.20,
+
+    // Events component decay (5% per tick — transient shocks fade gradually)
+    EVENTS_DECAY_RATE: 0.05,
+
+    // Outcome stats: universal stats everyone cares about, with relative weights
+    OUTCOME_STATS: [
+        { stat: 'standard_of_living', weight: 0.18 },
+        { stat: 'unemployment',       weight: 0.15, inverted: true },
+        { stat: 'inflation',          weight: 0.12, inverted: true },
+        { stat: 'crime_rate',         weight: 0.10, inverted: true },
+        { stat: 'healthcare_quality', weight: 0.10 },
+        { stat: 'happiness',          weight: 0.10 },
+        { stat: 'poverty_rate',       weight: 0.08, inverted: true },
+        { stat: 'gdp_growth',         weight: 0.07 },
+        { stat: 'stability',          weight: 0.05 },
+        { stat: 'corruption',         weight: 0.05, inverted: true },
+    ],
+    OUTCOME_TREND_LOOKBACK: 8,
+    OUTCOME_TREND_WEIGHT: 0.6,    // 60% trend direction
+    OUTCOME_ABSOLUTE_WEIGHT: 0.4, // 40% absolute level
+
+    // Gov approval → momentum feedback
+    FEEDBACK_THRESHOLD: 2,          // min delta to trigger feedback
+    FEEDBACK_COALITION_COEFF: 0.15, // coalition gets 15% of delta as momentum
+    FEEDBACK_OPPOSITION_COEFF: 0.08, // opposition gets inverse 8%
+
+    // Vacancy penalty per unfilled ministry
+    VACANCY_PENALTY: -5,
+
+    // Embattled / Crisis thresholds (kept from original)
+    EMBATTLED_THRESHOLD: 30,
+    EMBATTLED_TICKS_REQUIRED: 5,
+    EMBATTLED_GOV_PENALTY: -1,
+    CRISIS_THRESHOLD: 20,
+    CRISIS_GOV_PENALTY: -2,
+
+    // Minister firing (kept from original)
+    FIRE_MINISTER_AP_COST: 1,
+    NEW_MINISTER_APPROVAL: 45,
+    FIRE_GOV_APPROVAL_BONUS: 3,
+
+};
+
+/**
+ * Snapshot all nation stats into a flat JSONB object.
+ */
+function snapshotNationStats(nation) {
+    const snapshot = {};
+    for (const key of NATION_STAT_COLUMNS) {
+        if (nation[key] !== undefined && nation[key] !== null) {
+            snapshot[key] = nation[key];
+        }
+    }
+    return snapshot;
+}
+
+// ────────── momentum ──────────
+
+
+/**
+ * Adjust momentum for a faction, optionally targeting a specific voter bloc.
+ * Clamps to [-50, +50]. Writes an audit row to momentum_log.
+ *
+ * @param {object} supabase
+ * @param {string} nationId  - nation UUID (for audit log)
+ * @param {string} factionId - faction UUID
+ * @param {string|null} blocId - specific bloc UUID, or null for all blocs
+ * @param {number} amount    - positive = boost, negative = penalty
+ * @param {string} source    - audit tag, e.g. 'crisis:government_shutdown'
+ */
+async function adjustMomentum(supabase, nationId, factionId, blocId, amount, source) {
+    if (amount === 0) return;
+
+    const query = supabase
+        .from('faction_bloc_approval')
+        .select('id, bloc_id, momentum')
+        .eq('faction_id', factionId);
+    if (blocId) query.eq('bloc_id', blocId);
+
+    const { data: rows } = await query;
+    if (!rows || rows.length === 0) return;
+
+    for (const row of rows) {
+        const old = Number(row.momentum ?? 0);
+        const clamped = Math.round(Math.max(-50, Math.min(50, old + amount)) * 100) / 100;
+        await supabase.from('faction_bloc_approval')
+            .update({ momentum: clamped })
+            .eq('id', row.id);
+    }
+
+    // Audit log (best-effort — don't fail the caller)
+    const { data: shard } = await supabase
+        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    await supabase.from('momentum_log').insert({
+        nation_id: nationId,
+        faction_id: factionId,
+        bloc_id: blocId || null,
+        amount,
+        source: source || 'unknown',
+        tick: shard?.current_tick || 0
+    });
+
+    console.log(`[Momentum] ${amount > 0 ? '+' : ''}${amount} for faction ${factionId}${blocId ? ` bloc ${blocId}` : ` (${rows.length} blocs)`} — ${source}`);
+}
+
+/**
+ * Convenience wrapper: adjust momentum uniformly across ALL blocs for a faction.
+ * Use this for events that affect a party's overall standing (crises, elections, etc.).
+ */
+async function adjustMomentumAll(supabase, nationId, factionId, amount, source) {
+    await adjustMomentum(supabase, nationId, factionId, null, amount, source);
+}
+/**
+ * Apply a one-time event modifier to the government approval events component.
+ * The events component decays 12% per tick, so transient shocks fade naturally.
+ * Clamped to [-50, +50]. Writes an audit row to gov_approval_log.
+ *
+ * @param {object} supabase
+ * @param {string} nationId
+ * @param {number} amount   - signed delta (positive = boost, negative = shock)
+ * @param {string} source   - audit tag, e.g. 'crisis:government_shutdown'
+ */
+async function adjustGovernmentApprovalEvent(supabase, nationId, amount, source) {
+    if (amount === 0) return;
+
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('gov_approval_events')
+        .eq('id', nationId)
+        .single();
+
+    const current = Number(nation?.gov_approval_events ?? 0);
+    const updated = Math.round(Math.max(-50, Math.min(50, current + amount)) * 100) / 100;
+
+    const { error: updateErr } = await supabase.from('nations')
+        .update({ gov_approval_events: updated })
+        .eq('id', nationId);
+
+    if (updateErr) {
+        console.error(`[GovApprovalEvent] Failed to update gov_approval_events for ${nationId}: ${updateErr.message}`);
+        return;
+    }
+
+    // Audit log (non-fatal — table may not exist if migration not applied)
+    try {
+        const { data: shard } = await supabase
+            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        await supabase.from('gov_approval_log').insert({
+            nation_id: nationId,
+            amount,
+            source: source || 'unknown',
+            tick: shard?.current_tick || 0
+        });
+    } catch (e) { /* non-blocking */ }
+
+    console.log(`[GovApprovalEvent] ${amount > 0 ? '+' : ''}${amount} for nation ${nationId} — ${source}`);
+}
+
+// ────────── budget ──────────
+
 
 // ==================== NATIONAL BUDGET CALCULATION ====================
 
@@ -2597,261 +3534,7 @@ async function applyGdpGrowth(supabase, nation) {
     await supabase.from('nations').update({ gdp: newGdp }).eq('id', nation.id);
 }
 
-// Ideology spectrum opposites
-const IDEOLOGY_OPPOSITES = {
-    'LIBERTY': 'EQUALITY',           'EQUALITY': 'LIBERTY',
-    'FREEDOM': 'SECURITY',           'SECURITY': 'FREEDOM',
-    'TRADITION': 'PROGRESS',         'PROGRESS': 'TRADITION',
-    'GLOBALISM': 'NATIONALISM',      'NATIONALISM': 'GLOBALISM',
-    'INDIVIDUALISM': 'COLLECTIVISM', 'COLLECTIVISM': 'INDIVIDUALISM'
-};
-
-// Audit: detect stances with opposed poles on the same axis
-for (const [sector, stances] of Object.entries(POLICY_STANCES)) {
-    for (const stance of stances) {
-        if (stance.poles.length === 2 && IDEOLOGY_OPPOSITES[stance.poles[0]] === stance.poles[1]) {
-            console.error(`STANCE CONFLICT: ${sector}.${stance.key} has opposed poles: ${stance.poles.join(' vs ')}`);
-        }
-    }
-}
-
-// ==================== DYNAMIC IDEOLOGY SYSTEM ====================
-
-const IDEOLOGY_AXES = [
-    {
-        key: 'liberty_equality',
-        left: 'LIBERTY',       right: 'EQUALITY',
-        leftLabel: 'Liberty',  rightLabel: 'Equality',
-        leftColor: '#3b82f6',  rightColor: '#ef4444',
-        description: 'Individual rights vs. collective fairness'
-    },
-    {
-        key: 'tradition_progress',
-        left: 'TRADITION',      right: 'PROGRESS',
-        leftLabel: 'Tradition', rightLabel: 'Progress',
-        leftColor: '#a855f7',   rightColor: '#22c55e',
-        description: 'Cultural conservatism vs. social reform'
-    },
-    {
-        key: 'security_freedom',
-        left: 'SECURITY',      right: 'FREEDOM',
-        leftLabel: 'Security', rightLabel: 'Freedom',
-        leftColor: '#f59e0b',  rightColor: '#06b6d4',
-        description: 'State protection vs. personal autonomy'
-    },
-    {
-        key: 'globalism_nationalism',
-        left: 'GLOBALISM',       right: 'NATIONALISM',
-        leftLabel: 'Globalism',  rightLabel: 'Nationalism',
-        leftColor: '#14b8a6',    rightColor: '#f97316',
-        description: 'International integration vs. national sovereignty'
-    },
-    {
-        key: 'individualism_collectivism',
-        left: 'INDIVIDUALISM',       right: 'COLLECTIVISM',
-        leftLabel: 'Individualism',  rightLabel: 'Collectivism',
-        leftColor: '#eab308',        rightColor: '#ec4899',
-        description: 'Personal self-reliance vs. communal structures'
-    }
-];
-
-const IDEOLOGY_TO_AXIS = {};
-for (const axis of IDEOLOGY_AXES) {
-    IDEOLOGY_TO_AXIS[axis.left]  = { axisKey: axis.key, direction: -1 };
-    IDEOLOGY_TO_AXIS[axis.right] = { axisKey: axis.key, direction: +1 };
-}
-
-
-/**
- * Return an alignment CSS class ('aligned', 'opposed', 'neutral') for
- * an ideology tag relative to a faction's ideology scores.
- */
-function getIdeologyChipClass(ideologyTag, factionIdeology) {
-    if (!factionIdeology) return 'neutral';
-    const tag = (ideologyTag || '').toUpperCase();
-    const mapping = IDEOLOGY_TO_AXIS[tag];
-    if (!mapping) return 'neutral';
-    const score = factionIdeology[mapping.axisKey] || 0;
-    const alignment = score * mapping.direction;
-    if (alignment > 10) return 'aligned';
-    if (alignment < -10) return 'opposed';
-    return 'neutral';
-}
-
-// ==================== IDEOLOGY LABELS ====================
-
-const IDEOLOGY_LABEL_THRESHOLDS = [
-    { min: 0,  max: 10,  label: 'Centrist' },
-    { min: 11, max: 30,  label: 'Leaning' },
-    { min: 31, max: 60,  label: 'Strong' },
-    { min: 61, max: 100, label: 'Radical' }
-];
-
-function getIdeologyLabel(score, axisDef) {
-    const abs = Math.abs(score);
-    const threshold = IDEOLOGY_LABEL_THRESHOLDS.find(t => abs >= t.min && abs <= t.max);
-    const intensityLabel = threshold ? threshold.label : 'Centrist';
-
-    if (intensityLabel === 'Centrist') return 'Centrist';
-
-    const sideName = score < 0 ? axisDef.leftLabel : axisDef.rightLabel;
-    return `${intensityLabel} ${sideName}`;
-}
-
-function getFullIdeologyProfile(ideologyRow) {
-    return IDEOLOGY_AXES.map(axis => {
-        const score = ideologyRow[axis.key] || 0;
-        return {
-            axisKey: axis.key,
-            axisDef: axis,
-            score: score,
-            label: getIdeologyLabel(score, axis)
-        };
-    });
-}
-
-
-// ==================== DYNAMIC OPPOSITION PENALTY ====================
-
-function calculateDynamicOppositionPenalty(factionIdeology, policyIdeologyTag, basePenalty = 2) {
-    const tag = policyIdeologyTag.toUpperCase();
-    const mapping = IDEOLOGY_TO_AXIS[tag];
-    if (!mapping) return 0;
-
-    const factionScore = factionIdeology[mapping.axisKey] || 0;
-    const policyDirection = mapping.direction;
-    const oppositionScore = -policyDirection * factionScore;
-
-    if (oppositionScore <= 0) return 0;
-
-    const penaltyScale = oppositionScore / 100;
-    return -Math.round(basePenalty * penaltyScale * 10) / 10;
-}
-
-function calculateBillDynamicPenalty(factionIdeology, articles, basePenalty = 2) {
-    let totalPenalty = 0;
-
-    for (const art of articles) {
-        const p = art.policies || art;
-        if (!p) continue;
-
-        const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
-            ? p.ideologies.map(i => i.toUpperCase())
-            : (p.ideology ? [p.ideology.toUpperCase()] : []);
-
-        for (const tag of ideos) {
-            totalPenalty += calculateDynamicOppositionPenalty(factionIdeology, tag, basePenalty);
-        }
-    }
-
-    return totalPenalty;
-}
-
-
-// ==================== IDEOLOGY ALIGNMENT (DYNAMIC SCORES) ====================
-
-/**
- * Compute ideology alignment (0-100) between a faction and a voter bloc
- * using the faction's dynamic axis scores.
- *
- * Returns 50 for a fully centrist party (neutral), >50 for alignment,
- * <50 for opposition. Axes are weighted by how strongly the party
- * leans on each axis, so centrist axes are naturally ignored.
- *
- * @param {object} factionIdeology - Row from faction_ideology (keys: liberty_equality, etc.)
- * @param {object} bloc - Voter bloc row with axis_* columns (0-100 scale, 50 = neutral)
- * @returns {number} 0-100 alignment score
- */
-function computeIdeologyAlignment(factionIdeology, bloc) {
-    const AXIS_KEYS = [
-        'liberty_equality', 'tradition_progress', 'security_freedom',
-        'globalism_nationalism', 'individualism_collectivism'
-    ];
-
-    let weightedAlignment = 0;
-    let totalWeight = 0;
-
-    for (const axisKey of AXIS_KEYS) {
-        const partyScore = factionIdeology[axisKey] || 0; // -100 to +100
-        const blocScore = bloc['axis_' + axisKey] ?? 50;  // 0-100
-
-        // How strongly the party leans on this axis (0 = centrist, 1 = extreme)
-        const partyStrength = Math.abs(partyScore) / 100;
-        if (partyStrength < 0.01) continue; // Skip negligible positions
-
-        // Convert party score to 0-100 scale to match bloc
-        const partyNorm = (partyScore + 100) / 2; // -100→0, 0→50, +100→100
-
-        // Alignment = 1 when identical, 0 when at opposite ends
-        const alignment = 1 - Math.abs(partyNorm - blocScore) / 100;
-
-        weightedAlignment += alignment * partyStrength;
-        totalWeight += partyStrength;
-    }
-
-    if (totalWeight === 0) return 50; // Fully centrist → neutral
-    return (weightedAlignment / totalWeight) * 100;
-}
-
-
-// ==================== IDEOLOGY DATABASE HELPERS ====================
-
-async function loadFactionIdeology(supabase, factionId) {
-    const cacheKey = 'faction_ideo_' + factionId;
-    if (typeof qCache === 'function') {
-        const cached = qCache(cacheKey);
-        if (cached) return cached;
-    }
-    const { data, error } = await supabase
-        .from('faction_ideology')
-        .select('*')
-        .eq('faction_id', factionId)
-        .maybeSingle();
-
-    if (error) {
-        console.error('Error loading faction ideology:', error);
-        return null;
-    }
-    if (data && typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 2 * 60 * 1000);
-    return data;
-}
-
-async function loadNationIdeologies(supabase, nationId) {
-    const cacheKey = 'nation_ideos_' + nationId;
-    if (typeof qCache === 'function') {
-        const cached = qCache(cacheKey);
-        if (cached) return cached;
-    }
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id')
-        .eq('nation_id', nationId)
-        .eq('faction_type', 'party');
-
-    if (!factions || factions.length === 0) return [];
-
-    const factionIds = factions.map(f => f.id);
-    const { data, error } = await supabase
-        .from('faction_ideology')
-        .select('*, factions(id, faction_name, faction_type, is_npc, nation_id)')
-        .in('faction_id', factionIds);
-
-    if (error) {
-        console.error('Error loading nation ideologies:', error);
-        return [];
-    }
-    const result = data || [];
-    if (result.length && typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 2 * 60 * 1000);
-    return result;
-}
-
-function extractAxisScores(ideologyRow) {
-    const scores = {};
-    for (const axis of IDEOLOGY_AXES) {
-        scores[axis.key] = ideologyRow[axis.key] || 0;
-    }
-    return scores;
-}
+// ────────── government-structure ──────────
 
 
 // ==================== SEAT LOADING ====================
@@ -3113,6 +3796,8 @@ function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy, exclud
             return { ...p, isOpposed, prerequisiteMissing, prerequisiteName, alreadyEnacted };
         });
 }
+
+// ────────── bills ──────────
 
 
 // ==================== BILL SUPPORT ====================
@@ -4779,584 +5464,8 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
     return results;
 }
 
+// ────────── elections ──────────
 
-// ==================== ADMINISTRATION LIFECYCLE ====================
-
-/**
- * Canonical nation stat columns — the SINGLE SOURCE OF TRUTH.
- *
- * Every stat key in every effect table (policies, crises, events, ministry
- * actions, PM traits, diplomacy) MUST match one of these keys exactly.
- * If a legacy key exists in the database, add it to STAT_KEY_ALIASES below
- * so normalizeNationStatKey() can resolve it.
- *
- * Used by: processStatEffects, processCrises, processEvents,
- *          processMinistryActions, processPMTraitEffects, auditStatKeys,
- *          snapshotNationHistory, administration snapshots.
- *
- * CANONICAL STAT KEY REFERENCE:
- *   --- Economic ---
- *   gdp                        GDP ($B)
- *   gdp_growth                 Annual economic growth rate
- *   debt                       Government debt obligations ($B)
- *   debt_growth                Rate of debt accumulation
- *   inflation                  Rate of price increases
- *   interest_rates             Central bank lending rate
- *   trade_balance              Exports minus imports
- *   currency_strength          Value of national currency
- *   foreign_investment         International capital inflow
- *   credit                     National creditworthiness
- *   --- Taxation ---
- *   income_tax                 Tax rate on personal income
- *   corporate_tax              Tax rate on business profits
- *   sales_tax                  Tax on goods and services
- *   tariffs                    Import/export duties
- *   --- Labor & Employment ---
- *   unemployment               Percentage without work
- *   labor_force_participation  Working-age adults employed
- *   minimum_wage               Lowest legal hourly wage
- *   union_strength             Power of labor unions
- *   poverty_rate               Population below poverty line
- *   income_inequality          Gap between rich and poor
- *   --- Demographics ---
- *   population                 Total population (raw number)
- *   population_growth          Rate of population change
- *   birth_rate                 Births per 1,000 people
- *   death_rate                 Deaths per 1,000 people
- *   median_age                 Average age of population
- *   eligible_voters            Citizens able to vote
- *   ethnic_diversity           Cultural heterogeneity
- *   --- Healthcare ---
- *   healthcare_quality         Overall medical care standard
- *   healthcare_accessibility   Access to medical services
- *   beds_per_100k              Hospital beds per 100,000 people  (NOT "hospital_beds")
- *   lifespan                   Average lifespan in years         (NOT "life_expectancy")
- *   drug_use                   Substance abuse prevalence
- *   --- Education ---
- *   literacy                   Population able to read/write     (NOT "literacy_rate")
- *   higher_education           University graduation rate        (NOT "education_quality")
- *   education_accessibility    Access to schooling
- *   academic_immigration       Scholars attracted to nation
- *   --- Infrastructure ---
- *   physical_infrastructure    Roads, bridges, ports, public works (NOT "infrastructure")
- *   digital_infrastructure     Internet and tech networks        (NOT "technology")
- *   rail_network               Train connectivity
- *   urbanization               Population in cities
- *   energy_generation          Power production capacity
- *   renewable_energy_percentage Clean energy percentage
- *   --- Resources ---
- *   arable_land                Farmable land area
- *   rare_minerals              Strategic mineral reserves
- *   oil_and_gas                Fossil fuel reserves
- *   fuel_prices                Consumer fuel costs
- *   --- Environment ---
- *   pollution                  Environmental contamination
- *   carbon_emissions           CO2 output
- *   --- Social ---
- *   standard_of_living         Quality of life index
- *   happiness                  Population wellbeing
- *   social_mobility            Ability to change economic class
- *   benefits                   Government welfare programs
- *   crime_rate                 Criminal activity level           (NOT "crime")
- *   incarceration_rate         Prison population per capita
- *   --- Religion ---
- *   religious                  Religiosity index
- *   --- Governance ---
- *   stability                  Political stability               (also used for "military_strength")
- *   legitimacy                 Government legitimacy
- *   efficiency                 Bureaucratic efficiency
- *   corruption                 Government corruption
- *   press_freedom              Media independence
- *   judicial_independence      Court system independence
- *   freedom_index              Civil liberties composite
- *   polarization               Political division
- *   --- Security ---
- *   civil_unrest               Public disorder
- *   terrorism                  Terrorist threat level
- *   political_violence         Political violence
- *   --- Immigration ---
- *   immigration                Legal immigration rate
- *   illegal_immigration        Unauthorized entry rate
- *   emigration                 Citizens leaving
- *   --- International ---
- *   international_reputation   Global standing                   (NOT "diplomatic_standing")
- *   trade_agreements           Number of trade agreements        (NOT "trade")
- *   sanctions                  Active sanctions against nation
- */
-const NATION_STAT_COLUMNS = [
-    'gdp', 'gdp_growth', 'debt', 'debt_growth', 'inflation', 'interest_rates',
-    'trade_balance', 'currency_strength', 'foreign_investment', 'credit',
-    'income_tax', 'corporate_tax', 'sales_tax', 'tariffs',
-    'unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength',
-    'poverty_rate', 'income_inequality',
-    'population', 'population_growth', 'birth_rate', 'death_rate', 'median_age', 'eligible_voters', 'ethnic_diversity',
-    'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use',
-    'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
-    'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage',
-    'arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices',
-    'pollution', 'carbon_emissions',
-    'standard_of_living', 'happiness', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate',
-    'religious',
-    'stability', 'legitimacy', 'efficiency', 'corruption', 'press_freedom', 'judicial_independence',
-    'freedom_index', 'polarization',
-    'civil_unrest', 'terrorism', 'political_violence',
-    'immigration', 'illegal_immigration', 'emigration',
-    'international_reputation', 'trade_agreements', 'sanctions'
-];
-
-const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
-
-const STAT_KEY_ALIASES = {
-    intl_reputation: 'international_reputation',
-    diplomatic_standing: 'international_reputation',
-    credit_rating: 'credit',
-    credit_score: 'credit',
-    trade: 'trade_balance',
-    trade_volume: 'trade_balance',
-    education: 'higher_education',
-    education_quality: 'higher_education',
-    military_strength: 'stability',
-    literacy_rate: 'literacy',
-    hospital_beds: 'beds_per_100k',
-    technology: 'digital_infrastructure',
-    infrastructure: 'physical_infrastructure',
-    tourism: 'international_reputation'
-};
-
-function normalizeNationStatKey(statKey) {
-    if (!statKey || typeof statKey !== 'string') return null;
-    return STAT_KEY_ALIASES[statKey] || statKey;
-}
-
-/**
- * Stats where HIGHER values are better (increase = achievement).
- */
-const STATS_HIGHER_IS_BETTER = [
-    'gdp', 'gdp_growth', 'currency_strength', 'foreign_investment', 'credit',
-    'labor_force_participation', 'minimum_wage', 'union_strength',
-    'population_growth', 'eligible_voters', 'ethnic_diversity',
-    'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan',
-    'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
-    'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation', 'renewable_energy_percentage',
-    'arable_land', 'rare_minerals',
-    'standard_of_living', 'happiness', 'social_mobility', 'benefits',
-    'stability', 'legitimacy', 'efficiency', 'press_freedom', 'judicial_independence', 'freedom_index',
-    'immigration', 'international_reputation', 'trade_agreements'
-];
-
-/**
- * Stats where LOWER values are better (decrease = achievement).
- */
-const STATS_LOWER_IS_BETTER = [
-    'debt', 'debt_growth', 'inflation', 'interest_rates',
-    'unemployment', 'poverty_rate', 'income_inequality', 'death_rate',
-    'drug_use', 'fuel_prices', 'pollution', 'carbon_emissions',
-    'crime_rate', 'incarceration_rate', 'corruption', 'polarization',
-    'civil_unrest', 'terrorism', 'political_violence',
-    'illegal_immigration', 'emigration', 'sanctions'
-];
-
-// ==================== STAT DECAY CONFIGURATION ====================
-
-const DECAY_SPEED = { VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
-
-/**
- * Stats that decay each tick. Two types:
- *   - 'equilibrium': drifts toward a midpoint (requires constant governing effort)
- *   - 'erosion': degrades toward a bad floor (punishes neglect)
- * Stats not listed are persistent — they hold value indefinitely.
- */
-const STAT_DECAY_CONFIG = {
-    // ── Equilibrium (drift back to midpoint) ──
-    inflation:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
-    civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.FAST },
-    polarization:        { type: 'equilibrium', target: 30, speed: DECAY_SPEED.SLOW },
-    terrorism:           { type: 'equilibrium', target: 10, speed: DECAY_SPEED.SLOW },
-    political_violence:  { type: 'equilibrium', target: 10, speed: DECAY_SPEED.MEDIUM },
-    happiness:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
-    foreign_investment:  { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    trade_balance:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
-    gdp_growth:          { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    immigration:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    illegal_immigration: { type: 'equilibrium', target: 30, speed: DECAY_SPEED.SLOW },
-    emigration:          { type: 'equilibrium', target: 30, speed: DECAY_SPEED.MEDIUM },
-    fuel_prices:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    debt_growth:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
-
-    // ── Erosion (degrade toward bad floor if neglected) ──
-    physical_infrastructure:  { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
-    digital_infrastructure:   { type: 'erosion', target: 0,  speed: DECAY_SPEED.SLOW },
-    rail_network:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
-    energy_generation:        { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
-    efficiency:               { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    corruption:               { type: 'erosion', target: 70, speed: DECAY_SPEED.SLOW },
-    healthcare_quality:       { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.VERY_SLOW },
-    education_accessibility:  { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    press_freedom:            { type: 'erosion', target: 40, speed: DECAY_SPEED.SLOW },
-    judicial_independence:    { type: 'erosion', target: 40, speed: DECAY_SPEED.SLOW },
-    freedom_index:            { type: 'erosion', target: 40, speed: DECAY_SPEED.VERY_SLOW },
-    standard_of_living:       { type: 'erosion', target: 40, speed: DECAY_SPEED.VERY_SLOW },
-    social_mobility:          { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    benefits:                 { type: 'erosion', target: 0,  speed: DECAY_SPEED.MEDIUM },
-};
-
-// Validate decay config keys at module load
-for (const key of Object.keys(STAT_DECAY_CONFIG)) {
-    if (!NATION_STAT_COLUMN_SET.has(key)) {
-        console.error(`[STAT_DECAY_CONFIG] Invalid stat key: "${key}" — not in NATION_STAT_COLUMNS`);
-    }
-}
-
-// ==================== INSTITUTION FUNDING DECAY TIERS ====================
-// Institutions counteract natural stat decay. At 100% funding, decay is fully
-// blocked. Below 100%, the rates below REPLACE the natural decay rate for stats
-// covered by that institution. When multiple institutions cover the same stat,
-// their rates are averaged.
-
-const INSTITUTION_DECAY_TIERS = [
-    { minPct: 100, primary: 0,    secondary: 0    },  // Fully Funded
-    { minPct: 90,  primary: 0.3,  secondary: 0    },  // Stretched
-    { minPct: 75,  primary: 0.5,  secondary: 0.2  },  // Strained
-    { minPct: 50,  primary: 0.9,  secondary: 0.5  },  // Underfunded
-    { minPct: 25,  primary: 1.7,  secondary: 0.9  },  // Critical
-    { minPct: 0,   primary: 2.7,  secondary: 1.7  },  // Collapsed
-];
-
-/**
- * Look up the institution decay rate for a given funding percentage.
- * @param {number} fundingPct - 0-100 funding percentage
- * @param {'primary'|'secondary'} role - whether this stat is the institution's primary or secondary
- * @returns {number} decay rate per tick (0 = no decay)
- */
-function getInstitutionDecayRate(fundingPct, role) {
-    for (const tier of INSTITUTION_DECAY_TIERS) {
-        if (fundingPct >= tier.minPct) return tier[role];
-    }
-    return INSTITUTION_DECAY_TIERS[INSTITUTION_DECAY_TIERS.length - 1][role];
-}
-
-/**
- * Build a map of statKey → array of { institutionId, role, fundingPct } from
- * institution config rows and budget_item_allocations for the active budget.
- *
- * @param {Array} instConfig - rows from ministry_institution_config
- * @param {Array} itemAllocations - rows from budget_item_allocations for the active bill
- * @returns {Object} e.g. { healthcare_quality: [{ id: 'workforce', role: 'primary', fundingPct: 85 }, ...] }
- */
-function buildStatInstitutionMap(instConfig, itemAllocations) {
-    const allocMap = {};
-    for (const row of (itemAllocations || [])) {
-        if (row.item_type === 'institution') {
-            allocMap[row.item_id] = {
-                allocated: Number(row.allocation_amount || 0),
-                needed: Number(row.needed_amount || 0)
-            };
-        }
-    }
-
-    const statMap = {};
-    for (const inst of (instConfig || [])) {
-        const alloc = allocMap[inst.id];
-        const fundingPct = alloc && alloc.needed > 0
-            ? Math.min(100, Math.round((alloc.allocated / alloc.needed) * 100))
-            : 0;  // no allocation row = unfunded
-
-        for (const role of ['primary', 'secondary']) {
-            const statKey = inst[`${role}_stat`];
-            if (!statKey) continue;
-            if (!statMap[statKey]) statMap[statKey] = [];
-            statMap[statKey].push({ id: inst.id, role, fundingPct });
-        }
-    }
-    return statMap;
-}
-
-/**
- * For a given stat, compute the effective institution decay rate by averaging
- * all institutions that cover it (as primary or secondary).
- *
- * @param {Array} institutions - entries from buildStatInstitutionMap()[statKey]
- * @returns {number|null} averaged decay rate, or null if no institutions cover this stat
- */
-function getAveragedInstitutionDecay(institutions) {
-    if (!institutions || institutions.length === 0) return null;
-    let total = 0;
-    for (const inst of institutions) {
-        total += getInstitutionDecayRate(inst.fundingPct, inst.role);
-    }
-    return total / institutions.length;
-}
-
-// ==================== THREE-PILLAR VOTING SYSTEM MAPPINGS ====================
-
-/**
- * Maps each nation stat to the ministry responsible for it.
- * Used by performance perception to credit/blame ministry-holding parties.
- */
-const STAT_TO_MINISTRY = {
-    // Finance
-    gdp: 'finance', gdp_growth: 'finance', debt: 'finance', debt_growth: 'finance',
-    inflation: 'finance', interest_rates: 'finance',
-    currency_strength: 'finance', credit: 'finance',
-    income_tax: 'finance', corporate_tax: 'finance', sales_tax: 'finance',
-    // Healthcare
-    healthcare_quality: 'healthcare', healthcare_accessibility: 'healthcare',
-    beds_per_100k: 'healthcare', lifespan: 'healthcare', drug_use: 'healthcare',
-    death_rate: 'healthcare',
-    // Education
-    literacy: 'education', higher_education: 'education',
-    education_accessibility: 'education', academic_immigration: 'education',
-    // Labor
-    unemployment: 'labor', labor_force_participation: 'labor',
-    minimum_wage: 'labor', union_strength: 'labor',
-    poverty_rate: 'labor', income_inequality: 'labor',
-    // Interior
-    stability: 'interior', civil_unrest: 'interior',
-    crime_rate: 'interior', incarceration_rate: 'interior',
-    immigration: 'interior', illegal_immigration: 'interior',
-    // Justice
-    corruption: 'justice', judicial_independence: 'justice',
-    press_freedom: 'justice', freedom_index: 'justice',
-    // Energy
-    energy_generation: 'energy', renewable_energy_percentage: 'energy',
-    pollution: 'energy', carbon_emissions: 'energy',
-    // Transportation
-    physical_infrastructure: 'transportation', digital_infrastructure: 'transportation',
-    rail_network: 'transportation', urbanization: 'transportation',
-    // Defense
-    terrorism: 'defense', political_violence: 'defense',
-    // Trade
-    trade_balance: 'trade', trade_agreements: 'trade',
-    tariffs: 'trade', foreign_investment: 'trade',
-    // Foreign
-    international_reputation: 'foreign',
-    sanctions: 'foreign', emigration: 'foreign',
-    // Prime Minister (general governance & quality of life)
-    legitimacy: 'prime_minister', efficiency: 'prime_minister', polarization: 'prime_minister',
-    happiness: 'prime_minister', standard_of_living: 'prime_minister',
-    social_mobility: 'prime_minister', benefits: 'prime_minister',
-    fuel_prices: 'prime_minister'
-};
-
-/**
- * Maps voter-bloc priority issue categories to the nation stats they care about.
- * Each bloc has 1-2 priority_issues (e.g., ['Economics', 'Labor']).
- */
-const ISSUE_CATEGORY_STATS = {
-    Agriculture:     ['arable_land', 'fuel_prices', 'trade_balance', 'poverty_rate'],
-    Economics:       ['gdp', 'gdp_growth', 'inflation', 'unemployment', 'currency_strength', 'trade_balance', 'debt'],
-    Education:       ['literacy', 'higher_education', 'education_accessibility', 'academic_immigration'],
-    Governance:      ['stability', 'legitimacy', 'efficiency', 'corruption', 'freedom_index'],
-    Healthcare:      ['healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use'],
-    Immigration:     ['immigration', 'illegal_immigration', 'emigration', 'ethnic_diversity'],
-    Infrastructure:  ['physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation', 'renewable_energy_percentage'],
-    International:   ['international_reputation', 'trade_agreements', 'sanctions', 'foreign_investment'],
-    Labor:           ['unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength', 'poverty_rate', 'income_inequality'],
-    Military:        ['terrorism', 'political_violence', 'civil_unrest', 'stability'],
-    Social:          ['standard_of_living', 'happiness', 'social_mobility', 'crime_rate', 'pollution', 'benefits']
-};
-
-const _HIGHER_IS_BETTER_SET = new Set(STATS_HIGHER_IS_BETTER);
-const _LOWER_IS_BETTER_SET  = new Set(STATS_LOWER_IS_BETTER);
-
-/**
- * Returns +1 if a positive delta is "good", -1 if negative delta is "good", 0 if neutral.
- */
-function statDirectionSign(statKey) {
-    if (_HIGHER_IS_BETTER_SET.has(statKey)) return 1;
-    if (_LOWER_IS_BETTER_SET.has(statKey)) return -1;
-    return 0;
-}
-
-// ==================== STAT TREND CALCULATION ====================
-
-/** Weights for weighted-average trend: most recent delta gets 0.40, oldest gets 0.05 */
-const TREND_WEIGHTS = [0.05, 0.05, 0.10, 0.15, 0.25, 0.40];
-
-/**
- * Weighted trend for a single stat over the last `lookback` ticks.
- * Returns a signed value: positive = rising, negative = falling.
- * Requires stat_history rows populated by recordStatHistory().
- *
- * @param {object} supabase
- * @param {string} nationId
- * @param {string} statName  - nation stat key (e.g. 'unemployment')
- * @param {number} [lookback=6] - how many tick-deltas to consider
- * @returns {Promise<number>} weighted trend value
- */
-async function statTrend(supabase, nationId, statName, lookback = 6) {
-    const { data: rows } = await supabase
-        .from('stat_history')
-        .select('value, tick')
-        .eq('nation_id', nationId)
-        .eq('stat_name', statName)
-        .order('tick', { ascending: true })
-        .limit(lookback + 1);
-
-    if (!rows || rows.length < 2) return 0;
-
-    let weightedSum = 0;
-    const deltas = rows.length - 1;
-    for (let i = 1; i < rows.length; i++) {
-        const delta = rows[i].value - rows[i - 1].value;
-        const weightIdx = Math.max(0, TREND_WEIGHTS.length - deltas + i - 1);
-        weightedSum += delta * (TREND_WEIGHTS[weightIdx] || 0.10);
-    }
-    return weightedSum;
-}
-
-/**
- * Batch version: compute weighted trends for multiple stats in a single query.
- * Returns { statName: trendValue, ... }.
- *
- * @param {object} supabase
- * @param {string} nationId
- * @param {string[]} statNames - array of stat keys
- * @param {number} [lookback=6]
- * @returns {Promise<Object.<string, number>>}
- */
-async function statTrendBatch(supabase, nationId, statNames, lookback = 6) {
-    if (!statNames || statNames.length === 0) return {};
-
-    const { data: rows } = await supabase
-        .from('stat_history')
-        .select('stat_name, value, tick')
-        .eq('nation_id', nationId)
-        .in('stat_name', statNames)
-        .order('tick', { ascending: true });
-
-    if (!rows || rows.length === 0) return {};
-
-    // Group by stat_name
-    const byName = {};
-    for (const r of rows) {
-        if (!byName[r.stat_name]) byName[r.stat_name] = [];
-        byName[r.stat_name].push(r);
-    }
-
-    const trends = {};
-    for (const [name, vals] of Object.entries(byName)) {
-        const recent = vals.slice(-(lookback + 1));
-        if (recent.length < 2) { trends[name] = 0; continue; }
-        let weightedSum = 0;
-        const deltas = recent.length - 1;
-        for (let i = 1; i < recent.length; i++) {
-            const delta = recent[i].value - recent[i - 1].value;
-            const weightIdx = Math.max(0, TREND_WEIGHTS.length - deltas + i - 1);
-            weightedSum += delta * (TREND_WEIGHTS[weightIdx] || 0.10);
-        }
-        trends[name] = weightedSum;
-    }
-    return trends;
-}
-
-// ==================== MINISTER & GOVERNMENT APPROVAL SYSTEM ====================
-
-/**
- * Reverse map: ministry_key → [stat_keys] derived from STAT_TO_MINISTRY.
- * Used by the per-tick minister approval calculation to find which stats
- * each minister "owns".
- */
-const MINISTRY_TO_STATS = {};
-for (const [statKey, ministryKey] of Object.entries(STAT_TO_MINISTRY)) {
-    if (!MINISTRY_TO_STATS[ministryKey]) MINISTRY_TO_STATS[ministryKey] = [];
-    MINISTRY_TO_STATS[ministryKey].push(statKey);
-}
-
-/**
- * Threshold-based approval contribution for a single stat.
- * Returns how much a stat's current value helps or hurts the responsible minister.
- *
- * Normal stats (higher=better): >=70 → +1.5, 50-69 → +0.5, 30-49 → -1.5, <30 → -3.0
- * Inverse stats (lower=better): <=15 → +1.5, 16-30 → +0.5, 31-50 → -1.5, >50  → -3.0
- *
- * @param {string} statKey - nation stat key
- * @param {number} value   - current stat value
- * @returns {number} approval contribution (-3.0 to +1.5)
- */
-function statApprovalContribution(statKey, value) {
-    const sign = statDirectionSign(statKey);
-    if (sign === 0) return 0;
-
-    if (sign === 1) {
-        // Higher is better
-        if (value >= 70) return 1.5;
-        if (value >= 50) return 0.5;
-        if (value >= 30) return -1.5;
-        return -3.0;
-    } else {
-        // Lower is better (inverse)
-        if (value <= 15) return 1.5;
-        if (value <= 30) return 0.5;
-        if (value <= 50) return -1.5;
-        return -3.0;
-    }
-}
-
-const GOV_APPROVAL_CONFIG = {
-    // ─── New spec weights (Phase 4) ───
-    INSTITUTIONAL_WEIGHT: 0.45,
-    OUTCOMES_WEIGHT: 0.35,
-    EVENTS_WEIGHT: 0.20,
-
-    // Events component decay (5% per tick — transient shocks fade gradually)
-    EVENTS_DECAY_RATE: 0.05,
-
-    // Outcome stats: universal stats everyone cares about, with relative weights
-    OUTCOME_STATS: [
-        { stat: 'standard_of_living', weight: 0.18 },
-        { stat: 'unemployment',       weight: 0.15, inverted: true },
-        { stat: 'inflation',          weight: 0.12, inverted: true },
-        { stat: 'crime_rate',         weight: 0.10, inverted: true },
-        { stat: 'healthcare_quality', weight: 0.10 },
-        { stat: 'happiness',          weight: 0.10 },
-        { stat: 'poverty_rate',       weight: 0.08, inverted: true },
-        { stat: 'gdp_growth',         weight: 0.07 },
-        { stat: 'stability',          weight: 0.05 },
-        { stat: 'corruption',         weight: 0.05, inverted: true },
-    ],
-    OUTCOME_TREND_LOOKBACK: 8,
-    OUTCOME_TREND_WEIGHT: 0.6,    // 60% trend direction
-    OUTCOME_ABSOLUTE_WEIGHT: 0.4, // 40% absolute level
-
-    // Gov approval → momentum feedback
-    FEEDBACK_THRESHOLD: 2,          // min delta to trigger feedback
-    FEEDBACK_COALITION_COEFF: 0.15, // coalition gets 15% of delta as momentum
-    FEEDBACK_OPPOSITION_COEFF: 0.08, // opposition gets inverse 8%
-
-    // Vacancy penalty per unfilled ministry
-    VACANCY_PENALTY: -5,
-
-    // Embattled / Crisis thresholds (kept from original)
-    EMBATTLED_THRESHOLD: 30,
-    EMBATTLED_TICKS_REQUIRED: 5,
-    EMBATTLED_GOV_PENALTY: -1,
-    CRISIS_THRESHOLD: 20,
-    CRISIS_GOV_PENALTY: -2,
-
-    // Minister firing (kept from original)
-    FIRE_MINISTER_AP_COST: 1,
-    NEW_MINISTER_APPROVAL: 45,
-    FIRE_GOV_APPROVAL_BONUS: 3,
-
-};
-
-/**
- * Snapshot all nation stats into a flat JSONB object.
- */
-function snapshotNationStats(nation) {
-    const snapshot = {};
-    for (const key of NATION_STAT_COLUMNS) {
-        if (nation[key] !== undefined && nation[key] !== null) {
-            snapshot[key] = nation[key];
-        }
-    }
-    return snapshot;
-}
 
 /**
  * Close the current administration for a nation.
@@ -7175,6 +7284,9 @@ async function scheduleNextPresidentialElections(supabase, nation, currentTick) 
     }
 }
 
+// ────────── presidential ──────────
+
+
 /**
  * Generate 3 president candidates for a party (reuses PM candidate generation pattern).
  * Candidates are stored in pm_candidates table with candidate_type = 'presidential';
@@ -7848,6 +7960,10 @@ async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
 
 // Tick lock and tick mutation are intentionally Edge Function only.
 
+
+// ────────── three-pillar ──────────
+
+
 // ==================== THREE-PILLAR PREFERENCE ENGINE ====================
 
 /**
@@ -8095,59 +8211,7 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
     console.log(`[Three-Pillar] Recalculated preferences for ${factionIds.length} parties × ${voterBlocs.length} blocs in ${nation.name}`);
 }
 
-/**
- * Adjust momentum for a faction, optionally targeting a specific voter bloc.
- * Clamps to [-50, +50]. Writes an audit row to momentum_log.
- *
- * @param {object} supabase
- * @param {string} nationId  - nation UUID (for audit log)
- * @param {string} factionId - faction UUID
- * @param {string|null} blocId - specific bloc UUID, or null for all blocs
- * @param {number} amount    - positive = boost, negative = penalty
- * @param {string} source    - audit tag, e.g. 'crisis:government_shutdown'
- */
-async function adjustMomentum(supabase, nationId, factionId, blocId, amount, source) {
-    if (amount === 0) return;
-
-    const query = supabase
-        .from('faction_bloc_approval')
-        .select('id, bloc_id, momentum')
-        .eq('faction_id', factionId);
-    if (blocId) query.eq('bloc_id', blocId);
-
-    const { data: rows } = await query;
-    if (!rows || rows.length === 0) return;
-
-    for (const row of rows) {
-        const old = Number(row.momentum ?? 0);
-        const clamped = Math.round(Math.max(-50, Math.min(50, old + amount)) * 100) / 100;
-        await supabase.from('faction_bloc_approval')
-            .update({ momentum: clamped })
-            .eq('id', row.id);
-    }
-
-    // Audit log (best-effort — don't fail the caller)
-    const { data: shard } = await supabase
-        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    await supabase.from('momentum_log').insert({
-        nation_id: nationId,
-        faction_id: factionId,
-        bloc_id: blocId || null,
-        amount,
-        source: source || 'unknown',
-        tick: shard?.current_tick || 0
-    });
-
-    console.log(`[Momentum] ${amount > 0 ? '+' : ''}${amount} for faction ${factionId}${blocId ? ` bloc ${blocId}` : ` (${rows.length} blocs)`} — ${source}`);
-}
-
-/**
- * Convenience wrapper: adjust momentum uniformly across ALL blocs for a faction.
- * Use this for events that affect a party's overall standing (crises, elections, etc.).
- */
-async function adjustMomentumAll(supabase, nationId, factionId, amount, source) {
-    await adjustMomentum(supabase, nationId, factionId, null, amount, source);
-}
+// ────────── political-actions ──────────
 
 
 // ==================== STAT DECAY PROCESSING ====================
@@ -11542,51 +11606,6 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
 
 // ==================== LAYER 2: GOVERNMENT APPROVAL (COMPOSITE) ====================
 
-/**
- * Apply a one-time event modifier to the government approval events component.
- * The events component decays 12% per tick, so transient shocks fade naturally.
- * Clamped to [-50, +50]. Writes an audit row to gov_approval_log.
- *
- * @param {object} supabase
- * @param {string} nationId
- * @param {number} amount   - signed delta (positive = boost, negative = shock)
- * @param {string} source   - audit tag, e.g. 'crisis:government_shutdown'
- */
-async function adjustGovernmentApprovalEvent(supabase, nationId, amount, source) {
-    if (amount === 0) return;
-
-    const { data: nation } = await supabase
-        .from('nations')
-        .select('gov_approval_events')
-        .eq('id', nationId)
-        .single();
-
-    const current = Number(nation?.gov_approval_events ?? 0);
-    const updated = Math.round(Math.max(-50, Math.min(50, current + amount)) * 100) / 100;
-
-    const { error: updateErr } = await supabase.from('nations')
-        .update({ gov_approval_events: updated })
-        .eq('id', nationId);
-
-    if (updateErr) {
-        console.error(`[GovApprovalEvent] Failed to update gov_approval_events for ${nationId}: ${updateErr.message}`);
-        return;
-    }
-
-    // Audit log (non-fatal — table may not exist if migration not applied)
-    try {
-        const { data: shard } = await supabase
-            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        await supabase.from('gov_approval_log').insert({
-            nation_id: nationId,
-            amount,
-            source: source || 'unknown',
-            tick: shard?.current_tick || 0
-        });
-    } catch (e) { /* non-blocking */ }
-
-    console.log(`[GovApprovalEvent] ${amount > 0 ? '+' : ''}${amount} for nation ${nationId} — ${source}`);
-}
 
 /**
  * Calculate composite government approval from three components:
@@ -13229,6 +13248,10 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
 }
 
 
+
+// ────────── election-simulation ──────────
+
+
 // ==================== ELECTION SIMULATION ====================
 
 /**
@@ -13810,6 +13833,7 @@ async function runPresidentialElectionPreview(supabase, nationId) {
         candidateNames
     };
 }
+
 
 
 // ===== END GAME LOGIC =====

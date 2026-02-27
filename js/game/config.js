@@ -1,0 +1,93 @@
+/**
+ * config.js — Game configuration constants and AP management
+ * Extracted from game-common.js
+ */
+
+// ==================== CONSTANTS ====================
+
+export const GAME_CONFIG = {
+    TOTAL_SEATS: 120,
+    MAJORITY_SEATS: 61,
+    VOTING_WINDOW_TICKS: 6,
+    QUORUM_THRESHOLD: 0.6,           // 60% of seats must vote before quorum-based early resolution
+    COMMITTEE_EXPIRY_TICKS: 6,
+    DRAFT_BILL_AP_COST: 2,
+    VETO_APPROVAL_COST: 3,
+    NO_CONFIDENCE_AP_COST: 5,
+    NO_CONFIDENCE_VOTING_TICKS: 6,
+    NO_CONFIDENCE_COOLDOWN_TICKS: 6,
+    FOUNDATIONAL_AP_COST: 3,
+    FOUNDATIONAL_VOTING_TICKS: 6,
+    SUPERMAJORITY_THRESHOLD: 2/3,
+    EARLY_ELECTION_TICKS: 6,
+    EARLY_ELECTION_PM_APPROVAL_COST: 5,
+    EARLY_ELECTION_COALITION_APPROVAL_COST: 3,
+    // Presidential Democracy
+    PRESIDENTIAL_TERM_TICKS: 48,
+    PARLIAMENTARY_TERM_TICKS: 24,
+    VETO_OVERRIDE_THRESHOLD: 2/3,
+    PRESIDENT_DESK_TICKS: 6,
+    MINISTER_CONFIRMATION_VOTING_TICKS: 6,
+    PRESIDENTIAL_TERM_LIMIT: 2,           // max terms before incumbent must step aside
+    PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
+    MAX_AP: 20,  // maximum action points a party can accumulate
+    TICKS_PER_YEAR: 12,
+    BUDGET_BILL_VOTING_TICKS: null,   // budget bills persist until passed (never expire)
+    NO_BUDGET_PENALTY_TICKS: 24,     // how many ticks without a budget before max penalty
+};
+/**
+ * Update GAME_CONFIG with nation-specific seat values.
+ * Call after loading the nation on each page.
+ */
+export function initGameConfigForNation(nation) {
+    if (nation && nation.total_seats) {
+        GAME_CONFIG.TOTAL_SEATS = nation.total_seats;
+        GAME_CONFIG.MAJORITY_SEATS = Math.floor(nation.total_seats / 2) + 1;
+    }
+}
+
+export const FORMATION_DEADLINE_TICKS = 6; // ticks before snap election when no government
+export const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 8 — if two elections are this close, it's a snap cycle
+
+/**
+ * Atomic AP deduction via database RPC.
+ * Returns { success: true, newAp } on success, or { success: false, error } on failure.
+ * The DB function checks balance and deducts in a single UPDATE, preventing race conditions.
+ */
+export async function deductAP(supabase, factionId, cost) {
+    const { data, error } = await supabase.rpc('deduct_ap', {
+        p_faction_id: factionId,
+        p_cost: cost
+    });
+    if (error) {
+        console.error(`[deductAP] RPC failed for faction ${factionId}, cost ${cost}:`, error.message);
+        return { success: false, error: error.message };
+    }
+    if (data === -1) {
+        return { success: false, error: 'Insufficient AP' };
+    }
+    return { success: true, newAp: data };
+}
+
+/**
+ * Atomic AP accumulation via database RPC.
+ * Returns { success: true, newAp } on success, or { success: false, error } on failure.
+ * The DB function atomically increments AP capped at max, preventing race conditions
+ * with concurrent deductions.
+ * Retries up to 2 additional times on transient RPC failure with short backoff.
+ */
+export async function accumulateAP(supabase, factionId, gain, maxAp = GAME_CONFIG.MAX_AP) {
+    const { data, error } = await supabase.rpc('accumulate_ap', {
+        p_faction_id: factionId,
+        p_gain: gain,
+        p_max_ap: maxAp
+    });
+    if (error) {
+        console.error(`[accumulateAP] RPC failed for faction ${factionId}, gain ${gain}:`, error.message);
+        return { success: false, error: error.message };
+    }
+    if (data === -1) {
+        return { success: false, error: 'Faction not found' };
+    }
+    return { success: true, newAp: data };
+}
