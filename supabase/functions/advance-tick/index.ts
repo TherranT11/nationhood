@@ -11454,9 +11454,10 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
 
     if (!ministries || ministries.length === 0) return [];
 
-    // During government shutdown, every minister takes a direct -1/tick approval hit
-    // on top of their normal stat-based scoring.
-    const SHUTDOWN_MINISTER_PENALTY = -1;
+    // During government shutdown, every minister takes a direct -3/tick approval hit
+    // on top of their normal stat-based scoring. This represents public outrage at
+    // the government's inability to function.
+    const SHUTDOWN_MINISTER_PENALTY = -3;
 
     const results = [];
 
@@ -14212,9 +14213,6 @@ async function advanceTick(supabase) {
             summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
         }
 
-        // Trade balance influences GDP growth (surplus boosts, deficit drags)
-        await applyTradeBalanceToGdpGrowth(supabase, nation);
-
         // Apply GDP growth rate
         await applyGdpGrowth(supabase, nation);
 
@@ -14351,7 +14349,7 @@ async function advanceTick(supabase) {
         await recordStatHistory(supabase, nation, newTick);
 
         // Layer 1: Update minister approvals from stat thresholds
-        // During government shutdown, all ministers take a direct -1/tick approval penalty
+        // During government shutdown, all ministers take a direct -3/tick approval penalty
         const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick, shutdownNow);
         if (ministerApprovalResults.length > 0) {
             summary.ministerApprovals = summary.ministerApprovals || [];

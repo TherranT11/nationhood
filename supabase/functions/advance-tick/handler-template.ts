@@ -466,7 +466,8 @@ async function advanceTick(supabase) {
             const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
             _institutionConfig = icRows || [];
         }
-        const shutdown = isGovernmentShutdown(nation, newTick);
+        const shutdownCheck = await isGovernmentShutdown(supabase, nation, newTick);
+        const shutdown = shutdownCheck.active;
         let statInstMap = null;
         if (shutdown && _institutionConfig.length > 0) {
             // Government shutdown: force ALL institutions to 0% funding → Collapsed decay rates
@@ -561,12 +562,13 @@ async function advanceTick(supabase) {
 
         // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
         // (the original `shutdown` boolean was computed before bill resolution)
-        const shutdownNow = isGovernmentShutdown(nation, newTick);
+        const shutdownCheckNow = await isGovernmentShutdown(supabase, nation, newTick);
+        const shutdownNow = shutdownCheckNow.active;
 
-        // Government shutdown penalties (coalition momentum/approval + PM/President approval + stat damage)
+        // Government shutdown penalties (approval + stability + unfunded ministry collapsing)
         // Runs BEFORE approval calculations so stat/event effects propagate in the same tick.
         if (shutdownNow) {
-            const shutdownResult = await processGovernmentShutdown(supabase, nation, newTick);
+            const shutdownResult = await processGovernmentShutdown(supabase, nation, newTick, shutdownCheckNow);
             if (shutdownResult) {
                 summary.governmentShutdowns = summary.governmentShutdowns || [];
                 summary.governmentShutdowns.push({ nation: nation.name, ...shutdownResult });
