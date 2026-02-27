@@ -1926,6 +1926,150 @@ export async function declineFundraiser(supabase, factionId, nationId, blocId, b
 }
 
 
+// ==================== MOBILIZE (PARTY CHAIRMAN) ====================
+
+export const MOBILIZE_CONFIG = {
+    AP_COST: 3,
+    MODES: {
+        rally_regime: {
+            name: 'Rally for the Regime',
+            description: 'Organize demonstrations of public support. Flags, banners, crowds chanting the Strongman\'s name.',
+            legitimacy_boost: 3,
+            standing_boost: 3,
+        },
+        rally_self: {
+            name: 'Rally for Yourself',
+            description: 'The crowds are still there, but your portrait is getting bigger. Provincial committees start seeing you as the future.',
+            coup_readiness_boost: 5,
+            party_pillar_penalty: 2,
+            detection_chance: 0.15,
+            standing_penalty_if_detected: 10,
+        },
+    },
+};
+
+/**
+ * Execute Mobilize: Party Chairman only, non-ruling faction only.
+ * Two modes:
+ *  - "rally_regime": +3 legitimacy, +3 standing
+ *  - "rally_self": +5 coup readiness, -2 party pillar support, 15% detection → -10 standing
+ */
+export async function executeMobilize(supabase, factionId, nationId, mode, currentTick) {
+    const modeConfig = MOBILIZE_CONFIG.MODES[mode];
+    if (!modeConfig) return { success: false, error: 'Invalid mobilize mode.' };
+
+    // ── 1. Validate faction + AP ──
+    const { data: faction } = await supabase
+        .from('factions').select('action_points, faction_name')
+        .eq('id', factionId).single();
+    if (!faction) return { success: false, error: 'Faction not found.' };
+    if ((faction.action_points || 0) < MOBILIZE_CONFIG.AP_COST)
+        return { success: false, error: `Not enough AP. Need ${MOBILIZE_CONFIG.AP_COST}.` };
+
+    // ── 2. Validate steward is party_chairman ──
+    const { data: steward } = await supabase
+        .from('stewards')
+        .select('id, steward_type, standing, coup_readiness, first_name, last_name')
+        .eq('faction_id', factionId)
+        .eq('nation_id', nationId)
+        .eq('is_alive', true)
+        .single();
+    if (!steward || steward.steward_type !== 'party_chairman')
+        return { success: false, error: 'Only the Party Chairman can mobilize.' };
+
+    // ── 3. Validate non-ruling faction ──
+    const { data: nation } = await supabase
+        .from('nations').select('ruling_faction_id, legitimacy')
+        .eq('id', nationId).single();
+    if (!nation) return { success: false, error: 'Nation not found.' };
+    if (nation.ruling_faction_id === factionId)
+        return { success: false, error: 'The ruling faction cannot mobilize.' };
+
+    // ── 4. Deduct AP ──
+    const apResult = await deductAP(supabase, factionId, MOBILIZE_CONFIG.AP_COST);
+    if (!apResult.success) return { success: false, error: 'Failed to deduct AP.' };
+
+    const result = {
+        success: true,
+        mode,
+        modeName: modeConfig.name,
+        steward_name: `${steward.first_name} ${steward.last_name}`,
+        newAp: apResult.newAp,
+        detected: false,
+    };
+
+    if (mode === 'rally_regime') {
+        // +3 legitimacy (nation stat)
+        const newLegitimacy = Math.min(100, Number(nation.legitimacy ?? 50) + modeConfig.legitimacy_boost);
+        await supabase.from('nations').update({ legitimacy: newLegitimacy }).eq('id', nationId);
+
+        // +3 standing (steward stat)
+        const newStanding = Math.min(100, (steward.standing ?? 50) + modeConfig.standing_boost);
+        await supabase.from('stewards').update({ standing: newStanding }).eq('id', steward.id);
+
+        result.legitimacy_change = modeConfig.legitimacy_boost;
+        result.standing_change = modeConfig.standing_boost;
+        result.newLegitimacy = newLegitimacy;
+        result.newStanding = newStanding;
+
+    } else if (mode === 'rally_self') {
+        // +5 coup readiness
+        const newCR = Math.min(100, (steward.coup_readiness ?? 0) + modeConfig.coup_readiness_boost);
+        await supabase.from('stewards').update({ coup_readiness: newCR }).eq('id', steward.id);
+
+        // -2 party pillar support (Grip on Power erosion)
+        const { data: partyPillar } = await supabase
+            .from('regime_pillars')
+            .select('id, support')
+            .eq('nation_id', nationId)
+            .eq('pillar_key', 'party')
+            .single();
+        if (partyPillar) {
+            const newSupport = Math.max(0, (partyPillar.support ?? 50) - modeConfig.party_pillar_penalty);
+            await supabase.from('regime_pillars')
+                .update({ support: newSupport, updated_at: new Date().toISOString() })
+                .eq('id', partyPillar.id);
+            result.party_pillar_change = -modeConfig.party_pillar_penalty;
+        }
+
+        result.coup_readiness_change = modeConfig.coup_readiness_boost;
+        result.newCoupReadiness = newCR;
+
+        // 15% detection chance
+        const detected = Math.random() < modeConfig.detection_chance;
+        result.detected = detected;
+        if (detected) {
+            const newStanding = Math.max(0, (steward.standing ?? 50) - modeConfig.standing_penalty_if_detected);
+            await supabase.from('stewards').update({ standing: newStanding }).eq('id', steward.id);
+            result.standing_penalty = -modeConfig.standing_penalty_if_detected;
+            result.newStanding = newStanding;
+
+            // Log detection event separately
+            await supabase.from('campaign_actions').insert({
+                party_id: factionId, nation_id: nationId,
+                action_type: 'steward_detected_mobilize',
+                tick_performed: currentTick,
+                result: {
+                    steward_name: result.steward_name,
+                    faction_name: faction.faction_name,
+                    standing_penalty: -modeConfig.standing_penalty_if_detected,
+                }
+            });
+        }
+    }
+
+    // ── 5. Log action ──
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId, nation_id: nationId,
+        action_type: 'steward_mobilize',
+        tick_performed: currentTick,
+        result,
+    });
+
+    return result;
+}
+
+
 // ==================== PROMISE TICK PROCESSING ====================
 
 /**
