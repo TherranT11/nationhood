@@ -655,10 +655,45 @@ async function renderAutocracyParties(el, f, n) {
                 ? `${effectiveReadiness}% (${stCoupReadiness}% + ${displayCoupBonus}% allies)`
                 : `${stCoupReadiness}%`;
 
+            const isGeneral = mySteward.steward_type === 'general';
+            const isSecurityChief = mySteward.steward_type === 'security_chief';
+
+            // Build surveillance target buttons (other factions with living stewards, excluding self and strongman)
+            let surveillanceTargetsHtml = '';
+            if (isSecurityChief) {
+                const survTargets = (allFactions || []).filter(p => p.id !== f.id && stewardByFaction[p.id]);
+                const survBtns = survTargets.map(p => {
+                    const pColor = p.party_color || '#666';
+                    const sSteward = stewardByFaction[p.id];
+                    const sLabel = STEWARD_TYPE_LABELS[sSteward?.steward_type] || '';
+                    return `<button class="reg-surv-target-btn" data-faction-id="${p.id}" data-faction-name="${escapeHtml(p.faction_name)}" style="border-left-color:${pColor}">${escapeHtml(p.faction_name)} <span style="opacity:0.5;font-size:0.65rem">${escapeHtml(sLabel)}</span></button>`;
+                }).join('');
+                surveillanceTargetsHtml = survTargets.length > 0
+                    ? `<div class="reg-surv-targets">${survBtns}</div><button class="reg-surv-submit" id="steward-surveillance-submit" disabled>INVESTIGATE</button>`
+                    : `<div class="reg-steward-action-req">No targets available</div>`;
+            }
+
             stewardActionsHtml = `
                 <div class="reg-section">
                     <div class="reg-section-title">STEWARD ACTIONS</div>
                     <div class="reg-steward-actions">
+                        ${isGeneral ? `<button class="reg-steward-action-btn reg-steward-action-general" id="steward-showofforce-btn" ${stAP < 3 ? 'disabled' : ''}>
+                            <div class="reg-steward-action-header">
+                                <span class="reg-steward-action-name">SHOW OF FORCE</span>
+                                <span class="reg-steward-action-cost">3 AP</span>
+                            </div>
+                            <div class="reg-steward-action-desc">Troops in the capital. Military checkpoints. Armored vehicles at government buildings.</div>
+                            <div class="reg-steward-action-effects">All rivals: <strong>-5</strong> Coup Readiness · Unrest <strong>-2</strong> · Happiness <strong>-3</strong></div>
+                        </button>` : ''}
+                        ${isSecurityChief ? `<div class="reg-steward-action-btn reg-steward-action-security" id="steward-surveillance-panel">
+                            <div class="reg-steward-action-header">
+                                <span class="reg-steward-action-name">SURVEILLANCE</span>
+                                <span class="reg-steward-action-cost">1 AP</span>
+                            </div>
+                            <div class="reg-steward-action-desc">Investigate a target. Tap communications. Follow movements. Review financial records.</div>
+                            <div class="reg-steward-action-effects">Reveals: <strong>True Loyalty</strong> (exact) &middot; <strong>Secret Coalitions</strong></div>
+                            ${stAP >= 1 ? surveillanceTargetsHtml : '<div class="reg-steward-action-req">Not enough AP</div>'}
+                        </div>` : ''}
                         <button class="reg-steward-action-btn" id="steward-embezzle-btn" ${(stAP < 1 || !hasMinistry) ? 'disabled' : ''}>
                             <div class="reg-steward-action-header">
                                 <span class="reg-steward-action-name">EMBEZZLE</span>
@@ -740,6 +775,8 @@ async function renderAutocracyParties(el, f, n) {
             loyalty_demand_complied: 'COMPLIED',
             loyalty_demand_refused: 'REFUSED',
             loyalty_demand_expired: 'DEMAND EXPIRED',
+            steward_show_of_force: 'SHOW OF FORCE',
+            steward_surveillance: 'SURVEILLANCE',
             steward_embezzle: 'EMBEZZLED',
             steward_conspire: 'CONSPIRED',
             steward_detected_embezzle: 'EMBEZZLE DETECTED',
@@ -788,6 +825,12 @@ async function renderAutocracyParties(el, f, n) {
                     detail = r.target_faction ? `${r.target_faction} ignored demand` : 'Demand expired';
                 } else if (entry.action_type === 'claim_power') {
                     detail = r.method || '';
+                } else if (entry.action_type === 'steward_show_of_force') {
+                    detail = `${r.steward_name} deployed troops. Rivals: coup readiness ${r.rivals_coup_readiness}, unrest ${r.civil_unrest}, happiness ${r.happiness}`;
+                } else if (entry.action_type === 'steward_surveillance') {
+                    // Only visible to the player who performed it
+                    if (entry.party_id !== f.id) return '';
+                    detail = `Investigated ${r.target_faction}: Loyalty ${r.true_loyalty}, ${r.secret_coalitions}`;
                 } else if (entry.action_type === 'steward_embezzle') {
                     detail = `Embezzled $${r.embezzled}M from ${MINISTRY_SHORT[r.ministry] || r.ministry}${r.detected ? ' \u2014 DETECTED' : ''}`;
                 } else if (entry.action_type === 'steward_conspire') {
@@ -1416,6 +1459,140 @@ async function renderAutocracyParties(el, f, n) {
     }
 
     // ── STEWARD ACTION HANDLERS ──
+
+    // SURVEILLANCE (Security Chief only) — target selection + submit
+    let selectedSurvTarget = null;
+    el.querySelectorAll('.reg-surv-target-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            el.querySelectorAll('.reg-surv-target-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            selectedSurvTarget = btn.dataset.factionId;
+            const submitBtn = document.getElementById('steward-surveillance-submit');
+            if (submitBtn) submitBtn.disabled = false;
+        });
+    });
+
+    const survSubmitBtn = document.getElementById('steward-surveillance-submit');
+    if (survSubmitBtn) {
+        survSubmitBtn.addEventListener('click', async () => {
+            if (!selectedSurvTarget) return;
+            if ((f.action_points || 0) < 1) { alert('Not enough AP.'); return; }
+            survSubmitBtn.disabled = true;
+            survSubmitBtn.textContent = 'INVESTIGATING...';
+
+            const apResult = await deductAP(_supabase, f.id, 1);
+            if (!apResult.success) { alert('Not enough AP.'); await renderAutocracyParties(el, f, n); return; }
+            f.action_points = apResult.newAp;
+
+            // Look up target's steward true loyalty
+            const targetSteward = stewardByFaction[selectedSurvTarget];
+            const targetTrueLoyalty = targetSteward?.true_loyalty ?? '?';
+            const targetFactionName = (allFactions || []).find(p => p.id === selectedSurvTarget)?.faction_name || 'Unknown';
+
+            // Look up target's secret coalitions
+            const targetSecretCoalitions = (coalitionRows || []).filter(c =>
+                (c.faction_a_id === selectedSurvTarget || c.faction_b_id === selectedSurvTarget) &&
+                c.coalition_type === 'secret' &&
+                ['active', 'detected'].includes(c.status)
+            );
+            let coalitionIntel = 'None found.';
+            if (targetSecretCoalitions.length > 0) {
+                const names = targetSecretCoalitions.map(c => {
+                    const partnerId = c.faction_a_id === selectedSurvTarget ? c.faction_b_id : c.faction_a_id;
+                    return factionNameMap[partnerId] || 'Unknown';
+                });
+                coalitionIntel = `Secret coalition with: ${names.join(', ')}`;
+            }
+
+            // Log to regime log (only this player's eyes)
+            await _supabase.from('campaign_actions').insert({
+                party_id: f.id, nation_id: n.id,
+                action_type: 'steward_surveillance',
+                tick_performed: currentTick,
+                result: {
+                    steward_name: `${mySteward.first_name} ${mySteward.last_name}`,
+                    target_faction: targetFactionName,
+                    target_faction_id: selectedSurvTarget,
+                    true_loyalty: targetTrueLoyalty,
+                    secret_coalitions: coalitionIntel
+                }
+            });
+
+            // Show intel report overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'reg-surv-overlay';
+            overlay.innerHTML = `
+                <div class="reg-surv-report">
+                    <div class="reg-surv-report-title">SURVEILLANCE REPORT</div>
+                    <div class="reg-surv-report-target">${escapeHtml(targetFactionName)}</div>
+                    <div class="reg-surv-report-row">
+                        <span class="reg-surv-report-label">TRUE LOYALTY</span>
+                        <span class="reg-surv-report-val">${targetTrueLoyalty}</span>
+                    </div>
+                    <div class="reg-surv-report-row">
+                        <span class="reg-surv-report-label">SECRET COALITIONS</span>
+                        <span class="reg-surv-report-val">${escapeHtml(coalitionIntel)}</span>
+                    </div>
+                    <button class="reg-surv-report-close" id="surv-report-close">DISMISS</button>
+                </div>`;
+            el.appendChild(overlay);
+            document.getElementById('surv-report-close').addEventListener('click', async () => {
+                overlay.remove();
+                await renderAutocracyParties(el, f, n);
+            });
+        });
+    }
+
+    // SHOW OF FORCE (General only)
+    const showOfForceBtn = document.getElementById('steward-showofforce-btn');
+    if (showOfForceBtn) {
+        showOfForceBtn.addEventListener('click', async () => {
+            if ((f.action_points || 0) < 3) return;
+            showOfForceBtn.disabled = true;
+            showOfForceBtn.querySelector('.reg-steward-action-name').textContent = 'DEPLOYING...';
+
+            const apResult = await deductAP(_supabase, f.id, 3);
+            if (!apResult.success) { alert('Not enough AP.'); await renderAutocracyParties(el, f, n); return; }
+            f.action_points = apResult.newAp;
+
+            // 1. All OTHER stewards: coup_readiness -5
+            const otherStewards = (stewardRows || []).filter(s => s.faction_id !== f.id && s.is_alive !== false);
+            for (const os of otherStewards) {
+                const newCR = Math.max(0, (os.coup_readiness ?? 0) - 5);
+                await _supabase.from('stewards').update({ coup_readiness: newCR }).eq('id', os.id);
+            }
+
+            // 2. Nation: civil_unrest -2, happiness -3
+            const newUnrest = Math.max(0, Number(n.civil_unrest ?? 30) - 2);
+            const newHappiness = Math.max(0, Number(n.happiness ?? 50) - 3);
+            await _supabase.from('nations').update({ civil_unrest: newUnrest, happiness: newHappiness }).eq('id', n.id);
+
+            // 3. Strongman grip bonus: +3 to military pillar support
+            const milPillar = (regimePillars || []).find(p => p.pillar_key === 'military');
+            if (milPillar) {
+                const newSupport = Math.min(100, (milPillar.support ?? 50) + 3);
+                await _supabase.from('regime_pillars').update({ support: newSupport }).eq('id', milPillar.id);
+            }
+
+            // 4. Log to regime log
+            await _supabase.from('campaign_actions').insert({
+                party_id: f.id, nation_id: n.id,
+                action_type: 'steward_show_of_force',
+                tick_performed: currentTick,
+                result: {
+                    steward_name: `${mySteward.first_name} ${mySteward.last_name}`,
+                    faction_name: f.faction_name,
+                    rivals_coup_readiness: -5,
+                    civil_unrest: -2,
+                    happiness: -3,
+                    military_pillar_support: milPillar ? '+3' : 'no pillar'
+                }
+            });
+
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
     const embezzleBtn = document.getElementById('steward-embezzle-btn');
     if (embezzleBtn) {
         embezzleBtn.addEventListener('click', async () => {

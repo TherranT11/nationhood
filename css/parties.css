@@ -3121,6 +3121,64 @@ body.light-mode .reg-steward-status-empty { color: #888; }
 .reg-steward-action-seize:not(:disabled) { border-color: rgba(255,23,68,0.5); }
 .reg-steward-action-seize:not(:disabled) .reg-steward-action-name { color: #ff1744; }
 .reg-steward-action-seize:not(:disabled) .reg-steward-action-req { color: #ff1744; }
+.reg-steward-action-general { border-color: rgba(76,175,80,0.25); }
+.reg-steward-action-general:not(:disabled) { border-color: rgba(76,175,80,0.5); }
+.reg-steward-action-general:not(:disabled) .reg-steward-action-name { color: #4CAF50; }
+.reg-steward-action-effects { font-size: 0.7rem; color: #8a8778; margin-top: 4px; }
+.reg-steward-action-effects strong { color: #ff9800; }
+/* Security Chief — Surveillance action */
+.reg-steward-action-security { border-color: rgba(33,150,243,0.25); cursor: default; }
+.reg-steward-action-security .reg-steward-action-name { color: #2196F3; }
+.reg-surv-targets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.reg-surv-target-btn {
+    background: rgba(33,150,243,0.06); border: 1px solid rgba(33,150,243,0.15);
+    border-left: 3px solid #666; border-radius: 3px; padding: 5px 10px;
+    color: #e2e0d6; font-size: 0.72rem; cursor: pointer; transition: background 0.15s;
+}
+.reg-surv-target-btn:hover { background: rgba(33,150,243,0.12); }
+.reg-surv-target-btn.selected { background: rgba(33,150,243,0.2); border-color: #2196F3; }
+.reg-surv-submit {
+    display: block; width: 100%; margin-top: 8px; padding: 7px 0;
+    background: rgba(33,150,243,0.15); border: 1px solid rgba(33,150,243,0.3);
+    border-radius: 3px; color: #2196F3; font-size: 0.7rem; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer; transition: background 0.15s;
+}
+.reg-surv-submit:hover:not(:disabled) { background: rgba(33,150,243,0.25); }
+.reg-surv-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+/* Surveillance Report Overlay */
+.reg-surv-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); display: flex; align-items: center;
+    justify-content: center; z-index: 1000;
+}
+.reg-surv-report {
+    background: #1a1a18; border: 1px solid rgba(33,150,243,0.4);
+    border-radius: 8px; padding: 24px; max-width: 380px; width: 90%;
+}
+.reg-surv-report-title {
+    font-size: 0.65rem; font-weight: 700; letter-spacing: 2px;
+    text-transform: uppercase; color: #2196F3; margin-bottom: 12px;
+}
+.reg-surv-report-target {
+    font-size: 1rem; font-weight: 700; color: #e2e0d6; margin-bottom: 16px;
+}
+.reg-surv-report-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 8px 0; border-top: 1px solid rgba(226,224,214,0.08);
+}
+.reg-surv-report-label { font-size: 0.65rem; font-weight: 700; letter-spacing: 1px; color: #8a8778; text-transform: uppercase; }
+.reg-surv-report-val { font-size: 0.85rem; color: #e2e0d6; font-weight: 600; text-align: right; max-width: 60%; }
+.reg-surv-report-close {
+    display: block; width: 100%; margin-top: 16px; padding: 8px 0;
+    background: rgba(33,150,243,0.15); border: 1px solid rgba(33,150,243,0.3);
+    border-radius: 3px; color: #2196F3; font-size: 0.7rem; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer;
+}
+.reg-surv-report-close:hover { background: rgba(33,150,243,0.25); }
+body.light-mode .reg-surv-target-btn { color: #2a2a28; background: rgba(33,150,243,0.05); border-color: rgba(33,150,243,0.15); }
+body.light-mode .reg-surv-report { background: #fafaf8; border-color: rgba(33,150,243,0.3); }
+body.light-mode .reg-surv-report-target { color: #2a2a28; }
+body.light-mode .reg-surv-report-val { color: #2a2a28; }
 body.light-mode .reg-steward-action-btn { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.08); color: #2a2a28; }
 body.light-mode .reg-steward-action-desc { color: #666; }
 body.light-mode .reg-steward-action-desc strong { color: #2a2a28; }
