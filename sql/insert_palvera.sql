@@ -11,16 +11,19 @@
 -- Step 1: Rename Veldaria → Palvera if it exists
 UPDATE nations SET name = 'Palvera' WHERE LOWER(name) = 'veldaria';
 
--- Step 2: Check if Palvera now exists; if not, insert it
-INSERT INTO nations (name, government_type, total_seats, max_parties)
-SELECT 'Palvera', 'Presidential', 120, 8
-WHERE NOT EXISTS (SELECT 1 FROM nations WHERE LOWER(name) = 'palvera');
+-- Step 2: Check if Palvera now exists; if not, insert it (with Alpha Shard FK)
+INSERT INTO nations (name, government_type, total_seats, max_parties, capital, shard_id)
+SELECT 'Palvera', 'Presidential', 120, 8, 'Valcosta', s.id
+FROM shard s
+WHERE s.name = 'Alpha Shard'
+AND NOT EXISTS (SELECT 1 FROM nations WHERE LOWER(name) = 'palvera');
 
 -- Step 3: Set all stats
 UPDATE nations SET
     government_type = 'Presidential',
     total_seats = 120,
     max_parties = 8,
+    capital = 'Valcosta',
 
     -- GDP & Debt (dollar-scale)
     gdp = 106000000000,
@@ -132,11 +135,13 @@ UPDATE nations SET
 WHERE LOWER(name) = 'palvera';
 
 -- Step 4: Save seed_stats snapshot for shard reset
+-- Split into two jsonb_build_object calls merged with || to stay under 100-arg limit
 UPDATE nations
 SET seed_stats = jsonb_build_object(
     'government_type', 'Presidential',
     'total_seats', 120,
     'max_parties', 8,
+    'capital', 'Valcosta',
     'gdp', 106000000000,
     'debt', 48000000000,
     'gdp_growth', 40,
@@ -178,7 +183,8 @@ SET seed_stats = jsonb_build_object(
     'rail_network', 22,
     'urbanization', 55,
     'energy_generation', 35,
-    'renewable_energy_percentage', 58,
+    'renewable_energy_percentage', 58
+) || jsonb_build_object(
     'arable_land', 25,
     'rare_minerals', 12,
     'oil_and_gas', 8,
