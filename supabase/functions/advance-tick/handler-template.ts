@@ -430,6 +430,17 @@ async function advanceTick(supabase) {
         console.error('[advanceTick] Trade processing failed (non-fatal):', tradeErr);
     }
 
+    // 3.6 Expire trade agreements (including economic aid) that have passed their expires_at_tick
+    try {
+        const expiredAgreements = await processExpiredTradeAgreements(supabase, newTick);
+        if (expiredAgreements.length > 0) {
+            summary.expiredAgreements = expiredAgreements;
+            console.log(`[advanceTick] Expired ${expiredAgreements.length} trade agreement(s)`);
+        }
+    } catch (expErr) {
+        console.error('[advanceTick] Agreement expiration check failed (non-fatal):', expErr);
+    }
+
     // 4. Process each nation
     for (const nation of nationList) {
       try {

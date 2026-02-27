@@ -1336,6 +1336,9 @@ function renderBudgetPanel(nation) {
         }
     }
     expenditures['Interest on Debt'] = budget.debtService;
+    if (aidGiven > 0) {
+        expenditures['Foreign Aid Commitments'] = aidGiven;
+    }
 
     var totalExpenditure = 0;
     for (var key in expenditures) {
@@ -1399,8 +1402,6 @@ function renderBudgetPanel(nation) {
         'Defense', 'Trade', 'Interest on Debt'
     ];
     if (aidGiven > 0) {
-        expenditures['Foreign Aid Commitments'] = aidGiven;
-        totalExpenditure += aidGiven;
         expenditureItems.push('Foreign Aid Commitments');
     }
     for (var i = 0; i < expenditureItems.length; i++) {

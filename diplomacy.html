@@ -3280,7 +3280,7 @@ async function submitAidProposal() {
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
     // Deduct AP
-    const apResult = await deductAP(currentFaction.id, apCost);
+    const apResult = await deductAP(_supabase, currentFaction.id, apCost);
     if (!apResult.success) {
         alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (currentFaction.action_points || 0));
         if (btn) btn.disabled = false;
@@ -4020,6 +4020,20 @@ function renderTradeArticleSummary(article) {
             const d = article.data || {};
             return (d.title ? escapeHtml(d.title) + ': ' : '') + escapeHtml(d.body || '');
         }
+        case 'aid_terms': {
+            const d = article.data || {};
+            const amt = Number(d.annual_amount || 0);
+            const amtLabel = amt >= 1e9 ? '$' + (amt / 1e9).toFixed(1) + 'B' : amt >= 1e6 ? '$' + (amt / 1e6).toFixed(0) + 'M' : '$' + amt.toLocaleString();
+            return 'Annual aid: ' + amtLabel + ' (GDP cap: ' + (d.gdp_cap_pct || 10) + '%)';
+        }
+        case 'aid_condition': {
+            const d = article.data || {};
+            const stat = AID_CONDITION_STATS.find(s => s.key === d.stat_key);
+            const label = stat ? stat.label : (d.stat_key || 'Unknown');
+            const op = d.operator === 'lte' ? '\u2264' : '\u2265';
+            const failLabels = { suspend: 'Suspend', terminate: 'Terminate', reduce: 'Reduce' };
+            return escapeHtml(label) + ' ' + op + ' ' + (d.threshold || 0) + ' (on failure: ' + (failLabels[d.on_failure] || d.on_failure) + ', grace: ' + (d.grace_periods || 0) + ')';
+        }
         default:
             return 'Unknown article type: ' + article.type;
     }
@@ -4659,23 +4673,11 @@ function renderAidTermsEditor() {
     return `
         <div class="trade-field">
             <label>Annual Aid Amount ($)</label>
-            <input type="number" id="aid-amount" value="10000000000" min="1000000000" step="1000000000" />
+            <input type="number" id="aid-amount" value="10000000000" min="1000000000" step="1000000000" oninput="(function(inp){ var disp=document.getElementById('aid-amount-display'); var v=Number(inp.value||0); disp.textContent=v>=1e9?' = $'+(v/1e9).toFixed(1)+'B':v>=1e6?' = $'+(v/1e6).toFixed(0)+'M':''; })(this)" />
             <div style="font-size:0.62rem;color:var(--text-dim);margin-top:2px;">
                 Minimum: $1B. Enter in raw dollars (e.g. 10000000000 = $10B).
-                <span id="aid-amount-display" style="color:var(--accent);font-weight:bold;"></span>
+                <span id="aid-amount-display" style="color:var(--accent);font-weight:bold;"> = $10.0B</span>
             </div>
-            <script>
-                (function() {
-                    const inp = document.getElementById('aid-amount');
-                    const disp = document.getElementById('aid-amount-display');
-                    function update() {
-                        const v = Number(inp.value || 0);
-                        disp.textContent = v >= 1e9 ? ' = $' + (v/1e9).toFixed(1) + 'B' : v >= 1e6 ? ' = $' + (v/1e6).toFixed(0) + 'M' : '';
-                    }
-                    inp.addEventListener('input', update);
-                    update();
-                })();
-            </script>
         </div>
         <div class="trade-field">
             <label>GDP Cap (%)</label>
