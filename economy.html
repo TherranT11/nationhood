@@ -43,6 +43,16 @@ var activeTab = 'overview';
 var activeSector = 'fuel_energy';
 var tradeAgreements = null;
 
+// Nation map colors for display
+var NATION_COLORS = {
+    'Melizea': '#eeffaa',
+    'Avelia': '#ddafe9',
+    'Sangreza': '#5599ff',
+    'Montequilla': '#aade87',
+    'San Estrella': '#ffb380',
+    'Palvera': '#dea0a0'
+};
+
 // ==================== TAXATION TAB STATE ====================
 var currentFaction = null;
 var taxConnections = [];
@@ -807,7 +817,8 @@ function renderRankings(nation) {
             var isYou = sorted[s].id === nation.id;
             var cls = isYou ? ' econ-ranking-highlight' : '';
             h += '<div class="econ-ranking-cell' + cls + '">';
-            h += '<div class="econ-ranking-name">' + escapeHtml(sorted[s].name) + '</div>';
+            var nColor = NATION_COLORS[sorted[s].name] || '';
+            h += '<div class="econ-ranking-name"' + (nColor ? ' style="color:' + nColor + '"' : '') + '>' + escapeHtml(sorted[s].name) + '</div>';
             h += '<div class="econ-ranking-val">' + metric.fmt(Number(sorted[s][metric.key]) || 0) + '</div>';
             h += '</div>';
         }
@@ -1597,7 +1608,7 @@ function renderTradeScoresSection(nation) {
         var borderColor = pct >= 70 ? '#4CAF50' : pct >= 40 ? '#8a8778' : '#ff4444';
 
         h += '<div class="trade-score-card" style="border-left-color:' + borderColor + '">';
-        h += '<div class="trade-score-name">' + escapeHtml(s.name) + '</div>';
+        h += '<div class="trade-score-name"' + (NATION_COLORS[s.name] ? ' style="color:' + NATION_COLORS[s.name] + '"' : '') + '>' + escapeHtml(s.name) + '</div>';
         h += '<div class="trade-score-value" style="color:' + color + '">' + rounded.toFixed(1) + '</div>';
         h += '<div class="trade-score-bar"><div class="trade-score-bar-fill" style="width:' + pct + '%;background:' + borderColor + '"></div></div>';
         h += '<div class="trade-score-stats">';
@@ -1655,7 +1666,7 @@ function renderTradePartnersSection() {
 
         // Header row: name + affinity
         h += '<div class="partner-header">';
-        h += '<div class="partner-name">' + escapeHtml(p.name) + '</div>';
+        h += '<div class="partner-name"' + (NATION_COLORS[p.name] ? ' style="color:' + NATION_COLORS[p.name] + '"' : '') + '>' + escapeHtml(p.name) + '</div>';
         h += '<div class="partner-affinity">AFF ' + Math.round(p.affinity) + '</div>';
         h += '</div>';
 
@@ -1961,7 +1972,7 @@ function renderSectorPartners(sectorKey, sector) {
             var ep = exportPartners[i];
             var barW = maxExp > 0 ? (ep.amount / maxExp * 100) : 0;
             h += '<div class="sector-partner-row">';
-            h += '<div class="sector-partner-name">' + escapeHtml(ep.name) + '</div>';
+            h += '<div class="sector-partner-name"' + (NATION_COLORS[ep.name] ? ' style="color:' + NATION_COLORS[ep.name] + '"' : '') + '>' + escapeHtml(ep.name) + '</div>';
             h += '<div class="sector-partner-bar-wrap">';
             h += '<div class="sector-partner-bar" style="width:' + barW.toFixed(1) + '%;background:#4CAF50"></div>';
             h += '</div>';
@@ -1983,7 +1994,7 @@ function renderSectorPartners(sectorKey, sector) {
                 var ip = importPartners[i];
                 var barW = maxImp > 0 ? (ip.amount / maxImp * 100) : 0;
                 h += '<div class="sector-partner-row">';
-                h += '<div class="sector-partner-name">' + escapeHtml(ip.name) + '</div>';
+                h += '<div class="sector-partner-name"' + (NATION_COLORS[ip.name] ? ' style="color:' + NATION_COLORS[ip.name] + '"' : '') + '>' + escapeHtml(ip.name) + '</div>';
                 h += '<div class="sector-partner-bar-wrap">';
                 h += '<div class="sector-partner-bar" style="width:' + barW.toFixed(1) + '%;background:#ff4444"></div>';
                 h += '</div>';
@@ -2273,7 +2284,7 @@ function renderTariffMatrix(nation) {
         var effColor = effectiveRate <= 5 ? '#4CAF50' : effectiveRate <= 20 ? '#e2e0d6' : effectiveRate <= 50 ? '#8a8778' : '#ff4444';
 
         h += '<div class="tm-row' + (isYou ? ' tm-highlight' : '') + '">';
-        h += '<div class="tm-cell tm-nation-name">' + escapeHtml(n.name) + (isYou ? ' <span class="tm-you">(YOU)</span>' : '') + '</div>';
+        h += '<div class="tm-cell tm-nation-name"' + (NATION_COLORS[n.name] ? ' style="color:' + NATION_COLORS[n.name] + '"' : '') + '>' + escapeHtml(n.name) + (isYou ? ' <span class="tm-you">(YOU)</span>' : '') + '</div>';
         h += '<div class="tm-cell tm-rate" style="color:' + rateColor + '">' + rate.toFixed(0) + '%</div>';
         h += '<div class="tm-cell tm-dampener">' + dampener.toFixed(0) + '%</div>';
 
