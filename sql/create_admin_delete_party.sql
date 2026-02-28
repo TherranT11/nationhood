@@ -46,6 +46,17 @@ BEGIN
         result := result || '{"diplomatic_proposals": "skipped"}'::JSONB;
     END;
 
+    -- Null out bills.ambassador_id before deleting ambassadors (FK constraint)
+    BEGIN
+        UPDATE bills SET ambassador_id = NULL
+        WHERE ambassador_id IN (SELECT id FROM ambassadors WHERE faction_id = p_faction_id);
+        GET DIAGNOSTICS cnt = ROW_COUNT;
+        IF cnt > 0 THEN
+            result := result || jsonb_build_object('bills.ambassador_id', cnt || ' nulled');
+        END IF;
+    EXCEPTION WHEN undefined_table OR undefined_column THEN NULL;
+    END;
+
     BEGIN
         DELETE FROM ambassadors WHERE faction_id = p_faction_id;
         GET DIAGNOSTICS cnt = ROW_COUNT;
