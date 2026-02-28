@@ -4095,31 +4095,6 @@ body.light-mode .reg-coalition-intel-row { background: rgba(0,0,0,0.02); }
     font-size: 0.72rem;
     color: var(--text-secondary, #888);
 }
-.pm-dir-btns {
-    display: flex;
-    gap: 6px;
-}
-.pm-dir-btn {
-    font-size: 0.66rem;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 3px;
-    cursor: pointer;
-    border: 1px solid var(--border-main, #333);
-    background: transparent;
-    color: var(--text-muted, #666);
-    transition: all 0.15s ease;
-}
-.pm-dir-btn.increase {
-    background: rgba(74, 222, 128, 0.08);
-    border-color: rgba(74, 222, 128, 0.2);
-    color: #4ade80;
-}
-.pm-dir-btn.decrease {
-    background: rgba(239, 68, 68, 0.08);
-    border-color: rgba(239, 68, 68, 0.2);
-    color: #ef4444;
-}
 .pm-preview-stats {
     display: flex;
     align-items: center;
