@@ -3295,6 +3295,85 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
 }
 
 /**
+ * Expire/cancel trade negotiations that have passed their deadline or are missing
+ * required Minister of Trade participants within the MOT_JOIN_DEADLINE_TICKS window.
+ */
+async function processExpiredTradeNegotiations(supabase, currentTick) {
+    // 1. Expire negotiations that have passed their expires_at_tick
+    const { data: expiredNegs } = await supabase.from('trade_negotiations')
+        .select('id, agreement_name, agreement_type, nation_a_id, nation_b_id, status, participants, opened_at_tick, expires_at_tick')
+        .in('status', ['open', 'active'])
+        .lte('expires_at_tick', currentTick);
+
+    const results = [];
+
+    for (const neg of (expiredNegs || [])) {
+        await supabase.from('trade_negotiations')
+            .update({ status: 'expired' })
+            .eq('id', neg.id);
+
+        // Notify both nations
+        try {
+            const placeholders = { agreement_name: neg.agreement_name || 'Trade Negotiation' };
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: 'trade_negotiation_expired', p_nation_id: neg.nation_a_id,
+                p_tick: currentTick, p_placeholders: placeholders
+            });
+            await supabase.rpc('fire_system_event', {
+                p_trigger_key: 'trade_negotiation_expired', p_nation_id: neg.nation_b_id,
+                p_tick: currentTick, p_placeholders: placeholders
+            });
+        } catch (e) { /* non-blocking */ }
+
+        results.push({ id: neg.id, name: neg.agreement_name, reason: 'expired' });
+        console.log(`[processExpiredTradeNegotiations] Expired: ${neg.agreement_name} (past tick ${neg.expires_at_tick})`);
+    }
+
+    // 2. Cancel active negotiations where MoT hasn't joined within the deadline
+    const motDeadline = GAME_CONFIG.MOT_JOIN_DEADLINE_TICKS || 4;
+    const motDeadlineTick = currentTick - motDeadline;
+
+    const { data: activeNegs } = await supabase.from('trade_negotiations')
+        .select('id, agreement_name, agreement_type, nation_a_id, nation_b_id, participants, opened_at_tick, expires_at_tick')
+        .eq('status', 'active')
+        .lte('opened_at_tick', motDeadlineTick);
+
+    for (const neg of (activeNegs || [])) {
+        // Skip if already handled by expiration above
+        if ((expiredNegs || []).some(e => e.id === neg.id)) continue;
+
+        const participants = neg.participants || [];
+        const nationAMoT = participants.some(p => p.nation_id === neg.nation_a_id && p.role === 'trade_minister');
+        const nationBMoT = participants.some(p => p.nation_id === neg.nation_b_id && p.role === 'trade_minister');
+
+        if (!nationAMoT || !nationBMoT) {
+            await supabase.from('trade_negotiations')
+                .update({ status: 'cancelled' })
+                .eq('id', neg.id);
+
+            // Notify both nations
+            try {
+                const placeholders = { agreement_name: neg.agreement_name || 'Trade Negotiation' };
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'trade_negotiation_cancelled', p_nation_id: neg.nation_a_id,
+                    p_tick: currentTick, p_placeholders: placeholders
+                });
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: 'trade_negotiation_cancelled', p_nation_id: neg.nation_b_id,
+                    p_tick: currentTick, p_placeholders: placeholders
+                });
+            } catch (e) { /* non-blocking */ }
+
+            const missingFrom = !nationAMoT && !nationBMoT ? 'both nations' : !nationAMoT ? 'nation_a' : 'nation_b';
+            results.push({ id: neg.id, name: neg.agreement_name, reason: 'mot_deadline', missingFrom });
+            console.log(`[processExpiredTradeNegotiations] Cancelled: ${neg.agreement_name} (MoT not joined from ${missingFrom})`);
+        }
+    }
+
+    return results;
+}
+
+/**
  * Check if a nation is missing a budget and apply penalties.
  * Called each tick. If no budget has passed in the current fiscal year, apply penalties.
  */
@@ -15224,6 +15303,17 @@ async function advanceTick(supabase) {
         }
     } catch (expErr) {
         console.error('[advanceTick] Agreement expiration check failed (non-fatal):', expErr);
+    }
+
+    // 3.7 Expire/cancel trade negotiations past their deadline or missing MoT
+    try {
+        const expiredNegotiations = await processExpiredTradeNegotiations(supabase, newTick);
+        if (expiredNegotiations.length > 0) {
+            summary.expiredNegotiations = expiredNegotiations;
+            console.log(`[advanceTick] Expired/cancelled ${expiredNegotiations.length} trade negotiation(s)`);
+        }
+    } catch (negExpErr) {
+        console.error('[advanceTick] Negotiation expiration check failed (non-fatal):', negExpErr);
     }
 
     // 4. Process each nation
