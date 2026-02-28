@@ -108,7 +108,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
-import { escapeHtml } from './js/utils.js';
+import { escapeHtml, tickToDate } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, generateBudgetBill } from './js/game-common.js';
 (function () {
     'use strict';
@@ -124,6 +124,8 @@ let showBudgetBadge = false;
 let budgetEarlyWindow = false;   // true when in the 3-tick early proposal window
 let nextBudgetDueTick = null;    // tick when budget is officially due
 let currentTickGlobal = 0;       // cached current tick for early-window checks
+let budgetReviewDate = '';       // "Review Available: October, 2005"
+let budgetSubmitDate = '';       // "Open to Submit: January, 2006"
 let draftArticles = [], selectedPolicy = null;
 let committeeSelectedPolicy = null, currentCommitteeBillId = null;
 let pendingPolicyIds = new Set();
@@ -232,6 +234,11 @@ initPage('laws', async (state) => {
         const ticksUntilDue = nextBudgetDueTick - tick;
         const onCooldown = ticksUntilDue > earlyWindow; // still in hard cooldown (more than 3 ticks away)
         budgetEarlyWindow = ticksUntilDue > 0 && ticksUntilDue <= earlyWindow; // in early window (1-3 ticks before due)
+
+        // Compute human-readable date strings for the budget cycle
+        const reviewTick = Math.max(0, nextBudgetDueTick - earlyWindow);
+        budgetReviewDate = tickToDate(reviewTick);
+        budgetSubmitDate = tickToDate(nextBudgetDueTick);
 
         const { data: pendingBudget } = await _supabase.from('bills')
             .select('id')
@@ -347,7 +354,7 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
                 <div class="section-header" style="margin-bottom:0;border-bottom:none;">${pageTitle}</div>
                 <div class="laws-header-buttons">
                     <button class="passed-laws-btn" onclick="togglePassedLaws()">📜 Passed Laws</button>
-                    <button class="budget-bill-btn" onclick="toggleBudgetBill()" ${budgetEarlyWindow ? 'title="Budget Bill is due in ' + (nextBudgetDueTick - currentTickGlobal) + ' tick(s). The PM/President can propose a budget now."' : ''}>💰 Budget Bill${showBudgetBadge ? (budgetEarlyWindow ? '<span class="budget-badge budget-badge-yellow" title="Budget due in ' + (nextBudgetDueTick - currentTickGlobal) + ' ticks">DUE</span>' : (nextBudgetDueTick !== null && currentTickGlobal >= nextBudgetDueTick ? '<span class="budget-badge budget-badge-red">!</span>' : '<span class="budget-badge">1</span>')) : ''}</button>
+                    <button class="budget-bill-btn" onclick="toggleBudgetBill()" ${budgetEarlyWindow ? 'title="Review Available: ' + budgetReviewDate + '. Open to Submit: ' + budgetSubmitDate + '"' : ''}>💰 Budget Bill${showBudgetBadge ? (budgetEarlyWindow ? '<span class="budget-badge budget-badge-yellow" title="Review Available: ' + budgetReviewDate + '. Open to Submit: ' + budgetSubmitDate + '">DUE</span>' : (nextBudgetDueTick !== null && currentTickGlobal >= nextBudgetDueTick ? '<span class="budget-badge budget-badge-red">!</span>' : '<span class="budget-badge">1</span>')) : ''}</button>
                     <button class="all-laws-btn" onclick="toggleAllLaws()">📋 All Laws</button>
                     <button class="draft-btn ${lawsIsAutocracy ? 'autocracy-btn' : ''}" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'} ${noSeatsTitle}>
                         ${termPropose} <span class="ap-cost">${GAME_CONFIG.DRAFT_BILL_AP_COST} AP</span>
@@ -634,6 +641,11 @@ async function renderBudgetBillContent() {
         const cooldownRemaining = budgetOnCooldown ? ticksUntilDue - earlyWindow : 0;
         const budgetOverdue = ticksUntilDue <= 0;
 
+        // Compute review/submit date labels based on actual budget due tick
+        const reviewTick = Math.max(0, dueTick - earlyWindow);
+        const reviewAvailableDate = tickToDate(reviewTick);
+        const openToSubmitDate = tickToDate(dueTick);
+
         // Check if a budget bill is already on the floor
         const { data: existingBudget } = await _supabase.from('bills')
             .select('id, status')
@@ -682,7 +694,8 @@ async function renderBudgetBillContent() {
 
         let h = '';
         h += `<button class="all-laws-back" onclick="toggleBudgetBill()">\u2190 Back to ${termBills}</button>`;
-        h += '<div class="section-header" style="font-size:1rem;">Upcoming Budget Bill \u2014 Year ' + gameYear + '</div>';
+        h += '<div class="section-header" style="font-size:1rem;">Upcoming Budget Bill</div>';
+        h += '<div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:12px;">Review Available: <strong>' + reviewAvailableDate + '</strong> · Open to Submit: <strong>' + openToSubmitDate + '</strong></div>';
 
         // === SUMMARY BAR ===
         h += '<div class="bp-summary-bar">';
@@ -791,14 +804,14 @@ async function renderBudgetBillContent() {
         if (hasPendingBudget) {
             h += '<div class="bp-submit-notice bp-submit-warning">A budget bill is already pending in ' + (existingBudget[0].status === 'committee' ? 'committee' : 'floor vote') + '.</div>';
         } else if (budgetOnCooldown) {
-            h += '<div class="bp-submit-notice bp-submit-disabled">Budget cooldown: ' + cooldownRemaining + ' tick(s) remaining before a new budget can be submitted.</div>';
+            h += '<div class="bp-submit-notice bp-submit-disabled">Budget cooldown: review opens ' + reviewAvailableDate + ', submissions open ' + openToSubmitDate + '.</div>';
         } else if (!(lawsIsAutocracy ? isHeadFaction : isPresidential ? isPresidentParty : (currentFaction && coalitionLeadPartyId === currentFaction.id))) {
             h += '<div class="bp-submit-notice bp-submit-disabled">Only the head of government can submit a budget bill.</div>';
         } else if (isCaretaker || isNoGovernment) {
             h += '<div class="bp-submit-notice bp-submit-disabled">Cannot submit budget bills while the legislature is dissolved.</div>';
         } else {
             if (inEarlyWindow) {
-                h += '<div class="bp-submit-notice bp-submit-early-window">⏳ Early proposal window — budget is due in ' + ticksUntilDue + ' tick(s). You can draft and submit now, but voting opens when the budget is officially due.</div>';
+                h += '<div class="bp-submit-notice bp-submit-early-window">⏳ Early proposal window — open to submit ' + openToSubmitDate + '. You can draft and submit now, but voting opens when the budget is officially due.</div>';
             }
             h += '<button id="submit-budget-btn" class="bp-submit-btn">Send Budget Bill to Committee</button>';
         }

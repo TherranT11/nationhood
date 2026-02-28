@@ -577,7 +577,7 @@ async function advanceTick(supabase) {
         // PM trait effects
         await processPMTraitEffects(supabase, nation, newTick);
 
-        // Inactivity decay — penalise factions that haven't spent AP
+        // Inactivity decay — penalise idle factions; at tick 12 disband the party entirely
         // Runs RIGHT BEFORE elections so auto-disbanded parties lose seats in the upcoming election
         const inactivityResults = await processInactivityDecay(supabase, nation.id, newTick);
         if (inactivityResults.length > 0) {

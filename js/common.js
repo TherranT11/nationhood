@@ -8,6 +8,7 @@
  */
 
 import { _supabase, handleLogout } from './supabase-client.js';
+import { tickToDate } from './utils.js';
 
 // ===== QUERY CACHE =====
 // Generic sessionStorage cache for Supabase query results.
@@ -359,12 +360,15 @@ async function updateBillsBadge(faction, nation, shard) {
         // Budget Due badge on nav tab (yellow = early window, red = overdue)
         if (budgetDueBadge) {
             const budgetPassedThisCycle = hasPendingBudget || hasPendingCommittee || budgetOnCooldown;
+            const reviewTick = Math.max(0, dueTick - 3);
+            const reviewDate = tickToDate(reviewTick);
+            const submitDate = tickToDate(dueTick);
             if (!budgetPassedThisCycle && (inEarlyWindow || budgetOverdue)) {
                 budgetDueBadge.textContent = budgetOverdue ? 'OVERDUE' : 'DUE';
                 budgetDueBadge.className = 'nav-badge-budget ' + (budgetOverdue ? 'nav-badge-budget-red' : 'nav-badge-budget-yellow');
                 budgetDueBadge.title = budgetOverdue
-                    ? 'Budget is overdue! Propose and pass a budget to avoid penalties.'
-                    : 'Budget Bill is due in ' + ticksUntilDue + ' tick(s). The PM/President can propose a budget now.';
+                    ? 'Budget is overdue! Review Available: ' + reviewDate + '. Open to Submit: ' + submitDate + '.'
+                    : 'Review Available: ' + reviewDate + '. Open to Submit: ' + submitDate + '.';
                 budgetDueBadge.style.display = '';
             } else {
                 budgetDueBadge.style.display = 'none';
