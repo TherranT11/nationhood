@@ -607,7 +607,10 @@ let _cpSelectedLogo = DEFAULT_PARTY_ICON;
                         leader_first_name: leader.first,
                         leader_last_name: leader.last,
                         leader_age: leader.age,
-                        founded_tick: currentTick
+                        founded_tick: currentTick,
+                        action_points: 0,
+                        seats: 0,
+                        approval_rating: null
                     });
 
                 if (updateError) {
@@ -679,7 +682,9 @@ let _cpSelectedLogo = DEFAULT_PARTY_ICON;
                         leader_first_name: demoLeader.first,
                         leader_last_name: demoLeader.last,
                         leader_age: demoLeader.age,
-                        founded_tick: currentTick
+                        founded_tick: currentTick,
+                        action_points: 0,
+                        approval_rating: null
                     });
                 
                 if (updateError) throw updateError;
