@@ -10,19 +10,21 @@
 --
 -- For existing blocs, this rescales them to match the new formula.
 
+WITH bloc_totals AS (
+    SELECT nation_id, SUM(voter_count) AS total_voters
+    FROM voter_blocs
+    WHERE is_active = TRUE
+    GROUP BY nation_id
+)
 UPDATE voter_blocs vb
 SET voter_count = ROUND(
     vb.voter_count::numeric
     * (n.population * COALESCE(n.eligible_voters, 65) / 100.0)
-    / NULLIF(bloc_totals.total_voters, 0)
+    / NULLIF(bt.total_voters, 0)
 )
-FROM nations n,
-LATERAL (
-    SELECT SUM(vb2.voter_count) AS total_voters
-    FROM voter_blocs vb2
-    WHERE vb2.nation_id = vb.nation_id AND vb2.is_active = TRUE
-) bloc_totals
+FROM nations n
+JOIN bloc_totals bt ON bt.nation_id = n.id
 WHERE n.id = vb.nation_id
   AND vb.is_active = TRUE
-  AND bloc_totals.total_voters > 0
+  AND bt.total_voters > 0
   AND n.population > 0;
