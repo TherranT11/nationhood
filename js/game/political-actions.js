@@ -597,8 +597,9 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
     let demandText, demandType, conditions, affectedBlocIds, affectedBlocNames;
 
     if (promiseType === 'stat') {
-        const { statKey, direction } = params;
+        const { statKey } = params;
         if (!statKey) return { success: false, error: 'No stat selected.' };
+        if (EXCLUDED_PROMISE_STATS.has(statKey)) return { success: false, error: 'Cannot promise on this stat.' };
         const sign = statDirectionSign(statKey);
         if (sign === 0) return { success: false, error: 'Stat has no clear direction.' };
 
@@ -609,7 +610,8 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
             return { success: false, error: 'You already have an active promise for this stat.' };
 
         const currentVal = Number(nation[statKey] ?? 50);
-        const dir = direction || (sign === 1 ? 'above' : 'below');
+        // Auto-determine direction: good stats → increase, bad stats → decrease
+        const dir = sign === 1 ? 'above' : 'below';
         const targetValue = dir === 'above'
             ? Math.min(100, Math.round(currentVal + cfg.STAT_DELTA))
             : Math.max(0, Math.round(currentVal - cfg.STAT_DELTA));
@@ -784,19 +786,25 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
  * Get list of stats available for promise-making with current values.
  * Only returns stats with a clear direction (higher/lower is better).
  */
+const EXCLUDED_PROMISE_STATS = new Set(['population', 'gdp']);
+
 export function getPromiseableStats(nation) {
     const results = [];
     for (const statKey of NATION_STAT_COLUMNS) {
+        if (EXCLUDED_PROMISE_STATS.has(statKey)) continue;
         const sign = statDirectionSign(statKey);
         if (sign === 0) continue;
         const currentVal = nation[statKey];
         if (currentVal == null) continue;
         const ministry = STAT_TO_MINISTRY[statKey] || null;
+        // Good stats (sign=1) → promise to increase; bad stats (sign=-1) → promise to decrease
+        const promiseDirection = sign === 1 ? 'increase' : 'decrease';
         results.push({
             statKey,
             label: statKey.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
             value: Number(currentVal),
             direction: sign === 1 ? 'higher_is_better' : 'lower_is_better',
+            promiseDirection,
             ministry,
         });
     }

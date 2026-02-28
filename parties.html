@@ -3731,7 +3731,6 @@ async function renderParties() {
     let pmPromiseType = null;   // 'stat' | 'crisis'
     let pmSelectedStat = null;
     let pmSelectedCrisis = null;
-    let pmDirection = null;
     let pmResult = null;
 
     // Load active crises for the crisis selector
@@ -3836,15 +3835,17 @@ async function renderParties() {
                 const statGrid = promiseStatList.map(s => {
                     const sel = pmSelectedStat === s.statKey;
                     const alreadyPromised = activeStatKeys.has(s.statKey);
-                    return `<div class="pm-stat-cell${sel ? ' selected' : ''}${alreadyPromised ? ' disabled' : ''}" data-stat="${s.statKey}" data-dir="${s.direction}">
+                    const dirIcon = s.promiseDirection === 'increase' ? '▲' : '▼';
+                    const dirColor = s.promiseDirection === 'increase' ? '#4ade80' : '#ef4444';
+                    return `<div class="pm-stat-cell${sel ? ' selected' : ''}${alreadyPromised ? ' disabled' : ''}" data-stat="${s.statKey}">
                         <span class="pm-stat-cell-name${sel ? ' selected' : ''}">${s.label}</span>
-                        <span class="pm-stat-cell-val">${Math.round(s.value)}</span>
+                        <span class="pm-stat-cell-val">${Math.round(s.value)} <span style="color:${dirColor};font-size:0.7em">${dirIcon}</span></span>
                     </div>`;
                 }).join('');
 
                 let previewHtml = '';
                 if (selectedStatData) {
-                    const dir = pmDirection;
+                    const dir = selectedStatData.promiseDirection;
                     const targetVal = dir === 'increase'
                         ? Math.min(100, Math.round(selectedStatData.value + MAKE_PROMISE_CONFIG.STAT_DELTA))
                         : Math.max(0, Math.round(selectedStatData.value - MAKE_PROMISE_CONFIG.STAT_DELTA));
@@ -3853,10 +3854,6 @@ async function renderParties() {
                         <div class="pm-preview">
                             <div class="pm-preview-header">
                                 <span class="pm-preview-text">Promise to <span class="pm-hl-cyan">${dir === 'increase' ? 'increase' : 'decrease'} ${selectedStatData.label}</span> by ${MAKE_PROMISE_CONFIG.STAT_DELTA}</span>
-                                <div class="pm-dir-btns">
-                                    <span class="pm-dir-btn${dir === 'increase' ? ' increase' : ''}" data-dir="increase">▲ INCREASE</span>
-                                    <span class="pm-dir-btn${dir === 'decrease' ? ' decrease' : ''}" data-dir="decrease">▼ DECREASE</span>
-                                </div>
                             </div>
                             <div class="pm-preview-stats">
                                 <div class="pm-preview-stat">
@@ -3904,9 +3901,10 @@ async function renderParties() {
                         <span class="pm-sub-label">Consequences</span>
                         <div class="pm-consequence-list">
                             <div class="pm-consequence"><span class="pm-c-up">▲</span> ${bumpText}</div>
-                            <div class="pm-consequence"><span class="pm-c-up">▲</span> If kept: <span class="pm-hl-green">+${MAKE_PROMISE_CONFIG.APPROVAL_IF_KEPT} approval</span> with promised blocs (permanent legacy)</div>
+                            <div class="pm-consequence"><span class="pm-c-up">▲</span> If kept: <span class="pm-hl-green">+${MAKE_PROMISE_CONFIG.APPROVAL_IF_KEPT} approval</span> with promised blocs</div>
                             <div class="pm-consequence"><span class="pm-c-down">▼</span> If governing &amp; unfulfilled: <span class="pm-hl-red">−1D3 approval/tick</span> with promised blocs</div>
-                            <div class="pm-consequence"><span class="pm-c-down">▼</span> If broken (deadline passes): <span class="pm-hl-red">permanent legacy penalty</span></div>
+                            <div class="pm-consequence"><span class="pm-c-down">▼</span> If broken: <span class="pm-hl-red">approval loss</span> — rebuild rapport by holding rallies</div>
+                            <div class="pm-consequence"><span class="pm-c-down">▼</span> Not in coalition? Promise expires automatically</div>
                         </div>
                     </div>`;
             }
@@ -4077,8 +4075,8 @@ async function renderParties() {
                         <div class="pm-card-blocs">${blocNames.map(b => '<span class="pm-bloc-tag">' + escapeHtml(b) + '</span>').join('')}</div>
                         <div class="pm-card-penalty">
                             ${isKept
-                                ? '<span class="pm-no-penalty">+' + MAKE_PROMISE_CONFIG.APPROVAL_IF_KEPT + ' legacy reward applied</span>'
-                                : '<span class="pm-penalty">−' + penaltyAccum + ' total penalty · legacy mark</span>'}
+                                ? '<span class="pm-no-penalty">+' + MAKE_PROMISE_CONFIG.APPROVAL_IF_KEPT + ' approval reward applied</span>'
+                                : '<span class="pm-penalty">−' + penaltyAccum + ' total penalty · approval lost</span>'}
                         </div>
                     </div>
                 </div>`;
@@ -4117,7 +4115,7 @@ async function renderParties() {
                 ${resolvedPromisesList.length > 0 ? `
                     <div class="pm-section-header" style="margin-top:16px">
                         <span class="pm-section-title">Resolved Promises</span>
-                        <span class="pm-section-note">Kept = +${MAKE_PROMISE_CONFIG.APPROVAL_IF_KEPT} permanent legacy · Broken = penalty + legacy mark</span>
+                        <span class="pm-section-note">Kept = +${MAKE_PROMISE_CONFIG.APPROVAL_IF_KEPT} approval · Broken = approval loss</span>
                     </div>
                     <div class="pm-card-list">${resolvedHtml}</div>
                 ` : ''}
@@ -4130,6 +4128,7 @@ async function renderParties() {
                             <div class="pm-rules-text">
                                 Crisis promise → minor approval bump with all blocs<br>
                                 Stat promise → moderate approval bump with affected blocs<br>
+                                Direction is automatic — good stats increase, bad stats decrease<br>
                                 Deadline: 1D24 + 6 ticks (7–30 ticks)
                             </div>
                         </div>
@@ -4137,8 +4136,9 @@ async function renderParties() {
                             <div class="pm-rules-heading">While Governing</div>
                             <div class="pm-rules-text">
                                 Every tick unfulfilled → 1D3 approval loss with promised blocs<br>
-                                Promise kept → +${MAKE_PROMISE_CONFIG.APPROVAL_IF_KEPT} permanent legacy with promised blocs<br>
-                                Deadline expires → promise broken, permanent legacy penalty
+                                Promise kept → +${MAKE_PROMISE_CONFIG.APPROVAL_IF_KEPT} approval with promised blocs<br>
+                                Deadline expires → approval loss, rebuild rapport via rallies<br>
+                                Not in coalition → promise expires automatically
                             </div>
                         </div>
                     </div>
@@ -4147,7 +4147,7 @@ async function renderParties() {
 
         // ── Event listeners ──
         const openBtn = document.getElementById('pm-open-creator');
-        if (openBtn) openBtn.addEventListener('click', () => { pmShowCreator = true; pmPromiseType = null; pmSelectedStat = null; pmSelectedCrisis = null; pmDirection = null; renderPromiseMaker(); });
+        if (openBtn) openBtn.addEventListener('click', () => { pmShowCreator = true; pmPromiseType = null; pmSelectedStat = null; pmSelectedCrisis = null; renderPromiseMaker(); });
 
         const closeBtn = document.getElementById('pm-close-creator');
         if (closeBtn) closeBtn.addEventListener('click', () => { pmShowCreator = false; renderPromiseMaker(); });
@@ -4163,7 +4163,7 @@ async function renderParties() {
             btn.addEventListener('click', () => {
                 const type = btn.dataset.type;
                 pmPromiseType = type;
-                if (type === 'crisis') { pmSelectedStat = null; pmDirection = null; }
+                if (type === 'crisis') { pmSelectedStat = null; }
                 if (type === 'stat') { pmSelectedCrisis = null; }
                 renderPromiseMaker();
             });
@@ -4181,15 +4181,6 @@ async function renderParties() {
         container.querySelectorAll('.pm-stat-cell:not(.disabled)').forEach(cell => {
             cell.addEventListener('click', () => {
                 pmSelectedStat = cell.dataset.stat;
-                pmDirection = cell.dataset.dir === 'higher_is_better' ? 'increase' : 'decrease';
-                renderPromiseMaker();
-            });
-        });
-
-        // Direction buttons
-        container.querySelectorAll('.pm-dir-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                pmDirection = btn.dataset.dir;
                 renderPromiseMaker();
             });
         });
@@ -4203,7 +4194,7 @@ async function renderParties() {
                 const tick = currentShard?.current_tick || 0;
                 const params = pmPromiseType === 'crisis'
                     ? { crisisId: pmSelectedCrisis }
-                    : { statKey: pmSelectedStat, direction: pmDirection === 'increase' ? 'above' : 'below' };
+                    : { statKey: pmSelectedStat };
                 const result = await executeMakePromise(_supabase, f.id, n.id, tick, pmPromiseType, params);
                 if (result.success) {
                     pmResult = result;
