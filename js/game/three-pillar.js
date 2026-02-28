@@ -4,7 +4,7 @@
  */
 
 import { isAutocracy } from './government-types.js';
-import { computeIdeologyAlignment } from './ideology.js';
+import { computeIdeologyAlignment, countIdeologyRelationship } from './ideology.js';
 import { ISSUE_CATEGORY_STATS, STAT_TO_MINISTRY, statDirectionSign, statTrendBatch } from './stats.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { recalcDerivedApproval } from './bills.js';
@@ -174,21 +174,16 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
             (ideoScore * PILLAR_WEIGHT_IDEO + newPerf * PILLAR_WEIGHT_PERF + momMapped * PILLAR_WEIGHT_MOM) * 100
         ) / 100;
 
-        // ─── IDEOLOGY DRIFT: opposed/neutral blocs erode preference over time ───
-        // Opposed blocs (ideo < 35): -1/tick down to floor of 20
-        // No shared ideologies (ideo 35-50): -0.5/tick down to floor of 40
+        // ─── IDEOLOGY DRIFT: per-tick erosion based on opposition count ───
+        // 2+ opposing ideologies → -2/tick, 1 opposing → -1/tick, 0 aligned → -0.5/tick
         let ideoDrift = 0;
-        if (ideoScore < 35) {
-            if (prefScore > 20) {
-                ideoDrift = -1;
-                prefScore = Math.max(20, prefScore + ideoDrift);
-            }
-        } else if (ideoScore < 50) {
-            if (prefScore > 40) {
-                ideoDrift = -0.5;
-                prefScore = Math.max(40, prefScore + ideoDrift);
-            }
+        if (ideo) {
+            const { opposed, aligned } = countIdeologyRelationship(ideo, bloc);
+            if (opposed >= 2)       ideoDrift = -2;
+            else if (opposed === 1) ideoDrift = -1;
+            else if (aligned === 0) ideoDrift = -0.5;
         }
+        prefScore = Math.max(0, prefScore + ideoDrift);
         prefScore = Math.round(prefScore * 100) / 100;
 
         updates.push({
