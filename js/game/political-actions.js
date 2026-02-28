@@ -221,202 +221,300 @@ export async function processStatConnections(supabase, nation, currentTick, conn
 // ==================== RALLY SYSTEM ====================
 
 export const RALLY_CONFIG = {
-    AP_COST: 1,
-    MONEY_COST: 100000,
-    DIMINISH_WINDOW: 5,
-    ENERGIZE_THRESHOLD: 60,
-    GLOBAL_MOMENTUM_MIN: 3,
-    GLOBAL_MOMENTUM_MAX: 5,
-    ENERGIZE_MOMENTUM: 3,
+    AP_COST: 3,
+    COOLDOWN_WINDOW: 5,   // ticks to look back for rallied_recently count
 };
 
-export const RALLY_SUBJECTS = [
-    { name: 'Protect Domestic Industry',       tags: ['NATIONALISM', 'COLLECTIVISM'] },
-    { name: 'Religious Freedom',               tags: ['TRADITION', 'SECURITY'] },
-    { name: 'Tax Cuts for Growth',             tags: ['LIBERTY', 'INDIVIDUALISM'] },
-    { name: 'Close the Wage Gap',              tags: ['EQUALITY', 'COLLECTIVISM'] },
-    { name: 'Strong Borders, Safe Nation',     tags: ['NATIONALISM', 'SECURITY'] },
-    { name: 'Defend Free Speech',              tags: ['FREEDOM', 'LIBERTY'] },
-    { name: "Invest in Our Children's Future", tags: ['PROGRESS', 'COLLECTIVISM'] },
-    { name: 'Cut Red Tape',                    tags: ['LIBERTY', 'INDIVIDUALISM'] },
-    { name: 'Support Our Troops',              tags: ['SECURITY', 'NATIONALISM'] },
-    { name: "Workers' Rights Now",             tags: ['EQUALITY', 'COLLECTIVISM'] },
-    { name: 'Preserve Our Heritage',           tags: ['TRADITION', 'NATIONALISM'] },
-    { name: 'Green Energy Revolution',         tags: ['PROGRESS', 'GLOBALISM'] },
-    { name: 'Law and Order',                   tags: ['SECURITY', 'TRADITION'] },
-    { name: 'Open Markets, Open Minds',        tags: ['GLOBALISM', 'LIBERTY'] },
-    { name: 'Power to the People',             tags: ['EQUALITY', 'FREEDOM'] },
-    { name: 'Fair Trade, Not Free Trade',      tags: ['NATIONALISM', 'EQUALITY'] },
-    { name: 'Digital Privacy Rights',          tags: ['FREEDOM', 'INDIVIDUALISM'] },
-    { name: 'Expand Foreign Aid',              tags: ['GLOBALISM', 'COLLECTIVISM'] },
-    { name: 'Community and Family Values',     tags: ['TRADITION', 'COLLECTIVISM'] },
-    { name: 'Affordable Housing Now',          tags: ['EQUALITY', 'PROGRESS'] },
-    { name: 'Entrepreneurship Unleashed',      tags: ['INDIVIDUALISM', 'PROGRESS'] },
-    { name: 'International Cooperation',       tags: ['GLOBALISM', 'EQUALITY'] },
-    { name: 'End Government Corruption',       tags: ['FREEDOM', 'EQUALITY'] },
-    { name: 'Safe Streets Initiative',         tags: ['SECURITY', 'COLLECTIVISM'] },
-    { name: 'Defend Our Sovereignty',          tags: ['NATIONALISM', 'INDIVIDUALISM'] },
-    { name: 'Empower Local Communities',       tags: ['TRADITION', 'INDIVIDUALISM'] },
-    { name: 'Reform the Justice System',       tags: ['FREEDOM', 'PROGRESS'] },
-    { name: 'Fiscal Responsibility',           tags: ['LIBERTY', 'SECURITY'] },
-    { name: 'Protect Civil Liberties',         tags: ['LIBERTY', 'FREEDOM'] },
-    { name: 'Celebrate Cultural Diversity',    tags: ['GLOBALISM', 'PROGRESS'] },
+export const RALLY_OUTCOMES = [
+    {
+        id: 'rousing', name: 'Rousing Success',
+        targetMin: 6, targetMax: 8, spillover: 2, spilloverScope: 'adjacent',
+        polarization: 1,
+        headline: bloc => `Massive turnout at ${bloc} rally — supporters overflow venue`,
+    },
+    {
+        id: 'solid', name: 'Solid Turnout',
+        targetMin: 3, targetMax: 5, spillover: 0, spilloverScope: 'none',
+        polarization: 0,
+        headline: bloc => `Party rally draws steady crowd in ${bloc} district — a strong showing`,
+    },
+    {
+        id: 'low', name: 'Low Turnout',
+        targetMin: 1, targetMax: 2, spillover: 0, spilloverScope: 'none',
+        polarization: 0,
+        headline: bloc => `Sparse attendance at ${bloc} rally raises questions about grassroots support`,
+    },
+    {
+        id: 'gaffe', name: 'Gaffe',
+        targetMin: -3, targetMax: -2, spillover: -1, spilloverScope: 'random_adjacent',
+        polarization: 1,
+        headline: bloc => `Party leader's remarks draw swift backlash at ${bloc} event`,
+    },
+    {
+        id: 'divisive', name: 'Divisive Speech',
+        targetMin: 5, targetMax: 7, spillover: -2, spilloverScope: 'all_others',
+        polarization: 2,
+        headline: bloc => `Fiery rally speech energizes ${bloc} base but draws condemnation from opposition`,
+    },
+    {
+        id: 'counter', name: 'Counter-Protest',
+        targetMin: -1, targetMax: -1, spillover: -2, spilloverScope: 'all',
+        polarization: 2,
+        headline: bloc => `${bloc} rally disrupted by counter-protesters — police intervene as tensions escalate`,
+    },
 ];
 
 /**
- * Classify voter blocs as energized / alienated / unaffected for a rally subject.
- * A bloc is energized if it leans toward ANY of the rally's ideology tags (axis >= 60).
- * A bloc is alienated if it leans OPPOSITE to any tag AND is not energized.
+ * Compute outcome weights for a rally targeting a voter bloc.
+ * Weights shift based on approval, crises, polarization, civil unrest, and recent rallies.
  */
-export function classifyRallyBlocs(subject, blocs) {
-    const results = [];
-    const threshold = RALLY_CONFIG.ENERGIZE_THRESHOLD;
-    for (const bloc of blocs) {
-        let energized = false;
-        let alienated = false;
-        let matchTag = null;
-        let opposeTag = null;
-        for (const tag of subject.tags) {
-            const axisInfo = IDEOLOGY_TO_AXIS[tag];
-            if (!axisInfo) continue;
-            const blocVal = bloc['axis_' + axisInfo.axisKey] ?? 50;
-            // direction +1 means right pole: high blocVal = aligned
-            // direction -1 means left pole: low blocVal = aligned
-            const alignment = axisInfo.direction === 1 ? blocVal : (100 - blocVal);
-            if (alignment >= threshold) {
-                energized = true;
-                matchTag = tag;
-            } else if (alignment <= (100 - threshold) && !energized) {
-                alienated = true;
-                opposeTag = tag;
-            }
-        }
-        results.push({
-            blocId: bloc.id,
-            blocName: bloc.bloc_name,
-            popWeight: bloc.population_weight || 0,
-            classification: energized ? 'energized' : (alienated ? 'alienated' : 'unaffected'),
-            matchTag: energized ? matchTag : null,
-            opposeTag: alienated ? opposeTag : null,
-        });
+export function getRallyOutcomeWeights(blocApproval, ralliedRecently, nationState) {
+    const weights = { rousing: 20, solid: 38, low: 15, gaffe: 12, divisive: 8, counter: 5 };
+
+    // High approval → more rousing
+    if (blocApproval > 60) {
+        weights.rousing += 12; weights.low -= 5; weights.gaffe -= 4;
+    } else if (blocApproval < 30) {
+        weights.rousing -= 10; weights.low += 10; weights.gaffe += 8;
     }
-    return results;
+
+    // Active crises
+    if (nationState.crisisCount > 0) {
+        weights.gaffe += 6; weights.divisive += 4; weights.counter += 10;
+        weights.rousing -= 8; weights.solid -= 6;
+    }
+
+    // High polarization
+    if (nationState.polarization > 60) {
+        weights.divisive += 6; weights.counter += 4; weights.solid -= 4;
+    }
+
+    // Rallied recently → stale material
+    if (ralliedRecently >= 1) {
+        weights.gaffe += 5 * ralliedRecently;
+        weights.rousing -= 3 * ralliedRecently;
+        weights.low += 3 * ralliedRecently;
+    }
+
+    // High civil unrest
+    if (nationState.civilUnrest > 40) {
+        weights.counter += 8; weights.rousing -= 4;
+    }
+
+    // Clamp to minimum 1
+    for (const k of Object.keys(weights)) weights[k] = Math.max(1, weights[k]);
+
+    // Normalize to percentages
+    const total = Object.values(weights).reduce((s, v) => s + v, 0);
+    for (const k of Object.keys(weights)) weights[k] = Math.round((weights[k] / total) * 100);
+
+    return weights;
 }
 
 /**
- * Execute a rally: validate, roll effects, update DB, log.
- * Returns { success, subject, globalMomentum, blocResults, newAp, oldTreasury, newTreasury }
+ * Get a risk assessment label from outcome weights.
  */
-export async function executeRally(supabase, factionId, nationId, subjectIndex, currentTick) {
-    const subject = RALLY_SUBJECTS[subjectIndex];
-    if (!subject) return { success: false, error: 'Invalid rally subject.' };
+export function getRallyRiskLevel(weights) {
+    const badPct = (weights.gaffe || 0) + (weights.divisive || 0) + (weights.counter || 0);
+    if (badPct >= 40) return 'dangerous';
+    if (badPct >= 25) return 'risky';
+    if (badPct >= 15) return 'moderate';
+    return 'safe';
+}
 
-    // ── 1. Validate AP + funds ──
+/**
+ * Pick an outcome from weighted distribution.
+ */
+function rollRallyOutcome(weights) {
+    const ids = ['rousing', 'solid', 'low', 'gaffe', 'divisive', 'counter'];
+    let sum = 0;
+    const cumulative = [];
+    for (const id of ids) {
+        sum += (weights[id] || 0);
+        cumulative.push({ id, threshold: sum });
+    }
+    const roll = Math.random() * sum;
+    return (cumulative.find(c => roll <= c.threshold) || cumulative[cumulative.length - 1]).id;
+}
+
+/**
+ * Execute a rally targeting a specific voter bloc.
+ * Returns { success, outcomeId, outcomeName, headline, effects, newAp }
+ */
+export async function executeRally(supabase, factionId, nationId, blocId, currentTick) {
+    // ── 1. Validate AP ──
     const { data: faction } = await supabase
-        .from('factions').select('party_funds, action_points').eq('id', factionId).single();
+        .from('factions').select('action_points').eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
     if ((faction.action_points || 0) < RALLY_CONFIG.AP_COST)
         return { success: false, error: `Not enough AP. Need ${RALLY_CONFIG.AP_COST}.` };
-    if ((faction.party_funds || 0) < RALLY_CONFIG.MONEY_COST)
-        return { success: false, error: `Not enough funds. Need $${RALLY_CONFIG.MONEY_COST.toLocaleString()}.` };
 
-    // ── 2. Check cooldown + diminishing returns ──
+    // ── 2. Check cooldown (one rally per tick) ──
     const { data: recentRallies } = await supabase
         .from('campaign_actions')
         .select('tick_performed, result')
         .eq('party_id', factionId)
         .eq('action_type', 'rally')
-        .gte('tick_performed', currentTick - RALLY_CONFIG.DIMINISH_WINDOW)
+        .gte('tick_performed', currentTick - RALLY_CONFIG.COOLDOWN_WINDOW)
         .order('tick_performed', { ascending: false });
 
     if ((recentRallies || []).some(r => r.tick_performed === currentTick))
         return { success: false, error: 'Already held a rally this tick.' };
 
-    const tagUseCounts = {};
-    for (const tag of subject.tags) tagUseCounts[tag] = 0;
-    for (const r of (recentRallies || [])) {
-        for (const tag of (r.result?.tags || [])) {
-            if (tagUseCounts[tag] !== undefined) tagUseCounts[tag]++;
-        }
-    }
+    // Count how many times this specific bloc was rallied recently
+    const ralliedRecently = (recentRallies || []).filter(r => r.result?.blocId === blocId).length;
 
-    // ── 3. Classify blocs ──
-    const { data: blocs } = await supabase
+    // ── 3. Load target bloc + nation stats ──
+    const { data: targetBloc } = await supabase
+        .from('voter_blocs')
+        .select('id, bloc_name, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
+        .eq('id', blocId).single();
+    if (!targetBloc) return { success: false, error: 'Voter bloc not found.' };
+
+    const { data: nation } = await supabase
+        .from('nations').select('polarization, civil_unrest, stability').eq('id', nationId).single();
+    const { count: crisisCount } = await supabase
+        .from('active_crises').select('id', { count: 'exact', head: true }).eq('nation_id', nationId);
+
+    // ── 4. Load all blocs + approval rows ──
+    const { data: allBlocs } = await supabase
         .from('voter_blocs')
         .select('id, bloc_name, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
         .eq('nation_id', nationId).eq('is_active', true);
 
-    const classified = classifyRallyBlocs(subject, blocs || []);
-
-    // ── 4. Fetch current approval rows ──
     const { data: approvalRows } = await supabase
         .from('faction_bloc_approval')
         .select('id, bloc_id, preference_score, momentum')
         .eq('faction_id', factionId);
-    const byBloc = {};
-    for (const row of (approvalRows || [])) byBloc[row.bloc_id] = row;
+    const approvalByBloc = {};
+    for (const row of (approvalRows || [])) approvalByBloc[row.bloc_id] = row;
 
-    // ── 5. Roll effects ──
-    const globalMomentum = Math.floor(Math.random() * (RALLY_CONFIG.GLOBAL_MOMENTUM_MAX - RALLY_CONFIG.GLOBAL_MOMENTUM_MIN + 1)) + RALLY_CONFIG.GLOBAL_MOMENTUM_MIN;
-    const blocResults = [];
+    const targetApproval = approvalByBloc[blocId]?.preference_score || 50;
 
-    for (const c of classified) {
-        const row = byBloc[c.blocId];
-        if (!row) continue;
-        const oldPref = Math.round(row.preference_score || 0);
-        let prefDelta = 0;
-        let momentumDelta = globalMomentum;
+    // ── 5. Compute weights and roll outcome ──
+    const nationState = {
+        polarization: nation?.polarization || 0,
+        civilUnrest: nation?.civil_unrest || 0,
+        stability: nation?.stability || 50,
+        crisisCount: crisisCount || 0,
+    };
+    const weights = getRallyOutcomeWeights(targetApproval, ralliedRecently, nationState);
+    const outcomeId = rollRallyOutcome(weights);
+    const outcome = RALLY_OUTCOMES.find(o => o.id === outcomeId);
 
-        if (c.classification === 'energized') {
-            let roll = Math.floor(Math.random() * 2) + 1; // 1D2: 1 or 2
-            let bMom = RALLY_CONFIG.ENERGIZE_MOMENTUM;
-            const uses = tagUseCounts[c.matchTag] || 0;
-            if (uses === 1) { roll = Math.max(1, Math.ceil(roll / 2)); bMom = Math.max(1, Math.ceil(bMom / 2)); }
-            else if (uses >= 2) { roll = Math.max(1, Math.ceil(roll / 4)); bMom = Math.max(1, Math.ceil(bMom / 4)); }
-            prefDelta = roll;
-            momentumDelta += bMom;
-        } else if (c.classification === 'alienated') {
-            prefDelta = -(Math.floor(Math.random() * 3)); // 0, -1, or -2
-        }
+    // ── 6. Roll specific target effect ──
+    const targetDelta = outcome.targetMin + Math.floor(Math.random() * (outcome.targetMax - outcome.targetMin + 1));
 
-        const newPref = Math.max(0, Math.min(100, oldPref + prefDelta));
-        const newMomentum = Math.round(((row.momentum || 0) + momentumDelta) * 100) / 100;
-
+    // ── 7. Apply effects ──
+    const effects = [];
+    const targetRow = approvalByBloc[blocId];
+    if (targetRow) {
+        const oldPref = Math.round(targetRow.preference_score || 0);
+        const newPref = Math.max(0, Math.min(100, oldPref + targetDelta));
+        const newMom = Math.round(((targetRow.momentum || 0) + targetDelta) * 100) / 100;
         await supabase.from('faction_bloc_approval')
-            .update({ preference_score: newPref, momentum: newMomentum })
-            .eq('id', row.id);
-
-        blocResults.push({ ...c, prefDelta, momentumDelta, oldPref, newPref });
+            .update({ preference_score: newPref, momentum: newMom }).eq('id', targetRow.id);
+        effects.push({ bloc: targetBloc.bloc_name, blocId, value: targetDelta, oldPref, newPref });
     }
 
-    // ── 6. Deduct AP + money ──
-    const apResult = await deductAP(supabase, factionId, RALLY_CONFIG.AP_COST);
-    const oldTreasury = faction.party_funds || 0;
-    const newTreasury = oldTreasury - RALLY_CONFIG.MONEY_COST;
-    await supabase.from('factions')
-        .update({ party_funds: newTreasury })
-        .eq('id', factionId);
+    // Spillover effects
+    if (outcome.spillover !== 0 && outcome.spilloverScope !== 'none') {
+        const otherBlocs = (allBlocs || []).filter(b => b.id !== blocId);
 
-    // ── 7. Log ──
+        let spillTargets = [];
+        if (outcome.spilloverScope === 'all_others' || outcome.spilloverScope === 'all') {
+            spillTargets = outcome.spilloverScope === 'all'
+                ? (allBlocs || [])  // includes target bloc for counter-protest
+                : otherBlocs;
+        } else if (outcome.spilloverScope === 'adjacent' || outcome.spilloverScope === 'random_adjacent') {
+            // "Adjacent" = blocs sharing at least one strong ideology axis with the target
+            const targetAxes = [];
+            for (const key of ['axis_liberty_equality', 'axis_tradition_progress', 'axis_security_freedom', 'axis_globalism_nationalism', 'axis_individualism_collectivism']) {
+                if (Math.abs((targetBloc[key] ?? 50) - 50) >= 10) targetAxes.push(key);
+            }
+            const adjacent = otherBlocs.filter(b => {
+                return targetAxes.some(key => {
+                    const bVal = b[key] ?? 50;
+                    const tVal = targetBloc[key] ?? 50;
+                    return Math.abs(bVal - 50) >= 10 && ((bVal < 50) === (tVal < 50));
+                });
+            });
+            if (outcome.spilloverScope === 'random_adjacent' && adjacent.length > 0) {
+                spillTargets = [adjacent[Math.floor(Math.random() * adjacent.length)]];
+            } else {
+                spillTargets = adjacent;
+            }
+        }
+
+        for (const sb of spillTargets) {
+            const row = approvalByBloc[sb.id];
+            if (!row) continue;
+            // For 'all' scope (counter-protest), target bloc also gets spillover on top
+            if (sb.id === blocId) continue; // target already handled
+            const oldPref = Math.round(row.preference_score || 0);
+            const newPref = Math.max(0, Math.min(100, oldPref + outcome.spillover));
+            const newMom = Math.round(((row.momentum || 0) + outcome.spillover) * 100) / 100;
+            await supabase.from('faction_bloc_approval')
+                .update({ preference_score: newPref, momentum: newMom }).eq('id', row.id);
+            effects.push({ bloc: sb.bloc_name, blocId: sb.id, value: outcome.spillover, oldPref, newPref });
+        }
+    }
+
+    // Polarization effect
+    if (outcome.polarization > 0 && nation) {
+        const newPol = Math.min(100, (nation.polarization || 0) + outcome.polarization);
+        await supabase.from('nations').update({ polarization: newPol }).eq('id', nationId);
+        effects.push({ stat: 'Polarization', value: outcome.polarization });
+    }
+
+    // ── 8. Deduct AP ──
+    const apResult = await deductAP(supabase, factionId, RALLY_CONFIG.AP_COST);
+
+    // ── 9. Log ──
+    const headline = outcome.headline(targetBloc.bloc_name);
     await supabase.from('campaign_actions').insert({
         party_id: factionId,
         nation_id: nationId,
         action_type: 'rally',
         ap_cost: RALLY_CONFIG.AP_COST,
-        money_cost: RALLY_CONFIG.MONEY_COST,
+        money_cost: 0,
         tick_performed: currentTick,
-        result: { subject: subject.name, tags: subject.tags, subjectIndex, globalMomentum, blocResults }
+        result: {
+            blocId, blocName: targetBloc.bloc_name,
+            outcomeId, outcomeName: outcome.name,
+            headline, effects, weights, ralliedRecently,
+            // Keep tags for promise compatibility — derive from bloc axes
+            tags: _deriveBlocTags(targetBloc),
+        }
     });
 
     return {
         success: true,
-        subject,
-        globalMomentum,
-        blocResults,
+        outcomeId,
+        outcomeName: outcome.name,
+        headline,
+        effects,
+        weights,
         newAp: apResult.newAp ?? ((faction.action_points || 0) - RALLY_CONFIG.AP_COST),
-        oldTreasury,
-        newTreasury,
     };
+}
+
+/** Derive ideology tags from a bloc's axis leanings (for promise compatibility). */
+function _deriveBlocTags(bloc) {
+    const AXIS_MAP = [
+        { key: 'axis_liberty_equality', left: 'LIBERTY', right: 'EQUALITY' },
+        { key: 'axis_tradition_progress', left: 'TRADITION', right: 'PROGRESS' },
+        { key: 'axis_security_freedom', left: 'SECURITY', right: 'FREEDOM' },
+        { key: 'axis_globalism_nationalism', left: 'GLOBALISM', right: 'NATIONALISM' },
+        { key: 'axis_individualism_collectivism', left: 'INDIVIDUALISM', right: 'COLLECTIVISM' },
+    ];
+    const tags = [];
+    for (const ax of AXIS_MAP) {
+        const val = bloc[ax.key] ?? 50;
+        if (val < 40) tags.push(ax.left);
+        else if (val > 60) tags.push(ax.right);
+    }
+    return tags;
 }
 
 
