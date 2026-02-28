@@ -518,345 +518,282 @@ function _deriveBlocTags(bloc) {
 }
 
 
-// ==================== PRESS CONFERENCE ====================
+// ==================== MAKE PROMISE ====================
 
-export const PRESS_CONF_CONFIG = {
+export const MAKE_PROMISE_CONFIG = {
     AP_COST: 2,
-    MONEY_COST: 50000,
-    SAME_STAT_WINDOW: 3,        // ticks within which same-stat penalty applies
-    // Taking Credit (your ministry, stat trending well)
-    CREDIT_MOMENTUM_MIN: 3,     // 1D3+2
-    CREDIT_MOMENTUM_MAX: 5,
-    CREDIT_PREF_DELTA: 1,       // +1 preference for caring blocs
-    // Taking Credit backfire (your ministry, stat trending badly)
-    CREDIT_BACKFIRE_MOMENTUM: -2,
-    CREDIT_BACKFIRE_PREF: -1,
-    // Attack (rival ministry, stat trending badly)
-    ATTACK_TARGET_MOM_MIN: 2,   // -(1D3+1) → -2 to -4
-    ATTACK_TARGET_MOM_MAX: 4,
-    ATTACK_SELF_MOM_MIN: 1,     // 1D3 → +1 to +3
-    ATTACK_SELF_MOM_MAX: 3,
-    ATTACK_PREF_SHIFT: 1,       // -1 from target, +1 to you
-    // Attack backfire (rival ministry, stat trending well)
-    ATTACK_BACKFIRE_SELF_MOMENTUM: -2,
-    ATTACK_BACKFIRE_TARGET_MOMENTUM: 1,
-    // Drawing Attention (no ministry holds it)
-    ATTENTION_MOMENTUM_MIN: 1,  // 1D2
-    ATTENTION_MOMENTUM_MAX: 2,
-    // Flat-stat multiplier (stat unchanged — works but at reduced effect)
-    FLAT_MOMENTUM_MULT: 0.6,
+    MONEY_COST: 0,
+    STAT_DELTA: 10,                    // Promise to change stat by ±10
+    DEADLINE_DICE: 24,                 // 1D24 + base
+    DEADLINE_BASE: 6,                  // base ticks added to roll
+    APPROVAL_ON_PROMISE_STAT: 4,       // immediate bump with affected blocs (stat type)
+    APPROVAL_ON_PROMISE_CRISIS: 2,     // immediate bump with all blocs (crisis type)
+    APPROVAL_IF_KEPT: 12,              // permanent legacy reward
+    PENALTY_PER_TICK_MIN: 1,           // -1D3 per tick while governing & unfulfilled
+    PENALTY_PER_TICK_MAX: 3,
+    PENALTY_IF_BROKEN: 8,              // permanent legacy penalty on deadline expiry
+    MAX_ACTIVE_PROMISES: 5,            // limit active promises per faction
 };
 
 /**
- * Execute a press conference about a specific national stat.
+ * Execute "Make Promise" — faction publicly commits to a stat target or crisis resolution.
  *
- * Modes:
- *  - "credit": Player holds the responsible ministry. Backfires only if stat is actively declining.
- *  - "attack": Another party holds the ministry. Backfires only if stat is actively improving.
- *  - "attention": No party holds the ministry. Small momentum gain.
- * Flat stats (no change) work at reduced effect (60% momentum) but never backfire.
+ * @param {string} promiseType  'stat' | 'crisis'
+ * @param {object} params       { statKey, direction } for stat; { crisisId } for crisis
+ * @returns result object with promise details
  */
-export async function executePressConference(supabase, factionId, nationId, statKey, currentTick) {
-    const ministryKey = STAT_TO_MINISTRY[statKey];
-    if (!ministryKey) return { success: false, error: 'Unknown stat.' };
+export async function executeMakePromise(supabase, factionId, nationId, currentTick, promiseType, params) {
+    const cfg = MAKE_PROMISE_CONFIG;
 
-    const sign = statDirectionSign(statKey);
-    if (sign === 0) return { success: false, error: 'Stat has no clear direction.' };
-
-    // ── 1. Validate AP + funds ──
+    // ── 1. Validate faction ──
     const { data: faction } = await supabase
         .from('factions').select('party_funds, action_points, abbreviation, faction_name')
         .eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
-    if ((faction.action_points || 0) < PRESS_CONF_CONFIG.AP_COST)
-        return { success: false, error: `Not enough AP. Need ${PRESS_CONF_CONFIG.AP_COST}.` };
-    if ((faction.party_funds || 0) < PRESS_CONF_CONFIG.MONEY_COST)
-        return { success: false, error: `Not enough funds. Need $${PRESS_CONF_CONFIG.MONEY_COST.toLocaleString()}.` };
 
-    // ── 2. Check cooldown ──
-    const { data: recentPCs } = await supabase
-        .from('campaign_actions')
-        .select('tick_performed, result')
+    if (cfg.AP_COST > 0 && (faction.action_points || 0) < cfg.AP_COST)
+        return { success: false, error: `Not enough AP. Need ${cfg.AP_COST}.` };
+
+    // ── 2. Check active promise limit ──
+    const { data: activePromises } = await supabase
+        .from('fundraiser_promises')
+        .select('id, demand_type, conditions')
         .eq('party_id', factionId)
-        .eq('action_type', 'press_conference')
-        .gte('tick_performed', currentTick - PRESS_CONF_CONFIG.SAME_STAT_WINDOW)
-        .order('tick_performed', { ascending: false });
+        .eq('status', 'active');
 
-    if ((recentPCs || []).some(r => r.tick_performed === currentTick))
-        return { success: false, error: 'Already held a press conference this tick.' };
+    if ((activePromises || []).length >= cfg.MAX_ACTIVE_PROMISES)
+        return { success: false, error: `Maximum ${cfg.MAX_ACTIVE_PROMISES} active promises reached.` };
 
-    // Same-stat penalty
-    const sameStatRecent = (recentPCs || []).filter(r => r.result?.statKey === statKey);
-    const sameStatPenalty = sameStatRecent.length > 0;
-
-    // ── 3. Determine mode ──
-    const { data: allMinistries } = await supabase
-        .from('ministries')
-        .select('party_id, ministry_key')
-        .eq('nation_id', nationId)
-        .eq('is_active', true);
-
-    // Also check who is PM (lead coalition party) for prime_minister stats
-    const coalition = await fetchActiveCoalition(supabase, nationId);
-    const isPM = coalition && coalition.lead_party_id === factionId;
-
-    let holderPartyId = null;
-    const ministryRow = (allMinistries || []).find(m => m.ministry_key === ministryKey);
-    if (ministryRow) {
-        holderPartyId = ministryRow.party_id;
-    }
-    if (ministryKey === 'prime_minister' && coalition) {
-        holderPartyId = coalition.lead_party_id;
-    }
-
-    let mode; // 'credit' | 'attack' | 'attention'
-    let targetPartyId = null;
-    if (holderPartyId === factionId || (ministryKey === 'prime_minister' && isPM)) {
-        mode = 'credit';
-    } else if (holderPartyId) {
-        mode = 'attack';
-        targetPartyId = holderPartyId;
-    } else {
-        mode = 'attention';
-    }
-
-    // ── 4. Determine stat trend ──
+    // ── 3. Load nation + blocs ──
     const { data: nation } = await supabase
         .from('nations').select('*').eq('id', nationId).single();
-    let prevStats = null;
-    const PC_TREND_WINDOW = 3;
-    if (currentTick > 0) {
-        const lookbackTick = Math.max(0, currentTick - PC_TREND_WINDOW);
-        const { data: histRow } = await supabase
-            .from('nations_history')
-            .select('*')
-            .eq('nation_id', nationId)
-            .eq('tick', lookbackTick)
-            .maybeSingle();
-        if (histRow) {
-            prevStats = histRow;
-        } else {
-            const { data: fallbackRows } = await supabase
-                .from('nations_history')
-                .select('*')
-                .eq('nation_id', nationId)
-                .lt('tick', currentTick)
-                .order('tick', { ascending: true })
-                .limit(1);
-            prevStats = fallbackRows?.[0] || null;
-        }
-    }
+    if (!nation) return { success: false, error: 'Nation not found.' };
 
-    const currentVal = nation ? nation[statKey] : null;
-    const prevVal = prevStats ? prevStats[statKey] : null;
-    const rawDelta = (currentVal != null && prevVal != null) ? currentVal - prevVal : 0;
-    const improvement = rawDelta * sign; // positive = trending in the good direction
-    const FLAT_THRESHOLD = 0.15;
-    const trendingWell = improvement > FLAT_THRESHOLD;
-    const trendingBadly = improvement < -FLAT_THRESHOLD;
-
-    // ── 5. Determine backfire ──
-    // Backfire ONLY when the trend actively contradicts your claim:
-    //   Credit backfires if stat is actively declining (not flat).
-    //   Attack backfires if stat is actively improving (not flat).
-    // Flat stats work at reduced effect (FLAT_MOMENTUM_MULT) but never backfire.
-    let backfire = false;
-    let flatStat = !trendingWell && !trendingBadly;
-    if (mode === 'credit' && trendingBadly) backfire = true;
-    if (mode === 'attack' && trendingWell) backfire = true;
-
-    // ── 6. Find blocs who care about this stat ──
-    const { data: blocs } = await supabase
+    const { data: allBlocs } = await supabase
         .from('voter_blocs')
         .select('id, bloc_name, population_weight, priority_issues')
         .eq('nation_id', nationId).eq('is_active', true);
 
-    const caringBlocs = [];
-    for (const b of (blocs || [])) {
-        const issues = b.priority_issues || [];
-        for (const issue of issues) {
-            const catStats = ISSUE_CATEGORY_STATS[issue] || [];
-            if (catStats.includes(statKey)) {
-                caringBlocs.push(b);
-                break;
-            }
-        }
-    }
-
-    // ── 7. Fetch approval rows for both player and target ──
-    const partyIdsNeeded = [factionId];
-    if (targetPartyId) partyIdsNeeded.push(targetPartyId);
-
     const { data: approvalRows } = await supabase
         .from('faction_bloc_approval')
-        .select('id, faction_id, bloc_id, preference_score, momentum')
-        .in('faction_id', partyIdsNeeded);
+        .select('id, bloc_id, preference_score')
+        .eq('faction_id', factionId);
+    const approvalByBloc = {};
+    for (const row of (approvalRows || [])) approvalByBloc[row.bloc_id] = row;
 
-    const myByBloc = {};
-    const targetByBloc = {};
-    for (const row of (approvalRows || [])) {
-        if (row.faction_id === factionId) myByBloc[row.bloc_id] = row;
-        if (targetPartyId && row.faction_id === targetPartyId) targetByBloc[row.bloc_id] = row;
-    }
+    // ── 4. Roll deadline: 1D24 + 6 ──
+    const deadlineRoll = Math.floor(Math.random() * cfg.DEADLINE_DICE) + 1;
+    const deadlineTicks = deadlineRoll + cfg.DEADLINE_BASE;
+    const tickDeadline = currentTick + deadlineTicks;
 
-    // ── 8. Get target party info ──
-    let targetAbbr = null;
-    if (targetPartyId) {
-        const { data: targetFaction } = await supabase
-            .from('factions').select('abbreviation, faction_name').eq('id', targetPartyId).single();
-        targetAbbr = targetFaction?.abbreviation || targetFaction?.faction_name || '???';
-    }
+    // ── 5. Build promise based on type ──
+    let demandText, demandType, conditions, affectedBlocIds, affectedBlocNames;
 
-    // ── 9. Roll effects ──
-    // Momentum multipliers stack: same-stat penalty (0.5) and flat-stat reduction (0.6)
-    const sameStatMult = sameStatPenalty ? 0.5 : 1;
-    const flatMult = (!backfire && flatStat) ? PRESS_CONF_CONFIG.FLAT_MOMENTUM_MULT : 1;
-    const momMult = sameStatMult * flatMult;
-    const statLabel = statKey.replace(/_/g, ' ');
-    let selfMomentumDelta = 0;
-    let targetMomentumDelta = 0;
-    const blocResults = [];
-    let headline = '';
+    if (promiseType === 'stat') {
+        const { statKey, direction } = params;
+        if (!statKey) return { success: false, error: 'No stat selected.' };
+        const sign = statDirectionSign(statKey);
+        if (sign === 0) return { success: false, error: 'Stat has no clear direction.' };
 
-    const playerAbbr = faction.abbreviation || faction.faction_name;
-    const titleCase = s => s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        // Prevent duplicate stat promises
+        const hasDuplicate = (activePromises || []).some(p =>
+            p.conditions?.stat_key === statKey && p.demand_type === 'stat_target');
+        if (hasDuplicate)
+            return { success: false, error: 'You already have an active promise for this stat.' };
 
-    function roll(min, max) {
-        return Math.floor(Math.random() * (max - min + 1)) + min;
-    }
+        const currentVal = Number(nation[statKey] ?? 50);
+        const dir = direction || (sign === 1 ? 'above' : 'below');
+        const targetValue = dir === 'above'
+            ? Math.min(100, Math.round(currentVal + cfg.STAT_DELTA))
+            : Math.max(0, Math.round(currentVal - cfg.STAT_DELTA));
 
-    if (mode === 'credit') {
-        if (backfire) {
-            selfMomentumDelta = Math.round(PRESS_CONF_CONFIG.CREDIT_BACKFIRE_MOMENTUM * sameStatMult);
-            headline = `${playerAbbr} Claims Credit for Worsening ${titleCase(statLabel)} — Public Not Convinced`;
-            // Blocs who care: -1 preference
-            for (const b of caringBlocs) {
-                const row = myByBloc[b.id];
-                if (!row) continue;
-                const oldPref = Math.round(row.preference_score || 0);
-                const delta = PRESS_CONF_CONFIG.CREDIT_BACKFIRE_PREF;
-                const newPref = Math.max(0, Math.min(100, oldPref + delta));
-                await supabase.from('faction_bloc_approval').update({ preference_score: newPref }).eq('id', row.id);
-                blocResults.push({ blocId: b.id, blocName: b.bloc_name, party: 'self', prefDelta: delta, oldPref, newPref });
-            }
-        } else {
-            selfMomentumDelta = Math.max(1, Math.round(roll(PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MIN, PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MAX) * momMult));
-            headline = flatStat
-                ? `${playerAbbr} Highlights Stable ${titleCase(statLabel)} Under Their Watch`
-                : `${playerAbbr} Takes Credit for Improving ${titleCase(statLabel)}`;
-            for (const b of caringBlocs) {
-                const row = myByBloc[b.id];
-                if (!row) continue;
-                const oldPref = Math.round(row.preference_score || 0);
-                const delta = PRESS_CONF_CONFIG.CREDIT_PREF_DELTA;
-                const newPref = Math.max(0, Math.min(100, oldPref + delta));
-                await supabase.from('faction_bloc_approval').update({ preference_score: newPref }).eq('id', row.id);
-                blocResults.push({ blocId: b.id, blocName: b.bloc_name, party: 'self', prefDelta: delta, oldPref, newPref });
-            }
-        }
-    } else if (mode === 'attack') {
-        if (backfire) {
-            selfMomentumDelta = Math.round(PRESS_CONF_CONFIG.ATTACK_BACKFIRE_SELF_MOMENTUM * sameStatMult);
-            targetMomentumDelta = PRESS_CONF_CONFIG.ATTACK_BACKFIRE_TARGET_MOMENTUM;
-            headline = `${playerAbbr} Attacks ${targetAbbr} on ${titleCase(statLabel)} — But It's Improving`;
-        } else {
-            const targetMomRoll = roll(PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MIN, PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MAX);
-            const selfMomRoll = roll(PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MIN, PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MAX);
-            selfMomentumDelta = Math.max(1, Math.round(selfMomRoll * momMult));
-            targetMomentumDelta = -Math.max(1, Math.round(targetMomRoll * flatMult));
-            headline = flatStat
-                ? `${playerAbbr} Criticizes ${targetAbbr} for Stagnant ${titleCase(statLabel)}`
-                : `${playerAbbr} Blasts ${targetAbbr} Over Worsening ${titleCase(statLabel)}`;
-            // Credit transfer: -1 from target, +1 to player for caring blocs
-            for (const b of caringBlocs) {
-                const myRow = myByBloc[b.id];
-                const tgtRow = targetByBloc[b.id];
-                if (myRow) {
-                    const oldPref = Math.round(myRow.preference_score || 0);
-                    const newPref = Math.max(0, Math.min(100, oldPref + PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT));
-                    await supabase.from('faction_bloc_approval').update({ preference_score: newPref }).eq('id', myRow.id);
-                    blocResults.push({ blocId: b.id, blocName: b.bloc_name, party: 'self', prefDelta: PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT, oldPref, newPref });
-                }
-                if (tgtRow) {
-                    const oldPref = Math.round(tgtRow.preference_score || 0);
-                    const newPref = Math.max(0, Math.min(100, oldPref - PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT));
-                    await supabase.from('faction_bloc_approval').update({ preference_score: newPref }).eq('id', tgtRow.id);
-                    blocResults.push({ blocId: b.id, blocName: b.bloc_name, party: 'target', prefDelta: -PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT, oldPref, newPref });
+        const statLabel = statKey.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        demandText = dir === 'above'
+            ? `Increase ${statLabel} to ${targetValue}`
+            : `Reduce ${statLabel} to ${targetValue}`;
+        demandType = 'stat_target';
+        conditions = {
+            stat_key: statKey,
+            direction: dir,
+            baseline_value: currentVal,
+            target_value: targetValue,
+            delta: cfg.STAT_DELTA,
+        };
+
+        // Find affected blocs: those whose priority_issues map to this stat
+        affectedBlocIds = [];
+        affectedBlocNames = [];
+        for (const b of (allBlocs || [])) {
+            const issues = b.priority_issues || [];
+            for (const issue of issues) {
+                const catStats = ISSUE_CATEGORY_STATS[issue] || [];
+                if (catStats.includes(statKey)) {
+                    affectedBlocIds.push(b.id);
+                    affectedBlocNames.push(b.bloc_name);
+                    break;
                 }
             }
         }
+    } else if (promiseType === 'crisis') {
+        const { crisisId } = params;
+        if (!crisisId) return { success: false, error: 'No crisis selected.' };
+
+        // Validate the crisis is active
+        const { data: crisisRecord } = await supabase
+            .from('active_crises')
+            .select('id, crisis_id, started_at_tick')
+            .eq('id', crisisId)
+            .eq('nation_id', nationId)
+            .single();
+        if (!crisisRecord) return { success: false, error: 'Crisis not found or not active.' };
+
+        // Get crisis name
+        const { data: crisisTemplate } = await supabase
+            .from('crisis_templates')
+            .select('name, description')
+            .eq('id', crisisRecord.crisis_id)
+            .single();
+
+        const crisisName = crisisTemplate?.name || 'Unknown Crisis';
+
+        // Prevent duplicate crisis promises
+        const hasDuplicate = (activePromises || []).some(p =>
+            p.conditions?.crisis_id === crisisId && p.demand_type === 'crisis_resolution');
+        if (hasDuplicate)
+            return { success: false, error: 'You already have an active promise for this crisis.' };
+
+        demandText = `Resolve ${crisisName}`;
+        demandType = 'crisis_resolution';
+        conditions = {
+            crisis_id: crisisId,
+            crisis_template_id: crisisRecord.crisis_id,
+            crisis_name: crisisName,
+        };
+
+        // Crisis promises affect all blocs
+        affectedBlocIds = (allBlocs || []).map(b => b.id);
+        affectedBlocNames = (allBlocs || []).map(b => b.bloc_name);
     } else {
-        // attention mode
-        selfMomentumDelta = Math.max(1, Math.round(roll(PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MIN, PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MAX) * sameStatMult));
-        headline = `${playerAbbr} Draws Attention to ${titleCase(statLabel)}`;
+        return { success: false, error: 'Invalid promise type.' };
     }
 
-    // ── 10. Apply momentum ──
-    // Self momentum: apply to all our bloc rows
-    if (selfMomentumDelta !== 0) {
-        await adjustMomentumAll(supabase, nationId, factionId, selfMomentumDelta, 'campaign:press_conference');
-    }
-    // Target momentum (attack mode)
-    if (targetPartyId && targetMomentumDelta !== 0) {
-        await adjustMomentumAll(supabase, nationId, targetPartyId, targetMomentumDelta, 'campaign:press_conference_target');
+    // ── 6. Apply immediate approval bump ──
+    const approvalBump = promiseType === 'crisis'
+        ? cfg.APPROVAL_ON_PROMISE_CRISIS
+        : cfg.APPROVAL_ON_PROMISE_STAT;
+
+    const blocEffects = [];
+    for (const blocId of affectedBlocIds) {
+        const row = approvalByBloc[blocId];
+        if (!row) continue;
+        const oldPref = Math.round(row.preference_score || 0);
+        const newPref = Math.min(100, oldPref + approvalBump);
+        await supabase.from('faction_bloc_approval')
+            .update({ preference_score: newPref }).eq('id', row.id);
+        const bloc = (allBlocs || []).find(b => b.id === blocId);
+        blocEffects.push({ blocId, blocName: bloc?.bloc_name, oldPref, newPref, delta: approvalBump });
     }
 
-    // ── 11. Deduct AP + money ──
-    const apResult = await deductAP(supabase, factionId, PRESS_CONF_CONFIG.AP_COST);
-    const oldTreasury = faction.party_funds || 0;
-    const newTreasury = oldTreasury - PRESS_CONF_CONFIG.MONEY_COST;
-    await supabase.from('factions')
-        .update({ party_funds: newTreasury })
-        .eq('id', factionId);
+    // ── 7. Deduct AP if needed ──
+    let newAp = faction.action_points || 0;
+    if (cfg.AP_COST > 0) {
+        const apResult = await deductAP(supabase, factionId, cfg.AP_COST);
+        newAp = apResult.newAp ?? (newAp - cfg.AP_COST);
+    }
 
-    // ── 12. Log ──
+    // ── 8. Create promise record ──
+    const { data: promise, error: promiseErr } = await supabase
+        .from('fundraiser_promises')
+        .insert({
+            party_id: factionId,
+            nation_id: nationId,
+            bloc_id: affectedBlocIds[0] || null,
+            bloc_name: affectedBlocNames.join(', '),
+            demand_index: 0,
+            demand_text: demandText,
+            demand_type: demandType,
+            donation_amount: 0,
+            small_amount: 0,
+            tick_created: currentTick,
+            deadline_ticks: deadlineTicks,
+            tick_deadline: tickDeadline,
+            conditions,
+            progress: { source: 'make_promise', promise_type: promiseType },
+            status: 'active',
+        })
+        .select()
+        .single();
+
+    if (promiseErr) {
+        console.error('[MakePromise] Promise insert failed:', promiseErr.message);
+        return { success: false, error: 'Failed to create promise record.' };
+    }
+
+    // ── 9. Log campaign action ──
+    const playerAbbr = faction.abbreviation || faction.faction_name;
+    const headline = promiseType === 'crisis'
+        ? `${playerAbbr} Promises to ${demandText}`
+        : `${playerAbbr} Pledges: "${demandText}"`;
+
     await supabase.from('campaign_actions').insert({
         party_id: factionId,
         nation_id: nationId,
-        action_type: 'press_conference',
-        ap_cost: PRESS_CONF_CONFIG.AP_COST,
-        money_cost: PRESS_CONF_CONFIG.MONEY_COST,
+        action_type: 'make_promise',
+        ap_cost: cfg.AP_COST,
+        money_cost: 0,
         tick_performed: currentTick,
         result: {
-            statKey,
-            ministryKey,
-            mode,
-            backfire,
-            flatStat,
+            promiseId: promise.id,
+            promiseType,
+            demandText,
+            demandType,
+            conditions,
+            deadlineTicks,
+            tickDeadline,
+            affectedBlocNames,
+            approvalBump,
+            blocEffects,
             headline,
-            selfMomentumDelta,
-            targetMomentumDelta,
-            targetPartyId,
-            targetAbbr,
-            sameStatPenalty,
-            blocResults,
-            trendingWell,
-            trendingBadly,
         }
     });
 
     return {
         success: true,
-        mode,
-        backfire,
-        flatStat,
+        promiseId: promise.id,
+        promiseType,
+        demandText,
+        conditions,
+        deadlineTicks,
+        tickDeadline,
+        affectedBlocNames,
+        approvalBump,
+        blocEffects,
         headline,
-        statKey,
-        statLabel,
-        ministryKey,
-        selfMomentumDelta,
-        targetMomentumDelta,
-        targetAbbr,
-        targetPartyId,
-        sameStatPenalty,
-        blocResults,
-        caringBlocNames: caringBlocs.map(b => b.bloc_name),
-        trendingWell,
-        trendingBadly,
-        newAp: apResult.newAp ?? ((faction.action_points || 0) - PRESS_CONF_CONFIG.AP_COST),
-        oldTreasury,
-        newTreasury,
+        newAp,
     };
+}
+
+/**
+ * Get list of stats available for promise-making with current values.
+ * Only returns stats with a clear direction (higher/lower is better).
+ */
+export function getPromiseableStats(nation) {
+    const results = [];
+    for (const statKey of NATION_STAT_COLUMNS) {
+        const sign = statDirectionSign(statKey);
+        if (sign === 0) continue;
+        const currentVal = nation[statKey];
+        if (currentVal == null) continue;
+        const ministry = STAT_TO_MINISTRY[statKey] || null;
+        results.push({
+            statKey,
+            label: statKey.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+            value: Number(currentVal),
+            direction: sign === 1 ? 'higher_is_better' : 'lower_is_better',
+            ministry,
+        });
+    }
+    return results;
 }
 
 
@@ -2362,6 +2299,15 @@ export function evaluatePromiseStatus(promise, nationStats, currentTick, ministr
             return { status: 'in_progress', progress };
         }
 
+        case 'crisis_resolution': {
+            // Fulfilled when the referenced crisis is no longer active
+            // The crisis_id in conditions refers to the active_crises row id
+            // Checked externally via processPromiseTick which loads active crises
+            if (progress.crisis_resolved) return { status: 'fulfilled', progress };
+            if (remaining <= Math.ceil(promise.deadline_ticks * 0.25)) return { status: 'at_risk', progress };
+            return { status: 'in_progress', progress };
+        }
+
         case 'repeal_bill':
         case 'block_bill':
         case 'block_bill_tag':
@@ -2421,7 +2367,19 @@ export async function processPromiseTick(supabase, nation, currentTick) {
         .from('nations').select('*').eq('id', nation.id).single();
     const nationStats = freshNation || nation;
 
+    // Load active crises for crisis_resolution promise checking
+    const { data: activeCrises } = await supabase
+        .from('active_crises').select('id, crisis_id').eq('nation_id', nation.id);
+    const activeCrisisIds = new Set((activeCrises || []).map(ac => ac.id));
+
     for (const promise of activePromises) {
+        // For crisis_resolution promises, check if the crisis is still active
+        if (promise.demand_type === 'crisis_resolution' && promise.conditions?.crisis_id) {
+            if (!activeCrisisIds.has(promise.conditions.crisis_id)) {
+                promise.progress = { ...promise.progress, crisis_resolved: true };
+            }
+        }
+
         const evaluation = evaluatePromiseStatus(promise, nationStats, currentTick, ministries, coalitionPartyIds, campaignActions);
 
         // Update progress

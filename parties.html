@@ -20,7 +20,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
 import { tickToDate, escapeHtml } from './js/utils.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize } from './js/game-common.js';
 import { getPartyIconSVG, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -784,6 +784,7 @@ async function renderAutocracyParties(el, f, n) {
         // ── REGIME LOG ──
         const ACTION_LABELS = {
             rally: 'RALLY',
+            make_promise: 'PROMISE MADE',
             press_conference: 'PRESS CONFERENCE',
             outreach: 'VOTER OUTREACH',
             fundraiser: 'FUNDRAISER',
@@ -827,6 +828,8 @@ async function renderAutocracyParties(el, f, n) {
                     detail = `${r.minister_name || 'Unknown'} appointed as ${MINISTRY_SHORT[r.ministry_key] || 'minister'}` + (r.party_name ? ` (${r.party_name})` : '');
                 } else if (entry.action_type === 'fire_minister') {
                     detail = `${r.minister_name || 'Unknown'} dismissed from ${MINISTRY_SHORT[r.ministry_key] || 'ministry'}`;
+                } else if (entry.action_type === 'make_promise') {
+                    detail = r.headline || r.demandText || '';
                 } else if (entry.action_type === 'press_conference') {
                     detail = r.headline || r.stat || '';
                 } else if (entry.action_type === 'rally') {
@@ -3027,6 +3030,7 @@ async function renderParties() {
                     'penalty:no_vote': 'Didn\'t vote on bill',
                     'campaign:press_conference': 'Press conference',
                     'campaign:press_conference_target': 'Targeted by press conference',
+                    'campaign:make_promise': 'Made promise',
                     'promise:kept': 'Promise kept',
                     'promise:broken': 'Promise broken',
                     'bill:enactment': 'Bill enacted',
@@ -3114,7 +3118,7 @@ async function renderParties() {
 
         <div class="actions-row">
             <div id="rally-container"></div>
-            <div id="pc-container"></div>
+            <div id="promise-maker-container"></div>
         </div>
 
         <div class="actions-row">
@@ -3735,382 +3739,515 @@ async function renderParties() {
 
     renderRally();
 
-    // ── Press Conference UI ──
-    let pcScreen = 'select'; // 'select' | 'preview' | 'results'
-    let pcSelectedStat = null;
-    let pcResults = null;
-    let pcFilter = 'All';
+    // ── Make Promise UI ──
+    let pmShowCreator = false;
+    let pmPromiseType = null;   // 'stat' | 'crisis'
+    let pmSelectedStat = null;
+    let pmSelectedCrisis = null;
+    let pmDirection = null;
+    let pmResult = null;
 
-    // Fetch recent press conferences for cooldown
-    const { data: recentPCs } = await _supabase
-        .from('campaign_actions')
-        .select('tick_performed, result')
+    // Load active crises for the crisis selector
+    const { data: activeCrises } = await _supabase
+        .from('active_crises')
+        .select('id, crisis_id, started_at_tick')
+        .eq('nation_id', n.id);
+
+    // Load crisis template info
+    const crisisTemplateIds = (activeCrises || []).map(ac => ac.crisis_id);
+    let crisisTemplateMap = {};
+    if (crisisTemplateIds.length > 0) {
+        const { data: crisisTemplates } = await _supabase
+            .from('crisis_templates')
+            .select('id, name, description')
+            .in('id', crisisTemplateIds);
+        for (const ct of (crisisTemplates || [])) crisisTemplateMap[ct.id] = ct;
+    }
+
+    const activeCrisesList = (activeCrises || []).map(ac => ({
+        id: ac.id,
+        templateId: ac.crisis_id,
+        name: crisisTemplateMap[ac.crisis_id]?.name || 'Unknown Crisis',
+        description: crisisTemplateMap[ac.crisis_id]?.description || '',
+        ticksActive: Math.max(0, (currentShard?.current_tick || 0) - (ac.started_at_tick || 0)),
+    }));
+
+    // Build stat list for stat promise selector
+    const promiseStatList = getPromiseableStats(n);
+
+    // Load existing promises + active promise count
+    const { data: allPromises } = await _supabase
+        .from('fundraiser_promises')
+        .select('*')
         .eq('party_id', f.id)
-        .eq('action_type', 'press_conference')
-        .gte('tick_performed', (currentShard?.current_tick || 0) - PRESS_CONF_CONFIG.SAME_STAT_WINDOW)
-        .order('tick_performed', { ascending: false });
+        .order('tick_created', { ascending: false });
 
-    const pcThisTick = (recentPCs || []).some(r => r.tick_performed === (currentShard?.current_tick || 0));
+    const activePromisesList = (allPromises || []).filter(p => p.status === 'active');
+    const resolvedPromisesList = (allPromises || []).filter(p => p.status === 'fulfilled' || p.status === 'broken');
+    const keptCount = resolvedPromisesList.filter(p => p.status === 'fulfilled').length;
+    const brokenCount = resolvedPromisesList.filter(p => p.status === 'broken').length;
 
-    // Build stat list with trend + ministry + holder info
-    const { data: allMinistries } = await _supabase
-        .from('ministries')
-        .select('party_id, ministry_key')
-        .eq('nation_id', n.id)
-        .eq('is_active', true);
+    // Track which stats already have active promises
+    const activeStatKeys = new Set(activePromisesList.filter(p => p.demand_type === 'stat_target').map(p => p.conditions?.stat_key));
+    const activeCrisisPromiseIds = new Set(activePromisesList.filter(p => p.demand_type === 'crisis_resolution').map(p => p.conditions?.crisis_id));
 
-    const ministryHolder = {};
-    for (const m of (allMinistries || [])) ministryHolder[m.ministry_key] = m.party_id;
-    if (coalition && coalition.lead_party_id) ministryHolder['prime_minister'] = coalition.lead_party_id;
-
-    // Fetch history from 3 ticks ago for trend (wider window catches gradual changes)
-    let pcPrevStats = null;
-    const pcTick = currentShard?.current_tick || 0;
-    const PC_TREND_WINDOW = 3;
-    if (pcTick > 0) {
-        const lookbackTick = Math.max(0, pcTick - PC_TREND_WINDOW);
-        const { data: histRow } = await _supabase
-            .from('nations_history').select('*')
-            .eq('nation_id', n.id).eq('tick', lookbackTick).maybeSingle();
-        if (histRow) {
-            pcPrevStats = histRow;
-        } else {
-            // Fallback: oldest available row before current tick
-            const { data: fallbackRows } = await _supabase
-                .from('nations_history').select('*')
-                .eq('nation_id', n.id).lt('tick', pcTick)
-                .order('tick', { ascending: true }).limit(1);
-            pcPrevStats = fallbackRows?.[0] || null;
-        }
-    }
-
-    const MINISTRY_DISPLAY = {
-        prime_minister: 'PM', interior: 'Interior', foreign: 'Foreign',
-        defense: 'Defense', finance: 'Finance', education: 'Education',
-        healthcare: 'Healthcare', labor: 'Labor', justice: 'Justice',
-        transportation: 'Transport', security: 'Security'
-    };
-
-    const statList = [];
-    const FLAT_THRESHOLD_PC = 0.15;
-    for (const [statKey, ministryKey] of Object.entries(STAT_TO_MINISTRY)) {
-        const sign = statDirectionSign(statKey);
-        if (sign === 0) continue;
-        const cur = n[statKey];
-        const prev = pcPrevStats ? pcPrevStats[statKey] : null;
-        if (cur == null) continue;
-
-        const rawDelta = (prev != null) ? cur - prev : 0;
-        const improvement = rawDelta * sign;
-        let trend = 'flat';
-        if (improvement > FLAT_THRESHOLD_PC) trend = 'well';
-        else if (improvement < -FLAT_THRESHOLD_PC) trend = 'badly';
-
-        const holderId = ministryHolder[ministryKey] || null;
-        let mode;
-        if (holderId === f.id) mode = 'credit';
-        else if (holderId) mode = 'attack';
-        else mode = 'attention';
-
-        const holderParty = holderId ? partyLookup[holderId] : null;
-        const holderAbbr = holderParty?.abbreviation || (holderId === f.id ? 'YOU' : null);
-
-        // Check same-stat penalty
-        const sameStatRecent = (recentPCs || []).filter(r => r.result?.statKey === statKey);
-
-        statList.push({
-            statKey,
-            label: statKey.replace(/_/g, ' '),
-            ministryKey,
-            ministryLabel: MINISTRY_DISPLAY[ministryKey] || ministryKey,
-            trend,
-            mode,
-            holderId,
-            holderAbbr,
-            holderColor: holderParty?.party_color || '#666',
-            willBackfire: (mode === 'credit' && trend === 'badly') || (mode === 'attack' && trend === 'well'),
-            isFlat: trend === 'flat',
-            sameStatPenalty: sameStatRecent.length > 0,
-        });
-    }
-
-    // Group stats by ministry for the filter
-    const ministryKeys = [...new Set(statList.map(s => s.ministryKey))];
-
-    function renderPC() {
-        const container = document.getElementById('pc-container');
+    function renderPromiseMaker() {
+        const container = document.getElementById('promise-maker-container');
         if (!container) return;
 
-        if (pcScreen === 'select') {
-            const costOk = (f.action_points || 0) >= PRESS_CONF_CONFIG.AP_COST && (f.party_funds || 0) >= PRESS_CONF_CONFIG.MONEY_COST;
-            const canAct = costOk && !pcThisTick;
+        const canAffordAP = (f.action_points || 0) >= MAKE_PROMISE_CONFIG.AP_COST;
+        const atLimit = activePromisesList.length >= MAKE_PROMISE_CONFIG.MAX_ACTIVE_PROMISES;
+        const currentTick = currentShard?.current_tick || 0;
 
-            // Filter buttons: All + ministry names
-            const filterOptions = ['All', ...ministryKeys.map(k => MINISTRY_DISPLAY[k] || k)];
-            const filterBtns = filterOptions.map(label => {
-                return `<button class="pc-filter-btn${pcFilter === label ? ' active' : ''}" data-filter="${label}">${label}</button>`;
-            }).join('');
-
-            // Filter stats
-            let filtered = statList;
-            if (pcFilter !== 'All') {
-                filtered = statList.filter(s => (MINISTRY_DISPLAY[s.ministryKey] || s.ministryKey) === pcFilter);
-            }
-
-            // Sort: trending badly first (good attack targets), then well, then flat
-            const trendOrder = { badly: 0, well: 1, flat: 2 };
-            filtered.sort((a, b) => trendOrder[a.trend] - trendOrder[b.trend]);
-
-            const rows = filtered.map(s => {
-                const trendIcon = s.trend === 'well' ? '<span class="pc-trend-good">▲</span>'
-                    : s.trend === 'badly' ? '<span class="pc-trend-bad">▼</span>'
-                    : '<span class="pc-trend-flat">—</span>';
-                const modeIcon = s.mode === 'credit' ? '📣' : s.mode === 'attack' ? '⚔️' : '📢';
-                const modeLabel = s.mode === 'credit' ? 'Credit' : s.mode === 'attack' ? 'Attack' : 'Attention';
-                const backfireWarn = s.willBackfire ? ' <span class="pc-backfire-warn">⚠</span>' : '';
-                const penaltyNote = s.sameStatPenalty ? ' <span class="pc-penalty-note">½</span>' : '';
-                const holderTag = s.holderAbbr
-                    ? `<span class="pc-holder" style="color:${s.holderColor}">${s.holderAbbr}</span>`
-                    : '<span class="pc-holder pc-holder-none">—</span>';
-                const statLabel = s.label.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-                return `<div class="pc-stat-row${!canAct ? ' disabled' : ''}" data-stat="${s.statKey}">
-                    <span class="pc-stat-trend">${trendIcon}</span>
-                    <span class="pc-stat-name">${statLabel}</span>
-                    <span class="pc-stat-ministry">${s.ministryLabel}</span>
-                    ${holderTag}
-                    <span class="pc-stat-mode pc-mode-${s.mode}">${modeIcon} ${modeLabel}${backfireWarn}${penaltyNote}</span>
-                </div>`;
-            }).join('');
-
-            container.innerHTML = `
-                <div class="pc-panel">
-                    <div class="pc-header-row">
-                        <span class="pc-title">Press Conference</span>
-                        <span class="pc-cost">Cost: ${PRESS_CONF_CONFIG.AP_COST} AP + $${PRESS_CONF_CONFIG.MONEY_COST.toLocaleString()}</span>
-                    </div>
-                    <div class="pc-desc">Speak publicly about a national stat. Take credit, attack rivals, or draw attention.</div>
-                    ${pcThisTick ? '<div class="pc-cooldown">You have already held a press conference this tick.</div>' : ''}
-                    ${!costOk && !pcThisTick ? '<div class="pc-cooldown">Not enough AP or funds.</div>' : ''}
-                    <div class="pc-divider"></div>
-                    <div class="pc-filters">${filterBtns}</div>
-                    <div class="pc-divider"></div>
-                    <div class="pc-stat-header">
-                        <span class="pc-stat-trend">Trend</span>
-                        <span class="pc-stat-name">Stat</span>
-                        <span class="pc-stat-ministry">Ministry</span>
-                        <span class="pc-holder">Holder</span>
-                        <span class="pc-stat-mode">Action</span>
-                    </div>
-                    <div class="pc-stat-list">${rows}</div>
-                    <div class="pc-legend">
-                        <span>📣 Credit = your ministry</span>
-                        <span>⚔️ Attack = rival's ministry</span>
-                        <span>📢 Attention = no holder</span>
-                        <span>⚠ = backfire (wrong trend)</span>
-                        <span>½ = same-stat penalty</span>
-                        <span>— = flat (reduced effect)</span>
-                    </div>
-                </div>`;
-
-            container.querySelectorAll('.pc-filter-btn').forEach(btn => {
-                btn.addEventListener('click', () => { pcFilter = btn.dataset.filter; renderPC(); });
-            });
-            container.querySelectorAll('.pc-stat-row:not(.disabled)').forEach(row => {
-                row.addEventListener('click', () => { pcSelectedStat = row.dataset.stat; pcScreen = 'preview'; renderPC(); });
-            });
-
-        } else if (pcScreen === 'preview') {
-            const s = statList.find(x => x.statKey === pcSelectedStat);
-            if (!s) { pcScreen = 'select'; renderPC(); return; }
-
-            const statLabel = s.label.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-            const trendLabel = s.trend === 'well' ? 'Trending Well ▲' : s.trend === 'badly' ? 'Trending Badly ▼' : 'Flat —';
-            const trendClass = s.trend === 'well' ? 'pc-trend-good' : s.trend === 'badly' ? 'pc-trend-bad' : 'pc-trend-flat';
-
-            // Find caring blocs
-            const caringBlocsList = [];
+        // Find affected blocs for the selected stat
+        let affectedBlocNames = [];
+        let selectedStatData = null;
+        if (pmSelectedStat) {
+            selectedStatData = promiseStatList.find(s => s.statKey === pmSelectedStat);
             for (const b of (blocs || [])) {
                 const issues = b.priority_issues || [];
                 for (const issue of issues) {
                     const catStats = ISSUE_CATEGORY_STATS[issue] || [];
-                    if (catStats.includes(s.statKey)) {
-                        caringBlocsList.push(b.bloc_name);
+                    if (catStats.includes(pmSelectedStat)) {
+                        affectedBlocNames.push(b.bloc_name);
                         break;
                     }
                 }
             }
+        }
 
-            const flatNote = s.isFlat ? ' (reduced — stat is flat)' : '';
-            const penaltyNotes = [s.sameStatPenalty ? 'same-stat penalty' : '', s.isFlat ? 'flat stat' : ''].filter(Boolean).join(' + ');
-            const penaltySuffix = penaltyNotes ? ` (reduced: ${penaltyNotes})` : '';
+        // ── Promise Creator Panel ──
+        let creatorHtml = '';
+        if (pmShowCreator) {
+            const crisisActive = pmPromiseType === 'crisis';
+            const statActive = pmPromiseType === 'stat';
 
-            let projectedHtml = '';
-            if (s.mode === 'credit') {
-                if (s.willBackfire) {
-                    projectedHtml = `
-                        <div class="pc-projection pc-proj-bad">
-                            <div class="pc-proj-title">BACKFIRE — Stat is Actively Declining Under Your Watch</div>
-                            <div>Your momentum: ${PRESS_CONF_CONFIG.CREDIT_BACKFIRE_MOMENTUM}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
-                            ${caringBlocsList.length > 0 ? `<div>Caring blocs get ${PRESS_CONF_CONFIG.CREDIT_BACKFIRE_PREF} preference toward you</div>` : ''}
-                            <div class="pc-proj-headline">Projected headline: "${s.holderAbbr || 'YOU'} Claims Credit — Public Not Convinced"</div>
-                        </div>`;
+            // Crisis selector
+            let crisisSelectorHtml = '';
+            if (crisisActive) {
+                if (activeCrisesList.length === 0) {
+                    crisisSelectorHtml = '<div class="pm-empty">No active crises to resolve.</div>';
                 } else {
-                    const creditTitle = s.isFlat
-                        ? 'TAKING CREDIT — Stat is Stable Under Your Watch'
-                        : 'TAKING CREDIT — Stat is Improving Under Your Watch';
-                    projectedHtml = `
-                        <div class="pc-projection pc-proj-good">
-                            <div class="pc-proj-title">${creditTitle}</div>
-                            <div>Your momentum: +${PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MIN} to +${PRESS_CONF_CONFIG.CREDIT_MOMENTUM_MAX}${penaltySuffix}</div>
-                            ${caringBlocsList.length > 0 ? `<div>Caring blocs get +${PRESS_CONF_CONFIG.CREDIT_PREF_DELTA} preference toward you</div>` : ''}
+                    crisisSelectorHtml = '<div class="pm-sub-label">Select Active Crisis</div><div class="pm-crisis-list">' +
+                        activeCrisesList.map(c => {
+                            const sel = pmSelectedCrisis === c.id;
+                            const alreadyPromised = activeCrisisPromiseIds.has(c.id);
+                            return `<div class="pm-crisis-row${sel ? ' selected' : ''}${alreadyPromised ? ' disabled' : ''}" data-crisis="${c.id}">
+                                <div class="pm-crisis-top">
+                                    <span class="pm-crisis-name${sel ? ' selected' : ''}">${escapeHtml(c.name)}</span>
+                                    <span class="pm-crisis-ticks">${alreadyPromised ? 'Already promised' : 'Active ' + c.ticksActive + ' ticks'}</span>
+                                </div>
+                                <div class="pm-crisis-desc">${escapeHtml(c.description)}</div>
+                            </div>`;
+                        }).join('') + '</div>';
+                }
+            }
+
+            // Stat selector
+            let statSelectorHtml = '';
+            if (statActive) {
+                const statGrid = promiseStatList.map(s => {
+                    const sel = pmSelectedStat === s.statKey;
+                    const alreadyPromised = activeStatKeys.has(s.statKey);
+                    return `<div class="pm-stat-cell${sel ? ' selected' : ''}${alreadyPromised ? ' disabled' : ''}" data-stat="${s.statKey}" data-dir="${s.direction}">
+                        <span class="pm-stat-cell-name${sel ? ' selected' : ''}">${s.label}</span>
+                        <span class="pm-stat-cell-val">${Math.round(s.value)}</span>
+                    </div>`;
+                }).join('');
+
+                let previewHtml = '';
+                if (selectedStatData) {
+                    const dir = pmDirection;
+                    const targetVal = dir === 'increase'
+                        ? Math.min(100, Math.round(selectedStatData.value + MAKE_PROMISE_CONFIG.STAT_DELTA))
+                        : Math.max(0, Math.round(selectedStatData.value - MAKE_PROMISE_CONFIG.STAT_DELTA));
+
+                    previewHtml = `
+                        <div class="pm-preview">
+                            <div class="pm-preview-header">
+                                <span class="pm-preview-text">Promise to <span class="pm-hl-cyan">${dir === 'increase' ? 'increase' : 'decrease'} ${selectedStatData.label}</span> by ${MAKE_PROMISE_CONFIG.STAT_DELTA}</span>
+                                <div class="pm-dir-btns">
+                                    <span class="pm-dir-btn${dir === 'increase' ? ' increase' : ''}" data-dir="increase">▲ INCREASE</span>
+                                    <span class="pm-dir-btn${dir === 'decrease' ? ' decrease' : ''}" data-dir="decrease">▼ DECREASE</span>
+                                </div>
+                            </div>
+                            <div class="pm-preview-stats">
+                                <div class="pm-preview-stat">
+                                    <span class="pm-preview-label">CURRENT</span>
+                                    <span class="pm-preview-big">${Math.round(selectedStatData.value)}</span>
+                                </div>
+                                <span class="pm-preview-arrow">→</span>
+                                <div class="pm-preview-stat">
+                                    <span class="pm-preview-label">TARGET</span>
+                                    <span class="pm-preview-big pm-hl-cyan">${targetVal}</span>
+                                </div>
+                                <div style="flex:1"></div>
+                                <div class="pm-preview-stat">
+                                    <span class="pm-preview-label">DEADLINE</span>
+                                    <span class="pm-preview-deadline">1D24 + 6 ticks</span>
+                                    <span class="pm-preview-label">(7–30 ticks)</span>
+                                </div>
+                            </div>
+                            <div class="pm-affected">
+                                <span class="pm-sub-label">Affected Voter Blocs</span>
+                                <div class="pm-affected-list">
+                                    ${affectedBlocNames.length > 0
+                                        ? affectedBlocNames.map(b => '<span class="pm-bloc-pill">' + escapeHtml(b) + '</span>').join('')
+                                        : '<span class="pm-no-blocs">No blocs prioritize this category</span>'}
+                                </div>
+                                ${affectedBlocNames.length > 0 ? '<div class="pm-immediate-bump">Immediate: +' + MAKE_PROMISE_CONFIG.APPROVAL_ON_PROMISE_STAT + ' approval with affected blocs on promise</div>' : ''}
+                            </div>
                         </div>`;
                 }
-            } else if (s.mode === 'attack') {
-                if (s.willBackfire) {
-                    projectedHtml = `
-                        <div class="pc-projection pc-proj-bad">
-                            <div class="pc-proj-title">BACKFIRE — Stat is Actually Improving</div>
-                            <div>Your momentum: ${PRESS_CONF_CONFIG.ATTACK_BACKFIRE_SELF_MOMENTUM}${s.sameStatPenalty ? ' (halved from same-stat penalty)' : ''}</div>
-                            <div>${s.holderAbbr} gets +${PRESS_CONF_CONFIG.ATTACK_BACKFIRE_TARGET_MOMENTUM} momentum (sympathy boost)</div>
-                            <div class="pc-proj-headline">Projected headline: "Attack on ${s.holderAbbr} Backfires — Stat is Up"</div>
-                        </div>`;
-                } else {
-                    const attackTitle = s.isFlat
-                        ? `ATTACK — Criticizing ${s.holderAbbr} for Stagnant Performance`
-                        : `ATTACK — Blaming ${s.holderAbbr} for a Failing Stat`;
-                    projectedHtml = `
-                        <div class="pc-projection pc-proj-good">
-                            <div class="pc-proj-title">${attackTitle}</div>
-                            <div>${s.holderAbbr}'s momentum: -${PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MIN} to -${PRESS_CONF_CONFIG.ATTACK_TARGET_MOM_MAX}${penaltySuffix}</div>
-                            <div>Your momentum: +${PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MIN} to +${PRESS_CONF_CONFIG.ATTACK_SELF_MOM_MAX}${penaltySuffix}</div>
-                            ${caringBlocsList.length > 0 ? `<div>Credit transfer: caring blocs shift -${PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT} from ${s.holderAbbr}, +${PRESS_CONF_CONFIG.ATTACK_PREF_SHIFT} to you</div>` : ''}
-                        </div>`;
-                }
-            } else {
-                projectedHtml = `
-                    <div class="pc-projection pc-proj-neutral">
-                        <div class="pc-proj-title">DRAWING ATTENTION — No Party Holds This Ministry</div>
-                        <div>Your momentum: +${PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MIN} to +${PRESS_CONF_CONFIG.ATTENTION_MOMENTUM_MAX}${s.sameStatPenalty ? ' (reduced: same-stat penalty)' : ''}</div>
-                        <div>No credit transfer (nobody to blame or praise)</div>
+
+                statSelectorHtml = `
+                    <div class="pm-sub-label">Select Stat to Address</div>
+                    <div class="pm-stat-grid">${statGrid}</div>
+                    ${previewHtml}`;
+            }
+
+            // Consequences preview
+            let consequencesHtml = '';
+            if (pmSelectedCrisis || pmSelectedStat) {
+                const bumpText = pmPromiseType === 'crisis'
+                    ? 'Minor approval bump with all blocs on promise'
+                    : 'Moderate approval bump with affected blocs on promise';
+                consequencesHtml = `
+                    <div class="pm-consequences">
+                        <span class="pm-sub-label">Consequences</span>
+                        <div class="pm-consequence-list">
+                            <div class="pm-consequence"><span class="pm-c-up">▲</span> ${bumpText}</div>
+                            <div class="pm-consequence"><span class="pm-c-up">▲</span> If kept: <span class="pm-hl-green">+${MAKE_PROMISE_CONFIG.APPROVAL_IF_KEPT} approval</span> with promised blocs (permanent legacy)</div>
+                            <div class="pm-consequence"><span class="pm-c-down">▼</span> If governing &amp; unfulfilled: <span class="pm-hl-red">−1D3 approval/tick</span> with promised blocs</div>
+                            <div class="pm-consequence"><span class="pm-c-down">▼</span> If broken (deadline passes): <span class="pm-hl-red">permanent legacy penalty</span></div>
+                        </div>
                     </div>`;
             }
 
-            const caringHtml = caringBlocsList.length > 0
-                ? `<div class="pc-caring-blocs"><span class="pc-caring-label">Blocs who care:</span> ${caringBlocsList.join(', ')}</div>`
-                : '<div class="pc-caring-blocs"><span class="pc-caring-label">No blocs have this as a priority issue.</span></div>';
-
-            container.innerHTML = `
-                <div class="pc-panel">
-                    <div class="pc-header-row">
-                        <span class="pc-title">Press Conference</span>
-                        <span class="pc-cost">Cost: ${PRESS_CONF_CONFIG.AP_COST} AP + $${PRESS_CONF_CONFIG.MONEY_COST.toLocaleString()}</span>
+            creatorHtml = `
+                <div class="pm-creator">
+                    <div class="pm-creator-header">
+                        <span class="pm-creator-title">Make a Promise</span>
+                        <span class="pm-creator-close" id="pm-close-creator">✕</span>
                     </div>
-                    <div class="pc-selected">
-                        <div class="pc-selected-stat">${statLabel}</div>
-                        <div class="pc-selected-meta">
-                            <span class="${trendClass}">${trendLabel}</span>
-                            <span class="pc-selected-ministry">${s.ministryLabel}${s.holderAbbr ? ` — held by <span style="color:${s.holderColor};font-weight:700">${s.holderAbbr}</span>` : ' — no holder'}</span>
+                    <div class="pm-type-btns">
+                        <div class="pm-type-btn${crisisActive ? ' crisis-active' : ''}" data-type="crisis">
+                            <span class="pm-type-label${crisisActive ? ' crisis-active' : ''}">Solve a Crisis</span>
+                            <span class="pm-type-desc">Minor bump with all believing blocs</span>
+                        </div>
+                        <div class="pm-type-btn${statActive ? ' stat-active' : ''}" data-type="stat">
+                            <span class="pm-type-label${statActive ? ' stat-active' : ''}">Address an Issue</span>
+                            <span class="pm-type-desc">Moderate bump with blocs who care about that stat</span>
                         </div>
                     </div>
-                    <div class="pc-divider pc-divider-accent"></div>
-                    ${projectedHtml}
-                    <div class="pc-divider"></div>
-                    ${caringHtml}
-                    ${s.sameStatPenalty ? '<div class="pc-same-stat-warn">⚠ Same-stat penalty: You\'ve spoken about this stat recently. Momentum effects halved.</div>' : ''}
-                    <div class="pc-actions">
-                        <button class="pc-btn pc-btn-confirm${s.willBackfire ? ' pc-btn-danger' : ''}" id="pc-confirm">${s.willBackfire ? 'PROCEED ANYWAY' : 'HOLD PRESS CONFERENCE'}</button>
-                        <button class="pc-btn pc-btn-cancel" id="pc-cancel">CANCEL</button>
+                    ${crisisSelectorHtml}
+                    ${statSelectorHtml}
+                    ${consequencesHtml}
+                    <div class="pm-submit-row">
+                        <button class="pm-btn pm-btn-cancel" id="pm-cancel">Cancel</button>
+                        <button class="pm-btn pm-btn-submit${(!pmSelectedCrisis && !pmSelectedStat) ? ' disabled' : ''}" id="pm-submit" ${(!pmSelectedCrisis && !pmSelectedStat) ? 'disabled' : ''}>Make Promise — ${MAKE_PROMISE_CONFIG.AP_COST} AP</button>
                     </div>
                 </div>`;
+        }
 
-            document.getElementById('pc-confirm').addEventListener('click', async () => {
-                const btn = document.getElementById('pc-confirm');
-                btn.disabled = true;
-                btn.textContent = 'Speaking...';
+        // ── Result card ──
+        let resultHtml = '';
+        if (pmResult) {
+            const r = pmResult;
+            const effectsHtml = r.blocEffects.map(e =>
+                '<div class="pm-result-effect">' + escapeHtml(e.blocName) + ': +' + e.delta + ' (' + e.oldPref + ' → ' + e.newPref + ')</div>'
+            ).join('') || '<div class="pm-result-effect">No approval changes.</div>';
+
+            resultHtml = `
+                <div class="pm-result-card">
+                    <div class="pm-result-title">${escapeHtml(r.headline)}</div>
+                    <div class="pm-result-meta">
+                        <span class="pm-pill pm-pill-${r.promiseType === 'crisis' ? 'red' : 'cyan'}">${r.promiseType === 'crisis' ? 'Crisis' : 'Stat'}</span>
+                        <span class="pm-result-deadline">Deadline: ${r.deadlineTicks} ticks (Tick ${r.tickDeadline})</span>
+                    </div>
+                    <div class="pm-result-effects-label">Immediate Approval Effects</div>
+                    ${effectsHtml}
+                    <div class="pm-result-ap">AP: ${r.newAp + MAKE_PROMISE_CONFIG.AP_COST} → ${r.newAp}</div>
+                    <div class="pm-submit-row">
+                        <button class="pm-btn pm-btn-cancel" id="pm-dismiss">DISMISS</button>
+                    </div>
+                </div>`;
+        }
+
+        // ── Active Promises List ──
+        let activeHtml = '';
+        if (activePromisesList.length > 0) {
+            activeHtml = activePromisesList.map(p => {
+                const isCrisis = p.demand_type === 'crisis_resolution';
+                const cond = p.conditions || {};
+                const prog = p.progress || {};
+                const remaining = p.tick_deadline - currentTick;
+                const elapsed = currentTick - p.tick_created;
+                const total = p.deadline_ticks || 1;
+                const timePct = Math.min(100, Math.round((elapsed / total) * 100));
+
+                let timeColor = '#4ade80';
+                if (remaining <= 3) timeColor = '#ef4444';
+                else if (remaining <= 6) timeColor = '#f97316';
+                else if (remaining <= 10) timeColor = '#facc15';
+
+                let statusLabel = 'IN PROGRESS';
+                let statusColor = 'yellow';
+                if (remaining <= Math.ceil(total * 0.25)) {
+                    statusLabel = 'AT RISK';
+                    statusColor = 'orange';
+                }
+
+                let progressBarHtml = '';
+                if (!isCrisis && cond.stat_key) {
+                    const cur = Number(n[cond.stat_key] ?? cond.baseline_value ?? 50);
+                    const tgt = cond.target_value;
+                    const start = cond.baseline_value ?? cur;
+                    const dir = cond.direction === 'below' ? 'decrease' : 'increase';
+                    let pct;
+                    if (dir === 'decrease') {
+                        pct = start === tgt ? 100 : Math.max(0, Math.min(100, ((start - cur) / (start - tgt)) * 100));
+                    } else {
+                        pct = start === tgt ? 100 : Math.max(0, Math.min(100, ((cur - start) / (tgt - start)) * 100));
+                    }
+                    let barColor = '#22d3ee';
+                    if (pct >= 100) barColor = '#4ade80';
+                    else if (pct >= 60) barColor = '#22d3ee';
+                    else if (pct >= 30) barColor = '#facc15';
+                    else barColor = '#ef4444';
+
+                    const statLabel = cond.stat_key.replace(/_/g, ' ');
+                    progressBarHtml = `
+                        <div class="pm-card-progress">
+                            <div class="pm-card-progress-labels">
+                                <span>${escapeHtml(statLabel)}: ${Math.round(cur)} → target ${tgt}</span>
+                                <span>started at ${Math.round(start)}</span>
+                            </div>
+                            <div class="pm-bar-wrap">
+                                <div class="pm-bar-track"><div class="pm-bar-fill" style="width:${Math.min(100, pct)}%;background:${barColor}"></div></div>
+                                <span class="pm-bar-pct" style="color:${barColor}">${Math.round(pct)}%</span>
+                            </div>
+                        </div>`;
+                }
+
+                const penaltyAccum = prog.penalty_accumulated || 0;
+                let penaltyHtml = penaltyAccum > 0
+                    ? '<span class="pm-penalty">−' + penaltyAccum + ' accumulated penalty</span>'
+                    : '<span class="pm-no-penalty">No penalties yet</span>';
+
+                const blocNames = (p.bloc_name || '').split(', ').filter(Boolean);
+                const borderLeftColor = statusColor === 'orange' ? '#f97316' : '#facc15';
+
+                return `<div class="pm-card" style="border-left-color:${borderLeftColor}">
+                    <div class="pm-card-top">
+                        <div class="pm-card-left">
+                            <span class="pm-pill pm-pill-${isCrisis ? 'red' : 'cyan'}">${isCrisis ? 'Crisis' : 'Stat'}</span>
+                            <span class="pm-card-label">${escapeHtml(p.demand_text)}</span>
+                        </div>
+                        <span class="pm-pill pm-pill-${statusColor}">${statusLabel}</span>
+                    </div>
+                    ${progressBarHtml}
+                    <div class="pm-card-time">
+                        <div class="pm-card-time-labels">
+                            <span>Promised Tick ${p.tick_created}</span>
+                            <span>Deadline Tick ${p.tick_deadline}</span>
+                        </div>
+                        <div class="pm-bar-wrap">
+                            <div class="pm-bar-track" style="height:3px"><div class="pm-bar-fill" style="width:${timePct}%;background:${timeColor}"></div></div>
+                            <span class="pm-bar-pct" style="color:${timeColor};min-width:60px">${remaining > 0 ? remaining + ' ticks' : 'EXPIRED'}</span>
+                        </div>
+                    </div>
+                    <div class="pm-card-bottom">
+                        <div class="pm-card-blocs">${blocNames.map(b => '<span class="pm-bloc-tag">' + escapeHtml(b) + '</span>').join('')}</div>
+                        <div class="pm-card-penalty">${penaltyHtml}</div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // ── Resolved Promises ──
+        let resolvedHtml = '';
+        if (resolvedPromisesList.length > 0) {
+            resolvedHtml = resolvedPromisesList.slice(0, 5).map(p => {
+                const isKept = p.status === 'fulfilled';
+                const statusLabel = isKept ? 'KEPT' : 'BROKEN';
+                const statusColor = isKept ? 'green' : 'red';
+                const borderColor = isKept ? '#4ade80' : '#ef4444';
+                const isCrisis = p.demand_type === 'crisis_resolution';
+                const prog = p.progress || {};
+                const penaltyAccum = prog.penalty_accumulated || 0;
+                const blocNames = (p.bloc_name || '').split(', ').filter(Boolean);
+
+                return `<div class="pm-card pm-card-resolved" style="border-left-color:${borderColor}">
+                    <div class="pm-card-top">
+                        <div class="pm-card-left">
+                            <span class="pm-pill pm-pill-${isCrisis ? 'red' : 'cyan'}">${isCrisis ? 'Crisis' : 'Stat'}</span>
+                            <span class="pm-card-label">${escapeHtml(p.demand_text)}</span>
+                        </div>
+                        <span class="pm-pill pm-pill-${statusColor}">${statusLabel}</span>
+                    </div>
+                    <div class="pm-card-bottom">
+                        <div class="pm-card-blocs">${blocNames.map(b => '<span class="pm-bloc-tag">' + escapeHtml(b) + '</span>').join('')}</div>
+                        <div class="pm-card-penalty">
+                            ${isKept
+                                ? '<span class="pm-no-penalty">+' + MAKE_PROMISE_CONFIG.APPROVAL_IF_KEPT + ' legacy reward applied</span>'
+                                : '<span class="pm-penalty">−' + penaltyAccum + ' total penalty · legacy mark</span>'}
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // ── Assemble full panel ──
+        container.innerHTML = `
+            <div class="pm-panel">
+                <div class="pm-header-row">
+                    <span class="pm-title">Make Promise</span>
+                    <span class="pm-cost">Cost: ${MAKE_PROMISE_CONFIG.AP_COST} AP</span>
+                </div>
+                <div class="pm-stats-row">
+                    <div class="pm-stat-counter"><span class="pm-stat-counter-label">Kept</span><span class="pm-stat-counter-val pm-hl-green">${keptCount}</span></div>
+                    <div class="pm-stat-counter"><span class="pm-stat-counter-label">Broken</span><span class="pm-stat-counter-val pm-hl-red">${brokenCount}</span></div>
+                    <div class="pm-stat-counter"><span class="pm-stat-counter-label">Active</span><span class="pm-stat-counter-val pm-hl-yellow">${activePromisesList.length}</span></div>
+                </div>
+
+                ${pmResult ? resultHtml : (pmShowCreator ? creatorHtml : `
+                    <button class="pm-open-creator-btn${(!canAffordAP || atLimit) ? ' disabled' : ''}" id="pm-open-creator" ${(!canAffordAP || atLimit) ? 'disabled' : ''}>
+                        + Make a Promise
+                    </button>
+                    ${!canAffordAP ? '<div class="pm-warn">Not enough AP.</div>' : ''}
+                    ${atLimit ? '<div class="pm-warn">Maximum active promises reached.</div>' : ''}
+                `)}
+
+                ${activePromisesList.length > 0 ? `
+                    <div class="pm-section-header">
+                        <span class="pm-section-title">Active Promises</span>
+                        <span class="pm-section-note">Penalties tick while governing · Deadline = 1D24 + 6 ticks</span>
+                    </div>
+                    <div class="pm-card-list">${activeHtml}</div>
+                ` : ''}
+
+                ${resolvedPromisesList.length > 0 ? `
+                    <div class="pm-section-header" style="margin-top:16px">
+                        <span class="pm-section-title">Resolved Promises</span>
+                        <span class="pm-section-note">Kept = +${MAKE_PROMISE_CONFIG.APPROVAL_IF_KEPT} permanent legacy · Broken = penalty + legacy mark</span>
+                    </div>
+                    <div class="pm-card-list">${resolvedHtml}</div>
+                ` : ''}
+
+                <div class="pm-rules">
+                    <span class="pm-rules-title">How Promises Work</span>
+                    <div class="pm-rules-grid">
+                        <div>
+                            <div class="pm-rules-heading">On Making a Promise</div>
+                            <div class="pm-rules-text">
+                                Crisis promise → minor approval bump with all blocs<br>
+                                Stat promise → moderate approval bump with affected blocs<br>
+                                Deadline: 1D24 + 6 ticks (7–30 ticks)
+                            </div>
+                        </div>
+                        <div>
+                            <div class="pm-rules-heading">While Governing</div>
+                            <div class="pm-rules-text">
+                                Every tick unfulfilled → 1D3 approval loss with promised blocs<br>
+                                Promise kept → +${MAKE_PROMISE_CONFIG.APPROVAL_IF_KEPT} permanent legacy with promised blocs<br>
+                                Deadline expires → promise broken, permanent legacy penalty
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
+        // ── Event listeners ──
+        const openBtn = document.getElementById('pm-open-creator');
+        if (openBtn) openBtn.addEventListener('click', () => { pmShowCreator = true; pmPromiseType = null; pmSelectedStat = null; pmSelectedCrisis = null; pmDirection = null; renderPromiseMaker(); });
+
+        const closeBtn = document.getElementById('pm-close-creator');
+        if (closeBtn) closeBtn.addEventListener('click', () => { pmShowCreator = false; renderPromiseMaker(); });
+
+        const cancelBtn = document.getElementById('pm-cancel');
+        if (cancelBtn) cancelBtn.addEventListener('click', () => { pmShowCreator = false; renderPromiseMaker(); });
+
+        const dismissBtn = document.getElementById('pm-dismiss');
+        if (dismissBtn) dismissBtn.addEventListener('click', () => { pmResult = null; renderParties(); });
+
+        // Type buttons
+        container.querySelectorAll('.pm-type-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const type = btn.dataset.type;
+                pmPromiseType = type;
+                if (type === 'crisis') { pmSelectedStat = null; pmDirection = null; }
+                if (type === 'stat') { pmSelectedCrisis = null; }
+                renderPromiseMaker();
+            });
+        });
+
+        // Crisis rows
+        container.querySelectorAll('.pm-crisis-row:not(.disabled)').forEach(row => {
+            row.addEventListener('click', () => {
+                pmSelectedCrisis = row.dataset.crisis;
+                renderPromiseMaker();
+            });
+        });
+
+        // Stat cells
+        container.querySelectorAll('.pm-stat-cell:not(.disabled)').forEach(cell => {
+            cell.addEventListener('click', () => {
+                pmSelectedStat = cell.dataset.stat;
+                pmDirection = cell.dataset.dir === 'higher_is_better' ? 'increase' : 'decrease';
+                renderPromiseMaker();
+            });
+        });
+
+        // Direction buttons
+        container.querySelectorAll('.pm-dir-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                pmDirection = btn.dataset.dir;
+                renderPromiseMaker();
+            });
+        });
+
+        // Submit button
+        const submitBtn = document.getElementById('pm-submit');
+        if (submitBtn && !submitBtn.disabled) {
+            submitBtn.addEventListener('click', async () => {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Making Promise...';
                 const tick = currentShard?.current_tick || 0;
-                const result = await executePressConference(_supabase, f.id, n.id, pcSelectedStat, tick);
+                const params = pmPromiseType === 'crisis'
+                    ? { crisisId: pmSelectedCrisis }
+                    : { statKey: pmSelectedStat, direction: pmDirection === 'increase' ? 'above' : 'below' };
+                const result = await executeMakePromise(_supabase, f.id, n.id, tick, pmPromiseType, params);
                 if (result.success) {
-                    pcResults = result;
-                    pcScreen = 'results';
-                    renderPC();
+                    pmResult = result;
+                    pmShowCreator = false;
+                    // Refresh promise lists
+                    const { data: refreshed } = await _supabase
+                        .from('fundraiser_promises').select('*')
+                        .eq('party_id', f.id).order('tick_created', { ascending: false });
+                    activePromisesList.length = 0;
+                    resolvedPromisesList.length = 0;
+                    for (const p of (refreshed || [])) {
+                        if (p.status === 'active') activePromisesList.push(p);
+                        else if (p.status === 'fulfilled' || p.status === 'broken') resolvedPromisesList.push(p);
+                    }
+                    activeStatKeys.clear();
+                    activeCrisisPromiseIds.clear();
+                    for (const p of activePromisesList) {
+                        if (p.demand_type === 'stat_target') activeStatKeys.add(p.conditions?.stat_key);
+                        if (p.demand_type === 'crisis_resolution') activeCrisisPromiseIds.add(p.conditions?.crisis_id);
+                    }
+                    renderPromiseMaker();
                 } else {
                     alert(result.error);
-                    btn.disabled = false;
-                    btn.textContent = s.willBackfire ? 'PROCEED ANYWAY' : 'HOLD PRESS CONFERENCE';
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Make Promise — ' + MAKE_PROMISE_CONFIG.AP_COST + ' AP';
                 }
-            });
-            document.getElementById('pc-cancel').addEventListener('click', () => { pcScreen = 'select'; pcSelectedStat = null; renderPC(); });
-
-        } else if (pcScreen === 'results') {
-            const r = pcResults;
-            const statLabel = r.statLabel.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-
-            const modeLabel = r.mode === 'credit' ? (r.backfire ? 'Credit (Backfire!)' : 'Taking Credit')
-                : r.mode === 'attack' ? (r.backfire ? 'Attack (Backfire!)' : 'Attack')
-                : 'Drawing Attention';
-            const modeClass = r.backfire ? 'pc-result-backfire' : (r.mode === 'attention' ? 'pc-result-neutral' : 'pc-result-success');
-
-            let blocHtml = '';
-            if (r.blocResults.length > 0) {
-                const selfResults = r.blocResults.filter(b => b.party === 'self');
-                const targetResults = r.blocResults.filter(b => b.party === 'target');
-                if (selfResults.length > 0) {
-                    blocHtml += `<div class="pc-result-group"><div class="pc-result-group-label">Your preference changes:</div>`;
-                    for (const b of selfResults) {
-                        const sign = b.prefDelta > 0 ? '+' : '';
-                        blocHtml += `<div class="pc-result-bloc">${b.blocName}: ${sign}${b.prefDelta} (${b.oldPref}% → ${b.newPref}%)</div>`;
-                    }
-                    blocHtml += '</div>';
-                }
-                if (targetResults.length > 0) {
-                    blocHtml += `<div class="pc-result-group"><div class="pc-result-group-label">${r.targetAbbr}'s preference changes:</div>`;
-                    for (const b of targetResults) {
-                        const sign = b.prefDelta > 0 ? '+' : '';
-                        blocHtml += `<div class="pc-result-bloc">${b.blocName}: ${sign}${b.prefDelta} (${b.oldPref}% → ${b.newPref}%)</div>`;
-                    }
-                    blocHtml += '</div>';
-                }
-            } else {
-                blocHtml = '<div class="pc-result-group"><div class="pc-result-bloc">No preference changes.</div></div>';
-            }
-
-            container.innerHTML = `
-                <div class="pc-panel pc-panel-results">
-                    <div class="pc-title">Press Conference Results</div>
-                    <div class="pc-result-headline ${modeClass}">"${r.headline}"</div>
-                    <div class="pc-result-mode">${modeLabel}</div>
-                    <div class="pc-divider pc-divider-accent"></div>
-
-                    <div class="pc-result-section">
-                        <div class="pc-result-stat">Stat: ${statLabel}</div>
-                        <div class="pc-result-momentum">Your momentum: ${r.selfMomentumDelta > 0 ? '+' : ''}${r.selfMomentumDelta}${r.sameStatPenalty && r.flatStat ? ' (reduced — same-stat + flat stat)' : r.sameStatPenalty ? ' (reduced — same-stat penalty)' : r.flatStat ? ' (reduced — flat stat)' : ''}</div>
-                        ${r.targetAbbr ? `<div class="pc-result-momentum">${r.targetAbbr}'s momentum: ${r.targetMomentumDelta > 0 ? '+' : ''}${r.targetMomentumDelta}</div>` : ''}
-                    </div>
-
-                    <div class="pc-divider"></div>
-                    ${blocHtml}
-                    <div class="pc-divider"></div>
-
-                    <div class="pc-results-summary">
-                        <div>Cost: $${PRESS_CONF_CONFIG.MONEY_COST.toLocaleString()} deducted — Treasury: $${r.oldTreasury.toLocaleString()} → $${r.newTreasury.toLocaleString()}</div>
-                        <div>AP: ${r.newAp + PRESS_CONF_CONFIG.AP_COST} → ${r.newAp}</div>
-                    </div>
-
-                    <div class="pc-actions">
-                        <button class="pc-btn pc-btn-cancel" id="pc-dismiss">DISMISS</button>
-                    </div>
-                </div>`;
-
-            document.getElementById('pc-dismiss').addEventListener('click', () => {
-                pcScreen = 'select';
-                pcSelectedStat = null;
-                pcResults = null;
-                renderParties();
             });
         }
     }
 
-    renderPC();
+    renderPromiseMaker();
 
     // ── Voter Outreach UI ──
     let outreachScreen = 'select'; // 'select' | 'results'
