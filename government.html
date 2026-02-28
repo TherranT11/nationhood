@@ -543,19 +543,9 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
     // Administration name uses Head of Government (PM), falling back to Head of State
     const adminLast = activeHOG?.last_name || primeMinister?.minister_last_name || hosLast;
 
-    // Coalition formation in progress — show placeholder instead of stale admin data
+    // Coalition formation in progress — show countdown with snap election warning
     if (coalitionFormationInProgress) {
-        return `
-            <div class="administration-box">
-                <div class="administration-header">
-                    <div class="administration-title">Government Being Formed</div>
-                    <div class="administration-subtitle">Coalition negotiations are in progress</div>
-                </div>
-                <div class="administration-content" style="text-align:center;padding:24px;">
-                    <div style="font-size:0.9rem;color:var(--text-secondary);">A new government will be displayed here once a coalition is formed.</div>
-                    <button style="margin-top:16px;padding:8px 20px;background:var(--accent);color:#121212;border:none;border-radius:6px;font-weight:bold;cursor:pointer;" onclick="window.location.href='elections.html'">Go to Elections</button>
-                </div>
-            </div>`;
+        return renderFormationInProgress(parties);
     }
 
     // === AUTOCRACY: No ruling faction yet — show Seize Power prompt ===

@@ -43,6 +43,21 @@ initPage('government', async (state) => {
         return;
     }
 
+    // Guard: coalition must be formed before PM can be selected
+    const { data: activeGov } = await _supabase
+        .from('government_formations')
+        .select('id, status')
+        .eq('nation_id', nation.id)
+        .in('status', ['formed', 'caretaker'])
+        .order('formed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (!activeGov) {
+        renderEmpty('No coalition has been finalized yet. A government must be formed before a Prime Minister can be appointed. <a href="elections.html">Go to Elections →</a>');
+        return;
+    }
+
     // Load traits
     const { data: traitRows } = await _supabase
         .from('leader_traits')
