@@ -54,7 +54,8 @@ BEGIN
         IF cnt > 0 THEN
             result := result || jsonb_build_object('bills.ambassador_id', cnt || ' nulled');
         END IF;
-    EXCEPTION WHEN undefined_table OR undefined_column THEN NULL;
+    EXCEPTION WHEN undefined_table OR undefined_column THEN
+        RAISE DEBUG 'bills.ambassador_id not found, skipping';
     END;
 
     BEGIN
