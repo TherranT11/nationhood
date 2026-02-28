@@ -4,7 +4,7 @@
  */
 
 import { isAutocracy } from './government-types.js';
-import { computeIdeologyAlignment, countIdeologyRelationship } from './ideology.js';
+import { computeIdeologyAlignment, countIdeologyRelationship, ideologyOppositionMultiplier } from './ideology.js';
 import { ISSUE_CATEGORY_STATS, STAT_TO_MINISTRY, statDirectionSign, statTrendBatch } from './stats.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { recalcDerivedApproval } from './bills.js';
@@ -173,6 +173,11 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         let prefScore = Math.round(
             (ideoScore * PILLAR_WEIGHT_IDEO + newPerf * PILLAR_WEIGHT_PERF + momMapped * PILLAR_WEIGHT_MOM) * 100
         ) / 100;
+
+        // ─── IDEOLOGY OPPOSITION PENALTY (structural) ───
+        // 2+ opposing → -30%, 1 opposing → -20%, 0 aligned → -10%
+        const oppositionMult = ideo ? ideologyOppositionMultiplier(ideo, bloc) : 1.0;
+        prefScore = Math.round(prefScore * oppositionMult * 100) / 100;
 
         // ─── IDEOLOGY DRIFT: per-tick erosion based on opposition count ───
         // 2+ opposing ideologies → -2/tick, 1 opposing → -1/tick, 0 aligned → -0.5/tick
