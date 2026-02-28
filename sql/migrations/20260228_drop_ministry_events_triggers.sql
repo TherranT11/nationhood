@@ -11,9 +11,9 @@ DROP TRIGGER IF EXISTS trg_ministry_welcome_email_insert ON ministries;
 -- 2. Drop the trigger function (CASCADE catches any remaining references)
 DROP FUNCTION IF EXISTS insert_ministry_welcome_email() CASCADE;
 
--- 3. Defensive: also drop the template-validation trigger/function
---    in case the earlier drop migration (20260226) was only partially applied.
-DROP TRIGGER IF EXISTS trg_ministry_event_templates_validate_gov_types ON ministry_event_templates;
+-- 3. Defensive: drop the template-validation function if it still exists.
+--    (The trigger is not dropped here because the target table may already be gone;
+--     CASCADE on the function handles any remaining trigger references.)
 DROP FUNCTION IF EXISTS normalize_and_validate_ministry_event_template_gov_types() CASCADE;
 
 -- 4. Defensive: re-drop the tables in case the earlier migration was not applied.
