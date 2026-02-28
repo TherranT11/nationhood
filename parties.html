@@ -2705,9 +2705,17 @@ async function renderParties() {
         const axisLabels = getBlocAxisLabels(r.axes);
         const p = r.pillars;
 
-        // Build modifier list: ideology (permanent) + performance + momentum_log entries
+        // Build modifier list: ideology (permanent) + drift + performance + momentum_log entries
         const mods = [];
         mods.push({ type: 'ideology', label: 'Ideological Alignment', value: p.ideo, permanent: true });
+
+        // Ideology drift: opposed blocs erode preference, no-shared blocs drift down
+        if (p.ideo < 35) {
+            mods.push({ type: 'legacy', label: 'Ideologically Opposed (drift to 20)', value: -1, permanent: true });
+        } else if (p.ideo < 50) {
+            mods.push({ type: 'legacy', label: 'No Shared Ideologies (drift to 40)', value: -0.5, permanent: true });
+        }
+
         if (p.perf !== 50) {
             mods.push({ type: 'performance', label: 'Performance Perception', value: p.perf - 50 });
         }
