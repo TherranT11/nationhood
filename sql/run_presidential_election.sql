@@ -36,7 +36,7 @@ DECLARE
     v_bloc_approvals JSONB;
 BEGIN
     -- ---- Load nation ----
-    SELECT id, name, eligible_voters
+    SELECT id, name, population, eligible_voters
     INTO v_nation
     FROM nations
     WHERE id = p_nation_id;
@@ -133,9 +133,15 @@ BEGIN
         IF v_sat_active > 0 THEN v_avg_saturation := v_sat_total / v_sat_active; END IF;
 
     -- ---- Compute voter bloc scale factor ----
+    -- eligible_voters is a 0-100 stat (% of population eligible to vote).
+    -- Derive actual voter count: population × (eligible_voters / 100).
     DECLARE
         v_total_bloc_voters BIGINT;
-        v_eligible          BIGINT := COALESCE(v_nation.eligible_voters, 0);
+        v_eligible          BIGINT := CASE
+            WHEN COALESCE(v_nation.population, 0) > 0
+            THEN ROUND(v_nation.population * COALESCE(v_nation.eligible_voters, 65) / 100.0)
+            ELSE 0
+        END;
         v_bloc_scale        NUMERIC := 1;
     BEGIN
         IF v_eligible > 0 THEN
@@ -257,8 +263,8 @@ BEGIN
         'presidential_candidates', v_candidate_rows,
         'total_votes_cast', v_total_votes,
         'total_abstentions', v_total_abstentions,
-        'turnout_pct', CASE WHEN COALESCE(v_nation.eligible_voters, 0) > 0
-            THEN ROUND((v_total_votes::NUMERIC / v_nation.eligible_voters) * 100, 2)
+        'turnout_pct', CASE WHEN v_eligible > 0
+            THEN ROUND((v_total_votes::NUMERIC / v_eligible) * 100, 2)
             ELSE 0 END
     );
 

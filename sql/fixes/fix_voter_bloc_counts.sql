@@ -1,0 +1,28 @@
+-- Fix: Rescale voter_bloc voter_count values from percentage-based to population-based
+-- Previously eligible_voters (a 0-100 stat) was used as the absolute voter count,
+-- producing tiny bloc counts (5-15 per bloc). This rescales them so they represent
+-- actual voter populations derived from population × (eligible_voters / 100).
+--
+-- The SQL election RPCs now derive the actual eligible count internally,
+-- so bloc voter_counts just need to be proportionally correct (their absolute
+-- values are rescaled at election time). But regenerating blocs from admin.html
+-- will now produce correct counts.
+--
+-- For existing blocs, this rescales them to match the new formula.
+
+UPDATE voter_blocs vb
+SET voter_count = ROUND(
+    vb.voter_count::numeric
+    * (n.population * COALESCE(n.eligible_voters, 65) / 100.0)
+    / NULLIF(bloc_totals.total_voters, 0)
+)
+FROM nations n,
+LATERAL (
+    SELECT SUM(vb2.voter_count) AS total_voters
+    FROM voter_blocs vb2
+    WHERE vb2.nation_id = vb.nation_id AND vb2.is_active = TRUE
+) bloc_totals
+WHERE n.id = vb.nation_id
+  AND vb.is_active = TRUE
+  AND bloc_totals.total_voters > 0
+  AND n.population > 0;
