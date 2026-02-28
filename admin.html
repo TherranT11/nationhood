@@ -497,7 +497,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, DONOR_DEMANDS, formatStatName } from './js/game-common.js';
+import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName } from './js/game-common.js';
 
     const ADMIN_PASSWORD = 'nationhood2000';
     let isAuthenticated = false;
@@ -2892,82 +2892,13 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         }
     }
 
-    // ---- Seed defaults from hardcoded DONOR_DEMANDS ----
+    // Hardcoded demand seeding removed — demand templates are managed via the database only
     async function seedDefaultDemands() {
-        if (!selectedDemandBloc) return;
-        const blocName = selectedDemandBloc.bloc_name;
-        const defaults = DONOR_DEMANDS[blocName];
-        if (!defaults || defaults.length === 0) {
-            alert(`No hardcoded defaults found for "${blocName}".`);
-            return;
-        }
-
-        if (!confirm(`This will insert ${defaults.length} default demands for "${blocName}". Existing demands are NOT deleted. Continue?`)) return;
-
-        const statusEl = document.getElementById('demand-action-status');
-        statusEl.innerHTML = '<span style="color:#2196F3;font-weight:bold;">Seeding defaults...</span>';
-
-        try {
-            const rows = defaults.map((d, i) => ({
-                bloc_name: blocName,
-                demand_name: d.conditions?.bill_name || d.text.substring(0, 60),
-                demand_text: d.text,
-                demand_type: d.type,
-                deadline: d.deadline,
-                conditions: d.conditions,
-                ideology_tags: extractIdeologyTags(d),
-                is_active: true,
-                sort_order: i,
-            }));
-
-            const { error } = await _supabase.from('demand_templates').insert(rows);
-            if (error) throw error;
-
-            statusEl.innerHTML = `<span style="color:#4CAF50;font-weight:bold;">Seeded ${rows.length} demands for ${blocName}!</span>`;
-            setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
-            await loadExistingDemandsDisplay(blocName);
-        } catch (error) {
-            statusEl.innerHTML = '<span style="color:#ff4444;font-weight:bold;">Error: ' + error.message + '</span>';
-        }
+        alert('Hardcoded demand seeding has been removed. Manage demands directly in the database.');
     }
 
     async function seedAllDefaultDemands() {
-        const allBlocNames = Object.keys(DONOR_DEMANDS);
-        if (!confirm(`This will insert default demands for ALL ${allBlocNames.length} blocs (${allBlocNames.join(', ')}). Existing demands are NOT deleted. Continue?`)) return;
-
-        const statusEl = document.getElementById('demand-action-status');
-        statusEl.innerHTML = '<span style="color:#2196F3;font-weight:bold;">Seeding all defaults...</span>';
-
-        try {
-            const allRows = [];
-            for (const blocName of allBlocNames) {
-                const defaults = DONOR_DEMANDS[blocName];
-                defaults.forEach((d, i) => {
-                    allRows.push({
-                        bloc_name: blocName,
-                        demand_name: d.conditions?.bill_name || d.text.substring(0, 60),
-                        demand_text: d.text,
-                        demand_type: d.type,
-                        deadline: d.deadline,
-                        conditions: d.conditions,
-                        ideology_tags: extractIdeologyTags(d),
-                        is_active: true,
-                        sort_order: i,
-                    });
-                });
-            }
-
-            const { error } = await _supabase.from('demand_templates').insert(allRows);
-            if (error) throw error;
-
-            statusEl.innerHTML = `<span style="color:#4CAF50;font-weight:bold;">Seeded ${allRows.length} demands across ${allBlocNames.length} blocs!</span>`;
-            setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
-            if (selectedDemandBloc) {
-                await loadExistingDemandsDisplay(selectedDemandBloc.bloc_name);
-            }
-        } catch (error) {
-            statusEl.innerHTML = '<span style="color:#ff4444;font-weight:bold;">Error: ' + error.message + '</span>';
-        }
+        alert('Hardcoded demand seeding has been removed. Manage demands directly in the database.');
     }
 
     // Extract ideology tags from a hardcoded demand for seeding
