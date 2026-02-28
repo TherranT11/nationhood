@@ -271,9 +271,12 @@ export function renderNavTabs(activeTab) {
         if (overrideNationId) params.push('nation_id=' + overrideNationId);
         if (overrideFactionId) params.push('faction_id=' + overrideFactionId);
         if (params.length) href += '?' + params.join('&');
-        const badgeHtml = tab.id === 'laws'
-            ? '<span class="nav-badge" id="bills-badge" style="display:none;"></span><span class="nav-badge-budget" id="budget-due-badge" style="display:none;"></span>'
-            : '';
+        let badgeHtml = '';
+        if (tab.id === 'laws') {
+            badgeHtml = '<span class="nav-badge" id="bills-badge" style="display:none;"></span><span class="nav-badge-budget" id="budget-due-badge" style="display:none;"></span>';
+        } else if (tab.id === 'parties') {
+            badgeHtml = '<span class="nav-badge" id="parties-nominee-badge" style="display:none;"></span>';
+        }
         return `
             <a href="${href}"
                class="nav-tab ${tab.id === activeTab ? 'active' : ''}"
@@ -376,6 +379,34 @@ async function updateBillsBadge(faction, nation, shard) {
         }
     } catch (e) {
         console.error('Error updating bills badge:', e);
+    }
+}
+
+
+// ===== PRESIDENTIAL NOMINEE BADGE =====
+
+async function updatePresNomineeBadge(faction, nation) {
+    const badge = document.getElementById('parties-nominee-badge');
+    if (!badge || !faction || !nation) return;
+    try {
+        // Only for presidential republics
+        if (nation.government_type !== 'Presidential Republic') return;
+        // Check for unselected presidential candidates for this faction
+        const { count } = await _supabase
+            .from('pm_candidates')
+            .select('*', { count: 'exact', head: true })
+            .eq('nation_id', nation.id)
+            .eq('faction_id', faction.id)
+            .eq('candidate_type', 'presidential')
+            .eq('selected', false);
+        if ((count || 0) > 0) {
+            badge.textContent = '!';
+            badge.style.display = '';
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch (e) {
+        console.error('Error updating presidential nominee badge:', e);
     }
 }
 
@@ -664,6 +695,8 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     if (activeTab !== 'laws') {
         updateBillsBadge(state.faction, state.nation, state.shard);
     }
+    // Update presidential nominee badge (non-blocking)
+    updatePresNomineeBadge(state.faction, state.nation);
     if (onReady) {
         await onReady(state);
     }

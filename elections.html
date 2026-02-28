@@ -197,9 +197,8 @@ async function renderDemocracyPage() {
     // Presidential systems never show coalition formation
     const showFormation = isPresidential ? false : (currentElectionId && !govFormed);
 
-    // Check if current player has pending PM or President selection
+    // Check if current player has pending PM selection
     let hasPendingPM = false;
-    let hasPendingPresident = false;
     if (currentFaction && !isPresidential) {
         const { count } = await _supabase
             .from('pm_candidates')
@@ -209,17 +208,6 @@ async function renderDemocracyPage() {
             .eq('selected', false);
         hasPendingPM = (count || 0) > 0;
     }
-    if (currentFaction && isPresidential) {
-        const { count } = await _supabase
-            .from('pm_candidates')
-            .select('*', { count: 'exact', head: true })
-            .eq('nation_id', currentNation.id)
-            .eq('faction_id', currentFaction.id)
-            .eq('candidate_type', 'presidential')
-            .eq('selected', false);
-        hasPendingPresident = (count || 0) > 0;
-    }
-
     const html = `
         <div class="panel-padding">
             ${hasPendingPM ? `
@@ -228,14 +216,6 @@ async function renderDemocracyPage() {
         <div style="font-size:1.1rem;color:var(--accent);font-weight:bold;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Select Your Prime Minister</div>
         <div style="font-size:0.85rem;color:var(--text-secondary);">Your coalition has formed. Choose who will lead the nation.</div>
         <div style="margin-top:12px;display:inline-block;padding:8px 24px;background:var(--accent);color:#121212;border-radius:6px;font-weight:bold;font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;">Choose Now →</div>
-    </div>
-` : ''}
-            ${hasPendingPresident ? `
-    <div style="background:linear-gradient(135deg,#2a2200,#1a1a00);border:2px solid var(--accent);border-radius:12px;padding:20px;margin-bottom:24px;text-align:center;cursor:pointer;" onclick="window.location.href='select-president.html'">
-        <div style="font-size:1.8rem;margin-bottom:8px;">🏛️</div>
-        <div style="font-size:1.1rem;color:var(--accent);font-weight:bold;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Select Your Candidate</div>
-        <div style="font-size:0.85rem;color:var(--text-secondary);">A presidential election is approaching. Nominate your party's candidate.</div>
-        <div style="margin-top:12px;display:inline-block;padding:8px 24px;background:var(--accent);color:#121212;border-radius:6px;font-weight:bold;font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;">Nominate Now →</div>
     </div>
 ` : ''}
             <!-- Presidential Candidate Results (Presidential systems only) -->
@@ -571,8 +551,8 @@ async function renderPresidentialResults(election) {
             const ideo = (c.ideology || '').toUpperCase();
             const color = ideologyColors[ideo] || '#888';
             const isWinner = c.winner || c.candidate_id === tableWinner.candidate_id;
-            const cPartyColor = getPartyColor(c.party_id, cIdx);
-            const cLogo = getPartyLogo(c.party_id);
+            const cPartyColor = getPartyColor(c.party_id || c.faction_id, cIdx);
+            const cLogo = getPartyLogo(c.party_id || c.faction_id);
             const cLogoHtml = cLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(cLogo, 16, cPartyColor)}</span>` : '';
             return `
                 <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 0.8fr;gap:12px;padding:12px 0;border-bottom:1px solid #222;align-items:center;border-left:3px solid ${cPartyColor};padding-left:10px;">
@@ -596,8 +576,8 @@ async function renderPresidentialResults(election) {
 
     const winnerIdeology = (winner.ideology || '').toUpperCase();
     const winnerColor = ideologyColors[winnerIdeology] || '#888';
-    const winnerPartyColor = getPartyColor(winner.party_id, 0);
-    const winnerLogo = getPartyLogo(winner.party_id);
+    const winnerPartyColor = getPartyColor(winner.party_id || winner.faction_id, 0);
+    const winnerLogo = getPartyLogo(winner.party_id || winner.faction_id);
     const winnerLogoHtml = winnerLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:8px;">${getPartyIconSVG(winnerLogo, 22, winnerPartyColor)}</span>` : '';
 
     // Winner banner

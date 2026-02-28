@@ -7579,15 +7579,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
     const isIncumbentRunoffLoss = wasRunoff && incumbentFactionId && winner.faction_id !== incumbentFactionId;
     const isChallengerWin = incumbentFactionId && winner.faction_id !== incumbentFactionId;
 
-    // Deactivate previous president
-    const { error: deactErr } = await supabase
-        .from('presidents')
-        .update({ is_active: false })
-        .eq('nation_id', nation.id)
-        .eq('is_active', true);
-    if (deactErr) {
-        console.error(`[processPresidentialElectionResult] Failed to deactivate previous presidents for ${nation.name}:`, deactErr.message);
-    }
+    // President deactivation is handled by inauguratePresident() below
 
     // Close previous administration
     try {
@@ -7707,8 +7699,10 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
         .eq('nation_id', nation.id)
         .eq('candidate_type', 'presidential');
 
-    // Sort for runner-up info in event
-    const sorted = [...candidateResults].sort((a, b) => b.votes - a.votes);
+    // Sort final results for runner-up info in event
+    // After a runoff, use runoff results (the actual final round); otherwise use Round 1
+    const finalResults = wasRunoff && runoffResults ? runoffResults : candidateResults;
+    const sorted = [...finalResults].sort((a, b) => b.votes - a.votes);
 
     // Fire system event
     try {

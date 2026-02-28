@@ -5059,3 +5059,326 @@ body.light-mode .edit-logo-option:hover {
     font-size: 11px;
     color: var(--text-muted, #777);
 }
+
+/* ===== PRESIDENTIAL NOMINEE SECTION ===== */
+.pres-nominee-section {
+    background: var(--bg-panel, #1a1a1a);
+    border: 1px solid var(--border-main, #333);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 8px;
+}
+.pres-nominee-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.pres-nominee-icon {
+    font-size: 1.3rem;
+}
+.pres-nominee-title {
+    font-size: 0.9rem;
+    font-weight: bold;
+    color: var(--text-primary, #eee);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+}
+.pres-nominee-countdown {
+    margin-left: auto;
+    font-size: 0.75rem;
+    color: var(--text-secondary, #999);
+    background: rgba(255,255,255,0.05);
+    padding: 3px 10px;
+    border-radius: 4px;
+}
+
+/* Greyed-out state */
+.pres-nominee-greyed { text-align: center; padding: 8px 0; }
+.pres-nominee-btn {
+    padding: 10px 28px;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.2s;
+}
+.pres-nominee-btn-disabled {
+    background: var(--bg-card, #222);
+    border-color: var(--border-main, #333);
+    color: var(--text-muted, #555);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+.pres-nominee-btn-active {
+    background: linear-gradient(135deg, var(--accent, #ffcc00), var(--accent-hover, #e6b800));
+    border-color: var(--accent, #ffcc00);
+    color: #121212;
+    box-shadow: 0 0 12px rgba(255, 204, 0, 0.3);
+    animation: pres-nominee-pulse 2s ease-in-out infinite;
+}
+.pres-nominee-btn-active:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(255, 204, 0, 0.5);
+}
+@keyframes pres-nominee-pulse {
+    0%, 100% { box-shadow: 0 0 12px rgba(255, 204, 0, 0.3); }
+    50% { box-shadow: 0 0 20px rgba(255, 204, 0, 0.5); }
+}
+.pres-nominee-note {
+    font-size: 0.75rem;
+    color: var(--text-muted, #777);
+    margin-top: 8px;
+}
+.pres-nominee-active { text-align: center; padding: 8px 0; }
+
+/* Locked state */
+.pres-nominee-locked { text-align: center; padding: 8px 0; }
+.pres-nominee-locked-card {
+    display: inline-block;
+    background: linear-gradient(135deg, #2a2200, #1a1a00);
+    border: 2px solid var(--accent, #ffcc00);
+    border-radius: 8px;
+    padding: 14px 28px;
+    margin-bottom: 8px;
+}
+.pres-nominee-locked-label {
+    font-size: 0.65rem;
+    color: var(--text-muted, #777);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+}
+.pres-nominee-locked-name {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: var(--accent, #ffcc00);
+}
+.pres-nominee-locked-detail {
+    font-size: 0.78rem;
+    color: var(--text-secondary, #999);
+    margin-top: 4px;
+}
+
+/* Inline selector (expanded) */
+.pres-nominee-selector {
+    margin-top: 16px;
+    border-top: 1px solid var(--border-main, #333);
+    padding-top: 16px;
+}
+.pres-nominee-selector-header {
+    text-align: center;
+    margin-bottom: 16px;
+}
+.pres-nominee-selector-header h3 {
+    font-size: 1rem;
+    color: var(--accent, #ffcc00);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+}
+.pres-nominee-selector-header p {
+    font-size: 0.8rem;
+    color: var(--text-secondary, #999);
+}
+.pres-nominee-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+}
+@media (max-width: 900px) {
+    .pres-nominee-cards { grid-template-columns: 1fr; }
+}
+/* Reuse .pm-card styles from select-president.css inline */
+.pres-nom-card {
+    background: var(--bg-panel, #1a1a1a);
+    border: 2px solid var(--border-main, #333);
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+.pres-nom-card:hover {
+    border-color: var(--accent, #ffcc00);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 32px rgba(255, 204, 0, 0.12);
+}
+.pres-nom-card.selected {
+    border-color: var(--accent, #ffcc00);
+    box-shadow: 0 0 0 2px var(--accent, #ffcc00), 0 8px 32px rgba(255, 204, 0, 0.2);
+}
+.pres-nom-card.selected .pm-card-header {
+    background: linear-gradient(135deg, #2a2200 0%, #1a1a00 100%);
+}
+.pres-nom-card .pm-card-header {
+    background: linear-gradient(135deg, var(--bg-card, #222) 0%, var(--bg-panel, #1a1a1a) 100%);
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid var(--border-main, #333);
+    text-align: center;
+}
+.pres-nom-card .pm-card-avatar {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: var(--bg-body, #111);
+    border: 3px solid var(--border-main, #333);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 12px;
+    font-size: 1.5rem;
+}
+.pres-nom-card.selected .pm-card-avatar {
+    border-color: var(--accent, #ffcc00);
+    box-shadow: 0 0 12px rgba(255, 204, 0, 0.3);
+}
+.pres-nom-card .pm-card-name {
+    font-size: 1.15rem;
+    font-weight: bold;
+    color: var(--text-primary, #eee);
+    margin-bottom: 4px;
+}
+.pres-nom-card .pm-card-age {
+    font-size: 0.82rem;
+    color: var(--text-secondary, #999);
+}
+.pres-nom-card .pm-card-ideology {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border-main, #333);
+    text-align: center;
+}
+.pres-nom-card .pm-ideology-label {
+    font-size: 0.65rem;
+    color: var(--text-muted, #555);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+}
+.pres-nom-card .pm-ideology-tag {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: white;
+    margin-bottom: 4px;
+}
+.pres-nom-card .pm-ideology-shift {
+    font-size: 0.72rem;
+    color: var(--text-secondary, #999);
+    margin-top: 2px;
+}
+.pres-nom-card .pm-card-trait {
+    padding: 16px 20px;
+}
+.pres-nom-card .pm-trait-label {
+    font-size: 0.65rem;
+    color: var(--text-muted, #555);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+.pres-nom-card .pm-trait-name {
+    font-size: 1rem;
+    color: var(--accent, #ffcc00);
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+.pres-nom-card .pm-trait-desc {
+    font-size: 0.78rem;
+    color: var(--text-secondary, #999);
+    font-style: italic;
+    margin-bottom: 10px;
+    line-height: 1.4;
+}
+.pres-nom-card .pm-trait-effect {
+    font-size: 0.78rem;
+    line-height: 1.5;
+    padding: 4px 0;
+}
+.pres-nom-card .pm-trait-effect.upside { color: #4CAF50; }
+.pres-nom-card .pm-trait-effect.downside { color: #ff4444; }
+.pres-nom-card .pm-card-footer {
+    padding: 12px 20px 16px;
+    text-align: center;
+}
+.pres-nom-card .pm-select-indicator {
+    display: inline-block;
+    padding: 6px 20px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border: 2px solid var(--text-dim, #444);
+    color: var(--text-dim, #444);
+    transition: all 0.3s;
+}
+.pres-nom-card.selected .pm-select-indicator {
+    background: var(--accent, #ffcc00);
+    border-color: var(--accent, #ffcc00);
+    color: #121212;
+}
+.pres-nom-card:not(.selected):hover .pm-select-indicator {
+    border-color: var(--accent, #ffcc00);
+    color: var(--accent, #ffcc00);
+}
+
+/* Ideology tag colors (for inline nominee cards) */
+.pres-nom-card .ideo-liberty { background: #9C27B0; }
+.pres-nom-card .ideo-equality { background: #E91E63; }
+.pres-nom-card .ideo-freedom { background: #2196F3; }
+.pres-nom-card .ideo-security { background: #FF9800; }
+.pres-nom-card .ideo-individualism { background: #eab308; }
+.pres-nom-card .ideo-collectivism { background: #ec4899; }
+.pres-nom-card .ideo-tradition { background: #795548; }
+.pres-nom-card .ideo-progress { background: #00BCD4; }
+.pres-nom-card .ideo-nationalism { background: #FF5722; }
+.pres-nom-card .ideo-globalism { background: #3F51B5; }
+
+/* Confirm section */
+.pres-nominee-confirm {
+    text-align: center;
+    padding: 16px;
+    background: var(--bg-card, #222);
+    border-radius: 8px;
+    border: 1px solid var(--border-main, #333);
+}
+.pres-nominee-confirm .pm-confirm-btn {
+    padding: 12px 40px;
+    background: linear-gradient(135deg, var(--accent, #ffcc00), var(--accent-hover, #e6b800));
+    border: none;
+    border-radius: 8px;
+    color: #121212;
+    font-weight: bold;
+    font-size: 0.9rem;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+}
+.pres-nominee-confirm .pm-confirm-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(255, 204, 0, 0.4);
+}
+.pres-nominee-confirm .pm-confirm-btn:disabled {
+    background: var(--border-main, #333);
+    color: var(--text-muted, #555);
+    cursor: not-allowed;
+}
+.pres-nominee-confirm-summary {
+    font-size: 0.85rem;
+    color: var(--text-secondary, #999);
+    margin-bottom: 12px;
+}
+.pres-nominee-confirm-summary strong {
+    color: var(--accent, #ffcc00);
+}
+.pres-nominee-confirm-warning {
+    font-size: 0.72rem;
+    color: var(--text-muted, #777);
+    margin-top: 10px;
+}
