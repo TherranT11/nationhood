@@ -5164,19 +5164,36 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         }
     }
 
-    // 5. Core disband — null out nation membership, set cooldown
+    // 5. Clean up all faction-related data from the old nation
+    //    Delete voter bloc approval/momentum rows, promises, donor trust, etc.
+    await supabase.from('faction_bloc_approval').delete().eq('faction_id', factionId);
+    await supabase.from('faction_ideology').delete().eq('faction_id', factionId);
+    await supabase.from('ideology_history').delete().eq('faction_id', factionId);
+    await supabase.from('momentum_log').delete().eq('faction_id', factionId);
+    await supabase.from('fundraiser_promises').delete().eq('party_id', factionId);
+    await supabase.from('donor_trust').delete().eq('party_id', factionId);
+    await supabase.from('bill_support').delete().eq('faction_id', factionId);
+    await supabase.from('campaign_actions').delete().eq('party_id', factionId);
+
+    // 6. Core disband — null out nation, reset all stats to fresh defaults
     const { error: disbandErr } = await supabase
         .from('factions')
         .update({
             nation_id: null,
+            nation: null,
             abandoned_at: new Date().toISOString(),
-            disband_cooldown_until_tick: currentTick + 24
+            disband_cooldown_until_tick: currentTick + 24,
+            action_points: 0,
+            seats: 0,
+            approval_rating: null,
+            last_seen_tick: null,
+            founded_tick: null
         })
         .eq('id', factionId);
 
     if (disbandErr) throw new Error('Failed to disband party: ' + disbandErr.message);
 
-    // 6. Audit log
+    // 7. Audit log
     const { error: logErr } = await supabase
         .from('campaign_actions')
         .insert({

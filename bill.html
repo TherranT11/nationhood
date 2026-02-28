@@ -1341,7 +1341,7 @@ function renderSidebar() {
     } else if (isFloor) {
         const support = billSupport;
         let f=0,a=0,ab=0;
-        support.forEach(s => { if(s.stance==='yes')f+=s.seat_count; else if(s.stance==='no')a+=s.seat_count; else if(s.stance==='abstain')ab+=s.seat_count; });
+        support.forEach(s => { const st=s.stance==='accept'?'yes':s.stance==='reject'?'no':s.stance; if(st==='yes')f+=s.seat_count; else if(st==='no')a+=s.seat_count; else if(st==='abstain')ab+=s.seat_count; });
 
         const totalSeats = GAME_CONFIG.TOTAL_SEATS;
         const undeclared = totalSeats - f - a - ab;

@@ -384,8 +384,12 @@ let tickPoller = null;
 
 export function updateTopBarInfo(faction, shard, nation) {
     const badge = document.getElementById('party-badge');
-    if (badge && faction) {
-        badge.textContent = faction.faction_name + ' [' + (faction.abbreviation || '—') + ']';
+    if (badge) {
+        if (faction && faction.nation_id) {
+            badge.textContent = faction.faction_name + ' [' + (faction.abbreviation || '—') + ']';
+        } else {
+            badge.textContent = '[No Party]';
+        }
     }
     
     const nationFlag = document.getElementById('nation-flag');
