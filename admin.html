@@ -1205,13 +1205,19 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             const hasNation = !!player.nation_id;
             const borderColor = hasNation ? '#4CAF50' : '#ff4444';
             const inactivity = getInactivityInfo(player);
-            const inactivityBadge = inactivity && inactivity.level !== 'active'
-                ? `<span style="background:${inactivity.level === 'disbanded' ? '#2a1a1a' : '#2a2a1a'}; color:${inactivity.color}; padding:3px 8px; border-radius:3px; font-size:0.65rem; font-weight:bold;">${escHtml(inactivity.label)}</span>`
+            const inactivityBadge = inactivity
+                ? `<span style="background:${inactivity.level === 'disbanded' ? '#2a1a1a' : inactivity.level === 'decaying' ? '#2a2a1a' : '#1a2a1a'}; color:${inactivity.color}; padding:3px 8px; border-radius:3px; font-size:0.65rem; font-weight:bold;">${escHtml(inactivity.label)}</span>`
                 : '';
             const statusBadge = hasNation
                 ? `<span style="background:#1a2a1a; color:#4CAF50; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">${escHtml(player.nation || 'Unknown')}</span>`
                 : `<span style="background:#2a1a1a; color:#ff4444; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">NO NATION</span>`;
-            const statsHTML = hasNation ? `<div style="display:flex; gap:12px; margin-top:6px; font-size:0.75rem; color:#888;"><span>Seats: <strong style="color:#ffcc00;">${player.seats||0}</strong></span><span>Approval: <strong style="color:#ffcc00;">${player.approval_rating||0}%</strong></span><span>AP: <strong style="color:#ffcc00;">${player.action_points||0}</strong></span></div>` : `<div style="margin-top:6px; font-size:0.75rem; color:#ff4444; font-style:italic;">Not assigned to any nation</div>`;
+            const lastSeenTick = player.last_seen_tick ?? player.founded_tick ?? null;
+            const ticksIdle = lastSeenTick != null ? _playerShardTick - lastSeenTick : null;
+            const lastSeenLabel = lastSeenTick != null
+                ? `Last seen: tick ${lastSeenTick} (${ticksIdle === 0 ? 'this tick' : ticksIdle + 't ago'})`
+                : 'Never seen';
+            const lastSeenColor = ticksIdle === null ? '#666' : ticksIdle <= 6 ? '#888' : ticksIdle < 12 ? '#ff9800' : '#ff4444';
+            const statsHTML = hasNation ? `<div style="display:flex; gap:12px; margin-top:6px; font-size:0.75rem; color:#888;"><span>Seats: <strong style="color:#ffcc00;">${player.seats||0}</strong></span><span>Approval: <strong style="color:#ffcc00;">${player.approval_rating||0}%</strong></span><span>AP: <strong style="color:#ffcc00;">${player.action_points||0}</strong></span><span style="color:${lastSeenColor};">${lastSeenLabel}</span></div>` : `<div style="margin-top:6px; font-size:0.75rem; color:#ff4444; font-style:italic;">Not assigned to any nation</div>`;
             return `<div class="player-item" style="border-left-color:${inactivity && inactivity.level !== 'active' ? inactivity.color : borderColor}; margin-bottom:10px;"><div class="player-info" style="flex:1;"><div style="display:flex; align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap;"><span class="player-party">${escHtml(player.faction_name||'Unnamed')} ${player.abbreviation ? '['+escHtml(player.abbreviation)+']' : ''}</span>${statusBadge}${inactivityBadge}</div><div class="player-id">ID: ${player.id}</div>${statsHTML}</div><div style="display:flex; gap:6px; flex-direction:column;">${hasNation ? `<button class="btn-remove" style="font-size:0.75rem; padding:6px 12px;" onclick="removePlayer('${player.id}', '${player.nation_id}', '${(player.faction_name||'').replace(/'/g,"\\'")}')">KICK</button>` : ''}<button class="btn-remove" style="background:#aa0000; font-size:0.75rem; padding:6px 12px;" onclick="deleteParty('${player.id}', '${(player.faction_name||'').replace(/'/g,"\\'")}')">DELETE</button></div></div>`;
         }).join('');
     }
