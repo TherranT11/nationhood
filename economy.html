@@ -637,7 +637,13 @@ async function submitTaxBill(nation) {
                 article_text: 'Proposing to change ' + artCfg.name + ' from ' + artOld +
                     '% to ' + artNew + '%. This would ' + (artDelta >= 0 ? 'generate' : 'cost') +
                     ' ' + formatBudgetCurrency(Math.abs(artDelta)) + ' per year in revenue.\n\n' +
-                    'Estimated impact: ' + artApprovalText
+                    'Estimated impact: ' + artApprovalText,
+                effect_data: {
+                    type: 'TAX_RATE_CHANGE',
+                    tax_key: artKey,
+                    old_rate: artOld,
+                    new_rate: artNew
+                }
             });
         }
         if (articles.length > 0) {

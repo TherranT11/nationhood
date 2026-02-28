@@ -5312,6 +5312,52 @@ async function enactBill(supabase, bill, currentTick) {
         }
     }
 
+    // ── Apply effect_data articles (e.g. tax rate changes) ──
+    const VALID_TAX_KEYS = new Set(['income_tax', 'sales_tax', 'corporate_tax']);
+    const taxUpdates: Record<string, number> = {};
+
+    for (const art of (bill.bill_articles || [])) {
+        const effect = art.effect_data;
+        if (!effect) continue;
+
+        if (effect.type === 'TAX_RATE_CHANGE' && VALID_TAX_KEYS.has(effect.tax_key)) {
+            const newRate = Math.max(0, Math.min(50, Number(effect.new_rate)));
+            taxUpdates[effect.tax_key] = newRate;
+            console.log(`[enactBill] Tax rate change: ${effect.tax_key} ${effect.old_rate}% → ${newRate}%`);
+        }
+    }
+
+    // Backward compat: parse tax changes from article text for bills filed before effect_data existed
+    if (Object.keys(taxUpdates).length === 0) {
+        for (const art of (bill.bill_articles || [])) {
+            if (art.policy_id || art.effect_data) continue;
+            const title = art.article_title || '';
+            if (!title.endsWith('Rate Change')) continue;
+            const text = art.article_text || '';
+            const match = text.match(/change\s+(.+?)\s+from\s+(\d+)%?\s+to\s+(\d+)%/i);
+            if (!match) continue;
+            const taxName = match[1].trim();
+            const newRate = Math.max(0, Math.min(50, parseInt(match[3], 10)));
+            const taxKey = taxName === 'Income Tax' ? 'income_tax'
+                : taxName === 'Sales Tax' ? 'sales_tax'
+                : taxName === 'Corporate Tax' ? 'corporate_tax'
+                : null;
+            if (taxKey) {
+                taxUpdates[taxKey] = newRate;
+                console.log(`[enactBill] Tax rate change (parsed): ${taxKey} → ${newRate}%`);
+            }
+        }
+    }
+
+    if (Object.keys(taxUpdates).length > 0) {
+        const { error: taxErr } = await supabase.from('nations')
+            .update(taxUpdates)
+            .eq('id', bill.nation_id);
+        if (taxErr) {
+            console.error(`[enactBill] Failed to apply tax rate changes:`, taxErr.message);
+        }
+    }
+
     // Load ideology axes for all voting factions (sponsor + voters)
     const voterFactionIds = [bill.proposed_by, ...(bill.bill_support || []).map(s => s.faction_id)];
     const uniqueFactionIds = [...new Set(voterFactionIds.filter(Boolean))];
@@ -5320,7 +5366,7 @@ async function enactBill(supabase, bill, currentTick) {
         .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
         .in('faction_id', uniqueFactionIds);
 
-    const factionIdeologies = {};
+    const factionIdeologies: Record<string, any> = {};
     for (const row of (ideoRows || [])) {
         factionIdeologies[row.faction_id] = row;
     }
