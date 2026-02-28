@@ -2246,14 +2246,14 @@ async function renderParties() {
         .eq('nation_id', n.id)
         .eq('is_active', true);
 
-    // Fetch recent momentum log for this party (last 10 entries)
+    // Fetch recent momentum log for this party (per-bloc + global, last 30 entries)
     const { data: momentumLog } = await _supabase
         .from('momentum_log')
-        .select('amount, source, tick')
+        .select('amount, source, tick, bloc_id')
         .eq('nation_id', n.id)
         .eq('faction_id', f.id)
         .order('tick', { ascending: false })
-        .limit(10);
+        .limit(30);
 
     const blocWeights = {};
     for (const b of (blocs || [])) blocWeights[b.id] = b.population_weight || 1;
@@ -2383,10 +2383,6 @@ async function renderParties() {
         };
     }).sort((a, b) => b.myApproval - a.myApproval);
 
-    const blocsLeading = blocRows.filter(r => r.isLeading);
-    const leadingCount = blocsLeading.length;
-    const leadingPopPct = Math.round(blocsLeading.reduce((s, r) => s + r.popWeight, 0));
-    const swingBlocs = blocRows.filter(r => !r.isLeading && r.margin <= 3);
 
     // === Performance Credit ===
     const MINISTRY_NAMES = {
@@ -2637,67 +2633,173 @@ async function renderParties() {
         apTip = 'Spend AP on bills, campaigns, and ministry actions.';
     }
 
-    // === Approval by Voter Bloc (build HTML) ===
+    // === Voter Bloc Approval Cards (build HTML) ===
     const totalEligible = n.eligible_voters || 0;
-    function compactNum(v) {
-        if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
-        if (v >= 1_000) return (v / 1_000).toFixed(v >= 100_000 ? 0 : 1).replace(/\.0$/, '') + 'K';
-        return String(Math.round(v));
+
+    // Categorize momentum_log sources into modifier types
+    function classifySource(source) {
+        if (!source) return { type: 'action', label: source || 'Unknown' };
+        const s = source.toLowerCase();
+        if (s.startsWith('bill:') || s.startsWith('penalty:no_vote')) return { type: 'legislation', label: formatSourceLabel(source) };
+        if (s.startsWith('promise:')) return { type: 'legacy', label: formatSourceLabel(source) };
+        if (s.startsWith('campaign:') || s.startsWith('rally') || s.startsWith('outreach')) return { type: 'action', label: formatSourceLabel(source) };
+        if (s.startsWith('crisis:') || s.startsWith('event:')) return { type: 'performance', label: formatSourceLabel(source) };
+        if (s.startsWith('election:') || s.startsWith('no_confidence') || s.startsWith('formation_failure') || s.startsWith('government_vacancy') || s.startsWith('early_election')) return { type: 'action', label: formatSourceLabel(source) };
+        if (s.startsWith('pm_trait:') || s.startsWith('pm:')) return { type: 'performance', label: formatSourceLabel(source) };
+        return { type: 'action', label: formatSourceLabel(source) };
+    }
+    function formatSourceLabel(source) {
+        return source.replace(/[_:]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
     }
 
-    // Build ideology tooltip content for a voter bloc from its 5-axis scores
-    function blocIdeologyTip(axes, priorityIssues) {
-        let rows = '';
+    // Build per-bloc modifier lists from momentum_log
+    const blocModifiers = {}; // { blocId: [ { type, label, value, date } ] }
+    for (const entry of (momentumLog || [])) {
+        const targetBlocIds = entry.bloc_id ? [entry.bloc_id] : blocRows.map(r => r.blocId);
+        const classified = classifySource(entry.source);
+        const dateStr = tickToDate(entry.tick);
+        for (const bid of targetBlocIds) {
+            if (!blocModifiers[bid]) blocModifiers[bid] = [];
+            blocModifiers[bid].push({
+                type: classified.type,
+                label: classified.label,
+                value: Math.round(entry.amount * 10) / 10,
+                date: dateStr
+            });
+        }
+    }
+
+    // Compute axis labels for each bloc
+    function getBlocAxisLabels(axes) {
+        const labels = [];
         for (const ax of IDEOLOGY_AXES) {
             const v = axes[ax.key] ?? 50;
-            const leftBold = v < 40;
-            const rightBold = v > 60;
-            const leftStyle = leftBold ? `color:${ax.leftColor};font-weight:700` : 'color:var(--text-muted, #666)';
-            const rightStyle = rightBold ? `color:${ax.rightColor};font-weight:700` : 'color:var(--text-muted, #666)';
-            const markerColor = leftBold ? ax.leftColor : rightBold ? ax.rightColor : 'var(--text-secondary, #aaa)';
-            rows += `<div class="bloc-ideo-axis">
-                <span class="bloc-ideo-pole" style="${leftStyle}">${ax.leftLabel}</span>
-                <div class="bloc-ideo-track"><div class="bloc-ideo-marker" style="left:${v}%;background:${markerColor}"></div></div>
-                <span class="bloc-ideo-pole bloc-ideo-pole-right" style="${rightStyle}">${ax.rightLabel}</span>
-            </div>`;
+            if (v < 40) labels.push(ax.leftLabel);
+            else if (v > 60) labels.push(ax.rightLabel);
         }
-        let issuesHtml = '';
-        if (priorityIssues && priorityIssues.length > 0) {
-            issuesHtml = `<div class="bloc-ideo-issues">Priorities: ${priorityIssues.join(', ')}</div>`;
-        }
-        return `<div class="bloc-ideo-tip">${rows}${issuesHtml}</div>`;
+        return labels;
     }
 
-    let blocTableHtml = '';
+    // Approval color thresholds
+    function vbaApprovalColor(val) {
+        if (val >= 65) return '#4ade80';
+        if (val >= 45) return '#facc15';
+        if (val >= 30) return '#f97316';
+        return '#ef4444';
+    }
+    function vbaModColor(val) {
+        if (val > 0) return '#4ade80';
+        if (val < 0) return '#ef4444';
+        return '#6b6a5e';
+    }
+    function vbaFormatMod(val) { return val > 0 ? `+${val}` : `${val}`; }
+
+    const modIcons = { ideology: '◆', performance: '▲', legislation: '§', action: '●', legacy: '★' };
+    const modColors = { ideology: '#22d3ee', performance: '#60a5fa', legislation: '#facc15', action: '#8a8778', legacy: '#f97316' };
+
+    // Build card HTML for each bloc
+    let blocCardsHtml = '';
     for (const r of blocRows) {
-        const barColor = r.isLeading ? partyColor : 'var(--text-muted, #555)';
-        const voters = compactNum(totalEligible * (r.popWeight / 100));
+        const approvalColor = vbaApprovalColor(r.myApproval);
+        const barWidth = Math.max(2, r.myApproval);
+        const axisLabels = getBlocAxisLabels(r.axes);
         const p = r.pillars;
-        const momMapped = Math.round(50 + p.mom);
-        const momSign = p.mom > 0 ? '+' : '';
-        const ideoTip = blocIdeologyTip(r.axes, r.priorityIssues);
-        blocTableHtml += `
-            <div class="bloc-row${r.isLeading ? ' bloc-row-leading' : ''}">
-                <span class="bloc-name bloc-name-hover">${r.blocName}${ideoTip}</span>
-                <span class="bloc-voters">${voters}</span>
-                <div class="bloc-bar-track">
-                    <div class="bloc-bar-fill" style="width:${r.myApproval}%;background:${barColor}"></div>
+
+        // Build modifier list: ideology (permanent) + performance + momentum_log entries
+        const mods = [];
+        mods.push({ type: 'ideology', label: 'Ideological Alignment', value: p.ideo, permanent: true });
+        if (p.perf !== 50) {
+            mods.push({ type: 'performance', label: 'Performance Perception', value: p.perf - 50 });
+        }
+        // Add momentum log entries for this bloc
+        const logMods = blocModifiers[r.blocId] || [];
+        for (const m of logMods) {
+            mods.push(m);
+        }
+
+        const delta = p.mom;
+        const modifierCount = mods.length;
+
+        // Modifier rows HTML (for expandable section)
+        let modRowsHtml = '';
+        for (const mod of mods) {
+            const iconColor = modColors[mod.type] || '#6b6a5e';
+            const icon = modIcons[mod.type] || '·';
+            const dateHtml = mod.date ? `<span class="vba-mod-date">${escapeHtml(mod.date)}</span>` : '';
+            const permHtml = mod.permanent ? `<span class="vba-mod-perm">PERM</span>` : '';
+            modRowsHtml += `
+                <div class="vba-mod-row">
+                    <span class="vba-mod-icon" style="color:${iconColor}">${icon}</span>
+                    <span class="vba-mod-label">${escapeHtml(mod.label)}</span>
+                    ${dateHtml}${permHtml}
+                    <span class="vba-mod-val" style="color:${vbaModColor(mod.value)}">${vbaFormatMod(mod.value)}</span>
+                </div>`;
+        }
+
+        // Breakdown summary bar data
+        const ideoVal = Math.abs(mods.find(m => m.type === 'ideology')?.value || 0);
+        const positives = mods.filter(m => m.type !== 'ideology' && m.value > 0).reduce((s, m) => s + m.value, 0);
+        const negatives = Math.abs(mods.filter(m => m.type !== 'ideology' && m.value < 0).reduce((s, m) => s + m.value, 0));
+        const breakdownTotal = ideoVal + positives + negatives;
+        let breakdownBarHtml = '';
+        if (breakdownTotal > 0) {
+            breakdownBarHtml = `
+                <div class="vba-breakdown-bar">
+                    <div style="width:${(ideoVal / breakdownTotal) * 100}%;background:#22d3ee;opacity:0.5;border-radius:2px 0 0 2px"></div>
+                    <div style="width:${(positives / breakdownTotal) * 100}%;background:#4ade80;opacity:0.5"></div>
+                    <div style="width:${(negatives / breakdownTotal) * 100}%;background:#ef4444;opacity:0.5;border-radius:0 2px 2px 0"></div>
                 </div>
-                <span class="bloc-approval bloc-approval-hover">${r.myApproval}%
-                    <div class="bloc-pillar-tip">
-                        <div class="bpt-row"><span class="bpt-label">Ideology</span><div class="bpt-bar"><div class="bpt-fill" style="width:${p.ideo}%;background:#9C27B0"></div></div><span class="bpt-val">${p.ideo}</span></div>
-                        <div class="bpt-row"><span class="bpt-label">Performance</span><div class="bpt-bar"><div class="bpt-fill" style="width:${p.perf}%;background:#2196F3"></div></div><span class="bpt-val">${p.perf}</span></div>
-                        <div class="bpt-row"><span class="bpt-label">Momentum</span><div class="bpt-bar"><div class="bpt-fill" style="width:${momMapped}%;background:#ff9800"></div></div><span class="bpt-val">${momSign}${p.mom}</span></div>
+                <div class="vba-breakdown-legend">
+                    <span style="color:#22d3ee">◆ Ideology ${ideoVal}</span>
+                    <span style="color:#4ade80">+ Gains ${Math.round(positives)}</span>
+                    <span style="color:#ef4444">− Losses ${Math.round(negatives)}</span>
+                </div>`;
+        }
+
+        blocCardsHtml += `
+            <div class="vba-card" data-bloc-id="${r.blocId}">
+                <div class="vba-card-header">
+                    <div class="vba-card-header-top">
+                        <div class="vba-card-left">
+                            <div class="vba-card-name-row">
+                                <span class="vba-card-name">${escapeHtml(r.blocName)}</span>
+                                <span class="vba-card-pop">${r.popWeight}% of electorate</span>
+                            </div>
+                            <div class="vba-card-pills">
+                                ${axisLabels.map(a => `<span class="vba-axis-pill">${escapeHtml(a)}</span>`).join('')}
+                                ${axisLabels.length > 0 && r.priorityIssues.length > 0 ? '<span class="vba-pill-sep">·</span>' : ''}
+                                ${(r.priorityIssues || []).map(p => `<span class="vba-priority-pill">${escapeHtml(p)}</span>`).join('')}
+                            </div>
+                        </div>
+                        <div class="vba-card-right">
+                            <div class="vba-card-score">
+                                <span class="vba-card-score-num" style="color:${approvalColor}">${r.myApproval}</span>
+                                <span class="vba-card-score-denom">/ 100</span>
+                            </div>
+                            ${delta !== 0
+                                ? `<span class="vba-card-delta" style="color:${delta > 0 ? '#4ade80' : '#ef4444'}">${delta > 0 ? `▲ +${delta}` : `▼ ${delta}`}</span>`
+                                : `<span class="vba-card-delta" style="color:#6b6a5e">— no change</span>`}
+                        </div>
                     </div>
-                </span>
-                <span class="bloc-change">${p.mom !== 0 ? (p.mom > 0 ? '<span style="color:#4CAF50">+' + p.mom + '</span>' : '<span style="color:#ff4444">' + p.mom + '</span>') : '—'}</span>
-                <span class="bloc-leader" style="color:${r.leaderColor}">${r.isLeading ? 'YOU' : r.leaderAbbr}</span>
+                    <div class="vba-card-bar-track"><div class="vba-card-bar-fill" style="width:${barWidth}%;background:${approvalColor}"></div></div>
+                </div>
+                <div class="vba-card-expanded" style="display:none">
+                    <div class="vba-expanded-header">
+                        <span class="vba-expanded-title">Approval Breakdown</span>
+                        <span class="vba-expanded-count">${modifierCount} factor${modifierCount !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div class="vba-mod-list">${modRowsHtml}</div>
+                    <div class="vba-breakdown-section">${breakdownBarHtml}</div>
+                </div>
             </div>`;
     }
 
-    const swingText = swingBlocs.length > 0
-        ? `Swing Blocs (within 3%): ${swingBlocs.map(r => r.blocName).join(', ')}`
-        : 'No swing blocs';
+    // Summary: strongest, weakest, biggest shift
+    const sorted = [...blocRows].sort((a, b) => b.myApproval - a.myApproval);
+    const strongest = sorted[0];
+    const weakest = sorted[sorted.length - 1];
+    const biggestShift = [...blocRows].sort((a, b) => Math.abs(b.pillars.mom) - Math.abs(a.pillars.mom))[0];
+    const currentTickDate = tickToDate(currentShard?.current_tick || 0);
 
     // === Build Other Parties Cards (segmented by Governing / Opposition) ===
     const otherParties = (allParties || []).filter(p => p.id !== f.id);
@@ -2961,25 +3063,44 @@ async function renderParties() {
 
         </div>
 
-        <div class="bloc-approval-panel">
-            <div class="bloc-approval-header-row">
-                <span class="bloc-approval-title">Approval by Voter Bloc</span>
-                <span class="bloc-approval-note">Hover approval for breakdown</span>
+        <div class="vba-panel">
+            <div class="vba-header">
+                <div class="vba-header-left">
+                    <span class="vba-title">Voter Bloc Approval</span>
+                    <span class="vba-subtitle">${escapeHtml(f.faction_name)}</span>
+                </div>
+                <div class="vba-header-right">
+                    <span class="vba-national-label">Weighted National Approval</span>
+                    <span class="vba-national-val" style="color:${vbaApprovalColor(f._derivedApproval ?? f.approval_rating ?? 0)}">${(f._derivedApproval ?? f.approval_rating ?? 0).toFixed(1)}%</span>
+                </div>
             </div>
-            <div class="bloc-table-header">
-                <span class="bloc-name">Bloc</span>
-                <span class="bloc-voters">Voters</span>
-                <span class="bloc-bar-track-header"></span>
-                <span class="bloc-approval">Your Approval</span>
-                <span class="bloc-change">Change</span>
-                <span class="bloc-leader">Leader</span>
+            <div class="vba-legend">
+                <span class="vba-legend-item"><span style="color:#22d3ee;margin-right:4px">◆</span>Ideology</span>
+                <span class="vba-legend-item"><span style="color:#60a5fa;margin-right:4px">▲</span>Performance</span>
+                <span class="vba-legend-item"><span style="color:#facc15;margin-right:4px">§</span>Legislation</span>
+                <span class="vba-legend-item"><span style="color:#8a8778;margin-right:4px">●</span>Action</span>
+                <span class="vba-legend-item"><span style="color:#f97316;margin-right:4px">★</span>Legacy</span>
+                <span class="vba-legend-click">Click to expand</span>
             </div>
-            <div class="bloc-table-body">
-                ${blocTableHtml}
+            <div class="vba-grid">
+                ${blocCardsHtml}
             </div>
-            <div class="bloc-approval-footer">
-                <span>Leading: ${leadingCount} of ${blocRows.length}${leadingPopPct > 0 ? ` (${leadingPopPct}% of pop)` : ''}</span>
-                <span>${swingText}</span>
+            <div class="vba-footer">
+                <div class="vba-footer-stats">
+                    <div class="vba-footer-stat">
+                        <span class="vba-footer-stat-label">Strongest Bloc</span>
+                        <span class="vba-footer-stat-val" style="color:#4ade80">${strongest ? escapeHtml(strongest.blocName) + ' — ' + strongest.myApproval : '—'}</span>
+                    </div>
+                    <div class="vba-footer-stat">
+                        <span class="vba-footer-stat-label">Weakest Bloc</span>
+                        <span class="vba-footer-stat-val" style="color:#ef4444">${weakest ? escapeHtml(weakest.blocName) + ' — ' + weakest.myApproval : '—'}</span>
+                    </div>
+                    <div class="vba-footer-stat">
+                        <span class="vba-footer-stat-label">Biggest Shift</span>
+                        <span class="vba-footer-stat-val" style="color:${biggestShift && biggestShift.pillars.mom > 0 ? '#4ade80' : biggestShift && biggestShift.pillars.mom < 0 ? '#ef4444' : '#6b6a5e'}">${biggestShift ? escapeHtml(biggestShift.blocName) + (biggestShift.pillars.mom > 0 ? ' ▲ +' : biggestShift.pillars.mom < 0 ? ' ▼ ' : ' — ') + biggestShift.pillars.mom : '—'}</span>
+                    </div>
+                </div>
+                <span class="vba-footer-tick">Tick ${currentShard?.current_tick || 0} · ${currentTickDate}</span>
             </div>
         </div>
 
@@ -3037,6 +3158,35 @@ async function renderParties() {
 
         </div>
     `;
+
+    // ── Voter Bloc card expand/collapse ──
+    (function initVbaCards() {
+        let expandedId = null;
+        el.querySelectorAll('.vba-card').forEach(card => {
+            const header = card.querySelector('.vba-card-header');
+            const expanded = card.querySelector('.vba-card-expanded');
+            if (!header || !expanded) return;
+            header.style.cursor = 'pointer';
+            header.addEventListener('click', () => {
+                const blocId = card.dataset.blocId;
+                if (expandedId === blocId) {
+                    expanded.style.display = 'none';
+                    card.style.borderColor = 'rgba(255,255,255,0.06)';
+                    expandedId = null;
+                } else {
+                    // Collapse previously expanded
+                    el.querySelectorAll('.vba-card').forEach(c => {
+                        const exp = c.querySelector('.vba-card-expanded');
+                        if (exp) exp.style.display = 'none';
+                        c.style.borderColor = 'rgba(255,255,255,0.06)';
+                    });
+                    expanded.style.display = 'block';
+                    card.style.borderColor = 'rgba(255,255,255,0.1)';
+                    expandedId = blocId;
+                }
+            });
+        });
+    })();
 
     // ── Edit Party Identity logic ──
     (function initEditIdentity() {
