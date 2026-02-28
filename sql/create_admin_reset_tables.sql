@@ -19,6 +19,12 @@ DECLARE
         'faction_ideology',
         'ministry_action_log',
         'government_formation_chat',
+        -- Faction coalitions (children before parents)
+        'coalition_messages',
+        'faction_coalitions',
+        'loyalty_demands',
+        -- Autocracy
+        'stewards',
         -- Government tables (children before parents)
         'head_of_government',
         'pm_candidates',
@@ -43,12 +49,23 @@ DECLARE
         'diplomatic_messages',
         'diplomatic_proposals',
         'diplomatic_action_log',
-        'ambassadors'
+        'ambassadors',
+        -- Forum & chat
+        'forum_replies',
+        'forum_threads',
+        'admin_chat'
     ];
 BEGIN
-    -- First: null out nations.ruling_faction_id so factions can be deleted
+    -- First: null out FKs to factions so factions can be deleted
     UPDATE nations SET ruling_faction_id = NULL WHERE ruling_faction_id IS NOT NULL;
     result := result || '{"nations.ruling_faction_id": "nulled"}'::JSONB;
+
+    BEGIN
+        UPDATE regime_pillars SET steward_faction_id = NULL WHERE steward_faction_id IS NOT NULL;
+        result := result || '{"regime_pillars.steward_faction_id": "nulled"}'::JSONB;
+    EXCEPTION WHEN undefined_table THEN
+        result := result || '{"regime_pillars.steward_faction_id": "table missing (skipped)"}'::JSONB;
+    END;
 
     -- Clear each game-state table
     FOREACH tbl IN ARRAY tables
