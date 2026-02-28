@@ -8877,7 +8877,8 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
                 performance_perception: u.performance_perception,
                 momentum: u.momentum,
                 preference_score: u.preference_score,
-                vote_share: u.vote_share
+                vote_share: u.vote_share,
+                ideology_drift: u.ideology_drift
             })
             .eq('id', u.id);
     }
