@@ -37,9 +37,10 @@ export async function syncVoteTallies(supabase, billId) {
 
     let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
     (allVotes || []).forEach(v => {
-        if (v.stance === 'yes')            votesFor += v.seat_count;
-        else if (v.stance === 'no')        votesAgainst += v.seat_count;
-        else if (v.stance === 'abstain')   votesAbstain += v.seat_count;
+        const st = v.stance === 'accept' ? 'yes' : v.stance === 'reject' ? 'no' : v.stance;
+        if (st === 'yes')            votesFor += v.seat_count;
+        else if (st === 'no')        votesAgainst += v.seat_count;
+        else if (st === 'abstain')   votesAbstain += v.seat_count;
     });
 
     await supabase.from('bills').update({
