@@ -1187,7 +1187,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         const ticksInactive = _playerShardTick - lastActive;
         if (ticksInactive <= 6) return { ticks: ticksInactive, level: 'active', label: 'Active', color: '#4CAF50' };
         if (ticksInactive < 12) return { ticks: ticksInactive, level: 'decaying', label: `Idle ${ticksInactive} ticks (-5 Mom, -5 Apr/tick)`, color: '#ff9800' };
-        return { ticks: ticksInactive, level: 'nuked', label: `Nuked! (${ticksInactive} ticks idle, -99 Mom & Apr)`, color: '#ff4444' };
+        return { ticks: ticksInactive, level: 'disbanded', label: `Disbanded (${ticksInactive} ticks idle)`, color: '#ff4444' };
     }
     function renderPlayers(filter) {
         const playersList = document.getElementById('players-list');
@@ -1206,7 +1206,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             const borderColor = hasNation ? '#4CAF50' : '#ff4444';
             const inactivity = getInactivityInfo(player);
             const inactivityBadge = inactivity && inactivity.level !== 'active'
-                ? `<span style="background:${inactivity.level === 'nuked' ? '#2a1a1a' : '#2a2a1a'}; color:${inactivity.color}; padding:3px 8px; border-radius:3px; font-size:0.65rem; font-weight:bold;">${escHtml(inactivity.label)}</span>`
+                ? `<span style="background:${inactivity.level === 'disbanded' ? '#2a1a1a' : '#2a2a1a'}; color:${inactivity.color}; padding:3px 8px; border-radius:3px; font-size:0.65rem; font-weight:bold;">${escHtml(inactivity.label)}</span>`
                 : '';
             const statusBadge = hasNation
                 ? `<span style="background:#1a2a1a; color:#4CAF50; padding:3px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold;">${escHtml(player.nation || 'Unknown')}</span>`

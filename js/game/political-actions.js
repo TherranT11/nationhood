@@ -5216,13 +5216,15 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
  *
  * Rules (per tick, for each non-NPC faction with nation_id set):
  *   • ticksInactive = currentTick - (faction.last_seen_tick ?? faction.founded_tick ?? 0)
- *   • If ticksInactive > INACTIVITY_GRACE_TICKS (6) and < INACTIVITY_NUKE_TICKS (12):
+ *   • If ticksInactive > INACTIVITY_GRACE_TICKS (6) and < INACTIVITY_DISBAND_TICKS (12):
  *       – Lose INACTIVITY_MOMENTUM_DECAY (5) momentum with every voter bloc
  *       – Lose INACTIVITY_APPROVAL_DECAY (5) approval with every voter bloc
- *   • If ticksInactive >= INACTIVITY_NUKE_TICKS (12):
- *       – Lose INACTIVITY_NUKE_AMOUNT (99) momentum and approval with every voter bloc
+ *   • If ticksInactive >= INACTIVITY_DISBAND_TICKS (12):
+ *       – Party is DISBANDED: removed from nation, seats zeroed, spot opened for new players
+ *       – Ambassadors remain until their term expires
+ *       – Ministries remain until the next election
  *
- * @returns {Array<{factionId, factionName, ticksInactive, momentumLost, approvalLost}>}
+ * @returns {Array<{factionId, factionName, ticksInactive, momentumLost, approvalLost, disbanded?}>}
  */
 export async function processInactivityDecay(supabase, nationId, currentTick) {
     const results = [];
@@ -5243,10 +5245,74 @@ export async function processInactivityDecay(supabase, nationId, currentTick) {
 
         if (ticksInactive <= GAME_CONFIG.INACTIVITY_GRACE_TICKS) continue;
 
-        // At tick 12+, apply nuclear penalty (-99); otherwise gradual decay (-5/-5)
-        const isNuke = ticksInactive >= GAME_CONFIG.INACTIVITY_NUKE_TICKS;
-        const momentumPenalty = isNuke ? GAME_CONFIG.INACTIVITY_NUKE_AMOUNT : GAME_CONFIG.INACTIVITY_MOMENTUM_DECAY;
-        const approvalPenalty = isNuke ? GAME_CONFIG.INACTIVITY_NUKE_AMOUNT : GAME_CONFIG.INACTIVITY_APPROVAL_DECAY;
+        // At tick 12+, disband the party entirely
+        if (ticksInactive >= GAME_CONFIG.INACTIVITY_DISBAND_TICKS) {
+            console.log(`[InactivityDisband] "${faction.faction_name}" (${ticksInactive} ticks idle): DISBANDED from nation ${nationId}`);
+
+            // Clean up faction-related data (but NOT ambassadors or ministries)
+            await supabase.from('faction_bloc_approval').delete().eq('faction_id', faction.id);
+            await supabase.from('faction_ideology').delete().eq('faction_id', faction.id);
+            await supabase.from('ideology_history').delete().eq('faction_id', faction.id);
+            await supabase.from('momentum_log').delete().eq('faction_id', faction.id);
+            await supabase.from('fundraiser_promises').delete().eq('party_id', faction.id);
+            await supabase.from('donor_trust').delete().eq('party_id', faction.id);
+            await supabase.from('bill_support').delete().eq('faction_id', faction.id);
+            await supabase.from('campaign_actions').delete().eq('party_id', faction.id);
+
+            // Remove from nation, zero seats, set cooldown
+            await supabase.from('factions')
+                .update({
+                    nation_id: null,
+                    nation: null,
+                    abandoned_at: new Date().toISOString(),
+                    disband_cooldown_until_tick: currentTick + 24,
+                    action_points: 0,
+                    seats: 0,
+                    approval_rating: null,
+                    last_seen_tick: null,
+                    founded_tick: null
+                })
+                .eq('id', faction.id);
+
+            // Event log
+            await supabase.from('event_log').insert({
+                nation_id: nationId,
+                event_name: 'PARTY_DISBANDED_INACTIVITY',
+                description_used: `${faction.faction_name} has been dissolved due to prolonged inactivity (${ticksInactive} ticks idle). Their seats will be vacated at the next election. Ambassadors remain at their posts until their terms expire.`,
+                category: 'POLITICAL',
+                effects_applied: {
+                    faction_id: faction.id,
+                    faction_name: faction.faction_name,
+                    ticks_inactive: ticksInactive,
+                    seats_zeroed: true,
+                    ambassadors_kept: true,
+                    ministries_kept_until_election: true
+                }
+            });
+
+            // Audit log
+            await supabase.from('campaign_actions').insert({
+                party_id: faction.id,
+                nation_id: nationId,
+                action_type: 'party_disbanded',
+                tick_performed: currentTick,
+                result: { faction_name: faction.faction_name, reason: 'inactivity', ticks_inactive: ticksInactive }
+            });
+
+            results.push({
+                factionId: faction.id,
+                factionName: faction.faction_name,
+                ticksInactive,
+                momentumLost: 0,
+                approvalLost: 0,
+                disbanded: true
+            });
+            continue;
+        }
+
+        // Ticks 7-11: gradual decay (-5 momentum, -5 approval per bloc per tick)
+        const momentumPenalty = GAME_CONFIG.INACTIVITY_MOMENTUM_DECAY;
+        const approvalPenalty = GAME_CONFIG.INACTIVITY_APPROVAL_DECAY;
 
         const entry = {
             factionId: faction.id,
@@ -5284,11 +5350,11 @@ export async function processInactivityDecay(supabase, nationId, currentTick) {
                 faction_id: faction.id,
                 bloc_id: null,
                 amount: -momentumPenalty,
-                source: isNuke ? 'inactivity_nuke' : 'inactivity_decay',
+                source: 'inactivity_decay',
                 tick: currentTick
             });
 
-            console.log(`[InactivityDecay] "${faction.faction_name}" (${ticksInactive} ticks idle): -${momentumPenalty} momentum, -${approvalPenalty} approval across ${blocRows.length} blocs${isNuke ? ' (NUKE)' : ''}`);
+            console.log(`[InactivityDecay] "${faction.faction_name}" (${ticksInactive} ticks idle): -${momentumPenalty} momentum, -${approvalPenalty} approval across ${blocRows.length} blocs`);
         }
 
         results.push(entry);

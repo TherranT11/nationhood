@@ -34,10 +34,9 @@ export const GAME_CONFIG = {
     TICKS_PER_YEAR: 12,
     // Inactivity decay — penalties for factions that haven't logged in
     INACTIVITY_GRACE_TICKS: 6,            // no penalty for first 6 ticks of inactivity
-    INACTIVITY_MOMENTUM_DECAY: 5,         // -5 momentum per voter bloc per tick while inactive (ticks 7-12)
-    INACTIVITY_APPROVAL_DECAY: 5,         // -5 approval per voter bloc per tick while inactive (ticks 7-12)
-    INACTIVITY_NUKE_TICKS: 12,            // at tick 12: -99 momentum and -99 approval (nuclear penalty)
-    INACTIVITY_NUKE_AMOUNT: 99,           // amount to subtract at tick 12
+    INACTIVITY_MOMENTUM_DECAY: 5,         // -5 momentum per voter bloc per tick while inactive (ticks 7-11)
+    INACTIVITY_APPROVAL_DECAY: 5,         // -5 approval per voter bloc per tick while inactive (ticks 7-11)
+    INACTIVITY_DISBAND_TICKS: 12,         // at tick 12: party is disbanded (removed from nation, loses seats next election)
     BUDGET_EARLY_WINDOW_TICKS: 3,    // ticks before budget due date that early proposal opens
     BUDGET_BILL_VOTING_TICKS: null,   // budget bills persist until passed (never expire)
     NO_BUDGET_PENALTY_TICKS: 24,     // how many ticks without a budget before max penalty
