@@ -6975,8 +6975,11 @@ async function processPartialElection(supabase, nation, election, currentTick) {
         return;
     }
 
-    // 2. Scale bloc voter_counts to eligible_voters (same pattern as runElectionPreview)
-    const eligibleVoters = nation.eligible_voters || 0;
+    // 2. Scale bloc voter_counts to actual eligible voter count
+    // eligible_voters is a 0-100 stat (% of population eligible to vote)
+    const pop1 = nation.population || 0;
+    const eligPct1 = nation.eligible_voters || 65;
+    const eligibleVoters = pop1 > 0 ? Math.round(pop1 * eligPct1 / 100) : 0;
     const totalBlocVoters = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
     if (totalBlocVoters > 0 && eligibleVoters > 0) {
         const scale = eligibleVoters / totalBlocVoters;
@@ -14538,7 +14541,7 @@ async function runElectionPreview(supabase, nationId) {
     // 1. Load nation
     const { data: nation } = await supabase
         .from('nations')
-        .select('id, name, total_seats, eligible_voters')
+        .select('id, name, total_seats, population, eligible_voters')
         .eq('id', nationId)
         .single();
     if (!nation) throw new Error('Nation not found');
@@ -14553,8 +14556,11 @@ async function runElectionPreview(supabase, nationId) {
         .eq('is_active', true);
     if (!blocs || blocs.length === 0) throw new Error('No voter blocs found for this nation');
 
-    // 2b. Scale bloc voter_counts so total matches eligible_voters (blocs are generated from population)
-    const eligibleVoters = nation.eligible_voters || 0;
+    // 2b. Scale bloc voter_counts so total matches actual eligible voter count
+    // eligible_voters is a 0-100 stat (% of population eligible to vote)
+    const pop2 = nation.population || 0;
+    const eligPct2 = nation.eligible_voters || 65;
+    const eligibleVoters = pop2 > 0 ? Math.round(pop2 * eligPct2 / 100) : 0;
     const totalBlocVoters = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
     if (totalBlocVoters > 0 && eligibleVoters > 0) {
         const scale = eligibleVoters / totalBlocVoters;
@@ -14646,11 +14652,11 @@ async function runElectionPreview(supabase, nationId) {
     return {
         nation: nation.name,
         total_seats: totalSeats,
-        eligible_voters: nation.eligible_voters || 0,
+        eligible_voters: eligibleVoters,
         total_votes_cast: result.totalVotesCast,
         total_abstentions: result.totalAbstentions,
-        turnout_pct: nation.eligible_voters
-            ? Math.round((result.totalVotesCast / nation.eligible_voters) * 10000) / 100
+        turnout_pct: eligibleVoters > 0
+            ? Math.round((result.totalVotesCast / eligibleVoters) * 10000) / 100
             : 0,
         results: partyResults,
         bloc_details: result.details,
@@ -14668,7 +14674,7 @@ async function runPresidentialElectionPreview(supabase, nationId) {
     // 1. Load nation
     const { data: nation } = await supabase
         .from('nations')
-        .select('id, name, total_seats, eligible_voters')
+        .select('id, name, total_seats, population, eligible_voters')
         .eq('id', nationId)
         .single();
     if (!nation) throw new Error('Nation not found');
@@ -14681,8 +14687,11 @@ async function runPresidentialElectionPreview(supabase, nationId) {
         .eq('is_active', true);
     if (!blocs || blocs.length === 0) throw new Error('No voter blocs found for this nation');
 
-    // Scale bloc voter_counts so total matches eligible_voters
-    const eligibleVoters = nation.eligible_voters || 0;
+    // Scale bloc voter_counts so total matches actual eligible voter count
+    // eligible_voters is a 0-100 stat (% of population eligible to vote)
+    const pop3 = nation.population || 0;
+    const eligPct3 = nation.eligible_voters || 65;
+    const eligibleVoters = pop3 > 0 ? Math.round(pop3 * eligPct3 / 100) : 0;
     const totalBlocVoters = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
     if (totalBlocVoters > 0 && eligibleVoters > 0) {
         const scale = eligibleVoters / totalBlocVoters;
@@ -14897,15 +14906,12 @@ async function processPopulationGrowth(supabase: any, nation: any, popGrowthBefo
     const popChange = Math.round(population * monthlyRate);
     const newPopulation = Math.max(0, population + popChange);
 
-    // Scale eligible_voters proportionally
-    const eligibleVoters = Number(nation.eligible_voters ?? 0);
-    const voterRatio = population > 0 ? (eligibleVoters / population) : 0;
-    const newEligibleVoters = Math.round(newPopulation * voterRatio);
+    // eligible_voters is a 0-100 percentage stat, not an absolute count.
+    // It doesn't change with population growth — only policy/events alter it.
 
     const updates: any = {
         population_growth: finalPG,
-        population: newPopulation,
-        eligible_voters: newEligibleVoters
+        population: newPopulation
     };
 
     if (finalPG !== currentPG || popChange !== 0) {

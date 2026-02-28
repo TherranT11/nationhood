@@ -1875,7 +1875,11 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
             // Delete existing blocs (and cascade deletes faction_bloc_approval rows)
             await _supabase.from('voter_blocs').delete().eq('nation_id', voterNationData.id);
 
-            const eligible = voterNationData.eligible_voters || voterNationData.population || 0;
+            // eligible_voters is a 0-100 stat (% of population eligible to vote)
+            // Derive actual voter count from population × (eligible_voters / 100)
+            const pop = voterNationData.population || 0;
+            const eligPct = voterNationData.eligible_voters || 65;
+            const eligible = pop > 0 ? Math.round(pop * eligPct / 100) : 0;
 
             // Compute weights from nation stats
             const computed = computeBlocWeights(voterNationData);
