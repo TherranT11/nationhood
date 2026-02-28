@@ -4020,12 +4020,11 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     await supabase.from('bill_support').delete().eq('faction_id', factionId);
     await supabase.from('campaign_actions').delete().eq('party_id', factionId);
 
-    // 6. Core disband — null out nation, reset all stats to fresh defaults
+    // 6. Core disband — null out nation_id, reset all stats to fresh defaults
     const { error: disbandErr } = await supabase
         .from('factions')
         .update({
             nation_id: null,
-            nation: null,
             abandoned_at: new Date().toISOString(),
             disband_cooldown_until_tick: currentTick + 24,
             action_points: 0,
