@@ -3610,7 +3610,7 @@ body.light-mode .reg-coalition-intel-row { background: rgba(0,0,0,0.02); }
     background: var(--bg-panel, #1a1a1a);
     border: 1px solid var(--border-main, #333);
     border-radius: 8px;
-    padding: 24px 28px;
+    padding: 20px 24px;
     flex: 1 1 0;
     min-width: 0;
     width: 100%;
@@ -3618,299 +3618,187 @@ body.light-mode .reg-coalition-intel-row { background: rgba(0,0,0,0.02); }
 .rally-header-row {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: 10px;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-main, #333);
 }
+.rally-header-left { display: flex; align-items: center; gap: 12px; }
+.rally-header-right { display: flex; align-items: center; gap: 12px; }
 .rally-title {
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-secondary, #888);
+    letter-spacing: 1.2px;
+    color: #f97316;
 }
-.rally-cost {
-    font-size: 0.72rem;
-    color: var(--text-muted, #666);
-    text-align: right;
+.rally-header-stat { display: flex; align-items: center; gap: 6px; }
+.rally-header-stat-label { font-size: 0.6rem; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-muted, #666); }
+.rally-header-stat-val { font-size: 0.82rem; font-weight: 700; }
+.rally-pill-crisis {
+    font-size: 0.62rem; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 3px;
+    background: rgba(239,68,68,0.08); color: #ef4444; border: 1px solid rgba(239,68,68,0.2);
 }
-.rally-desc {
-    font-size: 0.75rem;
-    color: var(--text-muted, #888);
-    line-height: 1.5;
-    margin-bottom: 12px;
+.rally-pill-cost {
+    font-size: 0.75rem; font-weight: 700; color: #facc15;
+    background: rgba(250,204,21,0.08); padding: 2px 8px; border-radius: 3px;
+    border: 1px solid rgba(250,204,21,0.2);
 }
 .rally-cooldown {
     font-size: 0.72rem;
     color: #ffaa00;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
 }
-.rally-divider {
-    height: 1px;
-    background: var(--border-main, #333);
-    margin: 14px 0;
+
+/* ── Bloc selection grid ── */
+.rally-bloc-select-header {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
 }
-.rally-divider-accent {
-    height: 2px;
-    background: linear-gradient(90deg, var(--accent, #ffcc00) 0%, transparent 100%);
+.rally-section-label {
+    font-size: 0.6rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--text-muted, #666);
 }
-.rally-filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 4px;
+.rally-bloc-select-hint {
+    font-size: 0.6rem; color: var(--text-muted, #666);
 }
-.rally-filter-btn {
-    background: rgba(255, 255, 255, 0.04);
+.rally-bloc-grid {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 16px;
+}
+.rally-bloc-card {
+    background: var(--bg-panel, #1a1a1a);
     border: 1px solid var(--border-main, #333);
+    border-left: 3px solid transparent;
     border-radius: 3px;
-    color: var(--text-muted, #888);
-    font-size: 0.68rem;
-    font-weight: 600;
-    padding: 3px 10px;
+    padding: 8px 10px;
     cursor: pointer;
     transition: all 0.15s ease;
 }
-body.light-mode .rally-filter-btn {
-    background: rgba(0, 0, 0, 0.04);
+.rally-bloc-card:hover { background: var(--bg-hover, #252520); }
+.rally-bloc-card.selected {
+    background: var(--bg-hover, #252520);
+    border-color: rgba(255,255,255,0.12);
 }
-.rally-filter-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--text-primary, #e0e0e0);
+.rally-bloc-card.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+.rally-bloc-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.rally-bloc-card-name { font-size: 0.75rem; font-weight: 600; color: var(--text-secondary, #888); }
+.rally-bloc-card.selected .rally-bloc-card-name { color: var(--text-primary, #e0e0e0); }
+.rally-bloc-card-approval { font-size: 0.88rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rally-bloc-card-bottom { display: flex; justify-content: space-between; align-items: center; }
+.rally-bloc-card-pop { font-size: 0.6rem; color: var(--text-muted, #666); }
+.rally-bloc-card-risk { font-size: 0.6rem; display: flex; align-items: center; }
+.rally-bloc-card-bar { margin-top: 4px; height: 2px; background: rgba(255,255,255,0.03); border-radius: 1px; overflow: hidden; }
+.rally-bloc-card-bar-fill { height: 100%; opacity: 0.5; }
+
+/* ── Detail panel ── */
+.rally-detail-panel {
+    background: var(--bg-panel, #1a1a1a);
+    border: 1px solid var(--border-main, #333);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 16px;
 }
-.rally-filter-btn.active {
-    background: rgba(255, 255, 255, 0.12);
-    color: var(--text-primary, #e0e0e0);
-    border-color: var(--text-secondary, #888);
-}
-.rally-subject-header {
-    display: flex;
-    justify-content: space-between;
-    padding-bottom: 6px;
+.rally-detail-header {
+    padding: 12px 16px;
     border-bottom: 1px solid var(--border-main, #333);
-    margin-bottom: 2px;
+    display: flex; justify-content: space-between; align-items: center;
 }
-.rally-subject-header .rally-subject-name,
-.rally-subject-header .rally-subject-tags {
-    font-size: 0.6rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: var(--text-muted, #666);
+.rally-detail-title-row { display: flex; align-items: center; gap: 10px; }
+.rally-detail-title { font-size: 0.95rem; font-weight: 700; color: var(--text-primary, #e0e0e0); }
+.rally-risk-pill {
+    font-size: 0.62rem; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 3px; border: 1px solid;
 }
-.rally-subject-list {
-    max-height: 400px;
-    overflow-y: auto;
-}
-.rally-subject-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 7px 8px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-    cursor: pointer;
-    transition: background 0.12s ease;
+.rally-detail-approval-row { display: flex; align-items: center; gap: 8px; }
+.rally-detail-approval-label { font-size: 0.65rem; color: var(--text-muted, #666); }
+.rally-detail-approval-val { font-size: 0.88rem; font-weight: 700; }
+.rally-detail-body { padding: 16px; }
+
+/* Modifiers */
+.rally-mods { display: flex; flex-direction: column; gap: 3px; }
+.rally-mod-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.65rem; }
+.rally-mod-effect { color: var(--text-muted, #666); }
+
+/* Outcome bar */
+.rally-outcome-bar { display: flex; height: 8px; border-radius: 3px; overflow: hidden; gap: 1px; }
+.rally-outcome-bar-seg { opacity: 0.7; transition: width 0.3s ease; }
+.rally-outcome-labels { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+.rally-outcome-label { display: flex; align-items: center; gap: 4px; }
+.rally-outcome-dot { width: 6px; height: 6px; border-radius: 1px; opacity: 0.7; }
+.rally-outcome-name { font-size: 0.58rem; color: var(--text-muted, #666); }
+.rally-outcome-pct { font-size: 0.65rem; font-weight: 700; }
+
+/* Outcome reference cards */
+.rally-outcome-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.rally-outcome-card {
+    padding: 6px 10px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border-main, #333);
     border-radius: 3px;
 }
-body.light-mode .rally-subject-row {
-    border-bottom-color: rgba(0, 0, 0, 0.04);
+.rally-outcome-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; font-size: 0.65rem; }
+.rally-outcome-card-detail { font-size: 0.58rem; color: var(--text-muted, #666); line-height: 1.4; }
+
+/* Execute row */
+.rally-execute-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-main, #333);
 }
-.rally-subject-row:hover {
-    background: rgba(255, 255, 255, 0.06);
-}
-body.light-mode .rally-subject-row:hover {
-    background: rgba(0, 0, 0, 0.04);
-}
-.rally-subject-row.disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-.rally-subject-row .rally-subject-name {
-    font-size: 0.78rem;
-    color: var(--text-primary, #e0e0e0);
-    font-weight: 500;
-}
-.rally-subject-row .rally-subject-tags {
-    font-size: 0.7rem;
-    color: var(--text-muted, #888);
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    text-align: right;
-}
-.rally-show-all {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 8px;
-    font-size: 0.72rem;
-    color: var(--text-muted, #666);
-}
-.rally-show-all-btn {
-    background: none;
-    border: none;
-    color: var(--text-secondary, #aaa);
+.rally-execute-warn { font-size: 0.65rem; color: var(--text-muted, #666); }
+.rally-btn-execute {
+    font-size: 0.75rem; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+    padding: 10px 28px; border-radius: 3px;
+    border: 1px solid rgba(249,115,22,0.2);
+    background: rgba(249,115,22,0.08);
+    color: #f97316;
     cursor: pointer;
-    font-size: 0.72rem;
-    font-weight: 600;
+    transition: all 0.15s;
 }
-.rally-show-all-btn:hover {
-    color: var(--text-primary, #e0e0e0);
+.rally-btn-execute:hover { background: rgba(249,115,22,0.15); }
+.rally-btn-execute:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Result card ── */
+.rally-result-card {
+    background: var(--bg-panel, #1a1a1a);
+    border: 1px solid; border-radius: 3px;
+    overflow: hidden; margin-bottom: 16px;
 }
-.rally-selected {
-    margin-bottom: 8px;
+.rally-result-banner {
+    padding: 12px 16px;
+    border-bottom: 1px solid;
+    display: flex; justify-content: space-between; align-items: center;
 }
-.rally-selected-label {
-    font-size: 0.82rem;
-    color: var(--text-primary, #e0e0e0);
-    font-weight: 600;
-}
-.rally-selected-tags {
-    font-size: 0.75rem;
-    color: var(--text-muted, #888);
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    margin-top: 4px;
-}
-.rally-section-title {
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-secondary, #888);
-    margin-bottom: 12px;
-}
-.rally-group-label {
-    font-size: 0.68rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    margin-bottom: 6px;
-    margin-top: 14px;
-}
-.rally-group-label.rally-energized { color: #4CAF50; }
-.rally-group-label.rally-alienated { color: #ff4444; }
-.rally-group-label.rally-unaffected { color: var(--text-muted, #666); }
-.rally-group-note {
-    font-weight: 400;
-    font-size: 0.65rem;
-    text-transform: none;
-    letter-spacing: 0;
-}
-.rally-group-box {
-    border: 1px solid var(--border-main, #333);
-    border-radius: 4px;
-    padding: 8px 12px;
-    margin-bottom: 4px;
-}
-.rally-group-empty {
-    font-size: 0.72rem;
-    color: var(--text-muted, #666);
-    font-style: italic;
-}
-.rally-bloc-row {
-    font-size: 0.75rem;
-    padding: 3px 0;
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-.rally-bloc-row.rally-energized { color: #4CAF50; }
-.rally-bloc-row.rally-alienated { color: #ff4444; }
-.rally-bloc-row.rally-unaffected { color: var(--text-muted, #888); }
-.rally-bloc-tag {
-    font-size: 0.68rem;
-    font-weight: 600;
-    letter-spacing: 0.3px;
-}
-.rally-bloc-est {
-    font-size: 0.68rem;
-    margin-left: auto;
-    font-variant-numeric: tabular-nums;
-}
-.rally-result-delta {
-    margin-left: auto;
-    font-weight: 600;
-}
-.rally-result-pref {
-    font-size: 0.7rem;
-    color: var(--text-muted, #888);
-    font-variant-numeric: tabular-nums;
-    width: 80px;
-    text-align: right;
-}
-.rally-momentum-est {
-    font-size: 0.78rem;
-    color: var(--text-primary, #e0e0e0);
-    font-weight: 600;
-}
-.rally-diminish-section {
-    margin-bottom: 4px;
-}
-.rally-diminish-warn {
-    font-size: 0.72rem;
-    color: #ffaa00;
+.rally-result-banner-left { display: flex; align-items: center; gap: 10px; }
+.rally-result-dismiss { font-size: 0.7rem; color: var(--text-muted, #666); cursor: pointer; padding: 4px 8px; }
+.rally-result-dismiss:hover { color: var(--text-primary, #e0e0e0); }
+.rally-result-body { padding: 16px; }
+.rally-result-headline {
+    font-size: 0.88rem; font-style: italic; color: var(--text-secondary, #888);
+    margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border-main, #333);
     line-height: 1.5;
-    padding: 2px 0;
 }
-.rally-net-est {
-    font-size: 0.75rem;
-    color: var(--text-secondary, #aaa);
-    line-height: 1.6;
+.rally-result-effects { display: flex; flex-direction: column; gap: 6px; }
+.rally-result-effect-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; color: var(--text-secondary, #888); }
+
+/* ── Rally history ── */
+.rally-history { margin-top: 20px; }
+.rally-history-header {
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+    color: #f97316; margin-bottom: 10px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-main, #333);
 }
-.rally-net-title {
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: var(--text-secondary, #888);
-    margin-bottom: 4px;
-}
-.rally-results-summary {
-    font-size: 0.75rem;
-    color: var(--text-secondary, #aaa);
-    line-height: 1.7;
-}
-.rally-actions {
-    display: flex;
-    justify-content: center;
-    gap: 20px;
-    margin-top: 20px;
-    padding-top: 16px;
-    border-top: 1px solid var(--border-main, #333);
-}
-.rally-btn {
-    background: rgba(255, 255, 255, 0.06);
+.rally-history-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 6px 12px; margin-bottom: 4px;
+    background: var(--bg-panel, #1a1a1a);
     border: 1px solid var(--border-main, #333);
-    border-radius: 4px;
-    color: var(--text-secondary, #aaa);
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    padding: 8px 24px;
-    cursor: pointer;
-    transition: all 0.15s ease;
+    border-left: 3px solid;
+    border-radius: 3px;
 }
-.rally-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--text-primary, #e0e0e0);
-}
-.rally-btn-confirm {
-    background: rgba(76, 175, 80, 0.15);
-    color: #4CAF50;
-    border-color: rgba(76, 175, 80, 0.3);
-}
-.rally-btn-confirm:hover {
-    background: rgba(76, 175, 80, 0.25);
-}
-.rally-btn-confirm:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-.rally-btn-cancel {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid var(--border-main, #333);
-    color: var(--text-muted, #888);
-}
+.rally-history-tick { font-size: 0.65rem; color: var(--text-muted, #666); min-width: 50px; }
+.rally-history-outcome { font-size: 0.65rem; font-weight: 700; min-width: 110px; }
+.rally-history-headline { font-size: 0.7rem; color: var(--text-secondary, #888); flex: 1; font-style: italic; }
+.rally-history-effect { font-size: 0.65rem; font-weight: 600; white-space: nowrap; }
 
 /* ===== ACTIONS ROW (Rally + Press Conference side by side) ===== */
 .actions-row {

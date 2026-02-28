@@ -20,7 +20,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
 import { tickToDate, escapeHtml } from './js/utils.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_SUBJECTS, RALLY_CONFIG, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, classifyRallyBlocs, executeRally, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, PRESS_CONF_CONFIG, executePressConference, OUTREACH_CONFIG, executeOutreach, FUNDRAISER_CONFIG, DONATION_RANGES, DONOR_DEMANDS, executeFundraiserOffer, acceptSmallDonation, acceptLargeDonation, declineFundraiser, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize } from './js/game-common.js';
 import { getPartyIconSVG, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -3424,275 +3424,311 @@ async function renderParties() {
         });
     }
 
-    // ── Rally UI ──
-    let rallyScreen = 'select'; // 'select' | 'preview' | 'results'
-    let rallySelectedIdx = null;
-    let rallyResults = null;
-    let rallyFilter = 'All';
-    let rallyShowAll = false;
+    // ── Rally UI (bloc-targeted with outcome odds) ──
+    let rallySelectedBloc = null;
+    let rallyResult = null;
 
-    // Fetch recent rallies for cooldown/diminish info
+    // Fetch recent rallies for cooldown + rallied_recently count
     const { data: recentRallies } = await _supabase
         .from('campaign_actions')
         .select('tick_performed, result')
         .eq('party_id', f.id)
         .eq('action_type', 'rally')
-        .gte('tick_performed', (currentShard?.current_tick || 0) - RALLY_CONFIG.DIMINISH_WINDOW)
+        .gte('tick_performed', (currentShard?.current_tick || 0) - RALLY_CONFIG.COOLDOWN_WINDOW)
         .order('tick_performed', { ascending: false });
 
     const ralliedThisTick = (recentRallies || []).some(r => r.tick_performed === (currentShard?.current_tick || 0));
 
-    // Get tag use counts for diminishing returns display
-    function getTagUseCounts(tags) {
-        const counts = {};
-        for (const tag of tags) counts[tag] = 0;
-        for (const r of (recentRallies || [])) {
-            for (const t of (r.result?.tags || [])) {
-                if (counts[t] !== undefined) counts[t]++;
-            }
-        }
-        return counts;
+    // Fetch active crisis count + nation stats for weight modifiers
+    const { count: rallyCrisisCount } = await _supabase
+        .from('active_crises').select('id', { count: 'exact', head: true }).eq('nation_id', n.id);
+    const rallyNationState = {
+        polarization: Number(n.polarization ?? 0),
+        civilUnrest: Number(n.civil_unrest ?? 0),
+        stability: Number(n.stability ?? 50),
+        crisisCount: rallyCrisisCount || 0,
+    };
+
+    function getBlocRalliedRecently(blocId) {
+        return (recentRallies || []).filter(r => r.result?.blocId === blocId).length;
     }
 
-    // Ideology tag colors from IDEOLOGY_AXES
-    const IDEO_COLORS = {};
-    for (const ax of IDEOLOGY_AXES) {
-        IDEO_COLORS[ax.left] = ax.leftColor;
-        IDEO_COLORS[ax.right] = ax.rightColor;
-    }
-    function colorTag(tag) {
-        const upper = tag.toUpperCase();
-        const color = IDEO_COLORS[upper] || 'var(--text-muted, #888)';
-        const label = tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
-        return `<span style="color:${color};font-weight:700">${label}</span>`;
-    }
-    function colorTagUpper(tag) {
-        const upper = tag.toUpperCase();
-        const color = IDEO_COLORS[upper] || 'var(--text-muted, #888)';
-        return `<span style="color:${color};font-weight:700">${upper}</span>`;
+    // Rally history from recent rallies
+    const rallyHistory = (recentRallies || []).filter(r => r.result?.outcomeId).slice(0, 6);
+
+    // Outcome color map
+    const OUTCOME_COLORS = { rousing: '#4ade80', solid: '#22d3ee', low: '#facc15', gaffe: '#f97316', divisive: '#ef4444', counter: '#991b1b' };
+    const OUTCOME_ICONS = { rousing: '\u2605', solid: '\u25CF', low: '\u25E6', gaffe: '\u26A0', divisive: '\u25C6', counter: '\u2715' };
+
+    function getApprovalColor(val) {
+        if (val >= 65) return '#4ade80';
+        if (val >= 45) return '#facc15';
+        if (val >= 30) return '#f97316';
+        return '#ef4444';
     }
 
     function renderRally() {
         const container = document.getElementById('rally-container');
         if (!container) return;
+        const costOk = currentAP >= RALLY_CONFIG.AP_COST;
+        const canRally = costOk && !ralliedThisTick;
 
-        if (rallyScreen === 'select') {
-            const costOk = currentAP >= RALLY_CONFIG.AP_COST && (f.party_funds || 0) >= RALLY_CONFIG.MONEY_COST;
-            const allTags = ['All', 'Tradition', 'Progress', 'Liberty', 'Equality', 'Security', 'Freedom', 'Nationalism', 'Globalism', 'Collectivism', 'Individualism'];
-            const filterBtns = allTags.map(t => {
-                const color = t === 'All' ? '' : IDEO_COLORS[t.toUpperCase()] || '';
-                const style = color && rallyFilter === t ? ` style="border-color:${color};color:${color}"` : color ? ` style="color:${color}"` : '';
-                return `<button class="rally-filter-btn${rallyFilter === t ? ' active' : ''}" data-filter="${t}"${style}>${t}</button>`;
+        // Build bloc approval lookup
+        const myApprovals = {};
+        for (const row of (allBlocApprovals || [])) {
+            if (row.faction_id === f.id) myApprovals[row.bloc_id] = Math.round(row.preference_score || 0);
+        }
+
+        const selectedBloc = rallySelectedBloc ? (blocs || []).find(b => b.id === rallySelectedBloc) : null;
+        const selectedApproval = selectedBloc ? (myApprovals[selectedBloc.id] || 50) : 0;
+        const selectedRallied = selectedBloc ? getBlocRalliedRecently(selectedBloc.id) : 0;
+        const selectedWeights = selectedBloc ? getRallyOutcomeWeights(selectedApproval, selectedRallied, rallyNationState) : null;
+        const selectedRisk = selectedWeights ? getRallyRiskLevel(selectedWeights) : null;
+
+        const RISK_COLORS = { safe: '#4ade80', moderate: '#facc15', risky: '#f97316', dangerous: '#ef4444' };
+
+        // ─── Bloc selection grid ───
+        const blocCards = (blocs || []).map(b => {
+            const approval = myApprovals[b.id] || 50;
+            const isSelected = rallySelectedBloc === b.id;
+            const approvalColor = getApprovalColor(approval);
+            const bRallied = getBlocRalliedRecently(b.id);
+            const bWeights = getRallyOutcomeWeights(approval, bRallied, rallyNationState);
+            const bRisk = getRallyRiskLevel(bWeights);
+            const hasWarning = bRallied > 0 || approval < 30;
+            const riskColor = RISK_COLORS[bRisk] || '#888';
+            // Ideology pills
+            const ideoPills = [];
+            const AXIS_LABELS = [
+                { key: 'axis_liberty_equality', left: 'Liberty', right: 'Equality' },
+                { key: 'axis_tradition_progress', left: 'Tradition', right: 'Progress' },
+                { key: 'axis_security_freedom', left: 'Security', right: 'Freedom' },
+                { key: 'axis_globalism_nationalism', left: 'Globalism', right: 'Nationalism' },
+                { key: 'axis_individualism_collectivism', left: 'Individualism', right: 'Collectivism' },
+            ];
+            for (const ax of AXIS_LABELS) {
+                const val = b[ax.key] ?? 50;
+                if (val < 40) ideoPills.push(ax.left);
+                else if (val > 60) ideoPills.push(ax.right);
+            }
+
+            return `<div class="rally-bloc-card${isSelected ? ' selected' : ''}${!canRally ? ' disabled' : ''}" data-bloc-id="${b.id}">
+                <div class="rally-bloc-card-top">
+                    <span class="rally-bloc-card-name">${escapeHtml(b.bloc_name)}</span>
+                    <span class="rally-bloc-card-approval" style="color:${approvalColor}">${approval}</span>
+                </div>
+                <div class="rally-bloc-card-bottom">
+                    <span class="rally-bloc-card-pop">${Math.round(b.population_weight)}% electorate</span>
+                    <span class="rally-bloc-card-risk">
+                        ${hasWarning ? '<span style="color:#f97316;margin-right:3px">\u26A0</span>' : ''}
+                        <span style="color:${riskColor}">${bRisk.charAt(0).toUpperCase() + bRisk.slice(1)}</span>
+                    </span>
+                </div>
+                <div class="rally-bloc-card-bar"><div class="rally-bloc-card-bar-fill" style="width:${approval}%;background:${approvalColor}"></div></div>
+            </div>`;
+        }).join('');
+
+        // ─── Detail panel (when bloc selected + no result showing) ───
+        let detailHtml = '';
+        if (selectedBloc && selectedWeights && !rallyResult) {
+            const outcomeOrder = ['rousing', 'solid', 'low', 'gaffe', 'divisive', 'counter'];
+
+            // Outcome probability bar
+            const barSegments = outcomeOrder.map(key => {
+                const pct = selectedWeights[key] || 0;
+                if (pct < 2) return '';
+                return `<div class="rally-outcome-bar-seg" style="width:${pct}%;background:${OUTCOME_COLORS[key]}" title="${RALLY_OUTCOMES.find(o=>o.id===key)?.name}: ${pct}%"></div>`;
             }).join('');
 
-            let filtered = RALLY_SUBJECTS.map((s, i) => ({ ...s, idx: i }));
-            if (rallyFilter !== 'All') {
-                filtered = filtered.filter(s => s.tags.includes(rallyFilter.toUpperCase()));
-            }
-            const shown = rallyShowAll ? filtered : filtered.slice(0, 15);
-            const hasMore = filtered.length > 15 && !rallyShowAll;
+            const barLabels = outcomeOrder.map(key => {
+                const pct = selectedWeights[key] || 0;
+                const o = RALLY_OUTCOMES.find(o => o.id === key);
+                return `<div class="rally-outcome-label"><div class="rally-outcome-dot" style="background:${OUTCOME_COLORS[key]}"></div><span class="rally-outcome-name">${o?.name || key}</span><span class="rally-outcome-pct" style="color:${OUTCOME_COLORS[key]}">${pct}%</span></div>`;
+            }).join('');
 
-            let rows = shown.map(s =>
-                `<div class="rally-subject-row${!costOk || ralliedThisTick ? ' disabled' : ''}" data-idx="${s.idx}">
-                    <span class="rally-subject-name">${s.name}</span>
-                    <span class="rally-subject-tags">${s.tags.map(t => colorTagUpper(t)).join('&nbsp; ')}</span>
-                </div>`
-            ).join('');
+            // Context modifiers
+            const mods = [];
+            if (selectedApproval > 60) mods.push({ label: 'High approval with bloc', effect: '\u2191 Rousing Success chance', color: '#4ade80' });
+            if (selectedApproval < 30) mods.push({ label: 'Low approval with bloc', effect: '\u2191 Low Turnout, Gaffe chance', color: '#ef4444' });
+            if (rallyNationState.crisisCount > 0) mods.push({ label: 'Active crisis', effect: '\u2191 Gaffe, Counter-Protest chance', color: '#ef4444' });
+            if (rallyNationState.polarization > 60) mods.push({ label: 'High polarization (' + rallyNationState.polarization + ')', effect: '\u2191 Divisive Speech chance', color: '#f97316' });
+            if (rallyNationState.civilUnrest > 40) mods.push({ label: 'Elevated civil unrest (' + rallyNationState.civilUnrest + ')', effect: '\u2191 Counter-Protest chance', color: '#ef4444' });
+            if (selectedRallied > 0) mods.push({ label: 'Rallied this bloc ' + selectedRallied + 'x recently', effect: '\u2191 Gaffe chance (stale material)', color: '#f97316' });
+            if (mods.length === 0) mods.push({ label: 'No adverse conditions', effect: 'Standard outcome weights', color: '#4ade80' });
 
-            container.innerHTML = `
-                <div class="rally-panel">
-                    <div class="rally-header-row">
-                        <span class="rally-title">Hold a Rally</span>
-                        <span class="rally-cost">Cost: ${RALLY_CONFIG.AP_COST} AP + $${(RALLY_CONFIG.MONEY_COST).toLocaleString()}</span>
+            const modsHtml = mods.map(m => `<div class="rally-mod-row"><span style="color:${m.color}">${m.label}</span><span class="rally-mod-effect">${m.effect}</span></div>`).join('');
+
+            // Outcome reference cards
+            const outcomeCards = RALLY_OUTCOMES.map(o => {
+                const pct = selectedWeights[o.id] || 0;
+                const targetColor = o.targetMin >= 0 ? '#4ade80' : '#ef4444';
+                const targetLabel = o.targetMin === o.targetMax ? (o.targetMin >= 0 ? '+' : '') + o.targetMin : (o.targetMin >= 0 ? '+' : '') + o.targetMin + ' to ' + (o.targetMax >= 0 ? '+' : '') + o.targetMax;
+                let spillLabel = 'None';
+                if (o.spilloverScope === 'adjacent') spillLabel = '+' + o.spillover + ' adjacent blocs';
+                else if (o.spilloverScope === 'random_adjacent') spillLabel = o.spillover + ' random adjacent bloc';
+                else if (o.spilloverScope === 'all_others') spillLabel = o.spillover + ' ALL other blocs';
+                else if (o.spilloverScope === 'all') spillLabel = o.spillover + ' all blocs';
+                const spillColor = o.spillover > 0 ? '#4ade80' : o.spillover < 0 ? '#ef4444' : '#6b6a5e';
+
+                return `<div class="rally-outcome-card">
+                    <div class="rally-outcome-card-top">
+                        <span><span style="color:${OUTCOME_COLORS[o.id]}">${OUTCOME_ICONS[o.id]}</span> <span style="color:${OUTCOME_COLORS[o.id]};font-weight:700">${o.name}</span></span>
+                        <span style="color:${OUTCOME_COLORS[o.id]};font-weight:700">${pct}%</span>
                     </div>
-                    <div class="rally-desc">Choose a subject for your rally. Each subject has ideology tags that determine which voter blocs are energized and which are alienated.</div>
-                    ${ralliedThisTick ? '<div class="rally-cooldown">You have already held a rally this tick.</div>' : ''}
-                    ${!costOk && !ralliedThisTick ? '<div class="rally-cooldown">Not enough AP or funds.</div>' : ''}
-                    <div class="rally-divider"></div>
-                    <div class="rally-filters">${filterBtns}</div>
-                    <div class="rally-divider"></div>
-                    <div class="rally-subject-header">
-                        <span class="rally-subject-name">Subject</span>
-                        <span class="rally-subject-tags">Tags</span>
-                    </div>
-                    <div class="rally-subject-list">${rows}</div>
-                    ${hasMore ? `<div class="rally-show-all">Showing 15 of ${filtered.length} subjects <button class="rally-show-all-btn">[Show All]</button></div>` : ''}
-                </div>`;
-
-            // Event listeners
-            container.querySelectorAll('.rally-filter-btn').forEach(btn => {
-                btn.addEventListener('click', () => { rallyFilter = btn.dataset.filter; rallyShowAll = false; renderRally(); });
-            });
-            container.querySelectorAll('.rally-subject-row:not(.disabled)').forEach(row => {
-                row.addEventListener('click', () => { rallySelectedIdx = parseInt(row.dataset.idx); rallyScreen = 'preview'; renderRally(); });
-            });
-            const showAllBtn = container.querySelector('.rally-show-all-btn');
-            if (showAllBtn) showAllBtn.addEventListener('click', () => { rallyShowAll = true; renderRally(); });
-
-        } else if (rallyScreen === 'preview') {
-            const subject = RALLY_SUBJECTS[rallySelectedIdx];
-            const classified = classifyRallyBlocs(subject, blocs || []);
-            const energized = classified.filter(c => c.classification === 'energized');
-            const alienated = classified.filter(c => c.classification === 'alienated');
-            const unaffected = classified.filter(c => c.classification === 'unaffected');
-
-            const tagCounts = getTagUseCounts(subject.tags);
-            const diminished = subject.tags.filter(t => tagCounts[t] > 0);
-
-            const tagLabels = subject.tags.map(t => t.charAt(0) + t.slice(1).toLowerCase());
-            const tagColored = subject.tags.map(t => colorTagUpper(t)).join('&nbsp; ');
-            const tagColoredMixed = subject.tags.map(t => colorTag(t)).join(' or ');
-
-            function blocPctLabel(c) { return `(${Math.round(c.popWeight)}%)`; }
-            function matchLabel(c) { return c.matchTag ? colorTagUpper(c.matchTag) : ''; }
-            function opposeLabel(c) {
-                if (!c.opposeTag) return '';
-                const opp = IDEOLOGY_OPPOSITES[c.opposeTag];
-                return opp ? '\u2190 ' + colorTag(opp) : '';
-            }
-
-            const enPop = energized.reduce((s, c) => s + c.popWeight, 0);
-            const alPop = alienated.reduce((s, c) => s + c.popWeight, 0);
-            const unPop = unaffected.reduce((s, c) => s + c.popWeight, 0);
-
-            let diminishHtml = '';
-            if (diminished.length > 0) {
-                diminishHtml = diminished.map(t => {
-                    const uses = tagCounts[t];
-                    const label = t.charAt(0) + t.slice(1).toLowerCase();
-                    const last = (recentRallies || []).find(r => (r.result?.tags || []).includes(t));
-                    const ago = last ? (currentShard?.current_tick || 0) - last.tick_performed : '?';
-                    const effect = uses === 1 ? 'halved' : 'quartered';
-                    return `<div class="rally-diminish-warn">Diminished effect: You rallied on ${label.toUpperCase()} ${ago} tick${ago !== 1 ? 's' : ''} ago. Energize effect ${effect} for ${label}-aligned blocs.</div>`;
-                }).join('');
-            }
-
-            container.innerHTML = `
-                <div class="rally-panel">
-                    <div class="rally-header-row">
-                        <span class="rally-title">Hold a Rally</span>
-                        <span class="rally-cost">Cost: ${RALLY_CONFIG.AP_COST} AP + $${(RALLY_CONFIG.MONEY_COST).toLocaleString()}</span>
-                    </div>
-                    <div class="rally-selected">
-                        <div class="rally-selected-label">SELECTED: "${subject.name}"</div>
-                        <div class="rally-selected-tags">Tags: ${tagColored}</div>
-                    </div>
-                    <div class="rally-divider rally-divider-accent"></div>
-
-                    <div class="rally-section-title">PROJECTED EFFECTS</div>
-
-                    <div class="rally-group-label rally-energized">ENERGIZED <span class="rally-group-note">(share ${tagColoredMixed})</span></div>
-                    <div class="rally-group-box">
-                        ${energized.length === 0 ? '<div class="rally-group-empty">None</div>' :
-                            energized.map(c => `<div class="rally-bloc-row rally-energized">▲ ${c.blocName} ${blocPctLabel(c)} <span class="rally-bloc-tag">${matchLabel(c).toUpperCase()}</span> <span class="rally-bloc-est">est. +1 to +2</span></div>`).join('')}
-                    </div>
-
-                    <div class="rally-group-label rally-alienated">ALIENATED <span class="rally-group-note">(oppose ${tagColoredMixed})</span></div>
-                    <div class="rally-group-box">
-                        ${alienated.length === 0 ? '<div class="rally-group-empty">None</div>' :
-                            alienated.map(c => `<div class="rally-bloc-row rally-alienated">▼ ${c.blocName} ${blocPctLabel(c)} <span class="rally-bloc-tag">${opposeLabel(c)}</span> <span class="rally-bloc-est">est. 0 to -2</span></div>`).join('')}
-                    </div>
-
-                    <div class="rally-group-label rally-unaffected">UNAFFECTED</div>
-                    <div class="rally-group-box">
-                        ${unaffected.length === 0 ? '<div class="rally-group-empty">None</div>' :
-                            unaffected.map(c => `<div class="rally-bloc-row rally-unaffected">\u2014 ${c.blocName} ${blocPctLabel(c)} <span class="rally-bloc-tag">no match or opposition</span></div>`).join('')}
-                    </div>
-
-                    <div class="rally-divider"></div>
-                    <div class="rally-momentum-est">MOMENTUM: +${RALLY_CONFIG.GLOBAL_MOMENTUM_MIN} to +${RALLY_CONFIG.GLOBAL_MOMENTUM_MAX} (global)</div>
-                    <div class="rally-divider"></div>
-
-                    ${diminishHtml ? `<div class="rally-diminish-section">${diminishHtml}</div><div class="rally-divider"></div>` : ''}
-
-                    <div class="rally-net-est">
-                        <div class="rally-net-title">NET ESTIMATE</div>
-                        <div>Energized: ${energized.length} bloc${energized.length !== 1 ? 's' : ''} (${Math.round(enPop)}% of electorate)</div>
-                        <div>Alienated: ${alienated.length} bloc${alienated.length !== 1 ? 's' : ''} (${Math.round(alPop)}% of electorate)</div>
-                        <div>Unaffected: ${unaffected.length} bloc${unaffected.length !== 1 ? 's' : ''} (${Math.round(unPop)}% of electorate)</div>
-                    </div>
-
-                    <div class="rally-actions">
-                        <button class="rally-btn rally-btn-confirm" id="rally-confirm">CONFIRM RALLY</button>
-                        <button class="rally-btn rally-btn-cancel" id="rally-cancel">CANCEL</button>
+                    <div class="rally-outcome-card-detail">
+                        Target: <span style="color:${targetColor}">${targetLabel}</span>
+                        ${o.spilloverScope !== 'none' ? ' \u00B7 Spillover: <span style="color:' + spillColor + '">' + spillLabel + '</span>' : ''}
+                        ${o.polarization > 0 ? ' \u00B7 Pol: <span style="color:#f97316">+' + o.polarization + '</span>' : ''}
                     </div>
                 </div>`;
+            }).join('');
 
-            document.getElementById('rally-confirm').addEventListener('click', async () => {
-                const btn = document.getElementById('rally-confirm');
-                btn.disabled = true;
-                btn.textContent = 'Executing...';
+            const riskColor = RISK_COLORS[selectedRisk] || '#888';
+
+            detailHtml = `
+            <div class="rally-detail-panel">
+                <div class="rally-detail-header">
+                    <div class="rally-detail-title-row">
+                        <span class="rally-detail-title">Rally: ${escapeHtml(selectedBloc.bloc_name)}</span>
+                        <span class="rally-risk-pill" style="background:${riskColor}15;color:${riskColor};border-color:${riskColor}33">${selectedRisk.charAt(0).toUpperCase() + selectedRisk.slice(1)}</span>
+                    </div>
+                    <div class="rally-detail-approval-row">
+                        <span class="rally-detail-approval-label">Current approval:</span>
+                        <span class="rally-detail-approval-val" style="color:${getApprovalColor(selectedApproval)}">${selectedApproval}</span>
+                    </div>
+                </div>
+                <div class="rally-detail-body">
+                    <div class="rally-section-label">Active Modifiers</div>
+                    <div class="rally-mods">${modsHtml}</div>
+
+                    <div class="rally-section-label" style="margin-top:14px">Outcome Odds</div>
+                    <div class="rally-outcome-bar">${barSegments}</div>
+                    <div class="rally-outcome-labels">${barLabels}</div>
+
+                    <div class="rally-section-label" style="margin-top:14px">Possible Outcomes</div>
+                    <div class="rally-outcome-grid">${outcomeCards}</div>
+
+                    <div class="rally-execute-row">
+                        <span class="rally-execute-warn">This action cannot be undone. Results are determined by weighted random roll.</span>
+                        <button class="rally-btn-execute" id="rally-execute">Hold Rally \u2014 ${RALLY_CONFIG.AP_COST} AP</button>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        // ─── Result card ───
+        let resultHtml = '';
+        if (rallyResult) {
+            const outcome = RALLY_OUTCOMES.find(o => o.id === rallyResult.outcomeId);
+            const oColor = OUTCOME_COLORS[rallyResult.outcomeId] || '#888';
+            const oIcon = OUTCOME_ICONS[rallyResult.outcomeId] || '';
+
+            const effectRows = (rallyResult.effects || []).map(eff => {
+                const valColor = eff.value > 0 ? '#4ade80' : eff.value < 0 ? '#ef4444' : '#6b6a5e';
+                const valStr = eff.value > 0 ? '+' + eff.value : '' + eff.value;
+                return `<div class="rally-result-effect-row"><span>${escapeHtml(eff.bloc || eff.stat)}</span><span style="color:${valColor};font-weight:700">${valStr}</span></div>`;
+            }).join('');
+
+            resultHtml = `
+            <div class="rally-result-card" style="border-color:${oColor}">
+                <div class="rally-result-banner" style="background:linear-gradient(90deg, ${oColor}15, transparent);border-bottom-color:${oColor}33">
+                    <div class="rally-result-banner-left">
+                        <span style="color:${oColor};font-size:16px">${oIcon}</span>
+                        <span style="color:${oColor};font-weight:700;font-size:16px">${outcome?.name || rallyResult.outcomeName}</span>
+                    </div>
+                    <span class="rally-result-dismiss" id="rally-dismiss">Dismiss</span>
+                </div>
+                <div class="rally-result-body">
+                    <div class="rally-result-headline">"${escapeHtml(rallyResult.headline)}"</div>
+                    <div class="rally-result-effects">${effectRows}</div>
+                </div>
+            </div>`;
+        }
+
+        // ─── Rally history ───
+        let historyHtml = '';
+        if (rallyHistory.length > 0) {
+            const historyRows = rallyHistory.map(r => {
+                const res = r.result || {};
+                const oColor = OUTCOME_COLORS[res.outcomeId] || '#888';
+                const tick = r.tick_performed;
+                const effectSummary = (res.effects || []).filter(e => e.bloc).map(e => (e.value >= 0 ? '+' : '') + e.value + ' ' + e.bloc).join(', ');
+                return `<div class="rally-history-row" style="border-left-color:${oColor}">
+                    <span class="rally-history-tick">Tick ${tick}</span>
+                    <span class="rally-history-outcome" style="color:${oColor}">${res.outcomeName || '?'}</span>
+                    <span class="rally-history-headline">"${escapeHtml(res.headline || '')}"</span>
+                    <span class="rally-history-effect" style="color:${effectSummary.startsWith('+') ? '#4ade80' : effectSummary.startsWith('-') ? '#ef4444' : '#6b6a5e'}">${effectSummary || ''}</span>
+                </div>`;
+            }).join('');
+
+            historyHtml = `
+            <div class="rally-history">
+                <div class="rally-history-header">Rally History</div>
+                ${historyRows}
+            </div>`;
+        }
+
+        container.innerHTML = `
+            <div class="rally-panel">
+                <div class="rally-header-row">
+                    <div class="rally-header-left">
+                        <span class="rally-title">Hold a Rally</span>
+                    </div>
+                    <div class="rally-header-right">
+                        ${rallyNationState.polarization > 60 ? '<span class="rally-header-stat"><span class="rally-header-stat-label">Polarization</span><span class="rally-header-stat-val" style="color:#f97316">' + rallyNationState.polarization + '</span></span>' : ''}
+                        ${rallyNationState.crisisCount > 0 ? '<span class="rally-pill-crisis">Crisis Active</span>' : ''}
+                        <span class="rally-pill-cost">${RALLY_CONFIG.AP_COST} AP</span>
+                    </div>
+                </div>
+
+                ${ralliedThisTick ? '<div class="rally-cooldown">You have already held a rally this tick.</div>' : ''}
+                ${!costOk && !ralliedThisTick ? '<div class="rally-cooldown">Not enough AP (need ${RALLY_CONFIG.AP_COST}).</div>' : ''}
+
+                ${resultHtml}
+
+                <div class="rally-bloc-select-header">
+                    <span class="rally-section-label">Select Voter Bloc to Rally</span>
+                    <span class="rally-bloc-select-hint">Your approval with the bloc affects outcome odds</span>
+                </div>
+                <div class="rally-bloc-grid">${blocCards}</div>
+
+                ${detailHtml}
+                ${historyHtml}
+            </div>`;
+
+        // Event listeners
+        container.querySelectorAll('.rally-bloc-card:not(.disabled)').forEach(card => {
+            card.addEventListener('click', () => {
+                rallySelectedBloc = card.dataset.blocId;
+                rallyResult = null;
+                renderRally();
+            });
+        });
+
+        const executeBtn = document.getElementById('rally-execute');
+        if (executeBtn) {
+            executeBtn.addEventListener('click', async () => {
+                executeBtn.disabled = true;
+                executeBtn.textContent = 'Executing...';
                 const tick = currentShard?.current_tick || 0;
-                const result = await executeRally(_supabase, f.id, n.id, rallySelectedIdx, tick);
+                const result = await executeRally(_supabase, f.id, n.id, rallySelectedBloc, tick);
                 if (result.success) {
-                    rallyResults = result;
-                    rallyScreen = 'results';
+                    rallyResult = result;
                     renderRally();
                 } else {
                     alert(result.error);
-                    btn.disabled = false;
-                    btn.textContent = 'CONFIRM RALLY';
+                    executeBtn.disabled = false;
+                    executeBtn.textContent = 'Hold Rally \u2014 ' + RALLY_CONFIG.AP_COST + ' AP';
                 }
             });
-            document.getElementById('rally-cancel').addEventListener('click', () => { rallyScreen = 'select'; rallySelectedIdx = null; renderRally(); });
+        }
 
-        } else if (rallyScreen === 'results') {
-            const r = rallyResults;
-            const subject = r.subject;
-            const tagColored2 = subject.tags.map(t => colorTagUpper(t)).join('&nbsp; ');
-            const energized = r.blocResults.filter(c => c.classification === 'energized');
-            const alienated = r.blocResults.filter(c => c.classification === 'alienated');
-            const unaffected = r.blocResults.filter(c => c.classification === 'unaffected');
-
-            function resultRow(c, symbol) {
-                const sign = c.prefDelta > 0 ? '+' : '';
-                return `<div class="rally-bloc-row ${c.classification === 'energized' ? 'rally-energized' : c.classification === 'alienated' ? 'rally-alienated' : 'rally-unaffected'}">${symbol} ${c.blocName} <span class="rally-result-delta">${c.prefDelta === 0 ? 'no change' : sign + c.prefDelta + ' preference'}</span> <span class="rally-result-pref">(${c.oldPref}% \u2192 ${c.newPref}%)</span></div>`;
-            }
-
-            container.innerHTML = `
-                <div class="rally-panel rally-panel-results">
-                    <div class="rally-title">Rally Results</div>
-                    <div class="rally-selected">
-                        <div>"${subject.name}"</div>
-                        <div class="rally-selected-tags">${tagColored2}</div>
-                    </div>
-                    <div class="rally-divider rally-divider-accent"></div>
-
-                    <div class="rally-group-label rally-energized">ENERGIZED</div>
-                    <div class="rally-group-box">
-                        ${energized.length === 0 ? '<div class="rally-group-empty">None</div>' :
-                            energized.map(c => resultRow(c, '▲')).join('')}
-                    </div>
-
-                    <div class="rally-group-label rally-alienated">ALIENATED</div>
-                    <div class="rally-group-box">
-                        ${alienated.length === 0 ? '<div class="rally-group-empty">None</div>' :
-                            alienated.map(c => resultRow(c, '▼')).join('')}
-                    </div>
-
-                    <div class="rally-group-label rally-unaffected">UNAFFECTED</div>
-                    <div class="rally-group-box">
-                        ${unaffected.length === 0 ? '<div class="rally-group-empty">None</div>' :
-                            unaffected.map(c => resultRow(c, '\u2014')).join('')}
-                    </div>
-
-                    <div class="rally-divider"></div>
-                    <div class="rally-results-summary">
-                        <div>Momentum: +${r.globalMomentum} (global)</div>
-                        <div>Cost: $${RALLY_CONFIG.MONEY_COST.toLocaleString()} deducted \u2014 Treasury: $${r.oldTreasury.toLocaleString()} \u2192 $${r.newTreasury.toLocaleString()}</div>
-                        <div>AP: ${r.newAp + RALLY_CONFIG.AP_COST} \u2192 ${r.newAp}</div>
-                    </div>
-
-                    <div class="rally-actions">
-                        <button class="rally-btn rally-btn-cancel" id="rally-dismiss">DISMISS</button>
-                    </div>
-                </div>`;
-
-            document.getElementById('rally-dismiss').addEventListener('click', () => {
-                rallyScreen = 'select';
-                rallySelectedIdx = null;
-                rallyResults = null;
-                renderParties(); // full refresh to update AP, treasury, etc.
+        const dismissBtn = document.getElementById('rally-dismiss');
+        if (dismissBtn) {
+            dismissBtn.addEventListener('click', () => {
+                rallyResult = null;
+                rallySelectedBloc = null;
+                renderParties(); // full refresh for AP update
             });
         }
     }
