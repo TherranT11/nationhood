@@ -4710,6 +4710,12 @@ export function weightedRandomPick(weightedItems) {
 }
 
 export async function selectPMCandidate(supabase, candidateId, nationId, factionId, currentTick) {
+    // Guard: coalition must be finalized ('formed') before a PM can be appointed
+    const coalition = await fetchActiveCoalition(supabase, nationId);
+    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'caretaker' && coalition._source !== 'presidential')) {
+        throw new Error('Cannot appoint a Prime Minister until a coalition has been formed.');
+    }
+
     const { data: candidate, error: fetchErr } = await supabase
         .from('pm_candidates')
         .select('*')

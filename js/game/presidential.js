@@ -8,6 +8,7 @@ import { isParliamentaryDemocracy, isPresidentialRepublic } from './government-t
 import { loadFactionIdeology } from './ideology.js';
 import { enactBill } from './bills.js';
 import { PM_FIRST_NAMES, PM_LAST_NAMES, PM_TRAIT_KEYS, getWeightedIdeologies, selectPMCandidate, weightedRandomPick } from './political-actions.js';
+import { fetchActiveCoalition } from './government-structure.js';
 
 /**
  * Generate 3 president candidates for a party (reuses PM candidate generation pattern).
@@ -636,6 +637,10 @@ export async function processPresidentCandidateTimeout(supabase, nation, current
  */
 export async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
     if (!isParliamentaryDemocracy(nation)) return;
+
+    // Guard: only auto-select PM if a coalition is actually formed
+    const coalition = await fetchActiveCoalition(supabase, nation.id);
+    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'caretaker')) return;
 
     const timeoutTicks = 3;
     const { data: staleCandidates } = await supabase
