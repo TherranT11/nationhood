@@ -18,10 +18,9 @@ WITH bloc_totals AS (
 )
 UPDATE voter_blocs vb
 SET voter_count = ROUND(
-    vb.voter_count::numeric
-    * (n.population * COALESCE(n.eligible_voters, 65) / 100.0)
-    / NULLIF(bt.total_voters, 0)
-)
+    (vb.voter_count::numeric / NULLIF(bt.total_voters, 0))
+    * (n.population::numeric * COALESCE(n.eligible_voters, 65) / 100.0)
+)::int
 FROM nations n
 JOIN bloc_totals bt ON bt.nation_id = n.id
 WHERE n.id = vb.nation_id
