@@ -540,287 +540,350 @@ body.light-mode .momentum-bar-track {
     line-height: 1.5;
 }
 
-/* ===== APPROVAL BY VOTER BLOC PANEL ===== */
-.bloc-approval-panel {
-    background: var(--bg-panel, #1a1a1a);
-    border: 1px solid var(--border-main, #333);
-    border-radius: 8px;
-    padding: 20px 24px;
+/* ===== VOTER BLOC APPROVAL CARDS ===== */
+.vba-panel {
     margin-top: 20px;
 }
-
-.bloc-approval-header-row {
+.vba-header {
     display: flex;
     justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 12px;
+}
+.vba-header-left {
+    display: flex;
     align-items: baseline;
-    margin-bottom: 14px;
+    gap: 12px;
 }
-
-.bloc-approval-title {
-    font-size: 0.7rem;
+.vba-title {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 11px;
     font-weight: 700;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-secondary, #888);
+    color: #f97316;
 }
-
-.bloc-approval-note {
-    font-size: 0.65rem;
-    color: var(--text-muted, #666);
-    font-style: italic;
+.vba-subtitle {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
+    color: #8a8778;
 }
-
-/* ---- Table header ---- */
-.bloc-table-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border-main, #333);
-    margin-bottom: 4px;
+.vba-header-right {
+    text-align: right;
 }
-
-.bloc-table-header .bloc-name,
-.bloc-table-header .bloc-approval,
-.bloc-table-header .bloc-change,
-.bloc-table-header .bloc-leader {
-    font-size: 0.6rem;
-    font-weight: 700;
+.vba-national-label {
+    display: block;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: var(--text-muted, #666);
-    flex-shrink: 0;
+    color: #6b6a5e;
+    margin-bottom: 2px;
 }
-
-.bloc-table-header .bloc-name { width: 180px; }
-.bloc-table-header .bloc-approval { width: 72px; text-align: right; }
-.bloc-table-header .bloc-change { width: 52px; text-align: right; }
-.bloc-table-header .bloc-leader { width: 48px; text-align: center; }
-
-.bloc-table-header .bloc-bar-track-header {
-    flex: 1;
-}
-
-/* ---- Bloc rows ---- */
-.bloc-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-}
-body.light-mode .bloc-row {
-    border-bottom-color: rgba(0, 0, 0, 0.04);
-}
-
-.bloc-row:last-child {
-    border-bottom: none;
-}
-
-.bloc-row .bloc-name {
-    width: 180px;
-    flex-shrink: 0;
-    font-size: 0.78rem;
-    color: var(--text-secondary, #aaa);
-    font-weight: 500;
-}
-
-.bloc-row-leading .bloc-name {
-    color: var(--text-primary, #e0e0e0);
+.vba-national-val {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 18px;
     font-weight: 700;
 }
 
-.bloc-bar-track {
-    flex: 1;
-    height: 12px;
-    background: rgba(255, 255, 255, 0.05);
+/* Legend bar */
+.vba-legend {
+    display: flex;
+    gap: 16px;
+    padding: 6px 12px;
+    background: #1e1e1a;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 3px;
+    margin-bottom: 12px;
+}
+.vba-legend-item {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 10px;
+    color: #6b6a5e;
+}
+.vba-legend-click {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 10px;
+    color: #6b6a5e;
+    margin-left: auto;
+}
+
+/* Card grid */
+.vba-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+}
+
+/* Individual card */
+.vba-card {
+    background: #1e1e1a;
+    border: 1px solid rgba(255,255,255,0.06);
     border-radius: 3px;
     overflow: hidden;
+    transition: border-color 0.15s ease;
 }
-body.light-mode .bloc-bar-track {
-    background: rgba(0, 0, 0, 0.06);
-}
-
-.bloc-bar-fill {
-    height: 100%;
-    border-radius: 3px;
-    transition: width 0.4s ease;
-    min-width: 2px;
+.vba-card:hover {
+    border-color: rgba(255,255,255,0.1);
 }
 
-.bloc-row .bloc-approval {
-    width: 72px;
-    flex-shrink: 0;
-    text-align: right;
-    font-size: 0.78rem;
-    color: var(--text-secondary, #aaa);
+/* Card header (always visible) */
+.vba-card-header {
+    padding: 10px 14px 8px 14px;
+}
+.vba-card-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+.vba-card-left {
+    flex: 1;
+    min-width: 0;
+}
+.vba-card-name-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 3px;
+}
+.vba-card-name {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
     font-weight: 600;
-    font-variant-numeric: tabular-nums;
+    color: #e2e0d6;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.vba-card-pop {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 10px;
+    color: #6b6a5e;
+    white-space: nowrap;
+}
+.vba-card-pills {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.vba-axis-pill {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 1px 5px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    color: #6b6a5e;
+}
+.vba-pill-sep {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
+    color: #6b6a5e;
+    padding: 1px 2px;
+}
+.vba-priority-pill {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 1px 5px;
+    border-radius: 2px;
+    background: rgba(34,211,238,0.08);
+    border: 1px solid rgba(34,211,238,0.12);
+    color: #22d3ee;
 }
 
-.bloc-row-leading .bloc-approval {
-    color: var(--text-primary, #e0e0e0);
-    font-weight: 700;
-}
-
-.bloc-row .bloc-change {
-    width: 52px;
-    flex-shrink: 0;
+/* Score area */
+.vba-card-right {
     text-align: right;
-    font-size: 0.72rem;
-    color: var(--text-muted, #666);
-    font-variant-numeric: tabular-nums;
+    min-width: 80px;
 }
-
-.bloc-row .bloc-leader {
-    width: 48px;
-    flex-shrink: 0;
-    text-align: center;
-    font-size: 0.7rem;
+.vba-card-score {
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 6px;
+}
+.vba-card-score-num {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 22px;
     font-weight: 700;
-    letter-spacing: 0.3px;
+    line-height: 1;
+}
+.vba-card-score-denom {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 10px;
+    color: #6b6a5e;
+}
+.vba-card-delta {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 11px;
+    font-weight: 600;
 }
 
-/* ---- Pillar breakdown tooltip ---- */
-.bloc-approval-hover {
-    position: relative;
-    cursor: help;
-    text-decoration: underline dotted var(--text-muted, #666);
-    text-underline-offset: 2px;
+/* Approval bar */
+.vba-card-bar-track {
+    margin-top: 8px;
+    height: 3px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 2px;
+    overflow: hidden;
 }
-.bloc-pillar-tip {
-    position: absolute;
-    bottom: calc(100% + 8px);
-    right: -12px;
-    background: var(--bg-card, #252525);
-    border: 1px solid var(--border-main, #333);
-    border-radius: 6px;
-    padding: 10px 12px;
-    width: 200px;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s;
-    z-index: 30;
-    text-align: left;
+.vba-card-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    opacity: 0.6;
+    transition: width 0.3s ease;
 }
-.bloc-approval-hover:hover .bloc-pillar-tip { opacity: 1; }
-.bpt-row {
+
+/* Expanded breakdown section */
+.vba-card-expanded {
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding: 8px 14px 10px 14px;
+    background: #16160f;
+}
+.vba-expanded-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.vba-expanded-title {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #6b6a5e;
+}
+.vba-expanded-count {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
+    color: #6b6a5e;
+}
+
+/* Modifier rows */
+.vba-mod-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.vba-mod-row {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-bottom: 4px;
+    padding: 3px 0;
 }
-.bpt-row:last-child { margin-bottom: 0; }
-.bpt-label {
-    font-size: 0.65rem;
-    color: var(--text-secondary, #aaa);
-    width: 72px;
+.vba-mod-icon {
+    font-size: 9px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    width: 12px;
+    display: inline-block;
     flex-shrink: 0;
 }
-.bpt-bar {
+.vba-mod-label {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 11px;
+    color: #8a8778;
     flex: 1;
-    height: 5px;
-    background: var(--bg-body, #121212);
-    border-radius: 3px;
+    min-width: 0;
+    white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
 }
-.bpt-fill { height: 100%; border-radius: 3px; }
-.bpt-val {
-    font-size: 0.65rem;
-    font-weight: 600;
-    color: var(--text-primary, #e0e0e0);
-    width: 26px;
+.vba-mod-date {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
+    color: #6b6a5e;
+    margin-right: 4px;
+    flex-shrink: 0;
+}
+.vba-mod-perm {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 8px;
+    color: #6b6a5e;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    padding: 0 3px;
+    border-radius: 2px;
+    margin-right: 4px;
+    flex-shrink: 0;
+}
+.vba-mod-val {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    min-width: 36px;
     text-align: right;
-    font-variant-numeric: tabular-nums;
-}
-body.light-mode .bloc-pillar-tip {
-    background: #fff;
-    border-color: #ccc;
+    flex-shrink: 0;
 }
 
-/* ---- Bloc name ideology tooltip ---- */
-.bloc-name-hover {
-    position: relative;
-    cursor: help;
-    text-decoration: underline dotted var(--text-muted, #666);
-    text-underline-offset: 2px;
-}
-.bloc-ideo-tip {
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: -8px;
-    background: var(--bg-card, #252525);
-    border: 1px solid var(--border-main, #333);
-    border-radius: 6px;
-    padding: 10px 12px;
-    width: 260px;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s;
-    z-index: 40;
-    text-align: left;
-}
-.bloc-name-hover:hover .bloc-ideo-tip { opacity: 1; pointer-events: auto; }
-.bloc-ideo-axis {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin-bottom: 5px;
-}
-.bloc-ideo-axis:last-child { margin-bottom: 0; }
-.bloc-ideo-pole {
-    font-size: 0.6rem;
-    width: 68px;
-    flex-shrink: 0;
-    text-align: right;
-    letter-spacing: 0.2px;
-}
-.bloc-ideo-pole-right {
-    text-align: left;
-}
-.bloc-ideo-track {
-    flex: 1;
-    height: 6px;
-    background: var(--bg-body, #121212);
-    border-radius: 3px;
-    position: relative;
-}
-.bloc-ideo-marker {
-    position: absolute;
-    top: -2px;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--text-secondary, #aaa);
-    transform: translateX(-50%);
-    border: 1px solid rgba(0,0,0,0.3);
-}
-.bloc-ideo-issues {
+/* Breakdown summary bar */
+.vba-breakdown-section {
     margin-top: 8px;
     padding-top: 6px;
-    border-top: 1px solid var(--border-main, #333);
-    font-size: 0.62rem;
-    color: var(--text-secondary, #aaa);
+    border-top: 1px solid rgba(255,255,255,0.06);
 }
-body.light-mode .bloc-ideo-tip {
-    background: #fff;
-    border-color: #ccc;
+.vba-breakdown-bar {
+    display: flex;
+    gap: 2px;
+    height: 6px;
+    border-radius: 2px;
+    overflow: hidden;
 }
-body.light-mode .bloc-ideo-track {
-    background: #e8e8e8;
+.vba-breakdown-legend {
+    display: flex;
+    gap: 12px;
+    margin-top: 4px;
+}
+.vba-breakdown-legend span {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
 }
 
-/* ---- Footer ---- */
-.bloc-approval-footer {
+/* Footer */
+.vba-footer {
     margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid var(--border-main, #333);
+    padding: 10px 14px;
+    background: #1e1e1a;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 3px;
     display: flex;
     justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px;
-    font-size: 0.72rem;
-    color: var(--text-muted, #666);
+    align-items: center;
+}
+.vba-footer-stats {
+    display: flex;
+    gap: 20px;
+}
+.vba-footer-stat-label {
+    display: block;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #6b6a5e;
+    margin-bottom: 1px;
+}
+.vba-footer-stat-val {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 12px;
+    font-weight: 600;
+}
+.vba-footer-tick {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 10px;
+    color: #6b6a5e;
+}
+
+@media (max-width: 1100px) {
+    .vba-grid {
+        grid-template-columns: 1fr 1fr;
+    }
 }
 
 @media (max-width: 800px) {
@@ -834,20 +897,21 @@ body.light-mode .bloc-ideo-track {
         min-width: 0;
         width: 100%;
     }
-    .bloc-row .bloc-name {
-        width: 120px;
+    .vba-grid {
+        grid-template-columns: 1fr;
     }
-    .bloc-row .bloc-approval {
-        width: 56px;
-    }
-    .bloc-row .bloc-change {
-        display: none;
-    }
-    .bloc-table-header .bloc-change {
-        display: none;
-    }
-    .bloc-approval-footer {
+    .vba-header {
         flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    .vba-footer {
+        flex-direction: column;
+        gap: 8px;
+    }
+    .vba-footer-stats {
+        flex-direction: column;
+        gap: 6px;
     }
     /* Party stats: 2×2 grid on mobile */
     .my-party-stats {

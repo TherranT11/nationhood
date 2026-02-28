@@ -139,6 +139,143 @@ export async function applyEnactmentApproval(supabase, nationId, approvalDeltas)
 }
 
 
+// ==================== SPONSOR BLOC PREFERENCE ON BILL PASSAGE ====================
+
+/**
+ * When the sponsor's bill passes, adjust preference & momentum with voter blocs
+ * based on ideological alignment between the bill's articles and each bloc.
+ *
+ * - Aligned blocs (lean same direction as bill on any axis, ±10 from center):
+ *   +3 preference_score, +3 momentum
+ * - Opposed blocs (lean opposite direction on any axis):
+ *   -4 preference_score
+ *
+ * @param {object} supabase
+ * @param {object} bill - Full bill row with bill_articles (with policies)
+ * @param {string} nationId
+ */
+export async function applyBlocPreferenceOnPassage(supabase, bill, nationId) {
+    const ALIGNED_PREF_BONUS = 3;
+    const ALIGNED_MOMENTUM_BONUS = 3;
+    const OPPOSED_PREF_PENALTY = -4;
+    const AXIS_THRESHOLD = 10; // distance from center (50) to count as "having" an opinion
+
+    const sponsorId = bill.proposed_by;
+    if (!sponsorId) return;
+
+    // 1. Extract ideology tags from bill articles and compute net direction per axis
+    const axisDirections = {}; // { axisKey: net direction (+1 or -1) }
+    for (const art of (bill.bill_articles || [])) {
+        const p = art.policies || art;
+        if (!p) continue;
+        const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
+            ? p.ideologies.map(i => i.toUpperCase())
+            : (p.ideology ? [p.ideology.toUpperCase()] : []);
+        for (const tag of ideos) {
+            const mapping = IDEOLOGY_TO_AXIS[tag];
+            if (!mapping) continue;
+            axisDirections[mapping.axisKey] = (axisDirections[mapping.axisKey] || 0) + mapping.direction;
+        }
+    }
+
+    // Normalize to sign only
+    for (const key of Object.keys(axisDirections)) {
+        axisDirections[key] = Math.sign(axisDirections[key]);
+    }
+
+    const affectedAxes = Object.keys(axisDirections).filter(k => axisDirections[k] !== 0);
+    if (affectedAxes.length === 0) return;
+
+    // 2. Load voter blocs with axis scores
+    const { data: voterBlocs } = await supabase
+        .from('voter_blocs')
+        .select('id, bloc_name, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+    if (!voterBlocs || voterBlocs.length === 0) return;
+
+    // 3. Classify each bloc as aligned, opposed, or neutral
+    const alignedBlocIds = new Set();
+    const opposedBlocIds = new Set();
+
+    for (const bloc of voterBlocs) {
+        let hasAligned = false;
+        let hasOpposed = false;
+
+        for (const axisKey of affectedAxes) {
+            const blocScore = bloc['axis_' + axisKey] ?? 50;
+            const deviation = blocScore - 50; // positive = leans right, negative = leans left
+            if (Math.abs(deviation) < AXIS_THRESHOLD) continue; // neutral on this axis
+
+            const blocDirection = Math.sign(deviation); // +1 = right, -1 = left
+            const billDirection = axisDirections[axisKey];
+
+            if (blocDirection === billDirection) {
+                hasAligned = true;
+            } else {
+                hasOpposed = true;
+            }
+        }
+
+        // Opposed takes priority — if a bloc opposes on any axis, they're opposed
+        if (hasOpposed) {
+            opposedBlocIds.add(bloc.id);
+        } else if (hasAligned) {
+            alignedBlocIds.add(bloc.id);
+        }
+    }
+
+    // 4. Load sponsor's faction_bloc_approval rows for affected blocs
+    const allAffectedBlocIds = [...alignedBlocIds, ...opposedBlocIds];
+    if (allAffectedBlocIds.length === 0) return;
+
+    const { data: approvalRows } = await supabase
+        .from('faction_bloc_approval')
+        .select('id, bloc_id, preference_score, momentum')
+        .eq('faction_id', sponsorId)
+        .in('bloc_id', allAffectedBlocIds);
+
+    // 5. Apply adjustments
+    for (const row of (approvalRows || [])) {
+        const oldPref = Math.round(row.preference_score ?? 50);
+        const oldMom = Number(row.momentum ?? 0);
+
+        if (alignedBlocIds.has(row.bloc_id)) {
+            const newPref = Math.max(0, Math.min(100, oldPref + ALIGNED_PREF_BONUS));
+            const newMom = Math.max(-50, Math.min(50, oldMom + ALIGNED_MOMENTUM_BONUS));
+            await supabase.from('faction_bloc_approval')
+                .update({ preference_score: newPref, momentum: newMom })
+                .eq('id', row.id);
+        } else if (opposedBlocIds.has(row.bloc_id)) {
+            const newPref = Math.max(0, Math.min(100, oldPref + OPPOSED_PREF_PENALTY));
+            await supabase.from('faction_bloc_approval')
+                .update({ preference_score: newPref })
+                .eq('id', row.id);
+        }
+    }
+
+    // 6. Audit log for momentum changes on aligned blocs
+    if (alignedBlocIds.size > 0) {
+        const { data: shard } = await supabase
+            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        for (const blocId of alignedBlocIds) {
+            await supabase.from('momentum_log').insert({
+                nation_id: nationId,
+                faction_id: sponsorId,
+                bloc_id: blocId,
+                amount: ALIGNED_MOMENTUM_BONUS,
+                source: 'bill:passage_aligned',
+                tick: shard?.current_tick || 0
+            }).catch(() => {});
+        }
+    }
+
+    const alignedNames = voterBlocs.filter(b => alignedBlocIds.has(b.id)).map(b => b.bloc_name);
+    const opposedNames = voterBlocs.filter(b => opposedBlocIds.has(b.id)).map(b => b.bloc_name);
+    console.log(`[BillPassage] Sponsor ${sponsorId}: +${ALIGNED_PREF_BONUS} pref/mom with aligned blocs [${alignedNames.join(', ')}], ${OPPOSED_PREF_PENALTY} pref with opposed blocs [${opposedNames.join(', ')}]`);
+}
+
+
 // ==================== NO-VOTE PENALTY ====================
 
 /**
@@ -1540,6 +1677,9 @@ export async function enactBill(supabase, bill, currentTick) {
         factionIdeologies
     );
     await applyEnactmentApproval(supabase, bill.nation_id, approvalDeltas);
+
+    // Sponsor gains/loses preference with voter blocs based on bill ideology alignment
+    await applyBlocPreferenceOnPassage(supabase, bill, bill.nation_id);
 }
 
 export async function reversePolicy(supabase, nation, policy, passedTick, currentTick) {
