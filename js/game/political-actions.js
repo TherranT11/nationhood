@@ -4009,23 +4009,12 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         }
     }
 
-    // 5. Clean up all faction-related data from the old nation
-    //    Delete voter bloc approval/momentum rows, promises, donor trust, etc.
-    await supabase.from('faction_bloc_approval').delete().eq('faction_id', factionId);
-    await supabase.from('faction_ideology').delete().eq('faction_id', factionId);
-    await supabase.from('ideology_history').delete().eq('faction_id', factionId);
-    await supabase.from('momentum_log').delete().eq('faction_id', factionId);
-    await supabase.from('fundraiser_promises').delete().eq('party_id', factionId);
-    await supabase.from('donor_trust').delete().eq('party_id', factionId);
-    await supabase.from('bill_support').delete().eq('faction_id', factionId);
-    await supabase.from('campaign_actions').delete().eq('party_id', factionId);
-
-    // 6. Core disband — null out nation, reset all stats to fresh defaults
+    // 5. Core disband — null out nation_id, reset all stats to fresh defaults
+    //    Do this BEFORE deletes so if it fails, no data is lost.
     const { error: disbandErr } = await supabase
         .from('factions')
         .update({
             nation_id: null,
-            nation: null,
             abandoned_at: new Date().toISOString(),
             disband_cooldown_until_tick: currentTick + 24,
             action_points: 0,
@@ -4037,6 +4026,17 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         .eq('id', factionId);
 
     if (disbandErr) throw new Error('Failed to disband party: ' + disbandErr.message);
+
+    // 6. Clean up all faction-related data from the old nation
+    //    Delete voter bloc approval/momentum rows, promises, donor trust, etc.
+    await supabase.from('faction_bloc_approval').delete().eq('faction_id', factionId);
+    await supabase.from('faction_ideology').delete().eq('faction_id', factionId);
+    await supabase.from('ideology_history').delete().eq('faction_id', factionId);
+    await supabase.from('momentum_log').delete().eq('faction_id', factionId);
+    await supabase.from('fundraiser_promises').delete().eq('party_id', factionId);
+    await supabase.from('donor_trust').delete().eq('party_id', factionId);
+    await supabase.from('bill_support').delete().eq('faction_id', factionId);
+    await supabase.from('campaign_actions').delete().eq('party_id', factionId);
 
     // 7. Audit log
     const { error: logErr } = await supabase
