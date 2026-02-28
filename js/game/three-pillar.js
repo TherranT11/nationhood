@@ -170,9 +170,26 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         // ─── COMBINE: preference_score ───
         // Map momentum from [-50,+50] to [0,100] for blending
         const momMapped = Math.max(0, Math.min(100, 50 + newMomentum));
-        const prefScore = Math.round(
+        let prefScore = Math.round(
             (ideoScore * PILLAR_WEIGHT_IDEO + newPerf * PILLAR_WEIGHT_PERF + momMapped * PILLAR_WEIGHT_MOM) * 100
         ) / 100;
+
+        // ─── IDEOLOGY DRIFT: opposed/neutral blocs erode preference over time ───
+        // Opposed blocs (ideo < 35): -1/tick down to floor of 20
+        // No shared ideologies (ideo 35-50): -0.5/tick down to floor of 40
+        let ideoDrift = 0;
+        if (ideoScore < 35) {
+            if (prefScore > 20) {
+                ideoDrift = -1;
+                prefScore = Math.max(20, prefScore + ideoDrift);
+            }
+        } else if (ideoScore < 50) {
+            if (prefScore > 40) {
+                ideoDrift = -0.5;
+                prefScore = Math.max(40, prefScore + ideoDrift);
+            }
+        }
+        prefScore = Math.round(prefScore * 100) / 100;
 
         updates.push({
             id: row.id,
@@ -181,7 +198,8 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
             ideology_alignment: Math.round(ideoScore * 100) / 100,
             performance_perception: newPerf,
             momentum: newMomentum,
-            preference_score: prefScore
+            preference_score: prefScore,
+            ideology_drift: ideoDrift
         });
     }
 

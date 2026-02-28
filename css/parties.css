@@ -1,12 +1,13 @@
 /* ===== PAGE WRAPPER ===== */
 .parties-page {
-    padding: 24px;
+    padding: 20px;
+    background: #141412;
 }
 
 /* ===== TOP PANELS ROW ===== */
 .parties-top-panels {
     display: flex;
-    gap: 20px;
+    gap: 8px;
     align-items: stretch;
 }
 
@@ -91,11 +92,11 @@ body.light-mode .coup-risk-bar-track {
 
 /* ===== MY PARTY CARD ===== */
 .my-party-card {
-    background: var(--bg-panel, #1a1a1a);
-    border: 1px solid var(--border-main, #333);
-    border-left: 4px solid var(--accent);
-    border-radius: 8px;
-    padding: 20px 24px;
+    background: #1e1e1a;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    padding: 14px 18px;
     flex: 1.4 1 0;
     min-width: 280px;
 }
@@ -104,8 +105,8 @@ body.light-mode .coup-risk-bar-track {
 .my-party-top-row {
     display: flex;
     align-items: center;
-    gap: 14px;
-    margin-bottom: 16px;
+    gap: 12px;
+    margin-bottom: 12px;
 }
 
 .my-party-logo {
@@ -113,21 +114,17 @@ body.light-mode .coup-risk-bar-track {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    width: 52px;
-    height: 52px;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-}
-body.light-mode .my-party-logo {
-    background: rgba(0, 0, 0, 0.04);
-    border-color: rgba(0, 0, 0, 0.08);
+    width: 44px;
+    height: 44px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .my-party-identity {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
     min-width: 0;
 }
 
@@ -139,14 +136,17 @@ body.light-mode .my-party-logo {
 }
 
 .my-party-name {
-    font-size: 1.2rem;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 15px;
     font-weight: 700;
     line-height: 1.2;
+    color: #e2e0d6;
 }
 
 .my-party-abbr {
-    font-size: 0.78rem;
-    color: var(--text-muted, #666);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 11px;
+    color: #6b6a5e;
     font-weight: 400;
 }
 
@@ -154,98 +154,106 @@ body.light-mode .my-party-logo {
 .my-party-role-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     flex-wrap: wrap;
 }
 
 .role-badge {
     display: inline-block;
-    padding: 2px 10px;
-    border-radius: 3px;
-    font-size: 0.7rem;
+    padding: 1px 8px;
+    border-radius: 2px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.08em;
 }
 
 .role-badge-gov {
-    background: rgba(76, 175, 80, 0.15);
-    color: #4CAF50;
-    border: 1px solid rgba(76, 175, 80, 0.3);
+    background: rgba(74,222,128,0.08);
+    color: #4ade80;
+    border: 1px solid rgba(74,222,128,0.2);
 }
 .role-badge-opp {
-    background: rgba(255, 68, 68, 0.15);
-    color: #ff4444;
-    border: 1px solid rgba(255, 68, 68, 0.3);
+    background: rgba(239,68,68,0.08);
+    color: #ef4444;
+    border: 1px solid rgba(239,68,68,0.2);
 }
 .role-badge-none {
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text-muted, #888);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.03);
+    color: #6b6a5e;
+    border: 1px solid rgba(255, 255, 255, 0.06);
     font-style: italic;
-}
-body.light-mode .role-badge-none {
-    background: rgba(0, 0, 0, 0.05);
-    border-color: rgba(0, 0, 0, 0.1);
 }
 
 /* ---- Ideology tags row (below role badge) ---- */
 .my-party-ideology-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     flex-wrap: wrap;
+}
+
+/* ---- Description ---- */
+.my-party-desc {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 12px;
+    color: #8a8778;
+    line-height: 1.4;
+    margin-bottom: 10px;
 }
 
 /* ---- Stats row ---- */
 .my-party-stats {
     display: flex;
     flex-wrap: wrap;
-    gap: 14px 28px;
-    padding-top: 14px;
-    border-top: 1px solid var(--border-main, #333);
+    gap: 10px 24px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.06);
 }
 
 .my-party-stat {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
     min-width: 0;
 }
 
 .my-party-stat .stat-label {
-    font-size: 0.65rem;
-    color: var(--text-secondary, #888);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
+    color: #6b6a5e;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    font-weight: 600;
+    letter-spacing: 0.1em;
+    font-weight: 700;
 }
 
 .my-party-stat .stat-val {
-    font-size: 0.88rem;
-    color: var(--text-primary, #e0e0e0);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
+    color: #e2e0d6;
     font-weight: 600;
     white-space: nowrap;
 }
 
 .my-party-stat .stat-money {
-    color: var(--accent, #ffcc00);
+    color: #facc15;
 }
 
 .my-party-stat .stat-sublabel {
-    font-size: 0.75rem;
-    color: var(--text-muted, #666);
-    font-style: italic;
-    margin-top: 2px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 10px;
+    color: #6b6a5e;
+    margin-top: 1px;
     white-space: normal;
 }
 
 /* ===== PROJECTED VOTE SHARE PANEL ===== */
 .vote-share-panel {
-    background: var(--bg-panel, #1a1a1a);
-    border: 1px solid var(--border-main, #333);
-    border-radius: 8px;
-    padding: 20px 24px;
+    background: #1e1e1a;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 3px;
+    padding: 14px 18px;
     flex: 1.1 1 0;
     min-width: 250px;
     display: flex;
@@ -253,12 +261,13 @@ body.light-mode .role-badge-none {
 }
 
 .vote-share-header {
-    font-size: 0.7rem;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-secondary, #888);
-    margin-bottom: 16px;
+    letter-spacing: 0.12em;
+    color: #8a8778;
+    margin-bottom: 12px;
 }
 
 .vote-bars {
@@ -283,8 +292,9 @@ body.light-mode .role-badge-none {
 }
 
 .vote-bar-label {
-    font-size: 0.75rem;
-    color: var(--text-secondary, #888);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 11px;
+    color: #8a8778;
     font-weight: 600;
     width: 42px;
     flex-shrink: 0;
@@ -293,25 +303,24 @@ body.light-mode .role-badge-none {
 
 .vote-bar-track {
     flex: 1;
-    height: 14px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 3px;
+    height: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 2px;
     overflow: hidden;
-}
-body.light-mode .vote-bar-track {
-    background: rgba(0, 0, 0, 0.06);
 }
 
 .vote-bar-fill {
     height: 100%;
-    border-radius: 3px;
+    border-radius: 2px;
     transition: width 0.4s ease;
     min-width: 2px;
+    opacity: 0.7;
 }
 
 .vote-bar-pct {
-    font-size: 0.75rem;
-    color: var(--text-secondary, #888);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 11px;
+    color: #8a8778;
     font-weight: 600;
     width: 44px;
     flex-shrink: 0;
@@ -321,10 +330,10 @@ body.light-mode .vote-bar-track {
 
 /* ===== MOMENTUM PANEL ===== */
 .momentum-panel {
-    background: var(--bg-panel, #1a1a1a);
-    border: 1px solid var(--border-main, #333);
-    border-radius: 8px;
-    padding: 20px 24px;
+    background: #1e1e1a;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 3px;
+    padding: 14px 18px;
     flex: 0.8 1 0;
     min-width: 180px;
     display: flex;
@@ -332,95 +341,102 @@ body.light-mode .vote-bar-track {
 }
 
 .momentum-header {
-    font-size: 0.7rem;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-secondary, #888);
-    margin-bottom: 16px;
+    letter-spacing: 0.12em;
+    color: #8a8778;
+    margin-bottom: 12px;
 }
 
 .momentum-score-row {
     display: flex;
     align-items: baseline;
     gap: 4px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 .momentum-value {
-    font-size: 2rem;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 28px;
     font-weight: 700;
-    color: var(--text-primary, #e0e0e0);
+    color: #e2e0d6;
     line-height: 1;
 }
 
 .momentum-max {
-    font-size: 0.85rem;
-    color: var(--text-muted, #666);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 12px;
+    color: #6b6a5e;
     font-weight: 400;
 }
 
 .momentum-bar-track {
-    height: 8px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 2px;
     overflow: hidden;
-}
-body.light-mode .momentum-bar-track {
-    background: rgba(0, 0, 0, 0.06);
 }
 
 .momentum-bar-fill {
     height: 100%;
-    border-radius: 4px;
+    border-radius: 2px;
     transition: width 0.4s ease;
     min-width: 2px;
+    opacity: 0.7;
 }
 
 .momentum-decay {
     margin-top: 6px;
-    font-size: 0.7rem;
-    color: var(--text-muted, #666);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 10px;
+    color: #6b6a5e;
     text-align: right;
 }
 
 .momentum-rank {
     margin-top: auto;
-    font-size: 0.72rem;
-    color: var(--text-secondary, #888);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 11px;
+    color: #8a8778;
     font-weight: 600;
 }
 
 .momentum-desc {
-    padding-top: 12px;
-    border-top: 1px solid var(--border-main, #333);
-    font-size: 0.68rem;
-    color: var(--text-muted, #666);
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 11px;
+    color: #6b6a5e;
     line-height: 1.4;
 }
 
 /* ===== MOMENTUM LOG ===== */
 .mom-log-panel {
-    margin-top: 12px;
-    padding-top: 10px;
-    border-top: 1px solid var(--border-main, #333);
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.06);
 }
 .mom-log-title {
-    font-size: 0.62rem;
-    color: var(--text-muted, #666);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
+    color: #6b6a5e;
     text-transform: uppercase;
-    letter-spacing: 0.6px;
-    margin-bottom: 6px;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+    margin-bottom: 5px;
 }
 .mom-log-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 2px 0;
-    font-size: 0.68rem;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 10px;
 }
 .mom-log-src {
-    color: var(--text-secondary, #aaa);
+    color: #8a8778;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -428,17 +444,17 @@ body.light-mode .momentum-bar-track {
     margin-right: 8px;
 }
 .mom-log-amt {
-    font-weight: 600;
+    font-weight: 700;
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
 }
 
 /* ===== PERFORMANCE CREDIT PANEL ===== */
 .perf-panel {
-    background: var(--bg-panel, #1a1a1a);
-    border: 1px solid var(--border-main, #333);
-    border-radius: 8px;
-    padding: 20px 24px;
+    background: #1e1e1a;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 3px;
+    padding: 14px 18px;
     flex: 0.9 1 0;
     min-width: 200px;
     display: flex;
@@ -446,12 +462,13 @@ body.light-mode .momentum-bar-track {
 }
 
 .perf-header {
-    font-size: 0.7rem;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-secondary, #888);
-    margin-bottom: 14px;
+    letter-spacing: 0.12em;
+    color: #8a8778;
+    margin-bottom: 12px;
 }
 
 /* ---- Empty state (no ministries) ---- */
@@ -463,33 +480,36 @@ body.light-mode .momentum-bar-track {
 }
 
 .perf-empty-label {
-    font-size: 0.82rem;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
     font-weight: 700;
-    color: var(--text-secondary, #aaa);
-    margin-bottom: 10px;
+    color: #8a8778;
+    margin-bottom: 8px;
 }
 
 .perf-empty-msg {
-    font-size: 0.72rem;
-    color: var(--text-muted, #666);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 11px;
+    color: #6b6a5e;
     line-height: 1.5;
 }
 
 /* ---- Active state (has ministries) ---- */
 .perf-ministries {
-    font-size: 0.78rem;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 12px;
     font-weight: 600;
-    color: var(--text-primary, #e0e0e0);
-    margin-bottom: 14px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--border-main, #333);
+    color: #e2e0d6;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
     line-height: 1.4;
 }
 
 .perf-trends {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
     flex: 1;
 }
 
@@ -500,43 +520,47 @@ body.light-mode .momentum-bar-track {
 }
 
 .perf-trend-label {
-    font-size: 0.65rem;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.08em;
     margin-bottom: 2px;
 }
 
-.perf-trend-label.perf-trend-good { color: #4CAF50; }
-.perf-trend-label.perf-trend-bad { color: #ff4444; }
-.perf-trend-label.perf-trend-flat { color: var(--text-muted, #666); }
+.perf-trend-label.perf-trend-good { color: #4ade80; }
+.perf-trend-label.perf-trend-bad { color: #ef4444; }
+.perf-trend-label.perf-trend-flat { color: #6b6a5e; }
 
 .perf-trend-item {
-    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 11px;
     padding-left: 8px;
     line-height: 1.5;
 }
 
-.perf-trend-item.perf-trend-good { color: #4CAF50; }
-.perf-trend-item.perf-trend-bad { color: #ff4444; }
-.perf-trend-item.perf-trend-flat { color: var(--text-muted, #666); }
+.perf-trend-item.perf-trend-good { color: #4ade80; }
+.perf-trend-item.perf-trend-bad { color: #ef4444; }
+.perf-trend-item.perf-trend-flat { color: #6b6a5e; }
 
 .perf-trend-none {
-    font-size: 0.72rem;
-    color: var(--text-muted, #666);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 11px;
+    color: #6b6a5e;
     font-style: italic;
 }
 
 /* ---- Swing warnings ---- */
 .perf-warnings {
-    margin-top: 12px;
-    padding-top: 10px;
-    border-top: 1px solid var(--border-main, #333);
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.06);
 }
 
 .perf-warning {
-    font-size: 0.7rem;
-    color: #ffaa00;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 10px;
+    color: #f97316;
     line-height: 1.5;
 }
 
@@ -1696,60 +1720,62 @@ body.light-mode .ideology-label-swatch {
 
 /* ===== ACTION POINTS PANEL ===== */
 .ap-panel {
-    background: var(--bg-panel, #1a1a1a);
-    border: 1px solid var(--border-main, #333);
-    border-radius: 8px;
-    padding: 20px 24px;
+    background: #1e1e1a;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 3px;
+    padding: 14px 18px;
     flex: 0.6 1 0;
     min-width: 150px;
     display: flex;
     flex-direction: column;
 }
 .ap-header {
-    font-size: 0.7rem;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-secondary, #888);
-    margin-bottom: 14px;
+    letter-spacing: 0.12em;
+    color: #8a8778;
+    margin-bottom: 12px;
 }
 .ap-score-row {
     display: flex;
     align-items: baseline;
     gap: 4px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 .ap-value {
-    font-size: 2rem;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 28px;
     font-weight: 700;
-    color: var(--text-primary, #e0e0e0);
+    color: #e2e0d6;
     line-height: 1;
 }
 .ap-max {
-    font-size: 0.85rem;
-    color: var(--text-muted, #666);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 12px;
+    color: #6b6a5e;
     font-weight: 400;
 }
 .ap-bar-track {
-    height: 8px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 2px;
     overflow: hidden;
-}
-body.light-mode .ap-bar-track {
-    background: rgba(0, 0, 0, 0.06);
 }
 .ap-bar-fill {
     height: 100%;
-    border-radius: 4px;
+    border-radius: 2px;
     transition: width 0.4s ease;
     min-width: 2px;
+    opacity: 0.7;
 }
 .ap-tip {
     margin-top: auto;
-    padding-top: 10px;
-    font-size: 0.7rem;
-    color: var(--text-muted, #666);
+    padding-top: 8px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 11px;
+    color: #6b6a5e;
     line-height: 1.5;
 }
 
@@ -4946,48 +4972,55 @@ body.light-mode .outreach-bloc-row:hover {
 
 /* ===== OTHER PARTIES SECTION ===== */
 .other-parties-section {
-    margin-top: 24px;
+    margin-top: 20px;
 }
 .other-parties-header {
-    font-size: 0.7rem;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-secondary, #888);
-    margin-bottom: 14px;
+    letter-spacing: 0.14em;
+    color: #8a8778;
+    margin-bottom: 12px;
 }
 .other-parties-group {
-    margin-bottom: 18px;
+    margin-bottom: 14px;
 }
 .other-parties-group:last-child {
     margin-bottom: 0;
 }
 .other-parties-group-label {
-    font-size: 0.7rem;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    margin-bottom: 10px;
+    letter-spacing: 0.12em;
+    margin-bottom: 8px;
 }
 .other-parties-group-gov {
-    color: #4CAF50;
+    color: #4ade80;
 }
 .other-parties-group-opp {
-    color: #ff4444;
+    color: #ef4444;
 }
 .other-parties-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
+    gap: 8px;
 }
 
 /* ---- Individual Other Party Card ---- */
 .other-party-card {
-    background: var(--bg-panel, #1a1a1a);
-    border: 1px solid var(--border-main, #333);
-    border-left: 4px solid var(--accent);
-    border-radius: 8px;
-    padding: 16px 18px;
+    background: #1e1e1a;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    padding: 12px 14px;
+    transition: border-color 0.15s ease;
+}
+.other-party-card:hover {
+    border-color: rgba(255,255,255,0.1);
+    border-left-color: var(--accent);
 }
 
 /* ---- Top row: logo + identity ---- */
@@ -4995,27 +5028,23 @@ body.light-mode .outreach-bloc-row:hover {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 .other-party-logo {
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    width: 40px;
-    height: 40px;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-}
-body.light-mode .other-party-logo {
-    background: rgba(0, 0, 0, 0.04);
-    border-color: rgba(0, 0, 0, 0.08);
+    width: 36px;
+    height: 36px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
 }
 .other-party-identity {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
     min-width: 0;
 }
 .other-party-name-row {
@@ -5025,25 +5054,28 @@ body.light-mode .other-party-logo {
     flex-wrap: wrap;
 }
 .other-party-name {
-    font-size: 1rem;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
     font-weight: 700;
     line-height: 1.2;
+    color: #e2e0d6;
 }
 .other-party-abbr {
-    font-size: 0.72rem;
-    color: var(--text-muted, #666);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 10px;
+    color: #6b6a5e;
     font-weight: 400;
 }
 .other-party-role-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     flex-wrap: wrap;
 }
 .other-party-ideology-row {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
     flex-wrap: wrap;
 }
 
@@ -5051,26 +5083,28 @@ body.light-mode .other-party-logo {
 .other-party-stats {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px 20px;
-    padding-top: 12px;
-    border-top: 1px solid var(--border-main, #333);
+    gap: 8px 18px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.06);
 }
 .other-party-stat {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
     min-width: 0;
 }
 .other-party-stat .stat-label {
-    font-size: 0.6rem;
-    color: var(--text-secondary, #888);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
+    color: #6b6a5e;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    font-weight: 600;
+    letter-spacing: 0.1em;
+    font-weight: 700;
 }
 .other-party-stat .stat-val {
-    font-size: 0.82rem;
-    color: var(--text-primary, #e0e0e0);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 12px;
+    color: #e2e0d6;
     font-weight: 600;
     white-space: nowrap;
 }
@@ -5267,10 +5301,10 @@ body.light-mode .ideology-marker {
     line-height: 1.45;
 }
 .other-party-desc {
-    font-size: 0.76rem;
-    color: var(--text-secondary, #999);
-    font-style: italic;
-    padding: 4px 0 2px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 11px;
+    color: #8a8778;
+    padding: 2px 0;
     line-height: 1.4;
 }
 
