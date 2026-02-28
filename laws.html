@@ -276,7 +276,7 @@ async function loadLawsData() {
             cachedPolicies ? Promise.resolve({ data: cachedPolicies }) : _supabase.from('policies').select('*').eq('is_active', true),
             _supabase.from('active_laws').select('*, policies(*)').eq('nation_id', nid),
             _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), factions(faction_name)), bill_support(*)').eq('nation_id', nid).eq('status', 'committee'),
-            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance)').eq('nation_id', nid).in('status', ['floor', 'vetoed']),
+            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)').eq('nation_id', nid).in('status', ['floor', 'vetoed']),
             _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).eq('status', 'frozen'),
             isPresidential ? _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).eq('status', 'president_desk') : Promise.resolve({ data: [] }),
             _supabase.from('bills').select('*, factions(faction_name)').eq('nation_id', nid).in('status', ['passed', 'failed']).order('passed_tick', { ascending: false }).limit(10)
@@ -288,6 +288,19 @@ async function loadLawsData() {
         activeLaws = lawsRes.data || [];
         committeeBills = committeeRes.data || [];
         floorBills = floorRes.data || [];
+        // Recalculate vote tallies from bill_support so list view matches detail view
+        for (const bill of floorBills) {
+            let f = 0, a = 0, ab = 0;
+            (bill.bill_support || []).forEach(s => {
+                const st = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+                if (st === 'yes')          f += (s.seat_count || 0);
+                else if (st === 'no')      a += (s.seat_count || 0);
+                else if (st === 'abstain') ab += (s.seat_count || 0);
+            });
+            bill.votes_for = f;
+            bill.votes_against = a;
+            bill.votes_abstain = ab;
+        }
         frozenBills = frozenRes.data || [];
         presidentDeskBills = deskRes.data || [];
         recentBills = recentRes.data || [];
