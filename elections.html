@@ -551,8 +551,8 @@ async function renderPresidentialResults(election) {
             const ideo = (c.ideology || '').toUpperCase();
             const color = ideologyColors[ideo] || '#888';
             const isWinner = c.winner || c.candidate_id === tableWinner.candidate_id;
-            const cPartyColor = getPartyColor(c.party_id, cIdx);
-            const cLogo = getPartyLogo(c.party_id);
+            const cPartyColor = getPartyColor(c.party_id || c.faction_id, cIdx);
+            const cLogo = getPartyLogo(c.party_id || c.faction_id);
             const cLogoHtml = cLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(cLogo, 16, cPartyColor)}</span>` : '';
             return `
                 <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 0.8fr;gap:12px;padding:12px 0;border-bottom:1px solid #222;align-items:center;border-left:3px solid ${cPartyColor};padding-left:10px;">
@@ -576,8 +576,8 @@ async function renderPresidentialResults(election) {
 
     const winnerIdeology = (winner.ideology || '').toUpperCase();
     const winnerColor = ideologyColors[winnerIdeology] || '#888';
-    const winnerPartyColor = getPartyColor(winner.party_id, 0);
-    const winnerLogo = getPartyLogo(winner.party_id);
+    const winnerPartyColor = getPartyColor(winner.party_id || winner.faction_id, 0);
+    const winnerLogo = getPartyLogo(winner.party_id || winner.faction_id);
     const winnerLogoHtml = winnerLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:8px;">${getPartyIconSVG(winnerLogo, 22, winnerPartyColor)}</span>` : '';
 
     // Winner banner
