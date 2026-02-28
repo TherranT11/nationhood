@@ -947,17 +947,26 @@ function renderFormationInProgress(parties) {
     const largestParty = sorted[0];
     const secondParty = sorted[1];
 
+    // Tone: calm at start, escalates with urgency
+    const icon = urgency === 'critical' ? '⚠️' : urgency === 'warning' ? '⏳' : '🤝';
+    const title = urgency === 'critical' ? 'No Government — Snap Election Imminent'
+                : urgency === 'warning' ? 'Coalition Formation — Time Running Out'
+                : 'Coalition Formation In Progress';
+    const subtitle = urgency === 'critical' ? 'Form a government immediately or face snap elections'
+                   : urgency === 'warning' ? 'Parties are negotiating — the deadline is approaching'
+                   : 'Parties are negotiating a coalition — propose or join one on the Elections page';
+
     return `
-        <div class="formation-box">
-            <div class="formation-header">
-                <div class="formation-icon">⚠️</div>
-                <div class="formation-title">No Government</div>
-                <div class="formation-subtitle">Government formation is in progress — all parties may propose a coalition</div>
+        <div class="formation-box ${urgency}">
+            <div class="formation-header ${urgency}">
+                <div class="formation-icon">${icon}</div>
+                <div class="formation-title ${urgency}">${title}</div>
+                <div class="formation-subtitle">${subtitle}</div>
             </div>
             <div class="formation-body">
                 <!-- Countdown -->
                 <div class="formation-countdown">
-                    <div class="countdown-label">Time Remaining Before Snap Election</div>
+                    <div class="countdown-label">${urgency === 'safe' ? 'Formation Deadline' : 'Time Remaining Before Snap Election'}</div>
                     <div class="countdown-track">
                         <div class="countdown-fill ${urgency}" style="width: ${progressPct}%"></div>
                     </div>
@@ -975,13 +984,13 @@ function renderFormationInProgress(parties) {
 
                 <!-- Penalty Cards -->
                 <div class="formation-penalties">
-                    <div class="penalty-card active-penalty">
-                        <div class="penalty-value red">-2%</div>
+                    <div class="penalty-card ${urgency === 'safe' ? 'muted' : 'active-penalty'}">
+                        <div class="penalty-value ${urgency === 'safe' ? 'dimmed' : 'red'}">-2%</div>
                         <div class="penalty-label">Party Approval / Tick</div>
                         <div class="penalty-detail">All parties lose approval each tick</div>
                     </div>
-                    <div class="penalty-card active-penalty">
-                        <div class="penalty-value red">-1</div>
+                    <div class="penalty-card ${urgency === 'safe' ? 'muted' : 'active-penalty'}">
+                        <div class="penalty-value ${urgency === 'safe' ? 'dimmed' : 'red'}">-1</div>
                         <div class="penalty-label">Stability / Tick</div>
                         <div class="penalty-detail">National stability erodes</div>
                     </div>
@@ -992,7 +1001,8 @@ function renderFormationInProgress(parties) {
                     </div>
                 </div>
 
-                <!-- Snap Election Warning -->
+                ${urgency !== 'safe' ? `
+                <!-- Snap Election Warning (only show when time is running out) -->
                 <div class="snap-warning ${urgency === 'critical' ? 'imminent' : ''}">
                     <div class="snap-warning-icon">🗳️</div>
                     <div class="snap-warning-content">
@@ -1010,6 +1020,7 @@ function renderFormationInProgress(parties) {
                         </div>
                     </div>
                 </div>
+                ` : ''}
 
                 <!-- CTA -->
                 <div class="formation-cta">
