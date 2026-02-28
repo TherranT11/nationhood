@@ -13844,7 +13844,7 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
  * Process inactivity penalties for idle factions in a nation.
  *
  * Rules (per tick, for each non-NPC faction with nation_id set):
- *   • ticksInactive = currentTick - (faction.last_ap_spent_tick ?? faction.founded_tick ?? 0)
+ *   • ticksInactive = currentTick - (faction.last_seen_tick ?? faction.last_ap_spent_tick ?? faction.founded_tick ?? 0)
  *   • If ticksInactive > INACTIVITY_GRACE_TICKS (6):
  *       – Lose INACTIVITY_MOMENTUM_DECAY (5) momentum with every voter bloc
  *       – Lose INACTIVITY_APPROVAL_DECAY (3) approval with every voter bloc
@@ -13859,7 +13859,7 @@ async function processInactivityDecay(supabase, nationId, currentTick) {
     // Fetch all non-NPC factions in this nation
     const { data: factions } = await supabase
         .from('factions')
-        .select('id, faction_name, last_ap_spent_tick, founded_tick, faction_type')
+        .select('id, faction_name, last_seen_tick, last_ap_spent_tick, founded_tick, faction_type')
         .eq('nation_id', nationId)
         .eq('faction_type', 'party')
         .eq('is_npc', false);
@@ -13867,7 +13867,7 @@ async function processInactivityDecay(supabase, nationId, currentTick) {
     if (!factions || factions.length === 0) return results;
 
     for (const faction of factions) {
-        const lastActive = faction.last_ap_spent_tick ?? faction.founded_tick ?? 0;
+        const lastActive = faction.last_seen_tick ?? faction.last_ap_spent_tick ?? faction.founded_tick ?? 0;
         const ticksInactive = currentTick - lastActive;
 
         if (ticksInactive <= GAME_CONFIG.INACTIVITY_GRACE_TICKS) continue;

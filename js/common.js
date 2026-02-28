@@ -185,6 +185,15 @@ export async function loadGameState(requireFaction = true) {
         }, 100);
     }
 
+    // Fire-and-forget: update last_seen_tick so admin inactivity tracking
+    // reflects actual logins, not just AP spending.
+    if (faction && shard?.current_tick != null && !overrideFactionId) {
+        _supabase.from('factions')
+            .update({ last_seen_tick: shard.current_tick })
+            .eq('id', faction.id)
+            .then(() => {}, () => {});
+    }
+
     setCachedState(user, faction, nation, shard);
     return { user, faction, nation, shard };
 }
