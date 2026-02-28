@@ -227,8 +227,15 @@ async function confirmSelection() {
             shard?.current_tick || 0
         );
 
-        alert(`${candidate.first_name} ${candidate.last_name} has been nominated as your presidential candidate!`);
-        window.location.href = 'government.html';
+        // Also update party leader to the nominee
+        await _supabase.from('factions').update({
+            leader_first_name: candidate.first_name,
+            leader_last_name: candidate.last_name,
+            leader_age: candidate.age
+        }).eq('id', currentFaction.id);
+
+        alert(`${candidate.first_name} ${candidate.last_name} has been nominated as your presidential candidate and is now your Party Leader!`);
+        window.location.href = 'parties.html';
 
     } catch (e) {
         console.error('Error nominating candidate:', e);
