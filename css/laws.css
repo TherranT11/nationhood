@@ -169,6 +169,9 @@
         .policy-option.opposed.selected { border-color:#ffcc00; border-style:solid; }
         .policy-option.pending { opacity:0.4; cursor:not-allowed; pointer-events:none; border-color:#555; }
         .policy-option.pending .policy-option-name { color:#888; }
+        .policy-option.enacted-repealable { opacity:0.55; border-color:#ff4444; border-style:dashed; cursor:pointer; }
+        .policy-option.enacted-repealable:hover { opacity:0.85; border-color:#ff6666; border-style:solid; }
+        .policy-option.enacted-repealable .policy-option-name { color:#ccc; }
         .opposed-badge { display:inline-block; background:#ff4444; color:#fff; padding:2px 7px; border-radius:3px; font-size:0.65rem; font-weight:bold; text-transform:uppercase; margin-left:6px; letter-spacing:0.5px; }
         .opposed-warning { font-size:0.72rem; color:#ff4444; margin-top:4px; font-style:italic; }
         .policy-option-name { font-weight:bold; color:#e0e0e0; margin-bottom:4px; }
