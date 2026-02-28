@@ -1955,6 +1955,23 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         statusEl.innerHTML = html;
     }
 
+    // ---- Ideology opposition penalty (inline version for seeding) ----
+    // Mirrors ideologyOppositionMultiplier() from ideology.js
+    function _seedOppositionMultiplier(factionIdeo, bloc) {
+        const AXES = ['liberty_equality','tradition_progress','security_freedom','globalism_nationalism','individualism_collectivism'];
+        let opposed = 0, aligned = 0;
+        for (const ax of AXES) {
+            const ps = factionIdeo[ax] || 0;
+            const bs = bloc['axis_' + ax] ?? 50;
+            if (Math.abs(ps) < 20 || Math.abs(bs - 50) < 10) continue;
+            if ((ps < 0 ? 'L' : 'R') === (bs < 50 ? 'L' : 'R')) aligned++; else opposed++;
+        }
+        if (opposed >= 2) return 0.70;
+        if (opposed === 1) return 0.80;
+        if (aligned === 0) return 0.90;
+        return 1.0;
+    }
+
     // ---- Initialize party approvals for all blocs ----
     async function initializeBlocApprovals() {
         if (!voterNationData) return;
@@ -1978,16 +1995,27 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 return;
             }
 
+            // Load faction ideologies for opposition penalty
+            const partyIds = parties.map(p => p.id);
+            const { data: ideoRows } = await _supabase.from('faction_ideology')
+                .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+                .in('faction_id', partyIds);
+            const ideoMap = {};
+            for (const row of (ideoRows || [])) ideoMap[row.faction_id] = row;
+
             // Build upsert rows: one per party x bloc combination
-            // Randomize initial approval ±10 around baseline 40 so the first election isn't a flat tie
+            // Randomize initial approval ±10 around baseline 40, then apply ideology opposition penalty
             const rows = [];
             for (const party of parties) {
+                const ideo = ideoMap[party.id];
                 for (const bloc of voterBlocsCache) {
                     const jitter = Math.floor(Math.random() * 21) - 10; // -10 to +10
+                    const base = Math.max(0, Math.min(100, 40 + jitter));
+                    const mult = ideo ? _seedOppositionMultiplier(ideo, bloc) : 1.0;
                     rows.push({
                         faction_id: party.id,
                         bloc_id: bloc.id,
-                        preference_score: Math.max(0, Math.min(100, 40 + jitter))
+                        preference_score: Math.round(base * mult * 100) / 100
                     });
                 }
             }
@@ -2002,7 +2030,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
                 await recalcDerivedApproval(_supabase, party.id, partyRows.map(r => ({ bloc_id: r.bloc_id, preference_score: r.preference_score })));
             }
 
-            statusEl.innerHTML = `<span style="color:#4CAF50;font-weight:bold;">✅ Initialized approval for ${parties.length} parties × ${voterBlocsCache.length} blocs (${rows.length} records, randomized 30–50%)</span>`;
+            statusEl.innerHTML = `<span style="color:#4CAF50;font-weight:bold;">✅ Initialized approval for ${parties.length} parties × ${voterBlocsCache.length} blocs (${rows.length} records, ideology-adjusted)</span>`;
             setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
         } catch (error) {
             console.error(error);

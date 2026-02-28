@@ -202,6 +202,69 @@ export function computeIdeologyAlignment(factionIdeology, bloc) {
 }
 
 
+// ==================== IDEOLOGY OPPOSITION PENALTY ====================
+
+/**
+ * Count ideology oppositions and alignments between a faction and a voter bloc.
+ *
+ * For each axis, if the party leans strongly enough (|score| >= 20) AND the
+ * bloc also leans strongly enough (|score − 50| >= 10), they are compared:
+ *   - Same side → aligned
+ *   - Opposite sides → opposed
+ *
+ * @param {object} factionIdeology - Row from faction_ideology (axis keys: -100 to +100)
+ * @param {object} bloc - Voter bloc row with axis_* columns (0-100 scale, 50 = neutral)
+ * @returns {{ opposed: number, aligned: number }}
+ */
+export function countIdeologyRelationship(factionIdeology, bloc) {
+    const PARTY_THRESHOLD = 20;  // Party must lean at least ±20 to count
+    const BLOC_THRESHOLD  = 10;  // Bloc must deviate at least 10 from neutral (50)
+
+    let opposed = 0;
+    let aligned = 0;
+
+    for (const axis of IDEOLOGY_AXES) {
+        const partyScore = factionIdeology[axis.key] || 0;   // -100 to +100
+        const blocScore  = bloc['axis_' + axis.key] ?? 50;   // 0-100
+
+        if (Math.abs(partyScore) < PARTY_THRESHOLD) continue;
+        if (Math.abs(blocScore - 50) < BLOC_THRESHOLD) continue;
+
+        const partySide = partyScore < 0 ? 'left' : 'right';
+        const blocSide  = blocScore  < 50 ? 'left' : 'right';
+
+        if (partySide === blocSide) {
+            aligned++;
+        } else {
+            opposed++;
+        }
+    }
+
+    return { opposed, aligned };
+}
+
+/**
+ * Ideology opposition penalty multiplier for preference_score.
+ *
+ * - 2+ opposing ideologies → 0.70 (-30%)
+ * - 1 opposing ideology    → 0.80 (-20%)
+ * - 0 opposing, 0 aligned  → 0.90 (-10%)
+ * - At least 1 aligned, 0 opposing → 1.0 (no penalty)
+ *
+ * @param {object} factionIdeology - Row from faction_ideology
+ * @param {object} bloc - Voter bloc row with axis_* columns
+ * @returns {number} Multiplier (0.70–1.0)
+ */
+export function ideologyOppositionMultiplier(factionIdeology, bloc) {
+    const { opposed, aligned } = countIdeologyRelationship(factionIdeology, bloc);
+
+    if (opposed >= 2) return 0.70;
+    if (opposed === 1) return 0.80;
+    if (aligned === 0) return 0.90;
+    return 1.0;
+}
+
+
 // ==================== IDEOLOGY DATABASE HELPERS ====================
 
 export async function loadFactionIdeology(supabase, factionId) {
