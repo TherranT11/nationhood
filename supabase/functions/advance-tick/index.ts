@@ -16322,6 +16322,140 @@ async function advanceTick(supabase) {
             summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
         }
 
+        // ── Leader aging (every January — tick % 12 === 0) ──
+        // All party leaders, stewards, and the strongman age 1 year.
+        // The strongman also rolls health checks starting at age 70.
+        if (newTick % 12 === 0) {
+            try {
+                const agingResults = [];
+
+                // 1. Age all party faction leaders +1
+                const { data: partyFactions } = await supabase
+                    .from('factions')
+                    .select('id, leader_age, leader_first_name, leader_last_name')
+                    .eq('nation_id', nation.id)
+                    .eq('faction_type', 'party')
+                    .not('leader_age', 'is', null);
+
+                if (partyFactions && partyFactions.length > 0) {
+                    for (const f of partyFactions) {
+                        const newAge = (f.leader_age || 40) + 1;
+                        await supabase.from('factions')
+                            .update({ leader_age: newAge })
+                            .eq('id', f.id);
+                        agingResults.push({
+                            type: 'party_leader',
+                            name: `${f.leader_first_name || '?'} ${f.leader_last_name || '?'}`,
+                            factionId: f.id,
+                            newAge
+                        });
+                    }
+                }
+
+                // 2. Age all living stewards +1 (autocracy)
+                if (isAutocracy(nation)) {
+                    const { data: livingStews } = await supabase
+                        .from('stewards')
+                        .select('id, age, first_name, last_name, faction_id')
+                        .eq('nation_id', nation.id)
+                        .eq('is_alive', true);
+
+                    if (livingStews && livingStews.length > 0) {
+                        for (const s of livingStews) {
+                            const newAge = (s.age || 40) + 1;
+                            await supabase.from('stewards')
+                                .update({ age: newAge })
+                                .eq('id', s.id);
+                            agingResults.push({
+                                type: 'steward',
+                                name: `${s.first_name} ${s.last_name}`,
+                                stewardId: s.id,
+                                factionId: s.faction_id,
+                                newAge
+                            });
+                        }
+                    }
+
+                    // 3. Age the strongman (head of state) +1 and roll health checks
+                    const hosAge = Number(nation.head_of_state_age ?? 0);
+                    if (hosAge > 0) {
+                        const newHosAge = hosAge + 1;
+                        await supabase.from('nations')
+                            .update({ head_of_state_age: newHosAge })
+                            .eq('id', nation.id);
+                        nation.head_of_state_age = newHosAge;
+                        agingResults.push({
+                            type: 'strongman',
+                            name: `${nation.head_of_state_first_name || '?'} ${nation.head_of_state_last_name || '?'}`,
+                            newAge: newHosAge
+                        });
+
+                        // Strongman health check: escalating death chance from age 70 to 85.
+                        // Probability: 5% at 70, rising linearly to 100% at 85.
+                        // Formula: deathChance = 0.05 + (age - 70) * (0.95 / 15)
+                        if (newHosAge >= 70) {
+                            const deathChance = Math.min(1.0, 0.05 + (newHosAge - 70) * (0.95 / 15));
+                            const roll = Math.random();
+                            console.log(`[LeaderAging] Strongman health check for ${nation.name}: age=${newHosAge}, deathChance=${(deathChance * 100).toFixed(1)}%, roll=${roll.toFixed(3)}`);
+
+                            if (roll < deathChance) {
+                                // Strongman has died of natural causes
+                                const hosName = `${nation.head_of_state_first_name || 'The Strongman'} ${nation.head_of_state_last_name || ''}`.trim();
+                                console.log(`[LeaderAging] Strongman ${hosName} of ${nation.name} has died at age ${newHosAge}`);
+
+                                // Generate a successor: random name, age 45-60
+                                const FIRST_NAMES = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
+                                const LAST_NAMES = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
+                                const newFirst = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
+                                const newLast = LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)];
+                                const newSuccessorAge = 45 + Math.floor(Math.random() * 16); // 45-60
+
+                                await supabase.from('nations').update({
+                                    head_of_state_first_name: newFirst,
+                                    head_of_state_last_name: newLast,
+                                    head_of_state_age: newSuccessorAge
+                                }).eq('id', nation.id);
+                                nation.head_of_state_first_name = newFirst;
+                                nation.head_of_state_last_name = newLast;
+                                nation.head_of_state_age = newSuccessorAge;
+
+                                // Log the death event
+                                await supabase.from('campaign_actions').insert({
+                                    party_id: nation.ruling_faction_id,
+                                    nation_id: nation.id,
+                                    action_type: 'strongman_death',
+                                    tick_performed: newTick,
+                                    result: {
+                                        deceased_name: hosName,
+                                        deceased_age: newHosAge,
+                                        successor_name: `${newFirst} ${newLast}`,
+                                        successor_age: newSuccessorAge,
+                                        cause: 'natural_causes'
+                                    }
+                                });
+
+                                agingResults.push({
+                                    type: 'strongman_death',
+                                    deceased: hosName,
+                                    deceasedAge: newHosAge,
+                                    successor: `${newFirst} ${newLast}`,
+                                    successorAge: newSuccessorAge
+                                });
+                            }
+                        }
+                    }
+                }
+
+                if (agingResults.length > 0) {
+                    summary.leaderAging = summary.leaderAging || [];
+                    summary.leaderAging.push({ nation: nation.name, results: agingResults });
+                    console.log(`[LeaderAging] ${nation.name}: aged ${agingResults.length} leader(s)`);
+                }
+            } catch (agingErr) {
+                console.error(`[advanceTick] Leader aging failed for ${nation.name} (non-fatal):`, agingErr);
+            }
+        }
+
         // Final snapshot — capture everything that happened this tick
         const { data: finalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         await snapshotNationHistory(supabase, finalNation || nation, newTick);
