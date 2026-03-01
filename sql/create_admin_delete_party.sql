@@ -33,6 +33,8 @@ DECLARE
         ARRAY['ministries.pending_party_id',   $$UPDATE ministries SET pending_party_id = NULL WHERE pending_party_id = '%s'$$],
         ARRAY['ministries',                   $$DELETE FROM ministries WHERE faction_id = '%s'$$],
         ARRAY['ministry_action_log',          $$DELETE FROM ministry_action_log WHERE faction_id = '%s'$$],
+        ARRAY['ministry_action_log(target)',   $$DELETE FROM ministry_action_log WHERE target_faction_id = '%s'$$],
+        ARRAY['government_formations',         $$DELETE FROM government_formations WHERE proposed_by = '%s'$$],
         ARRAY['government_formation_chat',    $$DELETE FROM government_formation_chat WHERE faction_id = '%s'$$],
         ARRAY['shakeups',                     $$DELETE FROM shakeups WHERE faction_id = '%s'$$],
         ARRAY['bill_support',                 $$DELETE FROM bill_support WHERE faction_id = '%s'$$],
