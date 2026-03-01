@@ -140,6 +140,8 @@ body { overflow: auto !important; height: auto !important; }
         .se-fields { display: grid; grid-template-columns: 1fr 100px 100px 100px 100px; gap: 10px; align-items: end; }
         .se-fields .form-field { margin-bottom: 0; }
         .se-fields .form-field input, .se-fields .form-field select { padding: 8px 10px; font-size: 0.85rem; }
+        .se-floor-ceiling-row { grid-template-columns: 160px 100px 1fr; margin-top: 8px; border-top: 1px dashed #333; padding-top: 8px; }
+        .se-floor-hint small { color: #999; font-size: 0.75rem; line-height: 1.3; display: block; padding-top: 22px; }
 
         /* Direction toggle compact */
         .dir-toggle { display: flex; gap: 0; }
@@ -208,6 +210,7 @@ body { overflow: auto !important; height: auto !important; }
             .form-row { flex-direction: column; }
             .cost-grid { grid-template-columns: 1fr; }
             .se-fields { grid-template-columns: 1fr 1fr; }
+            .se-floor-ceiling-row { grid-template-columns: 1fr 1fr; }
             .filter-bar { flex-direction: column; }
             .policy-count { margin-left: 0; }
         }

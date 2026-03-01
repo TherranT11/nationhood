@@ -4863,33 +4863,11 @@ async function resolveExpiredVotes(supabase, nationId) {
         .eq('status', 'floor')
         .lte('voting_ends_tick', currentTick);
 
-    // Budget bills have voting_ends_tick = null, so they're never caught above.
-    // Force-resolve any budget bill that's been on the floor for BUDGET_BILL_MAX_FLOOR_TICKS.
-    const budgetDeadline = currentTick - (GAME_CONFIG.BUDGET_BILL_MAX_FLOOR_TICKS || 4);
-    const { data: staleBudgetBills, error: budgetErr } = await supabase
-        .from('bills')
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
-        .eq('nation_id', nationId)
-        .eq('status', 'floor')
-        .eq('bill_type', 'budget')
-        .is('voting_ends_tick', null)
-        .lte('proposed_tick', budgetDeadline);
-
-    // Merge both sets, deduplicating by bill ID
-    const allBills = [...(expiredBills || [])];
-    const seenIds = new Set(allBills.map(b => b.id));
-    for (const b of (staleBudgetBills || [])) {
-        if (!seenIds.has(b.id)) {
-            allBills.push(b);
-            seenIds.add(b.id);
-        }
-    }
-
-    if (allBills.length === 0) return [];
+    if (error || !expiredBills || expiredBills.length === 0) return [];
 
     const results = [];
 
-    for (const bill of allBills) {
+    for (const bill of expiredBills) {
         const { data: nation } = await supabase
             .from('nations')
             .select('name, government_type, total_seats')
@@ -9052,7 +9030,47 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
  * @param {Object|null} statInstitutionMap - from buildStatInstitutionMap(), or null to use natural rates
  * @returns {Array<object>}  Applied decay descriptors for tick summary
  */
-async function processStatDecay(supabase, nation, statInstitutionMap, isShutdown = false) {
+/**
+ * Build a map of policy-driven decay floor/ceiling adjustments for a nation.
+ * Queries active_laws → policies and aggregates adjust_type/adjust_value
+ * from stat_effects. Adjustments stack additively across multiple policies.
+ *
+ * @returns {{ [statKey: string]: { floor: number, ceiling: number } }}
+ */
+async function buildPolicyDecayAdjustments(supabase, nationId) {
+    const adjustments = {};
+
+    const { data: activeLaws, error } = await supabase
+        .from('active_laws')
+        .select('policy_id, policies(stat_effects)')
+        .eq('nation_id', nationId);
+
+    if (error || !activeLaws) return adjustments;
+
+    for (const law of activeLaws) {
+        const effects = law.policies?.stat_effects;
+        if (!Array.isArray(effects)) continue;
+
+        for (const eff of effects) {
+            if (!eff.adjust_type || !eff.adjust_value) continue;
+            const statKey = normalizeNationStatKey(eff.stat_key);
+            if (!statKey || !NATION_STAT_COLUMN_SET.has(statKey)) continue;
+
+            if (!adjustments[statKey]) adjustments[statKey] = { floor: 0, ceiling: 0 };
+
+            const val = Math.abs(Number(eff.adjust_value) || 0);
+            if (eff.adjust_type === 'floor') {
+                adjustments[statKey].floor += val;
+            } else if (eff.adjust_type === 'ceiling') {
+                adjustments[statKey].ceiling += val;
+            }
+        }
+    }
+
+    return adjustments;
+}
+
+async function processStatDecay(supabase, nation, statInstitutionMap, isShutdown = false, policyDecayAdjustments = null) {
     const appliedDecay = [];
     const nationUpdates = {};
 
@@ -9062,6 +9080,19 @@ async function processStatDecay(supabase, nation, statInstitutionMap, isShutdown
         const currentVal = nation[statKey] !== undefined && nation[statKey] !== null
             ? Number(nation[statKey]) : 50;
         let target = config.target;
+
+        // Apply policy-driven floor/ceiling adjustments to the decay target
+        const adj = policyDecayAdjustments?.[statKey];
+        if (adj) {
+            if (adj.floor > 0) {
+                // Floor: raise the target so the stat won't decay below it
+                target = Math.min(100, target + adj.floor);
+            }
+            if (adj.ceiling > 0) {
+                // Ceiling: lower the target so the stat decays down toward it
+                target = Math.max(0, target - adj.ceiling);
+            }
+        }
 
         // During a government shutdown, institution-covered stats decay toward
         // worst-case values instead of their normal equilibrium targets.
@@ -9537,6 +9568,641 @@ function _deriveBlocTags(bloc) {
         else if (val > 60) tags.push(ax.right);
     }
     return tags;
+}
+
+
+// ==================== VOTER OUTREACH ====================
+
+const OUTREACH_CONFIG = {
+    AP_COST: 4,
+    COOLDOWN_WINDOW: 4, // look back 4 ticks for diminishing returns
+};
+
+const OUTREACH_AXIS_KEYS = [
+    'liberty_equality', 'tradition_progress', 'security_freedom',
+    'globalism_nationalism', 'individualism_collectivism'
+];
+
+/**
+ * Compute ideology alignment between a faction and a voter bloc (0-100).
+ * Uses the same logic as the server-side computeIdeologyAlignment in advance-tick.
+ */
+function computeOutreachAlignment(factionIdeology, bloc) {
+    let weightedAlignment = 0;
+    let totalWeight = 0;
+
+    for (const axisKey of OUTREACH_AXIS_KEYS) {
+        const partyScore = factionIdeology[axisKey] || 0; // -100 to +100
+        const blocScore = bloc['axis_' + axisKey] ?? 50;  // 0-100
+
+        const partyStrength = Math.abs(partyScore) / 100;
+        if (partyStrength < 0.01) continue;
+
+        const partyNorm = (partyScore + 100) / 2; // -100→0, 0→50, +100→100
+        const alignment = 1 - Math.abs(partyNorm - blocScore) / 100;
+
+        weightedAlignment += alignment * partyStrength;
+        totalWeight += partyStrength;
+    }
+
+    if (totalWeight === 0) return 50;
+    return Math.round((weightedAlignment / totalWeight) * 100);
+}
+
+/**
+ * Compute the base outreach effect and diminishing returns.
+ * @returns {{ alignment, base, diminished, penalty }}
+ */
+function calcOutreachEffect(alignment, recentOutreachCount) {
+    // base: 3 at alignment 0, up to 5 at alignment 100
+    const base = Math.round(3 + (alignment / 100) * 2);
+    const diminished = Math.max(1, base - recentOutreachCount);
+    return { alignment, base, diminished, penalty: base - diminished };
+}
+
+/**
+ * Compute friction — opposed blocs that lose approval when you outreach to a target bloc.
+ * Two blocs are "opposed" if they sit on opposite sides (one <40, other >60) of any axis
+ * where the target bloc holds a strong opinion (< 35 or > 65).
+ */
+function calcOutreachFriction(targetBloc, allBlocs, factionIdeology) {
+    const frictions = [];
+    const targetAxes = [];
+
+    // Find axes where target bloc has a strong leaning
+    for (const axisKey of OUTREACH_AXIS_KEYS) {
+        const val = targetBloc['axis_' + axisKey] ?? 50;
+        if (val < 35 || val > 65) targetAxes.push({ key: axisKey, val });
+    }
+
+    for (const other of allBlocs) {
+        if (other.id === targetBloc.id) continue;
+
+        // Check if this bloc is ideologically opposed on any of the target's strong axes
+        let isOpposed = false;
+        for (const { key, val: tVal } of targetAxes) {
+            const oVal = other['axis_' + key] ?? 50;
+            // Opposed: one is < 35 and the other is > 65 (opposite sides)
+            if ((tVal < 35 && oVal > 65) || (tVal > 65 && oVal < 35)) {
+                isOpposed = true;
+                break;
+            }
+        }
+
+        if (!isOpposed) continue;
+
+        // Friction penalty scales with how aligned YOUR party is with the opposed bloc
+        const yourAlignment = factionIdeology
+            ? computeOutreachAlignment(factionIdeology, other)
+            : 50;
+
+        // High alignment with opposed bloc = more friction
+        const penalty = yourAlignment > 60 ? -2 : yourAlignment > 40 ? -1 : 0;
+        if (penalty < 0) {
+            frictions.push({ blocId: other.id, blocName: other.bloc_name, penalty, alignment: yourAlignment });
+        }
+    }
+
+    return frictions;
+}
+
+/**
+ * Execute voter outreach targeting a specific voter bloc.
+ * Guaranteed result — no randomness, no polarization, no headline.
+ * Returns { success, effects, newAp }
+ */
+async function executeOutreach(supabase, factionId, nationId, blocId, currentTick) {
+    // ── 1. Validate AP ──
+    const { data: faction } = await supabase
+        .from('factions').select('action_points').eq('id', factionId).single();
+    if (!faction) return { success: false, error: 'Faction not found.' };
+    if ((faction.action_points || 0) < OUTREACH_CONFIG.AP_COST)
+        return { success: false, error: `Not enough AP. Need ${OUTREACH_CONFIG.AP_COST}.` };
+
+    // ── 2. Load recent outreach actions for diminishing returns ──
+    const { data: recentOutreach } = await supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', factionId)
+        .eq('action_type', 'outreach')
+        .gte('tick_performed', currentTick - OUTREACH_CONFIG.COOLDOWN_WINDOW)
+        .order('tick_performed', { ascending: false });
+
+    const outreachedThisTick = (recentOutreach || []).some(r => r.tick_performed === currentTick);
+    if (outreachedThisTick)
+        return { success: false, error: 'Already conducted outreach this tick.' };
+
+    const recentToBloc = (recentOutreach || []).filter(r => r.result?.blocId === blocId).length;
+
+    // ── 3. Load faction ideology ──
+    const { data: factionIdeo } = await supabase
+        .from('faction_ideology')
+        .select('liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+        .eq('faction_id', factionId)
+        .maybeSingle();
+
+    // ── 4. Load all blocs ──
+    const { data: allBlocs } = await supabase
+        .from('voter_blocs')
+        .select('id, bloc_name, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
+        .eq('nation_id', nationId).eq('is_active', true);
+
+    const targetBloc = (allBlocs || []).find(b => b.id === blocId);
+    if (!targetBloc) return { success: false, error: 'Voter bloc not found.' };
+
+    // ── 5. Load approval rows ──
+    const { data: approvalRows } = await supabase
+        .from('faction_bloc_approval')
+        .select('id, bloc_id, preference_score, momentum')
+        .eq('faction_id', factionId);
+    const approvalByBloc = {};
+    for (const row of (approvalRows || [])) approvalByBloc[row.bloc_id] = row;
+
+    // ── 6. Compute alignment and effect ──
+    const alignment = factionIdeo ? computeOutreachAlignment(factionIdeo, targetBloc) : 50;
+    const { diminished } = calcOutreachEffect(alignment, recentToBloc);
+
+    // ── 7. Apply target bloc effect ──
+    const effects = [];
+    const targetRow = approvalByBloc[blocId];
+    if (targetRow) {
+        const oldPref = Math.round(targetRow.preference_score || 0);
+        const newPref = Math.max(0, Math.min(100, oldPref + diminished));
+        const newMom = Math.round(((targetRow.momentum || 0) + diminished) * 100) / 100;
+        await supabase.from('faction_bloc_approval')
+            .update({ preference_score: newPref, momentum: newMom }).eq('id', targetRow.id);
+        effects.push({ bloc: targetBloc.bloc_name, blocId, value: diminished, oldPref, newPref });
+    }
+
+    // ── 8. Apply friction to opposed blocs ──
+    const frictions = calcOutreachFriction(targetBloc, allBlocs || [], factionIdeo);
+    for (const fri of frictions) {
+        const row = approvalByBloc[fri.blocId];
+        if (!row) continue;
+        const oldPref = Math.round(row.preference_score || 0);
+        const newPref = Math.max(0, Math.min(100, oldPref + fri.penalty));
+        const newMom = Math.round(((row.momentum || 0) + fri.penalty) * 100) / 100;
+        await supabase.from('faction_bloc_approval')
+            .update({ preference_score: newPref, momentum: newMom }).eq('id', row.id);
+        effects.push({ bloc: fri.blocName, blocId: fri.blocId, value: fri.penalty, oldPref, newPref });
+    }
+
+    // ── 9. Deduct AP ──
+    const apResult = await deductAP(supabase, factionId, OUTREACH_CONFIG.AP_COST);
+
+    // ── 10. Log ──
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId,
+        nation_id: nationId,
+        action_type: 'outreach',
+        ap_cost: OUTREACH_CONFIG.AP_COST,
+        money_cost: 0,
+        tick_performed: currentTick,
+        result: {
+            blocId, blocName: targetBloc.bloc_name,
+            alignment, diminished,
+            effects,
+            recentToBloc,
+            tags: _deriveBlocTags(targetBloc),
+        }
+    });
+
+    return {
+        success: true,
+        effects,
+        alignment,
+        diminished,
+        newAp: apResult.newAp ?? ((faction.action_points || 0) - OUTREACH_CONFIG.AP_COST),
+    };
+}
+
+
+// ==================== ATTACK CAMPAIGN ====================
+
+const ATTACK_CONFIG = {
+    AP_COST: 3,
+    CREDIBILITY_COST: 20,       // credibility drops 20 per attack
+    COOLDOWN_WINDOW: 6,         // look back 6 ticks for recent attacks
+    COUNTER_ATTACK_WINDOW: 3,   // target can counter-attack within 3 ticks
+    COUNTER_ATTACK_AP_COST: 1,  // counter-attack costs only 1 AP
+    COUNTER_ATTACK_BONUS: 2,    // +2 effectiveness bonus for counter-attacks
+};
+
+const ATTACK_VECTORS = [
+    {
+        id: 'broken_promises',
+        name: 'Broken Promises',
+        icon: '\u2605',
+        description: 'Attack their failure to deliver on commitments',
+        evidence_required: true,
+        effectiveness: 'high',
+    },
+    {
+        id: 'voting_record',
+        name: 'Voting Record',
+        icon: '\u00A7',
+        description: 'Highlight unpopular or controversial votes',
+        evidence_required: true,
+        effectiveness: 'high',
+    },
+    {
+        id: 'governance',
+        name: 'Governance Record',
+        icon: '\u25BC',
+        description: 'Attack stat deterioration on their watch',
+        evidence_required: true,
+        effectiveness: 'high',
+    },
+    {
+        id: 'ideology',
+        name: 'Ideology',
+        icon: '\u25C6',
+        description: 'Frame their positions as extreme or out of touch',
+        evidence_required: false,
+        effectiveness: 'moderate',
+    },
+    {
+        id: 'smear',
+        name: 'General Smear',
+        icon: '\u25CF',
+        description: 'No specific ammunition \u2014 just negative framing',
+        evidence_required: false,
+        effectiveness: 'low',
+    },
+];
+
+const ATTACK_OUTCOMES = [
+    { id: 'devastating', name: 'Devastating Hit', icon: '\u2726', targetMin: -7, targetMax: -5, selfMin: 3, selfMax: 3, polarization: 1 },
+    { id: 'effective', name: 'Effective Attack', icon: '\u25CF', targetMin: -4, targetMax: -3, selfMin: 1, selfMax: 2, polarization: 1 },
+    { id: 'glancing', name: 'Glancing Blow', icon: '\u25E6', targetMin: -1, targetMax: -1, selfMin: 0, selfMax: 0, polarization: 0 },
+    { id: 'backfire', name: 'Backfire', icon: '\u26A0', targetMin: 1, targetMax: 2, selfMin: -4, selfMax: -2, polarization: 1 },
+    { id: 'mutual', name: 'Mutual Destruction', icon: '\u2715', targetMin: -3, targetMax: -3, selfMin: -2, selfMax: -2, polarization: 2 },
+];
+
+const ATTACK_OUTCOME_COLORS = {
+    devastating: '#4ade80',
+    effective: '#22d3ee',
+    glancing: '#facc15',
+    backfire: '#f97316',
+    mutual: '#ef4444',
+};
+
+/**
+ * Get outcome probability weights based on evidence strength.
+ */
+function getAttackOutcomeWeights(strength) {
+    if (strength === 'strong') {
+        return { devastating: 22, effective: 38, glancing: 22, backfire: 8, mutual: 10 };
+    } else if (strength === 'moderate') {
+        return { devastating: 10, effective: 28, glancing: 30, backfire: 18, mutual: 14 };
+    } else {
+        return { devastating: 4, effective: 18, glancing: 30, backfire: 30, mutual: 18 };
+    }
+}
+
+/**
+ * Roll an attack outcome from weighted probabilities.
+ */
+function rollAttackOutcome(weights) {
+    const order = ['devastating', 'effective', 'glancing', 'backfire', 'mutual'];
+    let sum = 0;
+    const cumulative = [];
+    for (const key of order) {
+        sum += weights[key] || 0;
+        cumulative.push({ id: key, threshold: sum });
+    }
+    const roll = Math.random() * sum;
+    for (const c of cumulative) {
+        if (roll <= c.threshold) return c.id;
+    }
+    return 'glancing';
+}
+
+/**
+ * Generate a contextual headline for the attack outcome.
+ */
+function _attackHeadline(outcomeId, targetName, vectorId) {
+    const headlines = {
+        devastating: {
+            broken_promises: `Damning evidence of ${targetName}'s broken promises dominates news cycle`,
+            voting_record: `${targetName}'s voting record exposed \u2014 public outrage mounts`,
+            governance: `${targetName}'s governance failures laid bare in devastating critique`,
+            ideology: `${targetName} branded as extremists in viral opposition campaign`,
+            smear: `Relentless attacks leave ${targetName} scrambling to respond`,
+        },
+        effective: {
+            broken_promises: `Opposition research into ${targetName}'s failed promises gains traction`,
+            voting_record: `${targetName}'s controversial votes draw media scrutiny`,
+            governance: `Questions mount over ${targetName}'s record on key indicators`,
+            ideology: `Voters question ${targetName}'s ideological direction after critique`,
+            smear: `Negative campaign against ${targetName} lands some punches`,
+        },
+        glancing: {
+            broken_promises: `Attack on ${targetName}'s promises fails to resonate with voters`,
+            voting_record: `Criticism of ${targetName}'s votes dismissed as political theatre`,
+            governance: `Governance critique against ${targetName} falls flat`,
+            ideology: `Ideological attack on ${targetName} largely ignored by public`,
+            smear: `Smear campaign against ${targetName} fizzles \u2014 voters indifferent`,
+        },
+        backfire: {
+            broken_promises: `Promise attack on ${targetName} backfires \u2014 sympathy for target surges`,
+            voting_record: `Voters rally behind ${targetName} after what they see as unfair attack`,
+            governance: `Governance critique seen as hypocritical \u2014 attacker's credibility drops`,
+            ideology: `Ideological attack makes attackers look petty \u2014 ${targetName} gains sympathy`,
+            smear: `Baseless smear against ${targetName} draws media rebuke`,
+        },
+        mutual: {
+            broken_promises: `Ugly exchange over broken promises leaves both parties damaged`,
+            voting_record: `Mudslinging over voting records erodes public trust in politics`,
+            governance: `Governance blame game leaves all sides worse off`,
+            ideology: `Ideological warfare between parties leaves voters disgusted`,
+            smear: `Negative spiral damages both parties \u2014 polarization spikes`,
+        },
+    };
+    return (headlines[outcomeId] && headlines[outcomeId][vectorId])
+        || `Attack campaign against ${targetName} produces ${outcomeId} result`;
+}
+
+/**
+ * Gather attack evidence (broken promises, controversial votes, stat deterioration)
+ * for a target party. Used by the UI to show available attack vectors.
+ */
+async function gatherAttackEvidence(supabase, targetFactionId, nationId, currentTick) {
+    const evidence = {
+        broken_promises: [],
+        controversial_votes: [],
+        governance_record: [],
+        is_governing: false,
+    };
+
+    // 1. Broken promises (last 30 ticks)
+    const { data: brokenPromises } = await supabase
+        .from('fundraiser_promises')
+        .select('id, demand_text, bloc_name, tick_resolved, tick_created')
+        .eq('party_id', targetFactionId)
+        .eq('status', 'broken')
+        .gte('tick_resolved', currentTick - 30)
+        .order('tick_resolved', { ascending: false })
+        .limit(5);
+
+    evidence.broken_promises = (brokenPromises || []).map(p => ({
+        text: p.demand_text,
+        bloc: p.bloc_name,
+        tick: p.tick_resolved,
+    }));
+
+    // 2. Controversial votes — bills where this party voted opposite to majority outcome
+    const { data: recentBills } = await supabase
+        .from('bills')
+        .select('id, bill_name, status, bill_support(faction_id, stance), bill_articles(policy_id, policies(policy_name))')
+        .eq('nation_id', nationId)
+        .in('status', ['passed', 'failed', 'enacted'])
+        .gte('created_at', new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString())
+        .order('created_at', { ascending: false })
+        .limit(30);
+
+    for (const bill of (recentBills || [])) {
+        const support = bill.bill_support || [];
+        const targetVote = support.find(s => s.faction_id === targetFactionId);
+        if (!targetVote) continue;
+
+        // Controversial = voted against a bill that passed, or voted for a bill that failed
+        const controversial =
+            (bill.status === 'passed' || bill.status === 'enacted') && targetVote.stance === 'reject' ||
+            bill.status === 'failed' && targetVote.stance === 'accept';
+
+        if (controversial) {
+            evidence.controversial_votes.push({
+                bill: bill.bill_name,
+                stance: targetVote.stance,
+                outcome: bill.status,
+            });
+        }
+    }
+    evidence.controversial_votes = evidence.controversial_votes.slice(0, 5);
+
+    // 3. Governance record — check if target is in governing coalition
+    const coalition = await fetchActiveCoalition(supabase, nationId);
+    const coalitionPartyIds = new Set(coalition?.party_ids || []);
+    evidence.is_governing = coalitionPartyIds.has(targetFactionId);
+
+    if (evidence.is_governing) {
+        // Find ministries held by this party
+        const { data: ministries } = await supabase
+            .from('ministries')
+            .select('ministry_key')
+            .eq('nation_id', nationId)
+            .eq('party_id', targetFactionId)
+            .eq('is_active', true);
+
+        if (ministries && ministries.length > 0) {
+            // Check stat trends for stats under their ministries
+            for (const m of ministries) {
+                const stats = MINISTRY_TO_STATS[m.ministry_key] || [];
+                for (const statKey of stats) {
+                    const { data: history } = await supabase
+                        .from('stat_history')
+                        .select('value, tick')
+                        .eq('nation_id', nationId)
+                        .eq('stat_name', statKey)
+                        .order('tick', { ascending: false })
+                        .limit(6);
+
+                    if (history && history.length >= 2) {
+                        const newest = history[0].value;
+                        const oldest = history[history.length - 1].value;
+                        const change = newest - oldest;
+                        const sign = statDirectionSign(statKey);
+                        // Stat worsened if it moved opposite to its "good" direction
+                        if ((sign === 1 && change < -3) || (sign === -1 && change > 3)) {
+                            const changeStr = change > 0 ? `+${Math.round(change)}` : `${Math.round(change)}`;
+                            evidence.governance_record.push({
+                                stat: statKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+                                change: changeStr,
+                                ministry: m.ministry_key,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        evidence.governance_record = evidence.governance_record.slice(0, 5);
+    }
+
+    return evidence;
+}
+
+/**
+ * Build available attack vectors for a target based on gathered evidence.
+ */
+function buildAttackVectors(evidence) {
+    const vectors = [];
+
+    if (evidence.broken_promises.length > 0) {
+        vectors.push({
+            ...ATTACK_VECTORS[0],
+            evidence: evidence.broken_promises,
+            strength: 'strong',
+        });
+    }
+
+    if (evidence.controversial_votes.length > 0) {
+        vectors.push({
+            ...ATTACK_VECTORS[1],
+            evidence: evidence.controversial_votes,
+            strength: 'strong',
+        });
+    }
+
+    if (evidence.governance_record.length > 0 && evidence.is_governing) {
+        vectors.push({
+            ...ATTACK_VECTORS[2],
+            evidence: evidence.governance_record,
+            strength: 'strong',
+        });
+    }
+
+    // Ideology is always available (moderate strength)
+    vectors.push({
+        ...ATTACK_VECTORS[3],
+        evidence: null,
+        strength: 'moderate',
+    });
+
+    // General smear is always available (weak strength)
+    vectors.push({
+        ...ATTACK_VECTORS[4],
+        evidence: null,
+        strength: 'weak',
+    });
+
+    return vectors;
+}
+
+/**
+ * Compute attack credibility from recent attack history.
+ * Starts at 100, -20 per attack in the last COOLDOWN_WINDOW ticks, min 20.
+ */
+function computeAttackCredibility(recentAttackCount) {
+    return Math.max(20, 100 - recentAttackCount * ATTACK_CONFIG.CREDIBILITY_COST);
+}
+
+/**
+ * Execute an attack campaign against a target party.
+ * Returns { success, outcomeId, outcomeName, headline, effects, weights, opensCounter, newAp }
+ */
+async function executeAttack(supabase, factionId, nationId, targetFactionId, vectorId, currentTick) {
+    // ── 1. Validate AP ──
+    const { data: faction } = await supabase
+        .from('factions').select('action_points, faction_name').eq('id', factionId).single();
+    if (!faction) return { success: false, error: 'Faction not found.' };
+    if ((faction.action_points || 0) < ATTACK_CONFIG.AP_COST)
+        return { success: false, error: `Not enough AP. Need ${ATTACK_CONFIG.AP_COST}.` };
+
+    // ── 2. Load target ──
+    const { data: targetFaction } = await supabase
+        .from('factions').select('faction_name, abbreviation').eq('id', targetFactionId).single();
+    if (!targetFaction) return { success: false, error: 'Target party not found.' };
+
+    // ── 3. Check recent attacks (cooldown) ──
+    const { data: recentAttacks } = await supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', factionId)
+        .eq('action_type', 'attack')
+        .gte('tick_performed', currentTick - ATTACK_CONFIG.COOLDOWN_WINDOW)
+        .order('tick_performed', { ascending: false });
+
+    const attackedThisTick = (recentAttacks || []).some(r => r.tick_performed === currentTick);
+    if (attackedThisTick)
+        return { success: false, error: 'Already launched an attack this tick.' };
+
+    // ── 4. Gather evidence and validate vector ──
+    const evidence = await gatherAttackEvidence(supabase, targetFactionId, nationId, currentTick);
+    const vectors = buildAttackVectors(evidence);
+    const vector = vectors.find(v => v.id === vectorId);
+    if (!vector) return { success: false, error: 'Invalid attack vector.' };
+    if (vector.evidence_required && (!vector.evidence || vector.evidence.length === 0))
+        return { success: false, error: `No evidence available for ${vector.name}.` };
+
+    // ── 5. Roll outcome ──
+    const weights = getAttackOutcomeWeights(vector.strength);
+    const outcomeId = rollAttackOutcome(weights);
+    const outcome = ATTACK_OUTCOMES.find(o => o.id === outcomeId);
+
+    // ── 6. Calculate effects ──
+    const targetDelta = outcome.targetMin + Math.floor(Math.random() * (outcome.targetMax - outcome.targetMin + 1));
+    const selfDelta = outcome.selfMin + Math.floor(Math.random() * (outcome.selfMax - outcome.selfMin + 1));
+
+    // ── 7. Apply effects to all blocs via momentum ──
+    const effects = [];
+
+    // Target party: apply momentum to all blocs
+    if (targetDelta !== 0) {
+        await adjustMomentumAll(supabase, nationId, targetFactionId, targetDelta, 'campaign:attack_target');
+        effects.push({ label: targetFaction.faction_name, value: targetDelta });
+    }
+
+    // Self: apply momentum to all blocs
+    if (selfDelta !== 0) {
+        const selfLabel = selfDelta > 0 ? 'Your party (credibility gain)' : 'Your party (credibility loss)';
+        await adjustMomentumAll(supabase, nationId, factionId, selfDelta, 'campaign:attack_self');
+        effects.push({ label: selfLabel, value: selfDelta });
+    }
+
+    // Polarization
+    if (outcome.polarization > 0) {
+        const { data: nation } = await supabase
+            .from('nations').select('polarization').eq('id', nationId).single();
+        if (nation) {
+            const newPol = Math.min(100, (nation.polarization || 0) + outcome.polarization);
+            await supabase.from('nations').update({ polarization: newPol }).eq('id', nationId);
+        }
+        effects.push({ label: 'Polarization', value: outcome.polarization });
+    }
+
+    // ── 8. Deduct AP ──
+    const apResult = await deductAP(supabase, factionId, ATTACK_CONFIG.AP_COST);
+
+    // ── 9. Generate headline ──
+    const headline = _attackHeadline(outcomeId, targetFaction.faction_name, vectorId);
+
+    // ── 10. Log action ──
+    const opensCounter = ['devastating', 'effective'].includes(outcomeId);
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId,
+        nation_id: nationId,
+        action_type: 'attack',
+        ap_cost: ATTACK_CONFIG.AP_COST,
+        money_cost: 0,
+        tick_performed: currentTick,
+        result: {
+            targetFactionId,
+            targetName: targetFaction.faction_name,
+            targetAbbrev: targetFaction.abbreviation,
+            vectorId,
+            vectorName: vector.name,
+            strength: vector.strength,
+            outcomeId,
+            outcomeName: outcome.name,
+            headline,
+            effects,
+            weights,
+            opensCounter,
+            counterWindowEnd: opensCounter ? currentTick + ATTACK_CONFIG.COUNTER_ATTACK_WINDOW : null,
+        }
+    });
+
+    return {
+        success: true,
+        outcomeId,
+        outcomeName: outcome.name,
+        headline,
+        effects,
+        weights,
+        opensCounter,
+        newAp: apResult.newAp ?? ((faction.action_points || 0) - ATTACK_CONFIG.AP_COST),
+    };
 }
 
 
@@ -15266,7 +15932,8 @@ async function advanceTick(supabase) {
             budgetItemAllocs = itemAllocs;
             statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs);
         }
-        const decayResults = await processStatDecay(supabase, nation, statInstMap, shutdown);
+        const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
+        const decayResults = await processStatDecay(supabase, nation, statInstMap, shutdown, policyDecayAdj);
         if (decayResults.length > 0) {
             summary.decay = summary.decay || [];
             summary.decay.push({ nation: nation.name, effects: decayResults });
