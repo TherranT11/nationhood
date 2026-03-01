@@ -55,6 +55,7 @@
             <button class="tab" onclick="showTab('ministries')">Ministries</button>
             <button class="tab" onclick="showTab('statconnect')">Stat Connector</button>
             <button class="tab" onclick="showTab('stataudit')">Stat Audit</button>
+            <button class="tab" onclick="showTab('valdorian')">Valdorian</button>
         </div>
 
         <!-- ==================== SHARD TAB ==================== -->
@@ -618,7 +619,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName, STAT_DECAY_CONFIG, normalizeNationStatKey } from './js/game-common.js';
+import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName, STAT_DECAY_CONFIG, normalizeNationStatKey, SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES, BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, OPINION_TRIGGERS, REPORTERS, generateArticle, generateTickArticles } from './js/game-common.js';
 
     const ADMIN_PASSWORD = 'nationhood2000';
     let isAuthenticated = false;
@@ -4506,6 +4507,189 @@ async function runStatAudit() {
 }
 
 window.runStatAudit = runStatAudit;
+
+// ==================== VALDORIAN TAB ====================
+
+function showValdorianSubTab(name) {
+    document.querySelectorAll('#tab-valdorian .sc-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('#tab-valdorian .sc-subtab').forEach(t => t.classList.remove('active'));
+    document.querySelector(`#tab-valdorian .sc-tab[onclick="showValdorianSubTab('${name}')"]`).classList.add('active');
+    document.getElementById(`vald-sub-${name}`).classList.add('active');
+    if (name === 'articles') loadValdorianArticles();
+    if (name === 'opeds') loadValdorianOpEds();
+}
+window.showValdorianSubTab = showValdorianSubTab;
+
+function initValdorianTab() {
+    const eventKeys = Object.keys(EVENT_TYPES).sort();
+    const sectionSet = new Set(eventKeys.map(k => EVENT_TYPES[k].section));
+    const sections = [...sectionSet].sort();
+    const tplEventSel = document.getElementById('vald-tpl-event-filter');
+    const tplSectionSel = document.getElementById('vald-tpl-section-filter');
+    eventKeys.forEach(k => { const o = document.createElement('option'); o.value = k; o.textContent = `${EVENT_TYPES[k].label} (${k})`; tplEventSel.appendChild(o); });
+    sections.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = SECTIONS[s]?.label || s; tplSectionSel.appendChild(o); });
+    const genEventSel = document.getElementById('vald-gen-event-type');
+    eventKeys.forEach(k => { const o = document.createElement('option'); o.value = k; o.textContent = `${EVENT_TYPES[k].label} (${k})`; genEventSel.appendChild(o); });
+    const artNationSel = document.getElementById('vald-art-nation-filter');
+    const artEventSel = document.getElementById('vald-art-event-filter');
+    (nations || []).forEach(n => { const o = document.createElement('option'); o.value = n.id; o.textContent = n.name; artNationSel.appendChild(o); });
+    eventKeys.forEach(k => { const o = document.createElement('option'); o.value = k; o.textContent = EVENT_TYPES[k].label; artEventSel.appendChild(o); });
+    renderValdorianTemplates();
+    let total = 0;
+    for (const evtKey of Object.keys(HEADLINE_TEMPLATES)) total += (HEADLINE_TEMPLATES[evtKey] || []).length;
+    for (const evtKey of Object.keys(LEDE_TEMPLATES)) total += (LEDE_TEMPLATES[evtKey] || []).length;
+    for (const evtKey of Object.keys(BODY_BLOCK_TEMPLATES)) { const blocks = BODY_BLOCK_TEMPLATES[evtKey]; for (const bk of Object.keys(blocks)) total += blocks[bk].length; }
+    total += QUOTE_TEMPLATES.supportive.length + QUOTE_TEMPLATES.hostile.length + QUOTE_TEMPLATES.neutral.length;
+    document.getElementById('vald-template-count').textContent = `(${total})`;
+}
+
+function renderValdorianTemplates() {
+    const eventFilter = document.getElementById('vald-tpl-event-filter').value;
+    const sectionFilter = document.getElementById('vald-tpl-section-filter').value;
+    const componentFilter = document.getElementById('vald-tpl-component-filter').value;
+    const container = document.getElementById('vald-template-list');
+    const eventKeys = Object.keys(EVENT_TYPES).sort().filter(k => {
+        if (eventFilter && k !== eventFilter) return false;
+        if (sectionFilter && EVENT_TYPES[k].section !== sectionFilter) return false;
+        return true;
+    });
+    let html = '', totalShown = 0;
+    for (const evtKey of eventKeys) {
+        const meta = EVENT_TYPES[evtKey];
+        let sectionHtml = '', sectionCount = 0;
+        if (!componentFilter || componentFilter === 'headline') {
+            const hT = HEADLINE_TEMPLATES[evtKey] || [];
+            if (hT.length > 0) { sectionHtml += `<div style="margin-bottom:8px;"><span style="color:#4A9EFF;font-size:0.75rem;font-weight:bold;text-transform:uppercase;">Headlines (${hT.length})</span></div>`; for (const t of hT) { sectionHtml += renderTemplateRow(t); sectionCount++; } }
+        }
+        if (!componentFilter || componentFilter === 'lede') {
+            const lT = LEDE_TEMPLATES[evtKey] || [];
+            if (lT.length > 0) { sectionHtml += `<div style="margin:12px 0 8px;"><span style="color:#4ADE80;font-size:0.75rem;font-weight:bold;text-transform:uppercase;">Ledes (${lT.length})</span></div>`; for (const t of lT) { sectionHtml += renderTemplateRow(t); sectionCount++; } }
+        }
+        if (!componentFilter || componentFilter === 'body') {
+            const bB = BODY_BLOCK_TEMPLATES[evtKey];
+            if (bB) { for (const bn of Object.keys(bB)) { sectionHtml += `<div style="margin:12px 0 8px;"><span style="color:#FBBF24;font-size:0.75rem;font-weight:bold;text-transform:uppercase;">Body: ${bn} (${bB[bn].length})</span></div>`; for (const t of bB[bn]) { sectionHtml += renderTemplateRow(t); sectionCount++; } } }
+        }
+        if (sectionCount > 0) {
+            const sc = SECTIONS[meta.section]?.color || '#888';
+            html += `<div style="background:#151515;border:1px solid #2a2a2a;border-left:3px solid ${sc};border-radius:4px;padding:16px;margin-bottom:12px;">`;
+            html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><span style="background:${sc};color:#000;padding:2px 8px;border-radius:3px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;">${meta.section}</span><span style="color:#e0e0e0;font-weight:bold;">${meta.label}</span><span style="color:#555;font-size:0.8rem;">(${evtKey})</span><span style="color:#555;font-size:0.8rem;margin-left:auto;">Tier ${meta.tier} · ${sectionCount} templates</span></div>`;
+            html += sectionHtml + `</div>`; totalShown += sectionCount;
+        }
+    }
+    if (!eventFilter && (!componentFilter || componentFilter === 'quote')) {
+        html += `<div style="background:#151515;border:1px solid #2a2a2a;border-left:3px solid #94A3B8;border-radius:4px;padding:16px;margin-bottom:12px;">`;
+        html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><span style="background:#94A3B8;color:#000;padding:2px 8px;border-radius:3px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;">shared</span><span style="color:#e0e0e0;font-weight:bold;">Quote Templates</span></div>`;
+        for (const p of ['supportive', 'hostile', 'neutral']) {
+            html += `<div style="margin-bottom:8px;"><span style="color:#A78BFA;font-size:0.75rem;font-weight:bold;text-transform:uppercase;">${p} (${QUOTE_TEMPLATES[p].length})</span></div>`;
+            for (const q of QUOTE_TEMPLATES[p]) { html += `<div style="background:#1a1a1a;padding:8px 12px;margin-bottom:4px;border-radius:3px;font-size:0.85rem;color:#ccc;font-family:monospace;word-break:break-word;">${escHtml(q)}</div>`; totalShown++; }
+        }
+        html += `</div>`;
+    }
+    if (!html) html = `<p style="color:#555;text-align:center;padding:40px;">No templates match the current filters.</p>`;
+    container.innerHTML = html;
+    document.getElementById('vald-tpl-filter-info').textContent = `${totalShown} templates shown`;
+}
+window.renderValdorianTemplates = renderValdorianTemplates;
+
+function renderTemplateRow(t) {
+    const condStr = (t.conditions && t.conditions.length > 0) ? t.conditions.map(c => typeof c === 'string' ? c : `${c.field} ${c.op} ${c.value}`).join(' AND ') : 'always';
+    const wc = (t.weight || 1) > 1 ? '#FBBF24' : '#555';
+    let h = `<div style="background:#1a1a1a;padding:8px 12px;margin-bottom:4px;border-radius:3px;">`;
+    h += `<div style="font-size:0.85rem;color:#ccc;font-family:monospace;word-break:break-word;margin-bottom:4px;">${escHtml(t.template)}</div>`;
+    h += `<div style="display:flex;gap:12px;font-size:0.7rem;"><span style="color:#666;">${t.id||''}</span><span style="color:#4A9EFF;">if: ${escHtml(condStr)}</span><span style="color:${wc};">w:${t.weight||1}</span>`;
+    if (t.required) h += `<span style="color:#F87171;">REQUIRED</span>`;
+    h += `</div></div>`; return h;
+}
+
+function onValdGenEventChange() {
+    const evtKey = document.getElementById('vald-gen-event-type').value;
+    const fieldsDiv = document.getElementById('vald-gen-fields');
+    const fieldList = document.getElementById('vald-gen-field-list');
+    if (!evtKey) { fieldsDiv.style.display = 'none'; return; }
+    fieldsDiv.style.display = '';
+    const vars = new Set();
+    const scan = (tpls) => { if (!tpls) return; if (Array.isArray(tpls)) { for (const t of tpls) { for (const m of (t.template||'').matchAll(/\{(\w+)\}/g)) vars.add(m[1]); } } else if (typeof tpls === 'object') { for (const bk of Object.keys(tpls)) scan(tpls[bk]); } };
+    scan(HEADLINE_TEMPLATES[evtKey]); scan(LEDE_TEMPLATES[evtKey]); scan(BODY_BLOCK_TEMPLATES[evtKey]);
+    ['nation_name','pm_name','tick'].forEach(f => vars.add(f));
+    ['negative_adjective','positive_adjective','negative_framing','alternative_action','crisis_intensifier'].forEach(f => vars.delete(f));
+    let html = '';
+    for (const v of [...vars].sort()) {
+        const dv = v === 'tick' ? '1' : v === 'nation_name' ? 'Testland' : v === 'pm_name' ? 'PM Test' : '';
+        html += `<div style="margin-bottom:8px;"><label style="font-size:0.75rem;color:#888;">${v}</label><input type="text" class="vald-gen-input" data-field="${v}" value="${dv}" style="width:100%;padding:6px 8px;background:#2a2a2a;border:1px solid #444;color:#e0e0e0;border-radius:3px;font-size:0.85rem;"></div>`;
+    }
+    fieldList.innerHTML = html;
+}
+window.onValdGenEventChange = onValdGenEventChange;
+
+function runValdorianTestGenerate() {
+    const evtKey = document.getElementById('vald-gen-event-type').value;
+    if (!evtKey) return;
+    const ed = { event_type: evtKey };
+    document.querySelectorAll('.vald-gen-input').forEach(i => { const v = i.value.trim(); if (v) { if (v==='true') ed[i.dataset.field]=true; else if (v==='false') ed[i.dataset.field]=false; else if (!isNaN(Number(v))&&v!=='') ed[i.dataset.field]=Number(v); else ed[i.dataset.field]=v; } });
+    const meta = EVENT_TYPES[evtKey]; if (!ed.section) ed.section = meta.section; if (!ed.tier) ed.tier = meta.tier;
+    const article = generateArticle(ed);
+    const preview = document.getElementById('vald-gen-preview');
+    if (!article) { preview.innerHTML = `<p style="color:#F87171;text-align:center;margin-top:60px;">No article generated.</p>`; return; }
+    let h = `<div style="border-bottom:2px solid ${article.section_color};padding-bottom:8px;margin-bottom:12px;"><span style="background:${article.section_color};color:#000;padding:2px 8px;border-radius:3px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;">${article.section_label}</span><span style="color:#555;font-size:0.75rem;margin-left:8px;">Tier ${article.tier} · ${article.event_type}</span></div>`;
+    h += `<h3 style="color:#e0e0e0;font-size:1.2rem;margin-bottom:8px;line-height:1.3;">${escHtml(article.headline)}</h3>`;
+    h += `<p style="color:#666;font-size:0.75rem;margin-bottom:12px;">By ${escHtml(article.byline.reporter)} · ${article.byline.time}</p>`;
+    if (article.lede) h += `<p style="color:#ccc;font-size:0.9rem;line-height:1.6;margin-bottom:12px;font-weight:500;">${escHtml(article.lede)}</p>`;
+    for (const p of article.body_paragraphs) h += `<p style="color:#bbb;font-size:0.85rem;line-height:1.6;margin-bottom:10px;">${escHtml(p)}</p>`;
+    for (const q of article.quotes) h += `<blockquote style="border-left:3px solid ${article.section_color};padding-left:12px;margin:12px 0;color:#aaa;font-style:italic;font-size:0.85rem;">${escHtml(q.text)}</blockquote>`;
+    h += `<details style="margin-top:16px;"><summary style="color:#555;cursor:pointer;font-size:0.75rem;">Raw JSON</summary><pre style="background:#0a0a0a;color:#888;padding:12px;border-radius:4px;font-size:0.7rem;overflow-x:auto;margin-top:8px;">${escHtml(JSON.stringify(article,null,2))}</pre></details>`;
+    preview.innerHTML = h;
+}
+window.runValdorianTestGenerate = runValdorianTestGenerate;
+
+async function loadValdorianArticles() {
+    const nf = document.getElementById('vald-art-nation-filter').value, ef = document.getElementById('vald-art-event-filter').value, tf = document.getElementById('vald-art-tier-filter').value;
+    const c = document.getElementById('vald-article-list'); c.innerHTML = '<p style="color:#555;text-align:center;">Loading...</p>';
+    let q = _supabase.from('valdorian_articles').select('*').order('created_at',{ascending:false}).limit(100);
+    if (nf) q = q.eq('nation_id',nf); if (ef) q = q.eq('event_type',ef); if (tf) q = q.eq('tier',Number(tf));
+    const { data, error } = await q;
+    if (error) { c.innerHTML = `<p style="color:#F87171;">Error: ${escHtml(error.message)}</p>`; return; }
+    document.getElementById('vald-article-count').textContent = `(${data.length})`; document.getElementById('vald-art-filter-info').textContent = `${data.length} articles`;
+    if (!data.length) { c.innerHTML = '<p style="color:#555;text-align:center;padding:40px;">No articles found.</p>'; return; }
+    let h = '';
+    for (const a of data) { const sc = SECTIONS[a.section]?.color||'#888'; const nn = (nations||[]).find(n=>n.id===a.nation_id)?.name||a.nation_id?.slice(0,8); h += `<div style="background:#151515;border:1px solid #2a2a2a;border-left:3px solid ${sc};border-radius:4px;padding:12px 16px;margin-bottom:8px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="background:${sc};color:#000;padding:1px 6px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;">${a.section}</span><span style="color:#555;font-size:0.75rem;">T${a.tier} · ${a.event_type}</span><span style="color:#555;font-size:0.75rem;margin-left:auto;">tick ${a.tick} · ${nn}</span></div><div style="color:#e0e0e0;font-weight:bold;margin-bottom:4px;">${escHtml(a.headline)}</div>${a.lede?`<div style="color:#999;font-size:0.85rem;line-height:1.4;">${escHtml(a.lede).slice(0,200)}${a.lede.length>200?'...':''}</div>`:''}</div>`; }
+    c.innerHTML = h;
+}
+window.loadValdorianArticles = loadValdorianArticles;
+
+async function loadValdorianOpEds() {
+    const sf = document.getElementById('vald-oped-status-filter').value;
+    const c = document.getElementById('vald-oped-list'); c.innerHTML = '<p style="color:#555;text-align:center;">Loading...</p>';
+    let q = _supabase.from('op_eds').select('*').order('created_at',{ascending:false}).limit(100);
+    if (sf) q = q.eq('status',sf);
+    const { data, error } = await q;
+    if (error) { c.innerHTML = `<p style="color:#F87171;">Error: ${escHtml(error.message)}</p>`; return; }
+    document.getElementById('vald-oped-count').textContent = `(${data.length})`; document.getElementById('vald-oped-filter-info').textContent = `${data.length} op-eds`;
+    if (!data.length) { c.innerHTML = '<p style="color:#555;text-align:center;padding:40px;">No op-eds found.</p>'; return; }
+    let h = '';
+    for (const o of data) {
+        const colors = {draft:'#FBBF24',published:'#4ADE80',rejected:'#F87171'}; const sc = colors[o.status]||'#888'; const nn = (nations||[]).find(n=>n.id===o.nation_id)?.name||o.nation_id?.slice(0,8);
+        h += `<div style="background:#151515;border:1px solid #2a2a2a;border-left:3px solid ${sc};border-radius:4px;padding:12px 16px;margin-bottom:8px;">`;
+        h += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="background:${sc};color:#000;padding:1px 6px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;">${o.status}</span><span style="color:#888;font-size:0.75rem;">by ${escHtml(o.author_name)}</span><span style="color:#555;font-size:0.75rem;margin-left:auto;">${nn}</span></div>`;
+        h += `<div style="color:#e0e0e0;font-weight:bold;margin-bottom:4px;">${escHtml(o.headline)}</div>`;
+        h += `<div style="color:#999;font-size:0.85rem;line-height:1.4;">${escHtml((o.body||'').slice(0,200))}${(o.body||'').length>200?'...':''}</div>`;
+        h += `<div style="display:flex;gap:8px;margin-top:8px;">`;
+        if (o.status==='draft') { h += `<button style="padding:4px 12px;font-size:0.7rem;border:none;border-radius:3px;cursor:pointer;color:#fff;background:#4CAF50;" onclick="updateOpEdStatus('${o.id}','published')">Publish</button><button style="padding:4px 12px;font-size:0.7rem;border:none;border-radius:3px;cursor:pointer;color:#fff;background:#F87171;" onclick="updateOpEdStatus('${o.id}','rejected')">Reject</button>`; }
+        else if (o.status==='published') { h += `<button style="padding:4px 12px;font-size:0.7rem;border:none;border-radius:3px;cursor:pointer;color:#000;background:#FBBF24;" onclick="updateOpEdStatus('${o.id}','draft')">Unpublish</button>`; }
+        else if (o.status==='rejected') { h += `<button style="padding:4px 12px;font-size:0.7rem;border:none;border-radius:3px;cursor:pointer;color:#000;background:#FBBF24;" onclick="updateOpEdStatus('${o.id}','draft')">Restore</button>`; }
+        h += `</div></div>`;
+    }
+    c.innerHTML = h;
+}
+window.loadValdorianOpEds = loadValdorianOpEds;
+
+async function updateOpEdStatus(id, newStatus) {
+    const updates = { status: newStatus, updated_at: new Date().toISOString() };
+    if (newStatus === 'published') { const te = document.getElementById('info-tick'); if (te && te.textContent !== 'Loading...') updates.published_tick = Number(te.textContent) || null; }
+    const { error } = await _supabase.from('op_eds').update(updates).eq('id', id);
+    if (error) { alert('Error: ' + error.message); return; }
+    loadValdorianOpEds();
+}
+window.updateOpEdStatus = updateOpEdStatus;
 </script>
 </body>
 </html>
