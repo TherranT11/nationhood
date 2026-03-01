@@ -413,10 +413,8 @@ export async function runPresidentialElectionPreview(supabase, nationId) {
     if (!blocs || blocs.length === 0) throw new Error('No voter blocs found for this nation');
 
     // Scale bloc voter_counts so total matches actual eligible voter count
-    // eligible_voters is a 0-100 stat (% of population eligible to vote)
-    const pop = nation.population || 0;
-    const eligPct = nation.eligible_voters || 65;
-    const eligibleVoters = pop > 0 ? Math.round(pop * eligPct / 100) : 0;
+    // eligible_voters is a raw count (same as parliamentary preview)
+    const eligibleVoters = nation.eligible_voters || 0;
     const totalBlocVoters = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
     if (totalBlocVoters > 0 && eligibleVoters > 0) {
         const scale = eligibleVoters / totalBlocVoters;

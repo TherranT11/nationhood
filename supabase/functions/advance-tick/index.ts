@@ -99,12 +99,15 @@ const GAME_CONFIG = {
 /**
  * Update GAME_CONFIG with nation-specific seat values.
  * Call after loading the nation on each page.
+ *
+ * Always resets to defaults (120) when nation data is missing, so that
+ * sequential multi-nation tick processing never leaks one nation's seat
+ * count into the next nation's calculations.
  */
 function initGameConfigForNation(nation) {
-    if (nation && nation.total_seats) {
-        GAME_CONFIG.TOTAL_SEATS = nation.total_seats;
-        GAME_CONFIG.MAJORITY_SEATS = Math.floor(nation.total_seats / 2) + 1;
-    }
+    const seats = (nation && nation.total_seats) ? nation.total_seats : 120;
+    GAME_CONFIG.TOTAL_SEATS = seats;
+    GAME_CONFIG.MAJORITY_SEATS = Math.floor(seats / 2) + 1;
 }
 
 const FORMATION_DEADLINE_TICKS = 3; // ticks per formation window before escalation
@@ -3377,14 +3380,16 @@ async function processNoBudgetPenalty(supabase, nation, currentTick) {
     const severity = Math.min(ticksOverdue / maxPenaltyTicks, 1.0);
 
     // Apply penalties: efficiency drops, stability drops, credit drops
-    const effPenalty = -Math.round(severity * 2);  // up to -2/tick
-    const stabPenalty = -Math.round(severity * 1.5);  // up to -1.5/tick
-    const creditPenalty = -Math.round(severity * 1);  // up to -1/tick
+    // Use one-decimal-place precision so early overdue ticks still apply small penalties
+    // instead of rounding to 0 (e.g. severity=0.04 → effPenalty=-0.1 instead of 0)
+    const effPenalty = -Math.round(severity * 2 * 10) / 10;    // up to -2.0/tick
+    const stabPenalty = -Math.round(severity * 1.5 * 10) / 10; // up to -1.5/tick
+    const creditPenalty = -Math.round(severity * 1 * 10) / 10; // up to -1.0/tick
 
     const updates = {};
-    if (effPenalty !== 0) updates.efficiency = Math.max(0, Number(nation.efficiency || 50) + effPenalty);
-    if (stabPenalty !== 0) updates.stability = Math.max(0, Number(nation.stability || 50) + stabPenalty);
-    if (creditPenalty !== 0) updates.credit = Math.max(0, Number(nation.credit || 50) + creditPenalty);
+    if (effPenalty !== 0) updates.efficiency = Math.round(Math.max(0, Number(nation.efficiency || 50) + effPenalty) * 10) / 10;
+    if (stabPenalty !== 0) updates.stability = Math.round(Math.max(0, Number(nation.stability || 50) + stabPenalty) * 10) / 10;
+    if (creditPenalty !== 0) updates.credit = Math.round(Math.max(0, Number(nation.credit || 50) + creditPenalty) * 10) / 10;
 
     if (Object.keys(updates).length > 0) {
         await supabase.from('nations').update(updates).eq('id', nation.id);
@@ -9396,8 +9401,8 @@ async function executeRally(supabase, factionId, nationId, blocId, currentTick) 
         for (const sb of spillTargets) {
             const row = approvalByBloc[sb.id];
             if (!row) continue;
-            // For 'all' scope (counter-protest), target bloc also gets spillover on top
-            if (sb.id === blocId) continue; // target already handled
+            // For non-'all' scopes, skip target bloc (already handled above)
+            if (sb.id === blocId && outcome.spilloverScope !== 'all') continue;
             const oldPref = Math.round(row.preference_score || 0);
             const newPref = Math.max(0, Math.min(100, oldPref + outcome.spillover));
             const newMom = Math.round(((row.momentum || 0) + outcome.spillover) * 100) / 100;
@@ -10771,7 +10776,7 @@ async function processCoalitionDetection(supabase, nation, currentTick) {
 async function autoResolveStaleShakeups(supabase, nationId, currentTick) {
     const { data: votingShakeups } = await supabase
         .from('shakeups')
-        .select('id, created_at')
+        .select('id, created_at, created_tick')
         .eq('nation_id', nationId)
         .eq('status', 'voting');
 
@@ -13571,10 +13576,8 @@ async function runPresidentialElectionPreview(supabase, nationId) {
     if (!blocs || blocs.length === 0) throw new Error('No voter blocs found for this nation');
 
     // Scale bloc voter_counts so total matches actual eligible voter count
-    // eligible_voters is a 0-100 stat (% of population eligible to vote)
-    const pop = nation.population || 0;
-    const eligPct = nation.eligible_voters || 65;
-    const eligibleVoters = pop > 0 ? Math.round(pop * eligPct / 100) : 0;
+    // eligible_voters is a raw count (same as parliamentary preview)
+    const eligibleVoters = nation.eligible_voters || 0;
     const totalBlocVoters = blocs.reduce((s, b) => s + (b.voter_count || 0), 0);
     if (totalBlocVoters > 0 && eligibleVoters > 0) {
         const scale = eligibleVoters / totalBlocVoters;

@@ -44,12 +44,15 @@ export const GAME_CONFIG = {
 /**
  * Update GAME_CONFIG with nation-specific seat values.
  * Call after loading the nation on each page.
+ *
+ * Always resets to defaults (120) when nation data is missing, so that
+ * sequential multi-nation tick processing never leaks one nation's seat
+ * count into the next nation's calculations.
  */
 export function initGameConfigForNation(nation) {
-    if (nation && nation.total_seats) {
-        GAME_CONFIG.TOTAL_SEATS = nation.total_seats;
-        GAME_CONFIG.MAJORITY_SEATS = Math.floor(nation.total_seats / 2) + 1;
-    }
+    const seats = (nation && nation.total_seats) ? nation.total_seats : 120;
+    GAME_CONFIG.TOTAL_SEATS = seats;
+    GAME_CONFIG.MAJORITY_SEATS = Math.floor(seats / 2) + 1;
 }
 
 export const FORMATION_DEADLINE_TICKS = 3; // ticks per formation window before escalation
