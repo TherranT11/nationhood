@@ -2292,9 +2292,15 @@ export async function processMinistryActions(supabase, nation, currentTick) {
 // ==================== LAYER 1: PER-TICK MINISTER APPROVAL ====================
 
 /**
- * Update each minister's approval based on the current state of their owned stats.
- * Uses threshold-based scoring: the public doesn't care about marginal changes,
- * they care whether stats are at acceptable levels or in crisis.
+ * Update each minister's approval based on the current state of their owned stats
+ * AND the funding level of their ministry's institutions.
+ *
+ * Three additive components per tick:
+ *   1. Stat-based scoring — threshold contribution averaged across owned stats
+ *   2. Funding penalty — scales linearly from 0 at 100% funded to
+ *      MINISTER_FUNDING_PENALTY_MAX at 0% funded (additive, not averaged)
+ *   3. Collapsed-institution penalty — MINISTER_COLLAPSED_INST_PENALTY per
+ *      institution funded below MINISTER_COLLAPSED_THRESHOLD (additive)
  *
  * Excludes prime_minister (PM approval comes from the composite government approval).
  *
@@ -2304,9 +2310,12 @@ export async function processMinistryActions(supabase, nation, currentTick) {
  * @param {object} supabase
  * @param {object} nation - nation row with current stat values
  * @param {number} currentTick
+ * @param {boolean} isShutdown - true during government shutdown (extra penalty)
+ * @param {Array|null} institutionConfig - rows from ministry_institution_config (optional)
+ * @param {Array|null} budgetAllocations - rows from budget_item_allocations for the active budget (optional)
  * @returns {Array} results for logging
  */
-export async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown = false) {
+export async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown = false, institutionConfig = null, budgetAllocations = null) {
     const { data: ministries } = await supabase
         .from('ministries')
         .select('id, ministry_key, minister_approval, minister_first_name, embattled_since_tick, party_id')
@@ -2320,6 +2329,41 @@ export async function updateMinisterApprovals(supabase, nation, currentTick, isS
     // of governance — public outrage should rapidly destroy minister approval.
     const SHUTDOWN_MINISTER_PENALTY = -6;
 
+    // ── Build ministry_key → institution funding map ──
+    // Maps each ministry to its institutions' funding percentages so we can
+    // penalise ministers for underfunded/collapsed institutions.
+    const ministryFundingMap = {};  // ministry_key → [{ id, fundingPct }]
+    if (institutionConfig && institutionConfig.length > 0) {
+        // Build allocation lookup: institution id → { allocated, needed }
+        const allocMap = {};
+        for (const row of (budgetAllocations || [])) {
+            if (row.item_type === 'institution') {
+                allocMap[row.item_id] = {
+                    allocated: Number(row.allocation_amount || 0),
+                    needed: Number(row.needed_amount || 0)
+                };
+            }
+        }
+
+        for (const inst of institutionConfig) {
+            const key = inst.ministry_key;
+            if (!ministryFundingMap[key]) ministryFundingMap[key] = [];
+
+            let fundingPct;
+            if (isShutdown) {
+                // Shutdown forces all institutions to 0% funding
+                fundingPct = 0;
+            } else {
+                const alloc = allocMap[inst.id];
+                fundingPct = alloc && alloc.needed > 0
+                    ? Math.min(100, Math.round((alloc.allocated / alloc.needed) * 100))
+                    : 0;  // no allocation row = unfunded
+            }
+
+            ministryFundingMap[key].push({ id: inst.id, fundingPct });
+        }
+    }
+
     const results = [];
 
     for (const ministry of ministries) {
@@ -2331,7 +2375,7 @@ export async function updateMinisterApprovals(supabase, nation, currentTick, isS
         const ownedStats = MINISTRY_TO_STATS[ministry.ministry_key];
         if (!ownedStats || ownedStats.length === 0) continue;
 
-        // Score each owned stat
+        // ── Component 1: Stat-based scoring (averaged) ──
         let contributionSum = 0;
         let statCount = 0;
         for (const statKey of ownedStats) {
@@ -2343,11 +2387,32 @@ export async function updateMinisterApprovals(supabase, nation, currentTick, isS
             }
         }
 
-        // Skip ministers with no stat contributions UNLESS shutdown is active
-        // (shutdown penalty must apply to all ministers regardless of stat data)
-        if (statCount === 0 && !isShutdown) continue;
+        // Skip ministers with no stat contributions AND no funding data UNLESS shutdown
+        const institutions = ministryFundingMap[ministry.ministry_key];
+        if (statCount === 0 && !isShutdown && !institutions) continue;
 
         let avgDelta = statCount > 0 ? contributionSum / statCount : 0;
+
+        // ── Component 2: Funding penalty (additive, not averaged) ──
+        // A minister whose ministry is underfunded should lose approval directly,
+        // regardless of whether stat values have decayed yet.
+        let fundingPenalty = 0;
+        let collapsedPenalty = 0;
+        if (institutions && institutions.length > 0) {
+            const avgFunding = institutions.reduce((sum, i) => sum + i.fundingPct, 0) / institutions.length;
+            const fundingRatio = avgFunding / 100;  // 0.0–1.0
+
+            // Linear penalty: 0% funded → full penalty, 100% funded → 0
+            fundingPenalty = (1.0 - fundingRatio) * GOV_APPROVAL_CONFIG.MINISTER_FUNDING_PENALTY_MAX;
+
+            // ── Component 3: Collapsed institution penalty (additive, stacks) ──
+            const collapsedCount = institutions.filter(
+                i => i.fundingPct <= GOV_APPROVAL_CONFIG.MINISTER_COLLAPSED_THRESHOLD
+            ).length;
+            collapsedPenalty = collapsedCount * GOV_APPROVAL_CONFIG.MINISTER_COLLAPSED_INST_PENALTY;
+        }
+
+        avgDelta += fundingPenalty + collapsedPenalty;
 
         // Government shutdown: stack a direct penalty on top of stat-based scoring
         if (isShutdown) {
@@ -2389,13 +2454,20 @@ export async function updateMinisterApprovals(supabase, nation, currentTick, isS
             old: oldApproval,
             new: newApproval,
             delta: Math.round(avgDelta * 10) / 10,
+            fundingPenalty: Math.round(fundingPenalty * 10) / 10,
+            collapsedPenalty: Math.round(collapsedPenalty * 10) / 10,
             embattled: embattledSinceTick !== null
         });
     }
 
     if (results.length > 0) {
-        const shutdownTag = isShutdown ? ' [SHUTDOWN -3/tick penalty active]' : '';
-        console.log(`[updateMinisterApprovals] ${nation.name}:${shutdownTag} ${results.map(r => `${r.ministry_key} ${r.old}→${r.new} (${r.delta >= 0 ? '+' : ''}${r.delta})`).join(', ')}`);
+        const shutdownTag = isShutdown ? ' [SHUTDOWN -6/tick penalty active]' : '';
+        console.log(`[updateMinisterApprovals] ${nation.name}:${shutdownTag} ${results.map(r => {
+            const parts = [`${r.ministry_key} ${r.old}→${r.new} (${r.delta >= 0 ? '+' : ''}${r.delta})`];
+            if (r.fundingPenalty) parts.push(`fund:${r.fundingPenalty}`);
+            if (r.collapsedPenalty) parts.push(`collapsed:${r.collapsedPenalty}`);
+            return parts.join(' ');
+        }).join(', ')}`);
     }
 
     return results;

@@ -922,6 +922,7 @@ async function advanceTick(supabase) {
         const shutdownCheck = await isGovernmentShutdown(supabase, nation, newTick);
         const shutdown = shutdownCheck.active;
         let statInstMap = null;
+        let budgetItemAllocs = null;   // hoisted for minister approval funding check
         if (shutdown && _institutionConfig.length > 0) {
             // Government shutdown: force ALL institutions to 0% funding → Collapsed decay rates
             statInstMap = buildShutdownStatInstMap(_institutionConfig);
@@ -931,6 +932,7 @@ async function advanceTick(supabase) {
                 .select('item_type, item_id, allocation_amount, needed_amount')
                 .eq('bill_id', nation.last_budget_bill_id)
                 .eq('item_type', 'institution');
+            budgetItemAllocs = itemAllocs;
             statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs);
         }
         const decayResults = await processStatDecay(supabase, nation, statInstMap, shutdown);
@@ -1084,9 +1086,9 @@ async function advanceTick(supabase) {
         // Record stat history for trend calculations (Phase 2)
         await recordStatHistory(supabase, nation, newTick);
 
-        // Layer 1: Update minister approvals from stat thresholds
-        // During government shutdown, all ministers take a direct -3/tick approval penalty
-        const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick, shutdownNow);
+        // Layer 1: Update minister approvals from stat thresholds + ministry funding
+        // During government shutdown, all ministers take a direct -6/tick approval penalty
+        const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick, shutdownNow, _institutionConfig, budgetItemAllocs);
         if (ministerApprovalResults.length > 0) {
             summary.ministerApprovals = summary.ministerApprovals || [];
             summary.ministerApprovals.push({ nation: nation.name, results: ministerApprovalResults });
