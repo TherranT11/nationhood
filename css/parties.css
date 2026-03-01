@@ -3806,7 +3806,9 @@ body.light-mode .reg-coalition-intel-row { background: rgba(0,0,0,0.02); }
     margin-top: 20px;
 }
 #rally-container,
-#promise-maker-container {
+#promise-maker-container,
+#outreach-container,
+#attack-container {
     flex: 1 1 0;
     min-width: 0;
     display: flex;
@@ -5387,7 +5389,6 @@ body.light-mode .edit-logo-option:hover {
    VOTER OUTREACH PANEL
    ================================================================ */
 #outreach-container {
-    margin-top: 20px;
     max-width: 100%;
 }
 .outreach-panel {
@@ -5728,7 +5729,6 @@ body.light-mode .edit-logo-option:hover {
    ATTACK CAMPAIGN PANEL
    ================================================================ */
 #attack-container {
-    margin-top: 20px;
     max-width: 100%;
 }
 .attack-panel {
