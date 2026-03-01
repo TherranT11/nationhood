@@ -1046,6 +1046,16 @@ async function advanceTick(supabase) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
+        // Autocracy seat rebalancing: if factions were deleted and seats are vacant,
+        // proportionally redistribute the empty seats across remaining factions.
+        if (isAutocracy(nation)) {
+            const seatResult = await rebalanceAutocracySeats(supabase, nation);
+            if (seatResult) {
+                summary.seatRebalancing = summary.seatRebalancing || [];
+                summary.seatRebalancing.push(seatResult);
+            }
+        }
+
         // Re-evaluate shutdown status after resolveExpiredVotes may have passed a budget bill
         // (the original `shutdown` boolean was computed before bill resolution)
         const shutdownCheckNow = await isGovernmentShutdown(supabase, nation, newTick);

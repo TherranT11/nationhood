@@ -2043,6 +2043,91 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
 }
 
 
+// ==================== AUTOCRACY SEAT REBALANCING ====================
+
+/**
+ * In autocracies, if a faction is deleted (or for any reason the sum of all
+ * faction seats is less than the nation's total_seats), proportionally
+ * redistribute the vacant seats across the remaining factions.
+ *
+ * Uses the Largest Remainder method (same as allocateSeatsByVotes in
+ * election-simulation.js) with existing seat counts as weights.
+ */
+export async function rebalanceAutocracySeats(supabase, nation) {
+    if (!isAutocracy(nation)) return null;
+
+    const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
+
+    const { data: factions, error } = await supabase
+        .from('factions')
+        .select('id, faction_name, seats')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+
+    if (error || !factions || factions.length === 0) return null;
+
+    const currentSum = factions.reduce((s, f) => s + (f.seats || 0), 0);
+    const vacantSeats = totalSeats - currentSum;
+
+    if (vacantSeats <= 0) return null; // No vacant seats
+
+    console.log(`[rebalanceAutocracySeats] ${nation.name}: ${vacantSeats} vacant seat(s) detected (${currentSum}/${totalSeats}). Redistributing.`);
+
+    // Proportional redistribution using Largest Remainder (Hamilton) method
+    // Weight = each faction's current seats
+    if (currentSum === 0) {
+        // Edge case: all factions at 0 seats — distribute evenly
+        const perParty = Math.floor(totalSeats / factions.length);
+        let remainder = totalSeats - perParty * factions.length;
+        const updates = [];
+        for (const f of factions) {
+            const newSeats = perParty + (remainder > 0 ? 1 : 0);
+            if (remainder > 0) remainder--;
+            updates.push({ id: f.id, name: f.faction_name, oldSeats: f.seats || 0, newSeats });
+        }
+        for (const u of updates) {
+            await supabase.from('factions').update({ seats: u.newSeats }).eq('id', u.id);
+        }
+        return { nation: nation.name, vacantSeats, updates };
+    }
+
+    // Standard Largest Remainder: allocate totalSeats proportionally by current seat share
+    const quota = currentSum / totalSeats; // votes-per-seat equivalent
+    const fractionals = [];
+    const newSeats = {};
+    let allocated = 0;
+
+    for (const f of factions) {
+        const raw = (f.seats || 0) / quota;
+        const guaranteed = Math.floor(raw);
+        newSeats[f.id] = guaranteed;
+        allocated += guaranteed;
+        fractionals.push({ id: f.id, fractional: raw - guaranteed });
+    }
+
+    let remaining = totalSeats - allocated;
+    fractionals.sort((a, b) => b.fractional - a.fractional);
+    for (let i = 0; i < remaining && i < fractionals.length; i++) {
+        newSeats[fractionals[i].id] = (newSeats[fractionals[i].id] || 0) + 1;
+    }
+
+    const updates = [];
+    for (const f of factions) {
+        const ns = newSeats[f.id] || 0;
+        if (ns !== (f.seats || 0)) {
+            updates.push({ id: f.id, name: f.faction_name, oldSeats: f.seats || 0, newSeats: ns });
+            await supabase.from('factions').update({ seats: ns }).eq('id', f.id);
+        }
+    }
+
+    if (updates.length > 0) {
+        console.log(`[rebalanceAutocracySeats] ${nation.name}: Seats rebalanced:`,
+            updates.map(u => `${u.name}: ${u.oldSeats}→${u.newSeats}`).join(', '));
+    }
+
+    return { nation: nation.name, vacantSeats, updates };
+}
+
 // ==================== LOYALTY TICK PROCESSING ====================
 
 export async function processLoyaltyTick(supabase, nation) {
