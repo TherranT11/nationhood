@@ -26,7 +26,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatCurrency } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import { calculateNationalBudget, applyTradeTariffOverride, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TAX_CONFIG, isPresidentialRepublic, isAutocracy, ISSUE_CATEGORY_STATS, formatStatName, deductAP, fetchActiveCoalition } from './js/game-common.js';
+import { calculateNationalBudget, applyTradeTariffOverride, GAME_CONFIG, RAW_SCALING_DIVISORS, TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TAX_CONFIG, isPresidentialRepublic, isAutocracy, ISSUE_CATEGORY_STATS, formatStatName, deductAP, fetchActiveCoalition, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG } from './js/game-common.js';
 
 // ==================== STATE ====================
 var previousTickData = null;
@@ -692,6 +692,27 @@ function renderOverviewTab(nation) {
 
     var h = '<div class="econ-overview">';
 
+    // Sovereign debt distress banner
+    var _distressInfo = getDebtDistressLevel(nation);
+    if (_distressInfo.level === 'critical') {
+        h += '<div class="debt-distress-banner debt-distress-critical">';
+        h += '<div class="distress-banner-icon">⚠</div>';
+        h += '<div class="distress-banner-content">';
+        h += '<div class="distress-banner-title">SOVEREIGN DEBT CRISIS WARNING</div>';
+        h += '<div class="distress-banner-text">Debt has reached ' + formatDebtToGDP(getDebtToGDP(nation)) + ' of GDP. Credit is deteriorating rapidly. ';
+        if (_distressInfo.locked) h += 'Borrowing is locked out. ';
+        if (_distressInfo.burden > 0) h += 'Government spending effectiveness reduced by ' + (_distressInfo.burden * 100).toFixed(0) + '%. ';
+        h += 'Consider a <a href="laws.html" style="color:#ff9800;text-decoration:underline;">Default Resolution</a> to restructure debt.</div>';
+        h += '</div></div>';
+    } else if (_distressInfo.level === 'distressed') {
+        h += '<div class="debt-distress-banner debt-distress-warning">';
+        h += '<div class="distress-banner-icon">📉</div>';
+        h += '<div class="distress-banner-content">';
+        h += '<div class="distress-banner-title">DEBT DISTRESS</div>';
+        h += '<div class="distress-banner-text">Debt-to-GDP ratio at ' + formatDebtToGDP(getDebtToGDP(nation)) + '. Credit is eroding and government spending effectiveness is impaired.</div>';
+        h += '</div></div>';
+    }
+
     // --- Fiscal Snapshot ---
     h += '<div class="econ-section">';
     h += '<div class="econ-section-header">FISCAL SNAPSHOT</div>';
@@ -731,15 +752,35 @@ function renderOverviewTab(nation) {
     h += '<div class="econ-section">';
     h += '<div class="econ-section-header">NATIONAL DEBT</div>';
     var debtToRev = bs.budget.grossRevenue > 0 ? (debt / bs.budget.grossRevenue) : 0;
+    var distress = getDebtDistressLevel(nation);
+    var debtToGdpRatio = getDebtToGDP(nation);
+    var burden = calculateDebtServiceBurden(nation);
+    var isLocked = Boolean(nation.credit_locked_out);
     var dRating, dCls;
-    if (debtToRev <= 0.5) { dRating = 'LOW'; dCls = 'excellent'; }
-    else if (debtToRev <= 1.5) { dRating = 'MODERATE'; dCls = 'moderate'; }
-    else if (debtToRev <= 3) { dRating = 'HIGH'; dCls = 'poor'; }
+    if (distress.level === 'healthy') { dRating = 'HEALTHY'; dCls = 'excellent'; }
+    else if (distress.level === 'elevated') { dRating = 'ELEVATED'; dCls = 'moderate'; }
+    else if (distress.level === 'distressed') { dRating = 'DISTRESSED'; dCls = 'poor'; }
     else { dRating = 'CRITICAL'; dCls = 'critical'; }
     h += '<div class="econ-debt-card">';
     h += '<div class="econ-debt-amount">' + formatBudgetCurrency(debt) + '</div>';
-    h += '<div class="econ-debt-ratio">' + (debtToRev * 100).toFixed(0) + '% of Revenue</div>';
+    h += '<div class="econ-debt-metrics">';
+    h += '<div class="econ-debt-metric"><span class="debt-metric-label">Debt-to-GDP</span><span class="debt-metric-value" style="color:' + distress.color + ';">' + formatDebtToGDP(debtToGdpRatio) + '</span></div>';
+    h += '<div class="econ-debt-metric"><span class="debt-metric-label">Debt-to-Revenue</span><span class="debt-metric-value">' + (debtToRev * 100).toFixed(0) + '%</span></div>';
+    h += '<div class="econ-debt-metric"><span class="debt-metric-label">Credit Rating</span><span class="debt-metric-value">' + Math.round(Number(nation.credit ?? 50)) + '/100</span></div>';
+    h += '</div>';
     h += '<div class="econ-debt-rating rating-' + dCls + '">' + dRating + '</div>';
+    if (burden > 0) {
+        h += '<div class="debt-burden-bar">';
+        h += '<div class="debt-burden-label">Debt Service Burden: <strong>' + (burden * 100).toFixed(1) + '%</strong> spending reduction</div>';
+        h += '<div class="debt-burden-track"><div class="debt-burden-fill" style="width:' + Math.min(100, (burden / SOVEREIGN_DEFAULT_CONFIG.BURDEN_MAX) * 100) + '%;background:' + (burden >= 0.3 ? '#ff4444' : burden >= 0.15 ? '#ff9800' : '#ffcc00') + ';"></div></div>';
+        h += '</div>';
+    }
+    if (isLocked) {
+        h += '<div class="credit-lockout-warning">';
+        h += '<span class="lockout-icon">🔒</span>';
+        h += '<span>CREDIT LOCKED OUT — Nation cannot borrow. Credit must exceed ' + SOVEREIGN_DEFAULT_CONFIG.CREDIT_LOCKOUT_THRESHOLD + ' to unlock.</span>';
+        h += '</div>';
+    }
     h += '</div>';
     h += '</div>';
 
