@@ -566,6 +566,16 @@ export const GOV_APPROVAL_CONFIG = {
     NEW_MINISTER_APPROVAL: 45,
     FIRE_GOV_APPROVAL_BONUS: 3,
 
+    // ─── Ministry funding → minister approval (Phase 5) ───
+    // Direct funding penalty: applied additively (not averaged with stat scores).
+    // At 0% funding the minister loses MINISTER_FUNDING_PENALTY_MAX per tick.
+    // Scales linearly: 50% funded → half the penalty, 100% funded → 0.
+    MINISTER_FUNDING_PENALTY_MAX: -2.0,
+
+    // Per-institution penalty when funding falls below COLLAPSED threshold.
+    // Stacks: 3 collapsed institutions → 3 × penalty per tick.
+    MINISTER_COLLAPSED_INST_PENALTY: -1.0,
+    MINISTER_COLLAPSED_THRESHOLD: 25,    // funding % at or below → "collapsed"
 };
 
 /**
