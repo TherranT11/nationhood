@@ -2104,21 +2104,21 @@ const STAT_DECAY_CONFIG = {
 
     // ── Erosion (degrade toward bad floor if neglected) ──
     physical_infrastructure:  { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
-    digital_infrastructure:   { type: 'erosion', target: 0,  speed: DECAY_SPEED.SLOW },
+    digital_infrastructure:   { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
     rail_network:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
     energy_generation:        { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
     efficiency:               { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    corruption:               { type: 'erosion', target: 70, speed: DECAY_SPEED.SLOW },
+    corruption:               { type: 'erosion', target: 10, speed: DECAY_SPEED.SLOW },
     healthcare_quality:       { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
+    healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.VERY_SLOW },
     beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.VERY_SLOW },
-    education_accessibility:  { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
+    education_accessibility:  { type: 'erosion', target: 30, speed: DECAY_SPEED.VERY_SLOW },
     press_freedom:            { type: 'erosion', target: 40, speed: DECAY_SPEED.SLOW },
     judicial_independence:    { type: 'erosion', target: 40, speed: DECAY_SPEED.SLOW },
     freedom_index:            { type: 'erosion', target: 40, speed: DECAY_SPEED.VERY_SLOW },
     standard_of_living:       { type: 'erosion', target: 40, speed: DECAY_SPEED.VERY_SLOW },
     social_mobility:          { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    benefits:                 { type: 'erosion', target: 0,  speed: DECAY_SPEED.MEDIUM },
+    benefits:                 { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
 };
 
 // Validate decay config keys at module load
