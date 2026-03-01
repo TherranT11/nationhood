@@ -29,6 +29,8 @@ DECLARE
         ARRAY['presidents',                   $$DELETE FROM presidents WHERE faction_id = '%s'$$],
         ARRAY['head_of_government',           $$DELETE FROM head_of_government WHERE faction_id = '%s'$$],
         ARRAY['pm_candidates',                $$DELETE FROM pm_candidates WHERE faction_id = '%s'$$],
+        ARRAY['ministries.party_id',           $$UPDATE ministries SET party_id = NULL WHERE party_id = '%s'$$],
+        ARRAY['ministries.pending_party_id',   $$UPDATE ministries SET pending_party_id = NULL WHERE pending_party_id = '%s'$$],
         ARRAY['ministries',                   $$DELETE FROM ministries WHERE faction_id = '%s'$$],
         ARRAY['ministry_action_log',          $$DELETE FROM ministry_action_log WHERE faction_id = '%s'$$],
         ARRAY['government_formation_chat',    $$DELETE FROM government_formation_chat WHERE faction_id = '%s'$$],
