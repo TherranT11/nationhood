@@ -20,7 +20,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
 import { tickToDate, escapeHtml, getIdeologyClass } from './js/utils.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize, ensureBlocApprovals, selectPresidentCandidate } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize, ensureBlocApprovals, selectPresidentCandidate, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach } from './js/game-common.js';
 import { getPartyIconSVG, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -3259,6 +3259,7 @@ async function renderParties() {
             <div id="rally-container"></div>
             <div id="promise-maker-container"></div>
         </div>
+        <div id="outreach-container"></div>
 
 
         ${otherPartiesHtml}
@@ -3651,6 +3652,368 @@ async function renderParties() {
             rebuildIdeologyChart();
         });
     }
+
+    // ── Voter Outreach UI (guaranteed, no randomness) ──
+    let outreachSelectedBloc = null;
+    let outreachResult = null;
+
+    // Fetch recent outreach actions for diminishing returns
+    const { data: recentOutreachActions } = await _supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', f.id)
+        .eq('action_type', 'outreach')
+        .gte('tick_performed', (currentShard?.current_tick || 0) - OUTREACH_CONFIG.COOLDOWN_WINDOW)
+        .order('tick_performed', { ascending: false });
+
+    const outreachedThisTick = (recentOutreachActions || []).some(r => r.tick_performed === (currentShard?.current_tick || 0));
+
+    function getBlocOutreachRecently(blocId) {
+        return (recentOutreachActions || []).filter(r => r.result?.blocId === blocId).length;
+    }
+
+    // Outreach history
+    const outreachHistory = (recentOutreachActions || []).filter(r => r.result?.blocId).slice(0, 6);
+
+    // My faction's ideology for alignment calcs
+    const myIdeo = ideoByFaction[f.id] || null;
+
+    function outreachGetApprovalColor(val) {
+        if (val >= 65) return '#4ade80';
+        if (val >= 45) return '#facc15';
+        if (val >= 30) return '#f97316';
+        return '#ef4444';
+    }
+
+    function outreachGetAlignmentColor(val) {
+        if (val >= 75) return '#4ade80';
+        if (val >= 55) return '#22d3ee';
+        if (val >= 40) return '#facc15';
+        return '#ef4444';
+    }
+
+    function renderOutreach() {
+        const container = document.getElementById('outreach-container');
+        if (!container) return;
+        const costOk = currentAP >= OUTREACH_CONFIG.AP_COST;
+        const canOutreach = costOk && !outreachedThisTick;
+
+        // Build bloc approval lookup
+        const myApprovals = {};
+        for (const row of (allBlocApprovals || [])) {
+            if (row.faction_id === f.id) myApprovals[row.bloc_id] = Math.round(row.preference_score || 0);
+        }
+
+        const selectedBloc = outreachSelectedBloc ? (blocs || []).find(b => b.id === outreachSelectedBloc) : null;
+        const selectedApproval = selectedBloc ? (myApprovals[selectedBloc.id] || 50) : 0;
+        const selectedAlignment = selectedBloc && myIdeo ? computeOutreachAlignment(myIdeo, selectedBloc) : 50;
+        const selectedEffect = selectedBloc ? calcOutreachEffect(selectedAlignment, getBlocOutreachRecently(selectedBloc.id)) : null;
+        const selectedFrictions = selectedBloc ? calcOutreachFriction(selectedBloc, blocs || [], myIdeo) : [];
+
+        // ─── Bloc selection cards ───
+        const blocCards = (blocs || []).map(b => {
+            const approval = myApprovals[b.id] || 50;
+            const isSelected = outreachSelectedBloc === b.id;
+            const approvalColor = outreachGetApprovalColor(approval);
+            const alignment = myIdeo ? computeOutreachAlignment(myIdeo, b) : 50;
+            const alignColor = outreachGetAlignmentColor(alignment);
+            const bRecent = getBlocOutreachRecently(b.id);
+            const bEffect = calcOutreachEffect(alignment, bRecent);
+            const bFrictions = calcOutreachFriction(b, blocs || [], myIdeo);
+            const hasDiminishing = bRecent > 0;
+            const hasFriction = bFrictions.length > 0;
+
+            return `<div class="outreach-bloc-card${isSelected ? ' selected' : ''}${!canOutreach ? ' disabled' : ''}" data-bloc-id="${b.id}">
+                <div class="outreach-bloc-card-top">
+                    <div class="outreach-bloc-card-left">
+                        <span class="outreach-bloc-card-name">${escapeHtml(b.bloc_name)}</span>
+                        <span class="outreach-bloc-card-pop">${Math.round(b.population_weight)}%</span>
+                        ${hasDiminishing ? '<span class="outreach-pill-diminish">Outreached ' + bRecent + 'x</span>' : ''}
+                        ${hasFriction && !isSelected ? '<span class="outreach-pill-friction">\u26A0 friction</span>' : ''}
+                    </div>
+                    <div class="outreach-bloc-card-right">
+                        <div class="outreach-bloc-card-stat">
+                            <span class="outreach-bloc-card-stat-label">Align</span>
+                            <span class="outreach-bloc-card-stat-val" style="color:${alignColor}">${alignment}</span>
+                        </div>
+                        <div class="outreach-bloc-card-stat">
+                            <span class="outreach-bloc-card-stat-label">Appr.</span>
+                            <span class="outreach-bloc-card-stat-val" style="color:${approvalColor}">${approval}</span>
+                        </div>
+                        <div class="outreach-bloc-card-effect">
+                            <span class="outreach-bloc-card-stat-label">Effect</span>
+                            <span class="outreach-bloc-card-effect-val">+${bEffect.diminished}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="outreach-bloc-card-bar"><div class="outreach-bloc-card-bar-fill" style="width:${approval}%;background:${approvalColor}"></div></div>
+            </div>`;
+        }).join('');
+
+        // ─── Expanded detail (when bloc selected + no result) ───
+        let detailHtml = '';
+        if (selectedBloc && selectedEffect && !outreachResult) {
+            // Axis-by-axis alignment breakdown
+            const AXIS_LABELS = {
+                liberty_equality: 'Liberty \u2194 Equality',
+                tradition_progress: 'Tradition \u2194 Progress',
+                security_freedom: 'Security \u2194 Freedom',
+                globalism_nationalism: 'Globalism \u2194 Nationalism',
+                individualism_collectivism: 'Individualism \u2194 Collectivism',
+            };
+
+            let axisBreakdownHtml = '';
+            for (const axisKey of ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism']) {
+                const partyScore = myIdeo ? (myIdeo[axisKey] || 0) : 0;
+                const partyNorm = Math.round((partyScore + 100) / 2);
+                const blocScore = selectedBloc['axis_' + axisKey] ?? 50;
+                const distance = Math.abs(partyNorm - blocScore);
+                const axisAlignment = 100 - distance;
+                const partyStrength = Math.abs(partyScore) / 100;
+                const isRelevant = partyStrength >= 0.15;
+                const aColor = outreachGetAlignmentColor(axisAlignment);
+
+                axisBreakdownHtml += `
+                <div class="outreach-axis-row" style="opacity:${isRelevant ? 1 : 0.5}">
+                    <div class="outreach-axis-header">
+                        <div class="outreach-axis-header-left">
+                            <span class="outreach-axis-label">${AXIS_LABELS[axisKey]}</span>
+                            <span class="outreach-axis-weight">str: ${Math.round(partyStrength * 100)}%</span>
+                        </div>
+                        <span class="outreach-axis-val" style="color:${aColor}">${axisAlignment}</span>
+                    </div>
+                    <div class="outreach-axis-bar-container">
+                        <div class="outreach-axis-zone" style="left:${Math.min(partyNorm, blocScore)}%;width:${Math.max(2, distance)}%;background:${distance < 20 ? 'rgba(74,222,128,0.1)' : distance < 40 ? 'rgba(250,204,21,0.08)' : 'rgba(239,68,68,0.08)'}"></div>
+                        <div class="outreach-axis-marker outreach-axis-marker-party" style="left:${partyNorm}%"></div>
+                        <div class="outreach-axis-marker outreach-axis-marker-bloc" style="left:${blocScore}%"></div>
+                    </div>
+                    <div class="outreach-axis-footer">
+                        <span class="outreach-axis-party-val">You: ${partyNorm}</span>
+                        <span class="outreach-axis-bloc-val">Bloc: ${blocScore}</span>
+                    </div>
+                </div>`;
+            }
+
+            // Effect calculation breakdown
+            const effectHtml = `
+            <div class="outreach-detail-section">
+                <span class="outreach-section-label">Effect Calculation</span>
+                <div class="outreach-effect-rows">
+                    <div class="outreach-effect-row">
+                        <span class="outreach-effect-desc">Base effect (alignment ${selectedAlignment}/100)</span>
+                        <span class="outreach-effect-val" style="color:#4ade80">+${selectedEffect.base}</span>
+                    </div>
+                    ${selectedEffect.penalty > 0 ? `<div class="outreach-effect-row">
+                        <span class="outreach-effect-desc" style="color:#f97316">Diminishing returns (${getBlocOutreachRecently(selectedBloc.id)}x in last ${OUTREACH_CONFIG.COOLDOWN_WINDOW} ticks)</span>
+                        <span class="outreach-effect-val" style="color:#f97316">\u2212${selectedEffect.penalty}</span>
+                    </div>` : ''}
+                    <div class="outreach-effect-row outreach-effect-total">
+                        <span class="outreach-effect-desc">Guaranteed approval gain</span>
+                        <span class="outreach-effect-val outreach-effect-total-val">+${selectedEffect.diminished}</span>
+                    </div>
+                </div>
+                <div class="outreach-projection">
+                    <div class="outreach-projection-stat">
+                        <span class="outreach-projection-label">NOW</span>
+                        <span class="outreach-projection-val" style="color:${outreachGetApprovalColor(selectedApproval)}">${selectedApproval}</span>
+                    </div>
+                    <span class="outreach-projection-arrow">\u2192</span>
+                    <div class="outreach-projection-stat">
+                        <span class="outreach-projection-label">AFTER</span>
+                        <span class="outreach-projection-val" style="color:${outreachGetApprovalColor(Math.min(100, selectedApproval + selectedEffect.diminished))}">${Math.min(100, selectedApproval + selectedEffect.diminished)}</span>
+                    </div>
+                    <div style="flex:1"></div>
+                    <div class="outreach-projection-stat">
+                        <span class="outreach-projection-label">POLARIZATION</span>
+                        <span class="outreach-projection-val" style="color:#4ade80">+0</span>
+                    </div>
+                </div>
+            </div>`;
+
+            // Ideology alignment breakdown
+            const ideoHtml = `
+            <div class="outreach-detail-section">
+                <span class="outreach-section-label">Ideological Alignment \u2014 Axis by Axis</span>
+                ${axisBreakdownHtml}
+                <div class="outreach-axis-legend">
+                    <span class="outreach-axis-party-val">\u25A0 Your party</span>
+                    <span class="outreach-axis-bloc-val">\u25A0 Bloc values</span>
+                    <span class="outreach-axis-hint">Higher party strength = more influence on outreach effectiveness</span>
+                </div>
+            </div>`;
+
+            // Friction section
+            let frictionHtml = '';
+            if (selectedFrictions.length > 0) {
+                const frictionRows = selectedFrictions.map(fr =>
+                    `<div class="outreach-friction-row">
+                        <div class="outreach-friction-left">
+                            <span class="outreach-friction-name">${escapeHtml(fr.blocName)}</span>
+                            <span class="outreach-friction-align">(your alignment: ${fr.alignment})</span>
+                        </div>
+                        <span class="outreach-friction-val">${fr.penalty}</span>
+                    </div>`
+                ).join('');
+                frictionHtml = `
+                <div class="outreach-detail-section">
+                    <span class="outreach-section-label">Adjacent Bloc Friction</span>
+                    ${frictionRows}
+                </div>`;
+            } else {
+                frictionHtml = `
+                <div class="outreach-detail-section">
+                    <span class="outreach-section-label">Adjacent Bloc Friction</span>
+                    <span class="outreach-friction-clean">No opposed blocs \u2014 clean outreach</span>
+                </div>`;
+            }
+
+            detailHtml = `
+            <div class="outreach-detail-panel">
+                <div class="outreach-detail-header">
+                    <span class="outreach-detail-title">Outreach: ${escapeHtml(selectedBloc.bloc_name)}</span>
+                    <span class="outreach-detail-approval">
+                        <span class="outreach-detail-approval-label">Current approval:</span>
+                        <span style="color:${outreachGetApprovalColor(selectedApproval)};font-weight:700">${selectedApproval}</span>
+                    </span>
+                </div>
+                <div class="outreach-detail-body">
+                    ${effectHtml}
+                    ${ideoHtml}
+                    ${frictionHtml}
+                </div>
+                <div class="outreach-execute-row">
+                    <span class="outreach-execute-warn">Guaranteed result. No randomness, no headlines, no polarization.</span>
+                    <button class="outreach-btn-execute" id="outreach-execute">Conduct Outreach \u2014 ${OUTREACH_CONFIG.AP_COST} AP</button>
+                </div>
+            </div>`;
+        }
+
+        // ─── Result card ───
+        let resultHtml = '';
+        if (outreachResult) {
+            const effectRows = (outreachResult.effects || []).map(eff => {
+                const valColor = eff.value > 0 ? '#4ade80' : eff.value < 0 ? '#ef4444' : '#6b6a5e';
+                const valStr = eff.value > 0 ? '+' + eff.value : '' + eff.value;
+                const isFriction = eff.value < 0;
+                return `<div class="outreach-result-effect-row">
+                    <span>${escapeHtml(eff.bloc)}${isFriction ? ' (friction)' : ''}</span>
+                    <span style="color:${valColor};font-weight:700">${valStr}</span>
+                </div>`;
+            }).join('');
+
+            resultHtml = `
+            <div class="outreach-result-card">
+                <div class="outreach-result-banner">
+                    <span class="outreach-result-title">Outreach Complete</span>
+                    <span class="outreach-result-dismiss" id="outreach-dismiss">Dismiss</span>
+                </div>
+                <div class="outreach-result-body">
+                    <div class="outreach-result-flavor">Party organizers spent the week in ${escapeHtml((outreachResult.effects?.[0]?.bloc || 'local').toLowerCase())} communities \u2014 attending meetings, hearing concerns, building relationships. No cameras, no speeches. Just work.</div>
+                    <div class="outreach-result-effects">
+                        ${effectRows}
+                        <div class="outreach-result-effect-row">
+                            <span>Polarization</span>
+                            <span style="color:#4ade80;font-weight:700">+0</span>
+                        </div>
+                        <div class="outreach-result-effect-row">
+                            <span>Headline generated</span>
+                            <span style="color:#6b6a5e;font-weight:700">None</span>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        // ─── Outreach history ───
+        let historyHtml = '';
+        if (outreachHistory.length > 0) {
+            const historyRows = outreachHistory.map(r => {
+                const res = r.result || {};
+                const tick = r.tick_performed;
+                const effect = res.diminished || 0;
+                const frictionSummary = (res.effects || []).filter(e => e.value < 0).map(e => e.value + ' ' + (e.bloc || '').split(' ')[0]).join(', ');
+                return `<div class="outreach-history-row">
+                    <span class="outreach-history-tick">Tick ${tick}</span>
+                    <span class="outreach-history-bloc">${escapeHtml(res.blocName || '?')}</span>
+                    <span class="outreach-history-effect" style="color:#4ade80">+${effect}</span>
+                    <span class="outreach-history-friction" style="color:${frictionSummary ? '#ef4444' : '#6b6a5e'}">${frictionSummary || 'No friction'}</span>
+                </div>`;
+            }).join('');
+
+            historyHtml = `
+            <div class="outreach-history">
+                <div class="outreach-history-header">Outreach History</div>
+                ${historyRows}
+            </div>`;
+        }
+
+        container.innerHTML = `
+            <div class="outreach-panel">
+                <div class="outreach-header-row">
+                    <div class="outreach-header-left">
+                        <span class="outreach-title">Voter Outreach</span>
+                        <span class="outreach-pill-safe">Safe</span>
+                    </div>
+                    <div class="outreach-header-right">
+                        <span class="outreach-pill-cost">${OUTREACH_CONFIG.AP_COST} AP</span>
+                    </div>
+                </div>
+
+                <div class="outreach-tagline">Guaranteed result \u00B7 No random outcomes \u00B7 No polarization \u00B7 No headlines \u00B7 Slow and steady</div>
+
+                ${outreachedThisTick ? '<div class="outreach-cooldown">You have already conducted outreach this tick.</div>' : ''}
+                ${!costOk && !outreachedThisTick ? '<div class="outreach-cooldown">Not enough AP (need ' + OUTREACH_CONFIG.AP_COST + ').</div>' : ''}
+
+                ${resultHtml}
+
+                <div class="outreach-bloc-select-header">
+                    <span class="outreach-section-label">Select Target Bloc</span>
+                    <span class="outreach-bloc-select-hint">Higher ideological alignment = stronger outreach effect</span>
+                </div>
+                <div class="outreach-bloc-grid">${blocCards}</div>
+
+                ${detailHtml}
+                ${historyHtml}
+            </div>`;
+
+        // Event listeners
+        container.querySelectorAll('.outreach-bloc-card:not(.disabled)').forEach(card => {
+            card.addEventListener('click', () => {
+                outreachSelectedBloc = card.dataset.blocId;
+                outreachResult = null;
+                renderOutreach();
+            });
+        });
+
+        const executeBtn = document.getElementById('outreach-execute');
+        if (executeBtn) {
+            executeBtn.addEventListener('click', async () => {
+                executeBtn.disabled = true;
+                executeBtn.textContent = 'Executing...';
+                const tick = currentShard?.current_tick || 0;
+                const result = await executeOutreach(_supabase, f.id, n.id, outreachSelectedBloc, tick);
+                if (result.success) {
+                    outreachResult = result;
+                    renderOutreach();
+                } else {
+                    alert(result.error);
+                    executeBtn.disabled = false;
+                    executeBtn.textContent = 'Conduct Outreach \u2014 ' + OUTREACH_CONFIG.AP_COST + ' AP';
+                }
+            });
+        }
+
+        const dismissBtn = document.getElementById('outreach-dismiss');
+        if (dismissBtn) {
+            dismissBtn.addEventListener('click', () => {
+                outreachResult = null;
+                outreachSelectedBloc = null;
+                renderParties(); // full refresh for AP update
+            });
+        }
+    }
+
+    renderOutreach();
 
     // ── Rally UI (bloc-targeted with outcome odds) ──
     let rallySelectedBloc = null;
