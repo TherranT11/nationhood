@@ -30,7 +30,47 @@ import { closeAdministration, dissolveCoalition } from './elections.js';
  * @param {Object|null} statInstitutionMap - from buildStatInstitutionMap(), or null to use natural rates
  * @returns {Array<object>}  Applied decay descriptors for tick summary
  */
-export async function processStatDecay(supabase, nation, statInstitutionMap, isShutdown = false) {
+/**
+ * Build a map of policy-driven decay floor/ceiling adjustments for a nation.
+ * Queries active_laws → policies and aggregates adjust_type/adjust_value
+ * from stat_effects. Adjustments stack additively across multiple policies.
+ *
+ * @returns {{ [statKey: string]: { floor: number, ceiling: number } }}
+ */
+export async function buildPolicyDecayAdjustments(supabase, nationId) {
+    const adjustments = {};
+
+    const { data: activeLaws, error } = await supabase
+        .from('active_laws')
+        .select('policy_id, policies(stat_effects)')
+        .eq('nation_id', nationId);
+
+    if (error || !activeLaws) return adjustments;
+
+    for (const law of activeLaws) {
+        const effects = law.policies?.stat_effects;
+        if (!Array.isArray(effects)) continue;
+
+        for (const eff of effects) {
+            if (!eff.adjust_type || !eff.adjust_value) continue;
+            const statKey = normalizeNationStatKey(eff.stat_key);
+            if (!statKey || !NATION_STAT_COLUMN_SET.has(statKey)) continue;
+
+            if (!adjustments[statKey]) adjustments[statKey] = { floor: 0, ceiling: 0 };
+
+            const val = Math.abs(Number(eff.adjust_value) || 0);
+            if (eff.adjust_type === 'floor') {
+                adjustments[statKey].floor += val;
+            } else if (eff.adjust_type === 'ceiling') {
+                adjustments[statKey].ceiling += val;
+            }
+        }
+    }
+
+    return adjustments;
+}
+
+export async function processStatDecay(supabase, nation, statInstitutionMap, isShutdown = false, policyDecayAdjustments = null) {
     const appliedDecay = [];
     const nationUpdates = {};
 
@@ -40,6 +80,19 @@ export async function processStatDecay(supabase, nation, statInstitutionMap, isS
         const currentVal = nation[statKey] !== undefined && nation[statKey] !== null
             ? Number(nation[statKey]) : 50;
         let target = config.target;
+
+        // Apply policy-driven floor/ceiling adjustments to the decay target
+        const adj = policyDecayAdjustments?.[statKey];
+        if (adj) {
+            if (adj.floor > 0) {
+                // Floor: raise the target so the stat won't decay below it
+                target = Math.min(100, target + adj.floor);
+            }
+            if (adj.ceiling > 0) {
+                // Ceiling: lower the target so the stat decays down toward it
+                target = Math.max(0, target - adj.ceiling);
+            }
+        }
 
         // During a government shutdown, institution-covered stats decay toward
         // worst-case values instead of their normal equilibrium targets.

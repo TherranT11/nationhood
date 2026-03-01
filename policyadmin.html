@@ -558,7 +558,9 @@ function loadPolicyIntoBuilder(p) {
         statEffects = p.stat_effects.map(e => ({
             ...e,
             stat_key: normalizePolicyStatKey(e.stat_key),
-            direction: normalizeEffectDirection(e.direction) || 'up'
+            direction: normalizeEffectDirection(e.direction) || 'up',
+            adjust_type: e.adjust_type || null,
+            adjust_value: e.adjust_value || 0
         }));
     } else if (p.target_stat) {
         // Legacy: convert single stat to new format
@@ -695,7 +697,7 @@ function updateCostPreview() {
 // ==================== STAT EFFECTS ====================
 function addStatEffect() {
     if (statEffects.length >= 10) return;
-    statEffects.push({ stat_key: '', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 12 });
+    statEffects.push({ stat_key: '', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 12, adjust_type: null, adjust_value: 0 });
     renderStatEffects();
 }
 
@@ -742,6 +744,23 @@ function renderStatEffects() {
                     <input type="number" value="${e.duration_ticks}" min="1" max="60" step="1" onchange="updateEffect(${idx},'duration_ticks',parseInt(this.value))">
                 </div>
             </div>
+            <div class="se-fields se-floor-ceiling-row">
+                <div class="form-field">
+                    <label>Decay Adjust</label>
+                    <select onchange="updateEffect(${idx},'adjust_type',this.value || null)">
+                        <option value="">None</option>
+                        <option value="floor" ${e.adjust_type === 'floor' ? 'selected' : ''}>Add to Floor</option>
+                        <option value="ceiling" ${e.adjust_type === 'ceiling' ? 'selected' : ''}>Lower Ceiling</option>
+                    </select>
+                </div>
+                <div class="form-field" style="${e.adjust_type ? '' : 'display:none'}">
+                    <label>± Value</label>
+                    <input type="number" value="${e.adjust_value || 0}" min="1" max="50" step="1" onchange="updateEffect(${idx},'adjust_value',parseInt(this.value))">
+                </div>
+                <div class="form-field se-floor-hint" style="${e.adjust_type ? '' : 'display:none'}">
+                    <small>${e.adjust_type === 'floor' ? '↑ Raises decay floor by this amount' : e.adjust_type === 'ceiling' ? '↓ Lowers decay ceiling by this amount' : ''}</small>
+                </div>
+            </div>
         </div>
     `).join('');
 
@@ -755,7 +774,7 @@ function renderStatEffects() {
 function updateEffect(idx, field, value) {
     if (!statEffects[idx]) return;
     statEffects[idx][field] = value;
-    if (field === 'direction') renderStatEffects();
+    if (field === 'direction' || field === 'adjust_type') renderStatEffects();
     else updateEffectPreview();
 }
 
@@ -783,7 +802,19 @@ function updateEffectPreview() {
     });
 
     const maxTick = Math.max(...valid.map(e => e.delay_ticks + e.duration_ticks));
-    html += `Tick ${maxTick + 1}+: All effects complete. Changes baked in. Ongoing cost continues.`;
+    html += `Tick ${maxTick + 1}+: All effects complete. Changes baked in. Ongoing cost continues.<br>`;
+
+    const floorCeilingEffects = valid.filter(e => e.adjust_type && e.adjust_value);
+    if (floorCeilingEffects.length > 0) {
+        html += '<br><strong>Decay Adjustments (while policy active):</strong><br>';
+        floorCeilingEffects.forEach(e => {
+            if (e.adjust_type === 'floor') {
+                html += `${fmtStat(e.stat_key)}: Floor raised by +${e.adjust_value} (stat won't decay below new floor)<br>`;
+            } else if (e.adjust_type === 'ceiling') {
+                html += `${fmtStat(e.stat_key)}: Ceiling lowered by -${e.adjust_value} (stat will decay down to new ceiling)<br>`;
+            }
+        });
+    }
     preview.innerHTML = html;
 }
 
@@ -1005,7 +1036,9 @@ async function savePolicy() {
             direction: normalizeEffectDirection(e.direction) || 'up',
             rate: e.rate,
             delay_ticks: e.delay_ticks || 0,
-            duration_ticks: e.duration_ticks || 12
+            duration_ticks: e.duration_ticks || 12,
+            adjust_type: e.adjust_type || null,
+            adjust_value: e.adjust_type ? (e.adjust_value || 0) : 0
         })),
         opposed_policy_ids: opposedIds.length > 0 ? opposedIds : null,
         // Legacy fields — write defaults so old code doesn't break

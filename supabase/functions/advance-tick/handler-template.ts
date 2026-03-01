@@ -935,7 +935,8 @@ async function advanceTick(supabase) {
             budgetItemAllocs = itemAllocs;
             statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs);
         }
-        const decayResults = await processStatDecay(supabase, nation, statInstMap, shutdown);
+        const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
+        const decayResults = await processStatDecay(supabase, nation, statInstMap, shutdown, policyDecayAdj);
         if (decayResults.length > 0) {
             summary.decay = summary.decay || [];
             summary.decay.push({ nation: nation.name, effects: decayResults });
