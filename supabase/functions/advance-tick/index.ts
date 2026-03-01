@@ -5540,11 +5540,30 @@ async function enactBill(supabase, bill, currentTick) {
         .select('*, policies(*)')
         .eq('nation_id', bill.nation_id);
 
-    if (bill.bill_type === 'repeal' && bill.repeal_active_law_id) {
-        const targetLaw = (currentActiveLaws || []).find(l => l.id === bill.repeal_active_law_id);
-        if (targetLaw && targetLaw.policies) {
-            await reversePolicy(supabase, nation, targetLaw.policies, targetLaw.passed_tick, currentTick);
-            await supabase.from('active_laws').delete().eq('id', bill.repeal_active_law_id);
+    // ── Repeal bill handling ──
+    if (bill.bill_type === 'repeal') {
+        // Determine repeal target: prefer bill-level column, fall back to article-level
+        let repealTargetId = bill.repeal_active_law_id;
+        if (!repealTargetId) {
+            const repealArt = (bill.bill_articles || []).find(a => a.repeal_active_law_id);
+            if (repealArt) repealTargetId = repealArt.repeal_active_law_id;
+        }
+
+        if (repealTargetId) {
+            const targetLaw = (currentActiveLaws || []).find(l => l.id === repealTargetId);
+            if (targetLaw && targetLaw.policies) {
+                await reversePolicy(supabase, nation, targetLaw.policies, targetLaw.passed_tick, currentTick);
+                const { error: delErr } = await supabase.from('active_laws').delete().eq('id', repealTargetId);
+                if (delErr) {
+                    console.error(`[enactBill] Failed to delete active_law ${repealTargetId}:`, delErr.message);
+                } else {
+                    console.log(`[enactBill] Repealed active law ${repealTargetId} (${targetLaw.policies.policy_name})`);
+                }
+            } else {
+                console.error(`[enactBill] Repeal bill ${bill.id} ("${bill.bill_name}"): target active_law ${repealTargetId} not found or has no policy. Active laws count: ${(currentActiveLaws || []).length}`);
+            }
+        } else {
+            console.error(`[enactBill] Repeal bill ${bill.id} ("${bill.bill_name}") has no repeal_active_law_id on bill row or articles. Bill passed but nothing was repealed.`);
         }
     } else {
         const articles = (bill.bill_articles || []).filter(a => a.policy_id);
@@ -5558,8 +5577,14 @@ async function enactBill(supabase, bill, currentTick) {
                 const targetLaw = (currentActiveLaws || []).find(l => l.id === art.repeal_active_law_id);
                 if (targetLaw && targetLaw.policies) {
                     await reversePolicy(supabase, nation, targetLaw.policies, targetLaw.passed_tick, currentTick);
-                    await supabase.from('active_laws').delete().eq('id', art.repeal_active_law_id);
-                    console.log(`[enactBill] Repealed active law ${art.repeal_active_law_id} (${policy.policy_name})`);
+                    const { error: delErr } = await supabase.from('active_laws').delete().eq('id', art.repeal_active_law_id);
+                    if (delErr) {
+                        console.error(`[enactBill] Failed to delete repealed law ${art.repeal_active_law_id}:`, delErr.message);
+                    } else {
+                        console.log(`[enactBill] Repealed active law ${art.repeal_active_law_id} (${policy.policy_name})`);
+                    }
+                } else {
+                    console.error(`[enactBill] Repeal article targets active_law ${art.repeal_active_law_id} but law not found or has no policy`);
                 }
                 continue;
             }
