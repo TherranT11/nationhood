@@ -23,45 +23,93 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════
-     WRITE OP-ED MODAL
+     WRITE OP-ED — NEWSPAPER-STYLE EDITOR
      ═══════════════════════════════════════════════════ -->
-<div class="modal-overlay" id="oped-modal" style="display:none;">
-  <div class="modal-content" style="max-width:640px;width:95%;">
-    <div class="modal-header">
-      <div class="modal-title">Write Op-Ed <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;margin-left:8px;">Cost: 1 AP</span></div>
-      <button class="modal-close" id="oped-close-btn">&times;</button>
-    </div>
-    <div style="padding:20px;">
-      <div style="margin-bottom:16px;">
-        <label class="oped-label">Headline</label>
-        <input type="text" id="oped-headline" class="oped-input" placeholder="e.g. Why Valdoria Must Invest in Education Now" maxlength="120">
-        <div class="oped-char-count"><span id="oped-headline-count">0</span>/120</div>
+<div class="np-oped-overlay" id="oped-modal">
+  <div class="np-oped-editor">
+
+    <!-- Editor Header -->
+    <div class="np-oped-editor__header">
+      <div class="np-oped-editor__header-left">
+        <div class="np-oped-editor__section-tag">Opinion</div>
+        <div class="np-oped-editor__title">Letters to the Editor</div>
       </div>
-      <div style="margin-bottom:16px;">
-        <label class="oped-label">Body</label>
-        <textarea id="oped-body" class="oped-textarea" placeholder="Write your party's opinion piece here. This will be published in the next edition of The Cruceran..." maxlength="800" rows="6"></textarea>
-        <div class="oped-char-count"><span id="oped-body-count">0</span>/800</div>
-      </div>
-      <div style="margin-bottom:16px;">
-        <label class="oped-label">Topic</label>
-        <select id="oped-topic" class="oped-select">
-          <option value="domestic">Domestic Policy</option>
-          <option value="economy">Economy</option>
-          <option value="international">International Affairs</option>
-          <option value="defence">Defence & Security</option>
-          <option value="society">Society & Culture</option>
-        </select>
-      </div>
-      <div class="oped-preview-box" id="oped-preview" style="display:none;">
-        <div class="oped-preview-label">Preview</div>
-        <div id="oped-preview-content"></div>
+      <div class="np-oped-editor__header-right">
+        <div class="np-oped-editor__cost">
+          <span class="np-oped-editor__cost-icon">&#9998;</span>
+          <span>1 Action Point</span>
+        </div>
+        <button class="np-oped-editor__close" id="oped-close-btn" title="Close">&times;</button>
       </div>
     </div>
-    <div class="modal-footer">
-      <div id="oped-error" style="color:var(--red);font-size:0.8rem;margin-right:auto;display:none;"></div>
-      <button class="btn-cancel" id="oped-cancel-btn">Cancel</button>
-      <button class="btn-submit" id="oped-submit-btn" disabled>Publish Op-Ed (1 AP)</button>
+
+    <!-- Decorative rule -->
+    <div class="np-oped-editor__rule"></div>
+
+    <!-- Two-column layout: Editor + Preview -->
+    <div class="np-oped-editor__body">
+
+      <!-- Left: Form -->
+      <div class="np-oped-editor__form">
+        <div class="np-oped-editor__field">
+          <label class="np-oped-editor__label">Headline</label>
+          <input type="text" id="oped-headline" class="np-oped-editor__headline-input"
+                 placeholder="A bold opinion deserves a bold headline..."
+                 maxlength="120" autocomplete="off">
+          <div class="np-oped-editor__charcount"><span id="oped-headline-count">0</span> / 120</div>
+        </div>
+
+        <div class="np-oped-editor__field">
+          <label class="np-oped-editor__label">Your Argument</label>
+          <textarea id="oped-body" class="np-oped-editor__body-input"
+                    placeholder="State your party's position. Make your case to the citizens. The Cruceran editorial board will review all submissions for the next edition..."
+                    maxlength="800" rows="10"></textarea>
+          <div class="np-oped-editor__charcount"><span id="oped-body-count">0</span> / 800</div>
+        </div>
+
+        <div class="np-oped-editor__field">
+          <label class="np-oped-editor__label">Section</label>
+          <select id="oped-topic" class="np-oped-editor__topic-select">
+            <option value="domestic">Domestic Policy</option>
+            <option value="economy">Economy &amp; Finance</option>
+            <option value="international">International Affairs</option>
+            <option value="defence">Defence &amp; Security</option>
+            <option value="society">Society &amp; Culture</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Right: Live Preview -->
+      <div class="np-oped-editor__preview-pane">
+        <div class="np-oped-editor__preview-masthead">
+          <div class="np-oped-editor__preview-masthead-pre">Preview</div>
+          <div class="np-oped-editor__preview-masthead-title">THE CRUCERAN</div>
+          <div class="np-oped-editor__preview-masthead-sub">Opinion Section</div>
+        </div>
+        <div class="np-oped-editor__preview-card" id="oped-preview-content">
+          <div class="np-opinion-card" style="margin:0;border:none;background:transparent;padding:0;">
+            <div class="np-opinion-card__label">Opinion</div>
+            <h3 class="np-opinion-card__headline">Your headline will appear here...</h3>
+            <p class="np-opinion-card__body" style="color:var(--np-text-light);font-style:italic;">Start writing to see how your op-ed will look in The Cruceran.</p>
+            <div class="np-opinion-card__author">— Your Party</div>
+          </div>
+        </div>
+      </div>
+
     </div>
+
+    <!-- Footer -->
+    <div class="np-oped-editor__footer">
+      <div class="np-oped-editor__error" id="oped-error"></div>
+      <div class="np-oped-editor__footer-actions">
+        <button class="np-oped-editor__btn-cancel" id="oped-cancel-btn">Discard</button>
+        <button class="np-oped-editor__btn-submit" id="oped-submit-btn" disabled>
+          <span class="np-oped-editor__btn-submit-text">Submit to Editor</span>
+          <span class="np-oped-editor__btn-submit-cost">1 AP</span>
+        </button>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -338,7 +386,7 @@ ${heroEvent && heroEvent.priority <= PRIORITY.CRISIS ? `
 
   // Write Op-Ed button
   document.getElementById('write-oped-btn')?.addEventListener('click', () => {
-    document.getElementById('oped-modal').style.display = 'flex';
+    if (window._openOpEdModal) window._openOpEdModal();
   });
 }
 
@@ -623,83 +671,96 @@ function filterByTab(tab, events, opeds) {
 /* ══════════════════════════════════════════════════════
    OP-ED MODAL
    ══════════════════════════════════════════════════════ */
+let _opedModalInitialized = false;
+
 function setupOpEdModal(faction, nation, shard) {
+  // Prevent duplicate listeners — only bind once
+  if (_opedModalInitialized) return;
+  _opedModalInitialized = true;
+
   const modal = document.getElementById('oped-modal');
   const headline = document.getElementById('oped-headline');
-  const body = document.getElementById('oped-body');
+  const bodyEl = document.getElementById('oped-body');
   const topic = document.getElementById('oped-topic');
   const submitBtn = document.getElementById('oped-submit-btn');
+  const submitText = submitBtn.querySelector('.np-oped-editor__btn-submit-text');
   const cancelBtn = document.getElementById('oped-cancel-btn');
   const closeBtn = document.getElementById('oped-close-btn');
   const errorEl = document.getElementById('oped-error');
   const headlineCount = document.getElementById('oped-headline-count');
   const bodyCount = document.getElementById('oped-body-count');
-  const previewBox = document.getElementById('oped-preview');
   const previewContent = document.getElementById('oped-preview-content');
 
   function validate() {
     const h = headline.value.trim();
-    const b = body.value.trim();
+    const b = bodyEl.value.trim();
     submitBtn.disabled = h.length < 10 || b.length < 30;
 
     // Update char counts
     headlineCount.textContent = headline.value.length;
-    bodyCount.textContent = body.value.length;
+    bodyCount.textContent = bodyEl.value.length;
 
-    // Update preview
-    if (h.length > 0 || b.length > 0) {
-      previewBox.style.display = 'block';
-      previewContent.innerHTML = `
-        <div class="np-opinion-card" style="margin:0;border:none;background:transparent;padding:0;">
-          <div class="np-opinion-card__label">Opinion</div>
-          <h3 class="np-opinion-card__headline">${escapeHtml(h || 'Your headline here...')}</h3>
-          <p class="np-opinion-card__body">${escapeHtml(b || 'Your opinion piece will appear here...')}</p>
-          <div class="np-opinion-card__author">— ${escapeHtml(faction.faction_name || 'Your Party')} (${escapeHtml(faction.abbreviation || '?')})</div>
-        </div>
-      `;
-    } else {
-      previewBox.style.display = 'none';
-    }
+    // Update live preview
+    previewContent.innerHTML = `
+      <div class="np-opinion-card" style="margin:0;border:none;background:transparent;padding:0;">
+        <div class="np-opinion-card__label">Opinion</div>
+        <h3 class="np-opinion-card__headline">${escapeHtml(h || 'Your headline will appear here...')}</h3>
+        <p class="np-opinion-card__body"${!b ? ' style="color:var(--np-text-light);font-style:italic;"' : ''}>${escapeHtml(b || 'Start writing to see how your op-ed will look in The Cruceran.')}</p>
+        <div class="np-opinion-card__author">— ${escapeHtml(faction.faction_name || 'Your Party')} (${escapeHtml(faction.abbreviation || '?')})</div>
+      </div>
+    `;
   }
 
   headline.addEventListener('input', validate);
-  body.addEventListener('input', validate);
+  bodyEl.addEventListener('input', validate);
+
+  function openModal() {
+    modal.classList.add('np-oped-overlay--open');
+    document.body.style.overflow = 'hidden';
+    headline.focus();
+  }
 
   function closeModal() {
-    modal.style.display = 'none';
-    errorEl.style.display = 'none';
+    modal.classList.remove('np-oped-overlay--open');
+    document.body.style.overflow = '';
+    errorEl.textContent = '';
+    errorEl.classList.remove('np-oped-editor__error--visible');
   }
+
   cancelBtn.addEventListener('click', closeModal);
   closeBtn.addEventListener('click', closeModal);
   modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 
+  // Expose openModal for the Write Op-Ed button (re-bound after each render)
+  window._openOpEdModal = openModal;
+
   submitBtn.addEventListener('click', async () => {
     const h = headline.value.trim();
-    const b = body.value.trim();
+    const b = bodyEl.value.trim();
     const t = topic.value;
 
     if (h.length < 10) {
       errorEl.textContent = 'Headline must be at least 10 characters.';
-      errorEl.style.display = 'block';
+      errorEl.classList.add('np-oped-editor__error--visible');
       return;
     }
     if (b.length < 30) {
       errorEl.textContent = 'Body must be at least 30 characters.';
-      errorEl.style.display = 'block';
+      errorEl.classList.add('np-oped-editor__error--visible');
       return;
     }
 
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Publishing...';
-    errorEl.style.display = 'none';
+    submitText.textContent = 'Submitting...';
+    errorEl.classList.remove('np-oped-editor__error--visible');
 
     // Deduct 1 AP
     const apResult = await deductAP(_supabase, faction.id, 1);
     if (!apResult.success) {
       errorEl.textContent = apResult.error || 'Insufficient AP.';
-      errorEl.style.display = 'block';
+      errorEl.classList.add('np-oped-editor__error--visible');
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Publish Op-Ed (1 AP)';
+      submitText.textContent = 'Submit to Editor';
       return;
     }
 
@@ -716,9 +777,9 @@ function setupOpEdModal(faction, nation, shard) {
 
     if (error) {
       errorEl.textContent = 'Failed to publish: ' + error.message;
-      errorEl.style.display = 'block';
+      errorEl.classList.add('np-oped-editor__error--visible');
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Publish Op-Ed (1 AP)';
+      submitText.textContent = 'Submit to Editor';
       console.error('Op-ed insert failed:', error);
       return;
     }
@@ -726,19 +787,17 @@ function setupOpEdModal(faction, nation, shard) {
     // Success — close modal and refresh
     closeModal();
     headline.value = '';
-    body.value = '';
+    bodyEl.value = '';
     headlineCount.textContent = '0';
     bodyCount.textContent = '0';
-    previewBox.style.display = 'none';
-    submitBtn.textContent = 'Publish Op-Ed (1 AP)';
+    submitText.textContent = 'Submit to Editor';
+    validate(); // reset preview
 
-    // Reload op-eds
+    // Reload and re-render
     _opeds = await loadOpEds(nation.id, shard);
-    // Re-render
     const parties = await loadParties(nation.id);
     _events = await loadEvents(nation.id, shard);
     renderNewspaper(nation, faction, shard, _events, _opeds, parties);
-    setupOpEdModal(faction, nation, shard);
   });
 }
 </script>

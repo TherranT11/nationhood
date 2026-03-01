@@ -1614,17 +1614,27 @@ function renderPolicyOptions(policies, containerId, buttonId) {
         const clickAction = isEnacted
             ? `selectRepealPolicy('${policy.id}')`
             : (isPending ? '' : `selectPolicyOption('${policy.id}','${buttonId}')`);
-        // Show reversed stat effects for enacted policies
-        let repealEffectHTML = '';
-        if (isEnacted && policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
-            repealEffectHTML = '<div style="margin-top:4px;font-size:0.75rem;color:#aaa;">Reverses: ' +
-                policy.stat_effects.map(e => {
-                    const revDir = e.direction === 'up' ? '↓' : '↑';
-                    const cls = e.direction === 'up' ? 'effect-down' : 'effect-up';
-                    return `<span class="${cls}">${revDir} ${(e.stat_key || '').replace(/_/g, ' ')}</span>`;
-                }).join(', ') + '</div>';
+        // Show reversed stat effects and cost savings for enacted policies
+        let repealInfoHTML = '';
+        if (isEnacted) {
+            const repealEffects = (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0)
+                ? policy.stat_effects
+                : (policy.target_stat ? [{ stat_key: policy.target_stat, direction: (policy.stat_direction || 'UP').toLowerCase() }] : []);
+            if (repealEffects.length > 0) {
+                repealInfoHTML += '<div style="margin-top:4px;font-size:0.75rem;color:#aaa;">Reverses: ' +
+                    repealEffects.map(e => {
+                        const revDir = e.direction === 'up' ? '↓' : '↑';
+                        const cls = e.direction === 'up' ? 'effect-down' : 'effect-up';
+                        return `<span class="${cls}">${revDir} ${formatStatName(e.stat_key)}</span>`;
+                    }).join(', ') + '</div>';
+            }
+            const onCost = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
+            if (onCost > 0) {
+                const fmtC = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + m + 'M';
+                repealInfoHTML += `<div style="margin-top:2px;font-size:0.75rem;color:#4CAF50;">Saves ${fmtC(onCost)}/tick if repealed</div>`;
+            }
         }
-        return `<div class="policy-option${opposedClass}${pendingClass}${enactedClass}" data-policy-id="${policy.id}" onclick="${clickAction}"><div class="policy-option-name">${escapeHtml(policy.policy_name)} ${ideoHTML} ${opposedBadge}${pendingBadge}${enactedBadge}</div><div class="policy-option-desc">${escapeHtml(policy.description || '')}</div><div class="policy-option-effects">${effectHTML}</div>${repealEffectHTML}${opposedWarn}</div>`;
+        return `<div class="policy-option${opposedClass}${pendingClass}${enactedClass}" data-policy-id="${policy.id}" onclick="${clickAction}"><div class="policy-option-name">${escapeHtml(policy.policy_name)} ${ideoHTML} ${opposedBadge}${pendingBadge}${enactedBadge}</div><div class="policy-option-desc">${escapeHtml(policy.description || '')}</div><div class="policy-option-effects">${effectHTML}</div>${repealInfoHTML}${opposedWarn}</div>`;
     }).join('');
 }
 
@@ -1758,18 +1768,35 @@ function renderDraftArticles() {
                 const colorClass = getIdeologyChipClass(i, factionIdeology);
                 return `<span class="article-ideology ${colorClass}">${i}</span>`;
             }).join(' ');
-            // Show reversed stat effects
-            let reversalHTML = '';
+            // Show reversed stat effects with colored arrows
             const effects = p.stat_effects && Array.isArray(p.stat_effects) && p.stat_effects.length > 0
                 ? p.stat_effects
                 : (p.target_stat ? [{ stat_key: p.target_stat, direction: (p.stat_direction || 'UP').toLowerCase() }] : []);
+            let reversalHTML = '';
             if (effects.length > 0) {
-                reversalHTML = ' · Reverses: ' + effects.map(e => {
+                reversalHTML = '<div style="margin-top:6px;font-size:0.8rem;"><span style="color:#ccc;font-weight:600;">Stat Reversals:</span> ' + effects.map(e => {
                     const revDir = e.direction === 'up' ? '↓' : '↑';
-                    return `${revDir} ${(e.stat_key || '').replace(/_/g, ' ')}`;
-                }).join(', ');
+                    const cls = e.direction === 'up' ? 'effect-down' : 'effect-up';
+                    return `<span class="${cls}">${revDir} ${formatStatName(e.stat_key)}</span>`;
+                }).join(', ') + '</div>';
             }
-            return `<div class="draft-article-card" style="border-left:3px solid #ff4444;"><div class="draft-article-info"><div class="draft-article-num">Article ${art.articleNumber} — <span style="color:#ff4444;">Repeal</span></div><div class="draft-article-name">${escapeHtml(p.policy_name)} ${ideoHTML} <span class="opposed-badge" style="background:#ff4444;color:#fff;">REPEAL</span></div><div class="draft-article-meta">${escapeHtml(p.description || '')}${reversalHTML}</div></div><button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button></div>`;
+            // Show cost savings from repealing
+            const onCost = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
+            const fmtCost = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + m + 'M';
+            let savingsHTML = '';
+            if (onCost > 0) {
+                savingsHTML = `<div style="margin-top:4px;font-size:0.8rem;color:#4CAF50;font-weight:600;">Budget Savings: ${fmtCost(onCost)}/tick recovered</div>`;
+            }
+            return `<div class="draft-article-card" style="border-left:3px solid #ff4444;">
+                <div class="draft-article-info">
+                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:#ff4444;">REPEAL</span></div>
+                    <div class="draft-article-name">${escapeHtml(p.policy_name)} ${ideoHTML} <span class="opposed-badge" style="background:#ff4444;color:#fff;">REPEAL</span></div>
+                    <div class="draft-article-meta">${escapeHtml(p.description || '')}</div>
+                    ${reversalHTML}
+                    ${savingsHTML}
+                </div>
+                <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+            </div>`;
         }
         const ideos = art.policy.ideologies || (art.policy.ideology ? [art.policy.ideology] : []);
         const ideoHTML = ideos.map(i => {
@@ -2356,6 +2383,7 @@ window.toggleMinorSector = toggleMinorSector;
 window.rescindLaw = rescindLaw;
 window.removeArticle = removeArticle;
 window.selectPolicyOption = selectPolicyOption;
+window.selectRepealPolicy = selectRepealPolicy;
 window.signBill = signBill;
 window.vetoBill = vetoBill;
 window.vetoDecree = vetoDecree;

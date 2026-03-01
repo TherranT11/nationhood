@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Valdorian — Template Manager</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep: #0d1117;
+    --bg-base: #131a24;
+    --bg-surface: #1a2332;
+    --bg-raised: #202d3f;
+    --bg-hover: #263347;
+    --bg-input: #0f1923;
+    --border-subtle: #1e2d3d;
+    --border-medium: #2a3a4e;
+    --border-bright: #3a4f6a;
+    --border-focus: #d4a844;
+    --text-primary: #e0dcd4;
+    --text-secondary: #8b95a5;
+    --text-muted: #5a6578;
+    --text-bright: #f5f0e8;
+    --text-inverse: #0d1117;
+    --accent-gold: #d4a844;
+    --accent-gold-dim: #a6842e;
+    --accent-gold-bg: rgba(212,168,68,0.08);
+    --accent-gold-bg-hover: rgba(212,168,68,0.14);
+    --tag-politics: #4A9EFF;
+    --tag-economy: #4ADE80;
+    --tag-military: #F87171;
+    --tag-diplomacy: #A78BFA;
+    --tag-society: #FBBF24;
+    --tag-sport: #2DD4BF;
+    --tag-opinion: #94A3B8;
+    --tier-1: #F87171;
+    --tier-2: #FBBF24;
+    --tier-3: #94A3B8;
+    --success: #4ADE80;
+    --warning: #FBBF24;
+    --danger: #F87171;
+    --font-mono: 'JetBrains Mono', monospace;
+    --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+    --radius-sm: 3px;
+    --radius-md: 5px;
+    --radius-lg: 8px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    height: 100vh;
+  }
+  .app {
+    display: grid;
+    grid-template-columns: 260px 1fr 400px;
+    grid-template-rows: 48px 1fr;
+    height: 100vh;
+  }
+  /* ═══ TOP BAR ═══ */
+  .topbar {
+    grid-column: 1 / -1;
+    background: var(--bg-base);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+  }
+  .topbar__brand {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent-gold);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .topbar__brand::before { content: '\00A7'; font-size: 16px; opacity: 0.6; }
+  .topbar__divider { width: 1px; height: 20px; background: var(--border-medium); }
+  .topbar__nav { display: flex; gap: 2px; }
+  .topbar__tab {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+    letter-spacing: 0.04em; padding: 6px 14px; border-radius: var(--radius-sm);
+    cursor: pointer; color: var(--text-secondary); transition: all 0.12s ease;
+    border: 1px solid transparent; user-select: none;
+  }
+  .topbar__tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+  .topbar__tab--active { color: var(--accent-gold); background: var(--accent-gold-bg); border-color: rgba(212,168,68,0.2); }
+  .topbar__stats {
+    margin-left: auto; display: flex; gap: 20px;
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+  }
+  .topbar__stat-value { color: var(--text-secondary); font-weight: 600; }
+  .topbar__back {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    text-decoration: none; margin-left: 12px; padding: 4px 10px;
+    border: 1px solid var(--border-medium); border-radius: var(--radius-sm);
+    transition: all 0.12s;
+  }
+  .topbar__back:hover { color: var(--text-primary); border-color: var(--border-bright); }
+  /* ═══ SIDEBAR ═══ */
+  .sidebar {
+    background: var(--bg-base);
+    border-right: 1px solid var(--border-subtle);
+    overflow-y: auto;
+    padding: 12px 0;
+  }
+  .sidebar__section { margin-bottom: 8px; }
+  .sidebar__section-header {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted);
+    padding: 8px 16px 6px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .sidebar__section-count { font-size: 10px; color: var(--text-muted); font-weight: 400; opacity: 0.6; }
+  .sidebar__item {
+    display: flex; align-items: center; gap: 10px; padding: 7px 16px;
+    cursor: pointer; font-size: 13px; color: var(--text-secondary);
+    transition: all 0.1s ease; border-left: 2px solid transparent;
+  }
+  .sidebar__item:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .sidebar__item--active { background: var(--accent-gold-bg); color: var(--accent-gold); border-left-color: var(--accent-gold); }
+  .sidebar__item-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .sidebar__item-name { flex: 1; font-family: var(--font-ui); font-size: 13px; }
+  .sidebar__item-count {
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+    background: var(--bg-surface); padding: 1px 6px; border-radius: var(--radius-sm);
+  }
+  .sidebar__item-tier {
+    font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+    padding: 1px 5px; border-radius: var(--radius-sm); letter-spacing: 0.05em;
+  }
+  /* ═══ MAIN CONTENT ═══ */
+  .main { background: var(--bg-deep); overflow-y: auto; display: flex; flex-direction: column; }
+  .main__header {
+    padding: 16px 24px; border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-base); display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0; position: sticky; top: 0; z-index: 10;
+  }
+  .main__header-left { display: flex; align-items: center; gap: 12px; }
+  .main__title { font-family: var(--font-mono); font-size: 15px; font-weight: 600; color: var(--text-bright); }
+  .main__tier-badge {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: var(--radius-sm); letter-spacing: 0.06em;
+  }
+  .tier-1 { background: rgba(248,113,113,0.15); color: var(--tier-1); }
+  .tier-2 { background: rgba(251,191,36,0.15); color: var(--tier-2); }
+  .tier-3 { background: rgba(148,163,184,0.15); color: var(--tier-3); }
+  .main__actions { display: flex; gap: 8px; }
+  .btn {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+    padding: 6px 14px; border: 1px solid var(--border-medium); border-radius: var(--radius-sm);
+    background: var(--bg-surface); color: var(--text-secondary); cursor: pointer;
+    transition: all 0.12s ease; letter-spacing: 0.02em; display: flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-bright); }
+  .btn--primary { background: var(--accent-gold); color: var(--text-inverse); border-color: var(--accent-gold); }
+  .btn--primary:hover { background: #e0b44e; border-color: #e0b44e; color: var(--text-inverse); }
+  .btn--danger { color: var(--danger); border-color: rgba(248,113,113,0.2); }
+  .btn--danger:hover { background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.3); color: var(--danger); }
+  .main__subtabs {
+    display: flex; gap: 0; padding: 0 24px; border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-base); flex-shrink: 0; position: sticky; top: 53px; z-index: 9;
+  }
+  .main__subtab {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+    padding: 10px 16px; cursor: pointer; color: var(--text-muted);
+    border-bottom: 2px solid transparent; transition: all 0.12s ease;
+    user-select: none; display: flex; align-items: center; gap: 6px;
+  }
+  .main__subtab:hover { color: var(--text-secondary); }
+  .main__subtab--active { color: var(--accent-gold); border-bottom-color: var(--accent-gold); }
+  .main__subtab-count {
+    font-size: 9px; background: var(--bg-surface); padding: 1px 5px;
+    border-radius: 10px; color: var(--text-muted);
+  }
+  .main__subtab--active .main__subtab-count { background: var(--accent-gold-bg); color: var(--accent-gold-dim); }
+  .template-list { padding: 16px 24px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .template-card {
+    background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); padding: 14px 18px; cursor: pointer;
+    transition: all 0.12s ease; position: relative; animation: fadeIn 0.15s ease;
+  }
+  .template-card:hover { background: var(--bg-raised); border-color: var(--border-medium); }
+  .template-card--active { border-color: var(--accent-gold); background: var(--accent-gold-bg); box-shadow: 0 0 0 1px rgba(212,168,68,0.15); }
+  .template-card__header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .template-card__id {
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+    background: var(--bg-input); padding: 2px 6px; border-radius: var(--radius-sm);
+  }
+  .template-card__conditions { font-family: var(--font-mono); font-size: 10px; color: var(--tag-diplomacy); margin-left: auto; }
+  .template-card__weight {
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+    display: flex; align-items: center; gap: 3px;
+  }
+  .template-card__weight .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--accent-gold); }
+  .template-card__weight .dot--empty { background: var(--border-medium); }
+  .template-card__text {
+    font-family: var(--font-mono); font-size: 12px; line-height: 1.6; color: var(--text-primary);
+  }
+  .template-card__text .var {
+    color: var(--accent-gold); background: var(--accent-gold-bg);
+    padding: 1px 4px; border-radius: 2px; font-weight: 500;
+  }
+  .template-card__meta {
+    margin-top: 8px; display: flex; gap: 12px;
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+  }
+  /* ═══ EDITOR ═══ */
+  .editor {
+    background: var(--bg-base); border-left: 1px solid var(--border-subtle);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .editor__header {
+    padding: 12px 20px; border-bottom: 1px solid var(--border-subtle);
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  }
+  .editor__header-title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted);
+  }
+  .editor__body { flex: 1; overflow-y: auto; padding: 16px 20px; }
+  .editor__section { margin-bottom: 20px; }
+  .editor__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted);
+    margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+  }
+  .editor__label-hint {
+    font-weight: 400; letter-spacing: 0; text-transform: none;
+    color: var(--text-muted); opacity: 0.6; font-size: 10px;
+  }
+  .editor__input {
+    width: 100%; font-family: var(--font-mono); font-size: 12px; line-height: 1.6;
+    padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm); color: var(--text-primary); resize: vertical;
+    transition: border-color 0.12s ease;
+  }
+  .editor__input:focus { outline: none; border-color: var(--accent-gold); box-shadow: 0 0 0 2px rgba(212,168,68,0.1); }
+  .editor__input::placeholder { color: var(--text-muted); opacity: 0.5; }
+  .editor__input--sm { padding: 6px 10px; font-size: 12px; }
+  .editor__row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  select.editor__input {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a6578'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center;
+    padding-right: 28px; cursor: pointer;
+  }
+  .condition-row {
+    display: grid; grid-template-columns: 1fr 80px 1fr 28px; gap: 6px;
+    margin-bottom: 6px; align-items: center;
+  }
+  .condition-remove {
+    width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 14px; color: var(--text-muted);
+    background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm);
+    cursor: pointer; transition: all 0.1s ease;
+  }
+  .condition-remove:hover { color: var(--danger); background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.2); }
+  .add-condition {
+    font-family: var(--font-mono); font-size: 11px; color: var(--accent-gold-dim);
+    cursor: pointer; padding: 4px 0; display: flex; align-items: center; gap: 4px;
+    transition: color 0.1s ease; background: none; border: none;
+  }
+  .add-condition:hover { color: var(--accent-gold); }
+  .var-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .var-chip {
+    font-family: var(--font-mono); font-size: 10px; color: var(--accent-gold);
+    background: var(--accent-gold-bg); padding: 2px 8px; border-radius: 10px;
+    cursor: pointer; transition: all 0.1s ease; border: 1px solid transparent; user-select: none;
+  }
+  .var-chip:hover { background: var(--accent-gold-bg-hover); border-color: rgba(212,168,68,0.2); }
+  /* Preview */
+  .preview__card {
+    background: var(--bg-deep); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); overflow: hidden;
+  }
+  .preview__card-header {
+    padding: 12px 16px; border-bottom: 1px solid var(--border-subtle);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .preview__tier-label {
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 6px; border-radius: 2px;
+  }
+  .preview__section-tag {
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .preview__card-body { padding: 16px; }
+  .preview__headline {
+    font-family: Georgia, serif; font-size: 22px; font-weight: 700;
+    line-height: 1.25; color: var(--text-bright); margin-bottom: 10px;
+  }
+  .preview__byline {
+    font-family: var(--font-ui); font-size: 11px; color: var(--text-muted);
+    margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle);
+  }
+  .preview__byline strong { color: var(--text-secondary); }
+  .preview__lede {
+    font-family: var(--font-ui); font-size: 13px; line-height: 1.6; color: var(--text-secondary);
+  }
+  .editor__footer {
+    padding: 12px 20px; border-top: 1px solid var(--border-subtle);
+    display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+  }
+  .editor__footer-left { display: flex; gap: 8px; }
+  /* ═══ AUTH ═══ */
+  .auth-overlay {
+    position: fixed; inset: 0; background: var(--bg-deep);
+    display: flex; align-items: center; justify-content: center; z-index: 1000;
+  }
+  .auth-box {
+    background: var(--bg-base); border: 1px solid var(--border-medium);
+    border-radius: var(--radius-lg); padding: 40px; max-width: 380px; width: 100%;
+    text-align: center;
+  }
+  .auth-box h1 {
+    font-family: var(--font-mono); font-size: 14px; font-weight: 600;
+    color: var(--accent-gold); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 24px;
+  }
+  .auth-box input {
+    width: 100%; padding: 10px 14px; background: var(--bg-input);
+    border: 1px solid var(--border-medium); border-radius: var(--radius-sm);
+    color: var(--text-primary); font-family: var(--font-mono); font-size: 13px;
+    margin-bottom: 16px; text-align: center;
+  }
+  .auth-box input:focus { outline: none; border-color: var(--accent-gold); }
+  .auth-error { color: var(--danger); font-size: 12px; margin-top: 8px; display: none; }
+  /* ═══ TOAST ═══ */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; padding: 10px 20px;
+    border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 12px;
+    z-index: 2000; transition: opacity 0.3s, transform 0.3s;
+    opacity: 0; transform: translateY(8px); pointer-events: none;
+  }
+  .toast--visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .toast--success { background: rgba(74,222,128,0.15); border: 1px solid rgba(74,222,128,0.3); color: var(--success); }
+  .toast--error { background: rgba(248,113,113,0.15); border: 1px solid rgba(248,113,113,0.3); color: var(--danger); }
+  .toast--info { background: rgba(212,168,68,0.15); border: 1px solid rgba(212,168,68,0.3); color: var(--accent-gold); }
+  /* ═══ EMPTY STATE ═══ */
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; height: 300px; color: var(--text-muted);
+    text-align: center; gap: 8px;
+  }
+  .empty-state__icon { font-size: 32px; opacity: 0.3; margin-bottom: 4px; }
+  .empty-state__text { font-family: var(--font-mono); font-size: 13px; }
+  .empty-state__hint { font-family: var(--font-mono); font-size: 11px; opacity: 0.6; }
+  /* ═══ WORD POOL / REPORTER VIEWS ═══ */
+  .pool-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px 24px; }
+  .pool-card {
+    background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); padding: 14px 16px;
+  }
+  .pool-card__title {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px;
+  }
+  .pool-card__items { display: flex; flex-wrap: wrap; gap: 4px; }
+  .pool-word {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary);
+    background: var(--bg-input); padding: 3px 10px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+  }
+  .view-panel { grid-column: 2 / 4; overflow-y: auto; }
+  .reporter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; padding: 16px 24px; }
+  .reporter-card { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px 16px; }
+  .reporter-card__section {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .reporter-card__name { font-size: 13px; color: var(--text-primary); padding: 4px 0; }
+  /* ═══ SCROLLBAR ═══ */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-medium); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-bright); }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- Auth -->
+<div class="auth-overlay" id="auth-overlay">
+  <div class="auth-box">
+    <h1>Valdorian Template Manager</h1>
+    <input type="password" id="auth-password" placeholder="Admin password" />
+    <button class="btn btn--primary" style="width:100%;justify-content:center;" onclick="doAuth()">Authenticate</button>
+    <div class="auth-error" id="auth-error">Invalid password.</div>
+    <div style="margin-top:16px;"><a href="admin.html" style="color:var(--text-muted);font-size:12px;text-decoration:none;">&larr; Back to Admin</a></div>
+  </div>
+</div>
+
+<!-- App -->
+<div class="app hidden" id="app">
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="topbar__brand">Valdorian Template Manager</div>
+    <div class="topbar__divider"></div>
+    <div class="topbar__nav" id="topbar-nav">
+      <div class="topbar__tab topbar__tab--active" data-view="templates">Templates</div>
+      <div class="topbar__tab" data-view="wordpools">Word Pools</div>
+      <div class="topbar__tab" data-view="reporters">Reporters</div>
+    </div>
+    <div class="topbar__stats" id="topbar-stats"></div>
+    <a href="admin.html" class="topbar__back">&larr; Admin</a>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar"></div>
+
+  <!-- Main -->
+  <div class="main" id="main-panel">
+    <div class="main__header" id="main-header"></div>
+    <div class="main__subtabs" id="main-subtabs"></div>
+    <div class="template-list" id="template-list"></div>
+  </div>
+
+  <!-- Editor -->
+  <div class="editor" id="editor-panel"></div>
+
+  <!-- Alt views (word pools, reporters) — spans main+editor columns -->
+  <div class="view-panel hidden" id="view-panel"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import {
+    SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES,
+    BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, WORD_POOLS,
+    OPINION_TRIGGERS, REPORTERS, pickReporter,
+    selectTemplate, fillTemplate, generateArticle,
+} from './js/game-common.js';
+
+// ═══════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════
+
+const ADMIN_PASSWORD = 'nationhood2000';
+const DB_TABLE = 'valdorian_templates';
+
+let templates = [];          // normalized flat array
+let selectedEvent = null;    // event_type key
+let selectedComponent = 'headline';
+let selectedTemplate = null; // reference into templates[]
+let dbMode = false;
+let currentView = 'templates';
+
+const sectionColors = {};
+for (const [k, v] of Object.entries(SECTIONS)) sectionColors[k] = v.color;
+
+// ═══════════════════════════════════════════════
+// AUTH
+// ═══════════════════════════════════════════════
+
+window.doAuth = function() {
+    const pw = document.getElementById('auth-password').value;
+    if (pw === ADMIN_PASSWORD) {
+        document.getElementById('auth-overlay').classList.add('hidden');
+        document.getElementById('app').classList.remove('hidden');
+        init();
+    } else {
+        document.getElementById('auth-error').style.display = 'block';
+    }
+};
+document.getElementById('auth-password').addEventListener('keypress', e => { if (e.key === 'Enter') doAuth(); });
+
+// ═══════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════
+
+async function init() {
+    loadTemplatesFromConstants();
+    await checkDb();
+    if (dbMode) await loadTemplatesFromDb();
+    setupTopbarNav();
+    renderSidebar();
+    const firstEvent = Object.keys(EVENT_TYPES).sort((a, b) => {
+        const sa = EVENT_TYPES[a].section, sb = EVENT_TYPES[b].section;
+        return sa.localeCompare(sb) || a.localeCompare(b);
+    })[0];
+    selectEvent(firstEvent);
+    updateStats();
+}
+
+// ═══════════════════════════════════════════════
+// DATA LOADING
+// ═══════════════════════════════════════════════
+
+function loadTemplatesFromConstants() {
+    templates = [];
+    for (const [evt, tpls] of Object.entries(HEADLINE_TEMPLATES)) {
+        for (const t of tpls) {
+            templates.push({
+                event_type: evt, component: 'headline', template_id: t.id,
+                template_text: t.template, conditions: t.conditions || [],
+                weight: t.weight || 1, is_required: false,
+                block_category: null, posture: null, description: '', source: 'hardcoded', db_id: null,
+            });
+        }
+    }
+    for (const [evt, tpls] of Object.entries(LEDE_TEMPLATES)) {
+        for (const t of tpls) {
+            templates.push({
+                event_type: evt, component: 'lede', template_id: t.id,
+                template_text: t.template, conditions: t.conditions || [],
+                weight: 1, is_required: false,
+                block_category: null, posture: null, description: '', source: 'hardcoded', db_id: null,
+            });
+        }
+    }
+    for (const [evt, cats] of Object.entries(BODY_BLOCK_TEMPLATES)) {
+        for (const [cat, tpls] of Object.entries(cats)) {
+            for (const t of tpls) {
+                templates.push({
+                    event_type: evt, component: 'body_block', template_id: t.id,
+                    template_text: t.template, conditions: [],
+                    weight: 1, is_required: t.required || false,
+                    block_category: cat, posture: null, description: '', source: 'hardcoded', db_id: null,
+                });
+            }
+        }
+    }
+    for (const [posture, tpls] of Object.entries(QUOTE_TEMPLATES)) {
+        tpls.forEach((text, i) => {
+            templates.push({
+                event_type: '__shared__', component: 'quote',
+                template_id: `quote_${posture}_${String(i + 1).padStart(2, '0')}`,
+                template_text: text, conditions: [], weight: 1, is_required: false,
+                block_category: null, posture, description: '', source: 'hardcoded', db_id: null,
+            });
+        });
+    }
+}
+
+async function checkDb() {
+    try {
+        const { error } = await _supabase.from(DB_TABLE).select('id').limit(1);
+        dbMode = !error;
+    } catch { dbMode = false; }
+}
+
+async function loadTemplatesFromDb() {
+    const { data, error } = await _supabase.from(DB_TABLE).select('*').order('created_at');
+    if (error || !data) return;
+    if (data.length === 0) return; // keep hardcoded if DB is empty
+    // Merge: DB overrides hardcoded by template_id, adds new ones
+    const dbMap = new Map(data.map(d => [d.template_id, d]));
+    for (let i = 0; i < templates.length; i++) {
+        const override = dbMap.get(templates[i].template_id);
+        if (override) {
+            templates[i] = { ...templates[i], ...override, source: 'database', db_id: override.id };
+            dbMap.delete(templates[i].template_id);
+        }
+    }
+    // Add DB-only templates
+    for (const d of dbMap.values()) {
+        templates.push({ ...d, source: 'database', db_id: d.id });
+    }
+    // Remove soft-deleted
+    templates = templates.filter(t => !t.is_deleted);
+}
+
+// ═══════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function escAttr(s) { return String(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
+function getTemplatesFor(evt, comp) {
+    return templates.filter(t => t.event_type === evt && t.component === comp);
+}
+
+function getCountFor(evt) {
+    return templates.filter(t => t.event_type === evt).length;
+}
+
+function getComponentCounts(evt) {
+    const counts = { headline: 0, lede: 0, body_block: 0, quote: 0 };
+    for (const t of templates) {
+        if (t.event_type === evt) counts[t.component] = (counts[t.component] || 0) + 1;
+    }
+    return counts;
+}
+
+function extractVarsFromText(text) {
+    const vars = new Set();
+    const matches = (text || '').matchAll(/\{(\w+)\}/g);
+    for (const m of matches) vars.add(m[1]);
+    return [...vars].sort();
+}
+
+function generateNextId(evt, comp) {
+    const prefix = comp === 'headline' ? 'h' : comp === 'lede' ? 'l' : comp === 'body_block' ? 'b' : 'q';
+    const existing = templates.filter(t => t.event_type === evt && t.component === comp);
+    let maxNum = 0;
+    for (const t of existing) {
+        const m = t.template_id.match(/_(\d+)$/);
+        if (m) maxNum = Math.max(maxNum, parseInt(m[1]));
+    }
+    const shortEvt = evt.replace(/[^a-z]/g, '').slice(0, 8);
+    return `${shortEvt}_${prefix}_${String(maxNum + 1).padStart(2, '0')}`;
+}
+
+function showToast(msg, type = 'info') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = `toast toast--${type} toast--visible`;
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => el.classList.remove('toast--visible'), 2500);
+}
+
+// ═══════════════════════════════════════════════
+// TOP BAR
+// ═══════════════════════════════════════════════
+
+function setupTopbarNav() {
+    document.querySelectorAll('.topbar__tab').forEach(tab => {
+        tab.addEventListener('click', () => switchView(tab.dataset.view));
+    });
+}
+
+function switchView(view) {
+    currentView = view;
+    document.querySelectorAll('.topbar__tab').forEach(t => t.classList.toggle('topbar__tab--active', t.dataset.view === view));
+    const sidebar = document.getElementById('sidebar');
+    const mainPanel = document.getElementById('main-panel');
+    const editorPanel = document.getElementById('editor-panel');
+    const viewPanel = document.getElementById('view-panel');
+
+    if (view === 'templates') {
+        sidebar.classList.remove('hidden');
+        mainPanel.classList.remove('hidden');
+        editorPanel.classList.remove('hidden');
+        viewPanel.classList.add('hidden');
+    } else {
+        sidebar.classList.add('hidden');
+        mainPanel.classList.add('hidden');
+        editorPanel.classList.add('hidden');
+        viewPanel.classList.remove('hidden');
+        if (view === 'wordpools') renderWordPools();
+        else if (view === 'reporters') renderReporters();
+    }
+}
+
+function updateStats() {
+    const h = templates.filter(t => t.component === 'headline').length;
+    const l = templates.filter(t => t.component === 'lede').length;
+    const b = templates.filter(t => t.component === 'body_block').length;
+    const q = templates.filter(t => t.component === 'quote').length;
+    document.getElementById('topbar-stats').innerHTML = `
+        <span>Headlines <span class="topbar__stat-value">${h}</span></span>
+        <span>Ledes <span class="topbar__stat-value">${l}</span></span>
+        <span>Body <span class="topbar__stat-value">${b}</span></span>
+        <span>Quotes <span class="topbar__stat-value">${q}</span></span>
+        ${dbMode ? '<span style="color:var(--success)">DB</span>' : '<span style="color:var(--warning)">In-Memory</span>'}
+    `;
+}
+
+// ═══════════════════════════════════════════════
+// SIDEBAR
+// ═══════════════════════════════════════════════
+
+function renderSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    // Group by section
+    const sectionOrder = ['politics', 'economy', 'military', 'diplomacy', 'society', 'sport', 'opinion'];
+    const groups = {};
+    for (const [key, meta] of Object.entries(EVENT_TYPES)) {
+        const s = meta.section;
+        if (!groups[s]) groups[s] = [];
+        groups[s].push({ key, ...meta, count: getCountFor(key) });
+    }
+
+    let html = '';
+    for (const section of sectionOrder) {
+        const events = groups[section];
+        if (!events) continue;
+        events.sort((a, b) => a.label.localeCompare(b.label));
+        const sectionMeta = SECTIONS[section];
+        html += `<div class="sidebar__section">`;
+        html += `<div class="sidebar__section-header">${esc(sectionMeta.label)}<span class="sidebar__section-count">${events.length}</span></div>`;
+        for (const evt of events) {
+            const active = evt.key === selectedEvent ? ' sidebar__item--active' : '';
+            html += `<div class="sidebar__item${active}" data-event="${escAttr(evt.key)}">`;
+            html += `<span class="sidebar__item-dot" style="background:${sectionMeta.color}"></span>`;
+            html += `<span class="sidebar__item-name">${esc(evt.label)}</span>`;
+            html += `<span class="sidebar__item-count">${evt.count}</span>`;
+            html += `<span class="sidebar__item-tier tier-${evt.tier}">T${evt.tier}</span>`;
+            html += `</div>`;
+        }
+        html += `</div>`;
+    }
+    sidebar.innerHTML = html;
+    sidebar.querySelectorAll('.sidebar__item').forEach(item => {
+        item.addEventListener('click', () => selectEvent(item.dataset.event));
+    });
+}
+
+function selectEvent(evtKey) {
+    selectedEvent = evtKey;
+    selectedTemplate = null;
+    // Update sidebar active state
+    document.querySelectorAll('.sidebar__item').forEach(el => {
+        el.classList.toggle('sidebar__item--active', el.dataset.event === evtKey);
+    });
+    // Pick best default component
+    const counts = getComponentCounts(evtKey);
+    if (counts[selectedComponent] === 0) {
+        selectedComponent = counts.headline > 0 ? 'headline' : counts.lede > 0 ? 'lede' : counts.body_block > 0 ? 'body_block' : 'headline';
+    }
+    renderMainHeader();
+    renderSubtabs();
+    renderTemplateList();
+    renderEditorEmpty();
+}
+
+// ═══════════════════════════════════════════════
+// MAIN HEADER + SUBTABS
+// ═══════════════════════════════════════════════
+
+function renderMainHeader() {
+    const meta = EVENT_TYPES[selectedEvent];
+    if (!meta) return;
+    const sColor = sectionColors[meta.section] || '#888';
+    document.getElementById('main-header').innerHTML = `
+        <div class="main__header-left">
+            <span class="main__title">${esc(meta.label)}</span>
+            <span class="main__tier-badge tier-${meta.tier}">TIER ${meta.tier}</span>
+            <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted)">&mdash; ${esc(meta.section.toUpperCase())}</span>
+        </div>
+        <div class="main__actions">
+            <button class="btn btn--primary" id="btn-new-template">+ New Template</button>
+        </div>
+    `;
+    document.getElementById('btn-new-template').addEventListener('click', createNewTemplate);
+}
+
+function renderSubtabs() {
+    const counts = getComponentCounts(selectedEvent);
+    const tabs = [
+        { key: 'headline', label: 'Headlines' },
+        { key: 'lede', label: 'Ledes' },
+        { key: 'body_block', label: 'Body Blocks' },
+    ];
+    let html = '';
+    for (const tab of tabs) {
+        const active = tab.key === selectedComponent ? ' main__subtab--active' : '';
+        html += `<div class="main__subtab${active}" data-comp="${tab.key}">`;
+        html += `${tab.label} <span class="main__subtab-count">${counts[tab.key] || 0}</span>`;
+        html += `</div>`;
+    }
+    document.getElementById('main-subtabs').innerHTML = html;
+    document.querySelectorAll('.main__subtab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            selectedComponent = tab.dataset.comp;
+            selectedTemplate = null;
+            renderSubtabs();
+            renderTemplateList();
+            renderEditorEmpty();
+        });
+    });
+}
+
+// ═══════════════════════════════════════════════
+// TEMPLATE LIST
+// ═══════════════════════════════════════════════
+
+function renderTemplateList() {
+    const list = document.getElementById('template-list');
+    const filtered = getTemplatesFor(selectedEvent, selectedComponent);
+
+    if (filtered.length === 0) {
+        list.innerHTML = `<div class="empty-state">
+            <div class="empty-state__icon">&#167;</div>
+            <div class="empty-state__text">No ${selectedComponent} templates</div>
+            <div class="empty-state__hint">Click "+ New Template" to create one</div>
+        </div>`;
+        return;
+    }
+
+    let html = '';
+    for (const t of filtered) {
+        const active = selectedTemplate && t.template_id === selectedTemplate.template_id ? ' template-card--active' : '';
+        const condStr = t.conditions.length > 0
+            ? t.conditions.map(c => typeof c === 'string' ? c : `${c.field} ${c.op} ${c.value}`).join(' & ')
+            : 'no conditions';
+        const highlighted = esc(t.template_text).replace(/\{(\w+)\}/g, '<span class="var">{$1}</span>');
+        const maxDots = 3;
+        let dots = '';
+        for (let i = 0; i < maxDots; i++) dots += `<span class="dot${i < t.weight ? '' : ' dot--empty'}"></span>`;
+
+        html += `<div class="template-card${active}" data-tid="${escAttr(t.template_id)}">`;
+        html += `<div class="template-card__header">`;
+        html += `<span class="template-card__id">${esc(t.template_id)}</span>`;
+        if (t.block_category) html += `<span style="font-family:var(--font-mono);font-size:10px;color:var(--tag-economy);background:rgba(74,222,128,0.08);padding:1px 6px;border-radius:2px;">${esc(t.block_category)}</span>`;
+        if (t.is_required) html += `<span style="font-family:var(--font-mono);font-size:10px;color:var(--danger);">REQUIRED</span>`;
+        html += `<span class="template-card__conditions">${esc(condStr)}</span>`;
+        html += `<span class="template-card__weight">${dots}</span>`;
+        html += `</div>`;
+        html += `<div class="template-card__text">${highlighted}</div>`;
+        html += `<div class="template-card__meta">`;
+        html += `<span>Weight: ${t.weight}</span>`;
+        if (t.source === 'database') html += `<span>&middot;</span><span style="color:var(--success)">DB</span>`;
+        html += `</div></div>`;
+    }
+    list.innerHTML = html;
+    list.querySelectorAll('.template-card').forEach(card => {
+        card.addEventListener('click', () => {
+            const t = filtered.find(t => t.template_id === card.dataset.tid);
+            if (t) selectTemplateCard(t);
+        });
+    });
+}
+
+function selectTemplateCard(t) {
+    selectedTemplate = t;
+    document.querySelectorAll('.template-card').forEach(c => {
+        c.classList.toggle('template-card--active', c.dataset.tid === t.template_id);
+    });
+    renderEditor(t);
+}
+
+// ═══════════════════════════════════════════════
+// EDITOR
+// ═══════════════════════════════════════════════
+
+function renderEditorEmpty() {
+    document.getElementById('editor-panel').innerHTML = `
+        <div class="editor__header">
+            <span class="editor__header-title">Edit Template</span>
+        </div>
+        <div class="editor__body">
+            <div class="empty-state">
+                <div class="empty-state__icon">&#9998;</div>
+                <div class="empty-state__text">Select a template</div>
+                <div class="empty-state__hint">Click a template card or create a new one</div>
+            </div>
+        </div>
+    `;
+}
+
+function renderEditor(t) {
+    const meta = EVENT_TYPES[selectedEvent] || {};
+    const section = meta.section || 'politics';
+    const vars = extractVarsFromText(t.template_text);
+    // Add common event vars
+    const commonVars = ['nation_name', 'pm_name', 'party_name', 'leader_name', 'tick', 'date'];
+    const allVars = [...new Set([...vars, ...commonVars])].sort();
+
+    let condHtml = '';
+    if (t.conditions.length === 0) {
+        condHtml = `<div style="color:var(--text-muted);font-family:var(--font-mono);font-size:11px;padding:10px 0;opacity:0.6;text-align:center;border:1px dashed var(--border-medium);border-radius:var(--radius-sm);margin-bottom:8px;">No conditions &mdash; always eligible</div>`;
+    } else {
+        for (let i = 0; i < t.conditions.length; i++) {
+            const c = t.conditions[i];
+            const field = typeof c === 'string' ? c.split(/\s+/)[0] : c.field;
+            const op = typeof c === 'string' ? c.split(/\s+/)[1] : c.op;
+            const val = typeof c === 'string' ? c.split(/\s+/).slice(2).join(' ') : c.value;
+            condHtml += `<div class="condition-row">
+                <input type="text" class="editor__input editor__input--sm cond-field" value="${escAttr(field)}" placeholder="field" />
+                <select class="editor__input editor__input--sm cond-op">
+                    ${['>', '>=', '<', '<=', '==', '!='].map(o => `<option value="${o}" ${o === op ? 'selected' : ''}>${o}</option>`).join('')}
+                </select>
+                <input type="text" class="editor__input editor__input--sm cond-val" value="${escAttr(val)}" placeholder="value" />
+                <button class="condition-remove" data-idx="${i}">&times;</button>
+            </div>`;
+        }
+    }
+
+    const isBodyBlock = t.component === 'body_block';
+
+    const panel = document.getElementById('editor-panel');
+    panel.innerHTML = `
+        <div class="editor__header">
+            <span class="editor__header-title">Edit Template</span>
+        </div>
+        <div class="editor__body">
+            <div class="editor__section">
+                <div class="editor__row">
+                    <div>
+                        <div class="editor__label">Template ID</div>
+                        <input type="text" class="editor__input editor__input--sm" id="ed-id" value="${escAttr(t.template_id)}" />
+                    </div>
+                    <div>
+                        <div class="editor__label">Weight <span class="editor__label-hint">(1-5)</span></div>
+                        <input type="number" class="editor__input editor__input--sm" id="ed-weight" value="${t.weight}" min="1" max="5" />
+                    </div>
+                </div>
+            </div>
+            ${isBodyBlock ? `
+            <div class="editor__section">
+                <div class="editor__row">
+                    <div>
+                        <div class="editor__label">Block Category</div>
+                        <select class="editor__input editor__input--sm" id="ed-block-cat">
+                            ${['context','action','impact_domestic','reaction_support','reaction_oppose','impact_international','historical_context','escalation_warning'].map(c => `<option value="${c}" ${c === t.block_category ? 'selected' : ''}>${c}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <div class="editor__label">Required</div>
+                        <select class="editor__input editor__input--sm" id="ed-required">
+                            <option value="false" ${!t.is_required ? 'selected' : ''}>No (30% chance)</option>
+                            <option value="true" ${t.is_required ? 'selected' : ''}>Yes (always included)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>` : ''}
+            <div class="editor__section">
+                <div class="editor__label">Template Text</div>
+                <textarea class="editor__input" rows="4" id="ed-text" style="font-family:var(--font-mono);font-size:13px">${esc(t.template_text)}</textarea>
+                <div class="editor__label" style="margin-top:8px">Available Variables <span class="editor__label-hint">&mdash; click to insert</span></div>
+                <div class="var-list" id="ed-vars">
+                    ${allVars.map(v => `<span class="var-chip">{${v}}</span>`).join('')}
+                </div>
+            </div>
+            <div class="editor__section">
+                <div class="editor__label">Conditions <span class="editor__label-hint">&mdash; leave empty for default template</span></div>
+                <div id="ed-conditions">${condHtml}</div>
+                <button class="add-condition" id="btn-add-cond">+ Add condition</button>
+            </div>
+            <div class="editor__section">
+                <div class="editor__label">Description <span class="editor__label-hint">&mdash; internal notes</span></div>
+                <input type="text" class="editor__input editor__input--sm" id="ed-desc" value="${escAttr(t.description || '')}" placeholder="Optional description..." />
+            </div>
+            <div class="editor__section">
+                <div class="editor__label">Live Preview</div>
+                <div id="ed-preview"></div>
+            </div>
+        </div>
+        <div class="editor__footer">
+            <div class="editor__footer-left">
+                <button class="btn btn--danger" id="btn-delete">Delete</button>
+                <button class="btn" id="btn-duplicate">Duplicate</button>
+            </div>
+            <button class="btn btn--primary" id="btn-save">Save Changes</button>
+        </div>
+    `;
+
+    // Wire events
+    document.getElementById('btn-save').addEventListener('click', saveCurrentTemplate);
+    document.getElementById('btn-delete').addEventListener('click', deleteCurrentTemplate);
+    document.getElementById('btn-duplicate').addEventListener('click', duplicateCurrentTemplate);
+    document.getElementById('btn-add-cond').addEventListener('click', addConditionRow);
+    panel.querySelectorAll('.condition-remove').forEach(btn => {
+        btn.addEventListener('click', () => removeConditionRow(parseInt(btn.dataset.idx)));
+    });
+    panel.querySelectorAll('.var-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            const ta = document.getElementById('ed-text');
+            const start = ta.selectionStart;
+            const end = ta.selectionEnd;
+            ta.value = ta.value.substring(0, start) + chip.textContent + ta.value.substring(end);
+            ta.focus();
+            ta.setSelectionRange(start + chip.textContent.length, start + chip.textContent.length);
+            updatePreview();
+        });
+    });
+    document.getElementById('ed-text').addEventListener('input', updatePreview);
+    updatePreview();
+}
+
+function addConditionRow() {
+    const container = document.getElementById('ed-conditions');
+    // Remove "no conditions" placeholder if present
+    const placeholder = container.querySelector('[style*="dashed"]');
+    if (placeholder) placeholder.remove();
+    const idx = container.querySelectorAll('.condition-row').length;
+    const row = document.createElement('div');
+    row.className = 'condition-row';
+    row.innerHTML = `
+        <input type="text" class="editor__input editor__input--sm cond-field" value="" placeholder="field" />
+        <select class="editor__input editor__input--sm cond-op">
+            ${['>', '>=', '<', '<=', '==', '!='].map(o => `<option value="${o}">${o}</option>`).join('')}
+        </select>
+        <input type="text" class="editor__input editor__input--sm cond-val" value="" placeholder="value" />
+        <button class="condition-remove" data-idx="${idx}">&times;</button>
+    `;
+    container.appendChild(row);
+    row.querySelector('.condition-remove').addEventListener('click', () => row.remove());
+}
+
+function removeConditionRow(idx) {
+    // Re-read from editor state and re-render
+    const conds = readConditionsFromEditor();
+    conds.splice(idx, 1);
+    if (selectedTemplate) {
+        selectedTemplate.conditions = conds;
+        renderEditor(selectedTemplate);
+    }
+}
+
+function readConditionsFromEditor() {
+    const rows = document.querySelectorAll('#ed-conditions .condition-row');
+    const conds = [];
+    rows.forEach(row => {
+        const field = row.querySelector('.cond-field')?.value.trim();
+        const op = row.querySelector('.cond-op')?.value;
+        const valStr = row.querySelector('.cond-val')?.value.trim();
+        if (field && op && valStr !== '') {
+            const value = isNaN(Number(valStr)) ? (valStr === 'true' ? true : valStr === 'false' ? false : valStr) : Number(valStr);
+            conds.push({ field, op, value });
+        }
+    });
+    return conds;
+}
+
+function updatePreview() {
+    const previewEl = document.getElementById('ed-preview');
+    if (!previewEl) return;
+    const text = document.getElementById('ed-text')?.value || '';
+    const meta = EVENT_TYPES[selectedEvent] || {};
+    const section = meta.section || 'politics';
+    const sColor = sectionColors[section] || '#888';
+    const sLabel = SECTIONS[section]?.label || section;
+    const tier = meta.tier || 2;
+
+    // Fill with sample data
+    const sampleData = {
+        party_name: 'Progressive Alliance', leader_name: 'Elena Torres',
+        subject_name: 'Economic Reform', nation_name: 'Valdoria',
+        pm_name: 'PM Kessler', ideology_tag: 'Social Democrat',
+        momentum_change: 6, bill_name: 'Budget Reform Act',
+        tick: 12, date: 'Day 12',
+    };
+    const filled = text.replace(/\{(\w+)\}/g, (match, key) => sampleData[key] || match);
+
+    const reporter = pickReporter(section);
+    previewEl.innerHTML = `
+        <div class="preview__card">
+            <div class="preview__card-header">
+                <span class="preview__tier-label tier-${tier}">TIER ${tier}</span>
+                <span class="preview__section-tag" style="color:${sColor}">${sLabel.toUpperCase()}</span>
+            </div>
+            <div class="preview__card-body">
+                <div class="preview__headline">${esc(filled)}</div>
+                <div class="preview__byline">By <strong>${esc(reporter)}</strong> &middot; Just now</div>
+            </div>
+        </div>
+    `;
+}
+
+// ═══════════════════════════════════════════════
+// CRUD
+// ═══════════════════════════════════════════════
+
+async function saveCurrentTemplate() {
+    if (!selectedTemplate) return;
+    const t = selectedTemplate;
+
+    // Read editor values
+    t.template_id = document.getElementById('ed-id').value.trim();
+    t.weight = Math.max(1, Math.min(5, parseInt(document.getElementById('ed-weight').value) || 1));
+    t.template_text = document.getElementById('ed-text').value;
+    t.conditions = readConditionsFromEditor();
+    t.description = document.getElementById('ed-desc').value.trim();
+    if (t.component === 'body_block') {
+        t.block_category = document.getElementById('ed-block-cat')?.value || t.block_category;
+        t.is_required = document.getElementById('ed-required')?.value === 'true';
+    }
+
+    if (dbMode) {
+        try {
+            const row = {
+                event_type: t.event_type, component: t.component,
+                template_id: t.template_id, template_text: t.template_text,
+                conditions: t.conditions, weight: t.weight,
+                is_required: t.is_required, block_category: t.block_category,
+                posture: t.posture, description: t.description,
+                updated_at: new Date().toISOString(),
+            };
+            if (t.db_id) {
+                const { error } = await _supabase.from(DB_TABLE).update(row).eq('id', t.db_id);
+                if (error) throw error;
+            } else {
+                row.created_at = new Date().toISOString();
+                const { data, error } = await _supabase.from(DB_TABLE).insert(row).select();
+                if (error) throw error;
+                t.db_id = data[0].id;
+            }
+            t.source = 'database';
+            showToast('Saved to database', 'success');
+        } catch (err) {
+            showToast('DB error: ' + err.message, 'error');
+            return;
+        }
+    } else {
+        showToast('Saved in-memory (no DB table)', 'info');
+    }
+
+    renderSidebar();
+    renderSubtabs();
+    renderTemplateList();
+    renderEditor(t);
+    updateStats();
+}
+
+async function deleteCurrentTemplate() {
+    if (!selectedTemplate) return;
+    const t = selectedTemplate;
+    if (!confirm(`Delete template "${t.template_id}"?`)) return;
+
+    if (dbMode && t.db_id) {
+        try {
+            const { error } = await _supabase.from(DB_TABLE).delete().eq('id', t.db_id);
+            if (error) throw error;
+        } catch (err) {
+            showToast('DB error: ' + err.message, 'error');
+            return;
+        }
+    }
+
+    const idx = templates.indexOf(t);
+    if (idx !== -1) templates.splice(idx, 1);
+    selectedTemplate = null;
+
+    showToast('Template deleted', 'success');
+    renderSidebar();
+    renderSubtabs();
+    renderTemplateList();
+    renderEditorEmpty();
+    updateStats();
+}
+
+function duplicateCurrentTemplate() {
+    if (!selectedTemplate) return;
+    const t = selectedTemplate;
+    const newId = generateNextId(t.event_type, t.component);
+    const copy = {
+        ...t,
+        template_id: newId,
+        description: `Copy of ${t.template_id}`,
+        source: 'new',
+        db_id: null,
+    };
+    // Deep copy conditions
+    copy.conditions = JSON.parse(JSON.stringify(t.conditions));
+    templates.push(copy);
+    selectedTemplate = copy;
+
+    showToast(`Duplicated as ${newId}`, 'info');
+    renderSidebar();
+    renderSubtabs();
+    renderTemplateList();
+    renderEditor(copy);
+    updateStats();
+}
+
+function createNewTemplate() {
+    const newId = generateNextId(selectedEvent, selectedComponent);
+    const t = {
+        event_type: selectedEvent,
+        component: selectedComponent,
+        template_id: newId,
+        template_text: '',
+        conditions: [],
+        weight: 1,
+        is_required: false,
+        block_category: selectedComponent === 'body_block' ? 'context' : null,
+        posture: null,
+        description: '',
+        source: 'new',
+        db_id: null,
+    };
+    templates.push(t);
+    selectedTemplate = t;
+
+    renderSidebar();
+    renderSubtabs();
+    renderTemplateList();
+    renderEditor(t);
+    updateStats();
+
+    // Focus the text area
+    setTimeout(() => document.getElementById('ed-text')?.focus(), 50);
+}
+
+// ═══════════════════════════════════════════════
+// WORD POOLS VIEW
+// ═══════════════════════════════════════════════
+
+function renderWordPools() {
+    const panel = document.getElementById('view-panel');
+    let html = '<div style="padding:20px 24px 12px;"><h2 style="font-family:var(--font-mono);font-size:15px;font-weight:600;color:var(--text-bright);margin-bottom:4px;">Word Pools</h2><p style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">Auto-filled variables drawn randomly during article generation.</p></div>';
+    html += '<div class="pool-grid">';
+
+    for (const [key, pool] of Object.entries(WORD_POOLS)) {
+        html += `<div class="pool-card">`;
+        html += `<div class="pool-card__title">{${key.replace(/s$/, '')}} &mdash; ${Array.isArray(pool) ? pool.length : 'object'}</div>`;
+        html += `<div class="pool-card__items">`;
+        if (Array.isArray(pool)) {
+            for (const word of pool) html += `<span class="pool-word">${esc(word)}</span>`;
+        } else if (typeof pool === 'object') {
+            for (const [sub, words] of Object.entries(pool)) {
+                html += `<span style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted);width:100%;margin-top:6px;text-transform:uppercase;letter-spacing:0.05em;">${sub}</span>`;
+                for (const w of words) html += `<span class="pool-word">${esc(w)}</span>`;
+            }
+        }
+        html += `</div></div>`;
+    }
+    html += '</div>';
+    panel.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════
+// REPORTERS VIEW
+// ═══════════════════════════════════════════════
+
+function renderReporters() {
+    const panel = document.getElementById('view-panel');
+    let html = '<div style="padding:20px 24px 12px;"><h2 style="font-family:var(--font-mono);font-size:15px;font-weight:600;color:var(--text-bright);margin-bottom:4px;">Reporter Roster</h2><p style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">Byline reporters assigned per section.</p></div>';
+    html += '<div class="reporter-grid">';
+    for (const [section, names] of Object.entries(REPORTERS)) {
+        const sColor = sectionColors[section] || '#888';
+        const sLabel = SECTIONS[section]?.label || section;
+        html += `<div class="reporter-card">`;
+        html += `<div class="reporter-card__section"><span style="width:8px;height:8px;border-radius:50%;background:${sColor};display:inline-block;"></span> ${esc(sLabel)}</div>`;
+        for (const name of names) html += `<div class="reporter-card__name">${esc(name)}</div>`;
+        html += `</div>`;
+    }
+    html += '</div>';
+    panel.innerHTML = html;
+}
+
+</script>
+</body>
+</html>
