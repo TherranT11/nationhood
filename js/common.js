@@ -9,6 +9,7 @@
 
 import { _supabase, handleLogout } from './supabase-client.js';
 import { tickToDate } from './utils.js';
+import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
 
 // ===== QUERY CACHE =====
 // Generic sessionStorage cache for Supabase query results.
@@ -687,9 +688,18 @@ export function updateThemeButton() {
 export async function initPage(activeTab, onReady, requireFaction = true) {
     renderTopBar(activeTab);
     updateThemeButton();
+
+    // Ban enforcement — check before loading any game state
+    const ban = await checkBanStatus();
+    if (ban) { enforceBan(ban); return; }
+
     const state = await loadGameState(requireFaction);
     if (!state) return;
     updateTopBarInfo(state.faction, state.shard, state.nation);
+
+    // Record fingerprint (fire-and-forget, non-blocking)
+    recordFingerprint();
+
     // Update bills badge (non-blocking, skip on laws page since it marks seen)
     if (activeTab !== 'laws') {
         updateBillsBadge(state.faction, state.nation, state.shard);
