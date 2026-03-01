@@ -18,6 +18,18 @@ CREATE TABLE IF NOT EXISTS op_eds (
     updated_at      TIMESTAMPTZ DEFAULT now()
 );
 
+-- Backfill columns if op_eds table already existed without them
+ALTER TABLE op_eds ADD COLUMN IF NOT EXISTS author_faction_id UUID REFERENCES public.factions(id) ON DELETE SET NULL;
+ALTER TABLE op_eds ADD COLUMN IF NOT EXISTS author_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE op_eds ADD COLUMN IF NOT EXISTS headline TEXT NOT NULL DEFAULT '';
+ALTER TABLE op_eds ADD COLUMN IF NOT EXISTS body TEXT NOT NULL DEFAULT '';
+ALTER TABLE op_eds ADD COLUMN IF NOT EXISTS section TEXT NOT NULL DEFAULT 'opinion';
+ALTER TABLE op_eds ADD COLUMN IF NOT EXISTS topic_tags JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE op_eds ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft';
+ALTER TABLE op_eds ADD COLUMN IF NOT EXISTS published_tick INTEGER;
+ALTER TABLE op_eds ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+ALTER TABLE op_eds ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
 CREATE INDEX IF NOT EXISTS idx_op_eds_nation ON op_eds(nation_id);
 CREATE INDEX IF NOT EXISTS idx_op_eds_status ON op_eds(status);
 CREATE INDEX IF NOT EXISTS idx_op_eds_faction ON op_eds(author_faction_id);
