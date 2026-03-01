@@ -393,7 +393,8 @@ function renderLawsPage() {
     const canDraft = (currentFaction?.action_points || 0) >= GAME_CONFIG.DRAFT_BILL_AP_COST && currentSeats > 0 && !isCaretaker && !isNoGovernment;
 const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and cannot propose bills"' : (isCaretaker ? 'title="Legislature is dissolved — no new bills during caretaker government"' : (isNoGovernment ? 'title="Legislature is suspended until a new government is formed"' : ''));
     const debtRatio = getDebtToGDP(currentNation);
-    const showDefaultBtn = !lawsIsAutocracy && debtRatio >= SOVEREIGN_DEFAULT_CONFIG.MIN_DEBT_TO_GDP;
+    const defaultEligible = debtRatio >= SOVEREIGN_DEFAULT_CONFIG.MIN_DEBT_TO_GDP;
+    const showDefaultBtn = !lawsIsAutocracy;
     const pageTitle = lawsIsAutocracy ? `Decrees of ${currentNation.name}` : `Bills & Laws of ${currentNation.name}`;
     const html = `
         <div class="panel-padding">
@@ -414,7 +415,7 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
                     <button class="passed-laws-btn" onclick="togglePassedLaws()">📜 Passed Laws</button>
                     <button class="budget-bill-btn" onclick="toggleBudgetBill()" ${budgetEarlyWindow ? 'title="Review Available: ' + budgetReviewDate + '. Open to Submit: ' + budgetSubmitDate + '"' : ''}>💰 Budget Bill${showBudgetBadge ? (budgetEarlyWindow ? '<span class="budget-badge budget-badge-yellow" title="Review Available: ' + budgetReviewDate + '. Open to Submit: ' + budgetSubmitDate + '">DUE</span>' : (nextBudgetDueTick !== null && currentTickGlobal >= nextBudgetDueTick ? '<span class="budget-badge budget-badge-red">!</span>' : '<span class="budget-badge">1</span>')) : ''}</button>
                     <button class="all-laws-btn" onclick="toggleAllLaws()">📋 All Laws</button>
-                    ${showDefaultBtn ? `<button class="default-resolution-btn" onclick="openDefaultResolutionModal()" title="Debt: ${formatDebtToGDP(debtRatio)} of GDP">💀 Default Resolution</button>` : ''}
+                    ${showDefaultBtn ? `<button class="default-resolution-btn${defaultEligible ? '' : ' default-btn-locked'}" onclick="${defaultEligible ? 'openDefaultResolutionModal()' : 'void(0)'}" ${defaultEligible ? '' : 'disabled'} title="${defaultEligible ? 'Debt: ' + formatDebtToGDP(debtRatio) + ' of GDP' : 'Requires debt-to-GDP ≥ 150% (current: ' + formatDebtToGDP(debtRatio) + ')'}">💀 Default Resolution</button>` : ''}
                     <button class="draft-btn ${lawsIsAutocracy ? 'autocracy-btn' : ''}" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'} ${noSeatsTitle}>
                         ${termPropose} <span class="ap-cost">${GAME_CONFIG.DRAFT_BILL_AP_COST} AP</span>
                     </button>
