@@ -2127,6 +2127,17 @@ for (const key of Object.keys(STAT_DECAY_CONFIG)) {
     }
 }
 
+// ==================== STAT → VOTER BLOC REACTIONS ====================
+// When a stat changes during a tick, apply momentum to a specific voter bloc.
+// rate_per_point: momentum applied per 1-point stat change (sign-aware).
+//   Positive rate_per_point = stat going UP is GOOD for that bloc.
+//   Negative rate_per_point = stat going UP is BAD for that bloc.
+const STAT_BLOC_REACTIONS = [
+    // Increasing corporate tax: -2.5 approval per 1% with Business Owners
+    // Decreasing corporate tax: +1.0 approval per 1% with Business Owners
+    { stat: 'corporate_tax', bloc_name: 'Business Owners', rate_up: -2.5, rate_down: 1.0 },
+];
+
 // ==================== INSTITUTION FUNDING DECAY TIERS ====================
 // Institutions counteract natural stat decay. At 100% funding, decay is fully
 // blocked. Below 100%, the rates below REPLACE the natural decay rate for stats
@@ -10824,6 +10835,63 @@ async function autoResolveStaleShakeups(supabase, nationId, currentTick) {
 }
 
 
+// ==================== STAT → VOTER BLOC REACTION PROCESSING ====================
+/**
+ * After stat effects are applied, compare old vs new stat values and adjust
+ * momentum with specific voter blocs according to STAT_BLOC_REACTIONS.
+ *
+ * @param {object} supabase
+ * @param {object} nation        - nation row (with post-effect stat values)
+ * @param {Record<string,number>} snapshots - stat values captured BEFORE effects
+ */
+async function processStatBlocReactions(supabase, nation, snapshots) {
+    if (STAT_BLOC_REACTIONS.length === 0) return;
+
+    for (const reaction of STAT_BLOC_REACTIONS) {
+        const oldVal = snapshots[reaction.stat];
+        const newVal = Number(nation[reaction.stat] ?? oldVal);
+        if (oldVal === undefined || oldVal === null) continue;
+
+        const delta = Math.round((newVal - oldVal) * 10) / 10;
+        if (delta === 0) continue;
+
+        // Determine per-point rate based on direction
+        const ratePerPoint = delta > 0 ? reaction.rate_up : reaction.rate_down;
+        const momentumDelta = Math.round(Math.abs(delta) * ratePerPoint * 100) / 100;
+        if (momentumDelta === 0) continue;
+
+        // Find the voter bloc by name for this nation
+        const { data: bloc } = await supabase
+            .from('voter_blocs')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('bloc_name', reaction.bloc_name)
+            .single();
+
+        if (!bloc) {
+            console.warn(`[StatBlocReaction] Bloc "${reaction.bloc_name}" not found for nation ${nation.name}`);
+            continue;
+        }
+
+        // Apply momentum to ALL factions for this specific bloc
+        const { data: factions } = await supabase
+            .from('factions')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('faction_type', 'party');
+
+        if (!factions || factions.length === 0) continue;
+
+        const source = `stat_bloc_reaction:${reaction.stat}:${delta > 0 ? 'up' : 'down'}`;
+        for (const faction of factions) {
+            await adjustMomentum(supabase, nation.id, faction.id, bloc.id, momentumDelta, source);
+        }
+
+        console.log(`[StatBlocReaction] ${reaction.stat} ${delta > 0 ? '+' : ''}${delta} → ${momentumDelta > 0 ? '+' : ''}${momentumDelta} momentum with ${reaction.bloc_name} for ${factions.length} factions in ${nation.name}`);
+    }
+}
+
+
 // ==================== STAT EFFECTS PROCESSING ====================
 
 async function processStatEffects(supabase, nation, currentTick) {
@@ -15138,6 +15206,12 @@ async function advanceTick(supabase) {
         // policy deltas and rebase on birth_rate - death_rate afterwards.
         const popGrowthBeforeEffects = Number(nation.population_growth ?? 50);
 
+        // Snapshot stats referenced by STAT_BLOC_REACTIONS before effects
+        const statBlocSnapshots = {};
+        for (const r of STAT_BLOC_REACTIONS) {
+            statBlocSnapshots[r.stat] = Number(nation[r.stat] ?? 50);
+        }
+
         // Stat effects (from passed bills/active laws)
         const effectResults = await processStatEffects(supabase, nation, newTick);
         if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });
@@ -15151,6 +15225,9 @@ async function advanceTick(supabase) {
 
         // Apply GDP growth rate
         await applyGdpGrowth(supabase, nation);
+
+        // Stat → voter bloc reactions (e.g. corporate_tax changes → Business Owners momentum)
+        await processStatBlocReactions(supabase, nation, statBlocSnapshots);
 
         // Stat decay (equilibrium drift + erosion, modified by institution funding)
         if (!_institutionConfig) {
