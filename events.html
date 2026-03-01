@@ -1,23 +1,746 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Events | Nationhood Alpha</title>
-    <link rel="stylesheet" href="css/dashboard.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Valdorian | Nationhood Alpha</title>
+<link rel="stylesheet" href="css/dashboard.css">
+<link rel="stylesheet" href="css/events.css">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,500;1,600;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div id="top-bar"></div>
-<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;color:#888;text-align:center;padding:40px;">
-    <div style="font-size:3rem;margin-bottom:16px;">🚧</div>
-    <div style="font-size:1.4rem;color:#ccc;font-weight:bold;margin-bottom:8px;">Coming Soon</div>
-    <div style="font-size:0.9rem;color:#666;">The Events page is being rebuilt from scratch.</div>
+
+<!-- Newspaper content injected here by JS -->
+<div id="newspaper-root">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;">
+    <div class="loading-container">
+      <div class="loading-spinner"></div>
+      <div style="color:var(--text-secondary)">Loading The Valdorian...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     WRITE OP-ED MODAL
+     ═══════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="oped-modal" style="display:none;">
+  <div class="modal-content" style="max-width:640px;width:95%;">
+    <div class="modal-header">
+      <div class="modal-title">Write Op-Ed <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;margin-left:8px;">Cost: 1 AP</span></div>
+      <button class="modal-close" id="oped-close-btn">&times;</button>
+    </div>
+    <div style="padding:20px;">
+      <div style="margin-bottom:16px;">
+        <label class="oped-label">Headline</label>
+        <input type="text" id="oped-headline" class="oped-input" placeholder="e.g. Why Valdoria Must Invest in Education Now" maxlength="120">
+        <div class="oped-char-count"><span id="oped-headline-count">0</span>/120</div>
+      </div>
+      <div style="margin-bottom:16px;">
+        <label class="oped-label">Body</label>
+        <textarea id="oped-body" class="oped-textarea" placeholder="Write your party's opinion piece here. This will be published in the next edition of The Valdorian..." maxlength="800" rows="6"></textarea>
+        <div class="oped-char-count"><span id="oped-body-count">0</span>/800</div>
+      </div>
+      <div style="margin-bottom:16px;">
+        <label class="oped-label">Topic</label>
+        <select id="oped-topic" class="oped-select">
+          <option value="domestic">Domestic Policy</option>
+          <option value="economy">Economy</option>
+          <option value="international">International Affairs</option>
+          <option value="defence">Defence & Security</option>
+          <option value="society">Society & Culture</option>
+        </select>
+      </div>
+      <div class="oped-preview-box" id="oped-preview" style="display:none;">
+        <div class="oped-preview-label">Preview</div>
+        <div id="oped-preview-content"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <div id="oped-error" style="color:var(--red);font-size:0.8rem;margin-right:auto;display:none;"></div>
+      <button class="btn-cancel" id="oped-cancel-btn">Cancel</button>
+      <button class="btn-submit" id="oped-submit-btn" disabled>Publish Op-Ed (1 AP)</button>
+    </div>
+  </div>
 </div>
 
 <script type="module">
+import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
-initPage('events', async () => {});
+import { escapeHtml, tickToDate } from './js/utils.js';
+import { deductAP } from './js/game-common.js';
+
+/* ══════════════════════════════════════════════════════
+   PRIORITY CONSTANTS
+   ══════════════════════════════════════════════════════ */
+const PRIORITY = {
+  WAR: 1,
+  CRISIS: 2,
+  GOVERNMENT: 3,
+  LEGISLATION: 4,
+  ECONOMY: 5,
+  DIPLOMACY: 6,
+  GENERAL: 7,
+  OPED: 8
+};
+
+const PRIORITY_LABELS = {
+  [PRIORITY.WAR]: { tag: 'War Declaration', cls: 'tag--crisis', size: 'hero' },
+  [PRIORITY.CRISIS]: { tag: 'Crisis Event', cls: 'tag--crisis', size: 'hero' },
+  [PRIORITY.GOVERNMENT]: { tag: 'Government', cls: 'tag--domestic', size: 'featured' },
+  [PRIORITY.LEGISLATION]: { tag: 'Legislation', cls: 'tag--domestic', size: 'standard' },
+  [PRIORITY.ECONOMY]: { tag: 'Economy', cls: 'tag--economy', size: 'standard' },
+  [PRIORITY.DIPLOMACY]: { tag: 'International', cls: 'tag--international', size: 'standard' },
+  [PRIORITY.GENERAL]: { tag: 'General', cls: 'tag--defence', size: 'brief' },
+  [PRIORITY.OPED]: { tag: 'Opinion', cls: 'tag--opinion', size: 'oped' }
+};
+
+/* ══════════════════════════════════════════════════════
+   CATEGORY MAPPING (from event_log categories)
+   ══════════════════════════════════════════════════════ */
+function eventCategoryToPriority(category) {
+  if (!category) return PRIORITY.GENERAL;
+  const c = category.toLowerCase();
+  if (c.includes('war') || c.includes('conflict')) return PRIORITY.WAR;
+  if (c.includes('crisis') || c === 'natural_disaster' || c === 'natural-disaster') return PRIORITY.CRISIS;
+  if (c.includes('government') || c.includes('election') || c.includes('coalition') || c === 'electoral') return PRIORITY.GOVERNMENT;
+  if (c.includes('legal') || c.includes('bill') || c.includes('law')) return PRIORITY.LEGISLATION;
+  if (c.includes('econom') || c.includes('budget') || c.includes('trade')) return PRIORITY.ECONOMY;
+  if (c.includes('diplom') || c.includes('international') || c.includes('military')) return PRIORITY.DIPLOMACY;
+  return PRIORITY.GENERAL;
+}
+
+function categoryToSection(category) {
+  if (!category) return 'domestic';
+  const c = category.toLowerCase();
+  if (c.includes('econom') || c.includes('budget') || c.includes('trade')) return 'economy';
+  if (c.includes('diplom') || c.includes('international')) return 'international';
+  if (c.includes('military') || c.includes('defence') || c.includes('defense') || c.includes('conflict') || c.includes('war')) return 'defence';
+  if (c.includes('crisis') || c.includes('disaster')) return 'crisis';
+  return 'domestic';
+}
+
+/* ══════════════════════════════════════════════════════
+   STATE
+   ══════════════════════════════════════════════════════ */
+let _state = null;
+let _events = [];
+let _opeds = [];
+let _nationName = 'Valdoria';
+let _currentEdition = 'national';
+
+/* ══════════════════════════════════════════════════════
+   INIT
+   ══════════════════════════════════════════════════════ */
+initPage('events', async (state) => {
+  _state = state;
+  const { nation, faction, shard } = state;
+  if (!nation) {
+    document.getElementById('newspaper-root').innerHTML =
+      '<div style="text-align:center;padding:80px 20px;color:#888;">' +
+      '<div style="font-size:2rem;margin-bottom:12px;">No Nation</div>' +
+      '<div>Your party is not assigned to a nation yet.</div></div>';
+    return;
+  }
+
+  _nationName = nation.name || 'Valdoria';
+
+  // Load events and op-eds in parallel
+  const [events, opeds, parties] = await Promise.all([
+    loadEvents(nation.id, shard),
+    loadOpEds(nation.id, shard),
+    loadParties(nation.id)
+  ]);
+
+  _events = events;
+  _opeds = opeds;
+
+  renderNewspaper(nation, faction, shard, events, opeds, parties);
+  setupOpEdModal(faction, nation, shard);
+});
+
+/* ══════════════════════════════════════════════════════
+   DATA LOADING
+   ══════════════════════════════════════════════════════ */
+async function loadEvents(nationId, shard) {
+  const currentTick = shard?.current_tick || 0;
+  const { data, error } = await _supabase
+    .from('event_log')
+    .select('*')
+    .eq('nation_id', nationId)
+    .order('fired_at_tick', { ascending: false })
+    .limit(50);
+  if (error) { console.error('Failed to load events:', error); return []; }
+  return (data || []).map(e => ({
+    ...e,
+    // Normalize column names for render functions
+    headline: e.event_name || '',
+    description: e.description_chosen || '',
+    tick: e.fired_at_tick,
+    effects: e.effects_applied || null,
+    priority: eventCategoryToPriority(e.category),
+    section: categoryToSection(e.category),
+    isCurrent: e.fired_at_tick === currentTick || e.fired_at_tick === currentTick - 1
+  }));
+}
+
+async function loadOpEds(nationId, shard) {
+  // op_eds table may not exist yet — gracefully handle
+  try {
+    const { data, error } = await _supabase
+      .from('op_eds')
+      .select('*, factions(faction_name, abbreviation, party_color)')
+      .eq('nation_id', nationId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (error) {
+      // Table doesn't exist yet — that's fine for Phase 1
+      console.warn('op_eds table not found (run migration):', error.message);
+      return [];
+    }
+    return data || [];
+  } catch {
+    return [];
+  }
+}
+
+async function loadParties(nationId) {
+  const { data } = await _supabase
+    .from('factions')
+    .select('id, faction_name, abbreviation, seats, approval_rating, party_color, party_logo, action_points')
+    .eq('nation_id', nationId)
+    .eq('faction_type', 'party');
+  return data || [];
+}
+
+/* ══════════════════════════════════════════════════════
+   RENDER — NEWSPAPER LAYOUT
+   ══════════════════════════════════════════════════════ */
+function renderNewspaper(nation, faction, shard, events, opeds, parties) {
+  // Sort events by priority then recency
+  const sorted = [...events].sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+
+  // Partition into layout slots
+  const heroEvent = sorted.find(e => e.priority <= PRIORITY.CRISIS) || sorted[0];
+  const featuredEvents = sorted.filter(e => e !== heroEvent).slice(0, 6);
+  const briefEvents = sorted.filter(e => !featuredEvents.includes(e) && e !== heroEvent).slice(0, 8);
+  const currentTick = shard?.current_tick || 0;
+  const currentDate = shard?.current_date || tickToDate(currentTick);
+
+  // Ticker items from the most recent events
+  const tickerItems = sorted.slice(0, 8).map(e => escapeHtml(e.headline || e.title || e.description || 'Event'));
+
+  const root = document.getElementById('newspaper-root');
+  root.innerHTML = `
+<!-- TICKER BAR -->
+<div class="np-ticker-bar">
+  <div class="np-ticker-bar__meta">
+    <span>${escapeHtml(_nationName)} Standard Time</span>
+    <span>${escapeHtml(String(currentDate))}</span>
+  </div>
+  ${sorted.length > 0 && sorted[0].priority <= PRIORITY.CRISIS ? '<div class="np-ticker-bar__breaking">BREAKING</div>' : ''}
+  <div class="np-ticker-bar__scroll">
+    <div class="np-ticker-bar__scroll-inner">
+      ${tickerItems.map(t => `<span>${t}</span>`).join('')}
+      ${tickerItems.map(t => `<span>${t}</span>`).join('')}
+    </div>
+  </div>
+  <div class="np-ticker-bar__edition">
+    <span>TICK ${currentTick}</span>
+    <span>Edition: ${escapeHtml(_nationName)}</span>
+  </div>
+</div>
+
+<!-- MASTHEAD -->
+<header class="np-masthead">
+  <div class="np-masthead__pre">Independent · Established 1923</div>
+  <h1 class="np-masthead__title">THE ${escapeHtml(_nationName.toUpperCase())}N</h1>
+  <div class="np-masthead__sub">The Paper for the World at Large</div>
+  <button class="np-oped-btn" id="write-oped-btn" title="Write an Op-Ed (1 AP)">
+    <span class="np-oped-btn__icon">&#9998;</span>
+    Write Op-Ed
+    <span class="np-oped-btn__cost">1 AP</span>
+  </button>
+</header>
+
+<!-- NAV TABS -->
+<nav class="np-nav-tabs">
+  <div class="np-nav-tabs__item np-nav-tabs__item--active" data-tab="front">Front Page</div>
+  <div class="np-nav-tabs__item" data-tab="domestic">Domestic</div>
+  <div class="np-nav-tabs__item" data-tab="international">International</div>
+  <div class="np-nav-tabs__item" data-tab="economy">Economy</div>
+  <div class="np-nav-tabs__item" data-tab="defence">Defence</div>
+  <div class="np-nav-tabs__item" data-tab="opinion">Opinion</div>
+</nav>
+
+${heroEvent && heroEvent.priority <= PRIORITY.CRISIS ? `
+<!-- ALERT BAR -->
+<div class="np-alert-bar">
+  <div class="np-alert-bar__badge">ALERT</div>
+  <div class="np-alert-bar__text">
+    <strong>BREAKING:</strong> ${escapeHtml(heroEvent.headline || heroEvent.title || heroEvent.description || '')}
+  </div>
+</div>
+` : ''}
+
+<!-- MAIN CONTENT -->
+<div class="np-content">
+  <main class="np-content__main">
+    ${heroEvent ? renderHeroArticle(heroEvent) : renderNoEvents()}
+    <hr class="np-divider np-divider--heavy">
+    <div class="np-section-label">More Stories</div>
+    <div class="np-stories-grid">
+      ${featuredEvents.map(e => renderStoryCard(e)).join('')}
+    </div>
+    ${briefEvents.length > 0 ? `
+    <hr class="np-divider">
+    <div class="np-section-label">Briefs</div>
+    <ul class="np-briefs-list">
+      ${briefEvents.map(e => renderBrief(e)).join('')}
+    </ul>
+    ` : ''}
+    ${opeds.length > 0 ? `
+    <hr class="np-divider">
+    <div class="np-section-label">Op-Eds</div>
+    ${opeds.map(o => renderOpEdCard(o)).join('')}
+    ` : ''}
+    <hr class="np-divider">
+    <div class="np-section-label">Previous Editions</div>
+    ${renderArchive(events, currentTick)}
+  </main>
+
+  <aside class="np-content__sidebar">
+    ${renderSidebarBulletin(sorted)}
+    ${renderSidebarStats(nation)}
+    ${renderSidebarElection(parties, shard)}
+  </aside>
+</div>
+
+<!-- FOOTER -->
+<footer class="np-page-footer">
+  <div class="np-page-footer__brand">The ${escapeHtml(_nationName)}n</div>
+  <div class="np-page-footer__tagline">Independent · Established 1923 · The Paper for the World at Large</div>
+</footer>
+`;
+
+  // Tab switching
+  root.querySelectorAll('.np-nav-tabs__item').forEach(tab => {
+    tab.addEventListener('click', () => {
+      root.querySelectorAll('.np-nav-tabs__item').forEach(t => t.classList.remove('np-nav-tabs__item--active'));
+      tab.classList.add('np-nav-tabs__item--active');
+      filterByTab(tab.dataset.tab, sorted, opeds);
+    });
+  });
+
+  // Write Op-Ed button
+  document.getElementById('write-oped-btn')?.addEventListener('click', () => {
+    document.getElementById('oped-modal').style.display = 'flex';
+  });
+}
+
+/* ══════════════════════════════════════════════════════
+   RENDER HELPERS
+   ══════════════════════════════════════════════════════ */
+function renderNoEvents() {
+  return `
+    <div style="text-align:center;padding:60px 20px;">
+      <div style="font-family:var(--np-font-display);font-size:28px;color:var(--np-text-primary);margin-bottom:12px;">
+        No Events Yet
+      </div>
+      <div style="font-family:var(--np-font-ui);font-size:14px;color:var(--np-text-muted);">
+        Events will appear here as they occur in your nation. Check back after the next tick.
+      </div>
+    </div>
+  `;
+}
+
+function renderHeroArticle(event) {
+  const section = event.section || 'domestic';
+  const priorityInfo = PRIORITY_LABELS[event.priority] || PRIORITY_LABELS[PRIORITY.GENERAL];
+  const headline = event.headline || event.title || 'Breaking News';
+  const description = event.description || '';
+  const effects = event.effects || event.mechanical_effects || null;
+
+  return `
+    <article class="np-hero">
+      <div class="np-hero__tags">
+        ${event.priority <= PRIORITY.CRISIS ? `<span class="np-tag np-tag--crisis">${escapeHtml(priorityInfo.tag)}</span>` : ''}
+        <span class="np-tag np-tag--${section}">${escapeHtml(section.charAt(0).toUpperCase() + section.slice(1))}</span>
+      </div>
+      <h2 class="np-hero__headline">${escapeHtml(headline)}</h2>
+      ${description ? `<p class="np-hero__lede">${escapeHtml(description.substring(0, 200))}${description.length > 200 ? '...' : ''}</p>` : ''}
+      <div class="np-hero__byline">
+        <strong>The ${escapeHtml(_nationName)}n Staff</strong> · Tick ${event.tick || '?'}
+      </div>
+      ${description.length > 200 ? `
+      <div class="np-hero__body">
+        <p>${escapeHtml(description)}</p>
+      </div>` : ''}
+      ${effects ? renderImpactBox(effects) : ''}
+    </article>
+  `;
+}
+
+function renderImpactBox(effects) {
+  let parsed = effects;
+  if (typeof effects === 'string') {
+    try { parsed = JSON.parse(effects); } catch { return ''; }
+  }
+  if (!parsed || typeof parsed !== 'object') return '';
+
+  const entries = Object.entries(parsed);
+  if (entries.length === 0) return '';
+
+  return `
+    <div class="np-hero__impact">
+      <div class="np-hero__impact-title">Mechanical Impact — Your Nation</div>
+      <div class="np-impact-grid">
+        ${entries.map(([key, val]) => {
+          const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          const num = parseFloat(val);
+          const cls = num < 0 ? 'np-impact-row__value--negative' : num > 0 ? 'np-impact-row__value--positive' : 'np-impact-row__value--neutral';
+          const arrow = num < 0 ? '&#9660;' : num > 0 ? '&#9650;' : '';
+          return `
+            <div class="np-impact-row">
+              <span class="np-impact-row__label">${escapeHtml(label)}</span>
+              <span class="np-impact-row__value ${cls}">${arrow} ${escapeHtml(String(val))}</span>
+            </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderStoryCard(event) {
+  const section = event.section || 'domestic';
+  const headline = event.headline || event.title || 'News Update';
+  const desc = event.description || '';
+  return `
+    <article class="np-story-card">
+      <div class="np-story-card__tags">
+        <span class="np-tag np-tag--${section} np-tag--dot">${escapeHtml(section.charAt(0).toUpperCase() + section.slice(1))}</span>
+      </div>
+      <h3 class="np-story-card__headline">${escapeHtml(headline)}</h3>
+      <p class="np-story-card__lede">${escapeHtml(desc.substring(0, 180))}${desc.length > 180 ? '...' : ''}</p>
+      <div class="np-story-card__meta">Tick ${event.tick || '?'}</div>
+    </article>
+  `;
+}
+
+function renderBrief(event) {
+  const section = event.section || 'domestic';
+  const text = event.headline || event.title || event.description || 'Event';
+  return `
+    <li class="np-brief">
+      ${escapeHtml(text)}
+      <span class="np-tag np-tag--${section}">${escapeHtml(section.charAt(0).toUpperCase() + section.slice(1))}</span>
+    </li>
+  `;
+}
+
+function renderOpEdCard(oped) {
+  const factionName = oped.factions?.faction_name || 'Anonymous';
+  const abbr = oped.factions?.abbreviation || '?';
+  return `
+    <div class="np-opinion-card">
+      <div class="np-opinion-card__label">Opinion</div>
+      <h3 class="np-opinion-card__headline">${escapeHtml(oped.headline || 'Untitled')}</h3>
+      <p class="np-opinion-card__body">${escapeHtml(oped.body || '')}</p>
+      <div class="np-opinion-card__author">— ${escapeHtml(factionName)} (${escapeHtml(abbr)})</div>
+    </div>
+  `;
+}
+
+function renderArchive(events, currentTick) {
+  // Group events by tick ranges (every 2 ticks = 1 edition)
+  const editions = {};
+  events.forEach(e => {
+    const tick = e.tick || 0;
+    const edKey = Math.floor(tick / 2) * 2;
+    if (!editions[edKey]) editions[edKey] = [];
+    editions[edKey].push(e);
+  });
+
+  const keys = Object.keys(editions).map(Number).sort((a, b) => b - a).slice(0, 5);
+  if (keys.length === 0) {
+    return '<div style="font-family:var(--np-font-ui);font-size:13px;color:var(--np-text-muted);padding:12px 0;">No previous editions yet.</div>';
+  }
+
+  return keys.map(k => {
+    const items = editions[k];
+    const dateRange = `Ticks ${k}–${k + 1}`;
+    const headlines = items.slice(0, 3).map(e => e.headline || e.title || 'Event').join(' · ');
+    return `
+      <div class="np-archive-item">
+        <div class="np-archive-item__header">${escapeHtml(dateRange)} — ${items.length} ${items.length === 1 ? 'story' : 'stories'}</div>
+        <div class="np-archive-item__highlights">Highlights: ${escapeHtml(headlines)}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderSidebarBulletin(events) {
+  const recent = events.slice(0, 5);
+  if (recent.length === 0) {
+    return `
+      <div class="np-sidebar-section">
+        <div class="np-sidebar-section__title">Bulletin</div>
+        <div style="font-family:var(--np-font-ui);font-size:13px;color:var(--np-text-muted);padding:12px 0;">No recent bulletins.</div>
+      </div>
+    `;
+  }
+  return `
+    <div class="np-sidebar-section">
+      <div class="np-sidebar-section__title">Bulletin</div>
+      ${recent.map(e => {
+        const section = e.section || 'domestic';
+        return `
+          <div class="np-bulletin-item">
+            <div class="np-bulletin-item__tags">
+              <span class="np-tag np-tag--${section} np-tag--dot">${escapeHtml(section.charAt(0).toUpperCase() + section.slice(1))}</span>
+            </div>
+            <h4 class="np-bulletin-item__headline">${escapeHtml(e.headline || e.title || e.description || 'Event')}</h4>
+            <div class="np-bulletin-item__time">Tick ${e.tick || '?'}</div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderSidebarStats(nation) {
+  if (!nation) return '';
+  const stats = [
+    { label: 'Population', value: nation.population ? Number(nation.population).toLocaleString() : '—', arrow: '' },
+    { label: 'GDP Growth', value: nation.gdp_growth != null ? nation.gdp_growth + '%' : '—', arrow: nation.gdp_growth > 0 ? 'up' : nation.gdp_growth < 0 ? 'down' : '' },
+    { label: 'Unemployment', value: nation.unemployment != null ? nation.unemployment + '%' : '—', arrow: 'down' },
+    { label: 'Stability', value: nation.stability != null ? String(nation.stability) : '—', arrow: nation.stability < 50 ? 'down' : '' },
+  ];
+
+  return `
+    <div class="np-sidebar-section">
+      <div class="np-sidebar-section__title">National Indicators</div>
+      ${stats.map(s => `
+        <div class="np-stat-row">
+          <span class="np-stat-row__label">${escapeHtml(s.label)}</span>
+          <span class="np-stat-row__value">
+            ${escapeHtml(s.value)}
+            ${s.arrow === 'up' ? '<span class="np-stat-row__arrow np-stat-row__arrow--up">&#9650;</span>' : ''}
+            ${s.arrow === 'down' ? '<span class="np-stat-row__arrow np-stat-row__arrow--down">&#9660;</span>' : ''}
+          </span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderSidebarElection(parties, shard) {
+  if (!parties || parties.length === 0) return '';
+
+  const totalSeats = parties.reduce((sum, p) => sum + (p.seats || 0), 0) || 1;
+  const sorted = [...parties].sort((a, b) => (b.seats || 0) - (a.seats || 0));
+
+  return `
+    <div class="np-sidebar-section">
+      <div class="np-sidebar-section__title">Parliament Standings</div>
+      ${sorted.map(p => {
+        const pct = totalSeats > 0 ? ((p.seats || 0) / totalSeats * 100).toFixed(1) : '0.0';
+        const color = p.party_color || '#666';
+        return `
+          <div class="np-poll-bar-group">
+            <div class="np-poll-bar__header">
+              <span class="np-poll-bar__name">${escapeHtml(p.abbreviation || p.faction_name || '?')}</span>
+              <span class="np-poll-bar__value">${p.seats || 0} seats (${pct}%)</span>
+            </div>
+            <div class="np-poll-bar__track">
+              <div class="np-poll-bar__fill" style="width:${pct}%;background:${color};"></div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+/* ══════════════════════════════════════════════════════
+   TAB FILTERING
+   ══════════════════════════════════════════════════════ */
+function filterByTab(tab, events, opeds) {
+  const main = document.querySelector('.np-content__main');
+  if (!main) return;
+
+  let filtered = events;
+  if (tab === 'opinion') {
+    // Show op-eds only
+    main.innerHTML = `
+      <div class="np-section-label">Op-Eds & Opinion</div>
+      ${opeds.length > 0 ? opeds.map(o => renderOpEdCard(o)).join('') :
+        '<div style="font-family:var(--np-font-ui);font-size:14px;color:var(--np-text-muted);padding:40px 0;text-align:center;">No op-eds published yet. Be the first to write one!</div>'}
+    `;
+    return;
+  }
+
+  if (tab !== 'front') {
+    const sectionMap = {
+      domestic: 'domestic',
+      international: 'international',
+      economy: 'economy',
+      defence: 'defence'
+    };
+    filtered = events.filter(e => e.section === sectionMap[tab]);
+  }
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+
+  const hero = sorted[0];
+  const rest = sorted.slice(1, 7);
+  const briefs = sorted.slice(7, 15);
+
+  main.innerHTML = `
+    ${hero ? renderHeroArticle(hero) : renderNoEvents()}
+    ${rest.length > 0 ? `
+    <hr class="np-divider np-divider--heavy">
+    <div class="np-section-label">More Stories</div>
+    <div class="np-stories-grid">
+      ${rest.map(e => renderStoryCard(e)).join('')}
+    </div>` : ''}
+    ${briefs.length > 0 ? `
+    <hr class="np-divider">
+    <div class="np-section-label">Briefs</div>
+    <ul class="np-briefs-list">
+      ${briefs.map(e => renderBrief(e)).join('')}
+    </ul>` : ''}
+  `;
+}
+
+/* ══════════════════════════════════════════════════════
+   OP-ED MODAL
+   ══════════════════════════════════════════════════════ */
+function setupOpEdModal(faction, nation, shard) {
+  const modal = document.getElementById('oped-modal');
+  const headline = document.getElementById('oped-headline');
+  const body = document.getElementById('oped-body');
+  const topic = document.getElementById('oped-topic');
+  const submitBtn = document.getElementById('oped-submit-btn');
+  const cancelBtn = document.getElementById('oped-cancel-btn');
+  const closeBtn = document.getElementById('oped-close-btn');
+  const errorEl = document.getElementById('oped-error');
+  const headlineCount = document.getElementById('oped-headline-count');
+  const bodyCount = document.getElementById('oped-body-count');
+  const previewBox = document.getElementById('oped-preview');
+  const previewContent = document.getElementById('oped-preview-content');
+
+  function validate() {
+    const h = headline.value.trim();
+    const b = body.value.trim();
+    submitBtn.disabled = h.length < 10 || b.length < 30;
+
+    // Update char counts
+    headlineCount.textContent = headline.value.length;
+    bodyCount.textContent = body.value.length;
+
+    // Update preview
+    if (h.length > 0 || b.length > 0) {
+      previewBox.style.display = 'block';
+      previewContent.innerHTML = `
+        <div class="np-opinion-card" style="margin:0;border:none;background:transparent;padding:0;">
+          <div class="np-opinion-card__label">Opinion</div>
+          <h3 class="np-opinion-card__headline">${escapeHtml(h || 'Your headline here...')}</h3>
+          <p class="np-opinion-card__body">${escapeHtml(b || 'Your opinion piece will appear here...')}</p>
+          <div class="np-opinion-card__author">— ${escapeHtml(faction.faction_name || 'Your Party')} (${escapeHtml(faction.abbreviation || '?')})</div>
+        </div>
+      `;
+    } else {
+      previewBox.style.display = 'none';
+    }
+  }
+
+  headline.addEventListener('input', validate);
+  body.addEventListener('input', validate);
+
+  function closeModal() {
+    modal.style.display = 'none';
+    errorEl.style.display = 'none';
+  }
+  cancelBtn.addEventListener('click', closeModal);
+  closeBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+  submitBtn.addEventListener('click', async () => {
+    const h = headline.value.trim();
+    const b = body.value.trim();
+    const t = topic.value;
+
+    if (h.length < 10) {
+      errorEl.textContent = 'Headline must be at least 10 characters.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    if (b.length < 30) {
+      errorEl.textContent = 'Body must be at least 30 characters.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Publishing...';
+    errorEl.style.display = 'none';
+
+    // Deduct 1 AP
+    const apResult = await deductAP(_supabase, faction.id, 1);
+    if (!apResult.success) {
+      errorEl.textContent = apResult.error || 'Insufficient AP.';
+      errorEl.style.display = 'block';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Publish Op-Ed (1 AP)';
+      return;
+    }
+
+    // Insert op-ed
+    const { error } = await _supabase.from('op_eds').insert([{
+      nation_id: nation.id,
+      faction_id: faction.id,
+      headline: h,
+      body: b,
+      topic: t,
+      publish_tick: (shard?.current_tick || 0) + 1,
+      created_at: new Date().toISOString()
+    }]);
+
+    if (error) {
+      errorEl.textContent = 'Failed to publish: ' + error.message;
+      errorEl.style.display = 'block';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Publish Op-Ed (1 AP)';
+      console.error('Op-ed insert failed:', error);
+      return;
+    }
+
+    // Success — close modal and refresh
+    closeModal();
+    headline.value = '';
+    body.value = '';
+    headlineCount.textContent = '0';
+    bodyCount.textContent = '0';
+    previewBox.style.display = 'none';
+    submitBtn.textContent = 'Publish Op-Ed (1 AP)';
+
+    // Reload op-eds
+    _opeds = await loadOpEds(nation.id, shard);
+    // Re-render
+    const parties = await loadParties(nation.id);
+    _events = await loadEvents(nation.id, shard);
+    renderNewspaper(nation, faction, shard, _events, _opeds, parties);
+    setupOpEdModal(faction, nation, shard);
+  });
+}
 </script>
 </body>
 </html>
