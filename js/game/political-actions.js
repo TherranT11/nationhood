@@ -518,6 +518,212 @@ function _deriveBlocTags(bloc) {
 }
 
 
+// ==================== VOTER OUTREACH ====================
+
+export const OUTREACH_CONFIG = {
+    AP_COST: 4,
+    COOLDOWN_WINDOW: 4, // look back 4 ticks for diminishing returns
+};
+
+const OUTREACH_AXIS_KEYS = [
+    'liberty_equality', 'tradition_progress', 'security_freedom',
+    'globalism_nationalism', 'individualism_collectivism'
+];
+
+/**
+ * Compute ideology alignment between a faction and a voter bloc (0-100).
+ * Uses the same logic as the server-side computeIdeologyAlignment in advance-tick.
+ */
+export function computeOutreachAlignment(factionIdeology, bloc) {
+    let weightedAlignment = 0;
+    let totalWeight = 0;
+
+    for (const axisKey of OUTREACH_AXIS_KEYS) {
+        const partyScore = factionIdeology[axisKey] || 0; // -100 to +100
+        const blocScore = bloc['axis_' + axisKey] ?? 50;  // 0-100
+
+        const partyStrength = Math.abs(partyScore) / 100;
+        if (partyStrength < 0.01) continue;
+
+        const partyNorm = (partyScore + 100) / 2; // -100→0, 0→50, +100→100
+        const alignment = 1 - Math.abs(partyNorm - blocScore) / 100;
+
+        weightedAlignment += alignment * partyStrength;
+        totalWeight += partyStrength;
+    }
+
+    if (totalWeight === 0) return 50;
+    return Math.round((weightedAlignment / totalWeight) * 100);
+}
+
+/**
+ * Compute the base outreach effect and diminishing returns.
+ * @returns {{ alignment, base, diminished, penalty }}
+ */
+export function calcOutreachEffect(alignment, recentOutreachCount) {
+    // base: 3 at alignment 0, up to 5 at alignment 100
+    const base = Math.round(3 + (alignment / 100) * 2);
+    const diminished = Math.max(1, base - recentOutreachCount);
+    return { alignment, base, diminished, penalty: base - diminished };
+}
+
+/**
+ * Compute friction — opposed blocs that lose approval when you outreach to a target bloc.
+ * Two blocs are "opposed" if they sit on opposite sides (one <40, other >60) of any axis
+ * where the target bloc holds a strong opinion (< 35 or > 65).
+ */
+export function calcOutreachFriction(targetBloc, allBlocs, factionIdeology) {
+    const frictions = [];
+    const targetAxes = [];
+
+    // Find axes where target bloc has a strong leaning
+    for (const axisKey of OUTREACH_AXIS_KEYS) {
+        const val = targetBloc['axis_' + axisKey] ?? 50;
+        if (val < 35 || val > 65) targetAxes.push({ key: axisKey, val });
+    }
+
+    for (const other of allBlocs) {
+        if (other.id === targetBloc.id) continue;
+
+        // Check if this bloc is ideologically opposed on any of the target's strong axes
+        let isOpposed = false;
+        for (const { key, val: tVal } of targetAxes) {
+            const oVal = other['axis_' + key] ?? 50;
+            // Opposed: one is < 35 and the other is > 65 (opposite sides)
+            if ((tVal < 35 && oVal > 65) || (tVal > 65 && oVal < 35)) {
+                isOpposed = true;
+                break;
+            }
+        }
+
+        if (!isOpposed) continue;
+
+        // Friction penalty scales with how aligned YOUR party is with the opposed bloc
+        const yourAlignment = factionIdeology
+            ? computeOutreachAlignment(factionIdeology, other)
+            : 50;
+
+        // High alignment with opposed bloc = more friction
+        const penalty = yourAlignment > 60 ? -2 : yourAlignment > 40 ? -1 : 0;
+        if (penalty < 0) {
+            frictions.push({ blocId: other.id, blocName: other.bloc_name, penalty, alignment: yourAlignment });
+        }
+    }
+
+    return frictions;
+}
+
+/**
+ * Execute voter outreach targeting a specific voter bloc.
+ * Guaranteed result — no randomness, no polarization, no headline.
+ * Returns { success, effects, newAp }
+ */
+export async function executeOutreach(supabase, factionId, nationId, blocId, currentTick) {
+    // ── 1. Validate AP ──
+    const { data: faction } = await supabase
+        .from('factions').select('action_points').eq('id', factionId).single();
+    if (!faction) return { success: false, error: 'Faction not found.' };
+    if ((faction.action_points || 0) < OUTREACH_CONFIG.AP_COST)
+        return { success: false, error: `Not enough AP. Need ${OUTREACH_CONFIG.AP_COST}.` };
+
+    // ── 2. Load recent outreach actions for diminishing returns ──
+    const { data: recentOutreach } = await supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', factionId)
+        .eq('action_type', 'outreach')
+        .gte('tick_performed', currentTick - OUTREACH_CONFIG.COOLDOWN_WINDOW)
+        .order('tick_performed', { ascending: false });
+
+    const outreachedThisTick = (recentOutreach || []).some(r => r.tick_performed === currentTick);
+    if (outreachedThisTick)
+        return { success: false, error: 'Already conducted outreach this tick.' };
+
+    const recentToBloc = (recentOutreach || []).filter(r => r.result?.blocId === blocId).length;
+
+    // ── 3. Load faction ideology ──
+    const { data: factionIdeo } = await supabase
+        .from('faction_ideology')
+        .select('liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
+        .eq('faction_id', factionId)
+        .maybeSingle();
+
+    // ── 4. Load all blocs ──
+    const { data: allBlocs } = await supabase
+        .from('voter_blocs')
+        .select('id, bloc_name, population_weight, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
+        .eq('nation_id', nationId).eq('is_active', true);
+
+    const targetBloc = (allBlocs || []).find(b => b.id === blocId);
+    if (!targetBloc) return { success: false, error: 'Voter bloc not found.' };
+
+    // ── 5. Load approval rows ──
+    const { data: approvalRows } = await supabase
+        .from('faction_bloc_approval')
+        .select('id, bloc_id, preference_score, momentum')
+        .eq('faction_id', factionId);
+    const approvalByBloc = {};
+    for (const row of (approvalRows || [])) approvalByBloc[row.bloc_id] = row;
+
+    // ── 6. Compute alignment and effect ──
+    const alignment = factionIdeo ? computeOutreachAlignment(factionIdeo, targetBloc) : 50;
+    const { diminished } = calcOutreachEffect(alignment, recentToBloc);
+
+    // ── 7. Apply target bloc effect ──
+    const effects = [];
+    const targetRow = approvalByBloc[blocId];
+    if (targetRow) {
+        const oldPref = Math.round(targetRow.preference_score || 0);
+        const newPref = Math.max(0, Math.min(100, oldPref + diminished));
+        const newMom = Math.round(((targetRow.momentum || 0) + diminished) * 100) / 100;
+        await supabase.from('faction_bloc_approval')
+            .update({ preference_score: newPref, momentum: newMom }).eq('id', targetRow.id);
+        effects.push({ bloc: targetBloc.bloc_name, blocId, value: diminished, oldPref, newPref });
+    }
+
+    // ── 8. Apply friction to opposed blocs ──
+    const frictions = calcOutreachFriction(targetBloc, allBlocs || [], factionIdeo);
+    for (const fri of frictions) {
+        const row = approvalByBloc[fri.blocId];
+        if (!row) continue;
+        const oldPref = Math.round(row.preference_score || 0);
+        const newPref = Math.max(0, Math.min(100, oldPref + fri.penalty));
+        const newMom = Math.round(((row.momentum || 0) + fri.penalty) * 100) / 100;
+        await supabase.from('faction_bloc_approval')
+            .update({ preference_score: newPref, momentum: newMom }).eq('id', row.id);
+        effects.push({ bloc: fri.blocName, blocId: fri.blocId, value: fri.penalty, oldPref, newPref });
+    }
+
+    // ── 9. Deduct AP ──
+    const apResult = await deductAP(supabase, factionId, OUTREACH_CONFIG.AP_COST);
+
+    // ── 10. Log ──
+    await supabase.from('campaign_actions').insert({
+        party_id: factionId,
+        nation_id: nationId,
+        action_type: 'outreach',
+        ap_cost: OUTREACH_CONFIG.AP_COST,
+        money_cost: 0,
+        tick_performed: currentTick,
+        result: {
+            blocId, blocName: targetBloc.bloc_name,
+            alignment, diminished,
+            effects,
+            recentToBloc,
+            tags: _deriveBlocTags(targetBloc),
+        }
+    });
+
+    return {
+        success: true,
+        effects,
+        alignment,
+        diminished,
+        newAp: apResult.newAp ?? ((faction.action_points || 0) - OUTREACH_CONFIG.AP_COST),
+    };
+}
+
+
 // ==================== MAKE PROMISE ====================
 
 export const MAKE_PROMISE_CONFIG = {
