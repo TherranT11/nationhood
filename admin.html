@@ -54,6 +54,7 @@
             <button class="tab" onclick="showTab('audit')">Policy Audit</button>
             <button class="tab" onclick="showTab('ministries')">Ministries</button>
             <button class="tab" onclick="showTab('statconnect')">Stat Connector</button>
+            <button class="tab" onclick="showTab('stataudit')">Stat Audit</button>
         </div>
 
         <!-- ==================== SHARD TAB ==================== -->
@@ -480,6 +481,29 @@
             </div>
         </div>
 
+        <!-- ==================== STAT AUDIT TAB ==================== -->
+        <div class="tab-content" id="tab-stataudit">
+            <h2>Stat Delta Audit</h2>
+            <p style="color:#888; margin-bottom:16px;">
+                Investigate why a nation stat changed. Shows every system that touches the chosen stat this tick:
+                active laws, stat connections, crises, ministry actions, leader traits, and natural decay.
+            </p>
+            <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:20px;">
+                <div class="input-group" style="flex:1; min-width:200px; margin-bottom:0;">
+                    <label>Nation</label>
+                    <select id="sa-nation-select"></select>
+                </div>
+                <div class="input-group" style="flex:1; min-width:200px; margin-bottom:0;">
+                    <label>Stat</label>
+                    <select id="sa-stat-select"></select>
+                </div>
+                <button class="btn btn-primary" onclick="runStatAudit()" style="margin-bottom:0; height:44px;">
+                    Run Audit
+                </button>
+            </div>
+            <div id="sa-results" style="font-family:monospace; font-size:0.85rem; white-space:pre-wrap; color:#ccc;"></div>
+        </div>
+
         <!-- Budget Preview Modal -->
         <div id="budget-preview-modal" class="bp-modal-overlay" style="display:none;" onclick="if(event.target===this)closeBudgetPreview()">
             <div class="bp-modal">
@@ -497,7 +521,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName } from './js/game-common.js';
+import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName, STAT_DECAY_CONFIG, normalizeNationStatKey } from './js/game-common.js';
 
     const ADMIN_PASSWORD = 'nationhood2000';
     let isAuthenticated = false;
@@ -4139,6 +4163,251 @@ window.toggleScField = toggleScField;
 window.addScConnection = addScConnection;
 window.duplicateScConnection = duplicateScConnection;
 window.deleteScConnection = deleteScConnection;
+
+// ==================== STAT AUDIT TAB ====================
+
+async function initStatAudit() {
+    // Populate nation dropdown
+    const { data: nats } = await _supabase.from('nations').select('id, name').order('name');
+    const nSel = document.getElementById('sa-nation-select');
+    nSel.innerHTML = (nats || []).map(n => `<option value="${n.id}">${n.name}</option>`).join('');
+
+    // Populate stat dropdown from NATION_STAT_COLUMNS
+    const sSel = document.getElementById('sa-stat-select');
+    sSel.innerHTML = NATION_STAT_COLUMNS
+        .map(s => `<option value="${s}"${s === 'education_accessibility' ? ' selected' : ''}>${formatStatName(s)}</option>`)
+        .join('');
+}
+initStatAudit();
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+async function runStatAudit() {
+    const nationId = document.getElementById('sa-nation-select').value;
+    const sk = document.getElementById('sa-stat-select').value;
+    const out = document.getElementById('sa-results');
+    if (!nationId || !sk) { out.textContent = 'Select a nation and stat.'; return; }
+    out.innerHTML = '<span style="color:#888;">Running audit...</span>';
+
+    const lines = [];
+    const log = (s, color) => lines.push(color ? `<span style="color:${color}">${esc(s)}</span>` : esc(s));
+    const heading = (s) => lines.push(`\n<span style="color:#0af;font-weight:bold;font-size:1rem;">${esc(s)}</span>`);
+
+    // 1. Nation + shard
+    const [{ data: shard }, { data: nation }] = await Promise.all([
+        _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+        _supabase.from('nations').select('*').eq('id', nationId).single()
+    ]);
+    const tick = shard?.current_tick || 0;
+
+    heading(`STAT DELTA AUDIT: ${formatStatName(sk)}`);
+    log(`Nation: ${nation.name} | Tick: ${tick} | Current value: ${nation[sk]}`);
+
+    // 2. History
+    heading('HISTORY (last 5 ticks)');
+    const { data: hist } = await _supabase.from('nations_history')
+        .select(sk + ', tick').eq('nation_id', nationId)
+        .lte('tick', tick).order('tick', { ascending: false }).limit(5);
+    if (hist?.length) {
+        for (const h of hist) log(`  tick ${h.tick}: ${h[sk]}`);
+        const prev = hist.find(h => h.tick < tick);
+        if (prev) {
+            const d = (Number(nation[sk]) - Number(prev[sk])).toFixed(1);
+            log(`  Delta (tick ${prev.tick} → now): ${d > 0 ? '+' : ''}${d}`, d < 0 ? '#f44' : d > 0 ? '#4f4' : '#888');
+        }
+    } else {
+        log('  No history rows found.', '#888');
+    }
+
+    // 3. Active laws
+    heading('ACTIVE LAWS');
+    const { data: laws } = await _supabase.from('active_laws')
+        .select('id, bill_id, is_reversal, passed_tick, effects_applied_through_tick, reversal_effects, policies(policy_name, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)')
+        .eq('nation_id', nationId);
+    const hitLaws = (laws || []).filter(l => {
+        const p = l.policies;
+        if (!p) return false;
+        if (normalizeNationStatKey(p.target_stat) === sk) return true;
+        if (p.stat_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)) return true;
+        if (l.is_reversal && l.reversal_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)) return true;
+        return false;
+    });
+    if (hitLaws.length === 0) {
+        log('  None affecting this stat.', '#888');
+    }
+    for (const l of hitLaws) {
+        const p = l.policies;
+        const effs = l.is_reversal ? (l.reversal_effects || []) : (p.stat_effects || []);
+        const relevant = effs.filter(e => normalizeNationStatKey(e.stat_key) === sk);
+        for (const e of relevant) {
+            const ticksSince = tick - (l.passed_tick || 0);
+            const delay = Number(e.delay_ticks) || 0;
+            const dur = Number(e.duration_ticks) || 12;
+            const active = ticksSince > delay && ticksSince <= delay + dur;
+            const rate = Number(e.rate) || 1;
+            const perTick = e.direction === 'down' ? -rate : +rate;
+            log(`  ${active ? '[ACTIVE]' : '[dormant]'} "${p.policy_name}" | ${e.direction} ${rate}/tick | delay=${delay} dur=${dur} | ticksSince=${ticksSince} | lastApplied=${l.effects_applied_through_tick}`,
+                active ? (perTick < 0 ? '#f44' : '#4f4') : '#666');
+        }
+        // Legacy single-stat format
+        if (relevant.length === 0 && normalizeNationStatKey(p.target_stat) === sk) {
+            log(`  [legacy] "${p.policy_name}" | ${p.stat_direction} ${p.stat_change_per_tick}/tick dur=${p.duration_months}`, '#fa0');
+        }
+    }
+
+    // 4. Stat connections
+    heading('STAT CONNECTIONS');
+    const { data: conns } = await _supabase.from('stat_connections')
+        .select('*').eq('enabled', true).eq('target_stat', sk);
+    if (!conns?.length) {
+        log('  No connections targeting this stat.', '#888');
+    }
+    for (const c of (conns || [])) {
+        const sourceVal = Number(nation[c.source_stat] ?? 50);
+        const triggered = c.source_dir === 'above' ? sourceVal > c.threshold : sourceVal < c.threshold;
+        let effMag = Number(c.magnitude);
+        if (triggered && c.dampening) {
+            const tv = Number(nation[sk] ?? 50);
+            effMag = c.target_dir === 'up' ? c.magnitude * (1 - tv / 100) : c.magnitude * (tv / 100);
+        }
+        const perTick = triggered ? (c.target_dir === 'down' ? -effMag : +effMag) : 0;
+        log(`  ${triggered ? '[TRIGGERED]' : '[inactive]'} ${c.source_stat} ${c.source_dir} ${c.threshold} (now: ${sourceVal}) → ${c.target_dir} mag=${c.magnitude}${c.dampening ? ` (eff: ${effMag.toFixed(2)})` : ''} | dampening=${c.dampening}`,
+            triggered ? (perTick < 0 ? '#f44' : '#4f4') : '#666');
+    }
+
+    // Also check connections where this stat is the SOURCE (for context)
+    const { data: srcConns } = await _supabase.from('stat_connections')
+        .select('*').eq('enabled', true).eq('source_stat', sk);
+    if (srcConns?.length) {
+        log('');
+        log(`  (This stat is also a SOURCE for ${srcConns.length} connection(s):)`, '#888');
+        for (const c of srcConns) {
+            const sv = Number(nation[sk] ?? 50);
+            const triggered = c.source_dir === 'above' ? sv > c.threshold : sv < c.threshold;
+            log(`    ${triggered ? '[TRIGGERED]' : '[inactive]'} → ${c.target_stat} ${c.target_dir} mag=${c.magnitude} when ${sk} ${c.source_dir} ${c.threshold}`, '#888');
+        }
+    }
+
+    // 5. Active crises
+    heading('ACTIVE CRISES');
+    const { data: crises } = await _supabase.from('active_crises')
+        .select('crisis_id, started_tick, crisis_templates(name, crisis_effects(stat_key, change_per_tick, target))')
+        .eq('nation_id', nationId);
+    const hitCrises = (crises || []).filter(c =>
+        c.crisis_templates?.crisis_effects?.some(e => e.target === 'nation' && normalizeNationStatKey(e.stat_key) === sk)
+    );
+    if (hitCrises.length === 0) {
+        log('  None affecting this stat.', '#888');
+    }
+    for (const c of hitCrises) {
+        const effs = c.crisis_templates.crisis_effects.filter(e => e.target === 'nation' && normalizeNationStatKey(e.stat_key) === sk);
+        for (const e of effs) {
+            log(`  [ACTIVE] "${c.crisis_templates.name}" | change_per_tick=${e.change_per_tick} | started tick ${c.started_tick}`,
+                e.change_per_tick < 0 ? '#f44' : '#4f4');
+        }
+    }
+
+    // 6. Ministry actions
+    heading('MINISTRY ACTIONS (unprocessed)');
+    const { data: mActions } = await _supabase.from('ministry_action_log')
+        .select('action_key, stat_effects, effects_applied_through_tick, applied_at_tick')
+        .eq('nation_id', nationId).eq('processed', false);
+    const hitMA = (mActions || []).filter(a =>
+        a.stat_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)
+    );
+    if (hitMA.length === 0) {
+        log('  None.', '#888');
+    }
+    for (const a of hitMA) {
+        const effs = a.stat_effects.filter(e => normalizeNationStatKey(e.stat_key) === sk);
+        for (const e of effs) {
+            log(`  "${a.action_key}" | ${e.direction} ${e.rate}/tick | applied tick ${a.applied_at_tick} lastApplied=${a.effects_applied_through_tick}`, '#fa0');
+        }
+    }
+
+    // 7. Decay config
+    heading('NATURAL DECAY');
+    const dc = STAT_DECAY_CONFIG[sk];
+    if (dc) {
+        const cv = Number(nation[sk] ?? 50);
+        const delta = cv === dc.target ? 0 : (cv > dc.target ? -dc.speed : dc.speed);
+        log(`  type=${dc.type} | target=${dc.target} | speed=${dc.speed}/tick | current=${cv} | decay this tick: ${delta > 0 ? '+' : ''}${delta}`);
+    } else {
+        log('  No decay config — stat holds value indefinitely.', '#888');
+    }
+
+    // 8. Institution funding (check if decay is being blocked or amplified)
+    heading('INSTITUTION FUNDING');
+    const { data: instConfig } = await _supabase.from('ministry_institution_config').select('*');
+    const covering = (instConfig || []).filter(ic => ic.primary_stat === sk || ic.secondary_stat === sk);
+    if (covering.length === 0) {
+        log('  No institutions cover this stat. Natural decay rate applies.', '#888');
+    } else if (!nation.last_budget_bill_id) {
+        log('  No budget passed — all institutions are UNFUNDED (0%).', '#f44');
+    } else {
+        const { data: allocs } = await _supabase.from('budget_item_allocations')
+            .select('item_id, allocation_amount, needed_amount')
+            .eq('bill_id', nation.last_budget_bill_id)
+            .eq('item_type', 'institution');
+        const allocMap = {};
+        for (const a of (allocs || [])) allocMap[a.item_id] = a;
+        for (const ic of covering) {
+            const role = ic.primary_stat === sk ? 'primary' : 'secondary';
+            const a = allocMap[ic.id];
+            const pct = a && a.needed_amount > 0 ? Math.min(100, Math.round((a.allocation_amount / a.needed_amount) * 100)) : 0;
+            const tierLabel = pct >= 100 ? 'Fully Funded (decay blocked)' : pct >= 90 ? 'Stretched' : pct >= 75 ? 'Strained' : pct >= 50 ? 'Underfunded' : pct >= 25 ? 'Critical' : 'Collapsed';
+            log(`  ${ic.institution_name || ic.id} (${role}) — ${pct}% funded → ${tierLabel}`,
+                pct >= 100 ? '#4f4' : pct >= 75 ? '#fa0' : '#f44');
+        }
+    }
+
+    // Summary
+    heading('TOTAL ESTIMATED PER-TICK IMPACT');
+    let total = 0;
+    // Decay
+    if (dc) {
+        const cv = Number(nation[sk] ?? 50);
+        if (cv !== dc.target) total += cv > dc.target ? -dc.speed : dc.speed;
+    }
+    // Active laws
+    for (const l of hitLaws) {
+        const p = l.policies;
+        const effs = l.is_reversal ? (l.reversal_effects || []) : (p.stat_effects || []);
+        for (const e of effs.filter(e => normalizeNationStatKey(e.stat_key) === sk)) {
+            const ticksSince = tick - (l.passed_tick || 0);
+            const delay = Number(e.delay_ticks) || 0;
+            const dur = Number(e.duration_ticks) || 12;
+            if (ticksSince > delay && ticksSince <= delay + dur) {
+                total += e.direction === 'down' ? -(Number(e.rate) || 1) : (Number(e.rate) || 1);
+            }
+        }
+    }
+    // Stat connections (triggered)
+    for (const c of (conns || [])) {
+        const sourceVal = Number(nation[c.source_stat] ?? 50);
+        const triggered = c.source_dir === 'above' ? sourceVal > c.threshold : sourceVal < c.threshold;
+        if (!triggered) continue;
+        let effMag = Number(c.magnitude);
+        if (c.dampening) {
+            const tv = Number(nation[sk] ?? 50);
+            effMag = c.target_dir === 'up' ? c.magnitude * (1 - tv / 100) : c.magnitude * (tv / 100);
+        }
+        total += c.target_dir === 'down' ? -effMag : +effMag;
+    }
+    // Crises
+    for (const c of hitCrises) {
+        for (const e of c.crisis_templates.crisis_effects.filter(e => e.target === 'nation' && normalizeNationStatKey(e.stat_key) === sk)) {
+            total += Number(e.change_per_tick);
+        }
+    }
+    total = Math.round(total * 100) / 100;
+    log(`  Estimated net change: ${total > 0 ? '+' : ''}${total} per tick`, total < 0 ? '#f44' : total > 0 ? '#4f4' : '#888');
+    log(`  (Does not include unprocessed ministry actions or leader trait effects)`, '#666');
+
+    out.innerHTML = lines.join('\n');
+}
+
+window.runStatAudit = runStatAudit;
 </script>
 </body>
 </html>
