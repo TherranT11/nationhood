@@ -3077,6 +3077,76 @@ async function renderParties() {
             </div>
         </div>
 
+        ${isPresidential && presNomineeState !== 'hidden' ? `
+        <div class="pres-nominee-section" id="pres-nominee-section">
+            <div class="pres-nominee-header">
+                <span class="pres-nominee-icon">🏛</span>
+                <span class="pres-nominee-title">Presidential Nominee</span>
+                ${presTicksUntil !== null ? `<span class="pres-nominee-countdown">${presTicksUntil} month${presTicksUntil !== 1 ? 's' : ''} to election</span>` : ''}
+            </div>
+            ${presNomineeState === 'greyed' ? `
+                <div class="pres-nominee-greyed">
+                    <button class="pres-nominee-btn pres-nominee-btn-disabled" disabled>Select Presidential Nominee</button>
+                    <div class="pres-nominee-note">Available ${GAME_CONFIG.PRESIDENTIAL_CANDIDATE_LEAD_TICKS} months before the next presidential election${presTicksUntil !== null ? ` (${presTicksUntil} months away)` : ''}.</div>
+                </div>
+            ` : presNomineeState === 'locked' ? `
+                <div class="pres-nominee-locked">
+                    <div class="pres-nominee-locked-card">
+                        <div class="pres-nominee-locked-label">Your Nominee</div>
+                        <div class="pres-nominee-locked-name">${presNomineeSelected.first_name} ${presNomineeSelected.last_name}</div>
+                        <div class="pres-nominee-locked-detail">Age ${presNomineeSelected.age} · ${presNomineeSelected.ideology} · ${presNomineeTraits[presNomineeSelected.trait_key]?.trait_name || presNomineeSelected.trait_key}</div>
+                    </div>
+                    <div class="pres-nominee-note">Nominee is locked in for the upcoming election.</div>
+                </div>
+            ` : `
+                <div class="pres-nominee-active">
+                    <button class="pres-nominee-btn pres-nominee-btn-active" id="pres-nominee-toggle-btn" onclick="toggleNomineeSelector()">Select Presidential Nominee</button>
+                    <div class="pres-nominee-note">Choose your party's candidate for the presidential election.</div>
+                </div>
+                <div class="pres-nominee-selector" id="pres-nominee-selector" style="display:none;">
+                    <div class="pres-nominee-selector-header">
+                        <h3>Choose Your Candidate</h3>
+                        <p>Your nominee will compete in the popular vote. This choice also sets your Party Leader.</p>
+                    </div>
+                    <div class="pres-nominee-cards" id="pres-nominee-cards">
+                        ${presNomineeCandidates.map(c => {
+                            const trait = presNomineeTraits[c.trait_key] || {};
+                            const ideoClass = getIdeologyClass(c.ideology);
+                            return `
+                            <div class="pm-card pres-nom-card" id="pres-card-${c.id}" data-candidate-id="${c.id}">
+                                <div class="pm-card-header">
+                                    <div class="pm-card-avatar">🏛</div>
+                                    <div class="pm-card-name">${c.first_name} ${c.last_name}</div>
+                                    <div class="pm-card-age">Age ${c.age}</div>
+                                </div>
+                                <div class="pm-card-ideology">
+                                    <div class="pm-ideology-label">Ideology</div>
+                                    <div class="pm-ideology-tag ${ideoClass}">${c.ideology}</div>
+                                    <div class="pm-ideology-shift">+15 shift toward ${c.ideology.charAt(0) + c.ideology.slice(1).toLowerCase()} if elected</div>
+                                </div>
+                                <div class="pm-card-trait">
+                                    <div class="pm-trait-label">Leader Trait</div>
+                                    <div class="pm-trait-name">${trait.trait_name || c.trait_key}</div>
+                                    <div class="pm-trait-desc">${trait.description || ''}</div>
+                                    <div class="pm-trait-effect upside">${trait.upside || 'Unknown'}</div>
+                                    <div class="pm-trait-effect downside">${trait.downside || 'Unknown'}</div>
+                                </div>
+                                <div class="pm-card-footer">
+                                    <div class="pm-select-indicator">Select</div>
+                                </div>
+                            </div>`;
+                        }).join('')}
+                    </div>
+                    <div class="pres-nominee-confirm" id="pres-nominee-confirm">
+                        <div class="pres-nominee-confirm-summary" id="pres-nominee-confirm-summary">Select a candidate above</div>
+                        <button class="pm-confirm-btn" id="pres-nominee-confirm-btn" disabled onclick="confirmPresNominee()">Nominate Candidate</button>
+                        <div class="pres-nominee-confirm-warning">This choice is permanent. Your nominee will run in the presidential election and become Party Leader.</div>
+                    </div>
+                </div>
+            `}
+        </div>
+        ` : ''}
+
         <div class="vote-share-panel">
             <div class="vote-share-header">Projected Vote Share</div>
             <div class="vote-bars">
@@ -3147,76 +3217,6 @@ async function renderParties() {
         </div>
 
         </div>
-
-        ${isPresidential && presNomineeState !== 'hidden' ? `
-        <div class="pres-nominee-section" id="pres-nominee-section">
-            <div class="pres-nominee-header">
-                <span class="pres-nominee-icon">🏛</span>
-                <span class="pres-nominee-title">Presidential Nominee</span>
-                ${presTicksUntil !== null ? `<span class="pres-nominee-countdown">${presTicksUntil} month${presTicksUntil !== 1 ? 's' : ''} to election</span>` : ''}
-            </div>
-            ${presNomineeState === 'greyed' ? `
-                <div class="pres-nominee-greyed">
-                    <button class="pres-nominee-btn pres-nominee-btn-disabled" disabled>Select Presidential Nominee</button>
-                    <div class="pres-nominee-note">Available ${GAME_CONFIG.PRESIDENTIAL_CANDIDATE_LEAD_TICKS} months before the next presidential election${presTicksUntil !== null ? ` (${presTicksUntil} months away)` : ''}.</div>
-                </div>
-            ` : presNomineeState === 'locked' ? `
-                <div class="pres-nominee-locked">
-                    <div class="pres-nominee-locked-card">
-                        <div class="pres-nominee-locked-label">Your Nominee</div>
-                        <div class="pres-nominee-locked-name">${presNomineeSelected.first_name} ${presNomineeSelected.last_name}</div>
-                        <div class="pres-nominee-locked-detail">Age ${presNomineeSelected.age} · ${presNomineeSelected.ideology} · ${presNomineeTraits[presNomineeSelected.trait_key]?.trait_name || presNomineeSelected.trait_key}</div>
-                    </div>
-                    <div class="pres-nominee-note">Nominee is locked in for the upcoming election.</div>
-                </div>
-            ` : `
-                <div class="pres-nominee-active">
-                    <button class="pres-nominee-btn pres-nominee-btn-active" id="pres-nominee-toggle-btn" onclick="toggleNomineeSelector()">Select Presidential Nominee</button>
-                    <div class="pres-nominee-note">Choose your party's candidate for the presidential election.</div>
-                </div>
-                <div class="pres-nominee-selector" id="pres-nominee-selector" style="display:none;">
-                    <div class="pres-nominee-selector-header">
-                        <h3>Choose Your Candidate</h3>
-                        <p>Your nominee will compete in the popular vote. This choice also sets your Party Leader.</p>
-                    </div>
-                    <div class="pres-nominee-cards" id="pres-nominee-cards">
-                        ${presNomineeCandidates.map(c => {
-                            const trait = presNomineeTraits[c.trait_key] || {};
-                            const ideoClass = getIdeologyClass(c.ideology);
-                            return `
-                            <div class="pm-card pres-nom-card" id="pres-card-${c.id}" data-candidate-id="${c.id}">
-                                <div class="pm-card-header">
-                                    <div class="pm-card-avatar">🏛</div>
-                                    <div class="pm-card-name">${c.first_name} ${c.last_name}</div>
-                                    <div class="pm-card-age">Age ${c.age}</div>
-                                </div>
-                                <div class="pm-card-ideology">
-                                    <div class="pm-ideology-label">Ideology</div>
-                                    <div class="pm-ideology-tag ${ideoClass}">${c.ideology}</div>
-                                    <div class="pm-ideology-shift">+15 shift toward ${c.ideology.charAt(0) + c.ideology.slice(1).toLowerCase()} if elected</div>
-                                </div>
-                                <div class="pm-card-trait">
-                                    <div class="pm-trait-label">Leader Trait</div>
-                                    <div class="pm-trait-name">${trait.trait_name || c.trait_key}</div>
-                                    <div class="pm-trait-desc">${trait.description || ''}</div>
-                                    <div class="pm-trait-effect upside">${trait.upside || 'Unknown'}</div>
-                                    <div class="pm-trait-effect downside">${trait.downside || 'Unknown'}</div>
-                                </div>
-                                <div class="pm-card-footer">
-                                    <div class="pm-select-indicator">Select</div>
-                                </div>
-                            </div>`;
-                        }).join('')}
-                    </div>
-                    <div class="pres-nominee-confirm" id="pres-nominee-confirm">
-                        <div class="pres-nominee-confirm-summary" id="pres-nominee-confirm-summary">Select a candidate above</div>
-                        <button class="pm-confirm-btn" id="pres-nominee-confirm-btn" disabled onclick="confirmPresNominee()">Nominate Candidate</button>
-                        <div class="pres-nominee-confirm-warning">This choice is permanent. Your nominee will run in the presidential election and become Party Leader.</div>
-                    </div>
-                </div>
-            `}
-        </div>
-        ` : ''}
 
         <div class="vba-panel">
             <div class="vba-header">

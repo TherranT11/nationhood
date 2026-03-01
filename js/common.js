@@ -388,8 +388,9 @@ async function updatePresNomineeBadge(faction, nation) {
     const badge = document.getElementById('parties-nominee-badge');
     if (!badge || !faction || !nation) return;
     try {
-        // Only for presidential republics
-        if (nation.government_type !== 'Presidential Republic') return;
+        // Only for presidential republics (canonical: 'Presidential', legacy: 'Presidential Republic')
+        const gt = (nation.government_type || '').toLowerCase();
+        if (gt !== 'presidential' && gt !== 'presidential republic') return;
         // Check for unselected presidential candidates for this faction
         const { count } = await _supabase
             .from('pm_candidates')
