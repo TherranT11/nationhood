@@ -207,27 +207,11 @@ async function loadPreviousTickData(nationId) {
         return;
     }
 
-    // Fallback: grab the most recent history row before the current tick.
-    // Covers gaps where a specific tick's snapshot failed or was skipped.
-    const { data: fallback, error: fbErr } = await _supabase.from('nations_history')
-        .select('*').eq('nation_id', nationId).lt('tick', shard.current_tick)
-        .order('tick', { ascending: false }).limit(1);
-    if (fbErr) {
-        console.warn('[loadPreviousTickData] Fallback query error:', fbErr.message);
-        return;
-    }
-    if (fallback && fallback.length > 0) {
-        previousTickData = fallback[0];
-        qCacheSet(cacheKey, fallback[0], 5 * 60 * 1000);
-    }
-    if (!previousTickData) {
-        console.warn('[loadPreviousTickData] No history rows found for nation', nationId,
-            'at tick', previousTick, 'or earlier.',
-            'Stat change indicators (▲/▼) will not display.',
-            'Ensure: (1) nations_history table has UNIQUE(nation_id, tick) constraint,',
-            '(2) RLS SELECT policy exists on nations_history,',
-            '(3) advance-tick edge function has run at least 2 ticks.');
-    }
+    // No history row for the exact previous tick — show neutral deltas.
+    // Do NOT fall back to older ticks, which would show accumulated
+    // multi-tick changes instead of just the previous tick's delta.
+    console.warn('[loadPreviousTickData] No history row for tick', previousTick,
+        '— stat deltas will show neutral (―).');
 }
 
 // ===== Affected-By: Data Fetching =====
