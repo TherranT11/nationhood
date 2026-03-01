@@ -2951,11 +2951,25 @@ export async function processMinistryActions(supabase, nation, currentTick) {
  * @returns {Array} results for logging
  */
 export async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown = false, institutionConfig = null, budgetAllocations = null) {
-    const { data: ministries } = await supabase
+    // Try SELECT with embattled_since_tick; fall back without it if column doesn't exist yet
+    let ministries;
+    const { data: minData, error: minErr } = await supabase
         .from('ministries')
         .select('id, ministry_key, minister_approval, minister_first_name, embattled_since_tick, party_id')
         .eq('nation_id', nation.id)
         .eq('is_active', true);
+
+    if (minErr) {
+        console.warn(`[updateMinisterApprovals] SELECT with embattled_since_tick failed (${minErr.message}), retrying without it`);
+        const { data: fallbackData } = await supabase
+            .from('ministries')
+            .select('id, ministry_key, minister_approval, minister_first_name, party_id')
+            .eq('nation_id', nation.id)
+            .eq('is_active', true);
+        ministries = fallbackData;
+    } else {
+        ministries = minData;
+    }
 
     if (!ministries || ministries.length === 0) return [];
 
@@ -3130,11 +3144,25 @@ export async function updateMinisterApprovals(supabase, nation, currentTick, isS
 export async function calculateGovernmentApprovalTick(supabase, nation, currentTick, isShutdown = false) {
     const cfg = GOV_APPROVAL_CONFIG;
 
-    const { data: ministries } = await supabase
+    // Try SELECT with embattled_since_tick; fall back without it if column doesn't exist yet
+    let ministries;
+    const { data: govMinData, error: govMinErr } = await supabase
         .from('ministries')
         .select('ministry_key, minister_approval, minister_first_name, embattled_since_tick')
         .eq('nation_id', nation.id)
         .eq('is_active', true);
+
+    if (govMinErr) {
+        console.warn(`[calculateGovernmentApprovalTick] SELECT with embattled_since_tick failed (${govMinErr.message}), retrying without it`);
+        const { data: fallbackData } = await supabase
+            .from('ministries')
+            .select('ministry_key, minister_approval, minister_first_name')
+            .eq('nation_id', nation.id)
+            .eq('is_active', true);
+        ministries = fallbackData;
+    } else {
+        ministries = govMinData;
+    }
 
     if (!ministries || ministries.length === 0) return null;
 
