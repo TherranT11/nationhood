@@ -93,7 +93,8 @@ const GAME_CONFIG = {
     INACTIVITY_APPROVAL_DECAY: 5,         // -5 approval per voter bloc per tick while inactive (ticks 7-11)
     INACTIVITY_DISBAND_TICKS: 12,         // at tick 12: party is disbanded (removed from nation, loses seats next election)
     BUDGET_EARLY_WINDOW_TICKS: 3,    // ticks before budget due date that early proposal opens
-    BUDGET_BILL_VOTING_TICKS: null,   // budget bills persist until passed (never expire)
+    BUDGET_BILL_VOTING_TICKS: null,   // budget bills persist until passed (never expire) — used for early resolution grace
+    BUDGET_BILL_MAX_FLOOR_TICKS: 4,   // budget bills auto-resolve after 4 ticks on the floor (forced vote)
     NO_BUDGET_PENALTY_TICKS: 24,     // how many ticks without a budget before max penalty
 };
 /**
@@ -4842,11 +4843,33 @@ async function resolveExpiredVotes(supabase, nationId) {
         .eq('status', 'floor')
         .lte('voting_ends_tick', currentTick);
 
-    if (error || !expiredBills || expiredBills.length === 0) return [];
+    // Budget bills have voting_ends_tick = null, so they're never caught above.
+    // Force-resolve any budget bill that's been on the floor for BUDGET_BILL_MAX_FLOOR_TICKS.
+    const budgetDeadline = currentTick - (GAME_CONFIG.BUDGET_BILL_MAX_FLOOR_TICKS || 4);
+    const { data: staleBudgetBills, error: budgetErr } = await supabase
+        .from('bills')
+        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+        .eq('nation_id', nationId)
+        .eq('status', 'floor')
+        .eq('bill_type', 'budget')
+        .is('voting_ends_tick', null)
+        .lte('proposed_tick', budgetDeadline);
+
+    // Merge both sets, deduplicating by bill ID
+    const allBills = [...(expiredBills || [])];
+    const seenIds = new Set(allBills.map(b => b.id));
+    for (const b of (staleBudgetBills || [])) {
+        if (!seenIds.has(b.id)) {
+            allBills.push(b);
+            seenIds.add(b.id);
+        }
+    }
+
+    if (allBills.length === 0) return [];
 
     const results = [];
 
-    for (const bill of expiredBills) {
+    for (const bill of allBills) {
         const { data: nation } = await supabase
             .from('nations')
             .select('name, government_type, total_seats')
