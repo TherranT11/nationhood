@@ -45,6 +45,9 @@
 }
 
 #newspaper-root {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
   background: var(--np-bg-page);
   color: var(--np-text-primary);
   font-family: var(--np-font-body);
