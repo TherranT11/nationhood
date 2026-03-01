@@ -526,6 +526,28 @@
                         </select>
                     </div>
                     <span id="vald-art-filter-info" style="color:#666; font-size:0.8rem; margin-left:auto;"></span>
+                </div>
+                <div id="vald-article-list"></div>
+            </div>
+
+            <!-- ── Op-Eds Sub-tab ── -->
+            <div class="sc-subtab" id="vald-sub-opeds">
+                <div style="display:flex; gap:12px; margin-bottom:16px; align-items:center; flex-wrap:wrap;">
+                    <div class="sc-filter-group">
+                        <label>STATUS</label>
+                        <select id="vald-oped-status-filter" onchange="loadValdorianOpEds()">
+                            <option value="">All Statuses</option>
+                            <option value="draft">Draft</option>
+                            <option value="published">Published</option>
+                            <option value="rejected">Rejected</option>
+                        </select>
+                    </div>
+                    <span id="vald-oped-filter-info" style="color:#666; font-size:0.8rem; margin-left:auto;"></span>
+                </div>
+                <div id="vald-oped-list"></div>
+            </div>
+        </div>
+
         <!-- ==================== STAT AUDIT TAB ==================== -->
         <div class="tab-content" id="tab-stataudit">
             <h2>Stat Delta Audit</h2>
