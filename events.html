@@ -1047,7 +1047,7 @@ function renderOpEdCard(oped) {
       ${isFront ? '<div class="np-opinion-card__featured-badge">FEATURED</div>' : ''}
       <div class="np-opinion-card__label">Opinion</div>
       <h3 class="np-opinion-card__headline">${escapeHtml(oped.headline || 'Untitled')}</h3>
-      <p class="np-opinion-card__body">${escapeHtml(truncated)}</p>
+      <p class="np-opinion-card__body">${escapeHtml(truncated).replace(/\n/g, '<br>')}</p>
       <div class="np-opinion-card__author">— ${escapeHtml(factionName)} (${escapeHtml(abbr)})</div>
       ${bodyText.length > 400 ? '<div class="np-opinion-card__readmore">Read full op-ed ›</div>' : ''}
     </div>
@@ -1070,7 +1070,7 @@ function renderPlayerArticleCard(article) {
       <div class="np-player-article-card__content">
         <div class="np-player-article-card__category" style="color:${escapeHtml(color)}">${escapeHtml(catLabel)}</div>
         <h3 class="np-player-article-card__headline">${escapeHtml(article.headline || 'Untitled')}</h3>
-        <p class="np-player-article-card__body">${escapeHtml(truncated)}</p>
+        <p class="np-player-article-card__body">${escapeHtml(truncated).replace(/\n/g, '<br>')}</p>
         <div class="np-player-article-card__author">By ${escapeHtml(factionName)} (${escapeHtml(abbr)})</div>
       </div>
     </div>
@@ -1476,7 +1476,7 @@ function setupArticleModal(faction, nation, shard) {
       <div class="np-player-article-preview">
         <div class="np-player-article-preview__category">${escapeHtml(catLabel)}</div>
         <h3 class="np-player-article-preview__headline">${escapeHtml(h || 'Your headline will appear here...')}</h3>
-        <p class="np-player-article-preview__body"${!b ? ' style="color:var(--np-text-light);font-style:italic;"' : ''}>${escapeHtml(b || 'Start writing to see how your article will look.')}</p>
+        <p class="np-player-article-preview__body"${!b ? ' style="color:var(--np-text-light);font-style:italic;"' : ''}>${escapeHtml(b || 'Start writing to see how your article will look.').replace(/\n/g, '<br>')}</p>
         ${wc >= 500 ? '<div class="np-article-reward-earned">+1 AP will be awarded next tick</div>' : wc >= 400 ? `<div class="np-article-reward-progress">${500 - wc} more words for +1 AP reward</div>` : ''}
       </div>
     `;
