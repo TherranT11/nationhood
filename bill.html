@@ -2451,6 +2451,21 @@ function renderBudgetBillUI() {
     h += '</div>';
     h += '</div>';
 
+    // Shutdown countdown tooltip
+    const ticksOpen = currentShardTick - (currentBill.proposed_tick || 0);
+    const ticksUntilShutdown = 2 - ticksOpen;
+    if (ticksUntilShutdown > 0) {
+        h += '<div class="budget-shutdown-warning">';
+        h += '<span class="budget-shutdown-warning__icon">&#9888;</span> ';
+        h += 'If this budget is not passed within <strong>' + ticksUntilShutdown + ' tick' + (ticksUntilShutdown !== 1 ? 's' : '') + '</strong>, a <strong>Government Shutdown</strong> crisis will begin &mdash; all institutions lose funding and stability drops each tick.';
+        h += '</div>';
+    } else if (currentBill.status !== 'floor') {
+        h += '<div class="budget-shutdown-active">';
+        h += '<span class="budget-shutdown-active__icon">&#9888;</span> ';
+        h += '<strong>Government Shutdown in effect.</strong> Pass this budget immediately to end the crisis.';
+        h += '</div>';
+    }
+
     if (currentBill.status === 'floor') {
         h += '<div class="budget-locked-notice">Budget allocations are locked — this bill is now on the floor for voting.</div>';
     }

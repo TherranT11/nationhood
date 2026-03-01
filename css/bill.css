@@ -739,6 +739,34 @@ html { overflow-y: scroll !important; height: auto !important; }
             margin-bottom: 12px;
         }
 
+        .budget-shutdown-warning {
+            background: rgba(255, 193, 7, 0.08);
+            border: 1px solid rgba(255, 193, 7, 0.35);
+            border-radius: 6px;
+            padding: 8px 14px;
+            color: #FFD54F;
+            font-size: 0.8rem;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .budget-shutdown-warning__icon {
+            color: #FFC107;
+        }
+
+        .budget-shutdown-active {
+            background: rgba(244, 67, 54, 0.12);
+            border: 1px solid rgba(244, 67, 54, 0.5);
+            border-radius: 6px;
+            padding: 8px 14px;
+            color: #EF9A9A;
+            font-size: 0.8rem;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .budget-shutdown-active__icon {
+            color: #F44336;
+        }
+
 /* ==================== RATIFICATION BILL STYLES ==================== */
 
 .ratification-section {
