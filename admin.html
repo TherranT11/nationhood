@@ -556,10 +556,10 @@
 
             <!-- Sub-tabs -->
             <div style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
-                <button class="btn btn-secondary" style="padding:8px 16px; font-size:0.8rem;" onclick="showIntegrityView('clusters')">Suspicious Clusters</button>
-                <button class="btn btn-secondary" style="padding:8px 16px; font-size:0.8rem;" onclick="showIntegrityView('all')">All Fingerprints</button>
-                <button class="btn btn-secondary" style="padding:8px 16px; font-size:0.8rem;" onclick="showIntegrityView('bans')">Active Bans</button>
-                <button class="btn btn-secondary" style="padding:8px 16px; font-size:0.8rem;" onclick="showIntegrityView('timeline')">Creation Timeline</button>
+                <button class="btn btn-secondary int-btn active" id="int-btn-clusters" style="padding:8px 16px; font-size:0.8rem;" onclick="showIntegrityView('clusters')">Suspicious Clusters</button>
+                <button class="btn btn-secondary int-btn" id="int-btn-all" style="padding:8px 16px; font-size:0.8rem;" onclick="showIntegrityView('all')">All Fingerprints</button>
+                <button class="btn btn-secondary int-btn" id="int-btn-bans" style="padding:8px 16px; font-size:0.8rem;" onclick="showIntegrityView('bans')">Active Bans</button>
+                <button class="btn btn-secondary int-btn" id="int-btn-timeline" style="padding:8px 16px; font-size:0.8rem;" onclick="showIntegrityView('timeline')">Creation Timeline</button>
             </div>
 
             <div id="integrity-status" style="color:#888; font-size:0.85rem; margin-bottom:15px;"></div>
@@ -3868,31 +3868,43 @@ let _integrityFactions = [];
 
 async function loadIntegrityData() {
     const status = document.getElementById('integrity-status');
-    status.textContent = 'Loading...';
+    if (status) status.textContent = 'Loading...';
     try {
         const [fpRes, banRes, facRes] = await Promise.all([
             _supabase.from('player_fingerprints').select('*').order('last_seen_at', { ascending: false }),
             _supabase.from('player_bans').select('*').order('banned_at', { ascending: false }),
             _supabase.from('factions').select('id, faction_name, abbreviation, nation_id, nation, founded_tick, is_npc, last_seen_tick, is_banned').eq('is_npc', false).order('founded_tick', { ascending: false })
         ]);
+        if (fpRes.error) throw fpRes.error;
         _integrityFingerprints = fpRes.data || [];
         _integrityBans = banRes.data || [];
         _integrityFactions = facRes.data || [];
-        status.textContent = `${_integrityFingerprints.length} fingerprint(s), ${_integrityBans.filter(b => b.is_active).length} active ban(s), ${_integrityFactions.length} player(s)`;
+        if (status) status.textContent = `${_integrityFingerprints.length} fingerprint(s), ${_integrityBans.filter(b => b.is_active).length} active ban(s), ${_integrityFactions.length} player(s)`;
     } catch (e) {
-        status.innerHTML = `<span style="color:#ff4444;">Error: ${e.message}</span><br><span style="color:#888;font-size:0.8rem;">Run the migration: sql/migrations/20260301_player_integrity.sql</span>`;
+        if (status) status.innerHTML = `<span style="color:#ff4444;">Error: ${e.message}</span><br><span style="color:#888;font-size:0.8rem;">Run the migration: sql/migrations/20260301_player_integrity.sql</span>`;
         _integrityFingerprints = [];
         _integrityBans = [];
+        _integrityFactions = [];
     }
 }
 
 function showIntegrityView(view) {
+    // Highlight active sub-tab button
+    document.querySelectorAll('#tab-integrity .btn.int-btn').forEach(b => b.classList.remove('active'));
+    const activeBtn = document.getElementById('int-btn-' + view);
+    if (activeBtn) activeBtn.classList.add('active');
+
     loadIntegrityData().then(() => {
         const container = document.getElementById('integrity-content');
+        if (!container) return;
         if (view === 'clusters') renderIntegrityClusters(container);
         else if (view === 'all') renderAllFingerprints(container);
         else if (view === 'bans') renderActiveBans(container);
         else if (view === 'timeline') renderCreationTimeline(container);
+    }).catch(err => {
+        console.error('Integrity view error:', err);
+        const container = document.getElementById('integrity-content');
+        if (container) container.innerHTML = `<div style="color:#ff4444;padding:20px;">Error loading integrity data: ${err.message}</div>`;
     });
 }
 window.showIntegrityView = showIntegrityView;
