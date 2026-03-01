@@ -117,7 +117,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { deductAP } from './js/game-common.js';
+import { deductAP, generateArticle, EVENT_TYPES, SECTIONS } from './js/game-common.js';
 
 /* ══════════════════════════════════════════════════════
    PRIORITY CONSTANTS
@@ -194,9 +194,10 @@ initPage('events', async (state) => {
 
   _nationName = nation.name || 'Valdoria';
 
-  // Load events and op-eds in parallel
-  const [events, opeds, parties] = await Promise.all([
+  // Load events, campaign actions, op-eds, and parties in parallel
+  const [events, campaignActions, opeds, parties] = await Promise.all([
     loadEvents(nation.id, shard),
+    loadCampaignActions(nation.id, shard),
     loadOpEds(nation.id, shard),
     loadParties(nation.id)
   ]);
@@ -204,7 +205,10 @@ initPage('events', async (state) => {
   _events = events;
   _opeds = opeds;
 
-  renderNewspaper(nation, faction, shard, events, opeds, parties);
+  // Generate rich articles from templates
+  const articles = buildArticles(events, campaignActions, _nationName);
+
+  renderNewspaper(nation, faction, shard, articles, opeds, parties);
   setupOpEdModal(faction, nation, shard);
 });
 
@@ -236,16 +240,26 @@ async function loadEvents(nationId, shard) {
 async function loadOpEds(nationId, shard) {
   // op_eds table may not exist yet — gracefully handle
   try {
-    const { data, error } = await _supabase
+    // Try new schema FK (author_faction_id → factions) first
+    let { data, error } = await _supabase
       .from('op_eds')
-      .select('*, factions(faction_name, abbreviation, party_color)')
+      .select('*, factions!author_faction_id(faction_name, abbreviation, party_color)')
       .eq('nation_id', nationId)
       .order('created_at', { ascending: false })
       .limit(20);
     if (error) {
-      // Table doesn't exist yet — that's fine for Phase 1
-      console.warn('op_eds table not found (run migration):', error.message);
-      return [];
+      // Fallback: old schema FK (faction_id → factions)
+      const res = await _supabase
+        .from('op_eds')
+        .select('*, factions(faction_name, abbreviation, party_color)')
+        .eq('nation_id', nationId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (res.error) {
+        console.warn('op_eds table not found (run migration):', res.error.message);
+        return [];
+      }
+      data = res.data;
     }
     return data || [];
   } catch {
@@ -262,25 +276,241 @@ async function loadParties(nationId) {
   return data || [];
 }
 
+async function loadCampaignActions(nationId, shard) {
+  const currentTick = shard?.current_tick || 0;
+  try {
+    const { data, error } = await _supabase
+      .from('campaign_actions')
+      .select('*, factions:party_id(faction_name, abbreviation)')
+      .eq('nation_id', nationId)
+      .gte('tick_performed', Math.max(0, currentTick - 20))
+      .order('tick_performed', { ascending: false })
+      .limit(30);
+    if (error) { console.warn('campaign_actions load failed:', error.message); return []; }
+    return data || [];
+  } catch { return []; }
+}
+
+/* ══════════════════════════════════════════════════════
+   VALDORIAN TEMPLATE ENGINE — MAP RAW DATA → ARTICLES
+   ══════════════════════════════════════════════════════ */
+
+/**
+ * Map a campaign_action row to a Valdorian event object.
+ */
+function campaignActionToEvent(action, nationName) {
+  const r = action.result || {};
+  const partyName = action.factions?.faction_name || 'A party';
+  const tick = action.tick_performed || 0;
+
+  switch (action.action_type) {
+    case 'attack':
+      return {
+        event_type: 'attack_campaign',
+        section: 'politics',
+        tier: 2,
+        topic_tags: ['campaign', 'attack'],
+        party_name: partyName,
+        target_name: r.targetName || 'the opposition',
+        vector_name: r.vectorName || 'political record',
+        outcome: r.outcomeId || 'effective',
+        outcome_name: r.outcomeName || 'Effective',
+        nation_name: nationName,
+        tick,
+        _source: action,
+      };
+    case 'rally':
+      return {
+        event_type: 'rally',
+        section: 'politics',
+        tier: 2,
+        topic_tags: ['campaign', 'rally'],
+        party_name: partyName,
+        subject_name: r.blocName || 'national issues',
+        bloc_name: r.blocName || '',
+        ideology_tag: (r.tags || [])[0] || '',
+        momentum_change: (r.effects || []).reduce((s, e) => s + Math.abs(e.value || 0), 0),
+        blocs_alienated: 0,
+        nation_name: nationName,
+        tick,
+        _source: action,
+      };
+    case 'outreach':
+      return {
+        event_type: 'voter_outreach',
+        section: 'politics',
+        tier: 3,
+        topic_tags: ['campaign', 'outreach'],
+        party_name: partyName,
+        bloc_name: r.blocName || 'voters',
+        effect: (r.effects || []).reduce((s, e) => s + Math.abs(e.value || 0), 0),
+        nation_name: nationName,
+        tick,
+        _source: action,
+      };
+    case 'press_conference':
+      return {
+        event_type: 'press_conference',
+        section: 'politics',
+        tier: 2,
+        topic_tags: ['campaign'],
+        party_name: partyName,
+        leader_name: r.leaderName || partyName,
+        subject_name: r.subject || 'policy',
+        momentum_change: r.momentumChange || 0,
+        nation_name: nationName,
+        tick,
+        _source: action,
+      };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Map an event_log row to a Valdorian event object.
+ */
+function eventLogToEvent(entry, nationName) {
+  const name = (entry.event_name || '').toUpperCase();
+  const cat = (entry.category || '').toLowerCase();
+  const tick = entry.fired_at_tick || 0;
+
+  let event_type = null;
+
+  // Crisis events
+  if (name.includes('CRISIS_STARTED')) event_type = 'crisis_started';
+  else if (name.includes('CRISIS_RESOLVED')) event_type = 'crisis_resolved';
+  else if (name.includes('REVOLUTION')) event_type = 'crisis_ongoing';
+  else if (name.includes('SHUTDOWN')) event_type = name.includes('RESOLVED') ? 'crisis_resolved' : 'government_shutdown';
+  else if (name.includes('SOVEREIGN_DEFAULT') || name.includes('DEFAULT')) event_type = 'sovereign_default';
+  // Government events
+  else if (name.includes('NO CONFIDENCE')) event_type = 'no_confidence';
+  else if (name.includes('COALITION') && name.includes('FORMED')) event_type = 'coalition_formed';
+  else if (name.includes('COALITION') && (name.includes('COLLAPSE') || name.includes('DISSOLVE'))) event_type = 'coalition_collapsed';
+  else if (name.includes('ELECTION') || name.includes('FORMATION')) event_type = 'election';
+  // Legislation
+  else if (name.includes('BILL') && name.includes('PASS')) event_type = 'bill_vote_pass';
+  else if (name.includes('BILL') && name.includes('FAIL')) event_type = 'bill_vote_fail';
+  else if (name.includes('BUDGET') && name.includes('PASS')) event_type = 'budget_vote';
+  // Diplomacy
+  else if (name.includes('WAR')) event_type = 'war_declaration';
+  else if (name.includes('PEACE')) event_type = 'peace_accepted';
+  else if (name.includes('AMBASSADOR')) event_type = 'ambassador_recalled';
+  else if (name.includes('TRADE')) event_type = 'trade_agreement';
+  else if (cat.includes('diplom')) event_type = 'state_visit';
+
+  if (!event_type) return null;
+  const meta = EVENT_TYPES[event_type];
+  if (!meta) return null;
+
+  // Extract crisis name from event_name (e.g., "CRISIS_STARTED: Government Shutdown" → "Government Shutdown")
+  const crisisName = (entry.event_name || '').replace(/^CRISIS_(STARTED|RESOLVED|ONGOING):\s*/i, '');
+
+  const effects = entry.effects_applied || [];
+
+  return {
+    event_type,
+    section: meta.section,
+    tier: meta.tier,
+    topic_tags: [cat],
+    nation_name: nationName,
+    pm_name: effects.pm_last_name || 'the Prime Minister',
+    crisis_name: crisisName,
+    bill_name: crisisName,
+    party_name: crisisName,
+    description: entry.description_used || entry.description_chosen || '',
+    tick,
+    _source: entry,
+  };
+}
+
+/**
+ * Convert raw data sources into Valdorian articles using the template engine.
+ * Falls back to raw event formatting if no template matches.
+ */
+function buildArticles(events, campaignActions, nationName) {
+  const valdorianEvents = [];
+
+  // Map campaign actions
+  for (const action of campaignActions) {
+    const evt = campaignActionToEvent(action, nationName);
+    if (evt) valdorianEvents.push(evt);
+  }
+
+  // Map event_log entries
+  for (const entry of events) {
+    const evt = eventLogToEvent(entry, nationName);
+    if (evt) valdorianEvents.push(evt);
+  }
+
+  // Generate articles through the template engine
+  const articles = [];
+  for (const evt of valdorianEvents) {
+    const article = generateArticle(evt);
+    if (article) {
+      // Carry over raw source data for fallback fields
+      article._tick = evt.tick;
+      article._source = evt._source;
+      article._description = evt._source?.description_used || evt._source?.description_chosen || evt._source?.result?.headline || '';
+      articles.push(article);
+    }
+  }
+
+  // Also include event_log entries that didn't map to any template (raw format)
+  const mappedEventIds = new Set(articles.filter(a => a._source?.id).map(a => a._source.id));
+  for (const entry of events) {
+    if (mappedEventIds.has(entry.id)) continue;
+    articles.push({
+      _isRaw: true,
+      headline: entry.headline || entry.event_name || 'News Update',
+      lede: entry.description || '',
+      section: entry.section || 'domestic',
+      tier: entry.priority || 3,
+      _tick: entry.tick || entry.fired_at_tick || 0,
+      _source: entry,
+      topic_tags: [],
+      body_paragraphs: [],
+      quotes: [],
+      byline: { reporter: 'The Cruceran Staff', time: '' },
+    });
+  }
+
+  // Sort by tick (newest first), then by tier (most important first)
+  articles.sort((a, b) => {
+    if ((b._tick || 0) !== (a._tick || 0)) return (b._tick || 0) - (a._tick || 0);
+    return (a.tier || 4) - (b.tier || 4);
+  });
+
+  return articles;
+}
+
 /* ══════════════════════════════════════════════════════
    RENDER — NEWSPAPER LAYOUT
    ══════════════════════════════════════════════════════ */
-function renderNewspaper(nation, faction, shard, events, opeds, parties) {
-  // Sort events by priority then recency
-  const sorted = [...events].sort((a, b) => {
-    if (a.priority !== b.priority) return a.priority - b.priority;
-    return new Date(b.created_at) - new Date(a.created_at);
-  });
+function renderNewspaper(nation, faction, shard, articles, opeds, parties) {
+  // Articles are pre-sorted by tick then tier from buildArticles()
+  const sorted = articles;
 
-  // Partition into layout slots
-  const heroEvent = sorted.find(e => e.priority <= PRIORITY.CRISIS) || sorted[0];
-  const featuredEvents = sorted.filter(e => e !== heroEvent).slice(0, 6);
-  const briefEvents = sorted.filter(e => !featuredEvents.includes(e) && e !== heroEvent).slice(0, 8);
+  // Partition into layout slots using tier
+  const heroArticle = sorted.find(a => a.tier <= 2) || sorted[0];
+  const featuredArticles = sorted.filter(a => a !== heroArticle).slice(0, 6);
+  const briefArticles = sorted.filter(a => a !== heroArticle && !featuredArticles.includes(a)).slice(0, 8);
   const currentTick = shard?.current_tick || 0;
   const currentDate = shard?.current_date || tickToDate(currentTick);
 
-  // Ticker items from the most recent events
-  const tickerItems = sorted.slice(0, 8).map(e => escapeHtml(e.headline || e.title || e.description || 'Event'));
+  // Ticker items from headlines
+  const tickerItems = sorted.slice(0, 8).map(a => escapeHtml(a.headline || 'Event'));
+
+  // Map Valdorian sections to tab sections for filtering
+  const sectionToTab = (s) => {
+    if (!s) return 'domestic';
+    if (s === 'politics') return 'domestic';
+    if (s === 'economy') return 'economy';
+    if (s === 'military' || s === 'defence') return 'defence';
+    if (s === 'diplomacy') return 'international';
+    if (s === 'opinion') return 'opinion';
+    return 'domestic';
+  };
 
   const root = document.getElementById('newspaper-root');
   root.innerHTML = `
@@ -290,7 +520,7 @@ function renderNewspaper(nation, faction, shard, events, opeds, parties) {
     <span>${escapeHtml(_nationName)} Standard Time</span>
     <span>${escapeHtml(String(currentDate))}</span>
   </div>
-  ${sorted.length > 0 && sorted[0].priority <= PRIORITY.CRISIS ? '<div class="np-ticker-bar__breaking">BREAKING</div>' : ''}
+  ${heroArticle && heroArticle.tier <= 1 ? '<div class="np-ticker-bar__breaking">BREAKING</div>' : ''}
   <div class="np-ticker-bar__scroll">
     <div class="np-ticker-bar__scroll-inner">
       ${tickerItems.map(t => `<span>${t}</span>`).join('')}
@@ -325,12 +555,12 @@ function renderNewspaper(nation, faction, shard, events, opeds, parties) {
   <div class="np-nav-tabs__item" data-tab="opinion">Opinion</div>
 </nav>
 
-${heroEvent && heroEvent.priority <= PRIORITY.CRISIS ? `
+${heroArticle && heroArticle.tier <= 1 ? `
 <!-- ALERT BAR -->
 <div class="np-alert-bar">
   <div class="np-alert-bar__badge">ALERT</div>
   <div class="np-alert-bar__text">
-    <strong>BREAKING:</strong> ${escapeHtml(heroEvent.headline || heroEvent.title || heroEvent.description || '')}
+    <strong>BREAKING:</strong> ${escapeHtml(heroArticle.headline || '')}
   </div>
 </div>
 ` : ''}
@@ -338,17 +568,18 @@ ${heroEvent && heroEvent.priority <= PRIORITY.CRISIS ? `
 <!-- MAIN CONTENT -->
 <div class="np-content">
   <main class="np-content__main">
-    ${heroEvent ? renderHeroArticle(heroEvent) : renderNoEvents()}
+    ${heroArticle ? renderHeroArticle(heroArticle) : renderNoEvents()}
+    ${featuredArticles.length > 0 ? `
     <hr class="np-divider np-divider--heavy">
     <div class="np-section-label">More Stories</div>
     <div class="np-stories-grid">
-      ${featuredEvents.map(e => renderStoryCard(e)).join('')}
-    </div>
-    ${briefEvents.length > 0 ? `
+      ${featuredArticles.map(a => renderStoryCard(a)).join('')}
+    </div>` : ''}
+    ${briefArticles.length > 0 ? `
     <hr class="np-divider">
     <div class="np-section-label">Briefs</div>
     <ul class="np-briefs-list">
-      ${briefEvents.map(e => renderBrief(e)).join('')}
+      ${briefArticles.map(a => renderBrief(a)).join('')}
     </ul>
     ` : ''}
     ${opeds.length > 0 ? `
@@ -358,7 +589,7 @@ ${heroEvent && heroEvent.priority <= PRIORITY.CRISIS ? `
     ` : ''}
     <hr class="np-divider">
     <div class="np-section-label">Previous Editions</div>
-    ${renderArchive(events, currentTick)}
+    ${renderArchive(sorted, currentTick)}
   </main>
 
   <aside class="np-content__sidebar">
@@ -380,7 +611,7 @@ ${heroEvent && heroEvent.priority <= PRIORITY.CRISIS ? `
     tab.addEventListener('click', () => {
       root.querySelectorAll('.np-nav-tabs__item').forEach(t => t.classList.remove('np-nav-tabs__item--active'));
       tab.classList.add('np-nav-tabs__item--active');
-      filterByTab(tab.dataset.tab, sorted, opeds);
+      filterByTab(tab.dataset.tab, sorted, opeds, sectionToTab);
     });
   });
 
@@ -406,29 +637,36 @@ function renderNoEvents() {
   `;
 }
 
-function renderHeroArticle(event) {
-  const section = event.section || 'domestic';
-  const priorityInfo = PRIORITY_LABELS[event.priority] || PRIORITY_LABELS[PRIORITY.GENERAL];
-  const headline = event.headline || event.title || 'Breaking News';
-  const description = event.description || '';
-  const effects = event.effects || event.mechanical_effects || null;
+function renderHeroArticle(article) {
+  const section = article.section || 'domestic';
+  const sectionLabel = article.section_label || section.charAt(0).toUpperCase() + section.slice(1);
+  const headline = article.headline || 'Breaking News';
+  const lede = article.lede || article._description || '';
+  const bodyParagraphs = article.body_paragraphs || [];
+  const reporter = article.byline?.reporter || 'The Cruceran Staff';
+  const quotes = article.quotes || [];
 
   return `
     <article class="np-hero">
       <div class="np-hero__tags">
-        ${event.priority <= PRIORITY.CRISIS ? `<span class="np-tag np-tag--crisis">${escapeHtml(priorityInfo.tag)}</span>` : ''}
-        <span class="np-tag np-tag--${section}">${escapeHtml(section.charAt(0).toUpperCase() + section.slice(1))}</span>
+        ${article.tier <= 1 ? '<span class="np-tag np-tag--crisis">Breaking</span>' : ''}
+        <span class="np-tag np-tag--${section}" style="${article.section_color ? 'background:' + article.section_color + '22;color:' + article.section_color : ''}">${escapeHtml(sectionLabel)}</span>
+        ${article.developing_story ? '<span class="np-tag" style="background:#ff980022;color:#ff9800;">Developing</span>' : ''}
       </div>
       <h2 class="np-hero__headline">${escapeHtml(headline)}</h2>
-      ${description ? `<p class="np-hero__lede">${escapeHtml(description.substring(0, 200))}${description.length > 200 ? '...' : ''}</p>` : ''}
+      ${article.subheadline ? `<div style="font-family:var(--np-font-serif);font-size:16px;color:var(--np-text-secondary);margin-top:4px;">${escapeHtml(article.subheadline)}</div>` : ''}
+      ${lede ? `<p class="np-hero__lede">${escapeHtml(lede)}</p>` : ''}
       <div class="np-hero__byline">
-        <strong>The Cruceran Staff</strong> · Tick ${event.tick || '?'}
+        <strong>${escapeHtml(reporter)}</strong> · Tick ${article._tick || '?'}
       </div>
-      ${description.length > 200 ? `
+      ${bodyParagraphs.length > 0 ? `
       <div class="np-hero__body">
-        <p>${escapeHtml(description)}</p>
+        ${bodyParagraphs.map(p => `<p>${escapeHtml(p)}</p>`).join('')}
       </div>` : ''}
-      ${effects ? renderImpactBox(effects) : ''}
+      ${quotes.length > 0 ? quotes.map(q => `
+      <blockquote style="border-left:3px solid var(--np-accent-gold);margin:12px 0;padding:8px 16px;font-style:italic;color:var(--np-text-secondary);font-family:var(--np-font-serif);">
+        ${escapeHtml(q.text || q)}
+      </blockquote>`).join('') : ''}
     </article>
   `;
 }
@@ -463,29 +701,32 @@ function renderImpactBox(effects) {
   `;
 }
 
-function renderStoryCard(event) {
-  const section = event.section || 'domestic';
-  const headline = event.headline || event.title || 'News Update';
-  const desc = event.description || '';
+function renderStoryCard(article) {
+  const section = article.section || 'domestic';
+  const sectionLabel = article.section_label || section.charAt(0).toUpperCase() + section.slice(1);
+  const headline = article.headline || 'News Update';
+  const lede = article.lede || article._description || '';
+  const reporter = article.byline?.reporter || '';
   return `
     <article class="np-story-card">
       <div class="np-story-card__tags">
-        <span class="np-tag np-tag--${section} np-tag--dot">${escapeHtml(section.charAt(0).toUpperCase() + section.slice(1))}</span>
+        <span class="np-tag np-tag--${section} np-tag--dot" style="${article.section_color ? 'background:' + article.section_color + '22;color:' + article.section_color : ''}">${escapeHtml(sectionLabel)}</span>
       </div>
       <h3 class="np-story-card__headline">${escapeHtml(headline)}</h3>
-      <p class="np-story-card__lede">${escapeHtml(desc.substring(0, 180))}${desc.length > 180 ? '...' : ''}</p>
-      <div class="np-story-card__meta">Tick ${event.tick || '?'}</div>
+      ${lede ? `<p class="np-story-card__lede">${escapeHtml(lede.substring(0, 180))}${lede.length > 180 ? '...' : ''}</p>` : ''}
+      <div class="np-story-card__meta">${reporter ? escapeHtml(reporter) + ' · ' : ''}Tick ${article._tick || '?'}</div>
     </article>
   `;
 }
 
-function renderBrief(event) {
-  const section = event.section || 'domestic';
-  const text = event.headline || event.title || event.description || 'Event';
+function renderBrief(article) {
+  const section = article.section || 'domestic';
+  const sectionLabel = article.section_label || section.charAt(0).toUpperCase() + section.slice(1);
+  const text = article.headline || 'Event';
   return `
     <li class="np-brief">
       ${escapeHtml(text)}
-      <span class="np-tag np-tag--${section}">${escapeHtml(section.charAt(0).toUpperCase() + section.slice(1))}</span>
+      <span class="np-tag np-tag--${section}">${escapeHtml(sectionLabel)}</span>
     </li>
   `;
 }
@@ -503,14 +744,14 @@ function renderOpEdCard(oped) {
   `;
 }
 
-function renderArchive(events, currentTick) {
-  // Group events by tick ranges (every 2 ticks = 1 edition)
+function renderArchive(articles, currentTick) {
+  // Group articles by tick ranges (every 2 ticks = 1 edition)
   const editions = {};
-  events.forEach(e => {
-    const tick = e.tick || 0;
+  articles.forEach(a => {
+    const tick = a._tick || a.tick || 0;
     const edKey = Math.floor(tick / 2) * 2;
     if (!editions[edKey]) editions[edKey] = [];
-    editions[edKey].push(e);
+    editions[edKey].push(a);
   });
 
   const keys = Object.keys(editions).map(Number).sort((a, b) => b - a).slice(0, 5);
@@ -521,7 +762,7 @@ function renderArchive(events, currentTick) {
   return keys.map(k => {
     const items = editions[k];
     const dateRange = `Ticks ${k}–${k + 1}`;
-    const headlines = items.slice(0, 3).map(e => e.headline || e.title || 'Event').join(' · ');
+    const headlines = items.slice(0, 3).map(a => a.headline || 'Event').join(' · ');
     return `
       <div class="np-archive-item">
         <div class="np-archive-item__header">${escapeHtml(dateRange)} — ${items.length} ${items.length === 1 ? 'story' : 'stories'}</div>
@@ -531,8 +772,8 @@ function renderArchive(events, currentTick) {
   }).join('');
 }
 
-function renderSidebarBulletin(events) {
-  const recent = events.slice(0, 5);
+function renderSidebarBulletin(articles) {
+  const recent = articles.slice(0, 5);
   if (recent.length === 0) {
     return `
       <div class="np-sidebar-section">
@@ -544,15 +785,16 @@ function renderSidebarBulletin(events) {
   return `
     <div class="np-sidebar-section">
       <div class="np-sidebar-section__title">Bulletin</div>
-      ${recent.map(e => {
-        const section = e.section || 'domestic';
+      ${recent.map(a => {
+        const section = a.section || 'domestic';
+        const sectionLabel = a.section_label || section.charAt(0).toUpperCase() + section.slice(1);
         return `
           <div class="np-bulletin-item">
             <div class="np-bulletin-item__tags">
-              <span class="np-tag np-tag--${section} np-tag--dot">${escapeHtml(section.charAt(0).toUpperCase() + section.slice(1))}</span>
+              <span class="np-tag np-tag--${section} np-tag--dot">${escapeHtml(sectionLabel)}</span>
             </div>
-            <h4 class="np-bulletin-item__headline">${escapeHtml(e.headline || e.title || e.description || 'Event')}</h4>
-            <div class="np-bulletin-item__time">Tick ${e.tick || '?'}</div>
+            <h4 class="np-bulletin-item__headline">${escapeHtml(a.headline || 'Event')}</h4>
+            <div class="np-bulletin-item__time">Tick ${a._tick || '?'}</div>
           </div>
         `;
       }).join('')}
@@ -617,13 +859,11 @@ function renderSidebarElection(parties, shard) {
 /* ══════════════════════════════════════════════════════
    TAB FILTERING
    ══════════════════════════════════════════════════════ */
-function filterByTab(tab, events, opeds) {
+function filterByTab(tab, articles, opeds, sectionToTab) {
   const main = document.querySelector('.np-content__main');
   if (!main) return;
 
-  let filtered = events;
   if (tab === 'opinion') {
-    // Show op-eds only
     main.innerHTML = `
       <div class="np-section-label">Op-Eds & Opinion</div>
       ${opeds.length > 0 ? opeds.map(o => renderOpEdCard(o)).join('') :
@@ -632,24 +872,14 @@ function filterByTab(tab, events, opeds) {
     return;
   }
 
-  if (tab !== 'front') {
-    const sectionMap = {
-      domestic: 'domestic',
-      international: 'international',
-      economy: 'economy',
-      defence: 'defence'
-    };
-    filtered = events.filter(e => e.section === sectionMap[tab]);
+  let filtered = articles;
+  if (tab !== 'front' && sectionToTab) {
+    filtered = articles.filter(a => sectionToTab(a.section) === tab);
   }
 
-  const sorted = [...filtered].sort((a, b) => {
-    if (a.priority !== b.priority) return a.priority - b.priority;
-    return new Date(b.created_at) - new Date(a.created_at);
-  });
-
-  const hero = sorted[0];
-  const rest = sorted.slice(1, 7);
-  const briefs = sorted.slice(7, 15);
+  const hero = filtered[0];
+  const rest = filtered.slice(1, 7);
+  const briefs = filtered.slice(7, 15);
 
   main.innerHTML = `
     ${hero ? renderHeroArticle(hero) : renderNoEvents()}
@@ -657,13 +887,13 @@ function filterByTab(tab, events, opeds) {
     <hr class="np-divider np-divider--heavy">
     <div class="np-section-label">More Stories</div>
     <div class="np-stories-grid">
-      ${rest.map(e => renderStoryCard(e)).join('')}
+      ${rest.map(a => renderStoryCard(a)).join('')}
     </div>` : ''}
     ${briefs.length > 0 ? `
     <hr class="np-divider">
     <div class="np-section-label">Briefs</div>
     <ul class="np-briefs-list">
-      ${briefs.map(e => renderBrief(e)).join('')}
+      ${briefs.map(a => renderBrief(a)).join('')}
     </ul>` : ''}
   `;
 }
@@ -764,16 +994,36 @@ function setupOpEdModal(faction, nation, shard) {
       return;
     }
 
-    // Insert op-ed
-    const { error } = await _supabase.from('op_eds').insert([{
+    // Insert op-ed (supports both old and new schema via fallback)
+    const leaderName = faction.leader_name || faction.faction_name || 'Anonymous';
+    const nextTick = (shard?.current_tick || 0) + 1;
+    let insertError = null;
+    // Try new schema first (author_faction_id, section, published_tick, status)
+    const { error: err1 } = await _supabase.from('op_eds').insert([{
       nation_id: nation.id,
-      faction_id: faction.id,
+      author_faction_id: faction.id,
+      author_name: leaderName,
       headline: h,
       body: b,
-      topic: t,
-      publish_tick: (shard?.current_tick || 0) + 1,
+      section: t,
+      status: 'published',
+      published_tick: nextTick,
       created_at: new Date().toISOString()
     }]);
+    if (err1) {
+      // Fallback: try old schema (faction_id, topic, publish_tick)
+      const { error: err2 } = await _supabase.from('op_eds').insert([{
+        nation_id: nation.id,
+        faction_id: faction.id,
+        headline: h,
+        body: b,
+        topic: t,
+        publish_tick: nextTick,
+        created_at: new Date().toISOString()
+      }]);
+      insertError = err2;
+    }
+    const error = insertError;
 
     if (error) {
       errorEl.textContent = 'Failed to publish: ' + error.message;
@@ -797,7 +1047,9 @@ function setupOpEdModal(faction, nation, shard) {
     _opeds = await loadOpEds(nation.id, shard);
     const parties = await loadParties(nation.id);
     _events = await loadEvents(nation.id, shard);
-    renderNewspaper(nation, faction, shard, _events, _opeds, parties);
+    const campaignActions = await loadCampaignActions(nation.id, shard);
+    const articles = buildArticles(_events, campaignActions, nation.name || 'Valdoria');
+    renderNewspaper(nation, faction, shard, articles, _opeds, parties);
   });
 }
 </script>
