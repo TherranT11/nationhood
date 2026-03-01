@@ -1,155 +1,175 @@
 /**
  * fingerprint.js — Browser fingerprinting for multi-account detection
  *
- * Generates a stable hash from browser properties to identify devices.
- * Not perfect (users can spoof) but catches casual alt-account abuse.
+ * Collects stable browser signals (screen, canvas, WebGL, timezone, fonts, etc.),
+ * hashes them with SHA-256, and reports the fingerprint to Supabase via RPC.
+ * Also checks ban status and enforces it by replacing the page.
  */
 
-/**
- * Generate a simple but stable browser fingerprint hash.
- * Combines: screen, timezone, language, platform, canvas hash, fonts.
- */
-export async function generateFingerprint() {
-    const components = [];
+import { _supabase } from './supabase-client.js';
 
-    // Screen signature
-    const screen = window.screen;
-    components.push(`${screen.width}x${screen.height}x${screen.colorDepth}@${window.devicePixelRatio || 1}`);
+// ==================== FINGERPRINT COMPONENTS ====================
 
-    // Timezone
-    try {
-        components.push(Intl.DateTimeFormat().resolvedOptions().timeZone);
-    } catch { components.push('unknown-tz'); }
+function getScreenFingerprint() {
+    return {
+        width: screen.width,
+        height: screen.height,
+        colorDepth: screen.colorDepth,
+        pixelRatio: window.devicePixelRatio || 1,
+    };
+}
 
-    // Language
-    components.push(navigator.language || 'unknown-lang');
+function getTimezoneFingerprint() {
+    return {
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        offset: new Date().getTimezoneOffset(),
+    };
+}
 
-    // Platform
-    components.push(navigator.platform || 'unknown-platform');
+function getNavigatorFingerprint() {
+    return {
+        language: navigator.language,
+        languages: (navigator.languages || []).join(','),
+        platform: navigator.platform || '',
+        hardwareConcurrency: navigator.hardwareConcurrency || 0,
+        maxTouchPoints: navigator.maxTouchPoints || 0,
+    };
+}
 
-    // Hardware concurrency (CPU cores)
-    components.push(String(navigator.hardwareConcurrency || 0));
-
-    // Device memory (Chrome only)
-    components.push(String(navigator.deviceMemory || 0));
-
-    // Canvas fingerprint (renders a unique image per GPU/driver combo)
+function getCanvasFingerprint() {
     try {
         const canvas = document.createElement('canvas');
         canvas.width = 200;
         canvas.height = 50;
         const ctx = canvas.getContext('2d');
+        if (!ctx) return '';
         ctx.textBaseline = 'top';
         ctx.font = '14px Arial';
         ctx.fillStyle = '#f60';
-        ctx.fillRect(50, 0, 80, 50);
+        ctx.fillRect(10, 1, 62, 20);
         ctx.fillStyle = '#069';
-        ctx.fillText('Nationhood FP', 2, 15);
-        ctx.fillStyle = 'rgba(102,204,0,0.7)';
-        ctx.fillText('Nationhood FP', 4, 17);
-        components.push(canvas.toDataURL().slice(-50));
-    } catch { components.push('no-canvas'); }
+        ctx.fillText('Nationhood fp', 2, 15);
+        ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
+        ctx.fillText('Nationhood fp', 4, 17);
+        return canvas.toDataURL();
+    } catch {
+        return '';
+    }
+}
 
-    // WebGL renderer (identifies GPU)
+function getWebGLFingerprint() {
     try {
         const canvas = document.createElement('canvas');
         const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-        if (gl) {
-            const dbg = gl.getExtension('WEBGL_debug_renderer_info');
-            if (dbg) {
-                components.push(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || 'unknown-gpu');
-            }
-        }
-    } catch { components.push('no-webgl'); }
-
-    // Touch support
-    components.push(String('ontouchstart' in window || navigator.maxTouchPoints > 0));
-
-    // Hash all components into a stable fingerprint
-    const raw = components.join('|||');
-    return await hashString(raw);
+        if (!gl) return { vendor: '', renderer: '' };
+        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+        return {
+            vendor: debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : '',
+            renderer: debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : '',
+        };
+    } catch {
+        return { vendor: '', renderer: '' };
+    }
 }
 
-/**
- * Get screen signature string.
- */
-export function getScreenSig() {
-    const s = window.screen;
-    return `${s.width}x${s.height}@${window.devicePixelRatio || 1}`;
-}
+// ==================== HASH ====================
 
-/**
- * Get timezone string.
- */
-export function getTimezone() {
-    try { return Intl.DateTimeFormat().resolvedOptions().timeZone; }
-    catch { return 'unknown'; }
-}
-
-/**
- * Hash a string to a hex digest using SHA-256.
- */
-async function hashString(str) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(str);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+async function sha256(message) {
+    const msgBuffer = new TextEncoder().encode(message);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-/**
- * Record fingerprint to the database (non-blocking, fire-and-forget).
- * Called from common.js on every page load.
- */
-export async function recordFingerprint(supabase) {
-    try {
-        const fingerprint = await generateFingerprint();
-        const screenSig = getScreenSig();
-        const timezone = getTimezone();
-        const language = navigator.language || 'unknown';
-        const userAgent = navigator.userAgent || 'unknown';
+// ==================== PUBLIC API ====================
 
-        await supabase.rpc('upsert_player_fingerprint', {
+/**
+ * Collect all fingerprint components and compute the SHA-256 hash.
+ * @returns {Promise<{fingerprint: string, components: object}>}
+ */
+export async function collectFingerprint() {
+    const components = {
+        screen: getScreenFingerprint(),
+        timezone: getTimezoneFingerprint(),
+        navigator: getNavigatorFingerprint(),
+        canvas: getCanvasFingerprint(),
+        webgl: getWebGLFingerprint(),
+    };
+
+    // Build a stable string for hashing (sorted keys for consistency)
+    const raw = JSON.stringify(components, Object.keys(components).sort());
+    const fingerprint = await sha256(raw);
+
+    return { fingerprint, components };
+}
+
+/**
+ * Record the player's fingerprint (fire-and-forget, non-blocking).
+ * Called on every page load for authenticated users.
+ */
+export async function recordFingerprint() {
+    try {
+        const { data: { user } } = await _supabase.auth.getUser();
+        if (!user) return;
+
+        const { fingerprint, components } = await collectFingerprint();
+
+        await _supabase.rpc('upsert_player_fingerprint', {
             p_fingerprint: fingerprint,
-            p_user_agent: userAgent.substring(0, 500),
-            p_screen_sig: screenSig,
-            p_timezone: timezone,
-            p_language: language,
-            p_ip_hint: null  // IP captured server-side if available
+            p_components: components,
+            p_user_agent: navigator.userAgent,
         });
-    } catch (e) {
-        // Non-blocking — don't break the page if fingerprinting fails
-        console.warn('Fingerprint recording failed (table may not exist yet):', e.message);
+    } catch (err) {
+        // Silently fail — fingerprinting should never block gameplay
+        console.warn('[fingerprint] Failed to record:', err.message);
     }
 }
 
 /**
- * Check if the current user is banned.
- * Returns { banned: true, reason, ban_type, banned_until } or { banned: false }.
+ * Check if the current user is banned. Returns true if banned.
  */
-export async function checkBanStatus(supabase) {
+export async function checkBanStatus() {
     try {
-        const { data, error } = await supabase
+        const { data: { user } } = await _supabase.auth.getUser();
+        if (!user) return false;
+
+        const { data: bans } = await _supabase
             .from('player_bans')
-            .select('ban_type, reason, banned_until')
-            .eq('is_active', true)
-            .limit(1)
-            .maybeSingle();
+            .select('id, reason, expires_at')
+            .eq('user_id', user.id)
+            .eq('is_active', true);
 
-        if (error || !data) return { banned: false };
+        if (!bans || bans.length === 0) return false;
 
-        // Check if temporary ban has expired
-        if (data.banned_until && new Date(data.banned_until) < new Date()) {
-            return { banned: false };
-        }
+        // Check if any ban is still valid (permanent or not yet expired)
+        const now = new Date();
+        const activeBan = bans.find(b => !b.expires_at || new Date(b.expires_at) > now);
+        if (!activeBan) return false;
 
-        return {
-            banned: true,
-            ban_type: data.ban_type,
-            reason: data.reason || 'Account suspended.',
-            banned_until: data.banned_until
-        };
+        return activeBan;
     } catch {
-        return { banned: false };
+        return false;
     }
+}
+
+/**
+ * Replace the entire page with a ban screen if the user is banned.
+ */
+export function enforceBan(ban) {
+    const reason = ban.reason || 'Violation of game rules';
+    const expires = ban.expires_at
+        ? `Your ban expires on ${new Date(ban.expires_at).toLocaleDateString()}.`
+        : 'This ban is permanent.';
+
+    document.body.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0a0a0a;color:#fff;font-family:monospace;padding:20px;">
+            <div style="max-width:500px;text-align:center;">
+                <h1 style="color:#f44;font-size:2em;margin-bottom:16px;">ACCOUNT SUSPENDED</h1>
+                <p style="color:#ccc;font-size:1.1em;margin-bottom:12px;">Your account has been suspended for:</p>
+                <p style="color:#fa0;font-size:1.2em;font-weight:bold;margin-bottom:20px;">${reason}</p>
+                <p style="color:#888;font-size:0.9em;">${expires}</p>
+                <p style="color:#555;font-size:0.8em;margin-top:30px;">If you believe this is an error, contact the game administrators.</p>
+            </div>
+        </div>
+    `;
 }
