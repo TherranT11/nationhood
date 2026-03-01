@@ -20,7 +20,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
 import { tickToDate, escapeHtml, getIdeologyClass } from './js/utils.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize, ensureBlocApprovals, selectPresidentCandidate } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize, ensureBlocApprovals, selectPresidentCandidate, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_VECTORS, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, computeAttackCredibility, executeAttack } from './js/game-common.js';
 import { getPartyIconSVG, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -3263,6 +3263,10 @@ async function renderParties() {
             <div id="rally-container"></div>
             <div id="promise-maker-container"></div>
         </div>
+        <div class="actions-row">
+            <div id="outreach-container"></div>
+            <div id="attack-container"></div>
+        </div>
 
 
         ${otherPartiesHtml}
@@ -3655,6 +3659,368 @@ async function renderParties() {
             rebuildIdeologyChart();
         });
     }
+
+    // ── Voter Outreach UI (guaranteed, no randomness) ──
+    let outreachSelectedBloc = null;
+    let outreachResult = null;
+
+    // Fetch recent outreach actions for diminishing returns
+    const { data: recentOutreachActions } = await _supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', f.id)
+        .eq('action_type', 'outreach')
+        .gte('tick_performed', (currentShard?.current_tick || 0) - OUTREACH_CONFIG.COOLDOWN_WINDOW)
+        .order('tick_performed', { ascending: false });
+
+    const outreachedThisTick = (recentOutreachActions || []).some(r => r.tick_performed === (currentShard?.current_tick || 0));
+
+    function getBlocOutreachRecently(blocId) {
+        return (recentOutreachActions || []).filter(r => r.result?.blocId === blocId).length;
+    }
+
+    // Outreach history
+    const outreachHistory = (recentOutreachActions || []).filter(r => r.result?.blocId).slice(0, 6);
+
+    // My faction's ideology for alignment calcs
+    const myIdeo = ideoByFaction[f.id] || null;
+
+    function outreachGetApprovalColor(val) {
+        if (val >= 65) return '#4ade80';
+        if (val >= 45) return '#facc15';
+        if (val >= 30) return '#f97316';
+        return '#ef4444';
+    }
+
+    function outreachGetAlignmentColor(val) {
+        if (val >= 75) return '#4ade80';
+        if (val >= 55) return '#22d3ee';
+        if (val >= 40) return '#facc15';
+        return '#ef4444';
+    }
+
+    function renderOutreach() {
+        const container = document.getElementById('outreach-container');
+        if (!container) return;
+        const costOk = currentAP >= OUTREACH_CONFIG.AP_COST;
+        const canOutreach = costOk && !outreachedThisTick;
+
+        // Build bloc approval lookup
+        const myApprovals = {};
+        for (const row of (allBlocApprovals || [])) {
+            if (row.faction_id === f.id) myApprovals[row.bloc_id] = Math.round(row.preference_score || 0);
+        }
+
+        const selectedBloc = outreachSelectedBloc ? (blocs || []).find(b => b.id === outreachSelectedBloc) : null;
+        const selectedApproval = selectedBloc ? (myApprovals[selectedBloc.id] || 50) : 0;
+        const selectedAlignment = selectedBloc && myIdeo ? computeOutreachAlignment(myIdeo, selectedBloc) : 50;
+        const selectedEffect = selectedBloc ? calcOutreachEffect(selectedAlignment, getBlocOutreachRecently(selectedBloc.id)) : null;
+        const selectedFrictions = selectedBloc ? calcOutreachFriction(selectedBloc, blocs || [], myIdeo) : [];
+
+        // ─── Bloc selection cards ───
+        const blocCards = (blocs || []).map(b => {
+            const approval = myApprovals[b.id] || 50;
+            const isSelected = outreachSelectedBloc === b.id;
+            const approvalColor = outreachGetApprovalColor(approval);
+            const alignment = myIdeo ? computeOutreachAlignment(myIdeo, b) : 50;
+            const alignColor = outreachGetAlignmentColor(alignment);
+            const bRecent = getBlocOutreachRecently(b.id);
+            const bEffect = calcOutreachEffect(alignment, bRecent);
+            const bFrictions = calcOutreachFriction(b, blocs || [], myIdeo);
+            const hasDiminishing = bRecent > 0;
+            const hasFriction = bFrictions.length > 0;
+
+            return `<div class="outreach-bloc-card${isSelected ? ' selected' : ''}${!canOutreach ? ' disabled' : ''}" data-bloc-id="${b.id}">
+                <div class="outreach-bloc-card-top">
+                    <div class="outreach-bloc-card-left">
+                        <span class="outreach-bloc-card-name">${escapeHtml(b.bloc_name)}</span>
+                        <span class="outreach-bloc-card-pop">${Math.round(b.population_weight)}%</span>
+                        ${hasDiminishing ? '<span class="outreach-pill-diminish">Outreached ' + bRecent + 'x</span>' : ''}
+                        ${hasFriction && !isSelected ? '<span class="outreach-pill-friction">\u26A0 friction</span>' : ''}
+                    </div>
+                    <div class="outreach-bloc-card-right">
+                        <div class="outreach-bloc-card-stat">
+                            <span class="outreach-bloc-card-stat-label">Align</span>
+                            <span class="outreach-bloc-card-stat-val" style="color:${alignColor}">${alignment}</span>
+                        </div>
+                        <div class="outreach-bloc-card-stat">
+                            <span class="outreach-bloc-card-stat-label">Appr.</span>
+                            <span class="outreach-bloc-card-stat-val" style="color:${approvalColor}">${approval}</span>
+                        </div>
+                        <div class="outreach-bloc-card-effect">
+                            <span class="outreach-bloc-card-stat-label">Effect</span>
+                            <span class="outreach-bloc-card-effect-val">+${bEffect.diminished}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="outreach-bloc-card-bar"><div class="outreach-bloc-card-bar-fill" style="width:${approval}%;background:${approvalColor}"></div></div>
+            </div>`;
+        }).join('');
+
+        // ─── Expanded detail (when bloc selected + no result) ───
+        let detailHtml = '';
+        if (selectedBloc && selectedEffect && !outreachResult) {
+            // Axis-by-axis alignment breakdown
+            const AXIS_LABELS = {
+                liberty_equality: 'Liberty \u2194 Equality',
+                tradition_progress: 'Tradition \u2194 Progress',
+                security_freedom: 'Security \u2194 Freedom',
+                globalism_nationalism: 'Globalism \u2194 Nationalism',
+                individualism_collectivism: 'Individualism \u2194 Collectivism',
+            };
+
+            let axisBreakdownHtml = '';
+            for (const axisKey of ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism']) {
+                const partyScore = myIdeo ? (myIdeo[axisKey] || 0) : 0;
+                const partyNorm = Math.round((partyScore + 100) / 2);
+                const blocScore = selectedBloc['axis_' + axisKey] ?? 50;
+                const distance = Math.abs(partyNorm - blocScore);
+                const axisAlignment = 100 - distance;
+                const partyStrength = Math.abs(partyScore) / 100;
+                const isRelevant = partyStrength >= 0.15;
+                const aColor = outreachGetAlignmentColor(axisAlignment);
+
+                axisBreakdownHtml += `
+                <div class="outreach-axis-row" style="opacity:${isRelevant ? 1 : 0.5}">
+                    <div class="outreach-axis-header">
+                        <div class="outreach-axis-header-left">
+                            <span class="outreach-axis-label">${AXIS_LABELS[axisKey]}</span>
+                            <span class="outreach-axis-weight">str: ${Math.round(partyStrength * 100)}%</span>
+                        </div>
+                        <span class="outreach-axis-val" style="color:${aColor}">${axisAlignment}</span>
+                    </div>
+                    <div class="outreach-axis-bar-container">
+                        <div class="outreach-axis-zone" style="left:${Math.min(partyNorm, blocScore)}%;width:${Math.max(2, distance)}%;background:${distance < 20 ? 'rgba(74,222,128,0.1)' : distance < 40 ? 'rgba(250,204,21,0.08)' : 'rgba(239,68,68,0.08)'}"></div>
+                        <div class="outreach-axis-marker outreach-axis-marker-party" style="left:${partyNorm}%"></div>
+                        <div class="outreach-axis-marker outreach-axis-marker-bloc" style="left:${blocScore}%"></div>
+                    </div>
+                    <div class="outreach-axis-footer">
+                        <span class="outreach-axis-party-val">You: ${partyNorm}</span>
+                        <span class="outreach-axis-bloc-val">Bloc: ${blocScore}</span>
+                    </div>
+                </div>`;
+            }
+
+            // Effect calculation breakdown
+            const effectHtml = `
+            <div class="outreach-detail-section">
+                <span class="outreach-section-label">Effect Calculation</span>
+                <div class="outreach-effect-rows">
+                    <div class="outreach-effect-row">
+                        <span class="outreach-effect-desc">Base effect (alignment ${selectedAlignment}/100)</span>
+                        <span class="outreach-effect-val" style="color:#4ade80">+${selectedEffect.base}</span>
+                    </div>
+                    ${selectedEffect.penalty > 0 ? `<div class="outreach-effect-row">
+                        <span class="outreach-effect-desc" style="color:#f97316">Diminishing returns (${getBlocOutreachRecently(selectedBloc.id)}x in last ${OUTREACH_CONFIG.COOLDOWN_WINDOW} ticks)</span>
+                        <span class="outreach-effect-val" style="color:#f97316">\u2212${selectedEffect.penalty}</span>
+                    </div>` : ''}
+                    <div class="outreach-effect-row outreach-effect-total">
+                        <span class="outreach-effect-desc">Guaranteed approval gain</span>
+                        <span class="outreach-effect-val outreach-effect-total-val">+${selectedEffect.diminished}</span>
+                    </div>
+                </div>
+                <div class="outreach-projection">
+                    <div class="outreach-projection-stat">
+                        <span class="outreach-projection-label">NOW</span>
+                        <span class="outreach-projection-val" style="color:${outreachGetApprovalColor(selectedApproval)}">${selectedApproval}</span>
+                    </div>
+                    <span class="outreach-projection-arrow">\u2192</span>
+                    <div class="outreach-projection-stat">
+                        <span class="outreach-projection-label">AFTER</span>
+                        <span class="outreach-projection-val" style="color:${outreachGetApprovalColor(Math.min(100, selectedApproval + selectedEffect.diminished))}">${Math.min(100, selectedApproval + selectedEffect.diminished)}</span>
+                    </div>
+                    <div style="flex:1"></div>
+                    <div class="outreach-projection-stat">
+                        <span class="outreach-projection-label">POLARIZATION</span>
+                        <span class="outreach-projection-val" style="color:#4ade80">+0</span>
+                    </div>
+                </div>
+            </div>`;
+
+            // Ideology alignment breakdown
+            const ideoHtml = `
+            <div class="outreach-detail-section">
+                <span class="outreach-section-label">Ideological Alignment \u2014 Axis by Axis</span>
+                ${axisBreakdownHtml}
+                <div class="outreach-axis-legend">
+                    <span class="outreach-axis-party-val">\u25A0 Your party</span>
+                    <span class="outreach-axis-bloc-val">\u25A0 Bloc values</span>
+                    <span class="outreach-axis-hint">Higher party strength = more influence on outreach effectiveness</span>
+                </div>
+            </div>`;
+
+            // Friction section
+            let frictionHtml = '';
+            if (selectedFrictions.length > 0) {
+                const frictionRows = selectedFrictions.map(fr =>
+                    `<div class="outreach-friction-row">
+                        <div class="outreach-friction-left">
+                            <span class="outreach-friction-name">${escapeHtml(fr.blocName)}</span>
+                            <span class="outreach-friction-align">(your alignment: ${fr.alignment})</span>
+                        </div>
+                        <span class="outreach-friction-val">${fr.penalty}</span>
+                    </div>`
+                ).join('');
+                frictionHtml = `
+                <div class="outreach-detail-section">
+                    <span class="outreach-section-label">Adjacent Bloc Friction</span>
+                    ${frictionRows}
+                </div>`;
+            } else {
+                frictionHtml = `
+                <div class="outreach-detail-section">
+                    <span class="outreach-section-label">Adjacent Bloc Friction</span>
+                    <span class="outreach-friction-clean">No opposed blocs \u2014 clean outreach</span>
+                </div>`;
+            }
+
+            detailHtml = `
+            <div class="outreach-detail-panel">
+                <div class="outreach-detail-header">
+                    <span class="outreach-detail-title">Outreach: ${escapeHtml(selectedBloc.bloc_name)}</span>
+                    <span class="outreach-detail-approval">
+                        <span class="outreach-detail-approval-label">Current approval:</span>
+                        <span style="color:${outreachGetApprovalColor(selectedApproval)};font-weight:700">${selectedApproval}</span>
+                    </span>
+                </div>
+                <div class="outreach-detail-body">
+                    ${effectHtml}
+                    ${ideoHtml}
+                    ${frictionHtml}
+                </div>
+                <div class="outreach-execute-row">
+                    <span class="outreach-execute-warn">Guaranteed result. No randomness, no headlines, no polarization.</span>
+                    <button class="outreach-btn-execute" id="outreach-execute">Conduct Outreach \u2014 ${OUTREACH_CONFIG.AP_COST} AP</button>
+                </div>
+            </div>`;
+        }
+
+        // ─── Result card ───
+        let resultHtml = '';
+        if (outreachResult) {
+            const effectRows = (outreachResult.effects || []).map(eff => {
+                const valColor = eff.value > 0 ? '#4ade80' : eff.value < 0 ? '#ef4444' : '#6b6a5e';
+                const valStr = eff.value > 0 ? '+' + eff.value : '' + eff.value;
+                const isFriction = eff.value < 0;
+                return `<div class="outreach-result-effect-row">
+                    <span>${escapeHtml(eff.bloc)}${isFriction ? ' (friction)' : ''}</span>
+                    <span style="color:${valColor};font-weight:700">${valStr}</span>
+                </div>`;
+            }).join('');
+
+            resultHtml = `
+            <div class="outreach-result-card">
+                <div class="outreach-result-banner">
+                    <span class="outreach-result-title">Outreach Complete</span>
+                    <span class="outreach-result-dismiss" id="outreach-dismiss">Dismiss</span>
+                </div>
+                <div class="outreach-result-body">
+                    <div class="outreach-result-flavor">Party organizers spent the week in ${escapeHtml((outreachResult.effects?.[0]?.bloc || 'local').toLowerCase())} communities \u2014 attending meetings, hearing concerns, building relationships. No cameras, no speeches. Just work.</div>
+                    <div class="outreach-result-effects">
+                        ${effectRows}
+                        <div class="outreach-result-effect-row">
+                            <span>Polarization</span>
+                            <span style="color:#4ade80;font-weight:700">+0</span>
+                        </div>
+                        <div class="outreach-result-effect-row">
+                            <span>Headline generated</span>
+                            <span style="color:#6b6a5e;font-weight:700">None</span>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        // ─── Outreach history ───
+        let historyHtml = '';
+        if (outreachHistory.length > 0) {
+            const historyRows = outreachHistory.map(r => {
+                const res = r.result || {};
+                const tick = r.tick_performed;
+                const effect = res.diminished || 0;
+                const frictionSummary = (res.effects || []).filter(e => e.value < 0).map(e => e.value + ' ' + (e.bloc || '').split(' ')[0]).join(', ');
+                return `<div class="outreach-history-row">
+                    <span class="outreach-history-tick">Tick ${tick}</span>
+                    <span class="outreach-history-bloc">${escapeHtml(res.blocName || '?')}</span>
+                    <span class="outreach-history-effect" style="color:#4ade80">+${effect}</span>
+                    <span class="outreach-history-friction" style="color:${frictionSummary ? '#ef4444' : '#6b6a5e'}">${frictionSummary || 'No friction'}</span>
+                </div>`;
+            }).join('');
+
+            historyHtml = `
+            <div class="outreach-history">
+                <div class="outreach-history-header">Outreach History</div>
+                ${historyRows}
+            </div>`;
+        }
+
+        container.innerHTML = `
+            <div class="outreach-panel">
+                <div class="outreach-header-row">
+                    <div class="outreach-header-left">
+                        <span class="outreach-title">Voter Outreach</span>
+                        <span class="outreach-pill-safe">Safe</span>
+                    </div>
+                    <div class="outreach-header-right">
+                        <span class="outreach-pill-cost">${OUTREACH_CONFIG.AP_COST} AP</span>
+                    </div>
+                </div>
+
+                <div class="outreach-tagline">Guaranteed result \u00B7 No random outcomes \u00B7 No polarization \u00B7 No headlines \u00B7 Slow and steady</div>
+
+                ${outreachedThisTick ? '<div class="outreach-cooldown">You have already conducted outreach this tick.</div>' : ''}
+                ${!costOk && !outreachedThisTick ? '<div class="outreach-cooldown">Not enough AP (need ' + OUTREACH_CONFIG.AP_COST + ').</div>' : ''}
+
+                ${resultHtml}
+
+                <div class="outreach-bloc-select-header">
+                    <span class="outreach-section-label">Select Target Bloc</span>
+                    <span class="outreach-bloc-select-hint">Higher ideological alignment = stronger outreach effect</span>
+                </div>
+                <div class="outreach-bloc-grid">${blocCards}</div>
+
+                ${detailHtml}
+                ${historyHtml}
+            </div>`;
+
+        // Event listeners
+        container.querySelectorAll('.outreach-bloc-card:not(.disabled)').forEach(card => {
+            card.addEventListener('click', () => {
+                outreachSelectedBloc = card.dataset.blocId;
+                outreachResult = null;
+                renderOutreach();
+            });
+        });
+
+        const executeBtn = document.getElementById('outreach-execute');
+        if (executeBtn) {
+            executeBtn.addEventListener('click', async () => {
+                executeBtn.disabled = true;
+                executeBtn.textContent = 'Executing...';
+                const tick = currentShard?.current_tick || 0;
+                const result = await executeOutreach(_supabase, f.id, n.id, outreachSelectedBloc, tick);
+                if (result.success) {
+                    outreachResult = result;
+                    renderOutreach();
+                } else {
+                    alert(result.error);
+                    executeBtn.disabled = false;
+                    executeBtn.textContent = 'Conduct Outreach \u2014 ' + OUTREACH_CONFIG.AP_COST + ' AP';
+                }
+            });
+        }
+
+        const dismissBtn = document.getElementById('outreach-dismiss');
+        if (dismissBtn) {
+            dismissBtn.addEventListener('click', () => {
+                outreachResult = null;
+                outreachSelectedBloc = null;
+                renderParties(); // full refresh for AP update
+            });
+        }
+    }
+
+    renderOutreach();
 
     // ── Rally UI (bloc-targeted with outcome odds) ──
     let rallySelectedBloc = null;
@@ -4469,6 +4835,346 @@ async function renderParties() {
     }
 
     renderPromiseMaker();
+
+    // ── Attack Campaign UI ──
+    let attackSelectedTarget = null;
+    let attackSelectedVector = null;
+    let attackResult = null;
+    let attackEvidenceCache = {}; // { factionId: evidence }
+
+    // Fetch recent attacks for credibility calc
+    const { data: recentAttackActions } = await _supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', f.id)
+        .eq('action_type', 'attack')
+        .gte('tick_performed', (currentShard?.current_tick || 0) - ATTACK_CONFIG.COOLDOWN_WINDOW)
+        .order('tick_performed', { ascending: false });
+
+    const attackedThisTick = (recentAttackActions || []).some(r => r.tick_performed === (currentShard?.current_tick || 0));
+    const attackCredibility = computeAttackCredibility((recentAttackActions || []).length);
+
+    // Attack history
+    const { data: attackHistory } = await _supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', f.id)
+        .eq('action_type', 'attack')
+        .order('tick_performed', { ascending: false })
+        .limit(6);
+
+    // Rival parties (exclude self)
+    const rivalParties = (allParties || []).filter(p => p.id !== f.id);
+
+    const ATTACK_OUTCOME_COLORS = {
+        devastating: '#4ade80', effective: '#22d3ee', glancing: '#facc15',
+        backfire: '#f97316', mutual: '#ef4444',
+    };
+    const ATTACK_OUTCOME_ICONS = {
+        devastating: '\u2726', effective: '\u25CF', glancing: '\u25E6',
+        backfire: '\u26A0', mutual: '\u2715',
+    };
+
+    async function loadEvidenceForTarget(targetId) {
+        if (attackEvidenceCache[targetId]) return attackEvidenceCache[targetId];
+        const evidence = await gatherAttackEvidence(_supabase, targetId, n.id, currentShard?.current_tick || 0);
+        attackEvidenceCache[targetId] = evidence;
+        return evidence;
+    }
+
+    async function renderAttack() {
+        const container = document.getElementById('attack-container');
+        if (!container) return;
+        const costOk = currentAP >= ATTACK_CONFIG.AP_COST;
+        const canAttack = costOk && !attackedThisTick;
+
+        // Build rival approval lookup
+        const rivalApprovals = {};
+        for (const row of (allBlocApprovals || [])) {
+            if (!rivalApprovals[row.faction_id]) rivalApprovals[row.faction_id] = [];
+            rivalApprovals[row.faction_id].push(row);
+        }
+
+        // Compute average approval per rival
+        function avgApproval(fid) {
+            const rows = rivalApprovals[fid] || [];
+            if (rows.length === 0) return 50;
+            const total = rows.reduce((s, r) => s + (r.preference_score || 0), 0);
+            return Math.round(total / rows.length);
+        }
+
+        // Credibility bar color
+        const credColor = attackCredibility > 60 ? '#4ade80' : attackCredibility > 30 ? '#facc15' : '#ef4444';
+
+        // Get current coalition for governing status
+        const activeCoalition = await fetchActiveCoalition(_supabase, n.id);
+        const coalitionIds = new Set(activeCoalition?.party_ids || []);
+
+        // ─── Target cards ───
+        const targetCards = rivalParties.map(p => {
+            const isSelected = attackSelectedTarget === p.id;
+            const avg = avgApproval(p.id);
+            const isGov = coalitionIds.has(p.id);
+            const cached = attackEvidenceCache[p.id];
+            const ammo = cached
+                ? cached.broken_promises.length + cached.controversial_votes.length + (cached.is_governing ? cached.governance_record.length : 0)
+                : null;
+            const ammoColor = ammo === null ? '#6b6a5e' : ammo >= 2 ? '#4ade80' : ammo === 1 ? '#facc15' : '#ef4444';
+
+            return `<div class="attack-target-card${isSelected ? ' selected' : ''}${!canAttack ? ' disabled' : ''}" data-target-id="${p.id}">
+                <div class="attack-target-left">
+                    <span class="attack-target-name">${escapeHtml(p.faction_name)}</span>
+                    <span class="attack-target-pill">${p.seats || 0} seats</span>
+                    ${isGov ? '<span class="attack-target-pill attack-pill-gov">Gov</span>' : ''}
+                </div>
+                <div class="attack-target-right">
+                    ${ammo !== null ? `<div class="attack-target-ammo">
+                        <span class="attack-target-ammo-label">Ammo:</span>
+                        ${[0, 1, 2].map(i => `<div class="attack-ammo-dot${i < ammo ? ' filled' : ''}" style="${i < ammo ? 'background:' + ammoColor : ''}"></div>`).join('')}
+                    </div>` : ''}
+                    <span class="attack-target-approval">Avg: ${avg}</span>
+                </div>
+            </div>`;
+        }).join('');
+
+        // ─── Vector selection + detail (when target selected) ───
+        let vectorHtml = '';
+        if (attackSelectedTarget && !attackResult) {
+            const evidence = attackEvidenceCache[attackSelectedTarget];
+            const vectors = evidence ? buildAttackVectors(evidence) : [];
+            const target = rivalParties.find(p => p.id === attackSelectedTarget);
+
+            const vectorCards = vectors.map(v => {
+                const isSelected = attackSelectedVector === v.id;
+                const hasEvidence = v.evidence && v.evidence.length > 0;
+                const isDisabled = v.evidence_required && !hasEvidence;
+                const strengthColor = v.strength === 'strong' ? '#4ade80' : v.strength === 'moderate' ? '#facc15' : '#ef4444';
+                const backfireLabel = v.strength === 'strong' ? 'Low' : v.strength === 'moderate' ? 'Med' : 'High';
+
+                let evidenceHtml = '';
+                if (isSelected && hasEvidence) {
+                    const rows = v.evidence.map((e, i) => {
+                        const text = e.text || e.bill || (e.stat + ' ' + e.change) || '?';
+                        const detail = e.bloc || (e.stance === 'reject' ? 'Voted NO (' + e.outcome + ')' : e.stance === 'accept' ? 'Voted YES (' + e.outcome + ')' : '') || '';
+                        return `<div class="attack-evidence-row">
+                            <span class="attack-evidence-text">${escapeHtml(text)}</span>
+                            ${detail ? '<span class="attack-evidence-detail">' + escapeHtml(detail) + '</span>' : ''}
+                        </div>`;
+                    }).join('');
+                    evidenceHtml = `<div class="attack-evidence-section">
+                        <span class="attack-evidence-label">Available Evidence</span>
+                        ${rows}
+                    </div>`;
+                }
+
+                return `<div class="attack-vector-card${isSelected ? ' selected' : ''}${isDisabled ? ' disabled' : ''}" data-vector-id="${v.id}">
+                    <div class="attack-vector-top">
+                        <div class="attack-vector-left">
+                            <span class="attack-vector-icon${isSelected ? ' active' : ''}">${v.icon}</span>
+                            <span class="attack-vector-name">${v.name}</span>
+                            <span class="attack-strength-pill" style="background:${strengthColor}12;color:${strengthColor};border-color:${strengthColor}33">${v.strength} evidence</span>
+                        </div>
+                        <span class="attack-backfire-label">Backfire risk: ${backfireLabel}</span>
+                    </div>
+                    <span class="attack-vector-desc">${v.description}</span>
+                    ${evidenceHtml}
+                    ${isDisabled ? '<span class="attack-vector-disabled-msg">No evidence available \u2014 ' + v.name.toLowerCase() + ' requires factual basis</span>' : ''}
+                </div>`;
+            }).join('');
+
+            // Outcome odds bar
+            let oddsHtml = '';
+            const selectedVec = vectors.find(v => v.id === attackSelectedVector);
+            if (selectedVec) {
+                const weights = getAttackOutcomeWeights(selectedVec.strength);
+                const order = ['devastating', 'effective', 'glancing', 'backfire', 'mutual'];
+
+                const barSegments = order.map(key => {
+                    const pct = weights[key] || 0;
+                    if (pct < 2) return '';
+                    return `<div class="attack-outcome-bar-seg" style="width:${pct}%;background:${ATTACK_OUTCOME_COLORS[key]}" title="${ATTACK_OUTCOMES.find(o=>o.id===key)?.name}: ${pct}%"></div>`;
+                }).join('');
+
+                const barLabels = order.map(key => {
+                    const pct = weights[key] || 0;
+                    const o = ATTACK_OUTCOMES.find(o => o.id === key);
+                    return `<div class="attack-outcome-label"><div class="attack-outcome-dot" style="background:${ATTACK_OUTCOME_COLORS[key]}"></div><span class="attack-outcome-name">${o?.name || key}</span><span class="attack-outcome-pct" style="color:${ATTACK_OUTCOME_COLORS[key]}">${pct}%</span></div>`;
+                }).join('');
+
+                oddsHtml = `
+                <div class="attack-odds-section">
+                    <span class="attack-section-label">Outcome Odds</span>
+                    <div class="attack-outcome-bar">${barSegments}</div>
+                    <div class="attack-outcome-labels">${barLabels}</div>
+                </div>
+
+                <div class="attack-consequences">
+                    <span class="attack-section-label">Guaranteed Consequences</span>
+                    <div class="attack-consequence-list">
+                        <div class="attack-consequence-row"><span class="attack-warn-icon">\u26A0</span><span>Attack credibility drops <span style="color:#ef4444">\u221220%</span> (currently ${attackCredibility}%)</span></div>
+                        <div class="attack-consequence-row"><span class="attack-warn-icon">\u26A0</span><span>Opens <span style="color:#ef4444">counter-attack window</span> \u2014 target can respond for 1 AP (3 ticks)</span></div>
+                        <div class="attack-consequence-row"><span class="attack-warn-icon">\u26A0</span><span>Polarization <span style="color:#f97316">+1 to +2</span></span></div>
+                    </div>
+                </div>
+
+                <div class="attack-execute-row">
+                    <span class="attack-execute-warn">This action cannot be undone. The target will be notified and can counter-attack.</span>
+                    <button class="attack-btn-execute" id="attack-execute">Launch Attack \u2014 ${ATTACK_CONFIG.AP_COST} AP</button>
+                </div>`;
+            }
+
+            vectorHtml = `
+            <div class="attack-vector-panel">
+                <div class="attack-vector-header">
+                    <span class="attack-vector-header-title">Attack: ${escapeHtml(target?.faction_name || '?')}</span>
+                    <span class="attack-vector-header-hint">Select your angle of attack</span>
+                </div>
+                <div class="attack-vector-body">
+                    <div class="attack-vector-list">${vectorCards}</div>
+                    ${oddsHtml}
+                </div>
+            </div>`;
+        }
+
+        // ─── Result card ───
+        let resultHtml = '';
+        if (attackResult) {
+            const outcome = ATTACK_OUTCOMES.find(o => o.id === attackResult.outcomeId);
+            const oColor = ATTACK_OUTCOME_COLORS[attackResult.outcomeId] || '#888';
+            const oIcon = ATTACK_OUTCOME_ICONS[attackResult.outcomeId] || '';
+
+            const effectRows = (attackResult.effects || []).map(eff => {
+                const valColor = eff.value > 0 ? '#4ade80' : eff.value < 0 ? '#ef4444' : '#6b6a5e';
+                const valStr = eff.value > 0 ? '+' + eff.value : '' + eff.value;
+                return `<div class="attack-result-effect-row"><span>${escapeHtml(eff.label)}</span><span style="color:${valColor};font-weight:700">${valStr}</span></div>`;
+            }).join('');
+
+            resultHtml = `
+            <div class="attack-result-card" style="border-color:${oColor}">
+                <div class="attack-result-banner" style="background:linear-gradient(90deg, ${oColor}15, transparent);border-bottom-color:${oColor}33">
+                    <div class="attack-result-banner-left">
+                        <span style="color:${oColor};font-size:16px">${oIcon}</span>
+                        <span style="color:${oColor};font-weight:700;font-size:16px">${outcome?.name || attackResult.outcomeName}</span>
+                    </div>
+                    <span class="attack-result-dismiss" id="attack-dismiss">Dismiss</span>
+                </div>
+                <div class="attack-result-body">
+                    <div class="attack-result-headline">"${escapeHtml(attackResult.headline)}"</div>
+                    <div class="attack-result-effects">${effectRows}</div>
+                    ${attackResult.opensCounter ? '<div class="attack-counter-warning">\u26A0 Target can now launch a Counter-Attack for 1 AP (3 tick window, +2 effectiveness bonus)</div>' : ''}
+                </div>
+            </div>`;
+        }
+
+        // ─── Attack history ───
+        let historyHtml = '';
+        if ((attackHistory || []).length > 0) {
+            const historyRows = (attackHistory || []).map(r => {
+                const res = r.result || {};
+                const oColor = ATTACK_OUTCOME_COLORS[res.outcomeId] || '#888';
+                const tick = r.tick_performed;
+                const effectSummary = (res.effects || []).map(e => (e.value >= 0 ? '+' : '') + e.value + ' ' + (e.label || '').split(' ')[0]).join(', ');
+                return `<div class="attack-history-row" style="border-left-color:${oColor}">
+                    <span class="attack-history-tick">Tick ${tick}</span>
+                    <span class="attack-history-target">vs ${escapeHtml(res.targetAbbrev || '?')}</span>
+                    <span class="attack-history-outcome" style="color:${oColor}">${res.outcomeName || '?'}</span>
+                    <span class="attack-history-headline">"${escapeHtml(res.headline || '')}"</span>
+                    <span class="attack-history-effect">${effectSummary || ''}</span>
+                </div>`;
+            }).join('');
+
+            historyHtml = `
+            <div class="attack-history">
+                <div class="attack-history-header">Attack History</div>
+                ${historyRows}
+            </div>`;
+        }
+
+        container.innerHTML = `
+            <div class="attack-panel">
+                <div class="attack-header-row">
+                    <div class="attack-header-left">
+                        <span class="attack-title">Attack Campaign</span>
+                    </div>
+                    <div class="attack-header-right">
+                        <div class="attack-credibility">
+                            <span class="attack-credibility-label">Attack Credibility</span>
+                            <div class="attack-credibility-bar-wrap">
+                                <div class="attack-credibility-bar">
+                                    <div class="attack-credibility-fill" style="width:${attackCredibility}%;background:${credColor}"></div>
+                                </div>
+                                <span class="attack-credibility-val" style="color:${credColor}">${attackCredibility}%</span>
+                            </div>
+                        </div>
+                        <span class="attack-pill-cost">${ATTACK_CONFIG.AP_COST} AP</span>
+                    </div>
+                </div>
+
+                ${attackedThisTick ? '<div class="attack-cooldown">You have already launched an attack this tick.</div>' : ''}
+                ${!costOk && !attackedThisTick ? '<div class="attack-cooldown">Not enough AP (need ' + ATTACK_CONFIG.AP_COST + ').</div>' : ''}
+
+                ${resultHtml}
+
+                <div class="attack-target-select-header">
+                    <span class="attack-section-label">Select Target Party</span>
+                    <span class="attack-target-hint">Parties with more ammunition are easier to attack</span>
+                </div>
+                <div class="attack-target-grid">${targetCards}</div>
+
+                ${vectorHtml}
+                ${historyHtml}
+            </div>`;
+
+        // ─── Event listeners ───
+        container.querySelectorAll('.attack-target-card:not(.disabled)').forEach(card => {
+            card.addEventListener('click', async () => {
+                const tid = card.dataset.targetId;
+                attackSelectedTarget = tid;
+                attackSelectedVector = null;
+                attackResult = null;
+                // Load evidence if not cached
+                await loadEvidenceForTarget(tid);
+                renderAttack();
+            });
+        });
+
+        container.querySelectorAll('.attack-vector-card:not(.disabled)').forEach(card => {
+            card.addEventListener('click', () => {
+                attackSelectedVector = card.dataset.vectorId;
+                renderAttack();
+            });
+        });
+
+        const executeBtn = document.getElementById('attack-execute');
+        if (executeBtn) {
+            executeBtn.addEventListener('click', async () => {
+                executeBtn.disabled = true;
+                executeBtn.textContent = 'Executing...';
+                const tick = currentShard?.current_tick || 0;
+                const result = await executeAttack(_supabase, f.id, n.id, attackSelectedTarget, attackSelectedVector, tick);
+                if (result.success) {
+                    attackResult = result;
+                    renderAttack();
+                } else {
+                    alert(result.error);
+                    executeBtn.disabled = false;
+                    executeBtn.textContent = 'Launch Attack \u2014 ' + ATTACK_CONFIG.AP_COST + ' AP';
+                }
+            });
+        }
+
+        const dismissBtn = document.getElementById('attack-dismiss');
+        if (dismissBtn) {
+            dismissBtn.addEventListener('click', () => {
+                attackResult = null;
+                attackSelectedTarget = null;
+                attackSelectedVector = null;
+                renderParties(); // full refresh for AP update
+            });
+        }
+    }
+
+    renderAttack();
 
 }
 
