@@ -378,6 +378,13 @@
   color: var(--np-text-secondary);
   font-weight: 600;
 }
+.np-dateline {
+  font-family: var(--np-font-ui);
+  font-weight: 700;
+  font-size: 0.85em;
+  letter-spacing: 0.04em;
+  color: var(--np-accent-gold, #C9A84C);
+}
 .np-hero__body {
   column-count: 2;
   column-gap: 36px;

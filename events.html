@@ -194,19 +194,21 @@ initPage('events', async (state) => {
 
   _nationName = nation.name || 'Valdoria';
 
-  // Load events, campaign actions, op-eds, and parties in parallel
-  const [events, campaignActions, opeds, parties] = await Promise.all([
-    loadEvents(nation.id, shard),
-    loadCampaignActions(nation.id, shard),
+  // Load events from ALL nations, plus op-eds/parties for current nation
+  const [events, campaignActions, opeds, parties, leaderMap, nationNames] = await Promise.all([
+    loadEvents(shard),
+    loadCampaignActions(shard),
     loadOpEds(nation.id, shard),
-    loadParties(nation.id)
+    loadParties(nation.id),
+    loadAllFactionLeaders(),
+    loadAllNationNames()
   ]);
 
   _events = events;
   _opeds = opeds;
 
-  // Generate rich articles from templates
-  const articles = buildArticles(events, campaignActions, _nationName);
+  // Generate rich articles from templates (all nations)
+  const articles = buildArticles(events, campaignActions, nationNames, leaderMap);
 
   renderNewspaper(nation, faction, shard, articles, opeds, parties);
   setupOpEdModal(faction, nation, shard);
@@ -215,18 +217,17 @@ initPage('events', async (state) => {
 /* ══════════════════════════════════════════════════════
    DATA LOADING
    ══════════════════════════════════════════════════════ */
-async function loadEvents(nationId, shard) {
+async function loadEvents(shard) {
   const currentTick = shard?.current_tick || 0;
   const { data, error } = await _supabase
     .from('event_log')
-    .select('*')
-    .eq('nation_id', nationId)
+    .select('*, nations(name)')
     .order('fired_at_tick', { ascending: false })
-    .limit(50);
+    .limit(80);
   if (error) { console.error('Failed to load events:', error); return []; }
   return (data || []).map(e => ({
     ...e,
-    // Normalize column names for render functions
+    _nation_name: e.nations?.name || '',
     headline: e.event_name || '',
     description: e.description_chosen || '',
     tick: e.fired_at_tick,
@@ -276,18 +277,51 @@ async function loadParties(nationId) {
   return data || [];
 }
 
-async function loadCampaignActions(nationId, shard) {
+async function loadAllFactionLeaders() {
+  try {
+    const { data } = await _supabase
+      .from('factions')
+      .select('id, faction_name, leader_first_name, leader_last_name, nation_id')
+      .eq('faction_type', 'party')
+      .not('nation_id', 'is', null);
+    if (!data) return {};
+    const map = {};
+    for (const f of data) {
+      map[f.id] = (f.leader_first_name && f.leader_last_name)
+        ? f.leader_first_name + ' ' + f.leader_last_name
+        : f.faction_name;
+    }
+    return map;
+  } catch { return {}; }
+}
+
+async function loadAllNationNames() {
+  try {
+    const { data } = await _supabase.from('nations').select('id, name');
+    if (!data) return {};
+    const map = {};
+    for (const n of data) map[n.id] = n.name;
+    return map;
+  } catch { return {}; }
+}
+
+async function loadCampaignActions(shard) {
   const currentTick = shard?.current_tick || 0;
   try {
     const { data, error } = await _supabase
       .from('campaign_actions')
-      .select('*, factions:party_id(faction_name, abbreviation)')
-      .eq('nation_id', nationId)
+      .select('*, factions:party_id(faction_name, abbreviation, leader_first_name, leader_last_name), nations(name)')
       .gte('tick_performed', Math.max(0, currentTick - 20))
       .order('tick_performed', { ascending: false })
-      .limit(30);
+      .limit(60);
     if (error) { console.warn('campaign_actions load failed:', error.message); return []; }
-    return data || [];
+    return (data || []).map(a => ({
+      ...a,
+      _nation_name: a.nations?.name || '',
+      _leader_name: (a.factions?.leader_first_name && a.factions?.leader_last_name)
+        ? a.factions.leader_first_name + ' ' + a.factions.leader_last_name
+        : null,
+    }));
   } catch { return []; }
 }
 
@@ -301,125 +335,67 @@ async function loadCampaignActions(nationId, shard) {
  * make_promise, steward_mobilize, steward_detected_mobilize,
  * coalition_detected, no_confidence_failed, party_disbanded.
  */
-function campaignActionToEvent(action, nationName) {
+function campaignActionToEvent(action, nationNames, leaderMap) {
   const r = action.result || {};
   const partyName = action.factions?.faction_name || r.faction_name || 'A party';
+  const nationName = action._nation_name || nationNames[action.nation_id] || '';
+  const leaderName = action._leader_name || leaderMap[action.party_id] || partyName;
   const tick = action.tick_performed || 0;
   const totalEffect = (r.effects || []).reduce((s, e) => s + Math.abs(e.value || 0), 0);
 
+  // Common fields for every campaign action article
+  const base = { nation_name: nationName, leader_name: leaderName, tick, _source: action };
+
   switch (action.action_type) {
     case 'attack':
-      return {
-        event_type: 'attack_campaign',
-        section: 'politics', tier: 2,
-        topic_tags: ['campaign', 'attack'],
-        party_name: partyName,
+      return { ...base, event_type: 'attack_campaign', section: 'politics', tier: 2,
+        topic_tags: ['campaign', 'attack'], party_name: partyName,
         target_name: r.targetName || 'the opposition',
         vector_name: r.vectorName || 'political record',
-        outcome: r.outcomeId || 'effective',
-        outcome_name: r.outcomeName || 'Effective',
-        nation_name: nationName, tick, _source: action,
-      };
+        outcome: r.outcomeId || 'effective', outcome_name: r.outcomeName || 'Effective' };
     case 'rally':
-      return {
-        event_type: 'rally',
-        section: 'politics', tier: 2,
-        topic_tags: ['campaign', 'rally'],
-        party_name: partyName,
-        subject_name: r.blocName || 'national issues',
-        bloc_name: r.blocName || '',
-        ideology_tag: (r.tags || [])[0] || '',
-        momentum_change: totalEffect,
-        blocs_alienated: 0,
-        nation_name: nationName, tick, _source: action,
-      };
+      return { ...base, event_type: 'rally', section: 'politics', tier: 2,
+        topic_tags: ['campaign', 'rally'], party_name: partyName,
+        subject_name: r.blocName || 'national issues', bloc_name: r.blocName || '',
+        ideology_tag: (r.tags || [])[0] || '', momentum_change: totalEffect, blocs_alienated: 0 };
     case 'outreach':
-      return {
-        event_type: 'voter_outreach',
-        section: 'politics', tier: 3,
-        topic_tags: ['campaign', 'outreach'],
-        party_name: partyName,
-        bloc_name: r.blocName || 'voters',
-        effect: totalEffect,
-        nation_name: nationName, tick, _source: action,
-      };
+      return { ...base, event_type: 'voter_outreach', section: 'politics', tier: 3,
+        topic_tags: ['campaign', 'outreach'], party_name: partyName,
+        bloc_name: r.blocName || 'voters', effect: totalEffect };
     case 'press_conference':
-      return {
-        event_type: 'press_conference',
-        section: 'politics', tier: 2,
-        topic_tags: ['campaign'],
-        party_name: partyName,
-        leader_name: r.leaderName || partyName,
-        subject_name: r.subject || 'policy',
-        momentum_change: r.momentumChange || totalEffect,
-        nation_name: nationName, tick, _source: action,
-      };
+      return { ...base, event_type: 'press_conference', section: 'politics', tier: 2,
+        topic_tags: ['campaign'], party_name: partyName,
+        leader_name: r.leaderName || leaderName,
+        subject_name: r.subject || 'policy', momentum_change: r.momentumChange || totalEffect };
     case 'make_promise':
-      return {
-        event_type: 'issue_statement',
-        section: 'politics', tier: 3,
-        topic_tags: ['campaign', 'promise'],
-        party_name: partyName,
+      return { ...base, event_type: 'issue_statement', section: 'politics', tier: 3,
+        topic_tags: ['campaign', 'promise'], party_name: partyName,
         subject_name: r.demandText || r.promiseType || 'a key policy issue',
-        promise_type: r.promiseType || '',
-        deadline_ticks: r.deadlineTicks || 0,
-        bloc_name: (r.affectedBlocNames || []).join(', ') || '',
-        nation_name: nationName, tick, _source: action,
-      };
+        promise_type: r.promiseType || '', deadline_ticks: r.deadlineTicks || 0,
+        bloc_name: (r.affectedBlocNames || []).join(', ') || '' };
     case 'steward_mobilize':
-      return {
-        event_type: 'voter_outreach',
-        section: 'politics', tier: 3,
-        topic_tags: ['steward', 'mobilize'],
-        party_name: partyName,
-        bloc_name: r.bloc_name || 'supporters',
-        effect: r.legitimacy_change || r.standing_change || 0,
-        nation_name: nationName, tick, _source: action,
-      };
+      return { ...base, event_type: 'voter_outreach', section: 'politics', tier: 3,
+        topic_tags: ['steward', 'mobilize'], party_name: partyName,
+        bloc_name: r.bloc_name || 'supporters', effect: r.legitimacy_change || r.standing_change || 0 };
     case 'steward_detected_mobilize':
-      return {
-        event_type: 'scandal',
-        section: 'politics', tier: 1,
-        topic_tags: ['steward', 'scandal'],
-        party_name: r.faction_name || partyName,
-        leader_name: r.steward_name || 'A party operative',
-        scandal_type: 'covert mobilization',
-        severity: 'major',
-        nation_name: nationName, tick, _source: action,
-      };
+      return { ...base, event_type: 'scandal', section: 'politics', tier: 1,
+        topic_tags: ['steward', 'scandal'], party_name: r.faction_name || partyName,
+        leader_name: r.steward_name || leaderName,
+        scandal_type: 'covert mobilization', severity: 'major' };
     case 'coalition_detected':
-      return {
-        event_type: 'scandal',
-        section: 'politics', tier: 1,
-        topic_tags: ['coalition', 'scandal'],
-        party_name: r.faction_a_name || 'Unknown',
-        target_name: r.faction_b_name || 'Unknown',
-        leader_name: r.faction_a_name || 'Party leaders',
-        scandal_type: 'secret coalition',
-        severity: 'major',
-        nation_name: nationName, tick, _source: action,
-      };
+      return { ...base, event_type: 'scandal', section: 'politics', tier: 1,
+        topic_tags: ['coalition', 'scandal'], party_name: r.faction_a_name || 'Unknown',
+        target_name: r.faction_b_name || 'Unknown', leader_name: r.faction_a_name || leaderName,
+        scandal_type: 'secret coalition', severity: 'major' };
     case 'no_confidence_failed':
-      return {
-        event_type: 'no_confidence',
-        section: 'politics', tier: 1,
-        topic_tags: ['government', 'no_confidence'],
-        party_name: partyName,
+      return { ...base, event_type: 'no_confidence', section: 'politics', tier: 1,
+        topic_tags: ['government', 'no_confidence'], party_name: partyName,
         pm_name: r.pm_name || 'the Prime Minister',
-        votes_for: r.votes_for || 0,
-        votes_against: r.votes_against || 0,
-        outcome: 'failed',
-        nation_name: nationName, tick, _source: action,
-      };
+        votes_for: r.votes_for || 0, votes_against: r.votes_against || 0, outcome: 'failed' };
     case 'party_disbanded':
-      return {
-        event_type: 'coalition_collapsed',
-        section: 'politics', tier: 1,
-        topic_tags: ['party', 'disbanded'],
-        party_name: r.faction_name || partyName,
-        reason: r.reason || 'inactivity',
-        nation_name: nationName, tick, _source: action,
-      };
+      return { ...base, event_type: 'coalition_collapsed', section: 'politics', tier: 1,
+        topic_tags: ['party', 'disbanded'], party_name: r.faction_name || partyName,
+        reason: r.reason || 'inactivity' };
     default:
       return null;
   }
@@ -430,13 +406,14 @@ function campaignActionToEvent(action, nationName) {
  * Comprehensively maps all advance-tick event_name patterns to the
  * 61 Valdorian EVENT_TYPES.
  */
-function eventLogToEvent(entry, nationName) {
+function eventLogToEvent(entry, nationNames, leaderMap) {
   const name = (entry.event_name || '').toUpperCase();
   const rawName = entry.event_name || '';
   const cat = (entry.category || '').toLowerCase();
   const desc = entry.description_used || entry.description_chosen || '';
   const tick = entry.fired_at_tick || 0;
   const effects = entry.effects_applied || {};
+  const nationName = entry._nation_name || nationNames[entry.nation_id] || '';
 
   let event_type = null;
 
@@ -534,6 +511,9 @@ function eventLogToEvent(entry, nationName) {
   const pmMatch = desc.match(/(?:the\s+)?(\w+)\s+Government/i);
   const pmName = effects.pm_last_name || (pmMatch ? pmMatch[1] : 'the Prime Minister');
 
+  // Look up faction leader if faction_id is present
+  const factionLeader = entry.faction_id ? (leaderMap[entry.faction_id] || null) : null;
+
   // Extract bill name
   const billMatch = desc.match(/(?:bill|act|law)\s+"?([^".,]+)"?/i);
   const billName = billMatch ? billMatch[1] : subjectName;
@@ -550,7 +530,7 @@ function eventLogToEvent(entry, nationName) {
     party_name: subjectName,
     target_name: subjectName,
     stat_name: subjectName,
-    leader_name: pmName,
+    leader_name: factionLeader || pmName,
     bloc_name: '',
     subject_name: subjectName,
     description: desc,
@@ -568,18 +548,18 @@ function eventLogToEvent(entry, nationName) {
  * Convert raw data sources into Valdorian articles using the template engine.
  * Falls back to raw event formatting if no template matches.
  */
-function buildArticles(events, campaignActions, nationName) {
+function buildArticles(events, campaignActions, nationNames, leaderMap) {
   const valdorianEvents = [];
 
-  // Map campaign actions
+  // Map campaign actions (all nations)
   for (const action of campaignActions) {
-    const evt = campaignActionToEvent(action, nationName);
+    const evt = campaignActionToEvent(action, nationNames, leaderMap);
     if (evt) valdorianEvents.push(evt);
   }
 
-  // Map event_log entries
+  // Map event_log entries (all nations)
   for (const entry of events) {
-    const evt = eventLogToEvent(entry, nationName);
+    const evt = eventLogToEvent(entry, nationNames, leaderMap);
     if (evt) valdorianEvents.push(evt);
   }
 
@@ -606,6 +586,7 @@ function buildArticles(events, campaignActions, nationName) {
       lede: entry.description || '',
       section: entry.section || 'domestic',
       tier: entry.priority || 3,
+      nation: entry._nation_name || nationNames[entry.nation_id] || '',
       _tick: entry.tick || entry.fired_at_tick || 0,
       _source: entry,
       topic_tags: [],
@@ -785,6 +766,7 @@ function renderHeroArticle(article) {
   const bodyParagraphs = article.body_paragraphs || [];
   const reporter = article.byline?.reporter || 'The Cruceran Staff';
   const quotes = article.quotes || [];
+  const dateline = article.nation || '';
 
   return `
     <article class="np-hero">
@@ -797,7 +779,7 @@ function renderHeroArticle(article) {
       ${article.subheadline ? `<div style="font-family:var(--np-font-serif);font-size:16px;color:var(--np-text-secondary);margin-top:4px;">${escapeHtml(article.subheadline)}</div>` : ''}
       ${lede ? `<p class="np-hero__lede">${escapeHtml(lede)}</p>` : ''}
       <div class="np-hero__byline">
-        <strong>${escapeHtml(reporter)}</strong> · Tick ${article._tick || article.tick || '?'}
+        ${dateline ? `<span class="np-dateline">${escapeHtml(dateline.toUpperCase())}</span> · ` : ''}<strong>${escapeHtml(reporter)}</strong> · Tick ${article._tick || article.tick || '?'}
       </div>
       ${bodyParagraphs.length > 0 ? `
       <div class="np-hero__body">
@@ -846,7 +828,7 @@ function renderStoryCard(article) {
   const sectionLabel = article.section_label || section.charAt(0).toUpperCase() + section.slice(1);
   const headline = article.headline || 'News Update';
   const lede = article.lede || article._description || '';
-  const reporter = article.byline?.reporter || '';
+  const dateline = article.nation || '';
   return `
     <article class="np-story-card">
       <div class="np-story-card__tags">
@@ -854,7 +836,7 @@ function renderStoryCard(article) {
       </div>
       <h3 class="np-story-card__headline">${escapeHtml(headline)}</h3>
       ${lede ? `<p class="np-story-card__lede">${escapeHtml(lede.substring(0, 180))}${lede.length > 180 ? '...' : ''}</p>` : ''}
-      <div class="np-story-card__meta">${reporter ? escapeHtml(reporter) + ' · ' : ''}Tick ${article._tick || article.tick || '?'}</div>
+      <div class="np-story-card__meta">${dateline ? '<span class="np-dateline">' + escapeHtml(dateline.toUpperCase()) + '</span> · ' : ''}Tick ${article._tick || article.tick || '?'}</div>
     </article>
   `;
 }
@@ -863,9 +845,10 @@ function renderBrief(article) {
   const section = article.section || 'domestic';
   const sectionLabel = article.section_label || section.charAt(0).toUpperCase() + section.slice(1);
   const text = article.headline || 'Event';
+  const dateline = article.nation || '';
   return `
     <li class="np-brief">
-      ${escapeHtml(text)}
+      ${dateline ? '<span class="np-dateline">' + escapeHtml(dateline.toUpperCase()) + '</span> — ' : ''}${escapeHtml(text)}
       <span class="np-tag np-tag--${section}">${escapeHtml(sectionLabel)}</span>
     </li>
   `;
@@ -934,7 +917,7 @@ function renderSidebarBulletin(articles) {
               <span class="np-tag np-tag--${section} np-tag--dot">${escapeHtml(sectionLabel)}</span>
             </div>
             <h4 class="np-bulletin-item__headline">${escapeHtml(a.headline || 'Event')}</h4>
-            <div class="np-bulletin-item__time">Tick ${a._tick || a.tick || '?'}</div>
+            <div class="np-bulletin-item__time">${a.nation ? '<span class="np-dateline">' + escapeHtml(a.nation) + '</span> · ' : ''}Tick ${a._tick || a.tick || '?'}</div>
           </div>
         `;
       }).join('')}
@@ -1185,10 +1168,12 @@ function setupOpEdModal(faction, nation, shard) {
 
     // Reload and re-render
     _opeds = await loadOpEds(nation.id, shard);
-    const parties = await loadParties(nation.id);
-    _events = await loadEvents(nation.id, shard);
-    const campaignActions = await loadCampaignActions(nation.id, shard);
-    const articles = buildArticles(_events, campaignActions, nation.name || 'Valdoria');
+    const [parties, reloadEvents, reloadActions, leaderMap, nationNames] = await Promise.all([
+      loadParties(nation.id), loadEvents(shard), loadCampaignActions(shard),
+      loadAllFactionLeaders(), loadAllNationNames()
+    ]);
+    _events = reloadEvents;
+    const articles = buildArticles(_events, reloadActions, nationNames, leaderMap);
     renderNewspaper(nation, faction, shard, articles, _opeds, parties);
   });
 }
