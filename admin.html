@@ -481,6 +481,103 @@
             </div>
         </div>
 
+        <!-- ==================== VALDORIAN TAB ==================== -->
+        <div class="tab-content" id="tab-valdorian">
+            <h2>The Valdorian — News System</h2>
+            <p style="color:#888; margin-bottom:12px;">Browse article templates, test the generator, view stored articles, and manage player op-eds.</p>
+
+            <div style="margin-bottom:20px;">
+                <a href="valdorian-manager.html" target="_blank" style="display:inline-flex;align-items:center;gap:8px;padding:12px 24px;background:#d4a844;color:#0d1117;border-radius:4px;text-decoration:none;font-weight:bold;font-size:0.9rem;text-transform:uppercase;letter-spacing:1px;transition:0.2s;" onmouseover="this.style.background='#e0b44e'" onmouseout="this.style.background='#d4a844'">Open Template Manager &rarr;</a>
+                <span style="color:#666;font-size:0.8rem;margin-left:12px;">Full CRUD editor for headlines, ledes, body blocks, and quotes</span>
+            </div>
+
+            <!-- Valdorian Sub-tabs -->
+            <div class="sc-tabs">
+                <button class="sc-tab active" onclick="showValdorianSubTab('templates')">TEMPLATES <span id="vald-template-count" style="color:#555;font-size:0.8em;"></span></button>
+                <button class="sc-tab" onclick="showValdorianSubTab('generator')">TEST GENERATOR</button>
+                <button class="sc-tab" onclick="showValdorianSubTab('articles')">STORED ARTICLES <span id="vald-article-count" style="color:#555;font-size:0.8em;"></span></button>
+                <button class="sc-tab" onclick="showValdorianSubTab('opeds')">OP-EDS <span id="vald-oped-count" style="color:#555;font-size:0.8em;"></span></button>
+            </div>
+
+            <!-- ── Templates Sub-tab ── -->
+            <div class="sc-subtab active" id="vald-sub-templates">
+                <div style="display:flex; gap:12px; margin-bottom:16px; align-items:center; flex-wrap:wrap;">
+                    <div class="sc-filter-group">
+                        <label>EVENT TYPE</label>
+                        <select id="vald-tpl-event-filter" onchange="renderValdorianTemplates()">
+                            <option value="">All Event Types</option>
+                        </select>
+                    </div>
+                    <div class="sc-filter-group">
+                        <label>SECTION</label>
+                        <select id="vald-tpl-section-filter" onchange="renderValdorianTemplates()">
+                            <option value="">All Sections</option>
+                        </select>
+                    </div>
+                    <div class="sc-filter-group">
+                        <label>COMPONENT</label>
+                        <select id="vald-tpl-component-filter" onchange="renderValdorianTemplates()">
+                            <option value="">All Components</option>
+                            <option value="headline">Headlines</option>
+                            <option value="lede">Ledes</option>
+                            <option value="body">Body Blocks</option>
+                            <option value="quote">Quotes</option>
+                        </select>
+                    </div>
+                    <span id="vald-tpl-filter-info" style="color:#666; font-size:0.8rem; margin-left:auto;"></span>
+                </div>
+                <div id="vald-template-list"></div>
+            </div>
+
+            <!-- ── Test Generator Sub-tab ── -->
+            <div class="sc-subtab" id="vald-sub-generator">
+                <div style="display:flex; gap:20px; flex-wrap:wrap;">
+                    <div style="flex:1; min-width:300px;">
+                        <div class="input-group">
+                            <label>Event Type</label>
+                            <select id="vald-gen-event-type" onchange="onValdGenEventChange()">
+                                <option value="">-- Choose event type --</option>
+                            </select>
+                        </div>
+                        <div id="vald-gen-fields" style="display:none;">
+                            <p style="color:#888; font-size:0.8rem; margin-bottom:12px;">Fill in variables below then click Generate. Fields left blank will show as {placeholder}.</p>
+                            <div id="vald-gen-field-list"></div>
+                            <button class="btn btn-primary" style="margin-top:12px;" onclick="runValdorianTestGenerate()">GENERATE ARTICLE</button>
+                        </div>
+                    </div>
+                    <div style="flex:1; min-width:340px;">
+                        <div id="vald-gen-preview" style="background:#0e0e0e; border:1px solid #333; border-radius:6px; padding:20px; min-height:200px;">
+                            <p style="color:#555; text-align:center; margin-top:60px;">Select an event type and click Generate to preview an article.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Stored Articles Sub-tab ── -->
+            <div class="sc-subtab" id="vald-sub-articles">
+                <div style="display:flex; gap:12px; margin-bottom:16px; align-items:center; flex-wrap:wrap;">
+                    <div class="sc-filter-group">
+                        <label>NATION</label>
+                        <select id="vald-art-nation-filter" onchange="loadValdorianArticles()">
+                            <option value="">All Nations</option>
+                        </select>
+                    </div>
+                    <div class="sc-filter-group">
+                        <label>EVENT TYPE</label>
+                        <select id="vald-art-event-filter" onchange="loadValdorianArticles()">
+                            <option value="">All Types</option>
+                        </select>
+                    </div>
+                    <div class="sc-filter-group">
+                        <label>TIER</label>
+                        <select id="vald-art-tier-filter" onchange="loadValdorianArticles()">
+                            <option value="">All Tiers</option>
+                            <option value="1">Tier 1 — Hero</option>
+                            <option value="2">Tier 2 — Prominent</option>
+                            <option value="3">Tier 3 — Brief</option>
+                        </select>
+                    </div>
+                    <span id="vald-art-filter-info" style="color:#666; font-size:0.8rem; margin-left:auto;"></span>
         <!-- ==================== STAT AUDIT TAB ==================== -->
         <div class="tab-content" id="tab-stataudit">
             <h2>Stat Delta Audit</h2>
