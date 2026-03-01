@@ -46,6 +46,7 @@ const MODULE_FILES = [
     'three-pillar.js',
     'political-actions.js',
     'election-simulation.js',
+    'sovereign-default.js',
 ];
 
 // Read and process each module

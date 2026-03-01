@@ -21,3 +21,4 @@ export * from './game/presidential.js';
 export * from './game/three-pillar.js';
 export * from './game/political-actions.js';
 export * from './game/election-simulation.js';
+export * from './game/sovereign-default.js';
