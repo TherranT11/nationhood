@@ -181,7 +181,7 @@ export const STATS_LOWER_IS_BETTER = [
 
 // ==================== STAT DECAY CONFIGURATION ====================
 
-const DECAY_SPEED = { VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
+const DECAY_SPEED = { CRAWL: 0.25, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
 
 /**
  * Stats that decay each tick. Two types:
@@ -191,40 +191,40 @@ const DECAY_SPEED = { VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
  */
 export const STAT_DECAY_CONFIG = {
     // ── Equilibrium (drift back to midpoint) ──
-    inflation:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
-    civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.FAST },
-    polarization:        { type: 'equilibrium', target: 30, speed: DECAY_SPEED.SLOW },
-    terrorism:           { type: 'equilibrium', target: 10, speed: DECAY_SPEED.SLOW },
-    political_violence:  { type: 'equilibrium', target: 10, speed: DECAY_SPEED.MEDIUM },
-    happiness:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
-    foreign_investment:  { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    trade_balance:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
-    gdp_growth:          { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    immigration:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    illegal_immigration: { type: 'equilibrium', target: 30, speed: DECAY_SPEED.SLOW },
-    emigration:          { type: 'equilibrium', target: 30, speed: DECAY_SPEED.MEDIUM },
-    fuel_prices:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    debt_growth:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
+    inflation:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
+    polarization:        { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
+    terrorism:           { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
+    political_violence:  { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
+    happiness:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    foreign_investment:  { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    trade_balance:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    gdp_growth:          { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    immigration:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    illegal_immigration: { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
+    emigration:          { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
+    fuel_prices:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    debt_growth:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
 
     // ── Erosion (degrade toward bad floor if neglected) ──
-    physical_infrastructure:  { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
-    digital_infrastructure:   { type: 'erosion', target: 0,  speed: DECAY_SPEED.SLOW },
-    rail_network:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
-    energy_generation:        { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
-    efficiency:               { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    corruption:               { type: 'erosion', target: 70, speed: DECAY_SPEED.SLOW },
-    healthcare_quality:       { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.VERY_SLOW },
-    education_accessibility:  { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    press_freedom:            { type: 'erosion', target: 40, speed: DECAY_SPEED.SLOW },
-    judicial_independence:    { type: 'erosion', target: 40, speed: DECAY_SPEED.SLOW },
-    freedom_index:            { type: 'erosion', target: 40, speed: DECAY_SPEED.VERY_SLOW },
-    standard_of_living:       { type: 'erosion', target: 40, speed: DECAY_SPEED.VERY_SLOW },
-    social_mobility:          { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    benefits:                 { type: 'erosion', target: 0,  speed: DECAY_SPEED.MEDIUM },
+    physical_infrastructure:  { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    digital_infrastructure:   { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    rail_network:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    energy_generation:        { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    efficiency:               { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    corruption:               { type: 'erosion', target: 10, speed: DECAY_SPEED.CRAWL },
+    healthcare_quality:       { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.CRAWL },
+    education_accessibility:  { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    press_freedom:            { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
+    judicial_independence:    { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
+    freedom_index:            { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
+    standard_of_living:       { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
+    social_mobility:          { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    benefits:                 { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
 };
 
 // Validate decay config keys at module load
@@ -233,6 +233,14 @@ for (const key of Object.keys(STAT_DECAY_CONFIG)) {
         console.error(`[STAT_DECAY_CONFIG] Invalid stat key: "${key}" — not in NATION_STAT_COLUMNS`);
     }
 }
+
+// ==================== STAT → VOTER BLOC REACTIONS ====================
+// When a stat changes during a tick, apply momentum to a specific voter bloc.
+// rate_up:   momentum per 1-point increase (negative = bad for bloc)
+// rate_down: momentum per 1-point decrease (positive = good for bloc)
+export const STAT_BLOC_REACTIONS = [
+    { stat: 'corporate_tax', bloc_name: 'Business Owners', rate_up: -2.5, rate_down: 1.0 },
+];
 
 // ==================== INSTITUTION FUNDING DECAY TIERS ====================
 // Institutions counteract natural stat decay. At 100% funding, decay is fully
@@ -338,7 +346,7 @@ export const STAT_TO_MINISTRY = {
     minimum_wage: 'labor', union_strength: 'labor',
     poverty_rate: 'labor', income_inequality: 'labor',
     // Interior
-    stability: 'interior', civil_unrest: 'interior',
+    stability: 'interior',
     crime_rate: 'interior', incarceration_rate: 'interior',
     immigration: 'interior', illegal_immigration: 'interior',
     // Justice
@@ -351,7 +359,9 @@ export const STAT_TO_MINISTRY = {
     physical_infrastructure: 'transportation', digital_infrastructure: 'transportation',
     rail_network: 'transportation', urbanization: 'transportation',
     // Defense
-    terrorism: 'defense', political_violence: 'defense',
+    terrorism: 'defense',
+    // Security
+    civil_unrest: 'security', political_violence: 'security',
     // Trade
     trade_balance: 'trade', trade_agreements: 'trade',
     tariffs: 'trade', foreign_investment: 'trade',
@@ -566,6 +576,16 @@ export const GOV_APPROVAL_CONFIG = {
     NEW_MINISTER_APPROVAL: 45,
     FIRE_GOV_APPROVAL_BONUS: 3,
 
+    // ─── Ministry funding → minister approval (Phase 5) ───
+    // Direct funding penalty: applied additively (not averaged with stat scores).
+    // At 0% funding the minister loses MINISTER_FUNDING_PENALTY_MAX per tick.
+    // Scales linearly: 50% funded → half the penalty, 100% funded → 0.
+    MINISTER_FUNDING_PENALTY_MAX: -2.0,
+
+    // Per-institution penalty when funding falls below COLLAPSED threshold.
+    // Stacks: 3 collapsed institutions → 3 × penalty per tick.
+    MINISTER_COLLAPSED_INST_PENALTY: -1.0,
+    MINISTER_COLLAPSED_THRESHOLD: 25,    // funding % at or below → "collapsed"
 };
 
 /**

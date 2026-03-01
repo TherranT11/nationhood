@@ -1059,8 +1059,8 @@ function renderFloorBill(bill, isVetoed) {
                     <div class="committee-bill-sponsor">${bill.bill_type === 'no_confidence' ? 'Filed' : 'Proposed'} by ${bill.factions?.faction_name || 'Unknown'}</div>
                 </div>
                 ${isVetoed ? `<div class="floor-status vetoed-status">VETOED</div>`
-                    : (bill.early_resolution_status === 'majority_reached' || bill.early_resolution_status === 'quorum_reached') ? `<div class="floor-status" style="border-color:#4CAF50;">MAJORITY REACHED — Passes Next Tick</div>`
-                    : (bill.early_resolution_status === 'majority_opposed' || bill.early_resolution_status === 'quorum_opposed') ? `<div class="floor-status" style="background:#ff4444;border-color:#ff4444;">MAJORITY OPPOSED — Fails Next Tick</div>`
+                    : (bill.early_resolution_status === 'majority_reached' || bill.early_resolution_status === 'quorum_reached') ? `<div class="floor-status" style="border-color:#4CAF50;">MAJORITY REACHED — Passes This Tick</div>`
+                    : (bill.early_resolution_status === 'majority_opposed' || bill.early_resolution_status === 'quorum_opposed') ? `<div class="floor-status" style="background:#ff4444;border-color:#ff4444;">MAJORITY OPPOSED — Fails This Tick</div>`
                     : (function() {
                         var ev = evaluateBillVote({ votes_for: bill.votes_for || 0, votes_against: bill.votes_against || 0, votes_abstain: bill.votes_abstain || 0, bill_type: bill.bill_type }, GAME_CONFIG.TOTAL_SEATS);
                         var statusText, statusStyle;

@@ -54,7 +54,7 @@
             <button class="tab" onclick="showTab('audit')">Policy Audit</button>
             <button class="tab" onclick="showTab('ministries')">Ministries</button>
             <button class="tab" onclick="showTab('statconnect')">Stat Connector</button>
-            <button class="tab" onclick="showTab('valdorian')">Valdorian</button>
+            <button class="tab" onclick="showTab('stataudit')">Stat Audit</button>
         </div>
 
         <!-- ==================== SHARD TAB ==================== -->
@@ -578,26 +578,27 @@
                         </select>
                     </div>
                     <span id="vald-art-filter-info" style="color:#666; font-size:0.8rem; margin-left:auto;"></span>
+        <!-- ==================== STAT AUDIT TAB ==================== -->
+        <div class="tab-content" id="tab-stataudit">
+            <h2>Stat Delta Audit</h2>
+            <p style="color:#888; margin-bottom:16px;">
+                Investigate why a nation stat changed. Shows every system that touches the chosen stat this tick:
+                active laws, stat connections, crises, ministry actions, leader traits, and natural decay.
+            </p>
+            <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:20px;">
+                <div class="input-group" style="flex:1; min-width:200px; margin-bottom:0;">
+                    <label>Nation</label>
+                    <select id="sa-nation-select"></select>
                 </div>
-                <div id="vald-article-list" style="max-height:600px; overflow-y:auto;"></div>
-            </div>
-
-            <!-- ── Op-Eds Sub-tab ── -->
-            <div class="sc-subtab" id="vald-sub-opeds">
-                <div style="display:flex; gap:12px; margin-bottom:16px; align-items:center; flex-wrap:wrap;">
-                    <div class="sc-filter-group">
-                        <label>STATUS</label>
-                        <select id="vald-oped-status-filter" onchange="loadValdorianOpEds()">
-                            <option value="">All</option>
-                            <option value="draft">Draft</option>
-                            <option value="published">Published</option>
-                            <option value="rejected">Rejected</option>
-                        </select>
-                    </div>
-                    <span id="vald-oped-filter-info" style="color:#666; font-size:0.8rem; margin-left:auto;"></span>
+                <div class="input-group" style="flex:1; min-width:200px; margin-bottom:0;">
+                    <label>Stat</label>
+                    <select id="sa-stat-select"></select>
                 </div>
-                <div id="vald-oped-list" style="max-height:600px; overflow-y:auto;"></div>
+                <button class="btn btn-primary" onclick="runStatAudit()" style="margin-bottom:0; height:44px;">
+                    Run Audit
+                </button>
             </div>
+            <div id="sa-results" style="font-family:monospace; font-size:0.85rem; white-space:pre-wrap; color:#ccc;"></div>
         </div>
 
         <!-- Budget Preview Modal -->
@@ -617,7 +618,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName, SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES, BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, OPINION_TRIGGERS, REPORTERS, generateArticle, generateTickArticles } from './js/game-common.js';
+import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName, STAT_DECAY_CONFIG, normalizeNationStatKey } from './js/game-common.js';
 
     const ADMIN_PASSWORD = 'nationhood2000';
     let isAuthenticated = false;
@@ -4261,427 +4262,250 @@ window.addScConnection = addScConnection;
 window.duplicateScConnection = duplicateScConnection;
 window.deleteScConnection = deleteScConnection;
 
-// ==================== VALDORIAN TAB ====================
+// ==================== STAT AUDIT TAB ====================
 
-function showValdorianSubTab(name) {
-    document.querySelectorAll('#tab-valdorian .sc-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('#tab-valdorian .sc-subtab').forEach(t => t.classList.remove('active'));
-    document.querySelector(`#tab-valdorian .sc-tab[onclick="showValdorianSubTab('${name}')"]`).classList.add('active');
-    document.getElementById(`vald-sub-${name}`).classList.add('active');
-    if (name === 'articles') loadValdorianArticles();
-    if (name === 'opeds') loadValdorianOpEds();
+async function initStatAudit() {
+    // Populate nation dropdown
+    const { data: nats } = await _supabase.from('nations').select('id, name').order('name');
+    const nSel = document.getElementById('sa-nation-select');
+    nSel.innerHTML = (nats || []).map(n => `<option value="${n.id}">${n.name}</option>`).join('');
+
+    // Populate stat dropdown from NATION_STAT_COLUMNS
+    const sSel = document.getElementById('sa-stat-select');
+    sSel.innerHTML = NATION_STAT_COLUMNS
+        .map(s => `<option value="${s}"${s === 'education_accessibility' ? ' selected' : ''}>${formatStatName(s)}</option>`)
+        .join('');
 }
-window.showValdorianSubTab = showValdorianSubTab;
+initStatAudit();
 
-function initValdorianTab() {
-    // Populate event type dropdowns
-    const eventKeys = Object.keys(EVENT_TYPES).sort();
-    const sectionSet = new Set(eventKeys.map(k => EVENT_TYPES[k].section));
-    const sections = [...sectionSet].sort();
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-    // Template browser filters
-    const tplEventSel = document.getElementById('vald-tpl-event-filter');
-    const tplSectionSel = document.getElementById('vald-tpl-section-filter');
-    eventKeys.forEach(k => {
-        const opt = document.createElement('option');
-        opt.value = k;
-        opt.textContent = `${EVENT_TYPES[k].label} (${k})`;
-        tplEventSel.appendChild(opt);
+async function runStatAudit() {
+    const nationId = document.getElementById('sa-nation-select').value;
+    const sk = document.getElementById('sa-stat-select').value;
+    const out = document.getElementById('sa-results');
+    if (!nationId || !sk) { out.textContent = 'Select a nation and stat.'; return; }
+    out.innerHTML = '<span style="color:#888;">Running audit...</span>';
+
+    const lines = [];
+    const log = (s, color) => lines.push(color ? `<span style="color:${color}">${esc(s)}</span>` : esc(s));
+    const heading = (s) => lines.push(`\n<span style="color:#0af;font-weight:bold;font-size:1rem;">${esc(s)}</span>`);
+
+    // 1. Nation + shard
+    const [{ data: shard }, { data: nation }] = await Promise.all([
+        _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+        _supabase.from('nations').select('*').eq('id', nationId).single()
+    ]);
+    const tick = shard?.current_tick || 0;
+
+    heading(`STAT DELTA AUDIT: ${formatStatName(sk)}`);
+    log(`Nation: ${nation.name} | Tick: ${tick} | Current value: ${nation[sk]}`);
+
+    // 2. History
+    heading('HISTORY (last 5 ticks)');
+    const { data: hist } = await _supabase.from('nations_history')
+        .select(sk + ', tick').eq('nation_id', nationId)
+        .lte('tick', tick).order('tick', { ascending: false }).limit(5);
+    if (hist?.length) {
+        for (const h of hist) log(`  tick ${h.tick}: ${h[sk]}`);
+        const prev = hist.find(h => h.tick < tick);
+        if (prev) {
+            const d = (Number(nation[sk]) - Number(prev[sk])).toFixed(1);
+            log(`  Delta (tick ${prev.tick} → now): ${d > 0 ? '+' : ''}${d}`, d < 0 ? '#f44' : d > 0 ? '#4f4' : '#888');
+        }
+    } else {
+        log('  No history rows found.', '#888');
+    }
+
+    // 3. Active laws
+    heading('ACTIVE LAWS');
+    const { data: laws } = await _supabase.from('active_laws')
+        .select('id, bill_id, is_reversal, passed_tick, effects_applied_through_tick, reversal_effects, policies(policy_name, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)')
+        .eq('nation_id', nationId);
+    const hitLaws = (laws || []).filter(l => {
+        const p = l.policies;
+        if (!p) return false;
+        if (normalizeNationStatKey(p.target_stat) === sk) return true;
+        if (p.stat_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)) return true;
+        if (l.is_reversal && l.reversal_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)) return true;
+        return false;
     });
-    sections.forEach(s => {
-        const opt = document.createElement('option');
-        opt.value = s;
-        opt.textContent = SECTIONS[s]?.label || s;
-        tplSectionSel.appendChild(opt);
-    });
+    if (hitLaws.length === 0) {
+        log('  None affecting this stat.', '#888');
+    }
+    for (const l of hitLaws) {
+        const p = l.policies;
+        const effs = l.is_reversal ? (l.reversal_effects || []) : (p.stat_effects || []);
+        const relevant = effs.filter(e => normalizeNationStatKey(e.stat_key) === sk);
+        for (const e of relevant) {
+            const ticksSince = tick - (l.passed_tick || 0);
+            const delay = Number(e.delay_ticks) || 0;
+            const dur = Number(e.duration_ticks) || 12;
+            const active = ticksSince > delay && ticksSince <= delay + dur;
+            const rate = Number(e.rate) || 1;
+            const perTick = e.direction === 'down' ? -rate : +rate;
+            log(`  ${active ? '[ACTIVE]' : '[dormant]'} "${p.policy_name}" | ${e.direction} ${rate}/tick | delay=${delay} dur=${dur} | ticksSince=${ticksSince} | lastApplied=${l.effects_applied_through_tick}`,
+                active ? (perTick < 0 ? '#f44' : '#4f4') : '#666');
+        }
+        // Legacy single-stat format
+        if (relevant.length === 0 && normalizeNationStatKey(p.target_stat) === sk) {
+            log(`  [legacy] "${p.policy_name}" | ${p.stat_direction} ${p.stat_change_per_tick}/tick dur=${p.duration_months}`, '#fa0');
+        }
+    }
 
-    // Generator event type dropdown
-    const genEventSel = document.getElementById('vald-gen-event-type');
-    eventKeys.forEach(k => {
-        const opt = document.createElement('option');
-        opt.value = k;
-        opt.textContent = `${EVENT_TYPES[k].label} (${k})`;
-        genEventSel.appendChild(opt);
-    });
+    // 4. Stat connections
+    heading('STAT CONNECTIONS');
+    const { data: conns } = await _supabase.from('stat_connections')
+        .select('*').eq('enabled', true).eq('target_stat', sk);
+    if (!conns?.length) {
+        log('  No connections targeting this stat.', '#888');
+    }
+    for (const c of (conns || [])) {
+        const sourceVal = Number(nation[c.source_stat] ?? 50);
+        const triggered = c.source_dir === 'above' ? sourceVal > c.threshold : sourceVal < c.threshold;
+        let effMag = Number(c.magnitude);
+        if (triggered && c.dampening) {
+            const tv = Number(nation[sk] ?? 50);
+            effMag = c.target_dir === 'up' ? c.magnitude * (1 - tv / 100) : c.magnitude * (tv / 100);
+        }
+        const perTick = triggered ? (c.target_dir === 'down' ? -effMag : +effMag) : 0;
+        log(`  ${triggered ? '[TRIGGERED]' : '[inactive]'} ${c.source_stat} ${c.source_dir} ${c.threshold} (now: ${sourceVal}) → ${c.target_dir} mag=${c.magnitude}${c.dampening ? ` (eff: ${effMag.toFixed(2)})` : ''} | dampening=${c.dampening}`,
+            triggered ? (perTick < 0 ? '#f44' : '#4f4') : '#666');
+    }
 
-    // Article viewer nation + event type dropdowns
-    const artNationSel = document.getElementById('vald-art-nation-filter');
-    const artEventSel = document.getElementById('vald-art-event-filter');
-    (nations || []).forEach(n => {
-        const opt = document.createElement('option');
-        opt.value = n.id;
-        opt.textContent = n.name;
-        artNationSel.appendChild(opt);
-    });
-    eventKeys.forEach(k => {
-        const opt = document.createElement('option');
-        opt.value = k;
-        opt.textContent = EVENT_TYPES[k].label;
-        artEventSel.appendChild(opt);
-    });
+    // Also check connections where this stat is the SOURCE (for context)
+    const { data: srcConns } = await _supabase.from('stat_connections')
+        .select('*').eq('enabled', true).eq('source_stat', sk);
+    if (srcConns?.length) {
+        log('');
+        log(`  (This stat is also a SOURCE for ${srcConns.length} connection(s):)`, '#888');
+        for (const c of srcConns) {
+            const sv = Number(nation[sk] ?? 50);
+            const triggered = c.source_dir === 'above' ? sv > c.threshold : sv < c.threshold;
+            log(`    ${triggered ? '[TRIGGERED]' : '[inactive]'} → ${c.target_stat} ${c.target_dir} mag=${c.magnitude} when ${sk} ${c.source_dir} ${c.threshold}`, '#888');
+        }
+    }
 
-    renderValdorianTemplates();
-    countValdorianTemplates();
-}
+    // 5. Active crises
+    heading('ACTIVE CRISES');
+    const { data: crises } = await _supabase.from('active_crises')
+        .select('crisis_id, started_tick, crisis_templates(name, crisis_effects(stat_key, change_per_tick, target))')
+        .eq('nation_id', nationId);
+    const hitCrises = (crises || []).filter(c =>
+        c.crisis_templates?.crisis_effects?.some(e => e.target === 'nation' && normalizeNationStatKey(e.stat_key) === sk)
+    );
+    if (hitCrises.length === 0) {
+        log('  None affecting this stat.', '#888');
+    }
+    for (const c of hitCrises) {
+        const effs = c.crisis_templates.crisis_effects.filter(e => e.target === 'nation' && normalizeNationStatKey(e.stat_key) === sk);
+        for (const e of effs) {
+            log(`  [ACTIVE] "${c.crisis_templates.name}" | change_per_tick=${e.change_per_tick} | started tick ${c.started_tick}`,
+                e.change_per_tick < 0 ? '#f44' : '#4f4');
+        }
+    }
 
-// ── Template count badge ──
-function countValdorianTemplates() {
+    // 6. Ministry actions
+    heading('MINISTRY ACTIONS (unprocessed)');
+    const { data: mActions } = await _supabase.from('ministry_action_log')
+        .select('action_key, stat_effects, effects_applied_through_tick, applied_at_tick')
+        .eq('nation_id', nationId).eq('processed', false);
+    const hitMA = (mActions || []).filter(a =>
+        a.stat_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)
+    );
+    if (hitMA.length === 0) {
+        log('  None.', '#888');
+    }
+    for (const a of hitMA) {
+        const effs = a.stat_effects.filter(e => normalizeNationStatKey(e.stat_key) === sk);
+        for (const e of effs) {
+            log(`  "${a.action_key}" | ${e.direction} ${e.rate}/tick | applied tick ${a.applied_at_tick} lastApplied=${a.effects_applied_through_tick}`, '#fa0');
+        }
+    }
+
+    // 7. Decay config
+    heading('NATURAL DECAY');
+    const dc = STAT_DECAY_CONFIG[sk];
+    if (dc) {
+        const cv = Number(nation[sk] ?? 50);
+        const delta = cv === dc.target ? 0 : (cv > dc.target ? -dc.speed : dc.speed);
+        log(`  type=${dc.type} | target=${dc.target} | speed=${dc.speed}/tick | current=${cv} | decay this tick: ${delta > 0 ? '+' : ''}${delta}`);
+    } else {
+        log('  No decay config — stat holds value indefinitely.', '#888');
+    }
+
+    // 8. Institution funding (check if decay is being blocked or amplified)
+    heading('INSTITUTION FUNDING');
+    const { data: instConfig } = await _supabase.from('ministry_institution_config').select('*');
+    const covering = (instConfig || []).filter(ic => ic.primary_stat === sk || ic.secondary_stat === sk);
+    if (covering.length === 0) {
+        log('  No institutions cover this stat. Natural decay rate applies.', '#888');
+    } else if (!nation.last_budget_bill_id) {
+        log('  No budget passed — all institutions are UNFUNDED (0%).', '#f44');
+    } else {
+        const { data: allocs } = await _supabase.from('budget_item_allocations')
+            .select('item_id, allocation_amount, needed_amount')
+            .eq('bill_id', nation.last_budget_bill_id)
+            .eq('item_type', 'institution');
+        const allocMap = {};
+        for (const a of (allocs || [])) allocMap[a.item_id] = a;
+        for (const ic of covering) {
+            const role = ic.primary_stat === sk ? 'primary' : 'secondary';
+            const a = allocMap[ic.id];
+            const pct = a && a.needed_amount > 0 ? Math.min(100, Math.round((a.allocation_amount / a.needed_amount) * 100)) : 0;
+            const tierLabel = pct >= 100 ? 'Fully Funded (decay blocked)' : pct >= 90 ? 'Stretched' : pct >= 75 ? 'Strained' : pct >= 50 ? 'Underfunded' : pct >= 25 ? 'Critical' : 'Collapsed';
+            log(`  ${ic.institution_name || ic.id} (${role}) — ${pct}% funded → ${tierLabel}`,
+                pct >= 100 ? '#4f4' : pct >= 75 ? '#fa0' : '#f44');
+        }
+    }
+
+    // Summary
+    heading('TOTAL ESTIMATED PER-TICK IMPACT');
     let total = 0;
-    for (const evtKey of Object.keys(HEADLINE_TEMPLATES)) total += (HEADLINE_TEMPLATES[evtKey] || []).length;
-    for (const evtKey of Object.keys(LEDE_TEMPLATES)) total += (LEDE_TEMPLATES[evtKey] || []).length;
-    for (const evtKey of Object.keys(BODY_BLOCK_TEMPLATES)) {
-        const blocks = BODY_BLOCK_TEMPLATES[evtKey];
-        for (const bk of Object.keys(blocks)) total += blocks[bk].length;
+    // Decay
+    if (dc) {
+        const cv = Number(nation[sk] ?? 50);
+        if (cv !== dc.target) total += cv > dc.target ? -dc.speed : dc.speed;
     }
-    total += QUOTE_TEMPLATES.supportive.length + QUOTE_TEMPLATES.hostile.length + QUOTE_TEMPLATES.neutral.length;
-    document.getElementById('vald-template-count').textContent = `(${total})`;
-}
-
-// ── Template Browser ──
-function renderValdorianTemplates() {
-    const eventFilter = document.getElementById('vald-tpl-event-filter').value;
-    const sectionFilter = document.getElementById('vald-tpl-section-filter').value;
-    const componentFilter = document.getElementById('vald-tpl-component-filter').value;
-    const container = document.getElementById('vald-template-list');
-
-    const eventKeys = Object.keys(EVENT_TYPES).sort().filter(k => {
-        if (eventFilter && k !== eventFilter) return false;
-        if (sectionFilter && EVENT_TYPES[k].section !== sectionFilter) return false;
-        return true;
-    });
-
-    let html = '';
-    let totalShown = 0;
-
-    for (const evtKey of eventKeys) {
-        const meta = EVENT_TYPES[evtKey];
-        let sectionHtml = '';
-        let sectionCount = 0;
-
-        // Headlines
-        if (!componentFilter || componentFilter === 'headline') {
-            const hTemplates = HEADLINE_TEMPLATES[evtKey] || [];
-            if (hTemplates.length > 0) {
-                sectionHtml += `<div style="margin-bottom:8px;"><span style="color:#4A9EFF;font-size:0.75rem;font-weight:bold;text-transform:uppercase;">Headlines (${hTemplates.length})</span></div>`;
-                for (const t of hTemplates) {
-                    sectionHtml += renderTemplateRow(t, 'headline');
-                    sectionCount++;
-                }
+    // Active laws
+    for (const l of hitLaws) {
+        const p = l.policies;
+        const effs = l.is_reversal ? (l.reversal_effects || []) : (p.stat_effects || []);
+        for (const e of effs.filter(e => normalizeNationStatKey(e.stat_key) === sk)) {
+            const ticksSince = tick - (l.passed_tick || 0);
+            const delay = Number(e.delay_ticks) || 0;
+            const dur = Number(e.duration_ticks) || 12;
+            if (ticksSince > delay && ticksSince <= delay + dur) {
+                total += e.direction === 'down' ? -(Number(e.rate) || 1) : (Number(e.rate) || 1);
             }
         }
-
-        // Ledes
-        if (!componentFilter || componentFilter === 'lede') {
-            const lTemplates = LEDE_TEMPLATES[evtKey] || [];
-            if (lTemplates.length > 0) {
-                sectionHtml += `<div style="margin:12px 0 8px;"><span style="color:#4ADE80;font-size:0.75rem;font-weight:bold;text-transform:uppercase;">Ledes (${lTemplates.length})</span></div>`;
-                for (const t of lTemplates) {
-                    sectionHtml += renderTemplateRow(t, 'lede');
-                    sectionCount++;
-                }
-            }
+    }
+    // Stat connections (triggered)
+    for (const c of (conns || [])) {
+        const sourceVal = Number(nation[c.source_stat] ?? 50);
+        const triggered = c.source_dir === 'above' ? sourceVal > c.threshold : sourceVal < c.threshold;
+        if (!triggered) continue;
+        let effMag = Number(c.magnitude);
+        if (c.dampening) {
+            const tv = Number(nation[sk] ?? 50);
+            effMag = c.target_dir === 'up' ? c.magnitude * (1 - tv / 100) : c.magnitude * (tv / 100);
         }
-
-        // Body blocks
-        if (!componentFilter || componentFilter === 'body') {
-            const bBlocks = BODY_BLOCK_TEMPLATES[evtKey];
-            if (bBlocks) {
-                for (const blockName of Object.keys(bBlocks)) {
-                    const templates = bBlocks[blockName];
-                    sectionHtml += `<div style="margin:12px 0 8px;"><span style="color:#FBBF24;font-size:0.75rem;font-weight:bold;text-transform:uppercase;">Body: ${blockName} (${templates.length})</span></div>`;
-                    for (const t of templates) {
-                        sectionHtml += renderTemplateRow(t, 'body');
-                        sectionCount++;
-                    }
-                }
-            }
-        }
-
-        if (sectionCount > 0) {
-            const sectionColor = SECTIONS[meta.section]?.color || '#888';
-            html += `<div style="background:#151515;border:1px solid #2a2a2a;border-left:3px solid ${sectionColor};border-radius:4px;padding:16px;margin-bottom:12px;">`;
-            html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">`;
-            html += `<span style="background:${sectionColor};color:#000;padding:2px 8px;border-radius:3px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;">${meta.section}</span>`;
-            html += `<span style="color:#e0e0e0;font-weight:bold;">${meta.label}</span>`;
-            html += `<span style="color:#555;font-size:0.8rem;">(${evtKey})</span>`;
-            html += `<span style="color:#555;font-size:0.8rem;margin-left:auto;">Tier ${meta.tier} · ${sectionCount} templates</span>`;
-            html += `</div>`;
-            html += sectionHtml;
-            html += `</div>`;
-            totalShown += sectionCount;
+        total += c.target_dir === 'down' ? -effMag : +effMag;
+    }
+    // Crises
+    for (const c of hitCrises) {
+        for (const e of c.crisis_templates.crisis_effects.filter(e => e.target === 'nation' && normalizeNationStatKey(e.stat_key) === sk)) {
+            total += Number(e.change_per_tick);
         }
     }
+    total = Math.round(total * 100) / 100;
+    log(`  Estimated net change: ${total > 0 ? '+' : ''}${total} per tick`, total < 0 ? '#f44' : total > 0 ? '#4f4' : '#888');
+    log(`  (Does not include unprocessed ministry actions or leader trait effects)`, '#666');
 
-    // Shared quotes (if no event filter and no component filter or quote filter)
-    if (!eventFilter && (!componentFilter || componentFilter === 'quote')) {
-        html += `<div style="background:#151515;border:1px solid #2a2a2a;border-left:3px solid #94A3B8;border-radius:4px;padding:16px;margin-bottom:12px;">`;
-        html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">`;
-        html += `<span style="background:#94A3B8;color:#000;padding:2px 8px;border-radius:3px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;">shared</span>`;
-        html += `<span style="color:#e0e0e0;font-weight:bold;">Quote Templates</span>`;
-        html += `</div>`;
-        for (const posture of ['supportive', 'hostile', 'neutral']) {
-            html += `<div style="margin-bottom:8px;"><span style="color:#A78BFA;font-size:0.75rem;font-weight:bold;text-transform:uppercase;">${posture} (${QUOTE_TEMPLATES[posture].length})</span></div>`;
-            for (const q of QUOTE_TEMPLATES[posture]) {
-                html += `<div style="background:#1a1a1a;padding:8px 12px;margin-bottom:4px;border-radius:3px;font-size:0.85rem;color:#ccc;font-family:monospace;word-break:break-word;">${escHtml(q)}</div>`;
-                totalShown++;
-            }
-        }
-        html += `</div>`;
-    }
-
-    if (!html) html = `<p style="color:#555;text-align:center;padding:40px;">No templates match the current filters.</p>`;
-    container.innerHTML = html;
-    document.getElementById('vald-tpl-filter-info').textContent = `${totalShown} templates shown`;
-}
-window.renderValdorianTemplates = renderValdorianTemplates;
-
-function renderTemplateRow(t, type) {
-    const condStr = (t.conditions && t.conditions.length > 0)
-        ? t.conditions.map(c => {
-            if (typeof c === 'string') return c;
-            return `${c.field} ${c.op} ${c.value}`;
-        }).join(' AND ')
-        : 'always';
-    const weightColor = (t.weight || 1) > 1 ? '#FBBF24' : '#555';
-    let html = `<div style="background:#1a1a1a;padding:8px 12px;margin-bottom:4px;border-radius:3px;">`;
-    html += `<div style="font-size:0.85rem;color:#ccc;font-family:monospace;word-break:break-word;margin-bottom:4px;">${escHtml(t.template)}</div>`;
-    html += `<div style="display:flex;gap:12px;font-size:0.7rem;">`;
-    html += `<span style="color:#666;">${t.id || ''}</span>`;
-    html += `<span style="color:#4A9EFF;" title="Conditions">if: ${escHtml(condStr)}</span>`;
-    html += `<span style="color:${weightColor};">w:${t.weight || 1}</span>`;
-    if (t.required) html += `<span style="color:#F87171;">REQUIRED</span>`;
-    html += `</div></div>`;
-    return html;
+    out.innerHTML = lines.join('\n');
 }
 
-// ── Test Generator ──
-function onValdGenEventChange() {
-    const evtKey = document.getElementById('vald-gen-event-type').value;
-    const fieldsDiv = document.getElementById('vald-gen-fields');
-    const fieldList = document.getElementById('vald-gen-field-list');
-    if (!evtKey) { fieldsDiv.style.display = 'none'; return; }
-    fieldsDiv.style.display = '';
-
-    // Collect all {variable} placeholders from templates for this event type
-    const vars = new Set();
-    const scan = (templates) => {
-        if (!templates) return;
-        if (Array.isArray(templates)) {
-            for (const t of templates) {
-                const matches = (t.template || '').matchAll(/\{(\w+)\}/g);
-                for (const m of matches) vars.add(m[1]);
-            }
-        } else if (typeof templates === 'object') {
-            for (const bk of Object.keys(templates)) scan(templates[bk]);
-        }
-    };
-    scan(HEADLINE_TEMPLATES[evtKey]);
-    scan(LEDE_TEMPLATES[evtKey]);
-    scan(BODY_BLOCK_TEMPLATES[evtKey]);
-
-    // Always include common fields
-    ['nation_name', 'pm_name', 'tick'].forEach(f => vars.add(f));
-
-    // Remove word-pool auto-fills
-    ['negative_adjective', 'positive_adjective', 'negative_framing', 'alternative_action', 'crisis_intensifier'].forEach(f => vars.delete(f));
-
-    const sorted = [...vars].sort();
-    let html = '';
-    for (const v of sorted) {
-        const defaultVal = v === 'tick' ? '1' : v === 'nation_name' ? 'Testland' : v === 'pm_name' ? 'PM Test' : '';
-        html += `<div style="margin-bottom:8px;"><label style="font-size:0.75rem;color:#888;">${v}</label>`;
-        html += `<input type="text" class="vald-gen-input" data-field="${v}" value="${defaultVal}" style="width:100%;padding:6px 8px;background:#2a2a2a;border:1px solid #444;color:#e0e0e0;border-radius:3px;font-size:0.85rem;"></div>`;
-    }
-    fieldList.innerHTML = html;
-}
-window.onValdGenEventChange = onValdGenEventChange;
-
-function runValdorianTestGenerate() {
-    const evtKey = document.getElementById('vald-gen-event-type').value;
-    if (!evtKey) return;
-
-    const eventData = { event_type: evtKey };
-    document.querySelectorAll('.vald-gen-input').forEach(input => {
-        const val = input.value.trim();
-        if (val) {
-            // Try parsing as number/bool
-            if (val === 'true') eventData[input.dataset.field] = true;
-            else if (val === 'false') eventData[input.dataset.field] = false;
-            else if (!isNaN(Number(val)) && val !== '') eventData[input.dataset.field] = Number(val);
-            else eventData[input.dataset.field] = val;
-        }
-    });
-
-    // Fill in meta defaults
-    const meta = EVENT_TYPES[evtKey];
-    if (!eventData.section) eventData.section = meta.section;
-    if (!eventData.tier) eventData.tier = meta.tier;
-
-    const article = generateArticle(eventData);
-    const preview = document.getElementById('vald-gen-preview');
-
-    if (!article) {
-        preview.innerHTML = `<p style="color:#F87171;text-align:center;margin-top:60px;">No article generated — event type "${evtKey}" may have no matching templates.</p>`;
-        return;
-    }
-
-    let html = `<div style="border-bottom:2px solid ${article.section_color};padding-bottom:8px;margin-bottom:12px;">`;
-    html += `<span style="background:${article.section_color};color:#000;padding:2px 8px;border-radius:3px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;">${article.section_label}</span>`;
-    html += `<span style="color:#555;font-size:0.75rem;margin-left:8px;">Tier ${article.tier} · ${article.event_type}</span>`;
-    html += `</div>`;
-
-    html += `<h3 style="color:#e0e0e0;font-size:1.2rem;margin-bottom:8px;line-height:1.3;">${escHtml(article.headline)}</h3>`;
-    if (article.subheadline) html += `<p style="color:#aaa;font-size:0.95rem;margin-bottom:8px;">${escHtml(article.subheadline)}</p>`;
-    html += `<p style="color:#666;font-size:0.75rem;margin-bottom:12px;">By ${escHtml(article.byline.reporter)} · ${article.byline.time}</p>`;
-
-    if (article.lede) html += `<p style="color:#ccc;font-size:0.9rem;line-height:1.6;margin-bottom:12px;font-weight:500;">${escHtml(article.lede)}</p>`;
-
-    for (const para of article.body_paragraphs) {
-        html += `<p style="color:#bbb;font-size:0.85rem;line-height:1.6;margin-bottom:10px;">${escHtml(para)}</p>`;
-    }
-
-    for (const q of article.quotes) {
-        html += `<blockquote style="border-left:3px solid ${article.section_color};padding-left:12px;margin:12px 0;color:#aaa;font-style:italic;font-size:0.85rem;">${escHtml(q.text)}<br><span style="color:#555;font-size:0.75rem;">— ${q.posture}</span></blockquote>`;
-    }
-
-    if (article.topic_tags && article.topic_tags.length > 0) {
-        html += `<div style="margin-top:16px;display:flex;gap:6px;flex-wrap:wrap;">`;
-        for (const tag of article.topic_tags) {
-            html += `<span style="background:#252525;color:#888;padding:2px 8px;border-radius:12px;font-size:0.7rem;">${escHtml(tag)}</span>`;
-        }
-        html += `</div>`;
-    }
-
-    if (article.developing_story) {
-        html += `<div style="margin-top:12px;padding:8px;background:#1a1a2a;border:1px solid #2196F3;border-radius:4px;font-size:0.75rem;color:#2196F3;">DEVELOPING STORY: ${escHtml(article.developing_story.topic)} (${article.developing_story.count} events since tick ${article.developing_story.since_tick})</div>`;
-    }
-
-    // Raw JSON toggle
-    html += `<details style="margin-top:16px;"><summary style="color:#555;cursor:pointer;font-size:0.75rem;">Raw JSON</summary>`;
-    html += `<pre style="background:#0a0a0a;color:#888;padding:12px;border-radius:4px;font-size:0.7rem;overflow-x:auto;margin-top:8px;">${escHtml(JSON.stringify(article, null, 2))}</pre></details>`;
-
-    preview.innerHTML = html;
-}
-window.runValdorianTestGenerate = runValdorianTestGenerate;
-
-// ── Stored Articles ──
-async function loadValdorianArticles() {
-    const nationFilter = document.getElementById('vald-art-nation-filter').value;
-    const eventFilter = document.getElementById('vald-art-event-filter').value;
-    const tierFilter = document.getElementById('vald-art-tier-filter').value;
-    const container = document.getElementById('vald-article-list');
-    container.innerHTML = '<p style="color:#555;text-align:center;">Loading...</p>';
-
-    let query = _supabase.from('valdorian_articles').select('*').order('created_at', { ascending: false }).limit(100);
-    if (nationFilter) query = query.eq('nation_id', nationFilter);
-    if (eventFilter) query = query.eq('event_type', eventFilter);
-    if (tierFilter) query = query.eq('tier', Number(tierFilter));
-
-    const { data, error } = await query;
-    if (error) {
-        container.innerHTML = `<p style="color:#F87171;">Error: ${escHtml(error.message)}</p>`;
-        return;
-    }
-
-    document.getElementById('vald-article-count').textContent = `(${data.length})`;
-    document.getElementById('vald-art-filter-info').textContent = `${data.length} articles`;
-
-    if (!data.length) {
-        container.innerHTML = '<p style="color:#555;text-align:center;padding:40px;">No articles found. Articles are generated during tick processing.</p>';
-        return;
-    }
-
-    let html = '';
-    for (const art of data) {
-        const sectionColor = SECTIONS[art.section]?.color || '#888';
-        const nationName = (nations || []).find(n => n.id === art.nation_id)?.name || art.nation_id?.slice(0, 8);
-        html += `<div style="background:#151515;border:1px solid #2a2a2a;border-left:3px solid ${sectionColor};border-radius:4px;padding:12px 16px;margin-bottom:8px;">`;
-        html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">`;
-        html += `<span style="background:${sectionColor};color:#000;padding:1px 6px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;">${art.section}</span>`;
-        html += `<span style="color:#555;font-size:0.75rem;">T${art.tier}</span>`;
-        html += `<span style="color:#555;font-size:0.75rem;">${art.event_type}</span>`;
-        html += `<span style="color:#555;font-size:0.75rem;margin-left:auto;">tick ${art.tick} · ${nationName}</span>`;
-        html += `</div>`;
-        html += `<div style="color:#e0e0e0;font-weight:bold;margin-bottom:4px;">${escHtml(art.headline)}</div>`;
-        if (art.lede) html += `<div style="color:#999;font-size:0.85rem;line-height:1.4;">${escHtml(art.lede).slice(0, 200)}${art.lede.length > 200 ? '...' : ''}</div>`;
-        if (art.byline_reporter) html += `<div style="color:#666;font-size:0.7rem;margin-top:4px;">By ${escHtml(art.byline_reporter)}</div>`;
-        const tags = art.topic_tags || [];
-        if (tags.length) {
-            html += `<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">`;
-            for (const tag of tags) html += `<span style="background:#252525;color:#888;padding:1px 6px;border-radius:10px;font-size:0.65rem;">${escHtml(tag)}</span>`;
-            html += `</div>`;
-        }
-        html += `</div>`;
-    }
-    container.innerHTML = html;
-}
-window.loadValdorianArticles = loadValdorianArticles;
-
-// ── Op-Eds ──
-async function loadValdorianOpEds() {
-    const statusFilter = document.getElementById('vald-oped-status-filter').value;
-    const container = document.getElementById('vald-oped-list');
-    container.innerHTML = '<p style="color:#555;text-align:center;">Loading...</p>';
-
-    let query = _supabase.from('op_eds').select('*').order('created_at', { ascending: false }).limit(100);
-    if (statusFilter) query = query.eq('status', statusFilter);
-
-    const { data, error } = await query;
-    if (error) {
-        container.innerHTML = `<p style="color:#F87171;">Error: ${escHtml(error.message)}</p>`;
-        return;
-    }
-
-    document.getElementById('vald-oped-count').textContent = `(${data.length})`;
-    document.getElementById('vald-oped-filter-info').textContent = `${data.length} op-eds`;
-
-    if (!data.length) {
-        container.innerHTML = '<p style="color:#555;text-align:center;padding:40px;">No op-eds found.</p>';
-        return;
-    }
-
-    let html = '';
-    for (const oped of data) {
-        const statusColors = { draft: '#FBBF24', published: '#4ADE80', rejected: '#F87171' };
-        const sColor = statusColors[oped.status] || '#888';
-        const nationName = (nations || []).find(n => n.id === oped.nation_id)?.name || oped.nation_id?.slice(0, 8);
-        html += `<div style="background:#151515;border:1px solid #2a2a2a;border-left:3px solid ${sColor};border-radius:4px;padding:12px 16px;margin-bottom:8px;">`;
-        html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">`;
-        html += `<span style="background:${sColor};color:#000;padding:1px 6px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;">${oped.status}</span>`;
-        html += `<span style="color:#888;font-size:0.75rem;">by ${escHtml(oped.author_name)}</span>`;
-        html += `<span style="color:#555;font-size:0.75rem;margin-left:auto;">${nationName}</span>`;
-        html += `</div>`;
-        html += `<div style="color:#e0e0e0;font-weight:bold;margin-bottom:4px;">${escHtml(oped.headline)}</div>`;
-        html += `<div style="color:#999;font-size:0.85rem;line-height:1.4;">${escHtml((oped.body || '').slice(0, 200))}${(oped.body || '').length > 200 ? '...' : ''}</div>`;
-        html += `<div style="display:flex;gap:8px;margin-top:8px;align-items:center;">`;
-        if (oped.status === 'draft') {
-            html += `<button class="btn-success" style="padding:4px 12px;font-size:0.7rem;border:none;border-radius:3px;cursor:pointer;color:#fff;background:#4CAF50;" onclick="updateOpEdStatus('${oped.id}','published')">Publish</button>`;
-            html += `<button style="padding:4px 12px;font-size:0.7rem;border:none;border-radius:3px;cursor:pointer;color:#fff;background:#F87171;" onclick="updateOpEdStatus('${oped.id}','rejected')">Reject</button>`;
-        } else if (oped.status === 'published') {
-            html += `<button style="padding:4px 12px;font-size:0.7rem;border:none;border-radius:3px;cursor:pointer;color:#fff;background:#FBBF24;color:#000;" onclick="updateOpEdStatus('${oped.id}','draft')">Unpublish</button>`;
-        } else if (oped.status === 'rejected') {
-            html += `<button style="padding:4px 12px;font-size:0.7rem;border:none;border-radius:3px;cursor:pointer;color:#fff;background:#FBBF24;color:#000;" onclick="updateOpEdStatus('${oped.id}','draft')">Restore to Draft</button>`;
-        }
-        if (oped.published_tick) html += `<span style="color:#555;font-size:0.7rem;margin-left:auto;">Published tick ${oped.published_tick}</span>`;
-        html += `</div>`;
-        html += `</div>`;
-    }
-    container.innerHTML = html;
-}
-window.loadValdorianOpEds = loadValdorianOpEds;
-
-async function updateOpEdStatus(id, newStatus) {
-    const updates = { status: newStatus, updated_at: new Date().toISOString() };
-    if (newStatus === 'published') {
-        // Use current shard tick if available
-        const tickEl = document.getElementById('info-tick');
-        if (tickEl && tickEl.textContent !== 'Loading...') updates.published_tick = Number(tickEl.textContent) || null;
-    }
-    const { error } = await _supabase.from('op_eds').update(updates).eq('id', id);
-    if (error) { alert('Error updating op-ed: ' + error.message); return; }
-    loadValdorianOpEds();
-}
-window.updateOpEdStatus = updateOpEdStatus;
+window.runStatAudit = runStatAudit;
 </script>
 </body>
 </html>

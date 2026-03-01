@@ -39,6 +39,117 @@ import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCan
  * With Rankings and Trend Arrows
  */
 
+// ===== STAT DELTA DIAGNOSTIC =====
+// Run in browser console: debugStatDelta('education_accessibility')
+window.debugStatDelta = async function(statKey) {
+    const sk = statKey || 'education_accessibility';
+    console.log(`%c=== STAT DELTA AUDIT: ${sk} ===`, 'font-weight:bold;font-size:14px;color:#0af');
+
+    // 1. Get nation + shard
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const tick = shard?.current_tick || 0;
+    const { data: { user } } = await _supabase.auth.getUser();
+    const { data: faction } = await _supabase.from('factions').select('nation_id').eq('user_id', user.id).single();
+    const nationId = faction?.nation_id;
+    if (!nationId) { console.error('No nation found'); return; }
+
+    const { data: nation } = await _supabase.from('nations').select('*').eq('id', nationId).single();
+    console.log(`Nation: ${nation.name} | Tick: ${tick} | Current ${sk}: ${nation[sk]}`);
+
+    // 2. Previous tick value from history
+    const { data: hist } = await _supabase.from('nations_history')
+        .select(sk + ', tick').eq('nation_id', nationId)
+        .lte('tick', tick).order('tick', { ascending: false }).limit(3);
+    if (hist?.length) {
+        console.log('%cHistory:', 'font-weight:bold');
+        hist.forEach(h => console.log(`  tick ${h.tick}: ${h[sk]}`));
+        const prev = hist.find(h => h.tick < tick);
+        if (prev) console.log(`  Delta (tick ${prev.tick} → now): ${(Number(nation[sk]) - Number(prev[sk])).toFixed(1)}`);
+    }
+
+    // 3. Active laws affecting this stat
+    const { data: laws } = await _supabase.from('active_laws')
+        .select('id, bill_id, is_reversal, passed_tick, effects_applied_through_tick, reversal_effects, policies(policy_name, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)')
+        .eq('nation_id', nationId);
+    const hitLaws = (laws || []).filter(l => {
+        const p = l.policies;
+        if (!p) return false;
+        if (p.target_stat === sk) return true;
+        if (p.stat_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)) return true;
+        if (l.is_reversal && l.reversal_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)) return true;
+        return false;
+    });
+    console.log(`%cActive laws affecting ${sk}: ${hitLaws.length}`, 'font-weight:bold');
+    hitLaws.forEach(l => {
+        const p = l.policies;
+        const effs = l.is_reversal ? l.reversal_effects : p.stat_effects;
+        const relevant = (effs || []).filter(e => normalizeNationStatKey(e.stat_key) === sk);
+        relevant.forEach(e => {
+            const ticksSince = tick - (l.passed_tick || 0);
+            const delay = Number(e.delay_ticks) || 0;
+            const dur = Number(e.duration_ticks) || 12;
+            const active = ticksSince > delay && ticksSince <= delay + dur;
+            console.log(`  [${active ? 'ACTIVE' : 'dormant'}] "${p.policy_name}" | dir=${e.direction} rate=${e.rate}/tick | delay=${delay} dur=${dur} | ticksSince=${ticksSince} | passedTick=${l.passed_tick} lastApplied=${l.effects_applied_through_tick}`);
+        });
+        if (relevant.length === 0 && p.target_stat === sk) {
+            console.log(`  [legacy] "${p.policy_name}" | dir=${p.stat_direction} rate=${p.stat_change_per_tick}/tick dur=${p.duration_months}`);
+        }
+    });
+
+    // 4. Stat connections
+    const { data: conns } = await _supabase.from('stat_connections')
+        .select('*').eq('enabled', true).eq('target_stat', sk);
+    console.log(`%cStat connections targeting ${sk}: ${(conns||[]).length}`, 'font-weight:bold');
+    (conns || []).forEach(c => {
+        const sourceVal = Number(nation[c.source_stat] ?? 50);
+        const triggered = c.source_dir === 'above' ? sourceVal > c.threshold : sourceVal < c.threshold;
+        console.log(`  [${triggered ? 'TRIGGERED' : 'inactive'}] ${c.source_stat} ${c.source_dir} ${c.threshold} (current: ${sourceVal}) → ${c.target_dir} ${c.magnitude} | dampening=${c.dampening}`);
+        if (triggered && c.dampening) {
+            const targetVal = Number(nation[sk] ?? 50);
+            const eff = c.target_dir === 'up' ? c.magnitude * (1 - targetVal/100) : c.magnitude * (targetVal/100);
+            console.log(`    effective magnitude after dampening: ${eff.toFixed(3)}`);
+        }
+    });
+
+    // 5. Active crises
+    const { data: crises } = await _supabase.from('active_crises')
+        .select('crisis_id, started_tick, crisis_templates(name, crisis_effects(stat_key, change_per_tick, target))')
+        .eq('nation_id', nationId);
+    const hitCrises = (crises || []).filter(c =>
+        c.crisis_templates?.crisis_effects?.some(e => e.target === 'nation' && normalizeNationStatKey(e.stat_key) === sk)
+    );
+    console.log(`%cActive crises affecting ${sk}: ${hitCrises.length}`, 'font-weight:bold');
+    hitCrises.forEach(c => {
+        const effs = c.crisis_templates.crisis_effects.filter(e => e.target === 'nation' && normalizeNationStatKey(e.stat_key) === sk);
+        effs.forEach(e => console.log(`  "${c.crisis_templates.name}" | change_per_tick=${e.change_per_tick} | started tick ${c.started_tick}`));
+    });
+
+    // 6. Unprocessed ministry actions
+    const { data: mActions } = await _supabase.from('ministry_action_log')
+        .select('action_key, stat_effects, effects_applied_through_tick, applied_at_tick')
+        .eq('nation_id', nationId).eq('processed', false);
+    const hitMA = (mActions || []).filter(a =>
+        a.stat_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)
+    );
+    console.log(`%cMinistry actions affecting ${sk}: ${hitMA.length}`, 'font-weight:bold');
+    hitMA.forEach(a => {
+        const effs = a.stat_effects.filter(e => normalizeNationStatKey(e.stat_key) === sk);
+        effs.forEach(e => console.log(`  "${a.action_key}" | dir=${e.direction} rate=${e.rate} | applied tick ${a.applied_at_tick} lastApplied=${a.effects_applied_through_tick}`));
+    });
+
+    // 7. Decay config
+    const dc = STAT_DECAY_CONFIG[sk];
+    if (dc) {
+        console.log(`%cDecay config: type=${dc.type} target=${dc.target} speed=${dc.speed}/tick`, 'font-weight:bold');
+        const delta = Number(nation[sk]) > dc.target ? -dc.speed : dc.speed;
+        console.log(`  Natural decay this tick: ${delta > 0 ? '+' : ''}${delta}`);
+    } else {
+        console.log(`%cNo decay config for ${sk}`, 'font-weight:bold');
+    }
+
+    console.log(`%c=== END AUDIT ===`, 'font-weight:bold;font-size:14px;color:#0af');
+};
+
 // All nations data for rankings
 let allNations = [];
 let totalNations = 0;

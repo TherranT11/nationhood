@@ -253,7 +253,6 @@ export function renderNavTabs(activeTab) {
         { id: 'parties', label: 'Parties', href: 'parties.html' },
         { id: 'elections', label: 'Elections', href: 'elections.html' },
         { id: 'laws', label: 'Bills', href: 'laws.html' },
-        { id: 'forum', label: 'Forum', href: 'forum.html' },
         { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
         { id: 'economy', label: 'Economy', href: 'economy.html' },
         { id: 'events', label: 'Events', href: 'events.html' },
@@ -573,7 +572,7 @@ export function formatCurrency(n) {
  *   88,000,000,000 = $88 Billion
  *
  * This function is now a pass-through. It exists only to avoid
- * breaking callers (nation.html, map.html, forum.html) that still
+ * breaking callers (nation.html, map.html) that still
  * reference it. No conversion is needed — formatCurrencyShort()
  * handles the display formatting directly.
  */

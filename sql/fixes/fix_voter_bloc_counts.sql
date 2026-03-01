@@ -10,19 +10,22 @@
 --
 -- For existing blocs, this rescales them to match the new formula.
 
-UPDATE voter_blocs vb
-SET voter_count = ROUND(
-    vb.voter_count::numeric
-    * (n.population * COALESCE(n.eligible_voters, 65) / 100.0)
-    / NULLIF(bloc_totals.total_voters, 0)
+-- Scale blocs so they sum to 1,000,000 per nation (proportionally correct,
+-- and safely within int4 range). Election RPCs rescale to actual eligible
+-- voters at runtime, so absolute magnitude doesn't matter.
+WITH bloc_totals AS (
+    SELECT nation_id, SUM(voter_count) AS total_voters
+    FROM voter_blocs
+    WHERE is_active = TRUE
+    GROUP BY nation_id
 )
-FROM nations n,
-LATERAL (
-    SELECT SUM(vb2.voter_count) AS total_voters
-    FROM voter_blocs vb2
-    WHERE vb2.nation_id = vb.nation_id AND vb2.is_active = TRUE
-) bloc_totals
+UPDATE voter_blocs vb
+SET voter_count = GREATEST(1, ROUND(
+    (vb.voter_count::numeric / NULLIF(bt.total_voters, 0)) * 1000000
+)::int)
+FROM nations n
+JOIN bloc_totals bt ON bt.nation_id = n.id
 WHERE n.id = vb.nation_id
   AND vb.is_active = TRUE
-  AND bloc_totals.total_voters > 0
+  AND bt.total_voters > 0
   AND n.population > 0;

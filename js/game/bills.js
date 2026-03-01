@@ -842,8 +842,8 @@ export async function expireCommitteeBills(supabase, nationId, currentTick) {
 /**
  * Check all active floor bills for early majority (for or against).
  * If a definitive majority is detected, lock the outcome and shorten
- * voting_ends_tick to currentTick + 1 (one grace tick) so the UI can
- * display the result before resolution.
+ * voting_ends_tick to currentTick so the bill resolves immediately
+ * in the same tick via resolveExpiredVotes.
  *
  * Must run BEFORE resolveExpiredVotes each tick.
  */
@@ -942,20 +942,20 @@ export async function checkEarlyMajority(supabase, nationId) {
         }
 
         if (earlyStatus) {
-            // Grace tick: resolve one tick from now, but never extend past original deadline
-            // Budget bills have null voting_ends_tick, so just use currentTick + 1
-            const graceEndTick = bill.voting_ends_tick != null
-                ? Math.min(currentTick + 1, bill.voting_ends_tick)
-                : currentTick + 1;
+            // Resolve immediately this tick (no grace period)
+            // Budget bills have null voting_ends_tick, so just use currentTick
+            const resolveAtTick = bill.voting_ends_tick != null
+                ? Math.min(currentTick, bill.voting_ends_tick)
+                : currentTick;
 
             await supabase.from('bills').update({
                 early_resolution_status: earlyStatus,
                 early_resolution_tick: currentTick,
-                voting_ends_tick: graceEndTick
+                voting_ends_tick: resolveAtTick
             }).eq('id', bill.id);
 
             const resolveType = earlyStatus.startsWith('quorum') ? 'QUORUM' : 'MATH-LOCK';
-            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} [${resolveType}] (YES=${yesSeats}, NO=${noSeats}, quorum=${quorumSeats}, voted=${totalVoted}). Resolves tick ${graceEndTick}`);
+            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} [${resolveType}] (YES=${yesSeats}, NO=${noSeats}, quorum=${quorumSeats}, voted=${totalVoted}). Resolves tick ${resolveAtTick}`);
             results.push({ billId: bill.id, billName: bill.bill_name, status: earlyStatus, yesSeats, noSeats });
         }
     }

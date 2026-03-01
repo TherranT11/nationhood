@@ -2075,7 +2075,7 @@ const STATS_LOWER_IS_BETTER = [
 
 // ==================== STAT DECAY CONFIGURATION ====================
 
-const DECAY_SPEED = { VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
+const DECAY_SPEED = { CRAWL: 0.25, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
 
 /**
  * Stats that decay each tick. Two types:
@@ -2085,40 +2085,40 @@ const DECAY_SPEED = { VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
  */
 const STAT_DECAY_CONFIG = {
     // ── Equilibrium (drift back to midpoint) ──
-    inflation:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
-    civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.FAST },
-    polarization:        { type: 'equilibrium', target: 30, speed: DECAY_SPEED.SLOW },
-    terrorism:           { type: 'equilibrium', target: 10, speed: DECAY_SPEED.SLOW },
-    political_violence:  { type: 'equilibrium', target: 10, speed: DECAY_SPEED.MEDIUM },
-    happiness:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
-    foreign_investment:  { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    trade_balance:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
-    gdp_growth:          { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    immigration:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    illegal_immigration: { type: 'equilibrium', target: 30, speed: DECAY_SPEED.SLOW },
-    emigration:          { type: 'equilibrium', target: 30, speed: DECAY_SPEED.MEDIUM },
-    fuel_prices:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    debt_growth:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
+    inflation:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
+    polarization:        { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
+    terrorism:           { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
+    political_violence:  { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
+    happiness:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    foreign_investment:  { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    trade_balance:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    gdp_growth:          { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    immigration:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    illegal_immigration: { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
+    emigration:          { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
+    fuel_prices:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    debt_growth:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
 
     // ── Erosion (degrade toward bad floor if neglected) ──
-    physical_infrastructure:  { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
-    digital_infrastructure:   { type: 'erosion', target: 0,  speed: DECAY_SPEED.SLOW },
-    rail_network:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
-    energy_generation:        { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
-    efficiency:               { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    corruption:               { type: 'erosion', target: 70, speed: DECAY_SPEED.SLOW },
-    healthcare_quality:       { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.VERY_SLOW },
-    education_accessibility:  { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    press_freedom:            { type: 'erosion', target: 40, speed: DECAY_SPEED.SLOW },
-    judicial_independence:    { type: 'erosion', target: 40, speed: DECAY_SPEED.SLOW },
-    freedom_index:            { type: 'erosion', target: 40, speed: DECAY_SPEED.VERY_SLOW },
-    standard_of_living:       { type: 'erosion', target: 40, speed: DECAY_SPEED.VERY_SLOW },
-    social_mobility:          { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    benefits:                 { type: 'erosion', target: 0,  speed: DECAY_SPEED.MEDIUM },
+    physical_infrastructure:  { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    digital_infrastructure:   { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    rail_network:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    energy_generation:        { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    efficiency:               { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    corruption:               { type: 'erosion', target: 10, speed: DECAY_SPEED.CRAWL },
+    healthcare_quality:       { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.CRAWL },
+    education_accessibility:  { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    press_freedom:            { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
+    judicial_independence:    { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
+    freedom_index:            { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
+    standard_of_living:       { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
+    social_mobility:          { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    benefits:                 { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
 };
 
 // Validate decay config keys at module load
@@ -2127,6 +2127,17 @@ for (const key of Object.keys(STAT_DECAY_CONFIG)) {
         console.error(`[STAT_DECAY_CONFIG] Invalid stat key: "${key}" — not in NATION_STAT_COLUMNS`);
     }
 }
+
+// ==================== STAT → VOTER BLOC REACTIONS ====================
+// When a stat changes during a tick, apply momentum to a specific voter bloc.
+// rate_per_point: momentum applied per 1-point stat change (sign-aware).
+//   Positive rate_per_point = stat going UP is GOOD for that bloc.
+//   Negative rate_per_point = stat going UP is BAD for that bloc.
+const STAT_BLOC_REACTIONS = [
+    // Increasing corporate tax: -2.5 approval per 1% with Business Owners
+    // Decreasing corporate tax: +1.0 approval per 1% with Business Owners
+    { stat: 'corporate_tax', bloc_name: 'Business Owners', rate_up: -2.5, rate_down: 1.0 },
+];
 
 // ==================== INSTITUTION FUNDING DECAY TIERS ====================
 // Institutions counteract natural stat decay. At 100% funding, decay is fully
@@ -2232,7 +2243,7 @@ const STAT_TO_MINISTRY = {
     minimum_wage: 'labor', union_strength: 'labor',
     poverty_rate: 'labor', income_inequality: 'labor',
     // Interior
-    stability: 'interior', civil_unrest: 'interior',
+    stability: 'interior',
     crime_rate: 'interior', incarceration_rate: 'interior',
     immigration: 'interior', illegal_immigration: 'interior',
     // Justice
@@ -2245,7 +2256,9 @@ const STAT_TO_MINISTRY = {
     physical_infrastructure: 'transportation', digital_infrastructure: 'transportation',
     rail_network: 'transportation', urbanization: 'transportation',
     // Defense
-    terrorism: 'defense', political_violence: 'defense',
+    terrorism: 'defense',
+    // Security
+    civil_unrest: 'security', political_violence: 'security',
     // Trade
     trade_balance: 'trade', trade_agreements: 'trade',
     tariffs: 'trade', foreign_investment: 'trade',
@@ -2460,6 +2473,16 @@ const GOV_APPROVAL_CONFIG = {
     NEW_MINISTER_APPROVAL: 45,
     FIRE_GOV_APPROVAL_BONUS: 3,
 
+    // ─── Ministry funding → minister approval (Phase 5) ───
+    // Direct funding penalty: applied additively (not averaged with stat scores).
+    // At 0% funding the minister loses MINISTER_FUNDING_PENALTY_MAX per tick.
+    // Scales linearly: 50% funded → half the penalty, 100% funded → 0.
+    MINISTER_FUNDING_PENALTY_MAX: -2.0,
+
+    // Per-institution penalty when funding falls below COLLAPSED threshold.
+    // Stacks: 3 collapsed institutions → 3 × penalty per tick.
+    MINISTER_COLLAPSED_INST_PENALTY: -1.0,
+    MINISTER_COLLAPSED_THRESHOLD: 25,    // funding % at or below → "collapsed"
 };
 
 /**
@@ -4806,20 +4829,20 @@ async function checkEarlyMajority(supabase, nationId) {
         }
 
         if (earlyStatus) {
-            // Grace tick: resolve one tick from now, but never extend past original deadline
-            // Budget bills have null voting_ends_tick, so just use currentTick + 1
-            const graceEndTick = bill.voting_ends_tick != null
-                ? Math.min(currentTick + 1, bill.voting_ends_tick)
-                : currentTick + 1;
+            // Resolve immediately this tick (no grace period)
+            // Budget bills have null voting_ends_tick, so just use currentTick
+            const resolveAtTick = bill.voting_ends_tick != null
+                ? Math.min(currentTick, bill.voting_ends_tick)
+                : currentTick;
 
             await supabase.from('bills').update({
                 early_resolution_status: earlyStatus,
                 early_resolution_tick: currentTick,
-                voting_ends_tick: graceEndTick
+                voting_ends_tick: resolveAtTick
             }).eq('id', bill.id);
 
             const resolveType = earlyStatus.startsWith('quorum') ? 'QUORUM' : 'MATH-LOCK';
-            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} [${resolveType}] (YES=${yesSeats}, NO=${noSeats}, quorum=${quorumSeats}, voted=${totalVoted}). Resolves tick ${graceEndTick}`);
+            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} [${resolveType}] (YES=${yesSeats}, NO=${noSeats}, quorum=${quorumSeats}, voted=${totalVoted}). Resolves tick ${resolveAtTick}`);
             results.push({ billId: bill.id, billName: bill.bill_name, status: earlyStatus, yesSeats, noSeats });
         }
     }
@@ -8973,7 +8996,8 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
                 performance_perception: u.performance_perception,
                 momentum: u.momentum,
                 preference_score: u.preference_score,
-                vote_share: u.vote_share
+                vote_share: u.vote_share,
+                ideology_drift: u.ideology_drift
             })
             .eq('id', u.id);
     }
@@ -10859,6 +10883,63 @@ async function autoResolveStaleShakeups(supabase, nationId, currentTick) {
 }
 
 
+// ==================== STAT → VOTER BLOC REACTION PROCESSING ====================
+/**
+ * After stat effects are applied, compare old vs new stat values and adjust
+ * momentum with specific voter blocs according to STAT_BLOC_REACTIONS.
+ *
+ * @param {object} supabase
+ * @param {object} nation        - nation row (with post-effect stat values)
+ * @param {Record<string,number>} snapshots - stat values captured BEFORE effects
+ */
+async function processStatBlocReactions(supabase, nation, snapshots) {
+    if (STAT_BLOC_REACTIONS.length === 0) return;
+
+    for (const reaction of STAT_BLOC_REACTIONS) {
+        const oldVal = snapshots[reaction.stat];
+        const newVal = Number(nation[reaction.stat] ?? oldVal);
+        if (oldVal === undefined || oldVal === null) continue;
+
+        const delta = Math.round((newVal - oldVal) * 10) / 10;
+        if (delta === 0) continue;
+
+        // Determine per-point rate based on direction
+        const ratePerPoint = delta > 0 ? reaction.rate_up : reaction.rate_down;
+        const momentumDelta = Math.round(Math.abs(delta) * ratePerPoint * 100) / 100;
+        if (momentumDelta === 0) continue;
+
+        // Find the voter bloc by name for this nation
+        const { data: bloc } = await supabase
+            .from('voter_blocs')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('bloc_name', reaction.bloc_name)
+            .single();
+
+        if (!bloc) {
+            console.warn(`[StatBlocReaction] Bloc "${reaction.bloc_name}" not found for nation ${nation.name}`);
+            continue;
+        }
+
+        // Apply momentum to ALL factions for this specific bloc
+        const { data: factions } = await supabase
+            .from('factions')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('faction_type', 'party');
+
+        if (!factions || factions.length === 0) continue;
+
+        const source = `stat_bloc_reaction:${reaction.stat}:${delta > 0 ? 'up' : 'down'}`;
+        for (const faction of factions) {
+            await adjustMomentum(supabase, nation.id, faction.id, bloc.id, momentumDelta, source);
+        }
+
+        console.log(`[StatBlocReaction] ${reaction.stat} ${delta > 0 ? '+' : ''}${delta} → ${momentumDelta > 0 ? '+' : ''}${momentumDelta} momentum with ${reaction.bloc_name} for ${factions.length} factions in ${nation.name}`);
+    }
+}
+
+
 // ==================== STAT EFFECTS PROCESSING ====================
 
 async function processStatEffects(supabase, nation, currentTick) {
@@ -11285,9 +11366,15 @@ async function processMinistryActions(supabase, nation, currentTick) {
 // ==================== LAYER 1: PER-TICK MINISTER APPROVAL ====================
 
 /**
- * Update each minister's approval based on the current state of their owned stats.
- * Uses threshold-based scoring: the public doesn't care about marginal changes,
- * they care whether stats are at acceptable levels or in crisis.
+ * Update each minister's approval based on the current state of their owned stats
+ * AND the funding level of their ministry's institutions.
+ *
+ * Three additive components per tick:
+ *   1. Stat-based scoring — threshold contribution averaged across owned stats
+ *   2. Funding penalty — scales linearly from 0 at 100% funded to
+ *      MINISTER_FUNDING_PENALTY_MAX at 0% funded (additive, not averaged)
+ *   3. Collapsed-institution penalty — MINISTER_COLLAPSED_INST_PENALTY per
+ *      institution funded below MINISTER_COLLAPSED_THRESHOLD (additive)
  *
  * Excludes prime_minister (PM approval comes from the composite government approval).
  *
@@ -11297,9 +11384,12 @@ async function processMinistryActions(supabase, nation, currentTick) {
  * @param {object} supabase
  * @param {object} nation - nation row with current stat values
  * @param {number} currentTick
+ * @param {boolean} isShutdown - true during government shutdown (extra penalty)
+ * @param {Array|null} institutionConfig - rows from ministry_institution_config (optional)
+ * @param {Array|null} budgetAllocations - rows from budget_item_allocations for the active budget (optional)
  * @returns {Array} results for logging
  */
-async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown = false) {
+async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown = false, institutionConfig = null, budgetAllocations = null) {
     const { data: ministries } = await supabase
         .from('ministries')
         .select('id, ministry_key, minister_approval, minister_first_name, embattled_since_tick, party_id')
@@ -11308,10 +11398,45 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
 
     if (!ministries || ministries.length === 0) return [];
 
-    // During government shutdown, every minister takes a direct -3/tick approval hit
-    // on top of their normal stat-based scoring. This represents public outrage at
-    // the government's inability to function.
+    // During government shutdown, every minister takes a direct -6/tick approval hit
+    // on top of their normal stat-based scoring. A shutdown is a catastrophic failure
+    // of governance — public outrage should rapidly destroy minister approval.
     const SHUTDOWN_MINISTER_PENALTY = -6;
+
+    // ── Build ministry_key → institution funding map ──
+    // Maps each ministry to its institutions' funding percentages so we can
+    // penalise ministers for underfunded/collapsed institutions.
+    const ministryFundingMap = {};  // ministry_key → [{ id, fundingPct }]
+    if (institutionConfig && institutionConfig.length > 0) {
+        // Build allocation lookup: institution id → { allocated, needed }
+        const allocMap = {};
+        for (const row of (budgetAllocations || [])) {
+            if (row.item_type === 'institution') {
+                allocMap[row.item_id] = {
+                    allocated: Number(row.allocation_amount || 0),
+                    needed: Number(row.needed_amount || 0)
+                };
+            }
+        }
+
+        for (const inst of institutionConfig) {
+            const key = inst.ministry_key;
+            if (!ministryFundingMap[key]) ministryFundingMap[key] = [];
+
+            let fundingPct;
+            if (isShutdown) {
+                // Shutdown forces all institutions to 0% funding
+                fundingPct = 0;
+            } else {
+                const alloc = allocMap[inst.id];
+                fundingPct = alloc && alloc.needed > 0
+                    ? Math.min(100, Math.round((alloc.allocated / alloc.needed) * 100))
+                    : 0;  // no allocation row = unfunded
+            }
+
+            ministryFundingMap[key].push({ id: inst.id, fundingPct });
+        }
+    }
 
     const results = [];
 
@@ -11324,7 +11449,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
         const ownedStats = MINISTRY_TO_STATS[ministry.ministry_key];
         if (!ownedStats || ownedStats.length === 0) continue;
 
-        // Score each owned stat
+        // ── Component 1: Stat-based scoring (averaged) ──
         let contributionSum = 0;
         let statCount = 0;
         for (const statKey of ownedStats) {
@@ -11336,11 +11461,32 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
             }
         }
 
-        // Skip ministers with no stat contributions UNLESS shutdown is active
-        // (shutdown penalty must apply to all ministers regardless of stat data)
-        if (statCount === 0 && !isShutdown) continue;
+        // Skip ministers with no stat contributions AND no funding data UNLESS shutdown
+        const institutions = ministryFundingMap[ministry.ministry_key];
+        if (statCount === 0 && !isShutdown && !institutions) continue;
 
         let avgDelta = statCount > 0 ? contributionSum / statCount : 0;
+
+        // ── Component 2: Funding penalty (additive, not averaged) ──
+        // A minister whose ministry is underfunded should lose approval directly,
+        // regardless of whether stat values have decayed yet.
+        let fundingPenalty = 0;
+        let collapsedPenalty = 0;
+        if (institutions && institutions.length > 0) {
+            const avgFunding = institutions.reduce((sum, i) => sum + i.fundingPct, 0) / institutions.length;
+            const fundingRatio = avgFunding / 100;  // 0.0–1.0
+
+            // Linear penalty: 0% funded → full penalty, 100% funded → 0
+            fundingPenalty = (1.0 - fundingRatio) * GOV_APPROVAL_CONFIG.MINISTER_FUNDING_PENALTY_MAX;
+
+            // ── Component 3: Collapsed institution penalty (additive, stacks) ──
+            const collapsedCount = institutions.filter(
+                i => i.fundingPct <= GOV_APPROVAL_CONFIG.MINISTER_COLLAPSED_THRESHOLD
+            ).length;
+            collapsedPenalty = collapsedCount * GOV_APPROVAL_CONFIG.MINISTER_COLLAPSED_INST_PENALTY;
+        }
+
+        avgDelta += fundingPenalty + collapsedPenalty;
 
         // Government shutdown: stack a direct penalty on top of stat-based scoring
         if (isShutdown) {
@@ -11382,13 +11528,20 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
             old: oldApproval,
             new: newApproval,
             delta: Math.round(avgDelta * 10) / 10,
+            fundingPenalty: Math.round(fundingPenalty * 10) / 10,
+            collapsedPenalty: Math.round(collapsedPenalty * 10) / 10,
             embattled: embattledSinceTick !== null
         });
     }
 
     if (results.length > 0) {
-        const shutdownTag = isShutdown ? ' [SHUTDOWN -3/tick penalty active]' : '';
-        console.log(`[updateMinisterApprovals] ${nation.name}:${shutdownTag} ${results.map(r => `${r.ministry_key} ${r.old}→${r.new} (${r.delta >= 0 ? '+' : ''}${r.delta})`).join(', ')}`);
+        const shutdownTag = isShutdown ? ' [SHUTDOWN -6/tick penalty active]' : '';
+        console.log(`[updateMinisterApprovals] ${nation.name}:${shutdownTag} ${results.map(r => {
+            const parts = [`${r.ministry_key} ${r.old}→${r.new} (${r.delta >= 0 ? '+' : ''}${r.delta})`];
+            if (r.fundingPenalty) parts.push(`fund:${r.fundingPenalty}`);
+            if (r.collapsedPenalty) parts.push(`collapsed:${r.collapsedPenalty}`);
+            return parts.join(' ');
+        }).join(', ')}`);
     }
 
     return results;
@@ -15101,6 +15254,12 @@ async function advanceTick(supabase) {
         // policy deltas and rebase on birth_rate - death_rate afterwards.
         const popGrowthBeforeEffects = Number(nation.population_growth ?? 50);
 
+        // Snapshot stats referenced by STAT_BLOC_REACTIONS before effects
+        const statBlocSnapshots = {};
+        for (const r of STAT_BLOC_REACTIONS) {
+            statBlocSnapshots[r.stat] = Number(nation[r.stat] ?? 50);
+        }
+
         // Stat effects (from passed bills/active laws)
         const effectResults = await processStatEffects(supabase, nation, newTick);
         if (effectResults.length > 0) summary.effects.push({ nation: nation.name, effects: effectResults });
@@ -15115,6 +15274,9 @@ async function advanceTick(supabase) {
         // Apply GDP growth rate
         await applyGdpGrowth(supabase, nation);
 
+        // Stat → voter bloc reactions (e.g. corporate_tax changes → Business Owners momentum)
+        await processStatBlocReactions(supabase, nation, statBlocSnapshots);
+
         // Stat decay (equilibrium drift + erosion, modified by institution funding)
         if (!_institutionConfig) {
             const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
@@ -15123,6 +15285,7 @@ async function advanceTick(supabase) {
         const shutdownCheck = await isGovernmentShutdown(supabase, nation, newTick);
         const shutdown = shutdownCheck.active;
         let statInstMap = null;
+        let budgetItemAllocs = null;   // hoisted for minister approval funding check
         if (shutdown && _institutionConfig.length > 0) {
             // Government shutdown: force ALL institutions to 0% funding → Collapsed decay rates
             statInstMap = buildShutdownStatInstMap(_institutionConfig);
@@ -15132,6 +15295,7 @@ async function advanceTick(supabase) {
                 .select('item_type, item_id, allocation_amount, needed_amount')
                 .eq('bill_id', nation.last_budget_bill_id)
                 .eq('item_type', 'institution');
+            budgetItemAllocs = itemAllocs;
             statInstMap = buildStatInstitutionMap(_institutionConfig, itemAllocs);
         }
         const decayResults = await processStatDecay(supabase, nation, statInstMap, shutdown);
@@ -15285,9 +15449,9 @@ async function advanceTick(supabase) {
         // Record stat history for trend calculations (Phase 2)
         await recordStatHistory(supabase, nation, newTick);
 
-        // Layer 1: Update minister approvals from stat thresholds
-        // During government shutdown, all ministers take a direct -3/tick approval penalty
-        const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick, shutdownNow);
+        // Layer 1: Update minister approvals from stat thresholds + ministry funding
+        // During government shutdown, all ministers take a direct -6/tick approval penalty
+        const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick, shutdownNow, _institutionConfig, budgetItemAllocs);
         if (ministerApprovalResults.length > 0) {
             summary.ministerApprovals = summary.ministerApprovals || [];
             summary.ministerApprovals.push({ nation: nation.name, results: ministerApprovalResults });
