@@ -35,9 +35,9 @@
         <div class="np-oped-editor__title">Letters to the Editor</div>
       </div>
       <div class="np-oped-editor__header-right">
-        <div class="np-oped-editor__cost">
+        <div class="np-oped-editor__cost" id="oped-cost-display">
           <span class="np-oped-editor__cost-icon">&#9998;</span>
-          <span>1 Action Point</span>
+          <span id="oped-cost-label">1 Action Point</span>
         </div>
         <button class="np-oped-editor__close" id="oped-close-btn" title="Close">&times;</button>
       </div>
@@ -63,8 +63,8 @@
           <label class="np-oped-editor__label">Your Argument</label>
           <textarea id="oped-body" class="np-oped-editor__body-input"
                     placeholder="State your party's position. Make your case to the citizens. The Cruceran editorial board will review all submissions for the next edition..."
-                    maxlength="800" rows="10"></textarea>
-          <div class="np-oped-editor__charcount"><span id="oped-body-count">0</span> / 800</div>
+                    maxlength="3000" rows="14"></textarea>
+          <div class="np-oped-editor__charcount"><span id="oped-body-count">0</span> / 3000</div>
         </div>
 
         <div class="np-oped-editor__field">
@@ -76,6 +76,15 @@
             <option value="defence">Defence &amp; Security</option>
             <option value="society">Society &amp; Culture</option>
           </select>
+        </div>
+
+        <div class="np-oped-editor__field">
+          <label class="np-oped-editor__placement-toggle">
+            <input type="checkbox" id="oped-front-page">
+            <span class="np-oped-editor__placement-label">Feature on Front Page</span>
+            <span class="np-oped-editor__placement-cost">+3 AP (4 total)</span>
+          </label>
+          <div class="np-oped-editor__placement-hint">Your op-ed will appear as a featured article on next edition's front page.</div>
         </div>
       </div>
 
@@ -105,11 +114,117 @@
         <button class="np-oped-editor__btn-cancel" id="oped-cancel-btn">Discard</button>
         <button class="np-oped-editor__btn-submit" id="oped-submit-btn" disabled>
           <span class="np-oped-editor__btn-submit-text">Submit to Editor</span>
+          <span class="np-oped-editor__btn-submit-cost" id="oped-submit-cost-badge">1 AP</span>
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     WRITE ARTICLE — NEWSPAPER-STYLE EDITOR
+     ═══════════════════════════════════════════════════ -->
+<div class="np-oped-overlay" id="article-modal">
+  <div class="np-oped-editor np-article-editor">
+
+    <div class="np-oped-editor__header">
+      <div class="np-oped-editor__header-left">
+        <div class="np-oped-editor__section-tag" style="background:var(--np-accent-gold);color:#1a1a1a;">Article</div>
+        <div class="np-oped-editor__title">Submit an Article</div>
+      </div>
+      <div class="np-oped-editor__header-right">
+        <div class="np-oped-editor__cost">
+          <span class="np-oped-editor__cost-icon">&#128240;</span>
+          <span>1 Action Point</span>
+        </div>
+        <button class="np-oped-editor__close" id="article-close-btn" title="Close">&times;</button>
+      </div>
+    </div>
+
+    <div class="np-oped-editor__rule"></div>
+
+    <div class="np-oped-editor__body">
+      <div class="np-oped-editor__form">
+        <div class="np-oped-editor__field">
+          <label class="np-oped-editor__label">Headline</label>
+          <input type="text" id="article-headline" class="np-oped-editor__headline-input"
+                 placeholder="Your article headline..."
+                 maxlength="120" autocomplete="off">
+          <div class="np-oped-editor__charcount"><span id="article-headline-count">0</span> / 120</div>
+        </div>
+
+        <div class="np-oped-editor__field">
+          <label class="np-oped-editor__label">Article Body</label>
+          <textarea id="article-body" class="np-oped-editor__body-input"
+                    placeholder="Write your article here. Cover the story, share insights, report the facts..."
+                    maxlength="1200" rows="12"></textarea>
+          <div class="np-oped-editor__charcount"><span id="article-body-count">0</span> / 1200</div>
+        </div>
+
+        <div class="np-oped-editor__field">
+          <label class="np-oped-editor__label">Category</label>
+          <select id="article-category" class="np-oped-editor__topic-select">
+            <option value="politics">Politics</option>
+            <option value="sports">Sports</option>
+            <option value="weather">Weather</option>
+            <option value="science">Science</option>
+            <option value="entertainment">Entertainment</option>
+          </select>
+        </div>
+
+        <div class="np-oped-editor__field">
+          <label class="np-oped-editor__label">Image (optional)</label>
+          <div class="np-article-image-upload" id="article-image-area">
+            <input type="file" id="article-image-input" accept="image/*" style="display:none">
+            <button type="button" class="np-article-image-btn" id="article-image-btn">Choose Image</button>
+            <span class="np-article-image-name" id="article-image-name">No image selected</span>
+            <button type="button" class="np-article-image-clear" id="article-image-clear" style="display:none">✕</button>
+          </div>
+          <div class="np-article-image-preview" id="article-image-preview" style="display:none">
+            <img id="article-image-preview-img" alt="Preview">
+          </div>
+        </div>
+      </div>
+
+      <div class="np-oped-editor__preview-pane">
+        <div class="np-oped-editor__preview-masthead">
+          <div class="np-oped-editor__preview-masthead-pre">Preview</div>
+          <div class="np-oped-editor__preview-masthead-title">THE CRUCERAN</div>
+          <div class="np-oped-editor__preview-masthead-sub">Reader Contributions</div>
+        </div>
+        <div class="np-oped-editor__preview-card" id="article-preview-content">
+          <div class="np-player-article-preview">
+            <div class="np-player-article-preview__category">Category</div>
+            <h3 class="np-player-article-preview__headline">Your headline will appear here...</h3>
+            <p class="np-player-article-preview__body" style="color:var(--np-text-light);font-style:italic;">Start writing to see how your article will look.</p>
+            <div class="np-player-article-preview__author">— Your Party</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="np-oped-editor__footer">
+      <div class="np-oped-editor__error" id="article-error"></div>
+      <div class="np-oped-editor__footer-actions">
+        <button class="np-oped-editor__btn-cancel" id="article-cancel-btn">Discard</button>
+        <button class="np-oped-editor__btn-submit" id="article-submit-btn" disabled>
+          <span class="np-oped-editor__btn-submit-text">Submit Article</span>
           <span class="np-oped-editor__btn-submit-cost">1 AP</span>
         </button>
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     ARTICLE READER — FULL-SCREEN OVERLAY
+     ═══════════════════════════════════════════════════ -->
+<div class="np-reader-overlay" id="reader-overlay">
+  <div class="np-reader">
+    <button class="np-reader__close" id="reader-close-btn">&times;</button>
+    <div class="np-reader__content" id="reader-content"></div>
   </div>
 </div>
 
@@ -175,6 +290,7 @@ function categoryToSection(category) {
 let _state = null;
 let _events = [];
 let _opeds = [];
+let _playerArticles = [];
 let _nationName = 'Valdoria';
 let _currentEdition = 'national';
 
@@ -194,11 +310,12 @@ initPage('events', async (state) => {
 
   _nationName = nation.name || 'Valdoria';
 
-  // Load events from ALL nations, plus op-eds/parties for current nation
-  const [events, campaignActions, opeds, parties, leaderMap, nationNames] = await Promise.all([
+  // Load events from ALL nations, plus op-eds/parties/articles for current nation
+  const [events, campaignActions, opeds, playerArticles, parties, leaderMap, nationNames] = await Promise.all([
     loadEvents(shard),
     loadCampaignActions(shard),
     loadOpEds(nation.id, shard),
+    loadPlayerArticles(nation.id),
     loadParties(nation.id),
     loadAllFactionLeaders(),
     loadAllNationNames()
@@ -206,12 +323,15 @@ initPage('events', async (state) => {
 
   _events = events;
   _opeds = opeds;
+  _playerArticles = playerArticles;
 
   // Generate rich articles from templates (all nations)
   const articles = buildArticles(events, campaignActions, nationNames, leaderMap);
 
-  renderNewspaper(nation, faction, shard, articles, opeds, parties);
+  renderNewspaper(nation, faction, shard, articles, opeds, parties, playerArticles);
   setupOpEdModal(faction, nation, shard);
+  setupArticleModal(faction, nation, shard);
+  setupReaderOverlay();
 });
 
 /* ══════════════════════════════════════════════════════
@@ -261,6 +381,25 @@ async function loadOpEds(nationId, shard) {
         return [];
       }
       data = res.data;
+    }
+    return data || [];
+  } catch {
+    return [];
+  }
+}
+
+async function loadPlayerArticles(nationId) {
+  try {
+    const { data, error } = await _supabase
+      .from('player_articles')
+      .select('*, factions!author_faction_id(faction_name, abbreviation, party_color)')
+      .eq('nation_id', nationId)
+      .eq('status', 'published')
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (error) {
+      console.warn('player_articles table not found (run migration):', error.message);
+      return [];
     }
     return data || [];
   } catch {
@@ -608,7 +747,8 @@ function buildArticles(events, campaignActions, nationNames, leaderMap) {
 /* ══════════════════════════════════════════════════════
    RENDER — NEWSPAPER LAYOUT
    ══════════════════════════════════════════════════════ */
-function renderNewspaper(nation, faction, shard, articles, opeds, parties) {
+function renderNewspaper(nation, faction, shard, articles, opeds, parties, playerArticles) {
+  playerArticles = playerArticles || [];
   // Articles are pre-sorted by tick then tier from buildArticles()
   const sorted = articles;
 
@@ -617,6 +757,10 @@ function renderNewspaper(nation, faction, shard, articles, opeds, parties) {
   const featuredArticles = sorted.filter(a => a !== heroArticle).slice(0, 6);
   const briefArticles = sorted.filter(a => a !== heroArticle && !featuredArticles.includes(a)).slice(0, 8);
   const currentTick = shard?.current_tick || 0;
+
+  // Split op-eds into featured (front page) and regular
+  const featuredOpeds = opeds.filter(o => o.is_front_page);
+  const regularOpeds = opeds.filter(o => !o.is_front_page);
   const currentDate = shard?.current_date || tickToDate(currentTick);
 
   // Ticker items from headlines
@@ -659,11 +803,18 @@ function renderNewspaper(nation, faction, shard, articles, opeds, parties) {
   <div class="np-masthead__pre">Independent · Established 1923</div>
   <h1 class="np-masthead__title">THE CRUCERAN</h1>
   <div class="np-masthead__sub">The Paper for the World at Large</div>
-  <button class="np-oped-btn" id="write-oped-btn" title="Write an Op-Ed (1 AP)">
-    <span class="np-oped-btn__icon">&#9998;</span>
-    Write Op-Ed
-    <span class="np-oped-btn__cost">1 AP</span>
-  </button>
+  <div class="np-masthead__actions">
+    <button class="np-article-btn" id="write-article-btn" title="Write an Article (1 AP)">
+      <span class="np-article-btn__icon">&#128240;</span>
+      Write Article
+      <span class="np-article-btn__cost">1 AP</span>
+    </button>
+    <button class="np-oped-btn" id="write-oped-btn" title="Write an Op-Ed (1 AP)">
+      <span class="np-oped-btn__icon">&#9998;</span>
+      Write Op-Ed
+      <span class="np-oped-btn__cost">1 AP</span>
+    </button>
+  </div>
 </header>
 
 <!-- NAV TABS -->
@@ -703,10 +854,22 @@ ${heroArticle && heroArticle.tier <= 1 ? `
       ${briefArticles.map(a => renderBrief(a)).join('')}
     </ul>
     ` : ''}
-    ${opeds.length > 0 ? `
+    ${playerArticles.length > 0 ? `
+    <hr class="np-divider np-divider--heavy">
+    <div class="np-section-label">Reader Contributions</div>
+    <div class="np-player-articles-grid">
+      ${playerArticles.map(a => renderPlayerArticleCard(a)).join('')}
+    </div>
+    ` : ''}
+    ${featuredOpeds.length > 0 ? `
+    <hr class="np-divider np-divider--heavy">
+    <div class="np-section-label">Featured Opinion</div>
+    ${featuredOpeds.map(o => renderOpEdCard(o)).join('')}
+    ` : ''}
+    ${regularOpeds.length > 0 ? `
     <hr class="np-divider">
     <div class="np-section-label">Op-Eds</div>
-    ${opeds.map(o => renderOpEdCard(o)).join('')}
+    ${regularOpeds.map(o => renderOpEdCard(o)).join('')}
     ` : ''}
     <hr class="np-divider">
     <div class="np-section-label">Previous Editions</div>
@@ -732,8 +895,13 @@ ${heroArticle && heroArticle.tier <= 1 ? `
     tab.addEventListener('click', () => {
       root.querySelectorAll('.np-nav-tabs__item').forEach(t => t.classList.remove('np-nav-tabs__item--active'));
       tab.classList.add('np-nav-tabs__item--active');
-      filterByTab(tab.dataset.tab, sorted, opeds, sectionToTab);
+      filterByTab(tab.dataset.tab, sorted, opeds, sectionToTab, playerArticles);
     });
+  });
+
+  // Write Article button
+  document.getElementById('write-article-btn')?.addEventListener('click', () => {
+    if (window._openArticleModal) window._openArticleModal();
   });
 
   // Write Op-Ed button
@@ -857,12 +1025,41 @@ function renderBrief(article) {
 function renderOpEdCard(oped) {
   const factionName = oped.factions?.faction_name || 'Anonymous';
   const abbr = oped.factions?.abbreviation || '?';
+  const isFront = oped.is_front_page;
+  const bodyText = oped.body || '';
+  const truncated = bodyText.length > 400 ? bodyText.substring(0, 400) + '...' : bodyText;
+  const opedId = oped.id || '';
   return `
-    <div class="np-opinion-card">
+    <div class="np-opinion-card ${isFront ? 'np-opinion-card--featured' : ''}" data-oped-id="${opedId}" style="cursor:pointer;" onclick="window._openReader && window._openReader('oped', '${opedId}')">
+      ${isFront ? '<div class="np-opinion-card__featured-badge">FEATURED</div>' : ''}
       <div class="np-opinion-card__label">Opinion</div>
       <h3 class="np-opinion-card__headline">${escapeHtml(oped.headline || 'Untitled')}</h3>
-      <p class="np-opinion-card__body">${escapeHtml(oped.body || '')}</p>
+      <p class="np-opinion-card__body">${escapeHtml(truncated)}</p>
       <div class="np-opinion-card__author">— ${escapeHtml(factionName)} (${escapeHtml(abbr)})</div>
+      ${bodyText.length > 400 ? '<div class="np-opinion-card__readmore">Read full op-ed ›</div>' : ''}
+    </div>
+  `;
+}
+
+function renderPlayerArticleCard(article) {
+  const factionName = article.factions?.faction_name || 'Anonymous';
+  const abbr = article.factions?.abbreviation || '?';
+  const color = article.factions?.party_color || '#666';
+  const cat = article.category || 'politics';
+  const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+  const bodyText = article.body || '';
+  const truncated = bodyText.length > 200 ? bodyText.substring(0, 200) + '...' : bodyText;
+  const articleId = article.id || '';
+  const hasImage = article.image_url;
+  return `
+    <div class="np-player-article-card" data-article-id="${articleId}" onclick="window._openReader && window._openReader('article', '${articleId}')" style="cursor:pointer;">
+      ${hasImage ? `<div class="np-player-article-card__image" style="background-image:url('${escapeHtml(article.image_url)}')"></div>` : ''}
+      <div class="np-player-article-card__content">
+        <div class="np-player-article-card__category" style="color:${escapeHtml(color)}">${escapeHtml(catLabel)}</div>
+        <h3 class="np-player-article-card__headline">${escapeHtml(article.headline || 'Untitled')}</h3>
+        <p class="np-player-article-card__body">${escapeHtml(truncated)}</p>
+        <div class="np-player-article-card__author">By ${escapeHtml(factionName)} (${escapeHtml(abbr)})</div>
+      </div>
     </div>
   `;
 }
@@ -982,7 +1179,8 @@ function renderSidebarElection(parties, shard) {
 /* ══════════════════════════════════════════════════════
    TAB FILTERING
    ══════════════════════════════════════════════════════ */
-function filterByTab(tab, articles, opeds, sectionToTab) {
+function filterByTab(tab, articles, opeds, sectionToTab, playerArticles) {
+  playerArticles = playerArticles || [];
   const main = document.querySelector('.np-content__main');
   if (!main) return;
 
@@ -999,6 +1197,11 @@ function filterByTab(tab, articles, opeds, sectionToTab) {
   if (tab !== 'front' && sectionToTab) {
     filtered = articles.filter(a => sectionToTab(a.section) === tab);
   }
+
+  // Filter player articles by category matching tab
+  const catMap = { domestic: 'politics', economy: 'economy', international: 'international', defence: 'defence' };
+  const tabPlayerArticles = tab === 'front' ? playerArticles :
+    playerArticles.filter(a => a.category === (catMap[tab] || tab));
 
   const hero = filtered[0];
   const rest = filtered.slice(1, 7);
@@ -1018,6 +1221,12 @@ function filterByTab(tab, articles, opeds, sectionToTab) {
     <ul class="np-briefs-list">
       ${briefs.map(a => renderBrief(a)).join('')}
     </ul>` : ''}
+    ${tabPlayerArticles.length > 0 ? `
+    <hr class="np-divider np-divider--heavy">
+    <div class="np-section-label">Reader Contributions</div>
+    <div class="np-player-articles-grid">
+      ${tabPlayerArticles.map(a => renderPlayerArticleCard(a)).join('')}
+    </div>` : ''}
   `;
 }
 
@@ -1035,14 +1244,25 @@ function setupOpEdModal(faction, nation, shard) {
   const headline = document.getElementById('oped-headline');
   const bodyEl = document.getElementById('oped-body');
   const topic = document.getElementById('oped-topic');
+  const frontPageCheck = document.getElementById('oped-front-page');
   const submitBtn = document.getElementById('oped-submit-btn');
   const submitText = submitBtn.querySelector('.np-oped-editor__btn-submit-text');
+  const costBadge = document.getElementById('oped-submit-cost-badge');
+  const costLabel = document.getElementById('oped-cost-label');
   const cancelBtn = document.getElementById('oped-cancel-btn');
   const closeBtn = document.getElementById('oped-close-btn');
   const errorEl = document.getElementById('oped-error');
   const headlineCount = document.getElementById('oped-headline-count');
   const bodyCount = document.getElementById('oped-body-count');
   const previewContent = document.getElementById('oped-preview-content');
+
+  function getOpEdCost() { return frontPageCheck.checked ? 4 : 1; }
+
+  frontPageCheck.addEventListener('change', () => {
+    const cost = getOpEdCost();
+    costBadge.textContent = cost + ' AP';
+    costLabel.textContent = cost + ' Action Point' + (cost > 1 ? 's' : '');
+  });
 
   function validate() {
     const h = headline.value.trim();
@@ -1107,8 +1327,11 @@ function setupOpEdModal(faction, nation, shard) {
     submitText.textContent = 'Submitting...';
     errorEl.classList.remove('np-oped-editor__error--visible');
 
-    // Deduct 1 AP
-    const apResult = await deductAP(_supabase, faction.id, 1);
+    const apCost = getOpEdCost();
+    const isFrontPage = frontPageCheck.checked;
+
+    // Deduct AP (1 for normal, 4 for front page)
+    const apResult = await deductAP(_supabase, faction.id, apCost);
     if (!apResult.success) {
       errorEl.textContent = apResult.error || 'Insufficient AP.';
       errorEl.classList.add('np-oped-editor__error--visible');
@@ -1130,6 +1353,7 @@ function setupOpEdModal(faction, nation, shard) {
       body: b,
       section: t,
       status: 'published',
+      is_front_page: isFrontPage,
       published_tick: nextTick,
       created_at: new Date().toISOString()
     }]);
@@ -1161,6 +1385,9 @@ function setupOpEdModal(faction, nation, shard) {
     closeModal();
     headline.value = '';
     bodyEl.value = '';
+    frontPageCheck.checked = false;
+    costBadge.textContent = '1 AP';
+    costLabel.textContent = '1 Action Point';
     headlineCount.textContent = '0';
     bodyCount.textContent = '0';
     submitText.textContent = 'Submit to Editor';
@@ -1168,14 +1395,276 @@ function setupOpEdModal(faction, nation, shard) {
 
     // Reload and re-render
     _opeds = await loadOpEds(nation.id, shard);
+    const [parties, reloadEvents, reloadActions, reloadPlayerArticles, leaderMap, nationNames] = await Promise.all([
+      loadParties(nation.id), loadEvents(shard), loadCampaignActions(shard),
+      loadPlayerArticles(nation.id), loadAllFactionLeaders(), loadAllNationNames()
+    ]);
+    _events = reloadEvents;
+    _playerArticles = reloadPlayerArticles;
+    const articles = buildArticles(_events, reloadActions, nationNames, leaderMap);
+    renderNewspaper(nation, faction, shard, articles, _opeds, parties, _playerArticles);
+  });
+}
+
+/* ══════════════════════════════════════════════════════
+   ARTICLE MODAL
+   ══════════════════════════════════════════════════════ */
+let _articleModalInitialized = false;
+
+function setupArticleModal(faction, nation, shard) {
+  if (_articleModalInitialized) return;
+  _articleModalInitialized = true;
+
+  const modal = document.getElementById('article-modal');
+  const headline = document.getElementById('article-headline');
+  const bodyEl = document.getElementById('article-body');
+  const category = document.getElementById('article-category');
+  const imageInput = document.getElementById('article-image-input');
+  const imageBtn = document.getElementById('article-image-btn');
+  const imageName = document.getElementById('article-image-name');
+  const imageClear = document.getElementById('article-image-clear');
+  const imagePreview = document.getElementById('article-image-preview');
+  const imagePreviewImg = document.getElementById('article-image-preview-img');
+  const submitBtn = document.getElementById('article-submit-btn');
+  const submitText = submitBtn.querySelector('.np-oped-editor__btn-submit-text');
+  const cancelBtn = document.getElementById('article-cancel-btn');
+  const closeBtn = document.getElementById('article-close-btn');
+  const errorEl = document.getElementById('article-error');
+  const headlineCount = document.getElementById('article-headline-count');
+  const bodyCount = document.getElementById('article-body-count');
+  const previewContent = document.getElementById('article-preview-content');
+
+  let selectedFile = null;
+
+  function validate() {
+    const h = headline.value.trim();
+    const b = bodyEl.value.trim();
+    submitBtn.disabled = h.length < 10 || b.length < 30;
+    headlineCount.textContent = headline.value.length;
+    bodyCount.textContent = bodyEl.value.length;
+
+    const cat = category.value;
+    const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+    previewContent.innerHTML = `
+      <div class="np-player-article-preview">
+        <div class="np-player-article-preview__category">${escapeHtml(catLabel)}</div>
+        <h3 class="np-player-article-preview__headline">${escapeHtml(h || 'Your headline will appear here...')}</h3>
+        <p class="np-player-article-preview__body"${!b ? ' style="color:var(--np-text-light);font-style:italic;"' : ''}>${escapeHtml(b || 'Start writing to see how your article will look.')}</p>
+        <div class="np-player-article-preview__author">— ${escapeHtml(faction.faction_name || 'Your Party')} (${escapeHtml(faction.abbreviation || '?')})</div>
+      </div>
+    `;
+  }
+
+  headline.addEventListener('input', validate);
+  bodyEl.addEventListener('input', validate);
+  category.addEventListener('change', validate);
+
+  // Image handling
+  imageBtn.addEventListener('click', () => imageInput.click());
+  imageInput.addEventListener('change', () => {
+    const file = imageInput.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        errorEl.textContent = 'Image must be under 2MB.';
+        errorEl.classList.add('np-oped-editor__error--visible');
+        imageInput.value = '';
+        return;
+      }
+      selectedFile = file;
+      imageName.textContent = file.name;
+      imageClear.style.display = 'inline-block';
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        imagePreviewImg.src = e.target.result;
+        imagePreview.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+  imageClear.addEventListener('click', () => {
+    selectedFile = null;
+    imageInput.value = '';
+    imageName.textContent = 'No image selected';
+    imageClear.style.display = 'none';
+    imagePreview.style.display = 'none';
+    imagePreviewImg.src = '';
+  });
+
+  function openModal() {
+    modal.classList.add('np-oped-overlay--open');
+    document.body.style.overflow = 'hidden';
+    headline.focus();
+  }
+  function closeModal() {
+    modal.classList.remove('np-oped-overlay--open');
+    document.body.style.overflow = '';
+    errorEl.textContent = '';
+    errorEl.classList.remove('np-oped-editor__error--visible');
+  }
+
+  cancelBtn.addEventListener('click', closeModal);
+  closeBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+  window._openArticleModal = openModal;
+
+  submitBtn.addEventListener('click', async () => {
+    const h = headline.value.trim();
+    const b = bodyEl.value.trim();
+    const cat = category.value;
+
+    if (h.length < 10) {
+      errorEl.textContent = 'Headline must be at least 10 characters.';
+      errorEl.classList.add('np-oped-editor__error--visible');
+      return;
+    }
+    if (b.length < 30) {
+      errorEl.textContent = 'Body must be at least 30 characters.';
+      errorEl.classList.add('np-oped-editor__error--visible');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitText.textContent = 'Submitting...';
+    errorEl.classList.remove('np-oped-editor__error--visible');
+
+    // Deduct 1 AP
+    const apResult = await deductAP(_supabase, faction.id, 1);
+    if (!apResult.success) {
+      errorEl.textContent = apResult.error || 'Insufficient AP.';
+      errorEl.classList.add('np-oped-editor__error--visible');
+      submitBtn.disabled = false;
+      submitText.textContent = 'Submit Article';
+      return;
+    }
+
+    // Upload image if selected
+    let imageUrl = null;
+    if (selectedFile) {
+      const ext = selectedFile.name.split('.').pop() || 'jpg';
+      const filePath = `player-articles/${nation.id}/${Date.now()}.${ext}`;
+      const { error: uploadErr } = await _supabase.storage
+        .from('public-assets')
+        .upload(filePath, selectedFile, { contentType: selectedFile.type, upsert: true });
+      if (uploadErr) {
+        console.warn('Image upload failed (continuing without image):', uploadErr.message);
+      } else {
+        const { data: urlData } = _supabase.storage.from('public-assets').getPublicUrl(filePath);
+        imageUrl = urlData?.publicUrl || null;
+      }
+    }
+
+    const leaderName = faction.leader_name || faction.faction_name || 'Anonymous';
+    const nextTick = (shard?.current_tick || 0) + 1;
+
+    const { error } = await _supabase.from('player_articles').insert([{
+      nation_id: nation.id,
+      author_faction_id: faction.id,
+      author_name: leaderName,
+      headline: h,
+      body: b,
+      category: cat,
+      image_url: imageUrl,
+      status: 'published',
+      published_tick: nextTick,
+      created_at: new Date().toISOString()
+    }]);
+
+    if (error) {
+      errorEl.textContent = 'Failed to publish: ' + error.message;
+      errorEl.classList.add('np-oped-editor__error--visible');
+      submitBtn.disabled = false;
+      submitText.textContent = 'Submit Article';
+      console.error('Article insert failed:', error);
+      return;
+    }
+
+    // Success — close and refresh
+    closeModal();
+    headline.value = '';
+    bodyEl.value = '';
+    selectedFile = null;
+    imageInput.value = '';
+    imageName.textContent = 'No image selected';
+    imageClear.style.display = 'none';
+    imagePreview.style.display = 'none';
+    headlineCount.textContent = '0';
+    bodyCount.textContent = '0';
+    submitText.textContent = 'Submit Article';
+    validate();
+
+    // Reload and re-render
+    _playerArticles = await loadPlayerArticles(nation.id);
+    _opeds = await loadOpEds(nation.id, shard);
     const [parties, reloadEvents, reloadActions, leaderMap, nationNames] = await Promise.all([
       loadParties(nation.id), loadEvents(shard), loadCampaignActions(shard),
       loadAllFactionLeaders(), loadAllNationNames()
     ]);
     _events = reloadEvents;
     const articles = buildArticles(_events, reloadActions, nationNames, leaderMap);
-    renderNewspaper(nation, faction, shard, articles, _opeds, parties);
+    renderNewspaper(nation, faction, shard, articles, _opeds, parties, _playerArticles);
   });
+}
+
+/* ══════════════════════════════════════════════════════
+   READER OVERLAY — FULL ARTICLE / OP-ED VIEW
+   ══════════════════════════════════════════════════════ */
+function setupReaderOverlay() {
+  const overlay = document.getElementById('reader-overlay');
+  const content = document.getElementById('reader-content');
+  const closeBtn = document.getElementById('reader-close-btn');
+
+  function closeReader() {
+    overlay.classList.remove('np-reader-overlay--open');
+    document.body.style.overflow = '';
+  }
+
+  closeBtn.addEventListener('click', closeReader);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeReader(); });
+
+  window._openReader = function(type, id) {
+    let html = '';
+
+    if (type === 'oped') {
+      const oped = _opeds.find(o => o.id === id);
+      if (!oped) return;
+      const factionName = oped.factions?.faction_name || 'Anonymous';
+      const abbr = oped.factions?.abbreviation || '?';
+      const isFront = oped.is_front_page;
+      html = `
+        <div class="np-reader__article">
+          ${isFront ? '<div class="np-reader__featured-badge">FEATURED OPINION</div>' : ''}
+          <div class="np-reader__section-tag" style="color:var(--np-section-opinion);">Opinion</div>
+          <h1 class="np-reader__headline">${escapeHtml(oped.headline || 'Untitled')}</h1>
+          <div class="np-reader__byline">By ${escapeHtml(factionName)} (${escapeHtml(abbr)})</div>
+          <hr class="np-reader__rule">
+          <div class="np-reader__body">${escapeHtml(oped.body || '').replace(/\n/g, '<br>')}</div>
+        </div>
+      `;
+    } else if (type === 'article') {
+      const article = _playerArticles.find(a => a.id === id);
+      if (!article) return;
+      const factionName = article.factions?.faction_name || 'Anonymous';
+      const abbr = article.factions?.abbreviation || '?';
+      const cat = article.category || 'politics';
+      const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+      html = `
+        <div class="np-reader__article">
+          <div class="np-reader__section-tag">${escapeHtml(catLabel)}</div>
+          <h1 class="np-reader__headline">${escapeHtml(article.headline || 'Untitled')}</h1>
+          <div class="np-reader__byline">By ${escapeHtml(factionName)} (${escapeHtml(abbr)})</div>
+          <hr class="np-reader__rule">
+          ${article.image_url ? `<div class="np-reader__image"><img src="${escapeHtml(article.image_url)}" alt="Article image"></div>` : ''}
+          <div class="np-reader__body">${escapeHtml(article.body || '').replace(/\n/g, '<br>')}</div>
+        </div>
+      `;
+    }
+
+    if (html) {
+      content.innerHTML = html;
+      overlay.classList.add('np-reader-overlay--open');
+      document.body.style.overflow = 'hidden';
+    }
+  };
 }
 </script>
 </body>
