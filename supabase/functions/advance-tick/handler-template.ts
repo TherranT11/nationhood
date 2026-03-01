@@ -341,6 +341,393 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
     }
 }
 
+// ==================== SOVEREIGN DEFAULT — TICK-ONLY HELPERS ====================
+
+/**
+ * Per-tick debt mechanics: update burden, deteriorate credit, check lockout,
+ * and programmatically trigger a Sovereign Debt Crisis when conditions are met.
+ */
+async function processSovereignDebtMechanics(supabase, nation, currentTick) {
+    const ratio = getDebtToGDP(nation);
+    if (!isFinite(ratio)) return null;
+
+    const burden = calculateDebtServiceBurden(nation);
+    const creditDeterioration = calculateCreditDeterioration(nation);
+    const currentCredit = Number(nation.credit ?? 50);
+    const cfg = SOVEREIGN_DEFAULT_CONFIG;
+
+    const updates: any = {};
+    const results: any = { nationId: nation.id, ratio, burden };
+
+    // 1. Update debt_service_burden if changed
+    const oldBurden = Number(nation.debt_service_burden ?? 0);
+    if (Math.abs(burden - oldBurden) > 0.001) {
+        updates.debt_service_burden = Math.round(burden * 1000) / 1000;
+        results.burdenChanged = true;
+    }
+
+    // 2. Apply credit deterioration (per-tick penalty from high debt)
+    if (creditDeterioration > 0 && currentCredit > 0) {
+        const newCredit = Math.max(0, Math.round((currentCredit - creditDeterioration) * 10) / 10);
+        updates.credit = newCredit;
+        results.creditDeterioration = creditDeterioration;
+        results.creditBefore = currentCredit;
+        results.creditAfter = newCredit;
+    }
+
+    // 3. Check credit lockout (credit <= 5 means locked out of borrowing)
+    const effectiveCredit = updates.credit !== undefined ? updates.credit : currentCredit;
+    const wasLocked = Boolean(nation.credit_locked_out);
+    const shouldLock = effectiveCredit <= cfg.CREDIT_LOCKOUT_THRESHOLD;
+    if (shouldLock !== wasLocked) {
+        updates.credit_locked_out = shouldLock;
+        results.creditLockoutChanged = shouldLock;
+    }
+
+    // Write updates
+    if (Object.keys(updates).length > 0) {
+        const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
+        if (error) {
+            console.error(`[SovereignDebt] Update failed for ${nation.name}:`, error.message);
+            return results;
+        }
+        Object.assign(nation, updates);
+    }
+
+    // 4. Programmatically trigger Sovereign Debt Crisis when:
+    //    debt-to-GDP > 200% AND credit <= 15 AND no crisis already active
+    if (ratio >= cfg.DEBT_CRISIS_MIN_RATIO && effectiveCredit <= cfg.DEBT_CRISIS_MAX_CREDIT) {
+        const { data: existing } = await supabase
+            .from('active_crises')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('crisis_id', SOVEREIGN_DEBT_CRISIS_ID);
+
+        if (!existing || existing.length === 0) {
+            const { error: insertErr } = await supabase.from('active_crises').insert({
+                crisis_id: SOVEREIGN_DEBT_CRISIS_ID,
+                nation_id: nation.id,
+                started_at_tick: currentTick,
+                effects_applied_log: []
+            });
+            if (!insertErr) {
+                results.debtCrisisTriggered = true;
+                console.log(`[SovereignDebt] Debt Crisis triggered for ${nation.name} (ratio=${(ratio * 100).toFixed(0)}%, credit=${effectiveCredit})`);
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: 'CRISIS_STARTED: Sovereign Debt Crisis',
+                    description_used: `Crushing debt (${(ratio * 100).toFixed(0)}% of GDP) and low creditworthiness have triggered a sovereign debt crisis.`,
+                    category: 'crisis',
+                    effects_applied: [],
+                    fired_at_tick: currentTick
+                });
+            }
+        }
+    }
+
+    if (results.burdenChanged || results.creditDeterioration || results.creditLockoutChanged || results.debtCrisisTriggered) {
+        console.log(`[SovereignDebt] ${nation.name}: ratio=${(ratio * 100).toFixed(0)}% burden=${burden.toFixed(3)} credit=${effectiveCredit}${shouldLock ? ' LOCKED' : ''}`);
+    }
+
+    return results;
+}
+
+/**
+ * Called when a default_resolution bill passes.
+ * Applies immediate penalties, reduces debt, starts Sovereign Default Crisis,
+ * records history, and triggers contagion on trade partners.
+ */
+async function enactSovereignDefault(supabase, bill, currentTick) {
+    const cfg = SOVEREIGN_DEFAULT_CONFIG;
+
+    // 1. Look up the default_resolution record
+    const { data: resolution } = await supabase
+        .from('default_resolutions')
+        .select('*')
+        .eq('bill_id', bill.id)
+        .single();
+
+    if (!resolution) {
+        console.error(`[enactSovereignDefault] No default_resolution found for bill ${bill.id}`);
+        return;
+    }
+
+    // 2. Fetch fresh nation data
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('*')
+        .eq('id', bill.nation_id)
+        .single();
+    if (!nation) return;
+
+    // 3. Calculate multipliers
+    const multiplier = getDefaultPenaltyMultiplier(resolution.default_type, resolution.repayment_rate);
+    const discount = calculateAusterityDiscount(resolution.austerity_commitments || []);
+    const discountedMultiplier = multiplier * (1 - discount);
+
+    // 4. Calculate new debt
+    const currentDebt = Number(nation.debt ?? 0);
+    const debtAfter = resolution.default_type === 'full'
+        ? 0
+        : Math.round(currentDebt * (resolution.repayment_rate || 0.5));
+
+    // 5. Apply immediate stat penalties
+    const clamp = (val, delta) => Math.max(0, Math.min(100, Math.round((val + delta) * 10) / 10));
+
+    const nationUpdates: any = {
+        debt: debtAfter,
+        last_default_tick: currentTick,
+        credit: clamp(Number(nation.credit ?? 50), cfg.FULL_DEFAULT_CREDIT_HIT * discountedMultiplier),
+        currency_strength: clamp(Number(nation.currency_strength ?? 50), cfg.FULL_DEFAULT_CURRENCY_HIT * multiplier),
+        foreign_investment: clamp(Number(nation.foreign_investment ?? 50), cfg.FULL_DEFAULT_FOREIGN_INV_HIT * discountedMultiplier),
+        international_reputation: clamp(Number(nation.international_reputation ?? 50), cfg.FULL_DEFAULT_INTL_REP_HIT * discountedMultiplier),
+        interest_rates: clamp(Number(nation.interest_rates ?? 50), cfg.FULL_DEFAULT_INTEREST_SPIKE * multiplier),
+        inflation: clamp(Number(nation.inflation ?? 50), cfg.FULL_DEFAULT_INFLATION_SPIKE * multiplier),
+        trade_balance: clamp(Number(nation.trade_balance ?? 50), cfg.FULL_DEFAULT_TRADE_HIT * multiplier),
+        standard_of_living: clamp(Number(nation.standard_of_living ?? 50), cfg.FULL_DEFAULT_SOL_HIT * multiplier),
+        happiness: clamp(Number(nation.happiness ?? 50), cfg.FULL_DEFAULT_HAPPINESS_HIT * multiplier),
+    };
+
+    // Re-derive debt_service_burden and credit lockout from new values
+    nationUpdates.debt_service_burden = (() => {
+        const gdp = Number(nation.gdp ?? 0);
+        if (gdp <= 0 || debtAfter <= 0) return 0;
+        const newRatio = debtAfter / gdp;
+        if (newRatio <= cfg.BURDEN_THRESHOLD) return 0;
+        return Math.round(Math.min(cfg.BURDEN_MAX, (newRatio - cfg.BURDEN_THRESHOLD) * cfg.BURDEN_SCALE) * 1000) / 1000;
+    })();
+    nationUpdates.credit_locked_out = nationUpdates.credit <= cfg.CREDIT_LOCKOUT_THRESHOLD;
+
+    const { error: updateErr } = await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+    if (updateErr) {
+        console.error(`[enactSovereignDefault] Nation update failed:`, updateErr.message);
+        return;
+    }
+
+    console.log(`[enactSovereignDefault] ${nation.name}: ${resolution.default_type} default enacted. Debt ${currentDebt} → ${debtAfter}, multiplier=${multiplier.toFixed(2)}, discount=${discount.toFixed(2)}`);
+
+    // 6. Government approval shock
+    await adjustGovernmentApprovalEvent(supabase, nation.id, cfg.FULL_DEFAULT_GOV_APPROVAL_HIT * multiplier, 'sovereign_default:enacted');
+
+    // 7. Record in default_history
+    await supabase.from('default_history').insert({
+        nation_id: nation.id,
+        default_resolution_id: resolution.id,
+        default_type: resolution.default_type,
+        repayment_rate: resolution.repayment_rate,
+        debt_before: currentDebt,
+        debt_after: debtAfter,
+        executed_at_tick: currentTick
+    });
+
+    // 8. Update resolution status
+    await supabase.from('default_resolutions').update({
+        status: 'passed',
+        resolved_at_tick: currentTick
+    }).eq('id', resolution.id);
+
+    // 9. Start Sovereign Default Crisis
+    const { data: existingCrisis } = await supabase
+        .from('active_crises')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('crisis_id', SOVEREIGN_DEFAULT_CRISIS_ID);
+
+    if (!existingCrisis || existingCrisis.length === 0) {
+        await supabase.from('active_crises').insert({
+            crisis_id: SOVEREIGN_DEFAULT_CRISIS_ID,
+            nation_id: nation.id,
+            started_at_tick: currentTick,
+            effects_applied_log: []
+        });
+        console.log(`[enactSovereignDefault] Sovereign Default Crisis started for ${nation.name}`);
+    }
+
+    // 10. Event log
+    await supabase.from('event_log').insert({
+        nation_id: nation.id,
+        event_name: 'CRISIS_STARTED: Sovereign Default',
+        description_used: `${nation.name} has ${resolution.default_type === 'full' ? 'fully defaulted on' : 'partially restructured'} its sovereign debt. International markets react with alarm.`,
+        category: 'crisis',
+        effects_applied: [],
+        fired_at_tick: currentTick
+    });
+
+    // 11. Contagion — hit trade partners' credit
+    try {
+        // Find nations that trade with this nation (from most recent tick data)
+        const { data: partners } = await supabase
+            .from('trade_partners')
+            .select('importer_nation_id, trade_volume')
+            .eq('exporter_nation_id', nation.id)
+            .order('tick', { ascending: false })
+            .limit(50);
+
+        const { data: partners2 } = await supabase
+            .from('trade_partners')
+            .select('exporter_nation_id, trade_volume')
+            .eq('importer_nation_id', nation.id)
+            .order('tick', { ascending: false })
+            .limit(50);
+
+        // Unique set of partner nation IDs
+        const partnerIds = new Set<string>();
+        (partners || []).forEach(p => partnerIds.add(p.importer_nation_id));
+        (partners2 || []).forEach(p => partnerIds.add(p.exporter_nation_id));
+        partnerIds.delete(nation.id); // exclude self
+
+        for (const partnerId of partnerIds) {
+            // Random contagion hit within range
+            const hit = -(cfg.CONTAGION_CREDIT_MIN + Math.random() * (cfg.CONTAGION_CREDIT_MAX - cfg.CONTAGION_CREDIT_MIN));
+            const { data: partnerNation } = await supabase
+                .from('nations')
+                .select('credit, name')
+                .eq('id', partnerId)
+                .single();
+
+            if (partnerNation) {
+                const newCredit = Math.max(0, Math.round((Number(partnerNation.credit ?? 50) + hit) * 10) / 10);
+                await supabase.from('nations').update({ credit: newCredit }).eq('id', partnerId);
+                console.log(`[Contagion] ${partnerNation.name}: credit ${hit.toFixed(1)} (${nation.name} default)`);
+
+                await supabase.from('event_log').insert({
+                    nation_id: partnerId,
+                    event_name: 'Sovereign Default Contagion',
+                    description_used: `${nation.name}'s sovereign default has shaken investor confidence in the region.`,
+                    category: 'economy',
+                    effects_applied: [{ stat: 'credit', change: Math.round(hit * 10) / 10 }],
+                    fired_at_tick: currentTick
+                });
+            }
+        }
+        console.log(`[Contagion] ${partnerIds.size} trade partners affected by ${nation.name}'s default`);
+    } catch (contagionErr) {
+        console.error(`[Contagion] Failed:`, contagionErr);
+    }
+}
+
+/**
+ * Called when a default_resolution bill fails.
+ * Applies failure consequences: partial market recovery, PM approval hit.
+ */
+async function handleFailedDefaultResolution(supabase, bill, currentTick) {
+    const cfg = SOVEREIGN_DEFAULT_CONFIG;
+
+    // 1. Look up the default_resolution record
+    const { data: resolution } = await supabase
+        .from('default_resolutions')
+        .select('*')
+        .eq('bill_id', bill.id)
+        .single();
+
+    if (!resolution) {
+        console.error(`[handleFailedDefaultResolution] No default_resolution found for bill ${bill.id}`);
+        return;
+    }
+
+    // 2. Fetch nation
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('id, name, currency_strength, foreign_investment, international_reputation')
+        .eq('id', bill.nation_id)
+        .single();
+    if (!nation) return;
+
+    // 3. Apply failure consequences: partial market recovery from filing shock,
+    //    but PM takes an approval hit for the failed political gambit
+    const clamp = (val, delta) => Math.max(0, Math.min(100, Math.round((val + delta) * 10) / 10));
+
+    const updates: any = {
+        currency_strength: clamp(Number(nation.currency_strength ?? 50), cfg.FAILURE_CURRENCY_RECOVERY),
+        foreign_investment: clamp(Number(nation.foreign_investment ?? 50), cfg.FAILURE_FOREIGN_INV_RECOVERY),
+        international_reputation: clamp(Number(nation.international_reputation ?? 50), cfg.FAILURE_INTL_REP_HIT),
+    };
+
+    await supabase.from('nations').update(updates).eq('id', nation.id);
+    await adjustGovernmentApprovalEvent(supabase, nation.id, cfg.FAILURE_PM_APPROVAL_HIT, 'sovereign_default:failed');
+
+    // 4. Update resolution status
+    await supabase.from('default_resolutions').update({
+        status: 'failed',
+        resolved_at_tick: currentTick
+    }).eq('id', resolution.id);
+
+    // 5. Event log
+    await supabase.from('event_log').insert({
+        nation_id: nation.id,
+        event_name: 'Default Resolution Failed',
+        description_used: `Parliament rejected the sovereign default resolution. Markets show cautious relief, but the government's credibility has taken a hit.`,
+        category: 'economy',
+        effects_applied: [
+            { stat: 'currency_strength', change: cfg.FAILURE_CURRENCY_RECOVERY },
+            { stat: 'foreign_investment', change: cfg.FAILURE_FOREIGN_INV_RECOVERY },
+            { stat: 'international_reputation', change: cfg.FAILURE_INTL_REP_HIT }
+        ],
+        fired_at_tick: currentTick
+    });
+
+    console.log(`[handleFailedDefaultResolution] ${nation.name}: resolution failed, market partial recovery applied`);
+}
+
+/**
+ * Per-tick processing of active austerity commitments from enacted defaults.
+ * Applies gradual stat reductions as promised in the default resolution.
+ */
+async function processAusterityCommitments(supabase, nation, currentTick) {
+    // Find default_resolutions with active austerity commitments for this nation
+    const { data: resolutions } = await supabase
+        .from('default_resolutions')
+        .select('id, austerity_commitments, resolved_at_tick')
+        .eq('nation_id', nation.id)
+        .eq('status', 'passed')
+        .not('austerity_commitments', 'eq', '[]');
+
+    if (!resolutions || resolutions.length === 0) return [];
+
+    const results = [];
+    const nationUpdates: any = {};
+
+    for (const res of resolutions) {
+        const commitments = res.austerity_commitments || [];
+        if (!Array.isArray(commitments) || commitments.length === 0) continue;
+
+        const resolvedTick = res.resolved_at_tick || 0;
+        const ticksElapsed = currentTick - resolvedTick;
+        let allComplete = true;
+
+        for (const commitment of commitments) {
+            if (!commitment.stat || !commitment.reduction || !commitment.over_ticks) continue;
+
+            // Skip if already complete
+            if (ticksElapsed > commitment.over_ticks) continue;
+            if (ticksElapsed <= 0) { allComplete = false; continue; }
+
+            allComplete = false;
+
+            // Apply per-tick reduction: total_reduction / duration_ticks
+            const perTickReduction = commitment.reduction / commitment.over_ticks;
+            const resolvedKey = normalizeNationStatKey(commitment.stat);
+            if (!resolvedKey || !NATION_STAT_COLUMN_SET.has(resolvedKey)) continue;
+
+            const currentVal = Number(nation[resolvedKey] ?? 50);
+            const newVal = Math.max(0, Math.round((currentVal - perTickReduction) * 10) / 10);
+
+            if (newVal !== currentVal) {
+                nationUpdates[resolvedKey] = newVal;
+                nation[resolvedKey] = newVal;
+                results.push({ stat: resolvedKey, change: -perTickReduction, ticksRemaining: commitment.over_ticks - ticksElapsed });
+            }
+        }
+    }
+
+    if (Object.keys(nationUpdates).length > 0) {
+        await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
+        console.log(`[Austerity] ${nation.name}: applied ${results.length} commitment adjustment(s)`);
+    }
+
+    return results;
+}
+
 // ==================== ADVANCE TICK ====================
 
 async function advanceTick(supabase) {
@@ -573,6 +960,28 @@ async function advanceTick(supabase) {
         // Ongoing costs
         const costResult = await processOngoingCosts(supabase, nation, newTick);
         if (costResult.totalCost !== 0) summary.costs.push({ nation: nation.name, ...costResult });
+
+        // Sovereign debt mechanics (burden, credit deterioration, lockout, debt crisis trigger)
+        try {
+            const debtResult = await processSovereignDebtMechanics(supabase, nation, newTick);
+            if (debtResult && (debtResult.burdenChanged || debtResult.creditDeterioration || debtResult.debtCrisisTriggered)) {
+                summary.sovereignDebt = summary.sovereignDebt || [];
+                summary.sovereignDebt.push({ nation: nation.name, ...debtResult });
+            }
+        } catch (debtErr) {
+            console.error(`[advanceTick] Sovereign debt mechanics failed for ${nation.name} (non-fatal):`, debtErr);
+        }
+
+        // Austerity commitments from enacted sovereign defaults
+        try {
+            const austerityResults = await processAusterityCommitments(supabase, nation, newTick);
+            if (austerityResults.length > 0) {
+                summary.austerity = summary.austerity || [];
+                summary.austerity.push({ nation: nation.name, commitments: austerityResults });
+            }
+        } catch (austErr) {
+            console.error(`[advanceTick] Austerity processing failed for ${nation.name} (non-fatal):`, austErr);
+        }
 
         // PM trait effects
         await processPMTraitEffects(supabase, nation, newTick);

@@ -2006,7 +2006,12 @@ export async function processStatEffects(supabase, nation, currentTick) {
 
                     // For raw-value stats (population), scale rate by divisor
                     // so rate: 1 means +1M for population
-                    const scaledRate = RAW_SCALING_DIVISORS[statKey] ? rate * RAW_SCALING_DIVISORS[statKey] : rate;
+                    let scaledRate = RAW_SCALING_DIVISORS[statKey] ? rate * RAW_SCALING_DIVISORS[statKey] : rate;
+
+                    // Debt service burden: reduce government-spending-dependent stat effects
+                    if (SPENDING_AFFECTED_STATS.has(statKey)) {
+                        scaledRate *= getSpendingEffectivenessMultiplier(nation);
+                    }
 
                     let newVal;
                     if (dir === 'up') {
