@@ -2074,7 +2074,7 @@ const STATS_LOWER_IS_BETTER = [
 
 // ==================== STAT DECAY CONFIGURATION ====================
 
-const DECAY_SPEED = { VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
+const DECAY_SPEED = { CRAWL: 0.25, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
 
 /**
  * Stats that decay each tick. Two types:
@@ -2084,40 +2084,40 @@ const DECAY_SPEED = { VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 };
  */
 const STAT_DECAY_CONFIG = {
     // ── Equilibrium (drift back to midpoint) ──
-    inflation:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
-    civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.FAST },
-    polarization:        { type: 'equilibrium', target: 30, speed: DECAY_SPEED.SLOW },
-    terrorism:           { type: 'equilibrium', target: 10, speed: DECAY_SPEED.SLOW },
-    political_violence:  { type: 'equilibrium', target: 10, speed: DECAY_SPEED.MEDIUM },
-    happiness:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
-    foreign_investment:  { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    trade_balance:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
-    gdp_growth:          { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    immigration:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    illegal_immigration: { type: 'equilibrium', target: 30, speed: DECAY_SPEED.SLOW },
-    emigration:          { type: 'equilibrium', target: 30, speed: DECAY_SPEED.MEDIUM },
-    fuel_prices:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.MEDIUM },
-    debt_growth:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.SLOW },
+    inflation:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
+    polarization:        { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
+    terrorism:           { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
+    political_violence:  { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
+    happiness:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    foreign_investment:  { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    trade_balance:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    gdp_growth:          { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    immigration:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    illegal_immigration: { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
+    emigration:          { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
+    fuel_prices:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    debt_growth:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
 
     // ── Erosion (degrade toward bad floor if neglected) ──
-    physical_infrastructure:  { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
-    digital_infrastructure:   { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
-    rail_network:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
-    energy_generation:        { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
-    efficiency:               { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    corruption:               { type: 'erosion', target: 10, speed: DECAY_SPEED.SLOW },
-    healthcare_quality:       { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.VERY_SLOW },
-    beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.VERY_SLOW },
-    education_accessibility:  { type: 'erosion', target: 30, speed: DECAY_SPEED.VERY_SLOW },
-    press_freedom:            { type: 'erosion', target: 40, speed: DECAY_SPEED.SLOW },
-    judicial_independence:    { type: 'erosion', target: 40, speed: DECAY_SPEED.SLOW },
-    freedom_index:            { type: 'erosion', target: 40, speed: DECAY_SPEED.VERY_SLOW },
-    standard_of_living:       { type: 'erosion', target: 40, speed: DECAY_SPEED.VERY_SLOW },
-    social_mobility:          { type: 'erosion', target: 30, speed: DECAY_SPEED.SLOW },
-    benefits:                 { type: 'erosion', target: 0,  speed: DECAY_SPEED.VERY_SLOW },
+    physical_infrastructure:  { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    digital_infrastructure:   { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    rail_network:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    energy_generation:        { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    efficiency:               { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    corruption:               { type: 'erosion', target: 10, speed: DECAY_SPEED.CRAWL },
+    healthcare_quality:       { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.CRAWL },
+    education_accessibility:  { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    press_freedom:            { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
+    judicial_independence:    { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
+    freedom_index:            { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
+    standard_of_living:       { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
+    social_mobility:          { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    benefits:                 { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
 };
 
 // Validate decay config keys at module load
