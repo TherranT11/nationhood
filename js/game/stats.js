@@ -338,7 +338,7 @@ export const STAT_TO_MINISTRY = {
     minimum_wage: 'labor', union_strength: 'labor',
     poverty_rate: 'labor', income_inequality: 'labor',
     // Interior
-    stability: 'interior', civil_unrest: 'interior',
+    stability: 'interior',
     crime_rate: 'interior', incarceration_rate: 'interior',
     immigration: 'interior', illegal_immigration: 'interior',
     // Justice
@@ -351,7 +351,9 @@ export const STAT_TO_MINISTRY = {
     physical_infrastructure: 'transportation', digital_infrastructure: 'transportation',
     rail_network: 'transportation', urbanization: 'transportation',
     // Defense
-    terrorism: 'defense', political_violence: 'defense',
+    terrorism: 'defense',
+    // Security
+    civil_unrest: 'security', political_violence: 'security',
     // Trade
     trade_balance: 'trade', trade_agreements: 'trade',
     tariffs: 'trade', foreign_investment: 'trade',
