@@ -63,8 +63,14 @@
           <label class="np-oped-editor__label">Your Argument</label>
           <textarea id="oped-body" class="np-oped-editor__body-input"
                     placeholder="State your party's position. Make your case to the citizens. The Cruceran editorial board will review all submissions for the next edition..."
-                    maxlength="3000" rows="14"></textarea>
-          <div class="np-oped-editor__charcount"><span id="oped-body-count">0</span> / 3000</div>
+                    maxlength="8000" rows="14"></textarea>
+          <div class="np-oped-editor__charcount">
+            <span id="oped-body-count">0</span> / 8000 chars
+            · <span id="oped-word-count">0</span> words
+          </div>
+          <div class="np-article-reward-hint" style="margin-top:6px;">
+            <strong>+2 AP Reward:</strong> Write 1,000+ words and earn 2 Action Points next tick!
+          </div>
         </div>
 
         <div class="np-oped-editor__field">
@@ -134,9 +140,9 @@
         <div class="np-oped-editor__title">Submit an Article</div>
       </div>
       <div class="np-oped-editor__header-right">
-        <div class="np-oped-editor__cost">
+        <div class="np-oped-editor__cost" style="background:rgba(76,175,80,0.1);color:#4CAF50;">
           <span class="np-oped-editor__cost-icon">&#128240;</span>
-          <span>1 Action Point</span>
+          <span>Free to Submit</span>
         </div>
         <button class="np-oped-editor__close" id="article-close-btn" title="Close">&times;</button>
       </div>
@@ -146,6 +152,10 @@
 
     <div class="np-oped-editor__body">
       <div class="np-oped-editor__form">
+        <div class="np-article-reward-hint">
+          <strong>+1 AP Reward:</strong> Write 500+ words and earn 1 Action Point next tick!
+        </div>
+
         <div class="np-oped-editor__field">
           <label class="np-oped-editor__label">Headline</label>
           <input type="text" id="article-headline" class="np-oped-editor__headline-input"
@@ -158,8 +168,11 @@
           <label class="np-oped-editor__label">Article Body</label>
           <textarea id="article-body" class="np-oped-editor__body-input"
                     placeholder="Write your article here. Cover the story, share insights, report the facts..."
-                    maxlength="1200" rows="12"></textarea>
-          <div class="np-oped-editor__charcount"><span id="article-body-count">0</span> / 1200</div>
+                    maxlength="5000" rows="12"></textarea>
+          <div class="np-oped-editor__charcount">
+            <span id="article-body-count">0</span> / 5000 chars
+            · <span id="article-word-count">0</span> words
+          </div>
         </div>
 
         <div class="np-oped-editor__field">
@@ -210,7 +223,7 @@
         <button class="np-oped-editor__btn-cancel" id="article-cancel-btn">Discard</button>
         <button class="np-oped-editor__btn-submit" id="article-submit-btn" disabled>
           <span class="np-oped-editor__btn-submit-text">Submit Article</span>
-          <span class="np-oped-editor__btn-submit-cost">1 AP</span>
+          <span class="np-oped-editor__btn-submit-cost" style="background:rgba(76,175,80,0.15);color:#4CAF50;">Free</span>
         </button>
       </div>
     </div>
@@ -804,10 +817,10 @@ function renderNewspaper(nation, faction, shard, articles, opeds, parties, playe
   <h1 class="np-masthead__title">THE CRUCERAN</h1>
   <div class="np-masthead__sub">The Paper for the World at Large</div>
   <div class="np-masthead__actions">
-    <button class="np-article-btn" id="write-article-btn" title="Write an Article (1 AP)">
+    <button class="np-article-btn" id="write-article-btn" title="Write an Article (Free — earn +1 AP for 500+ words)">
       <span class="np-article-btn__icon">&#128240;</span>
       Write Article
-      <span class="np-article-btn__cost">1 AP</span>
+      <span class="np-article-btn__cost" style="background:rgba(76,175,80,0.15);color:#4CAF50;">Free</span>
     </button>
     <button class="np-oped-btn" id="write-oped-btn" title="Write an Op-Ed (1 AP)">
       <span class="np-oped-btn__icon">&#9998;</span>
@@ -1255,6 +1268,7 @@ function setupOpEdModal(faction, nation, shard) {
   const headlineCount = document.getElementById('oped-headline-count');
   const bodyCount = document.getElementById('oped-body-count');
   const previewContent = document.getElementById('oped-preview-content');
+  const opedWordCountEl = document.getElementById('oped-word-count');
 
   function getOpEdCost() { return frontPageCheck.checked ? 4 : 1; }
 
@@ -1269,9 +1283,11 @@ function setupOpEdModal(faction, nation, shard) {
     const b = bodyEl.value.trim();
     submitBtn.disabled = h.length < 10 || b.length < 30;
 
-    // Update char counts
+    // Update char + word counts
     headlineCount.textContent = headline.value.length;
     bodyCount.textContent = bodyEl.value.length;
+    const wc = b.split(/\s+/).filter(w => w.length > 0).length;
+    if (opedWordCountEl) opedWordCountEl.textContent = wc;
 
     // Update live preview
     previewContent.innerHTML = `
@@ -1279,6 +1295,7 @@ function setupOpEdModal(faction, nation, shard) {
         <div class="np-opinion-card__label">Opinion</div>
         <h3 class="np-opinion-card__headline">${escapeHtml(h || 'Your headline will appear here...')}</h3>
         <p class="np-opinion-card__body"${!b ? ' style="color:var(--np-text-light);font-style:italic;"' : ''}>${escapeHtml(b || 'Start writing to see how your op-ed will look in The Cruceran.')}</p>
+        ${wc >= 1000 ? '<div class="np-article-reward-earned">+2 AP will be awarded next tick</div>' : wc >= 800 ? `<div class="np-article-reward-progress">${1000 - wc} more words for +2 AP reward</div>` : ''}
         <div class="np-opinion-card__author">— ${escapeHtml(faction.faction_name || 'Your Party')} (${escapeHtml(faction.abbreviation || '?')})</div>
       </div>
     `;
@@ -1343,6 +1360,11 @@ function setupOpEdModal(faction, nation, shard) {
     // Insert op-ed (supports both old and new schema via fallback)
     const leaderName = faction.leader_name || faction.faction_name || 'Anonymous';
     const nextTick = (shard?.current_tick || 0) + 1;
+
+    // Reward AP for long op-eds: +2 AP next tick if 1000+ words
+    const opedWordCount = b.split(/\s+/).filter(w => w.length > 0).length;
+    const opedRewardAp = opedWordCount >= 1000 ? 2 : 0;
+
     let insertError = null;
     // Try new schema first (author_faction_id, section, published_tick, status)
     const { error: err1 } = await _supabase.from('op_eds').insert([{
@@ -1355,6 +1377,7 @@ function setupOpEdModal(faction, nation, shard) {
       status: 'published',
       is_front_page: isFrontPage,
       published_tick: nextTick,
+      reward_ap: opedRewardAp,
       created_at: new Date().toISOString()
     }]);
     if (err1) {
@@ -1436,12 +1459,16 @@ function setupArticleModal(faction, nation, shard) {
 
   let selectedFile = null;
 
+  const articleWordCountEl = document.getElementById('article-word-count');
+
   function validate() {
     const h = headline.value.trim();
     const b = bodyEl.value.trim();
     submitBtn.disabled = h.length < 10 || b.length < 30;
     headlineCount.textContent = headline.value.length;
     bodyCount.textContent = bodyEl.value.length;
+    const wc = b.split(/\s+/).filter(w => w.length > 0).length;
+    if (articleWordCountEl) articleWordCountEl.textContent = wc;
 
     const cat = category.value;
     const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
@@ -1451,6 +1478,7 @@ function setupArticleModal(faction, nation, shard) {
         <h3 class="np-player-article-preview__headline">${escapeHtml(h || 'Your headline will appear here...')}</h3>
         <p class="np-player-article-preview__body"${!b ? ' style="color:var(--np-text-light);font-style:italic;"' : ''}>${escapeHtml(b || 'Start writing to see how your article will look.')}</p>
         <div class="np-player-article-preview__author">— ${escapeHtml(faction.faction_name || 'Your Party')} (${escapeHtml(faction.abbreviation || '?')})</div>
+        ${wc >= 500 ? '<div class="np-article-reward-earned">+1 AP will be awarded next tick</div>' : wc >= 400 ? `<div class="np-article-reward-progress">${500 - wc} more words for +1 AP reward</div>` : ''}
       </div>
     `;
   }
@@ -1527,15 +1555,9 @@ function setupArticleModal(faction, nation, shard) {
     submitText.textContent = 'Submitting...';
     errorEl.classList.remove('np-oped-editor__error--visible');
 
-    // Deduct 1 AP
-    const apResult = await deductAP(_supabase, faction.id, 1);
-    if (!apResult.success) {
-      errorEl.textContent = apResult.error || 'Insufficient AP.';
-      errorEl.classList.add('np-oped-editor__error--visible');
-      submitBtn.disabled = false;
-      submitText.textContent = 'Submit Article';
-      return;
-    }
+    // No AP cost for articles — reward AP if 500+ words
+    const wordCount = b.split(/\s+/).filter(w => w.length > 0).length;
+    const rewardAp = wordCount >= 500 ? 1 : 0;
 
     // Upload image if selected
     let imageUrl = null;
@@ -1566,6 +1588,7 @@ function setupArticleModal(faction, nation, shard) {
       image_url: imageUrl,
       status: 'published',
       published_tick: nextTick,
+      reward_ap: rewardAp,
       created_at: new Date().toISOString()
     }]);
 

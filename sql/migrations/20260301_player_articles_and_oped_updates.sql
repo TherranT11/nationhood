@@ -1,9 +1,19 @@
 -- Migration: Player articles table + Op-Ed front page feature
 -- Safe to re-run.
 
--- Add is_front_page to op_eds (if column doesn't exist)
+-- Add new columns to op_eds (if they don't exist)
 DO $$ BEGIN
   ALTER TABLE op_eds ADD COLUMN is_front_page BOOLEAN DEFAULT false;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE op_eds ADD COLUMN reward_ap INTEGER DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE op_eds ADD COLUMN reward_granted BOOLEAN DEFAULT false;
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 
@@ -21,6 +31,8 @@ CREATE TABLE IF NOT EXISTS player_articles (
     status          TEXT NOT NULL DEFAULT 'draft'
                     CHECK (status IN ('draft', 'published', 'rejected')),
     published_tick  INTEGER,
+    reward_ap       INTEGER DEFAULT 0,
+    reward_granted  BOOLEAN DEFAULT false,
     created_at      TIMESTAMPTZ DEFAULT now(),
     updated_at      TIMESTAMPTZ DEFAULT now()
 );

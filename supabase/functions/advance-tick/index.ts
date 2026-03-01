@@ -15370,6 +15370,62 @@ async function auditStatKeys(supabase) {
 }
 
 /**
+ * Grant AP rewards for long-form writing published this tick.
+ * - Op-eds with 1000+ words: +2 AP to author faction
+ * - Player articles with 500+ words: +1 AP to author faction
+ * Marks rows as rewarded so they aren't double-counted.
+ */
+async function processWritingRewards(supabase, nationId, currentTick) {
+    const rewards = [];
+
+    // Op-ed rewards: reward_ap > 0 and published_tick = currentTick
+    const { data: opeds } = await supabase
+        .from('op_eds')
+        .select('id, author_faction_id, reward_ap')
+        .eq('nation_id', nationId)
+        .eq('published_tick', currentTick)
+        .gt('reward_ap', 0)
+        .eq('reward_granted', false);
+
+    for (const oped of (opeds || [])) {
+        if (!oped.author_faction_id || !oped.reward_ap) continue;
+        const { error } = await supabase.rpc('deduct_ap', {
+            p_faction_id: oped.author_faction_id,
+            p_cost: -oped.reward_ap  // Negative cost = add AP
+        });
+        if (!error) {
+            await supabase.from('op_eds').update({ reward_granted: true }).eq('id', oped.id);
+            rewards.push({ type: 'oped', factionId: oped.author_faction_id, ap: oped.reward_ap });
+            console.log(`[processWritingRewards] Op-ed reward: +${oped.reward_ap} AP to faction ${oped.author_faction_id}`);
+        }
+    }
+
+    // Player article rewards
+    const { data: articles } = await supabase
+        .from('player_articles')
+        .select('id, author_faction_id, reward_ap')
+        .eq('nation_id', nationId)
+        .eq('published_tick', currentTick)
+        .gt('reward_ap', 0)
+        .eq('reward_granted', false);
+
+    for (const article of (articles || [])) {
+        if (!article.author_faction_id || !article.reward_ap) continue;
+        const { error } = await supabase.rpc('deduct_ap', {
+            p_faction_id: article.author_faction_id,
+            p_cost: -article.reward_ap  // Negative cost = add AP
+        });
+        if (!error) {
+            await supabase.from('player_articles').update({ reward_granted: true }).eq('id', article.id);
+            rewards.push({ type: 'article', factionId: article.author_faction_id, ap: article.reward_ap });
+            console.log(`[processWritingRewards] Article reward: +${article.reward_ap} AP to faction ${article.author_faction_id}`);
+        }
+    }
+
+    return rewards;
+}
+
+/**
  * Process lingering approval decay from minister purges (autocracy mechanic).
  */
 async function processPurgeDecay(supabase, nationId, currentTick) {
@@ -16222,6 +16278,17 @@ async function advanceTick(supabase) {
             summary.promises.push({ nation: nation.name, promises: promiseResults });
         }
 
+
+        // Writing AP rewards: grant bonus AP for long op-eds and articles published this tick
+        try {
+            const rewardResults = await processWritingRewards(supabase, nation.id, newTick);
+            if (rewardResults.length > 0) {
+                summary.writingRewards = summary.writingRewards || [];
+                summary.writingRewards.push({ nation: nation.name, rewards: rewardResults });
+            }
+        } catch (rewardErr) {
+            console.error(`[advanceTick] Writing rewards failed for ${nation.name} (non-fatal):`, rewardErr);
+        }
 
         // Economic aid condition reviews (annual, at year boundaries)
         const aidReviewResults = await processAidConditionReview(supabase, freshNation || nation, newTick);
