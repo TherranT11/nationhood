@@ -20,7 +20,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
 import { tickToDate, escapeHtml, getIdeologyClass } from './js/utils.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize, ensureBlocApprovals, selectPresidentCandidate, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize, ensureBlocApprovals, selectPresidentCandidate, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_VECTORS, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, computeAttackCredibility, executeAttack } from './js/game-common.js';
 import { getPartyIconSVG, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -3264,6 +3264,7 @@ async function renderParties() {
             <div id="promise-maker-container"></div>
         </div>
         <div id="outreach-container"></div>
+        <div id="attack-container"></div>
 
 
         ${otherPartiesHtml}
@@ -4832,6 +4833,346 @@ async function renderParties() {
     }
 
     renderPromiseMaker();
+
+    // ── Attack Campaign UI ──
+    let attackSelectedTarget = null;
+    let attackSelectedVector = null;
+    let attackResult = null;
+    let attackEvidenceCache = {}; // { factionId: evidence }
+
+    // Fetch recent attacks for credibility calc
+    const { data: recentAttackActions } = await _supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', f.id)
+        .eq('action_type', 'attack')
+        .gte('tick_performed', (currentShard?.current_tick || 0) - ATTACK_CONFIG.COOLDOWN_WINDOW)
+        .order('tick_performed', { ascending: false });
+
+    const attackedThisTick = (recentAttackActions || []).some(r => r.tick_performed === (currentShard?.current_tick || 0));
+    const attackCredibility = computeAttackCredibility((recentAttackActions || []).length);
+
+    // Attack history
+    const { data: attackHistory } = await _supabase
+        .from('campaign_actions')
+        .select('tick_performed, result')
+        .eq('party_id', f.id)
+        .eq('action_type', 'attack')
+        .order('tick_performed', { ascending: false })
+        .limit(6);
+
+    // Rival parties (exclude self)
+    const rivalParties = (allParties || []).filter(p => p.id !== f.id);
+
+    const ATTACK_OUTCOME_COLORS = {
+        devastating: '#4ade80', effective: '#22d3ee', glancing: '#facc15',
+        backfire: '#f97316', mutual: '#ef4444',
+    };
+    const ATTACK_OUTCOME_ICONS = {
+        devastating: '\u2726', effective: '\u25CF', glancing: '\u25E6',
+        backfire: '\u26A0', mutual: '\u2715',
+    };
+
+    async function loadEvidenceForTarget(targetId) {
+        if (attackEvidenceCache[targetId]) return attackEvidenceCache[targetId];
+        const evidence = await gatherAttackEvidence(_supabase, targetId, n.id, currentShard?.current_tick || 0);
+        attackEvidenceCache[targetId] = evidence;
+        return evidence;
+    }
+
+    async function renderAttack() {
+        const container = document.getElementById('attack-container');
+        if (!container) return;
+        const costOk = currentAP >= ATTACK_CONFIG.AP_COST;
+        const canAttack = costOk && !attackedThisTick;
+
+        // Build rival approval lookup
+        const rivalApprovals = {};
+        for (const row of (allBlocApprovals || [])) {
+            if (!rivalApprovals[row.faction_id]) rivalApprovals[row.faction_id] = [];
+            rivalApprovals[row.faction_id].push(row);
+        }
+
+        // Compute average approval per rival
+        function avgApproval(fid) {
+            const rows = rivalApprovals[fid] || [];
+            if (rows.length === 0) return 50;
+            const total = rows.reduce((s, r) => s + (r.preference_score || 0), 0);
+            return Math.round(total / rows.length);
+        }
+
+        // Credibility bar color
+        const credColor = attackCredibility > 60 ? '#4ade80' : attackCredibility > 30 ? '#facc15' : '#ef4444';
+
+        // Get current coalition for governing status
+        const activeCoalition = await fetchActiveCoalition(_supabase, n.id);
+        const coalitionIds = new Set(activeCoalition?.party_ids || []);
+
+        // ─── Target cards ───
+        const targetCards = rivalParties.map(p => {
+            const isSelected = attackSelectedTarget === p.id;
+            const avg = avgApproval(p.id);
+            const isGov = coalitionIds.has(p.id);
+            const cached = attackEvidenceCache[p.id];
+            const ammo = cached
+                ? cached.broken_promises.length + cached.controversial_votes.length + (cached.is_governing ? cached.governance_record.length : 0)
+                : null;
+            const ammoColor = ammo === null ? '#6b6a5e' : ammo >= 2 ? '#4ade80' : ammo === 1 ? '#facc15' : '#ef4444';
+
+            return `<div class="attack-target-card${isSelected ? ' selected' : ''}${!canAttack ? ' disabled' : ''}" data-target-id="${p.id}">
+                <div class="attack-target-left">
+                    <span class="attack-target-name">${escapeHtml(p.faction_name)}</span>
+                    <span class="attack-target-pill">${p.seats || 0} seats</span>
+                    ${isGov ? '<span class="attack-target-pill attack-pill-gov">Gov</span>' : ''}
+                </div>
+                <div class="attack-target-right">
+                    ${ammo !== null ? `<div class="attack-target-ammo">
+                        <span class="attack-target-ammo-label">Ammo:</span>
+                        ${[0, 1, 2].map(i => `<div class="attack-ammo-dot${i < ammo ? ' filled' : ''}" style="${i < ammo ? 'background:' + ammoColor : ''}"></div>`).join('')}
+                    </div>` : ''}
+                    <span class="attack-target-approval">Avg: ${avg}</span>
+                </div>
+            </div>`;
+        }).join('');
+
+        // ─── Vector selection + detail (when target selected) ───
+        let vectorHtml = '';
+        if (attackSelectedTarget && !attackResult) {
+            const evidence = attackEvidenceCache[attackSelectedTarget];
+            const vectors = evidence ? buildAttackVectors(evidence) : [];
+            const target = rivalParties.find(p => p.id === attackSelectedTarget);
+
+            const vectorCards = vectors.map(v => {
+                const isSelected = attackSelectedVector === v.id;
+                const hasEvidence = v.evidence && v.evidence.length > 0;
+                const isDisabled = v.evidence_required && !hasEvidence;
+                const strengthColor = v.strength === 'strong' ? '#4ade80' : v.strength === 'moderate' ? '#facc15' : '#ef4444';
+                const backfireLabel = v.strength === 'strong' ? 'Low' : v.strength === 'moderate' ? 'Med' : 'High';
+
+                let evidenceHtml = '';
+                if (isSelected && hasEvidence) {
+                    const rows = v.evidence.map((e, i) => {
+                        const text = e.text || e.bill || (e.stat + ' ' + e.change) || '?';
+                        const detail = e.bloc || (e.stance === 'reject' ? 'Voted NO (' + e.outcome + ')' : e.stance === 'accept' ? 'Voted YES (' + e.outcome + ')' : '') || '';
+                        return `<div class="attack-evidence-row">
+                            <span class="attack-evidence-text">${escapeHtml(text)}</span>
+                            ${detail ? '<span class="attack-evidence-detail">' + escapeHtml(detail) + '</span>' : ''}
+                        </div>`;
+                    }).join('');
+                    evidenceHtml = `<div class="attack-evidence-section">
+                        <span class="attack-evidence-label">Available Evidence</span>
+                        ${rows}
+                    </div>`;
+                }
+
+                return `<div class="attack-vector-card${isSelected ? ' selected' : ''}${isDisabled ? ' disabled' : ''}" data-vector-id="${v.id}">
+                    <div class="attack-vector-top">
+                        <div class="attack-vector-left">
+                            <span class="attack-vector-icon${isSelected ? ' active' : ''}">${v.icon}</span>
+                            <span class="attack-vector-name">${v.name}</span>
+                            <span class="attack-strength-pill" style="background:${strengthColor}12;color:${strengthColor};border-color:${strengthColor}33">${v.strength} evidence</span>
+                        </div>
+                        <span class="attack-backfire-label">Backfire risk: ${backfireLabel}</span>
+                    </div>
+                    <span class="attack-vector-desc">${v.description}</span>
+                    ${evidenceHtml}
+                    ${isDisabled ? '<span class="attack-vector-disabled-msg">No evidence available \u2014 ' + v.name.toLowerCase() + ' requires factual basis</span>' : ''}
+                </div>`;
+            }).join('');
+
+            // Outcome odds bar
+            let oddsHtml = '';
+            const selectedVec = vectors.find(v => v.id === attackSelectedVector);
+            if (selectedVec) {
+                const weights = getAttackOutcomeWeights(selectedVec.strength);
+                const order = ['devastating', 'effective', 'glancing', 'backfire', 'mutual'];
+
+                const barSegments = order.map(key => {
+                    const pct = weights[key] || 0;
+                    if (pct < 2) return '';
+                    return `<div class="attack-outcome-bar-seg" style="width:${pct}%;background:${ATTACK_OUTCOME_COLORS[key]}" title="${ATTACK_OUTCOMES.find(o=>o.id===key)?.name}: ${pct}%"></div>`;
+                }).join('');
+
+                const barLabels = order.map(key => {
+                    const pct = weights[key] || 0;
+                    const o = ATTACK_OUTCOMES.find(o => o.id === key);
+                    return `<div class="attack-outcome-label"><div class="attack-outcome-dot" style="background:${ATTACK_OUTCOME_COLORS[key]}"></div><span class="attack-outcome-name">${o?.name || key}</span><span class="attack-outcome-pct" style="color:${ATTACK_OUTCOME_COLORS[key]}">${pct}%</span></div>`;
+                }).join('');
+
+                oddsHtml = `
+                <div class="attack-odds-section">
+                    <span class="attack-section-label">Outcome Odds</span>
+                    <div class="attack-outcome-bar">${barSegments}</div>
+                    <div class="attack-outcome-labels">${barLabels}</div>
+                </div>
+
+                <div class="attack-consequences">
+                    <span class="attack-section-label">Guaranteed Consequences</span>
+                    <div class="attack-consequence-list">
+                        <div class="attack-consequence-row"><span class="attack-warn-icon">\u26A0</span><span>Attack credibility drops <span style="color:#ef4444">\u221220%</span> (currently ${attackCredibility}%)</span></div>
+                        <div class="attack-consequence-row"><span class="attack-warn-icon">\u26A0</span><span>Opens <span style="color:#ef4444">counter-attack window</span> \u2014 target can respond for 1 AP (3 ticks)</span></div>
+                        <div class="attack-consequence-row"><span class="attack-warn-icon">\u26A0</span><span>Polarization <span style="color:#f97316">+1 to +2</span></span></div>
+                    </div>
+                </div>
+
+                <div class="attack-execute-row">
+                    <span class="attack-execute-warn">This action cannot be undone. The target will be notified and can counter-attack.</span>
+                    <button class="attack-btn-execute" id="attack-execute">Launch Attack \u2014 ${ATTACK_CONFIG.AP_COST} AP</button>
+                </div>`;
+            }
+
+            vectorHtml = `
+            <div class="attack-vector-panel">
+                <div class="attack-vector-header">
+                    <span class="attack-vector-header-title">Attack: ${escapeHtml(target?.faction_name || '?')}</span>
+                    <span class="attack-vector-header-hint">Select your angle of attack</span>
+                </div>
+                <div class="attack-vector-body">
+                    <div class="attack-vector-list">${vectorCards}</div>
+                    ${oddsHtml}
+                </div>
+            </div>`;
+        }
+
+        // ─── Result card ───
+        let resultHtml = '';
+        if (attackResult) {
+            const outcome = ATTACK_OUTCOMES.find(o => o.id === attackResult.outcomeId);
+            const oColor = ATTACK_OUTCOME_COLORS[attackResult.outcomeId] || '#888';
+            const oIcon = ATTACK_OUTCOME_ICONS[attackResult.outcomeId] || '';
+
+            const effectRows = (attackResult.effects || []).map(eff => {
+                const valColor = eff.value > 0 ? '#4ade80' : eff.value < 0 ? '#ef4444' : '#6b6a5e';
+                const valStr = eff.value > 0 ? '+' + eff.value : '' + eff.value;
+                return `<div class="attack-result-effect-row"><span>${escapeHtml(eff.label)}</span><span style="color:${valColor};font-weight:700">${valStr}</span></div>`;
+            }).join('');
+
+            resultHtml = `
+            <div class="attack-result-card" style="border-color:${oColor}">
+                <div class="attack-result-banner" style="background:linear-gradient(90deg, ${oColor}15, transparent);border-bottom-color:${oColor}33">
+                    <div class="attack-result-banner-left">
+                        <span style="color:${oColor};font-size:16px">${oIcon}</span>
+                        <span style="color:${oColor};font-weight:700;font-size:16px">${outcome?.name || attackResult.outcomeName}</span>
+                    </div>
+                    <span class="attack-result-dismiss" id="attack-dismiss">Dismiss</span>
+                </div>
+                <div class="attack-result-body">
+                    <div class="attack-result-headline">"${escapeHtml(attackResult.headline)}"</div>
+                    <div class="attack-result-effects">${effectRows}</div>
+                    ${attackResult.opensCounter ? '<div class="attack-counter-warning">\u26A0 Target can now launch a Counter-Attack for 1 AP (3 tick window, +2 effectiveness bonus)</div>' : ''}
+                </div>
+            </div>`;
+        }
+
+        // ─── Attack history ───
+        let historyHtml = '';
+        if ((attackHistory || []).length > 0) {
+            const historyRows = (attackHistory || []).map(r => {
+                const res = r.result || {};
+                const oColor = ATTACK_OUTCOME_COLORS[res.outcomeId] || '#888';
+                const tick = r.tick_performed;
+                const effectSummary = (res.effects || []).map(e => (e.value >= 0 ? '+' : '') + e.value + ' ' + (e.label || '').split(' ')[0]).join(', ');
+                return `<div class="attack-history-row" style="border-left-color:${oColor}">
+                    <span class="attack-history-tick">Tick ${tick}</span>
+                    <span class="attack-history-target">vs ${escapeHtml(res.targetAbbrev || '?')}</span>
+                    <span class="attack-history-outcome" style="color:${oColor}">${res.outcomeName || '?'}</span>
+                    <span class="attack-history-headline">"${escapeHtml(res.headline || '')}"</span>
+                    <span class="attack-history-effect">${effectSummary || ''}</span>
+                </div>`;
+            }).join('');
+
+            historyHtml = `
+            <div class="attack-history">
+                <div class="attack-history-header">Attack History</div>
+                ${historyRows}
+            </div>`;
+        }
+
+        container.innerHTML = `
+            <div class="attack-panel">
+                <div class="attack-header-row">
+                    <div class="attack-header-left">
+                        <span class="attack-title">Attack Campaign</span>
+                    </div>
+                    <div class="attack-header-right">
+                        <div class="attack-credibility">
+                            <span class="attack-credibility-label">Attack Credibility</span>
+                            <div class="attack-credibility-bar-wrap">
+                                <div class="attack-credibility-bar">
+                                    <div class="attack-credibility-fill" style="width:${attackCredibility}%;background:${credColor}"></div>
+                                </div>
+                                <span class="attack-credibility-val" style="color:${credColor}">${attackCredibility}%</span>
+                            </div>
+                        </div>
+                        <span class="attack-pill-cost">${ATTACK_CONFIG.AP_COST} AP</span>
+                    </div>
+                </div>
+
+                ${attackedThisTick ? '<div class="attack-cooldown">You have already launched an attack this tick.</div>' : ''}
+                ${!costOk && !attackedThisTick ? '<div class="attack-cooldown">Not enough AP (need ' + ATTACK_CONFIG.AP_COST + ').</div>' : ''}
+
+                ${resultHtml}
+
+                <div class="attack-target-select-header">
+                    <span class="attack-section-label">Select Target Party</span>
+                    <span class="attack-target-hint">Parties with more ammunition are easier to attack</span>
+                </div>
+                <div class="attack-target-grid">${targetCards}</div>
+
+                ${vectorHtml}
+                ${historyHtml}
+            </div>`;
+
+        // ─── Event listeners ───
+        container.querySelectorAll('.attack-target-card:not(.disabled)').forEach(card => {
+            card.addEventListener('click', async () => {
+                const tid = card.dataset.targetId;
+                attackSelectedTarget = tid;
+                attackSelectedVector = null;
+                attackResult = null;
+                // Load evidence if not cached
+                await loadEvidenceForTarget(tid);
+                renderAttack();
+            });
+        });
+
+        container.querySelectorAll('.attack-vector-card:not(.disabled)').forEach(card => {
+            card.addEventListener('click', () => {
+                attackSelectedVector = card.dataset.vectorId;
+                renderAttack();
+            });
+        });
+
+        const executeBtn = document.getElementById('attack-execute');
+        if (executeBtn) {
+            executeBtn.addEventListener('click', async () => {
+                executeBtn.disabled = true;
+                executeBtn.textContent = 'Executing...';
+                const tick = currentShard?.current_tick || 0;
+                const result = await executeAttack(_supabase, f.id, n.id, attackSelectedTarget, attackSelectedVector, tick);
+                if (result.success) {
+                    attackResult = result;
+                    renderAttack();
+                } else {
+                    alert(result.error);
+                    executeBtn.disabled = false;
+                    executeBtn.textContent = 'Launch Attack \u2014 ' + ATTACK_CONFIG.AP_COST + ' AP';
+                }
+            });
+        }
+
+        const dismissBtn = document.getElementById('attack-dismiss');
+        if (dismissBtn) {
+            dismissBtn.addEventListener('click', () => {
+                attackResult = null;
+                attackSelectedTarget = null;
+                attackSelectedVector = null;
+                renderParties(); // full refresh for AP update
+            });
+        }
+    }
+
+    renderAttack();
 
 }
 
