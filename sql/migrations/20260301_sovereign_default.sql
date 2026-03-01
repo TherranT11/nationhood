@@ -82,7 +82,7 @@ VALUES (
     description = EXCLUDED.description;
 
 -- Sovereign Default Crisis effects (recovery per tick)
-INSERT INTO crisis_effects (crisis_template_id, target, stat_key, change_per_tick, stat_floor)
+INSERT INTO crisis_effects (crisis_id, target, stat_key, change_per_tick, stat_floor)
 VALUES
     ('00000000-0000-0000-0000-000000000002', 'nation', 'credit', 0.5, 25),
     ('00000000-0000-0000-0000-000000000002', 'nation', 'foreign_investment', 0.3, 30),
@@ -94,7 +94,7 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 -- Sovereign Default Crisis end triggers (ALL must be met + 20 tick minimum)
-INSERT INTO crisis_end_triggers (crisis_template_id, stat_key, operator, threshold)
+INSERT INTO crisis_end_triggers (crisis_id, stat_key, operator, threshold)
 VALUES
     ('00000000-0000-0000-0000-000000000002', 'credit', 'gte', 20),
     ('00000000-0000-0000-0000-000000000002', 'currency_strength', 'gte', 20),
@@ -115,7 +115,7 @@ VALUES (
     description = EXCLUDED.description;
 
 -- Sovereign Debt Crisis effects
-INSERT INTO crisis_effects (crisis_template_id, target, stat_key, change_per_tick, stat_floor)
+INSERT INTO crisis_effects (crisis_id, target, stat_key, change_per_tick, stat_floor)
 VALUES
     ('00000000-0000-0000-0000-000000000003', 'nation', 'foreign_investment', -1.5, 8),
     ('00000000-0000-0000-0000-000000000003', 'nation', 'currency_strength', -1.0, 10),
@@ -125,7 +125,7 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 -- Sovereign Debt Crisis end triggers
-INSERT INTO crisis_end_triggers (crisis_template_id, stat_key, operator, threshold)
+INSERT INTO crisis_end_triggers (crisis_id, stat_key, operator, threshold)
 VALUES
     ('00000000-0000-0000-0000-000000000003', 'credit', 'gte', 30)
 ON CONFLICT DO NOTHING;
@@ -143,13 +143,13 @@ VALUES (
     is_active = true;
 
 -- Currency Collapse triggers
-INSERT INTO crisis_triggers (crisis_template_id, stat_key, operator, threshold)
+INSERT INTO crisis_triggers (crisis_id, stat_key, operator, threshold)
 VALUES
     ('00000000-0000-0000-0000-000000000004', 'currency_strength', 'lte', 12)
 ON CONFLICT DO NOTHING;
 
 -- Currency Collapse effects
-INSERT INTO crisis_effects (crisis_template_id, target, stat_key, change_per_tick, stat_floor)
+INSERT INTO crisis_effects (crisis_id, target, stat_key, change_per_tick, stat_floor)
 VALUES
     ('00000000-0000-0000-0000-000000000004', 'nation', 'inflation', 3.0, NULL),
     ('00000000-0000-0000-0000-000000000004', 'nation', 'foreign_investment', -2.0, 5),
@@ -159,7 +159,7 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 -- Currency Collapse end triggers
-INSERT INTO crisis_end_triggers (crisis_template_id, stat_key, operator, threshold)
+INSERT INTO crisis_end_triggers (crisis_id, stat_key, operator, threshold)
 VALUES
     ('00000000-0000-0000-0000-000000000004', 'currency_strength', 'gte', 25)
 ON CONFLICT DO NOTHING;
@@ -177,13 +177,13 @@ VALUES (
     is_active = true;
 
 -- Hyperinflation triggers
-INSERT INTO crisis_triggers (crisis_template_id, stat_key, operator, threshold)
+INSERT INTO crisis_triggers (crisis_id, stat_key, operator, threshold)
 VALUES
     ('00000000-0000-0000-0000-000000000005', 'inflation', 'gte', 80)
 ON CONFLICT DO NOTHING;
 
 -- Hyperinflation effects
-INSERT INTO crisis_effects (crisis_template_id, target, stat_key, change_per_tick, stat_floor)
+INSERT INTO crisis_effects (crisis_id, target, stat_key, change_per_tick, stat_floor)
 VALUES
     ('00000000-0000-0000-0000-000000000005', 'nation', 'currency_strength', -2.5, 3),
     ('00000000-0000-0000-0000-000000000005', 'nation', 'standard_of_living', -2.0, 10),
@@ -194,7 +194,7 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 -- Hyperinflation end triggers
-INSERT INTO crisis_end_triggers (crisis_template_id, stat_key, operator, threshold)
+INSERT INTO crisis_end_triggers (crisis_id, stat_key, operator, threshold)
 VALUES
     ('00000000-0000-0000-0000-000000000005', 'inflation', 'lte', 65)
 ON CONFLICT DO NOTHING;
