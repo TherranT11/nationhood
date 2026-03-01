@@ -437,7 +437,7 @@ function renderBill() {
         return; // No voting, no sponsor actions
     }
 
-    // Early resolution banner — majority locked, resolves next tick
+    // Early resolution banner — majority locked, resolves this tick
     if (isFloor && bill.early_resolution_status) {
         const earlyBanner = document.createElement('div');
         const isMajReached = bill.early_resolution_status === 'majority_reached' || bill.early_resolution_status === 'quorum_reached';
@@ -452,14 +452,14 @@ function renderBill() {
         const earlyIsSimple = isSimpleMajorityBill(bill.bill_type);
         if (isMajReached) {
             const passText = earlyIsSimple
-                ? `${earlyYes} YES vs ${earlyNo} NO &mdash; Passes next tick`
-                : `${earlyYes} YES of ${getRequiredSeats(bill.bill_type)} needed &mdash; Passes next tick`;
+                ? `${earlyYes} YES vs ${earlyNo} NO &mdash; Passes this tick`
+                : `${earlyYes} YES of ${getRequiredSeats(bill.bill_type)} needed &mdash; Passes this tick`;
             earlyBanner.innerHTML = `<div style="font-size:1rem;text-transform:uppercase;letter-spacing:1.5px;">Majority Reached</div>
                 <div style="font-size:0.85rem;margin-top:6px;color:var(--text-secondary);">${passText}</div>`;
         } else {
             const failText = earlyIsSimple
-                ? `${earlyNo} NO vs ${earlyYes} YES &mdash; Fails next tick`
-                : `${earlyNo} NO seats block passage &mdash; Fails next tick`;
+                ? `${earlyNo} NO vs ${earlyYes} YES &mdash; Fails this tick`
+                : `${earlyNo} NO seats block passage &mdash; Fails this tick`;
             earlyBanner.innerHTML = `<div style="font-size:1rem;text-transform:uppercase;letter-spacing:1.5px;">Majority Opposed</div>
                 <div style="font-size:0.85rem;margin-top:6px;color:var(--text-secondary);">${failText}</div>`;
         }

@@ -2418,7 +2418,8 @@ async function renderParties() {
         pillarByBloc[row.bloc_id][row.faction_id] = {
             ideo: Math.round(row.ideology_alignment ?? 50),
             perf: Math.round(row.performance_perception ?? 50),
-            mom: Math.round(row.momentum ?? 0)
+            mom: Math.round(row.momentum ?? 0),
+            drift: row.ideology_drift ?? 0
         };
     }
 
@@ -2782,11 +2783,14 @@ async function renderParties() {
         const mods = [];
         mods.push({ type: 'ideology', label: 'Ideological Alignment', value: p.ideo, permanent: true });
 
-        // Ideology drift: opposed blocs erode preference, no-shared blocs drift down
-        if (p.ideo < 35) {
-            mods.push({ type: 'legacy', label: 'Ideologically Opposed (drift to 20)', value: -1, permanent: true });
+        // Ideological Decay: opposed/neutral blocs erode preference over time
+        if (p.drift && p.drift !== 0) {
+            const driftFloor = p.ideo < 35 ? 20 : 40;
+            mods.push({ type: 'legacy', label: `Ideological Decay (floor ${driftFloor})`, value: p.drift, permanent: true });
+        } else if (p.ideo < 35) {
+            mods.push({ type: 'legacy', label: 'Ideological Decay (floor 20)', value: -1, permanent: true });
         } else if (p.ideo < 50) {
-            mods.push({ type: 'legacy', label: 'No Shared Ideologies (drift to 40)', value: -0.5, permanent: true });
+            mods.push({ type: 'legacy', label: 'Ideological Decay (floor 40)', value: -0.5, permanent: true });
         }
 
         if (p.perf !== 50) {
@@ -4021,6 +4025,7 @@ async function renderParties() {
         const canAffordAP = (f.action_points || 0) >= MAKE_PROMISE_CONFIG.AP_COST;
         const atLimit = activePromisesList.length >= MAKE_PROMISE_CONFIG.MAX_ACTIVE_PROMISES;
         const currentTick = currentShard?.current_tick || 0;
+        const madePromiseThisTick = (allPromises || []).some(p => p.tick_created === currentTick);
 
         // Find affected blocs for the selected stat
         let affectedBlocNames = [];
@@ -4334,11 +4339,12 @@ async function renderParties() {
                 </div>
 
                 ${pmResult ? resultHtml : (pmShowCreator ? creatorHtml : `
-                    <button class="pm-open-creator-btn${(!canAffordAP || atLimit) ? ' disabled' : ''}" id="pm-open-creator" ${(!canAffordAP || atLimit) ? 'disabled' : ''}>
+                    <button class="pm-open-creator-btn${(!canAffordAP || atLimit || madePromiseThisTick) ? ' disabled' : ''}" id="pm-open-creator" ${(!canAffordAP || atLimit || madePromiseThisTick) ? 'disabled' : ''}>
                         + Make a Promise
                     </button>
                     ${!canAffordAP ? '<div class="pm-warn">Not enough AP.</div>' : ''}
                     ${atLimit ? '<div class="pm-warn">Maximum active promises reached.</div>' : ''}
+                    ${madePromiseThisTick ? '<div class="pm-warn">1 promise per tick. Wait for the next tick.</div>' : ''}
                 `)}
 
                 ${activePromisesList.length > 0 ? `

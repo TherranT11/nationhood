@@ -571,6 +571,15 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
     if ((activePromises || []).length >= cfg.MAX_ACTIVE_PROMISES)
         return { success: false, error: `Maximum ${cfg.MAX_ACTIVE_PROMISES} active promises reached.` };
 
+    // ── 2b. Check per-tick rate limit (max 1 promise per tick) ──
+    const { data: promisesThisTick } = await supabase
+        .from('fundraiser_promises')
+        .select('id')
+        .eq('party_id', factionId)
+        .eq('tick_created', currentTick);
+    if ((promisesThisTick || []).length >= 1)
+        return { success: false, error: 'You can only make 1 promise per tick.' };
+
     // ── 3. Load nation + blocs ──
     const { data: nation } = await supabase
         .from('nations').select('*').eq('id', nationId).single();
