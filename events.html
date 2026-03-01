@@ -1477,7 +1477,6 @@ function setupArticleModal(faction, nation, shard) {
         <div class="np-player-article-preview__category">${escapeHtml(catLabel)}</div>
         <h3 class="np-player-article-preview__headline">${escapeHtml(h || 'Your headline will appear here...')}</h3>
         <p class="np-player-article-preview__body"${!b ? ' style="color:var(--np-text-light);font-style:italic;"' : ''}>${escapeHtml(b || 'Start writing to see how your article will look.')}</p>
-        <div class="np-player-article-preview__author">— ${escapeHtml(faction.faction_name || 'Your Party')} (${escapeHtml(faction.abbreviation || '?')})</div>
         ${wc >= 500 ? '<div class="np-article-reward-earned">+1 AP will be awarded next tick</div>' : wc >= 400 ? `<div class="np-article-reward-progress">${500 - wc} more words for +1 AP reward</div>` : ''}
       </div>
     `;

@@ -417,7 +417,15 @@ function renderBill() {
 
     if (isFloor && bill.voting_ends_tick && !bill.early_resolution_status) {
         document.getElementById('bill-voting-ends').style.display = 'block';
-        document.getElementById('voting-ends-date').textContent = tickToDate(bill.voting_ends_tick);
+        // If vote outcome is math-locked, show "Resolves next tick" instead of the original deadline
+        const evalForDeadline = evaluateBillVote(bill, GAME_CONFIG.TOTAL_SEATS);
+        if (evalForDeadline.status === 'will_pass' || evalForDeadline.status === 'will_fail') {
+            const votingEndsEl = document.getElementById('bill-voting-ends');
+            const willPass = evalForDeadline.status === 'will_pass';
+            votingEndsEl.innerHTML = `<span style="color:${willPass ? '#4CAF50' : '#ff4444'};">Resolves next tick — ${willPass ? 'will pass' : 'will fail'}</span>`;
+        } else {
+            document.getElementById('voting-ends-date').textContent = tickToDate(bill.voting_ends_tick);
+        }
     }
 
     // Frozen bill banner — no actions available
