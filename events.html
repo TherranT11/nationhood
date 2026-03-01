@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The Valdorian | Nationhood Alpha</title>
+<title>The Cruceran | Nationhood Alpha</title>
 <link rel="stylesheet" href="css/dashboard.css">
 <link rel="stylesheet" href="css/events.css">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,500;1,600;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -17,7 +17,7 @@
   <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;">
     <div class="loading-container">
       <div class="loading-spinner"></div>
-      <div style="color:var(--text-secondary)">Loading The Valdorian...</div>
+      <div style="color:var(--text-secondary)">Loading The Cruceran...</div>
     </div>
   </div>
 </div>
@@ -39,7 +39,7 @@
       </div>
       <div style="margin-bottom:16px;">
         <label class="oped-label">Body</label>
-        <textarea id="oped-body" class="oped-textarea" placeholder="Write your party's opinion piece here. This will be published in the next edition of The Valdorian..." maxlength="800" rows="6"></textarea>
+        <textarea id="oped-body" class="oped-textarea" placeholder="Write your party's opinion piece here. This will be published in the next edition of The Cruceran..." maxlength="800" rows="6"></textarea>
         <div class="oped-char-count"><span id="oped-body-count">0</span>/800</div>
       </div>
       <div style="margin-bottom:16px;">
@@ -258,7 +258,7 @@ function renderNewspaper(nation, faction, shard, events, opeds, parties) {
 <!-- MASTHEAD -->
 <header class="np-masthead">
   <div class="np-masthead__pre">Independent · Established 1923</div>
-  <h1 class="np-masthead__title">THE ${escapeHtml(_nationName.toUpperCase())}N</h1>
+  <h1 class="np-masthead__title">THE CRUCERAN</h1>
   <div class="np-masthead__sub">The Paper for the World at Large</div>
   <button class="np-oped-btn" id="write-oped-btn" title="Write an Op-Ed (1 AP)">
     <span class="np-oped-btn__icon">&#9998;</span>
@@ -322,7 +322,7 @@ ${heroEvent && heroEvent.priority <= PRIORITY.CRISIS ? `
 
 <!-- FOOTER -->
 <footer class="np-page-footer">
-  <div class="np-page-footer__brand">The ${escapeHtml(_nationName)}n</div>
+  <div class="np-page-footer__brand">The Cruceran</div>
   <div class="np-page-footer__tagline">Independent · Established 1923 · The Paper for the World at Large</div>
 </footer>
 `;
@@ -374,7 +374,7 @@ function renderHeroArticle(event) {
       <h2 class="np-hero__headline">${escapeHtml(headline)}</h2>
       ${description ? `<p class="np-hero__lede">${escapeHtml(description.substring(0, 200))}${description.length > 200 ? '...' : ''}</p>` : ''}
       <div class="np-hero__byline">
-        <strong>The ${escapeHtml(_nationName)}n Staff</strong> · Tick ${event.tick || '?'}
+        <strong>The Cruceran Staff</strong> · Tick ${event.tick || '?'}
       </div>
       ${description.length > 200 ? `
       <div class="np-hero__body">
