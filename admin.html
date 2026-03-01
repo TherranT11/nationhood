@@ -56,6 +56,7 @@
             <button class="tab" onclick="showTab('statconnect')">Stat Connector</button>
             <button class="tab" onclick="showTab('stataudit')">Stat Audit</button>
             <button class="tab" onclick="showTab('valdorian')">Valdorian</button>
+            <button class="tab" onclick="showTab('integrity')">Integrity</button>
         </div>
 
         <!-- ==================== SHARD TAB ==================== -->
@@ -602,6 +603,23 @@
             <div id="sa-results" style="font-family:monospace; font-size:0.85rem; white-space:pre-wrap; color:#ccc;"></div>
         </div>
 
+        <!-- ==================== INTEGRITY TAB ==================== -->
+        <div class="tab-content" id="tab-integrity">
+            <h2>🛡 Player Integrity</h2>
+            <p style="color:#888; font-size:0.9rem; margin-bottom:15px;">Detect multi-account abuse, view fingerprint clusters, and manage bans.</p>
+
+            <!-- Sub-tabs -->
+            <div style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+                <button class="btn btn-secondary" style="padding:8px 16px; font-size:0.8rem;" onclick="showIntegrityView('clusters')">Suspicious Clusters</button>
+                <button class="btn btn-secondary" style="padding:8px 16px; font-size:0.8rem;" onclick="showIntegrityView('all')">All Fingerprints</button>
+                <button class="btn btn-secondary" style="padding:8px 16px; font-size:0.8rem;" onclick="showIntegrityView('bans')">Active Bans</button>
+                <button class="btn btn-secondary" style="padding:8px 16px; font-size:0.8rem;" onclick="showIntegrityView('timeline')">Creation Timeline</button>
+            </div>
+
+            <div id="integrity-status" style="color:#888; font-size:0.85rem; margin-bottom:15px;"></div>
+            <div id="integrity-content" style="font-size:0.9rem;"></div>
+        </div>
+
         <!-- Budget Preview Modal -->
         <div id="budget-preview-modal" class="bp-modal-overlay" style="display:none;" onclick="if(event.target===this)closeBudgetPreview()">
             <div class="bp-modal">
@@ -633,6 +651,7 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
         document.querySelector(`.tab[onclick="showTab('${tabName}')"]`).classList.add('active');
         document.getElementById(`tab-${tabName}`).classList.add('active');
+        if (tabName === 'integrity') showIntegrityView('clusters');
     }
     function authenticate() {
         const password = document.getElementById('admin-password').value;
@@ -4690,6 +4709,261 @@ async function updateOpEdStatus(id, newStatus) {
     loadValdorianOpEds();
 }
 window.updateOpEdStatus = updateOpEdStatus;
+
+// ==================== INTEGRITY TAB ====================
+
+let _integrityFingerprints = [];
+let _integrityBans = [];
+let _integrityFactions = [];
+
+async function loadIntegrityData() {
+    const status = document.getElementById('integrity-status');
+    status.textContent = 'Loading...';
+    try {
+        const [fpRes, banRes, facRes] = await Promise.all([
+            _supabase.from('player_fingerprints').select('*').order('last_seen_at', { ascending: false }),
+            _supabase.from('player_bans').select('*').order('banned_at', { ascending: false }),
+            _supabase.from('factions').select('id, faction_name, abbreviation, nation_id, nation, founded_tick, is_npc, last_seen_tick, is_banned').eq('is_npc', false).order('founded_tick', { ascending: false })
+        ]);
+        _integrityFingerprints = fpRes.data || [];
+        _integrityBans = banRes.data || [];
+        _integrityFactions = facRes.data || [];
+        status.textContent = `${_integrityFingerprints.length} fingerprint(s), ${_integrityBans.filter(b => b.is_active).length} active ban(s), ${_integrityFactions.length} player(s)`;
+    } catch (e) {
+        status.innerHTML = `<span style="color:#ff4444;">Error: ${e.message}</span><br><span style="color:#888;font-size:0.8rem;">Run the migration: sql/migrations/20260301_player_integrity.sql</span>`;
+        _integrityFingerprints = [];
+        _integrityBans = [];
+    }
+}
+
+function showIntegrityView(view) {
+    loadIntegrityData().then(() => {
+        const container = document.getElementById('integrity-content');
+        if (view === 'clusters') renderIntegrityClusters(container);
+        else if (view === 'all') renderAllFingerprints(container);
+        else if (view === 'bans') renderActiveBans(container);
+        else if (view === 'timeline') renderCreationTimeline(container);
+    });
+}
+window.showIntegrityView = showIntegrityView;
+
+function renderIntegrityClusters(container) {
+    if (_integrityFingerprints.length === 0) {
+        container.innerHTML = '<div style="color:#888;padding:20px;text-align:center;">No fingerprint data yet. Players will be tracked as they log in after the migration is applied.</div>';
+        return;
+    }
+
+    // Group by fingerprint
+    const fpGroups = {};
+    for (const fp of _integrityFingerprints) {
+        if (!fpGroups[fp.fingerprint]) fpGroups[fp.fingerprint] = [];
+        fpGroups[fp.fingerprint].push(fp);
+    }
+
+    // Find clusters (same fingerprint, multiple users)
+    const suspicious = Object.entries(fpGroups)
+        .filter(([_, group]) => {
+            const uniqueUsers = new Set(group.map(g => g.user_id));
+            return uniqueUsers.size > 1;
+        })
+        .sort((a, b) => b[1].length - a[1].length);
+
+    if (suspicious.length === 0) {
+        container.innerHTML = '<div style="color:#4CAF50;padding:20px;text-align:center;font-weight:bold;">No suspicious clusters detected. All fingerprints are unique per user.</div>';
+        return;
+    }
+
+    let html = `<div style="color:#ff9800;margin-bottom:16px;font-weight:bold;">${suspicious.length} suspicious cluster(s) found — multiple accounts sharing the same browser fingerprint</div>`;
+
+    for (const [fpHash, group] of suspicious) {
+        const uniqueUsers = [...new Set(group.map(g => g.user_id))];
+        const nations = [...new Set(group.filter(g => g.nation_id).map(g => g.nation_id))];
+        const sameNation = nations.length <= 1 && nations.length > 0;
+
+        html += `
+        <div style="border:1px solid ${sameNation ? '#ff4444' : '#ff9800'};border-radius:6px;padding:16px;margin-bottom:12px;background:${sameNation ? 'rgba(255,68,68,0.08)' : 'rgba(255,152,0,0.06)'};">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <div>
+                    <span style="color:${sameNation ? '#ff4444' : '#ff9800'};font-weight:bold;font-size:1rem;">${sameNation ? '🚨 HIGH RISK' : '⚠️ SUSPICIOUS'} — ${uniqueUsers.length} accounts</span>
+                    ${sameNation ? '<span style="color:#ff4444;font-size:0.8rem;margin-left:8px;">(Same nation!)</span>' : ''}
+                </div>
+                <span style="color:#555;font-size:0.75rem;font-family:monospace;">FP: ${escHtml(fpHash.substring(0, 16))}...</span>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                ${group.map(g => {
+                    const faction = _integrityFactions.find(f => f.id === g.user_id);
+                    const name = faction ? faction.faction_name : 'Unknown';
+                    const nation = faction?.nation || '—';
+                    const isBanned = faction?.is_banned;
+                    return `<div style="background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:8px 12px;font-size:0.8rem;">
+                        <div style="font-weight:bold;color:${isBanned ? '#666' : '#e0e0e0'};">${escHtml(name)} ${isBanned ? '<span style="color:#ff4444;">[BANNED]</span>' : ''}</div>
+                        <div style="color:#888;font-size:0.75rem;">Nation: ${escHtml(nation)}</div>
+                        <div style="color:#666;font-size:0.7rem;">${escHtml(g.timezone || '?')} · ${escHtml(g.screen_sig || '?')} · ${escHtml(g.language || '?')}</div>
+                        <div style="color:#555;font-size:0.7rem;">Sessions: ${g.session_count} · Last: ${new Date(g.last_seen_at).toLocaleDateString()}</div>
+                        ${!isBanned ? `<button style="margin-top:6px;padding:3px 10px;background:#aa0000;color:#fff;border:none;border-radius:3px;font-size:0.7rem;cursor:pointer;" onclick="banPlayer('${g.user_id}', '${escHtml(name)}')">Ban</button>
+                        <button style="margin-top:6px;margin-left:4px;padding:3px 10px;background:#886600;color:#fff;border:none;border-radius:3px;font-size:0.7rem;cursor:pointer;" onclick="suspendPlayer('${g.user_id}', '${escHtml(name)}')">Suspend</button>` : `<button style="margin-top:6px;padding:3px 10px;background:#2a6600;color:#fff;border:none;border-radius:3px;font-size:0.7rem;cursor:pointer;" onclick="unbanPlayer('${g.user_id}', '${escHtml(name)}')">Unban</button>`}
+                    </div>`;
+                }).join('')}
+            </div>
+        </div>`;
+    }
+
+    container.innerHTML = html;
+}
+
+function renderAllFingerprints(container) {
+    if (_integrityFingerprints.length === 0) {
+        container.innerHTML = '<div style="color:#888;padding:20px;text-align:center;">No fingerprint data collected yet.</div>';
+        return;
+    }
+
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:0.8rem;"><thead><tr style="border-bottom:2px solid #333;color:#888;text-align:left;">';
+    html += '<th style="padding:8px;">Player</th><th style="padding:8px;">Nation</th><th style="padding:8px;">Timezone</th><th style="padding:8px;">Screen</th><th style="padding:8px;">Sessions</th><th style="padding:8px;">Last Seen</th><th style="padding:8px;">FP Hash</th><th style="padding:8px;">Actions</th>';
+    html += '</tr></thead><tbody>';
+
+    for (const fp of _integrityFingerprints) {
+        const faction = _integrityFactions.find(f => f.id === fp.user_id);
+        const name = faction ? faction.faction_name : 'Unknown';
+        const nation = faction?.nation || '—';
+        const isBanned = faction?.is_banned;
+        const dupeCount = _integrityFingerprints.filter(f => f.fingerprint === fp.fingerprint && f.user_id !== fp.user_id).length;
+        const rowColor = dupeCount > 0 ? 'rgba(255,152,0,0.1)' : 'transparent';
+
+        html += `<tr style="border-bottom:1px solid #222;background:${rowColor};">
+            <td style="padding:8px;color:${isBanned ? '#666' : '#e0e0e0'};font-weight:bold;">${escHtml(name)} ${isBanned ? '<span style="color:#ff4444;font-size:0.7rem;">[BANNED]</span>' : ''} ${dupeCount > 0 ? `<span style="color:#ff9800;font-size:0.7rem;">[${dupeCount} match${dupeCount > 1 ? 'es' : ''}]</span>` : ''}</td>
+            <td style="padding:8px;color:#888;">${escHtml(nation)}</td>
+            <td style="padding:8px;color:#888;">${escHtml(fp.timezone || '—')}</td>
+            <td style="padding:8px;color:#888;font-family:monospace;">${escHtml(fp.screen_sig || '—')}</td>
+            <td style="padding:8px;color:#888;">${fp.session_count}</td>
+            <td style="padding:8px;color:#888;">${new Date(fp.last_seen_at).toLocaleDateString()}</td>
+            <td style="padding:8px;color:#555;font-family:monospace;font-size:0.7rem;">${escHtml(fp.fingerprint.substring(0, 12))}...</td>
+            <td style="padding:8px;">
+                ${!isBanned ? `<button style="padding:2px 8px;background:#aa0000;color:#fff;border:none;border-radius:3px;font-size:0.7rem;cursor:pointer;" onclick="banPlayer('${fp.user_id}', '${escHtml(name)}')">Ban</button>` : `<button style="padding:2px 8px;background:#2a6600;color:#fff;border:none;border-radius:3px;font-size:0.7rem;cursor:pointer;" onclick="unbanPlayer('${fp.user_id}', '${escHtml(name)}')">Unban</button>`}
+            </td>
+        </tr>`;
+    }
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+function renderActiveBans(container) {
+    const activeBans = _integrityBans.filter(b => b.is_active);
+    if (activeBans.length === 0) {
+        container.innerHTML = '<div style="color:#4CAF50;padding:20px;text-align:center;">No active bans.</div>';
+        return;
+    }
+
+    let html = '';
+    for (const ban of activeBans) {
+        const faction = _integrityFactions.find(f => f.id === ban.user_id);
+        const name = faction ? faction.faction_name : 'Unknown';
+        html += `
+        <div style="border:1px solid #ff4444;border-radius:6px;padding:14px;margin-bottom:10px;background:rgba(255,68,68,0.06);display:flex;justify-content:space-between;align-items:center;">
+            <div>
+                <div style="font-weight:bold;color:#e0e0e0;">${escHtml(name)} <span style="color:#ff4444;font-size:0.8rem;">[${ban.ban_type.toUpperCase()}]</span></div>
+                <div style="color:#888;font-size:0.8rem;">Reason: ${escHtml(ban.reason || 'No reason given')}</div>
+                <div style="color:#666;font-size:0.75rem;">Banned: ${new Date(ban.banned_at).toLocaleString()}${ban.banned_until ? ' · Until: ' + new Date(ban.banned_until).toLocaleString() : ' · Permanent'}</div>
+            </div>
+            <button style="padding:6px 14px;background:#2a6600;color:#fff;border:none;border-radius:4px;font-size:0.8rem;cursor:pointer;" onclick="unbanPlayer('${ban.user_id}', '${escHtml(name)}')">Lift Ban</button>
+        </div>`;
+    }
+    container.innerHTML = html;
+}
+
+function renderCreationTimeline(container) {
+    if (_integrityFactions.length === 0) {
+        container.innerHTML = '<div style="color:#888;padding:20px;text-align:center;">No player data.</div>';
+        return;
+    }
+
+    // Sort by founded_tick descending
+    const sorted = [..._integrityFactions].sort((a, b) => (b.founded_tick || 0) - (a.founded_tick || 0));
+
+    // Detect rapid creation bursts (3+ parties in same tick or within 2 ticks)
+    const tickGroups = {};
+    for (const f of sorted) {
+        const tick = f.founded_tick || 0;
+        if (!tickGroups[tick]) tickGroups[tick] = [];
+        tickGroups[tick].push(f);
+    }
+
+    let html = '<div style="margin-bottom:16px;color:#888;">Party creation timeline — newest first. Bursts of rapid creation are highlighted.</div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:0.8rem;"><thead><tr style="border-bottom:2px solid #333;color:#888;text-align:left;">';
+    html += '<th style="padding:8px;">Tick</th><th style="padding:8px;">Party</th><th style="padding:8px;">Nation</th><th style="padding:8px;">Status</th>';
+    html += '</tr></thead><tbody>';
+
+    for (const f of sorted) {
+        const tick = f.founded_tick || 0;
+        const burst = (tickGroups[tick] || []).length >= 3;
+        const rowBg = burst ? 'rgba(255,152,0,0.12)' : 'transparent';
+
+        html += `<tr style="border-bottom:1px solid #222;background:${rowBg};">
+            <td style="padding:8px;color:#888;font-family:monospace;">${tick} ${burst ? '<span style="color:#ff9800;font-weight:bold;">⚡ BURST</span>' : ''}</td>
+            <td style="padding:8px;font-weight:bold;color:${f.is_banned ? '#666' : '#e0e0e0'};">${escHtml(f.faction_name || '?')} ${f.abbreviation ? '[' + escHtml(f.abbreviation) + ']' : ''} ${f.is_banned ? '<span style="color:#ff4444;font-size:0.7rem;">[BANNED]</span>' : ''}</td>
+            <td style="padding:8px;color:#888;">${escHtml(f.nation || '—')}</td>
+            <td style="padding:8px;color:${f.nation_id ? '#4CAF50' : '#ff4444'};">${f.nation_id ? 'Active' : 'No Nation'}</td>
+        </tr>`;
+    }
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+async function banPlayer(userId, playerName) {
+    const reason = prompt(`Ban "${playerName}" permanently?\n\nEnter reason:`);
+    if (reason === null) return;
+    try {
+        await _supabase.from('player_bans').insert([{
+            user_id: userId,
+            ban_type: 'banned',
+            reason: reason || 'Multi-account abuse',
+            banned_by: 'admin'
+        }]);
+        await _supabase.from('factions').update({ is_banned: true }).eq('id', userId);
+        alert(`${playerName} has been banned.`);
+        showIntegrityView('clusters');
+    } catch (e) { alert('Error: ' + e.message); }
+}
+window.banPlayer = banPlayer;
+
+async function suspendPlayer(userId, playerName) {
+    const days = prompt(`Suspend "${playerName}" for how many days?`, '7');
+    if (days === null) return;
+    const until = new Date();
+    until.setDate(until.getDate() + parseInt(days, 10));
+    const reason = prompt('Enter reason:', 'Suspected multi-account abuse');
+    if (reason === null) return;
+    try {
+        await _supabase.from('player_bans').insert([{
+            user_id: userId,
+            ban_type: 'suspended',
+            reason: reason,
+            banned_until: until.toISOString(),
+            banned_by: 'admin'
+        }]);
+        await _supabase.from('factions').update({ is_banned: true }).eq('id', userId);
+        alert(`${playerName} suspended until ${until.toLocaleDateString()}.`);
+        showIntegrityView('clusters');
+    } catch (e) { alert('Error: ' + e.message); }
+}
+window.suspendPlayer = suspendPlayer;
+
+async function unbanPlayer(userId, playerName) {
+    if (!confirm(`Lift ban on "${playerName}"?`)) return;
+    try {
+        await _supabase.from('player_bans').update({
+            is_active: false,
+            lifted_at: new Date().toISOString(),
+            lift_reason: 'Lifted by admin'
+        }).eq('user_id', userId).eq('is_active', true);
+        await _supabase.from('factions').update({ is_banned: false }).eq('id', userId);
+        alert(`Ban lifted for ${playerName}.`);
+        showIntegrityView('bans');
+    } catch (e) { alert('Error: ' + e.message); }
+}
+window.unbanPlayer = unbanPlayer;
+
 </script>
 </body>
 </html>
