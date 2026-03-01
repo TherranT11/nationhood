@@ -3523,9 +3523,11 @@ async function processGovernmentShutdown(supabase, nation, currentTick, shutdown
         }
     }
 
-    // --- 1. PM/President approval: -2 per tick via gov approval event ---
-    await adjustGovernmentApprovalEvent(supabase, nation.id, -2, 'crisis:government_shutdown');
-    console.log(`[GovernmentShutdown] Applied -2 gov approval event for ${nation.name}`);
+    // --- 1. PM/President approval: -5 per tick via gov approval event ---
+    // Shutdown is a catastrophic governance failure — heavy penalty that quickly pins
+    // the events component at its -50 floor, tanking the 20% events slice to 0.
+    await adjustGovernmentApprovalEvent(supabase, nation.id, -5, 'crisis:government_shutdown');
+    console.log(`[GovernmentShutdown] Applied -5 gov approval event for ${nation.name}`);
 
     // --- 2. Direct stat damage: -1 Stability per tick ---
     const currentStability = Number(nation.stability ?? 50);
@@ -3534,8 +3536,8 @@ async function processGovernmentShutdown(supabase, nation, currentTick, shutdown
     nation.stability = newStability;
     console.log(`[GovernmentShutdown] Applied -1 stability for ${nation.name}: ${currentStability} → ${newStability}`);
 
-    // --- 3. Ministry approval penalty: -1/tick for all ministers ---
-    // (handled by updateMinisterApprovals via the isShutdown flag — SHUTDOWN_MINISTER_PENALTY = -1)
+    // --- 3. Ministry approval penalty: -6/tick for all ministers ---
+    // (handled by updateMinisterApprovals via the isShutdown flag — SHUTDOWN_MINISTER_PENALTY = -6)
 
     // --- 4. Unfunded ministries suffer collapsing effect ---
     // (handled by buildShutdownStatInstMap forcing all institutions to 0% funding in the main loop)
@@ -11262,7 +11264,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
     // During government shutdown, every minister takes a direct -3/tick approval hit
     // on top of their normal stat-based scoring. This represents public outrage at
     // the government's inability to function.
-    const SHUTDOWN_MINISTER_PENALTY = -3;
+    const SHUTDOWN_MINISTER_PENALTY = -6;
 
     const results = [];
 
@@ -11363,7 +11365,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
  * @param {number} currentTick
  * @returns {number|null} the computed government approval (0-100), or null if no government
  */
-async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
+async function calculateGovernmentApprovalTick(supabase, nation, currentTick, isShutdown = false) {
     const cfg = GOV_APPROVAL_CONFIG;
 
     const { data: ministries } = await supabase
@@ -11434,9 +11436,16 @@ async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
     const eventsComponent = Math.max(0, Math.min(100, 50 + eventsRaw));
 
     // ─── Composite ───
-    const rawApproval = institutional * cfg.INSTITUTIONAL_WEIGHT
+    let rawApproval = institutional * cfg.INSTITUTIONAL_WEIGHT
         + outcomesScore * cfg.OUTCOMES_WEIGHT
         + eventsComponent * cfg.EVENTS_WEIGHT;
+
+    // Government shutdown: slam a flat -25 penalty on the composite score.
+    // A shutdown is a catastrophic governance failure — the public doesn't
+    // forgive a non-functioning government regardless of minister averages.
+    if (isShutdown) {
+        rawApproval -= 25;
+    }
 
     const govApproval = Math.round(Math.max(0, Math.min(100, rawApproval)));
     const prevGovApproval = Number(nation.gov_approval ?? 50);
@@ -15247,8 +15256,8 @@ async function advanceTick(supabase) {
             nation.gov_approval_events = decayed;
         }
 
-        // Layer 2: Calculate composite government approval
-        const govApproval = await calculateGovernmentApprovalTick(supabase, nation, newTick);
+        // Layer 2: Calculate composite government approval (pass shutdown flag for -25 penalty)
+        const govApproval = await calculateGovernmentApprovalTick(supabase, nation, newTick, shutdownNow);
 
         // Three-pillar voter preference recalculation
         await calculateThreePillarPreferences(supabase, nation, newTick);

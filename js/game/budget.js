@@ -951,9 +951,11 @@ export async function processGovernmentShutdown(supabase, nation, currentTick, s
         }
     }
 
-    // --- 1. PM/President approval: -2 per tick via gov approval event ---
-    await adjustGovernmentApprovalEvent(supabase, nation.id, -2, 'crisis:government_shutdown');
-    console.log(`[GovernmentShutdown] Applied -2 gov approval event for ${nation.name}`);
+    // --- 1. PM/President approval: -5 per tick via gov approval event ---
+    // Shutdown is a catastrophic governance failure — heavy penalty that quickly pins
+    // the events component at its -50 floor, tanking the 20% events slice to 0.
+    await adjustGovernmentApprovalEvent(supabase, nation.id, -5, 'crisis:government_shutdown');
+    console.log(`[GovernmentShutdown] Applied -5 gov approval event for ${nation.name}`);
 
     // --- 2. Direct stat damage: -1 Stability per tick ---
     const currentStability = Number(nation.stability ?? 50);
@@ -962,8 +964,8 @@ export async function processGovernmentShutdown(supabase, nation, currentTick, s
     nation.stability = newStability;
     console.log(`[GovernmentShutdown] Applied -1 stability for ${nation.name}: ${currentStability} → ${newStability}`);
 
-    // --- 3. Ministry approval penalty: -1/tick for all ministers ---
-    // (handled by updateMinisterApprovals via the isShutdown flag — SHUTDOWN_MINISTER_PENALTY = -1)
+    // --- 3. Ministry approval penalty: -6/tick for all ministers ---
+    // (handled by updateMinisterApprovals via the isShutdown flag — SHUTDOWN_MINISTER_PENALTY = -6)
 
     // --- 4. Unfunded ministries suffer collapsing effect ---
     // (handled by buildShutdownStatInstMap forcing all institutions to 0% funding in the main loop)

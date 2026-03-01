@@ -2315,10 +2315,10 @@ export async function updateMinisterApprovals(supabase, nation, currentTick, isS
 
     if (!ministries || ministries.length === 0) return [];
 
-    // During government shutdown, every minister takes a direct -3/tick approval hit
-    // on top of their normal stat-based scoring. This represents public outrage at
-    // the government's inability to function.
-    const SHUTDOWN_MINISTER_PENALTY = -3;
+    // During government shutdown, every minister takes a direct -6/tick approval hit
+    // on top of their normal stat-based scoring. A shutdown is a catastrophic failure
+    // of governance — public outrage should rapidly destroy minister approval.
+    const SHUTDOWN_MINISTER_PENALTY = -6;
 
     const results = [];
 
@@ -2417,9 +2417,10 @@ export async function updateMinisterApprovals(supabase, nation, currentTick, isS
  * @param {object} supabase
  * @param {object} nation - nation row with current stat values
  * @param {number} currentTick
+ * @param {boolean} [isShutdown=false] - whether the government is currently in shutdown
  * @returns {number|null} the computed government approval (0-100), or null if no government
  */
-export async function calculateGovernmentApprovalTick(supabase, nation, currentTick) {
+export async function calculateGovernmentApprovalTick(supabase, nation, currentTick, isShutdown = false) {
     const cfg = GOV_APPROVAL_CONFIG;
 
     const { data: ministries } = await supabase
@@ -2490,9 +2491,16 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
     const eventsComponent = Math.max(0, Math.min(100, 50 + eventsRaw));
 
     // ─── Composite ───
-    const rawApproval = institutional * cfg.INSTITUTIONAL_WEIGHT
+    let rawApproval = institutional * cfg.INSTITUTIONAL_WEIGHT
         + outcomesScore * cfg.OUTCOMES_WEIGHT
         + eventsComponent * cfg.EVENTS_WEIGHT;
+
+    // Government shutdown: slam a flat -25 penalty on the composite score.
+    // A shutdown is a catastrophic governance failure — the public doesn't
+    // forgive a non-functioning government regardless of minister averages.
+    if (isShutdown) {
+        rawApproval -= 25;
+    }
 
     const govApproval = Math.round(Math.max(0, Math.min(100, rawApproval)));
     const prevGovApproval = Number(nation.gov_approval ?? 50);
