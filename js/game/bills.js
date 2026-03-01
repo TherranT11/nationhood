@@ -654,6 +654,7 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
  */
 export function isSimpleMajorityBill(billType) {
     return billType !== 'foundational'
+        && billType !== 'default_resolution'
         && billType !== 'veto_override'
         && billType !== 'no_confidence'
         && billType !== 'impeachment_motion'
@@ -672,7 +673,7 @@ export function isSimpleMajorityBill(billType) {
  * absolute half-chamber number for backward compat.
  */
 export function getRequiredSeats(billType, votesAgainst) {
-    if (billType === 'foundational' || billType === 'impeachment_conviction')
+    if (billType === 'foundational' || billType === 'default_resolution' || billType === 'impeachment_conviction')
         return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD);
     if (billType === 'veto_override')
         return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
@@ -709,8 +710,8 @@ export function evaluateBillVote(bill, totalSeats) {
     const undeclaredSeats = totalSeats - participating;
     const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
 
-    // ── Foundational / veto_override / impeachment_conviction: 67% absolute supermajority, no quorum ──
-    if (bill.bill_type === 'foundational' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
+    // ── Foundational / default_resolution / veto_override / impeachment_conviction: 67% absolute supermajority, no quorum ──
+    if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
         const threshold = Math.ceil(totalSeats * 2 / 3);
         if (forSeats >= threshold) {
             return { status: 'will_pass', reason: 'supermajority_reached', thresholdNeeded: threshold, forSeats, againstSeats, abstainSeats, undeclaredSeats, participating };
@@ -778,8 +779,8 @@ export function resolveBillVote(bill, totalSeats) {
     const participating = forSeats + againstSeats + abstainSeats;
     const quorumThreshold = Math.ceil(totalSeats * GAME_CONFIG.QUORUM_THRESHOLD);
 
-    // Foundational / veto_override / impeachment_conviction: 67% absolute supermajority
-    if (bill.bill_type === 'foundational' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
+    // Foundational / default_resolution / veto_override / impeachment_conviction: 67% absolute supermajority
+    if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
         const threshold = Math.ceil(totalSeats * 2 / 3);
         return forSeats >= threshold ? 'passed' : 'failed';
     }
@@ -817,6 +818,7 @@ export async function expireCommitteeBills(supabase, nationId, currentTick) {
         .eq('nation_id', nationId)
         .eq('status', 'committee')
         .neq('bill_type', 'budget')  // budget bills persist until passed
+        .neq('bill_type', 'default_resolution')  // default resolutions skip committee
         .lte('proposed_tick', deadline);
 
     if (error || !expired || expired.length === 0) return [];
@@ -893,7 +895,7 @@ export async function checkEarlyMajority(supabase, nationId) {
         const undeclaredSeats = GAME_CONFIG.TOTAL_SEATS - participating;
 
         // ── Check 1: Mathematical lock (outcome impossible to change) ──
-        if (bill.bill_type === 'foundational' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
+        if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
             // Absolute supermajority: 67% of total seats, no quorum
             const requiredSeats = getRequiredSeats(bill.bill_type);
             if (effectiveYes >= requiredSeats) {
@@ -1114,6 +1116,48 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 }
             });
             results.push({ billId: bill.id, billName: bill.bill_name, result: enacted ? 'passed' : 'failed', votesFor, votesAgainst, type: 'foundational', earlyResolution: bill.early_resolution_status || null });
+        } else if (bill.bill_type === 'default_resolution') {
+            // ── Sovereign Default Resolution ──
+            // Full enactment logic lives in handler-template.ts (enactSovereignDefault /
+            // handleFailedDefaultResolution) because it needs cross-nation contagion
+            // and tick-only helpers. The typeof guard ensures client-side callers
+            // (admin.html, laws.html) don't crash — the server tick handles consequences.
+            if (passed) {
+                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+                if (typeof enactSovereignDefault === 'function') {
+                    try {
+                        await enactSovereignDefault(supabase, bill, currentTick);
+                    } catch (defaultErr) {
+                        console.error(`[resolveExpiredVotes] enactSovereignDefault failed for bill ${bill.id}:`, defaultErr);
+                    }
+                }
+            } else {
+                await failBill(supabase, bill);
+                if (typeof handleFailedDefaultResolution === 'function') {
+                    try {
+                        await handleFailedDefaultResolution(supabase, bill, currentTick);
+                    } catch (failErr) {
+                        console.error(`[resolveExpiredVotes] handleFailedDefaultResolution failed for bill ${bill.id}:`, failErr);
+                    }
+                }
+            }
+            const eventKey = passed ? 'bill_passed' : 'bill_failed';
+            try {
+                await supabase.rpc('fire_system_event', {
+                    p_trigger_key: eventKey,
+                    p_nation_id: bill.nation_id,
+                    p_tick: currentTick,
+                    p_placeholders: {
+                        nation: nation?.name || 'Unknown',
+                        bill_name: bill.bill_name,
+                        sponsor: bill.factions?.faction_name || 'Unknown',
+                        votes_for: String(votesFor),
+                        votes_against: String(votesAgainst),
+                        article_count: '0'
+                    }
+                });
+            } catch (e) { /* non-blocking */ }
+            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'default_resolution', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
             // Ambassador confirmation bill
             if (passed) {

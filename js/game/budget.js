@@ -808,14 +808,16 @@ export async function processNoBudgetPenalty(supabase, nation, currentTick) {
     const severity = Math.min(ticksOverdue / maxPenaltyTicks, 1.0);
 
     // Apply penalties: efficiency drops, stability drops, credit drops
-    const effPenalty = -Math.round(severity * 2);  // up to -2/tick
-    const stabPenalty = -Math.round(severity * 1.5);  // up to -1.5/tick
-    const creditPenalty = -Math.round(severity * 1);  // up to -1/tick
+    // Use one-decimal-place precision so early overdue ticks still apply small penalties
+    // instead of rounding to 0 (e.g. severity=0.04 → effPenalty=-0.1 instead of 0)
+    const effPenalty = -Math.round(severity * 2 * 10) / 10;    // up to -2.0/tick
+    const stabPenalty = -Math.round(severity * 1.5 * 10) / 10; // up to -1.5/tick
+    const creditPenalty = -Math.round(severity * 1 * 10) / 10; // up to -1.0/tick
 
     const updates = {};
-    if (effPenalty !== 0) updates.efficiency = Math.max(0, Number(nation.efficiency || 50) + effPenalty);
-    if (stabPenalty !== 0) updates.stability = Math.max(0, Number(nation.stability || 50) + stabPenalty);
-    if (creditPenalty !== 0) updates.credit = Math.max(0, Number(nation.credit || 50) + creditPenalty);
+    if (effPenalty !== 0) updates.efficiency = Math.round(Math.max(0, Number(nation.efficiency || 50) + effPenalty) * 10) / 10;
+    if (stabPenalty !== 0) updates.stability = Math.round(Math.max(0, Number(nation.stability || 50) + stabPenalty) * 10) / 10;
+    if (creditPenalty !== 0) updates.credit = Math.round(Math.max(0, Number(nation.credit || 50) + creditPenalty) * 10) / 10;
 
     if (Object.keys(updates).length > 0) {
         await supabase.from('nations').update(updates).eq('id', nation.id);

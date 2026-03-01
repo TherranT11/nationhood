@@ -105,11 +105,54 @@
     </div>
 </div>
 
+<!-- Default Resolution Modal -->
+<div class="modal-overlay" id="default-resolution-modal">
+    <div class="modal-content" style="max-width:640px;">
+        <div class="modal-header">
+            <div class="modal-title">Sovereign Default Resolution</div>
+            <button class="modal-close" onclick="closeDefaultModal()">&times;</button>
+        </div>
+        <div id="default-modal-body">
+            <div class="default-intro">
+                <p>Filing a Default Resolution signals to international markets that your nation may not honour its debts. This is an extreme measure with severe consequences.</p>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Default Type</label>
+                <select class="form-select" id="default-type-select" onchange="onDefaultTypeChange()">
+                    <option value="full">Full Default (eliminate all debt)</option>
+                    <option value="partial_restructuring">Partial Restructuring (negotiate repayment)</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="repayment-rate-group" style="display:none;">
+                <label class="form-label">Repayment Rate: <span id="repayment-rate-label">50%</span></label>
+                <input type="range" id="repayment-rate-slider" min="30" max="70" value="50" step="5" oninput="onRepaymentRateChange()" style="width:100%;">
+                <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-secondary);"><span>30% (more relief)</span><span>70% (less penalty)</span></div>
+            </div>
+
+            <div id="austerity-section">
+                <label class="form-label">Austerity Commitments <span style="color:var(--text-secondary);font-weight:normal;">(optional — reduces international penalties)</span></label>
+                <div id="austerity-commitments-list"></div>
+                <button class="btn-add" id="add-austerity-btn" onclick="addAusterityRow()" style="margin-top:8px;font-size:0.75rem;">+ Add Spending Cut</button>
+            </div>
+
+            <div id="default-consequence-preview" style="margin-top:16px;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeDefaultModal()">Cancel</button>
+            <button class="btn-submit default-submit-btn" id="submit-default-btn" onclick="submitDefaultResolution()">
+                File Default Resolution — <span id="default-ap-cost">6</span> AP
+            </button>
+        </div>
+    </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, generateBudgetBill } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, generateBudgetBill, SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game-common.js';
 (function () {
     'use strict';
 let currentNation = null, currentFaction = null, currentSeats = 0;
@@ -349,6 +392,8 @@ function renderIdeoTag(ideologyTag) {
 function renderLawsPage() {
     const canDraft = (currentFaction?.action_points || 0) >= GAME_CONFIG.DRAFT_BILL_AP_COST && currentSeats > 0 && !isCaretaker && !isNoGovernment;
 const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and cannot propose bills"' : (isCaretaker ? 'title="Legislature is dissolved — no new bills during caretaker government"' : (isNoGovernment ? 'title="Legislature is suspended until a new government is formed"' : ''));
+    const debtRatio = getDebtToGDP(currentNation);
+    const showDefaultBtn = !lawsIsAutocracy && debtRatio >= SOVEREIGN_DEFAULT_CONFIG.MIN_DEBT_TO_GDP;
     const pageTitle = lawsIsAutocracy ? `Decrees of ${currentNation.name}` : `Bills & Laws of ${currentNation.name}`;
     const html = `
         <div class="panel-padding">
@@ -369,6 +414,7 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
                     <button class="passed-laws-btn" onclick="togglePassedLaws()">📜 Passed Laws</button>
                     <button class="budget-bill-btn" onclick="toggleBudgetBill()" ${budgetEarlyWindow ? 'title="Review Available: ' + budgetReviewDate + '. Open to Submit: ' + budgetSubmitDate + '"' : ''}>💰 Budget Bill${showBudgetBadge ? (budgetEarlyWindow ? '<span class="budget-badge budget-badge-yellow" title="Review Available: ' + budgetReviewDate + '. Open to Submit: ' + budgetSubmitDate + '">DUE</span>' : (nextBudgetDueTick !== null && currentTickGlobal >= nextBudgetDueTick ? '<span class="budget-badge budget-badge-red">!</span>' : '<span class="budget-badge">1</span>')) : ''}</button>
                     <button class="all-laws-btn" onclick="toggleAllLaws()">📋 All Laws</button>
+                    ${showDefaultBtn ? `<button class="default-resolution-btn" onclick="openDefaultResolutionModal()" title="Debt: ${formatDebtToGDP(debtRatio)} of GDP">💀 Default Resolution</button>` : ''}
                     <button class="draft-btn ${lawsIsAutocracy ? 'autocracy-btn' : ''}" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'} ${noSeatsTitle}>
                         ${termPropose} <span class="ap-cost">${GAME_CONFIG.DRAFT_BILL_AP_COST} AP</span>
                     </button>
@@ -1000,6 +1046,7 @@ function renderFloorBill(bill, isVetoed) {
     else if (bill.bill_type === 'veto_override') typeBadge = ' <span style="background:#B71C1C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Veto Override</span>';
     else if (bill.bill_type === 'ratification') typeBadge = ' <span style="background:#00695C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🌐 Ratification</span>';
     else if (bill.bill_type === 'budget') typeBadge = ' <span style="background:#ff9800;color:#000;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">💰 Budget</span>';
+    else if (bill.bill_type === 'default_resolution') typeBadge = ' <span style="background:#b71c1c;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">💀 Default Resolution</span>';
 
     var billTitle = (bill.bill_name || 'Unnamed ' + termBill) + typeBadge + votedBadge;
 
@@ -1031,6 +1078,7 @@ function renderFloorBill(bill, isVetoed) {
                 (bill.bill_type === 'minister_confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#E65100;">🏛 Cabinet Confirmation Vote</span><div class="article-desc">Requires quorum (50%) + simple majority to confirm.</div></div></div>' :
                 (bill.bill_type === 'veto_override' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#B71C1C;">⚖ Veto Override Vote</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD) + ' seats) to override presidential veto.</div></div></div>' :
                 (bill.bill_type === 'foundational' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#9C27B0;">🏛 Electoral Makeup — Proposed: ' + (bill.proposed_seats || '?') + ' seats</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
+                (bill.bill_type === 'default_resolution' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#b71c1c;">💀 Sovereign Default Resolution</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
                 (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">🗑️ Proposes to rescind an active law</span></div></div>' :
                 (bill.bill_type === 'ratification' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#00695C;">🌐 Diplomatic Ratification Vote</span><div class="article-desc">Requires quorum (50%) + simple majority to ratify.</div></div></div>' :
                 (bill.bill_type === 'budget' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff9800;">💰 Annual Budget Allocation</span><div class="article-desc">Allocates government revenue across all ministries. Requires quorum (50%) + simple majority to pass.</div></div></div>' :
@@ -1040,7 +1088,7 @@ function renderFloorBill(bill, isVetoed) {
                     }
                     const chipHTML = renderIdeologyChips(art.policies);
                     return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
-                }).join(''))))))))}
+                }).join('')))))))))}
             </div>
             ${isVetoed ? `<div class="vetoed-stamp">${isPresidential ? '⛔ VETOED BY PRESIDENT' : '⛔ VETOED BY HEAD FACTION'}</div>` : `
                 <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span>${(bill.votes_abstain || 0) > 0 ? `<span style="color:#888;font-size:0.75rem;margin-left:8px;">— ${bill.votes_abstain} Abstain</span>` : ''}<span style="color:var(--text-secondary);font-size:0.75rem;margin-left:8px;">${GAME_CONFIG.TOTAL_SEATS - (bill.votes_for || 0) - (bill.votes_against || 0) - (bill.votes_abstain || 0)} undeclared</span></div>
@@ -1079,9 +1127,11 @@ function renderRecentBills() {
                 ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Foundational</span>'
                 : (bill.bill_type === 'no_confidence'
                     ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">No Confidence</span>'
-                    : (bill.bill_type === 'ratification'
-                        ? ' <span style="background:#00695C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Ratification</span>'
-                        : ''));
+                    : (bill.bill_type === 'default_resolution'
+                        ? ' <span style="background:#b71c1c;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Default Resolution</span>'
+                        : (bill.bill_type === 'ratification'
+                            ? ' <span style="background:#00695C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Ratification</span>'
+                            : '')));
             return `
                 <div class="floor-bill clickable-bill ${statusClass}" onclick="window.location.href='bill.html?id=${bill.id}'" style="opacity:0.7;">
                     <div class="committee-bill-header">
@@ -1229,6 +1279,7 @@ function renderArchiveBill(bill) {
         : bill.bill_type === 'minister_confirmation' ? ' <span class="archive-type-badge" style="background:#E65100;">Cabinet Confirmation</span>'
         : bill.bill_type === 'confirmation' ? ' <span class="archive-type-badge" style="background:#1a5276;">Confirmation</span>'
         : bill.bill_type === 'budget' ? ' <span class="archive-type-badge" style="background:#1B5E20;">Budget</span>'
+        : bill.bill_type === 'default_resolution' ? ' <span class="archive-type-badge" style="background:#b71c1c;">Default Resolution</span>'
         : '';
 
     return `
@@ -1266,7 +1317,7 @@ function renderCommitteeBill(bill) {
         <div class="committee-bill clickable-bill" onclick="window.location.href='bill.html?id=${bill.id}'">
             <div class="committee-bill-header">
                 <div>
-                    <div class="committee-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : (bill.bill_type === 'foundational' ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>' : (bill.bill_type === 'ratification' ? ' <span style="background:#00695C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🌐 Ratification</span>' : (bill.bill_type === 'budget' ? ' <span style="background:#ff9800;color:#000;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">💰 Budget</span>' : '')))}</div>
+                    <div class="committee-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : (bill.bill_type === 'foundational' ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>' : (bill.bill_type === 'default_resolution' ? ' <span style="background:#b71c1c;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">💀 Default Resolution</span>' : (bill.bill_type === 'ratification' ? ' <span style="background:#00695C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🌐 Ratification</span>' : (bill.bill_type === 'budget' ? ' <span style="background:#ff9800;color:#000;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">💰 Budget</span>' : ''))))}</div>
                     <div class="committee-bill-sponsor">Proposed by ${bill.factions?.faction_name || 'Unknown'}</div>
                 </div>
                 ${lawsIsAutocracy ? `<div class="committee-support"><div style="font-size:0.85rem;color:#ff4444;font-weight:bold;">DECREE</div><div class="support-label">${isHeadFaction ? 'You can enact this' : 'Awaiting head faction'}</div></div>` :
@@ -1275,6 +1326,7 @@ function renderCommitteeBill(bill) {
             ${!lawsIsAutocracy ? `<div class="support-bar-track"><div class="threshold-marker"></div><div class="support-bar-fill ${support.percent >= 51 ? 'enough' : ''}" style="width:${support.percent}%"></div></div>` : ''}
             <div class="bill-articles">
                 ${bill.bill_type === 'foundational' ? `<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#9C27B0;">🏛 Electoral Makeup — Proposed: ${bill.proposed_seats || '?'} seats</span><div class="article-desc">Requires 2/3 supermajority to pass. Co-sponsor required.</div></div></div>` :
+                (bill.bill_type === 'default_resolution' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#b71c1c;">💀 Sovereign Default Resolution</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
                 (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff4444;">🗑️ Proposes to rescind an active law</span></div></div>' :
                 (bill.bill_type === 'ratification' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#00695C;">🌐 Diplomatic Ratification Vote</span><div class="article-desc">Requires simple majority (' + GAME_CONFIG.MAJORITY_SEATS + ' seats) to ratify.</div></div></div>' :
                 (bill.bill_type === 'budget' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:#ff9800;">💰 Annual Budget Allocation</span><div class="article-desc">Allocates government revenue across all ministries.</div></div></div>' :
@@ -1284,7 +1336,7 @@ function renderCommitteeBill(bill) {
                     }
                     const chipHTML = renderIdeologyChips(art.policies);
                     return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
-                }).join(''))))}
+                }).join('')))))}
             </div>
             ${decreeActionsHTML}
             ${!lawsIsAutocracy ? `<div class="click-hint" style="color:#ff9800;">Click to view full ${termBill.toLowerCase()} & negotiate →</div>` : ''}
@@ -1824,6 +1876,322 @@ async function submitToCommittee() {
     } catch (error) { console.error('Error submitting:', error); alert('Error submitting. Please try again.'); } finally { isSubmitting = false; }
 }
 
+// ==================== DEFAULT RESOLUTION ====================
+
+let defaultAusterityCount = 0;
+
+async function openDefaultResolutionModal() {
+    if (lawsIsAutocracy) return;
+    if (isCaretaker) { alert('Legislature is dissolved.'); return; }
+    if (isNoGovernment) { alert('Legislature is suspended.'); return; }
+    if (currentSeats === 0) { alert('Your faction holds no seats.'); return; }
+
+    // Check for active resolution
+    const { data: activeRes } = await _supabase
+        .from('bills')
+        .select('id')
+        .eq('nation_id', currentNation.id)
+        .eq('bill_type', 'default_resolution')
+        .in('status', ['committee', 'floor'])
+        .limit(1)
+        .maybeSingle();
+
+    const eligibility = canProposeDefault(currentNation, currentTickGlobal, !!activeRes);
+    if (!eligibility.canPropose) {
+        const reasons = {
+            no_debt: 'Your nation has no debt to default on.',
+            debt_too_low: `Debt-to-GDP ratio (${formatDebtToGDP(eligibility.debtToGDP)}) must be at least ${formatDebtToGDP(SOVEREIGN_DEFAULT_CONFIG.MIN_DEBT_TO_GDP)}.`,
+            active_resolution: 'A Default Resolution is already pending.',
+            default_cooldown: `Cannot file another default for ${eligibility.ticksRemaining} more ticks.`
+        };
+        alert(reasons[eligibility.reason] || 'Cannot propose a Default Resolution right now.');
+        return;
+    }
+
+    if ((currentFaction?.action_points || 0) < SOVEREIGN_DEFAULT_CONFIG.DEFAULT_RESOLUTION_AP_COST) {
+        alert(`Not enough AP. Need ${SOVEREIGN_DEFAULT_CONFIG.DEFAULT_RESOLUTION_AP_COST} AP.`);
+        return;
+    }
+
+    defaultAusterityCount = 0;
+    document.getElementById('austerity-commitments-list').innerHTML = '';
+    document.getElementById('default-type-select').value = 'full';
+    document.getElementById('repayment-rate-group').style.display = 'none';
+    document.getElementById('default-ap-cost').textContent = SOVEREIGN_DEFAULT_CONFIG.DEFAULT_RESOLUTION_AP_COST;
+    document.getElementById('default-resolution-modal').classList.add('active');
+    updateDefaultPreview();
+}
+
+function closeDefaultModal() {
+    document.getElementById('default-resolution-modal').classList.remove('active');
+}
+
+function onDefaultTypeChange() {
+    const type = document.getElementById('default-type-select').value;
+    document.getElementById('repayment-rate-group').style.display = type === 'partial_restructuring' ? 'block' : 'none';
+    updateDefaultPreview();
+}
+
+function onRepaymentRateChange() {
+    const val = document.getElementById('repayment-rate-slider').value;
+    document.getElementById('repayment-rate-label').textContent = val + '%';
+    updateDefaultPreview();
+}
+
+function addAusterityRow() {
+    const cfg = SOVEREIGN_DEFAULT_CONFIG;
+    if (defaultAusterityCount >= cfg.AUSTERITY_MAX_COMMITMENTS) {
+        alert(`Maximum ${cfg.AUSTERITY_MAX_COMMITMENTS} austerity commitments.`);
+        return;
+    }
+    defaultAusterityCount++;
+    const idx = defaultAusterityCount;
+    const options = AUSTERITY_ELIGIBLE_STATS.map(s => `<option value="${s}">${formatStatName(s)}</option>`).join('');
+    const row = document.createElement('div');
+    row.className = 'austerity-row';
+    row.id = `austerity-row-${idx}`;
+    row.innerHTML = `
+        <select class="form-select austerity-stat" onchange="updateDefaultPreview()" style="flex:2;">
+            <option value="">Select stat...</option>${options}
+        </select>
+        <div style="flex:1;display:flex;align-items:center;gap:4px;">
+            <span style="font-size:0.7rem;color:var(--text-secondary);">Cut:</span>
+            <input type="number" class="form-input austerity-reduction" min="${cfg.AUSTERITY_MIN_REDUCTION}" max="${cfg.AUSTERITY_MAX_REDUCTION}" value="5" onchange="updateDefaultPreview()" style="width:60px;">
+        </div>
+        <div style="flex:1;display:flex;align-items:center;gap:4px;">
+            <span style="font-size:0.7rem;color:var(--text-secondary);">Over:</span>
+            <input type="number" class="form-input austerity-ticks" min="${cfg.AUSTERITY_MIN_TICKS}" max="${cfg.AUSTERITY_MAX_TICKS}" value="10" onchange="updateDefaultPreview()" style="width:60px;">
+            <span style="font-size:0.7rem;color:var(--text-secondary);">ticks</span>
+        </div>
+        <button class="btn-cancel" onclick="removeAusterityRow(${idx})" style="padding:4px 8px;font-size:0.7rem;">×</button>
+    `;
+    document.getElementById('austerity-commitments-list').appendChild(row);
+    updateDefaultPreview();
+}
+
+function removeAusterityRow(idx) {
+    const row = document.getElementById(`austerity-row-${idx}`);
+    if (row) row.remove();
+    updateDefaultPreview();
+}
+
+function getAusterityCommitments() {
+    const rows = document.querySelectorAll('.austerity-row');
+    const commitments = [];
+    rows.forEach(row => {
+        const stat = row.querySelector('.austerity-stat')?.value;
+        const reduction = Number(row.querySelector('.austerity-reduction')?.value || 0);
+        const over_ticks = Number(row.querySelector('.austerity-ticks')?.value || 0);
+        if (stat) commitments.push({ stat, reduction, over_ticks });
+    });
+    return commitments;
+}
+
+function updateDefaultPreview() {
+    const type = document.getElementById('default-type-select').value;
+    const rate = type === 'partial_restructuring' ? Number(document.getElementById('repayment-rate-slider').value) / 100 : null;
+    const austerity = getAusterityCommitments();
+    const preview = previewDefaultConsequences(currentNation, type, rate, austerity);
+
+    const fmtChange = (change) => {
+        if (change > 0) return `<span style="color:#4CAF50;">+${change}</span>`;
+        if (change < 0) return `<span style="color:#ff4444;">${change}</span>`;
+        return `<span style="color:#888;">0</span>`;
+    };
+
+    const fmtMoney = (val) => {
+        if (val == null) return '$0';
+        val = Number(val);
+        const sign = val < 0 ? '-' : '';
+        const abs = Math.abs(val);
+        if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(1) + 'T';
+        if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(1) + 'B';
+        if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(1) + 'M';
+        return sign + '$' + Math.round(abs);
+    };
+
+    let html = `<div class="default-preview">
+        <div class="default-preview-header">Consequence Preview</div>
+        <div class="default-preview-debt">
+            <span>Debt: ${fmtMoney(preview.debtBefore)} → ${fmtMoney(preview.debtAfter)}</span>
+            <span style="color:#4CAF50;font-weight:bold;">(-${fmtMoney(preview.debtReduction)})</span>
+        </div>
+        <div class="default-preview-grid">`;
+
+    const stats = [
+        ['Credit', preview.statChanges.credit],
+        ['Currency', preview.statChanges.currency_strength],
+        ['Foreign Inv.', preview.statChanges.foreign_investment],
+        ['Intl. Rep.', preview.statChanges.international_reputation],
+        ['Interest Rates', preview.statChanges.interest_rates],
+        ['Inflation', preview.statChanges.inflation],
+        ['Trade Balance', preview.statChanges.trade_balance],
+        ['Standard of Living', preview.statChanges.standard_of_living],
+        ['Happiness', preview.statChanges.happiness]
+    ];
+
+    for (const [label, stat] of stats) {
+        html += `<div class="default-preview-stat">
+            <span class="dps-label">${label}</span>
+            <span class="dps-value">${stat.before.toFixed(0)} → ${stat.after.toFixed(0)} ${fmtChange(stat.change)}</span>
+        </div>`;
+    }
+
+    html += `</div>
+        <div class="default-preview-footer">
+            <span>Gov. Approval: ${fmtChange(preview.governmentApprovalHit)}</span>
+            <span>Penalty: ${Math.round(preview.penaltyMultiplier * 100)}%</span>
+            ${preview.austerityDiscount > 0 ? `<span style="color:#4CAF50;">Austerity discount: -${Math.round(preview.austerityDiscount * 100)}%</span>` : ''}
+        </div>
+        <div style="font-size:0.7rem;color:#ff9800;margin-top:8px;">
+            ⚠ Triggers Sovereign Default Crisis (min ${preview.crisisMinDuration} ticks). Credit capped at ${preview.creditCeiling}, Foreign Investment at ${preview.foreignInvCeiling}. Requires 2/3 supermajority to pass. Goes directly to floor vote (${SOVEREIGN_DEFAULT_CONFIG.VOTING_TICKS} ticks).
+        </div>
+    </div>`;
+
+    document.getElementById('default-consequence-preview').innerHTML = html;
+}
+
+async function submitDefaultResolution() {
+    if (isSubmitting) return;
+    if (isCaretaker || isNoGovernment) return;
+    if (currentSeats === 0) { alert('Your faction holds no seats.'); return; }
+
+    const cfg = SOVEREIGN_DEFAULT_CONFIG;
+    const defaultType = document.getElementById('default-type-select').value;
+    const repaymentRate = defaultType === 'partial_restructuring'
+        ? Number(document.getElementById('repayment-rate-slider').value) / 100
+        : null;
+    const austerityCommitments = getAusterityCommitments();
+
+    // Validate austerity
+    const validation = validateAusterityCommitments(austerityCommitments);
+    if (!validation.valid) {
+        alert('Invalid austerity commitments:\n' + validation.errors.join('\n'));
+        return;
+    }
+
+    // Check active resolution
+    const { data: activeRes } = await _supabase
+        .from('bills')
+        .select('id')
+        .eq('nation_id', currentNation.id)
+        .eq('bill_type', 'default_resolution')
+        .in('status', ['committee', 'floor'])
+        .limit(1)
+        .maybeSingle();
+
+    const eligibility = canProposeDefault(currentNation, currentTickGlobal, !!activeRes);
+    if (!eligibility.canPropose) {
+        alert('No longer eligible to propose a Default Resolution.');
+        return;
+    }
+
+    if (!confirm(
+        `Are you sure you want to file a ${defaultType === 'full' ? 'Full Default' : 'Partial Restructuring'} Resolution?\n\n` +
+        `This will:\n` +
+        `• Cost ${cfg.DEFAULT_RESOLUTION_AP_COST} AP\n` +
+        `• Immediately hit Currency (${cfg.FILING_CURRENCY_HIT}) and Foreign Investment (${cfg.FILING_FOREIGN_INV_HIT})\n` +
+        `• Go directly to a floor vote (${cfg.VOTING_TICKS} ticks)\n` +
+        `• Require a 2/3 supermajority to pass`
+    )) return;
+
+    isSubmitting = true;
+    document.getElementById('submit-default-btn').disabled = true;
+
+    // Deduct AP
+    const apResult = await deductAP(_supabase, currentFaction.id, cfg.DEFAULT_RESOLUTION_AP_COST);
+    if (!apResult.success) {
+        alert('Not enough AP.');
+        isSubmitting = false;
+        document.getElementById('submit-default-btn').disabled = false;
+        return;
+    }
+    currentFaction.action_points = apResult.newAp;
+    sessionStorage.removeItem('nationhood_state');
+
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shard?.current_tick || 0;
+        const debtRatio = getDebtToGDP(currentNation);
+
+        const billName = defaultType === 'full'
+            ? `Sovereign Default Act of ${currentNation.name}`
+            : `Debt Restructuring Act of ${currentNation.name}`;
+
+        // Create the bill — goes directly to floor (skip committee)
+        const { data: bill, error: billError } = await _supabase.from('bills').insert({
+            nation_id: currentNation.id,
+            proposed_by: currentFaction.id,
+            proposed_tick: currentTick,
+            bill_name: billName,
+            bill_type: 'default_resolution',
+            status: 'floor',
+            voting_ends_tick: currentTick + cfg.VOTING_TICKS,
+            preamble: defaultType === 'full'
+                ? `This resolution, filed by the ${currentFaction.faction_name}, declares sovereign default on all outstanding national debt (${formatDebtToGDP(debtRatio)} of GDP). Passage requires a two-thirds supermajority.`
+                : `This resolution, filed by the ${currentFaction.faction_name}, proposes partial restructuring of national debt (${formatDebtToGDP(debtRatio)} of GDP), committing to repay ${Math.round((repaymentRate || 0.5) * 100)}% of obligations. Passage requires a two-thirds supermajority.`
+        }).select().single();
+
+        if (billError) throw billError;
+
+        // Create the default_resolution record
+        const { error: resError } = await _supabase.from('default_resolutions').insert({
+            nation_id: currentNation.id,
+            proposed_by_faction_id: currentFaction.id,
+            proposed_by_player_id: currentFaction.player_id || null,
+            default_type: defaultType,
+            repayment_rate: repaymentRate,
+            austerity_commitments: austerityCommitments.length > 0 ? austerityCommitments : [],
+            bill_id: bill.id,
+            status: 'voting',
+            debt_at_proposal: Number(currentNation.debt ?? 0),
+            gdp_at_proposal: Number(currentNation.gdp ?? 0),
+            debt_to_gdp_at_proposal: debtRatio,
+            created_at_tick: currentTick
+        });
+        if (resError) throw resError;
+
+        // Apply filing market reactions (immediate)
+        const clamp = (val, delta) => Math.max(0, Math.min(100, Math.round((val + delta) * 10) / 10));
+        await _supabase.from('nations').update({
+            currency_strength: clamp(Number(currentNation.currency_strength ?? 50), cfg.FILING_CURRENCY_HIT),
+            foreign_investment: clamp(Number(currentNation.foreign_investment ?? 50), cfg.FILING_FOREIGN_INV_HIT)
+        }).eq('id', currentNation.id);
+
+        // Trigger NPC voting
+        if (!lawsIsAutocracy) {
+            try {
+                await _supabase.rpc('process_npc_committee_votes', { p_nation_id: currentNation.id });
+            } catch (e) { /* non-fatal */ }
+        }
+
+        // Event log
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation.id,
+            event_name: 'Default Resolution Filed',
+            description_used: `The ${currentFaction.faction_name} has filed a ${defaultType === 'full' ? 'full sovereign default' : 'debt restructuring'} resolution. Markets react with alarm.`,
+            category: 'economy',
+            effects_applied: [
+                { stat: 'currency_strength', change: cfg.FILING_CURRENCY_HIT },
+                { stat: 'foreign_investment', change: cfg.FILING_FOREIGN_INV_HIT }
+            ],
+            fired_at_tick: currentTick
+        });
+
+        closeDefaultModal();
+        await loadLawsData();
+        renderLawsPage();
+        alert(`"${billName}" has been filed and sent directly to the floor.\n\nMarkets have reacted: Currency ${cfg.FILING_CURRENCY_HIT}, Foreign Investment ${cfg.FILING_FOREIGN_INV_HIT}.`);
+    } catch (error) {
+        console.error('Error filing Default Resolution:', error);
+        alert('Error filing Default Resolution. Please try again.');
+    } finally {
+        isSubmitting = false;
+        const btn = document.getElementById('submit-default-btn');
+        if (btn) btn.disabled = false;
+    }
+}
+
 // ==================== COMMITTEE ACTIONS ====================
 
 async function setStance(billId, stance) {
@@ -1983,6 +2351,14 @@ window.retractBill = retractBill;
 window.filterAllLaws = filterAllLaws;
 window.togglePassedLaws = togglePassedLaws;
 window.toggleBudgetBill = toggleBudgetBill;
+window.openDefaultResolutionModal = openDefaultResolutionModal;
+window.closeDefaultModal = closeDefaultModal;
+window.onDefaultTypeChange = onDefaultTypeChange;
+window.onRepaymentRateChange = onRepaymentRateChange;
+window.addAusterityRow = addAusterityRow;
+window.removeAusterityRow = removeAusterityRow;
+window.updateDefaultPreview = updateDefaultPreview;
+window.submitDefaultResolution = submitDefaultResolution;
 })();
 </script>
 </body>

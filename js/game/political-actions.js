@@ -449,8 +449,8 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
         for (const sb of spillTargets) {
             const row = approvalByBloc[sb.id];
             if (!row) continue;
-            // For 'all' scope (counter-protest), target bloc also gets spillover on top
-            if (sb.id === blocId) continue; // target already handled
+            // For non-'all' scopes, skip target bloc (already handled above)
+            if (sb.id === blocId && outcome.spilloverScope !== 'all') continue;
             const oldPref = Math.round(row.preference_score || 0);
             const newPref = Math.max(0, Math.min(100, oldPref + outcome.spillover));
             const newMom = Math.round(((row.momentum || 0) + outcome.spillover) * 100) / 100;
@@ -1833,7 +1833,7 @@ export async function processCoalitionDetection(supabase, nation, currentTick) {
 export async function autoResolveStaleShakeups(supabase, nationId, currentTick) {
     const { data: votingShakeups } = await supabase
         .from('shakeups')
-        .select('id, created_at')
+        .select('id, created_at, created_tick')
         .eq('nation_id', nationId)
         .eq('status', 'voting');
 
@@ -2015,7 +2015,12 @@ export async function processStatEffects(supabase, nation, currentTick) {
 
                     // For raw-value stats (population), scale rate by divisor
                     // so rate: 1 means +1M for population
-                    const scaledRate = RAW_SCALING_DIVISORS[statKey] ? rate * RAW_SCALING_DIVISORS[statKey] : rate;
+                    let scaledRate = RAW_SCALING_DIVISORS[statKey] ? rate * RAW_SCALING_DIVISORS[statKey] : rate;
+
+                    // Debt service burden: reduce government-spending-dependent stat effects
+                    if (SPENDING_AFFECTED_STATS.has(statKey)) {
+                        scaledRate *= getSpendingEffectivenessMultiplier(nation);
+                    }
 
                     let newVal;
                     if (dir === 'up') {

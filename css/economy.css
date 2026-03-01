@@ -257,6 +257,130 @@ body.light-mode .econ-card-value { color: #2a2a25; }
 .econ-debt-rating.rating-poor       { color: #ff9800; }
 .econ-debt-rating.rating-critical   { color: #ff4444; }
 
+/* ===== DEBT METRICS ===== */
+.econ-debt-metrics {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin: 10px 0;
+    padding: 8px 0;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.econ-debt-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+.debt-metric-label {
+    font-size: 0.62rem;
+    color: #8a8778;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-family: 'JetBrains Mono', monospace;
+}
+.debt-metric-value {
+    font-size: 0.88rem;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    color: #e2e0d6;
+}
+
+/* ===== DEBT SERVICE BURDEN BAR ===== */
+.debt-burden-bar {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: rgba(255,152,0,0.06);
+    border: 1px solid rgba(255,152,0,0.15);
+    border-radius: 6px;
+}
+.debt-burden-label {
+    font-size: 0.7rem;
+    color: #c4a03e;
+    margin-bottom: 6px;
+    font-family: 'JetBrains Mono', monospace;
+}
+.debt-burden-label strong { color: #ff9800; }
+.debt-burden-track {
+    height: 6px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.debt-burden-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+/* ===== CREDIT LOCKOUT WARNING ===== */
+.credit-lockout-warning {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 10px 14px;
+    background: linear-gradient(135deg, rgba(183,28,28,0.15), rgba(120,20,20,0.1));
+    border: 1px solid rgba(183,28,28,0.4);
+    border-radius: 6px;
+    font-size: 0.72rem;
+    color: #ff6666;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+}
+.lockout-icon { font-size: 1.1rem; }
+
+/* ===== DEBT DISTRESS BANNER ===== */
+.debt-distress-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 18px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+.debt-distress-critical {
+    background: linear-gradient(135deg, rgba(183,28,28,0.2), rgba(120,20,20,0.12));
+    border: 2px solid rgba(255,68,68,0.5);
+}
+.debt-distress-warning {
+    background: linear-gradient(135deg, rgba(255,152,0,0.12), rgba(180,100,0,0.08));
+    border: 2px solid rgba(255,152,0,0.35);
+}
+.distress-banner-icon {
+    font-size: 1.6rem;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+.distress-banner-content { flex: 1; }
+.distress-banner-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 4px;
+}
+.debt-distress-critical .distress-banner-title { color: #ff4444; }
+.debt-distress-warning .distress-banner-title { color: #ff9800; }
+.distress-banner-text {
+    font-size: 0.78rem;
+    color: #ccc;
+    line-height: 1.5;
+}
+
+/* ===== LIGHT MODE OVERRIDES ===== */
+body.light-mode .econ-debt-metrics { border-color: rgba(0,0,0,0.08); }
+body.light-mode .debt-metric-label { color: #888; }
+body.light-mode .debt-metric-value { color: #333; }
+body.light-mode .debt-burden-bar { background: rgba(255,152,0,0.05); border-color: rgba(255,152,0,0.12); }
+body.light-mode .debt-burden-label { color: #8a6a1e; }
+body.light-mode .debt-burden-track { background: rgba(0,0,0,0.06); }
+body.light-mode .credit-lockout-warning { background: rgba(183,28,28,0.06); border-color: rgba(183,28,28,0.2); color: #b71c1c; }
+body.light-mode .debt-distress-critical { background: rgba(183,28,28,0.06); border-color: rgba(255,68,68,0.3); }
+body.light-mode .debt-distress-warning { background: rgba(255,152,0,0.06); border-color: rgba(255,152,0,0.2); }
+body.light-mode .distress-banner-text { color: #555; }
+
 /* ===== RANKINGS TABLE ===== */
 .econ-ranking-table {
     display: flex;
