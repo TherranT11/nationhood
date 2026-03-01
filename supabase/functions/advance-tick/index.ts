@@ -4825,6 +4825,24 @@ async function checkEarlyMajority(supabase, nationId) {
             }
         }
 
+        // ── Check 3: Budget bill forced resolution after MAX_FLOOR_TICKS ──
+        // Budget bills have no voting deadline (voting_ends_tick = null).
+        // If a budget bill has been on the floor for BUDGET_BILL_MAX_FLOOR_TICKS
+        // ticks without resolution, force a vote based on the current tally.
+        // This prevents budget bills from getting stuck indefinitely when
+        // bill_support seat_counts are stale and don't trigger a math-lock.
+        if (!earlyStatus && bill.bill_type === 'budget' && bill.voting_ends_tick == null) {
+            const ticksSinceProposed = currentTick - (bill.proposed_tick || 0);
+            if (ticksSinceProposed >= GAME_CONFIG.BUDGET_BILL_MAX_FLOOR_TICKS) {
+                if (participating >= quorumSeats && effectiveYes > noSeats) {
+                    earlyStatus = 'quorum_reached';
+                } else {
+                    earlyStatus = 'quorum_opposed';
+                }
+                console.log(`[checkEarlyMajority] Budget bill ${bill.bill_name}: FORCED resolution after ${ticksSinceProposed} ticks (YES=${yesSeats}, NO=${noSeats}, participating=${participating}, quorum=${quorumSeats})`);
+            }
+        }
+
         if (earlyStatus) {
             // Resolve immediately this tick (no grace period)
             // Budget bills have null voting_ends_tick, so just use currentTick
@@ -4839,7 +4857,7 @@ async function checkEarlyMajority(supabase, nationId) {
             }).eq('id', bill.id);
 
             const resolveType = earlyStatus.startsWith('quorum') ? 'QUORUM' : 'MATH-LOCK';
-            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} [${resolveType}] (YES=${yesSeats}, NO=${noSeats}, quorum=${quorumSeats}, voted=${totalVoted}). Resolves tick ${resolveAtTick}`);
+            console.log(`[checkEarlyMajority] ${bill.bill_name}: ${earlyStatus} [${resolveType}] (YES=${yesSeats}, NO=${noSeats}, quorum=${quorumSeats}, voted=${participating}). Resolves tick ${resolveAtTick}`);
             results.push({ billId: bill.id, billName: bill.bill_name, status: earlyStatus, yesSeats, noSeats });
         }
     }
