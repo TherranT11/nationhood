@@ -1403,13 +1403,13 @@ function renderActiveLaw(law) {
         const cls = p.stat_direction === 'UP' ? 'effect-up' : 'effect-down';
         effectsHTML = `${formatStatName(p.target_stat)} <span class="${cls}">${dir}</span>`;
     }
-    return `<div class="active-law"><div class="active-law-name">${p.policy_name}</div><div class="active-law-desc">${p.description || ''}</div><div class="active-law-meta"><span>${effectsHTML}</span><span>Passed tick ${law.passed_tick || '?'}</span><button class="rescind-btn" onclick="rescindLaw('${law.id}','${p.policy_name.replace(/'/g, "\\'")}')">✕ Rescind</button></div></div>`;
+    return `<div class="active-law"><div class="active-law-name">${p.policy_name}</div><div class="active-law-desc">${p.description || ''}</div><div class="active-law-meta"><span>${effectsHTML}</span><span>Passed tick ${law.passed_tick || '?'}</span><button class="rescind-btn" onclick="rescindLaw('${law.id}','${p.policy_name.replace(/'/g, "\\'")}','${law.policy_id || ''}')">✕ Rescind</button></div></div>`;
 }
 
 function toggleMajorSector(key) { document.getElementById('sector-'+key).classList.toggle('expanded'); }
 function toggleMinorSector(majorKey, minorKey) { document.getElementById('minor-'+majorKey+'-'+minorKey)?.classList.toggle('expanded'); }
 
-async function rescindLaw(activeLawId, policyName) {
+async function rescindLaw(activeLawId, policyName, policyId) {
     if (currentSeats === 0) { alert('Your faction holds no seats and cannot propose bills.'); return; }
     if (!confirm('Propose a bill to rescind "' + policyName + '"?\n\nThis will create a repeal bill and send it to committee for a vote.')) return;
     try {
@@ -1427,6 +1427,18 @@ async function rescindLaw(activeLawId, policyName) {
             preamble: 'This ' + termBill + ', put forth by the ' + currentFaction.faction_name + ', seeks to rescind the law "' + policyName + '" currently in effect in ' + currentNation.name + '.'
         }).select().single();
         if (billError) throw billError;
+
+        // Also insert a bill_article with repeal_active_law_id as a fallback
+        // (ensures enactBill can find the repeal target even if bills.repeal_active_law_id column is missing)
+        await _supabase.from('bill_articles').insert({
+            bill_id: bill.id,
+            policy_id: policyId || null,
+            article_number: 1,
+            added_by: currentFaction.id,
+            article_title: 'Repeal: ' + policyName,
+            article_text: 'Rescind the law "' + policyName + '" and reverse its effects.',
+            repeal_active_law_id: activeLawId
+        });
 
         // Auto-add sponsor support
         const mySeats = currentFaction.seats || 0;
