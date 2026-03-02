@@ -1265,13 +1265,20 @@ function renderPresidentialMinistryCard(key, ministry) {
             fireBtn = `<div class="ministry-actions"><button class="ministry-btn dismiss" onclick="event.stopPropagation();fireMinister('${key}')"${apCost ? ' disabled title="Need 1 AP"' : ''}>Dismiss Minister <span class="ap-cost">1 AP</span></button></div>`;
         }
 
+        // Resign button for the minister's own party (not the president's party — they use Dismiss)
+        let resignBtn = '';
+        const isMyMinistry = currentFaction && ministry.party_id === currentFaction.id && !isPresidentParty;
+        if (isMyMinistry) {
+            resignBtn = `<div class="ministry-actions"><button class="ministry-btn purge" onclick="event.stopPropagation();resignMinistry('${key}')">Resign Ministry</button></div>`;
+        }
+
         return `<div class="ministry-card" style="border-top:3px solid ${pmColor};padding:10px 12px;">
             <div class="ministry-header"><div class="ministry-title">${ministry.ministry_name || MINISTRY_NAMES[key]}</div></div>
             <div class="minister-name">${ministry.minister_first_name} ${ministry.minister_last_name}</div>
             <div class="minister-details">Age ${ministry.minister_age || '?'} • <span class="minister-party" style="color:${pmColor};">${pmLogoHtml}${partyName}</span></div>
             <div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>
             ${renderMinistryStatBreakdown(key)}
-            ${fireBtn}
+            ${resignBtn}${fireBtn}
         </div>`;
     }
 
@@ -2495,24 +2502,34 @@ async function resignPMAction() {
     if (!ministry) return;
 
     // Cannot resign ministry during caretaker government
-    if (coalitionData?.status === 'caretaker') {
+    if (!isPresidential && coalitionData?.status === 'caretaker') {
         alert('Cannot resign ministries during a caretaker government.');
         return;
     }
 
     const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
-    if (!confirm('📋 Resign ' + ministerName + ' from ' + (ministry.ministry_name || ministryKey) + '?\n\nThis vacates the position. Your coalition leader may reassign it.')) return;
+    const confirmMsg = isPresidential
+        ? 'Resign ' + ministerName + ' from ' + (ministry.ministry_name || ministryKey) + '?\n\nThis vacates the position. The President will need to nominate a replacement.'
+        : 'Resign ' + ministerName + ' from ' + (ministry.ministry_name || ministryKey) + '?\n\nThis vacates the position. Your coalition leader may reassign it.';
+    if (!confirm(confirmMsg)) return;
 
     try {
-        await _supabase.from('ministries').update({
+        const updateData = {
             minister_first_name: null,
             minister_last_name: null,
             minister_age: null,
             party_id: null,
             minister_approval: 50
-        }).eq('id', ministry.id);
+        };
+        // In presidential systems, reset confirmation_status so President can re-nominate
+        if (isPresidential) {
+            updateData.confirmation_status = null;
+            updateData.pending_minister = null;
+        }
 
-        alert('📋 ' + ministerName + ' has resigned from ' + (ministry.ministry_name || ministryKey) + '.');
+        await _supabase.from('ministries').update(updateData).eq('id', ministry.id);
+
+        alert(ministerName + ' has resigned from ' + (ministry.ministry_name || ministryKey) + '.');
         await renderGovernmentPage();
     } catch (e) {
         console.error('Resign ministry error:', e);

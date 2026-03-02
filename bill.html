@@ -206,7 +206,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination } from './js/game-common.js';
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
@@ -1620,6 +1620,32 @@ function renderCurrentVote() {
 
 async function castVote(vote) {
     if (!currentFaction || currentBill.status !== 'floor') return;
+
+    // Nominee self-rejection: if this is a minister_confirmation bill and the
+    // nominee's party votes NO, immediately end the vote as failed.
+    if (vote === 'no' && currentBill.bill_type === 'minister_confirmation' && currentBill.ministry_key) {
+        try {
+            const { data: ministry } = await _supabase.from('ministries')
+                .select('pending_minister')
+                .eq('nation_id', currentBill.nation_id)
+                .eq('ministry_key', currentBill.ministry_key)
+                .eq('is_active', true)
+                .maybeSingle();
+
+            if (ministry?.pending_minister?.party_id === currentFaction.id) {
+                if (!confirm('You are the nominated party. Voting NO will immediately end this confirmation as FAILED.\n\nThe President loses 2 government approval and cannot nominate your party for this position again.\n\nProceed?')) return;
+
+                await rejectOwnNomination(_supabase, billId, currentFaction.id);
+                alert('Your party has declined the nomination. The confirmation vote has been ended.');
+                await loadBillData();
+                return;
+            }
+        } catch (e) {
+            console.error('Nominee self-rejection check failed:', e);
+            // Fall through to normal vote if the check fails
+        }
+    }
+
     try {
         const { error } = await _supabase.from('bill_support').upsert({
             bill_id: billId, faction_id: currentFaction.id,
