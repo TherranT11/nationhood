@@ -3,7 +3,7 @@
  * Extracted from game-common.js
  */
 
-import { GAME_CONFIG } from './config.js';
+import { GAME_CONFIG, initGameConfigForNation } from './config.js';
 import { isPresidentialRepublic } from './government-types.js';
 import { DIPLOMACY_CONFIG } from './diplomacy-constants.js';
 import { IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology } from './ideology.js';
@@ -1944,7 +1944,12 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             if (Object.keys(voteTotals).length > 0) {
                 const newSeats = allocateSeatsByVotes(voteTotals, newTotalSeats);
                 for (const [partyId, seats] of Object.entries(newSeats)) {
-                    await supabase.from('factions').update({ seats }).eq('id', partyId);
+                    const { error: seatErr } = await supabase.from('factions').update({ seats }).eq('id', partyId);
+                    if (seatErr) {
+                        console.error(`[enactFoundationalBill] Failed to update seats for faction ${partyId}:`, seatErr);
+                        await supabase.from('nations').update({ total_seats: currentTotalSeats }).eq('id', bill.nation_id);
+                        return false;
+                    }
                 }
                 redistributed = true;
                 console.log(`[enactFoundationalBill] Redistributed from election vote data.`);
@@ -1968,7 +1973,12 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
                     for (const f of factions) seatTotals[f.id] = f.seats || 0;
                     const newSeats = allocateSeatsByVotes(seatTotals, newTotalSeats);
                     for (const [partyId, seats] of Object.entries(newSeats)) {
-                        await supabase.from('factions').update({ seats }).eq('id', partyId);
+                        const { error: seatErr } = await supabase.from('factions').update({ seats }).eq('id', partyId);
+                        if (seatErr) {
+                            console.error(`[enactFoundationalBill] Failed to update seats for faction ${partyId}:`, seatErr);
+                            await supabase.from('nations').update({ total_seats: currentTotalSeats }).eq('id', bill.nation_id);
+                            return false;
+                        }
                     }
                 } else {
                     // All parties at 0 seats — distribute evenly
@@ -1977,7 +1987,12 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
                     for (const f of factions) {
                         const seats = perParty + (remainder > 0 ? 1 : 0);
                         if (remainder > 0) remainder--;
-                        await supabase.from('factions').update({ seats }).eq('id', f.id);
+                        const { error: seatErr } = await supabase.from('factions').update({ seats }).eq('id', f.id);
+                        if (seatErr) {
+                            console.error(`[enactFoundationalBill] Failed to update seats for faction ${f.id}:`, seatErr);
+                            await supabase.from('nations').update({ total_seats: currentTotalSeats }).eq('id', bill.nation_id);
+                            return false;
+                        }
                     }
                 }
             }
@@ -1988,9 +2003,8 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         console.log(`[enactFoundationalBill] No seat change (already ${newTotalSeats}).`);
     }
 
-    // Update GAME_CONFIG for current session
-    GAME_CONFIG.TOTAL_SEATS = newTotalSeats;
-    GAME_CONFIG.MAJORITY_SEATS = Math.floor(newTotalSeats / 2) + 1;
+    // Sync in-memory config so downstream logic in the same tick uses the new seat count
+    initGameConfigForNation({ total_seats: newTotalSeats });
     return true;
 }
 
