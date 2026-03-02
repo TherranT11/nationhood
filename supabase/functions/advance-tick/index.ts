@@ -16412,6 +16412,7 @@ Deno.serve(async (req) => {
             .single();
 
         if (shardError || !shard) {
+            console.error(`[advance-tick] Shard not found: ${shardError?.message}`);
             return new Response(
                 JSON.stringify({ error: "Shard not found", detail: shardError?.message }),
                 { status: 404, headers: corsHeaders }
@@ -16451,6 +16452,7 @@ Deno.serve(async (req) => {
         }
 
         // 4. Process the tick
+        console.log(`[advance-tick] Lock acquired, processing tick ${shard.current_tick}...`);
         try {
             const summary = await advanceTick(supabase);
             const responseStatus = summary.partial ? "partial" : "success";
