@@ -894,12 +894,17 @@ async function advanceTick(supabase) {
     summary.apFailed = apFailed;
 
     if (apFailed > 0) {
-        summary.partial = true;
-        summary.failureReason = 'ap_distribution_failed';
-        summary.failedNationIds = Array.from(failedNationIds);
-        summary.failedFactionIds = Array.from(failedFactionIds);
-        summary.message = 'Tick marked partial: AP distribution failed for one or more factions; shard tick was not advanced.';
-        return summary;
+        // Log AP failures but DO NOT abort the tick.
+        // AP is non-critical — stats, elections, history snapshots, and the
+        // entire simulation must continue even if AP distribution fails.
+        // Aborting here previously caused the shard tick to never advance,
+        // freezing all stat updates, arrows, and game progression.
+        console.error(`[advanceTick] AP distribution had ${apFailed} failure(s) — continuing tick processing`);
+        summary.apWarnings = {
+            failedNationIds: Array.from(failedNationIds),
+            failedFactionIds: Array.from(failedFactionIds),
+            message: `AP distribution failed for ${apFailed} faction(s); tick processing continued.`
+        };
     }
 
     // 3. Commit shard tick/date after critical AP phase succeeds
@@ -1150,9 +1155,6 @@ async function advanceTick(supabase) {
         const { data: preApprovalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (preApprovalNation) Object.assign(nation, preApprovalNation);
 
-        // Record stat history for trend calculations (used by three-pillar voter preferences)
-        await recordStatHistory(supabase, nation, newTick);
-
         // Layer 1: Update minister approvals (drift-to-performance model)
         const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick, shutdownNow);
         if (ministerApprovalResults.length > 0) {
@@ -1385,6 +1387,8 @@ async function advanceTick(supabase) {
 
         // Final snapshot — capture everything that happened this tick
         const { data: finalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+        // Record stat history for trend calculations (used by three-pillar voter preferences)
+        await recordStatHistory(supabase, finalNation || nation, newTick);
         await snapshotNationHistory(supabase, finalNation || nation, newTick);
       } catch (nationErr) {
         console.error(`[advanceTick] FAILED processing nation ${nation.id} (${nation.name}):`, nationErr);
@@ -1456,13 +1460,14 @@ Deno.serve(async (req) => {
             const nextTickAt = new Date(shard.next_tick_at);
 
             if (now < nextTickAt) {
-                console.log(`[advance-tick] Not due yet. current_tick=${shard.current_tick}, next_tick_at=${shard.next_tick_at}, remaining=${Math.round((nextTickAt.getTime() - now.getTime()) / 1000)}s`);
+                const remainMs = nextTickAt.getTime() - now.getTime();
+                console.log(`[advance-tick] Not due — tick ${shard.current_tick}, next_tick_at=${shard.next_tick_at}, remaining=${Math.round(remainMs / 1000)}s`);
                 return new Response(
                     JSON.stringify({
                         status: "not_due",
                         current_tick: shard.current_tick,
                         next_tick_at: shard.next_tick_at,
-                        time_remaining_ms: nextTickAt.getTime() - now.getTime(),
+                        time_remaining_ms: remainMs,
                     }),
                     { headers: corsHeaders }
                 );
@@ -1472,7 +1477,7 @@ Deno.serve(async (req) => {
         // 3. Tick is due (or forced) — acquire lock
         const lockAcquired = await acquireTickLock(supabase);
         if (!lockAcquired) {
-            console.log(`[advance-tick] Tick lock not acquired — another process is already running. tick_processing may be stuck.`);
+            console.warn(`[advance-tick] Lock held — tick ${shard.current_tick}, tick_processing=${shard.tick_processing}`);
             return new Response(
                 JSON.stringify({
                     status: "locked",
