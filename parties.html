@@ -3190,14 +3190,27 @@ async function renderParties() {
                     'election:winner': 'Election winner',
                     'election:loser': 'Election loss',
                     'minister:fired': 'Minister fired',
-                    'campaign:rally': 'Campaign rally'
+                    'campaign:rally': 'Campaign rally',
+                    'government_vacancy:ongoing': 'Government vacancy',
+                    'formation_failure:top_party': 'Formation failure penalty',
+                    'formation_failure:non_responsive': 'Didn\'t respond to coalition',
+                    'campaign:attack_self': 'Campaign attack (self)',
+                    'campaign:attack_target': 'Targeted by attack ad'
                 };
-                const rows = momentumLog.map(e => {
+                // Group entries by date (tick) and render with date headers
+                let rows = '';
+                let lastDate = '';
+                for (const e of momentumLog) {
+                    const dateStr = tickToDate(e.tick);
+                    if (dateStr !== lastDate) {
+                        rows += `<div class="mom-log-date">${dateStr}</div>`;
+                        lastDate = dateStr;
+                    }
                     const label = SOURCE_LABELS[e.source] || e.source.replace(/[_:]/g, ' ');
                     const sign = e.amount > 0 ? '+' : '';
                     const color = e.amount > 0 ? '#4CAF50' : e.amount < 0 ? '#ff4444' : 'var(--text-muted)';
-                    return `<div class="mom-log-row"><span class="mom-log-src">${label}</span><span class="mom-log-amt" style="color:${color}">${sign}${Math.round(e.amount * 10) / 10}</span></div>`;
-                }).join('');
+                    rows += `<div class="mom-log-row"><span class="mom-log-src">${label}</span><span class="mom-log-amt" style="color:${color}">${sign}${Math.round(e.amount * 10) / 10}</span></div>`;
+                }
                 return `<div class="mom-log-panel"><div class="mom-log-title">Recent Changes</div>${rows}</div>`;
             })()}
         </div>
