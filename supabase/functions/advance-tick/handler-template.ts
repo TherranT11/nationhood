@@ -1444,6 +1444,7 @@ Deno.serve(async (req) => {
             .single();
 
         if (shardError || !shard) {
+            console.error(`[advance-tick] Shard not found: ${shardError?.message}`);
             return new Response(
                 JSON.stringify({ error: "Shard not found", detail: shardError?.message }),
                 { status: 404, headers: corsHeaders }
@@ -1455,6 +1456,7 @@ Deno.serve(async (req) => {
             const nextTickAt = new Date(shard.next_tick_at);
 
             if (now < nextTickAt) {
+                console.log(`[advance-tick] Not due yet. current_tick=${shard.current_tick}, next_tick_at=${shard.next_tick_at}, remaining=${Math.round((nextTickAt.getTime() - now.getTime()) / 1000)}s`);
                 return new Response(
                     JSON.stringify({
                         status: "not_due",
@@ -1470,6 +1472,7 @@ Deno.serve(async (req) => {
         // 3. Tick is due (or forced) — acquire lock
         const lockAcquired = await acquireTickLock(supabase);
         if (!lockAcquired) {
+            console.log(`[advance-tick] Tick lock not acquired — another process is already running. tick_processing may be stuck.`);
             return new Response(
                 JSON.stringify({
                     status: "locked",
@@ -1480,6 +1483,7 @@ Deno.serve(async (req) => {
         }
 
         // 4. Process the tick
+        console.log(`[advance-tick] Lock acquired, processing tick ${shard.current_tick}...`);
         try {
             const summary = await advanceTick(supabase);
             const responseStatus = summary.partial ? "partial" : "success";
