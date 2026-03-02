@@ -48,7 +48,8 @@ SELECT cron.schedule(
             'Content-Type', 'application/json',
             'Authorization', 'Bearer YOUR_SERVICE_ROLE_KEY_HERE'
         ),
-        body   := '{}'::jsonb
+        body   := '{}'::jsonb,
+        timeout_milliseconds := 30000
     ) AS request_id;
     $$
 );
