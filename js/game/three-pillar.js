@@ -6,6 +6,7 @@
 import { isAutocracy } from './government-types.js';
 import { computeIdeologyAlignment, countIdeologyRelationship, ideologyOppositionMultiplier } from './ideology.js';
 import { ISSUE_CATEGORY_STATS, STAT_TO_MINISTRY, statDirectionSign, statTrendBatch } from './stats.js';
+import { RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { recalcDerivedApproval } from './bills.js';
 
@@ -130,10 +131,13 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
             let creditSum = 0;
             let statCount = 0;
             for (const statKey of relevantStats) {
-                const rawTrend = trends[statKey] || 0;
+                let rawTrend = trends[statKey] || 0;
                 if (rawTrend === 0) continue;
                 const sign = statDirectionSign(statKey);
                 if (sign === 0) continue;
+                // Normalize raw-value stats (GDP, debt, population) to index-equivalent scale
+                const divisor = RAW_SCALING_DIVISORS[statKey];
+                if (divisor) rawTrend = rawTrend / divisor;
                 const trendQuality = rawTrend * sign; // positive = improving
 
                 statCount++;
