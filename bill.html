@@ -696,6 +696,47 @@ function renderArticles() {
 
     // Repeal bills show a repeal notice instead of articles
     if (bill.bill_type === 'repeal') {
+        const repealTargetId = currentBill.repeal_active_law_id || (bill.bill_articles || []).find(a => a.repeal_active_law_id)?.repeal_active_law_id || null;
+        const repealTargetLaw = repealTargetId ? nationActiveLaws.find(l => l.id === repealTargetId) : null;
+        const repealPolicy = repealTargetLaw?.policies || null;
+        const targetPolicyName = repealPolicy?.policy_name || 'Unknown policy';
+        const ongoingCost = repealPolicy ? (repealPolicy.ongoing_cost_per_tick || repealPolicy.ongoing_base_cost || 0) : 0;
+        const recoveredPerTick = -ongoingCost;
+
+        let reversedEffectsHTML = '';
+        if (repealPolicy?.stat_effects && Array.isArray(repealPolicy.stat_effects) && repealPolicy.stat_effects.length > 0) {
+            reversedEffectsHTML = repealPolicy.stat_effects.map(e => {
+                const revDir = e.direction === 'up' ? '↓' : '↑';
+                const cls = e.direction === 'up' ? 'stat-down' : 'stat-up';
+                const label = (e.stat_key || '').replace(/_/g, ' ');
+                return '<span class="' + cls + '" style="display:inline-block;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,0.06);margin:2px 6px 2px 0;">' + revDir + ' ' + escapeHtml(label) + ' (reversed if passed)</span>';
+            }).join(' ');
+        } else if (repealPolicy?.target_stat) {
+            const revDir = repealPolicy.stat_direction === 'UP' ? '↓' : '↑';
+            const cls = repealPolicy.stat_direction === 'UP' ? 'stat-down' : 'stat-up';
+            reversedEffectsHTML = '<span class="' + cls + '" style="display:inline-block;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,0.06);margin:2px 6px 2px 0;">' + revDir + ' ' + escapeHtml(repealPolicy.target_stat) + ' (reversed if passed)</span>';
+        }
+
+        const ongoingRecoveryText = recoveredPerTick !== 0
+            ? ((recoveredPerTick > 0 ? '+' : '-') + formatCurrency(Math.abs(recoveredPerTick)).replace(/^[+-]/, '') + '/tick')
+            : '$0/tick';
+
+        const targetDetailsHTML = repealPolicy
+            ? '<div class="article" style="border-left:3px solid #ff9800;">' +
+                '<div class="article-number">Targeted Active Law</div>' +
+                '<div class="article-title">' + escapeHtml(targetPolicyName) + '</div>' +
+                '<div class="article-description">' + escapeHtml(repealPolicy.description || 'No description available for this policy.') + '</div>' +
+                (reversedEffectsHTML ? '<div class="article-stat-effect">' + reversedEffectsHTML + '</div>' : '<div class="article-stat-effect" style="color:#888;">No stat effects listed for this policy.</div>') +
+                '<div class="article-costs">' +
+                    '<div class="cost-item"><span class="cost-label">Recovered Ongoing Budget:</span> <span class="cost-value negative" style="font-weight:bold;">' + ongoingRecoveryText + '</span></div>' +
+                '</div>' +
+            '</div>'
+            : '<div class="repeal-notice" style="border-color:#ff9800;">' +
+                '<div class="repeal-notice-icon">⚠️</div>' +
+                '<div class="repeal-notice-text" style="color:#ff9800;">Repeal target unresolved</div>' +
+                '<div class="repeal-notice-sub" style="color:#ddd;">The active law referenced by this repeal bill could not be found. The bill can still be viewed, but policy effect and budget recovery details are unavailable.</div>' +
+            '</div>';
+
         document.getElementById('bill-articles').innerHTML =
             '<div class="article preamble">' +
                 '<div class="article-number">Article I</div>' +
@@ -706,9 +747,12 @@ function renderArticles() {
                 '<div class="repeal-notice-icon">🗑️</div>' +
                 '<div class="repeal-notice-text">This bill proposes to rescind an active law</div>' +
                 '<div class="repeal-notice-sub">If passed, the targeted law will be removed and its effects reversed.</div>' +
-            '</div>';
+            '</div>' +
+            targetDetailsHTML;
         document.getElementById('total-upfront').textContent = '$0M';
-        document.getElementById('total-ongoing').textContent = '$0M/mo';
+        document.getElementById('total-upfront').className = 'total-value';
+        document.getElementById('total-ongoing').textContent = ongoingRecoveryText;
+        document.getElementById('total-ongoing').className = `total-value ${recoveredPerTick >= 0 ? 'revenue' : ''}`;
         return;
     }
 
