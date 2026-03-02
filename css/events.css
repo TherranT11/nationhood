@@ -1542,6 +1542,102 @@
   color: var(--np-text-primary);
 }
 
+/* ═══════════════════════════════════════════════════
+   OFFICIAL DISPATCH — Masthead Button
+   ═══════════════════════════════════════════════════ */
+.np-dispatch-btn {
+  background: linear-gradient(135deg, #b8860b 0%, #daa520 100%) !important;
+  color: #1a1a1a !important;
+  border: 1px solid #8b6914 !important;
+  font-weight: 600;
+}
+.np-dispatch-btn:hover {
+  background: linear-gradient(135deg, #daa520 0%, #f0c040 100%) !important;
+}
+.np-dispatch-btn .np-oped-btn__cost {
+  background: rgba(0,0,0,0.15) !important;
+  color: #1a1a1a !important;
+}
+
+/* ═══════════════════════════════════════════════════
+   OFFICIAL DISPATCH — Front Page Banner
+   ═══════════════════════════════════════════════════ */
+.np-dispatch-banner {
+  background: linear-gradient(135deg, #fdf6e3 0%, #fff8dc 50%, #fdf6e3 100%);
+  border: 2px solid #b8860b;
+  border-left: 5px solid #b8860b;
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  position: relative;
+}
+.np-dispatch-banner__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.np-dispatch-banner__icon {
+  font-size: 20px;
+}
+.np-dispatch-banner__label {
+  font-family: var(--np-font-ui);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #8b6914;
+  text-transform: uppercase;
+}
+.np-dispatch-banner__headline {
+  font-family: var(--np-font-display);
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0 0 12px 0;
+  line-height: 1.3;
+}
+.np-dispatch-banner__body {
+  font-family: var(--np-font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  color: #333;
+  margin: 0 0 12px 0;
+}
+.np-dispatch-banner__author {
+  font-family: var(--np-font-ui);
+  font-size: 13px;
+  color: #8b6914;
+  font-style: italic;
+}
+.np-dispatch-banner__readmore {
+  font-family: var(--np-font-ui);
+  font-size: 13px;
+  color: #b8860b;
+  margin-top: 8px;
+  font-weight: 500;
+}
+.np-dispatch-banner:hover {
+  border-color: #daa520;
+  box-shadow: 0 2px 12px rgba(184, 134, 11, 0.15);
+}
+
+/* ═══════════════════════════════════════════════════
+   OFFICIAL DISPATCH — Reader View
+   ═══════════════════════════════════════════════════ */
+.np-reader__article--dispatch {
+  border-top: 4px solid #b8860b;
+}
+.np-reader__dispatch-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #b8860b, #daa520);
+  color: #1a1a1a;
+  font-family: var(--np-font-ui);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  padding: 4px 12px;
+  margin-bottom: 16px;
+}
+
 @media (max-width: 740px) {
   .np-reader__content {
     padding: 32px 20px;
@@ -1551,5 +1647,11 @@
   }
   .np-reader-overlay {
     padding: 20px 10px;
+  }
+  .np-dispatch-banner {
+    padding: 16px 18px;
+  }
+  .np-dispatch-banner__headline {
+    font-size: 20px;
   }
 }
