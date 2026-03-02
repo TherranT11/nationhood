@@ -1063,12 +1063,12 @@ const DIPLOMACY_CONFIG = {
     COVERT_BRIBE_THRESHOLD: 0.60,
 
     // Trade negotiation AP costs
-    PROPOSE_TRADE_NEGOTIATION_AP: 2,      // Ambassador or MoT proposes trade negotiations
-    ACCEPT_TRADE_NEGOTIATION_AP: 1,       // Other ambassador or MoT accepts
-    JOIN_NEGOTIATION_PM_AP: 2,            // PM/HoG party joins negotiation
-    JOIN_NEGOTIATION_FM_AP: 1,            // FM party joins
-    JOIN_NEGOTIATION_MOT_AP: 2,           // Minister of Trade joins (required)
-    HOG_DRAFT_INITIATIVE_AP: 3,           // HoG drafting when no ambassador (penalty)
+    PROPOSE_TRADE_NEGOTIATION_AP: 2,      // MoT, FM, or Ambassador proposes trade negotiations
+    ACCEPT_TRADE_NEGOTIATION_AP: 1,       // Other side's MoT, FM, Ambassador, or HoG accepts
+    JOIN_NEGOTIATION_PM_AP: 2,            // PM/HoG/President joins negotiation
+    JOIN_NEGOTIATION_FM_AP: 1,            // FM joins negotiation
+    JOIN_NEGOTIATION_MOT_AP: 2,           // Minister of Trade joins
+    HOG_DRAFT_INITIATIVE_AP: 3,           // HoG drafting when no MoT/FM/Ambassador (penalty)
     MOT_JOIN_DEADLINE_TICKS: 4,           // Ticks before negotiations cancel if MoT hasn't joined
 
     // Trade negotiation timing
