@@ -16400,10 +16400,13 @@ Deno.serve(async (req) => {
         // 1. Check for force parameter (admin manual trigger)
         let force = false;
         try {
-            const body = await req.json();
+            const body = await Promise.race([
+                req.json(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error("body read timeout")), 3000)),
+            ]);
             force = body?.force === true;
         } catch (_) {
-            // No body or invalid JSON — not forced
+            // No body, invalid JSON, or timeout — not forced
         }
         console.log(`[advance-tick] Step 1: force=${force}`);
 
