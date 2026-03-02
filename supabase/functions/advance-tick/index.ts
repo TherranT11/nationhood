@@ -3426,8 +3426,8 @@ const GOVERNMENT_SHUTDOWN_CRISIS_ID = '00000000-0000-0000-0000-000000000001';
 
 /**
  * Check if a government shutdown is active for this nation.
- * Shutdown triggers when there is an open Budget Bill (committee or floor)
- * that has been sitting unresolved for at least 2 ticks.
+ * Shutdown triggers when a budget due date has been missed by 2 ticks
+ * while there is still an open Budget Bill (committee or floor).
  * Ends automatically when the Budget Bill is passed (no open budget bills remain).
  *
  * @returns {{ active: boolean, openBillId?: string, ticksOpen?: number }}
@@ -3448,10 +3448,15 @@ async function isGovernmentShutdown(supabase, nation, currentTick) {
     }
 
     const bill = openBudgetBills[0];
-    const ticksOpen = currentTick - bill.proposed_tick;
+    const lastBudgetTick = Number(nation.last_budget_tick || 0);
+    const budgetDueTick = lastBudgetTick > 0
+        ? (lastBudgetTick + GAME_CONFIG.TICKS_PER_YEAR)
+        : GAME_CONFIG.TICKS_PER_YEAR;
+    const shutdownStartTick = budgetDueTick + 2;
+    const ticksOpen = Math.max(0, currentTick - shutdownStartTick);
 
     return {
-        active: ticksOpen >= 2,
+        active: currentTick >= shutdownStartTick,
         openBillId: bill.id,
         ticksOpen
     };
