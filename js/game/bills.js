@@ -1332,7 +1332,24 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     .eq('id', bill.original_bill_id).single();
                 if (originalBill) {
                     await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
-                    await enactBill(supabase, originalBill, currentTick);
+                    const enactment = await enactBill(supabase, originalBill, currentTick);
+                    if (!enactment?.success) {
+                        await markBillEnactmentFailed(supabase, originalBill, currentTick, enactment?.error || 'Unknown enactment failure');
+                        try {
+                            await supabase.rpc('fire_system_event', {
+                                p_trigger_key: 'bill_failed',
+                                p_nation_id: originalBill.nation_id,
+                                p_tick: currentTick,
+                                p_placeholders: {
+                                    nation: nation?.name || 'Unknown',
+                                    bill_name: `${originalBill.bill_name} (override enactment failed)`,
+                                    sponsor: originalBill.factions?.faction_name || 'Unknown',
+                                    votes_for: '0',
+                                    votes_against: '0'
+                                }
+                            });
+                        } catch (e) { /* non-blocking */ }
+                    }
                 }
                 try {
                     await supabase.rpc('fire_system_event', {
@@ -1594,21 +1611,38 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'president_desk', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
             } else {
-                await enactBill(supabase, bill, currentTick);
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'bill_passed',
-                    p_nation_id: bill.nation_id,
-                    p_tick: currentTick,
-                    p_placeholders: {
-                        nation: nation?.name || 'Unknown',
-                        bill_name: bill.bill_name,
-                        sponsor: bill.factions?.faction_name || 'Unknown',
-                        votes_for: String(votesFor),
-                        votes_against: String(votesAgainst),
-                        article_count: String((bill.bill_articles || []).length)
-                    }
-                });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
+                const enactment = await enactBill(supabase, bill, currentTick);
+                if (!enactment?.success) {
+                    await markBillEnactmentFailed(supabase, bill, currentTick, enactment?.error || 'Unknown enactment failure');
+                    await supabase.rpc('fire_system_event', {
+                        p_trigger_key: 'bill_failed',
+                        p_nation_id: bill.nation_id,
+                        p_tick: currentTick,
+                        p_placeholders: {
+                            nation: nation?.name || 'Unknown',
+                            bill_name: `${bill.bill_name} (enactment failed)`,
+                            sponsor: bill.factions?.faction_name || 'Unknown',
+                            votes_for: String(votesFor),
+                            votes_against: String(votesAgainst)
+                        }
+                    });
+                    results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_enactment', votesFor, votesAgainst, error: enactment?.error, earlyResolution: bill.early_resolution_status || null });
+                } else {
+                    await supabase.rpc('fire_system_event', {
+                        p_trigger_key: 'bill_passed',
+                        p_nation_id: bill.nation_id,
+                        p_tick: currentTick,
+                        p_placeholders: {
+                            nation: nation?.name || 'Unknown',
+                            bill_name: bill.bill_name,
+                            sponsor: bill.factions?.faction_name || 'Unknown',
+                            votes_for: String(votesFor),
+                            votes_against: String(votesAgainst),
+                            article_count: String((bill.bill_articles || []).length)
+                        }
+                    });
+                    results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
+                }
             }
         } else {
             await failBill(supabase, bill);
@@ -1654,18 +1688,24 @@ export async function resolveExpiredVotes(supabase, nationId) {
     return results;
 }
 
-export async function enactBill(supabase, bill, currentTick) {
+async function markBillEnactmentFailed(supabase, bill, currentTick, enactError) {
+    const normalizedError = typeof enactError === 'string' ? enactError : 'Unknown enactment failure';
     await supabase.from('bills').update({
-        status: 'passed',
-        passed_tick: currentTick
+        status: 'failed',
+        passed_tick: currentTick,
+        enact_error: normalizedError
     }).eq('id', bill.id);
+}
+
+export async function enactBill(supabase, bill, currentTick) {
+    let enactError = null;
 
     const { data: nation } = await supabase
         .from('nations')
         .select('*')
         .eq('id', bill.nation_id)
         .single();
-    if (!nation) return;
+    if (!nation) return { success: false, error: `Nation ${bill.nation_id} not found` };
 
     const { data: currentActiveLaws } = await supabase
         .from('active_laws')
@@ -1688,14 +1728,21 @@ export async function enactBill(supabase, bill, currentTick) {
                 const { error: delErr } = await supabase.from('active_laws').delete().eq('id', repealTargetId);
                 if (delErr) {
                     console.error(`[enactBill] Failed to delete active_law ${repealTargetId}:`, delErr.message);
+                    enactError = `Repeal target ${repealTargetId} could not be deleted: ${delErr.message}`;
                 } else {
                     console.log(`[enactBill] Repealed active law ${repealTargetId} (${targetLaw.policies.policy_name})`);
                 }
             } else {
-                console.error(`[enactBill] Repeal bill ${bill.id} ("${bill.bill_name}"): target active_law ${repealTargetId} not found or has no policy. Active laws count: ${(currentActiveLaws || []).length}`);
+                enactError = `Repeal target active_law ${repealTargetId} not found or missing policy`;
+                console.error(`[enactBill] Repeal bill ${bill.id} ("${bill.bill_name}"): ${enactError}. Active laws count: ${(currentActiveLaws || []).length}`);
             }
         } else {
-            console.error(`[enactBill] Repeal bill ${bill.id} ("${bill.bill_name}") has no repeal_active_law_id on bill row or articles. Bill passed but nothing was repealed.`);
+            enactError = 'Repeal bill has no repeal_active_law_id on bill row or articles';
+            console.error(`[enactBill] Repeal bill ${bill.id} ("${bill.bill_name}") ${enactError}.`);
+        }
+
+        if (enactError) {
+            return { success: false, error: enactError };
         }
     } else {
         const articles = (bill.bill_articles || []).filter(a => a.policy_id);
@@ -1813,6 +1860,14 @@ export async function enactBill(supabase, bill, currentTick) {
 
     // Sponsor gains/loses preference with voter blocs based on bill ideology alignment
     await applyBlocPreferenceOnPassage(supabase, bill, bill.nation_id);
+
+    await supabase.from('bills').update({
+        status: 'passed',
+        passed_tick: currentTick,
+        enact_error: null
+    }).eq('id', bill.id);
+
+    return { success: true };
 }
 
 export async function reversePolicy(supabase, nation, policy, passedTick, currentTick) {
