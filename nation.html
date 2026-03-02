@@ -207,11 +207,19 @@ async function loadPreviousTickData(nationId) {
         return;
     }
 
-    // No history row for the exact previous tick — show neutral deltas.
-    // Do NOT fall back to older ticks, which would show accumulated
-    // multi-tick changes instead of just the previous tick's delta.
+    // No history row for the exact previous tick — fall back to the most recent
+    // available snapshot so arrows still display approximate deltas rather than
+    // showing nothing at all. This handles cases where tick processing was
+    // interrupted and some snapshot rows are missing.
     console.warn('[loadPreviousTickData] No history row for tick', previousTick,
-        '— stat deltas will show neutral (―).');
+        '— falling back to most recent snapshot.');
+    const { data: fallbackRows } = await _supabase.from('nations_history')
+        .select('*').eq('nation_id', nationId).order('tick', { ascending: false }).limit(1);
+    if (fallbackRows && fallbackRows.length > 0) {
+        previousTickData = fallbackRows[0];
+        qCacheSet(cacheKey, fallbackRows[0], 2 * 60 * 1000); // shorter TTL for fallback
+        console.warn('[loadPreviousTickData] Using fallback snapshot from tick', fallbackRows[0].tick);
+    }
 }
 
 // ===== Affected-By: Data Fetching =====
@@ -592,7 +600,7 @@ async function renderNationPage(nation) {
         renderStatBox('National Debt', 'debt', nation.debt, 'Government debt obligations', 'currency', true, scaleRawToDollars(nation.debt)),
         renderStatBox('Debt Growth', 'debt_growth', nation.debt_growth, 'Rate of debt accumulation', null, true),
         renderStatBox('Inflation', 'inflation', nation.inflation, 'Rate of price increases', null, true),
-        renderStatBox('Interest Rates', 'interest_rates', nation.interest_rates, 'Central bank lending rate'),
+        renderStatBox('Interest Rates', 'interest_rates', nation.interest_rates, 'Central bank lending rate', null, true),
         renderStatBox('Trade Balance', 'trade_balance', nation.trade_balance, 'Exports minus imports', null, false, formatTradeBalance(nation.trade_balance)),
         renderStatBox('Currency Strength', 'currency_strength', nation.currency_strength, 'Value of national currency'),
         renderStatBox('Foreign Investment', 'foreign_investment', nation.foreign_investment, 'International capital inflow'),
