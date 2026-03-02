@@ -57,7 +57,19 @@ export async function fetchPreviousNationTick(nationId, currentTick) {
     }
 
     const prev = (histRes.data && histRes.data.length > 0) ? histRes.data[0] : null;
-    return { previousTick: prev, historyFetchFailed: false };
+    if (prev) return { previousTick: prev, historyFetchFailed: false };
+
+    // Exact previous tick not found — fall back to most recent snapshot
+    const fbRes = await _supabase
+        .from('nations_history')
+        .select('*')
+        .eq('nation_id', nationId)
+        .lt('tick', currentTick)
+        .order('tick', { ascending: false })
+        .limit(1);
+
+    const fallback = (fbRes.data && fbRes.data.length > 0) ? fbRes.data[0] : null;
+    return { previousTick: fallback, historyFetchFailed: false };
 }
 export function qCacheBust(keyPrefix) {
     try {

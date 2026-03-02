@@ -15858,12 +15858,17 @@ async function advanceTick(supabase) {
     summary.apFailed = apFailed;
 
     if (apFailed > 0) {
-        summary.partial = true;
-        summary.failureReason = 'ap_distribution_failed';
-        summary.failedNationIds = Array.from(failedNationIds);
-        summary.failedFactionIds = Array.from(failedFactionIds);
-        summary.message = 'Tick marked partial: AP distribution failed for one or more factions; shard tick was not advanced.';
-        return summary;
+        // Log AP failures but DO NOT abort the tick.
+        // AP is non-critical — stats, elections, history snapshots, and the
+        // entire simulation must continue even if AP distribution fails.
+        // Aborting here previously caused the shard tick to never advance,
+        // freezing all stat updates, arrows, and game progression.
+        console.error(`[advanceTick] AP distribution had ${apFailed} failure(s) — continuing tick processing`);
+        summary.apWarnings = {
+            failedNationIds: Array.from(failedNationIds),
+            failedFactionIds: Array.from(failedFactionIds),
+            message: `AP distribution failed for ${apFailed} faction(s); tick processing continued.`
+        };
     }
 
     // 3. Commit shard tick/date after critical AP phase succeeds
