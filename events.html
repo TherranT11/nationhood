@@ -204,7 +204,7 @@
         <div class="np-oped-editor__preview-masthead">
           <div class="np-oped-editor__preview-masthead-pre">Preview</div>
           <div class="np-oped-editor__preview-masthead-title">THE CRUCERAN</div>
-          <div class="np-oped-editor__preview-masthead-sub">Reader Contributions</div>
+          <div class="np-oped-editor__preview-masthead-sub">Article Preview</div>
         </div>
         <div class="np-oped-editor__preview-card" id="article-preview-content">
           <div class="np-player-article-preview">
@@ -765,10 +765,14 @@ function renderNewspaper(nation, faction, shard, articles, opeds, parties, playe
   // Articles are pre-sorted by tick then tier from buildArticles()
   const sorted = articles;
 
-  // Partition into layout slots using tier
+  // Partition into layout slots using tier (hero from system articles only)
   const heroArticle = sorted.find(a => a.tier <= 2) || sorted[0];
-  const featuredArticles = sorted.filter(a => a !== heroArticle).slice(0, 6);
-  const briefArticles = sorted.filter(a => a !== heroArticle && !featuredArticles.includes(a)).slice(0, 8);
+  // Merge player articles into the story pool alongside system articles
+  const playerStories = playerArticles.map(a => playerArticleAsStory(a));
+  const remaining = [...sorted.filter(a => a !== heroArticle), ...playerStories];
+  remaining.sort((a, b) => (b._tick || b.tick || 0) - (a._tick || a.tick || 0));
+  const featuredArticles = remaining.slice(0, 6);
+  const briefArticles = remaining.slice(6, 14);
   const currentTick = shard?.current_tick || 0;
 
   // Split op-eds into featured (front page) and regular
@@ -866,13 +870,6 @@ ${heroArticle && heroArticle.tier <= 1 ? `
     <ul class="np-briefs-list">
       ${briefArticles.map(a => renderBrief(a)).join('')}
     </ul>
-    ` : ''}
-    ${playerArticles.length > 0 ? `
-    <hr class="np-divider np-divider--heavy">
-    <div class="np-section-label">Reader Contributions</div>
-    <div class="np-player-articles-grid">
-      ${playerArticles.map(a => renderPlayerArticleCard(a)).join('')}
-    </div>
     ` : ''}
     ${featuredOpeds.length > 0 ? `
     <hr class="np-divider np-divider--heavy">
@@ -1010,14 +1007,16 @@ function renderStoryCard(article) {
   const headline = article.headline || 'News Update';
   const lede = article.lede || article._description || '';
   const dateline = article.nation || '';
+  const clickAttr = article._isPlayerArticle ? ` style="cursor:pointer;" onclick="window._openReader && window._openReader('article', '${article._playerArticleId}')"` : '';
   return `
-    <article class="np-story-card">
+    <article class="np-story-card"${clickAttr}>
+      ${article._imageUrl ? `<div style="height:140px;background:url('${escapeHtml(article._imageUrl)}') center/cover;border-radius:4px 4px 0 0;margin:-12px -14px 10px;"></div>` : ''}
       <div class="np-story-card__tags">
         <span class="np-tag np-tag--${section} np-tag--dot" style="${article.section_color ? 'background:' + article.section_color + '22;color:' + article.section_color : ''}">${escapeHtml(sectionLabel)}</span>
       </div>
       <h3 class="np-story-card__headline">${escapeHtml(headline)}</h3>
       ${lede ? `<p class="np-story-card__lede">${escapeHtml(lede.substring(0, 180))}${lede.length > 180 ? '...' : ''}</p>` : ''}
-      <div class="np-story-card__meta">${dateline ? '<span class="np-dateline">' + escapeHtml(dateline.toUpperCase()) + '</span> · ' : ''}Tick ${article._tick || article.tick || '?'}</div>
+      <div class="np-story-card__meta">${dateline ? '<span class="np-dateline">' + escapeHtml(dateline.toUpperCase()) + '</span> · ' : ''}${article._reporterName ? escapeHtml(article._reporterName) + ' · ' : ''}Tick ${article._tick || article.tick || '?'}</div>
     </article>
   `;
 }
@@ -1052,6 +1051,38 @@ function renderOpEdCard(oped) {
       ${bodyText.length > 400 ? '<div class="np-opinion-card__readmore">Read full op-ed ›</div>' : ''}
     </div>
   `;
+}
+
+// ── Convert player articles to story-card-compatible format ──
+const _PLAYER_CAT_TO_SECTION = { politics: 'politics', sports: 'sport', weather: 'society', science: 'society', entertainment: 'society', economy: 'economy' };
+const _SECTION_COLORS = { politics: '#4A9EFF', economy: '#4ADE80', military: '#F87171', diplomacy: '#A78BFA', society: '#FBBF24', sport: '#2DD4BF' };
+const _STAFF_REPORTERS = {
+  politics: ['Maren Solis', 'Davi Cortes', 'Elena Brandt'],
+  economy: ['Isaak Norden', 'Priya Devar', 'Lukas Fell'],
+  sport: ['Renzo Ferreira', 'Nadia Sokol', 'Tomas Brühl'],
+  society: ['Lina Vasquez', 'Omar Hadid', 'Clara Engström'],
+};
+
+function playerArticleAsStory(article) {
+  const section = _PLAYER_CAT_TO_SECTION[article.category] || 'society';
+  const reporters = _STAFF_REPORTERS[section] || _STAFF_REPORTERS.society;
+  const hash = (article.id || '').split('').reduce((s, c) => s + c.charCodeAt(0), 0);
+  const reporter = reporters[hash % reporters.length];
+  return {
+    headline: article.headline,
+    section,
+    section_color: _SECTION_COLORS[section] || '#FBBF24',
+    section_label: section.charAt(0).toUpperCase() + section.slice(1),
+    lede: (article.body || '').substring(0, 200),
+    _tick: article.published_tick,
+    tick: article.published_tick,
+    tier: 3,
+    _isPlayerArticle: true,
+    _playerArticleId: article.id,
+    _reporterName: reporter,
+    _imageUrl: article.image_url,
+    nation: '',
+  };
 }
 
 function renderPlayerArticleCard(article) {
@@ -1206,19 +1237,16 @@ function filterByTab(tab, articles, opeds, sectionToTab, playerArticles) {
     return;
   }
 
-  let filtered = articles;
+  // Merge player articles (converted to story format) with system articles
+  const playerStories = playerArticles.map(a => playerArticleAsStory(a));
+  let allArticles = [...articles, ...playerStories];
   if (tab !== 'front' && sectionToTab) {
-    filtered = articles.filter(a => sectionToTab(a.section) === tab);
+    allArticles = allArticles.filter(a => sectionToTab(a.section) === tab);
   }
 
-  // Filter player articles by category matching tab
-  const catMap = { domestic: 'politics', economy: 'economy', international: 'international', defence: 'defence' };
-  const tabPlayerArticles = tab === 'front' ? playerArticles :
-    playerArticles.filter(a => a.category === (catMap[tab] || tab));
-
-  const hero = filtered[0];
-  const rest = filtered.slice(1, 7);
-  const briefs = filtered.slice(7, 15);
+  const hero = allArticles[0];
+  const rest = allArticles.slice(1, 7);
+  const briefs = allArticles.slice(7, 15);
 
   main.innerHTML = `
     ${hero ? renderHeroArticle(hero) : renderNoEvents()}
@@ -1234,12 +1262,6 @@ function filterByTab(tab, articles, opeds, sectionToTab, playerArticles) {
     <ul class="np-briefs-list">
       ${briefs.map(a => renderBrief(a)).join('')}
     </ul>` : ''}
-    ${tabPlayerArticles.length > 0 ? `
-    <hr class="np-divider np-divider--heavy">
-    <div class="np-section-label">Reader Contributions</div>
-    <div class="np-player-articles-grid">
-      ${tabPlayerArticles.map(a => renderPlayerArticleCard(a)).join('')}
-    </div>` : ''}
   `;
 }
 
@@ -1665,15 +1687,17 @@ function setupReaderOverlay() {
     } else if (type === 'article') {
       const article = _playerArticles.find(a => a.id === id);
       if (!article) return;
-      const factionName = article.factions?.faction_name || 'Anonymous';
-      const abbr = article.factions?.abbreviation || '?';
       const cat = article.category || 'politics';
       const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+      const section = _PLAYER_CAT_TO_SECTION[cat] || 'society';
+      const reporters = _STAFF_REPORTERS[section] || _STAFF_REPORTERS.society;
+      const hash = (article.id || '').split('').reduce((s, c) => s + c.charCodeAt(0), 0);
+      const reporter = reporters[hash % reporters.length];
       html = `
         <div class="np-reader__article">
           <div class="np-reader__section-tag">${escapeHtml(catLabel)}</div>
           <h1 class="np-reader__headline">${escapeHtml(article.headline || 'Untitled')}</h1>
-          <div class="np-reader__byline">By ${escapeHtml(factionName)} (${escapeHtml(abbr)})</div>
+          <div class="np-reader__byline">${escapeHtml(reporter)}, ${escapeHtml(catLabel)} Correspondent</div>
           <hr class="np-reader__rule">
           ${article.image_url ? `<div class="np-reader__image"><img src="${escapeHtml(article.image_url)}" alt="Article image"></div>` : ''}
           <div class="np-reader__body">${escapeHtml(article.body || '').replace(/\n/g, '<br>')}</div>
