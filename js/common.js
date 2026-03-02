@@ -33,6 +33,32 @@ export function qCacheSet(key, data, ttlMs) {
     } catch { /* storage full — silently skip */ }
 }
 
+
+
+export async function fetchPreviousNationTick(nationId, currentTick) {
+    if (currentTick == null) return { previousTick: null, historyFetchFailed: false };
+    const prevTickNum = currentTick - 1;
+    if (prevTickNum < 0) return { previousTick: null, historyFetchFailed: false };
+
+    const histRes = await _supabase
+        .from('nations_history')
+        .select('*')
+        .eq('nation_id', nationId)
+        .eq('tick', prevTickNum)
+        .limit(1);
+
+    if (histRes.error) {
+        console.error('[trend] nations_history fetch failed', {
+            nation_id: nationId,
+            prevTickNum,
+            error: histRes.error
+        });
+        return { previousTick: null, historyFetchFailed: true };
+    }
+
+    const prev = (histRes.data && histRes.data.length > 0) ? histRes.data[0] : null;
+    return { previousTick: prev, historyFetchFailed: false };
+}
 export function qCacheBust(keyPrefix) {
     try {
         const keys = [];

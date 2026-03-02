@@ -108,12 +108,14 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
+import { fetchPreviousNationTick } from './js/common.js';
 
 const NATION_NAME = 'Avelia';
 let nation = null;
 let profile = null;
 let allNations = [];
 let previousTick = null;
+let historyFetchFailed = false;
 let userCanEdit = false;
 let isEditing = false;
 
@@ -152,6 +154,7 @@ function ranking(key, val, inverted) {
 }
 
 function trendHTML(key, current, inverted, isCurrency) {
+    if (historyFetchFailed) return '<span class="stat-trend unavailable" title="Trend unavailable: history fetch failed">⚠ unavailable</span>';
     if (!previousTick || current == null) return '<span class="stat-trend neutral">&mdash;</span>';
     var hKey = key === 'GDP' ? 'gdp' : key;
     var prev = previousTick[hKey];
@@ -333,12 +336,9 @@ async function loadPage() {
 
         // Load previous tick data
         if (shardRes.data) {
-            var prevTickNum = shardRes.data.current_tick - 1;
-            if (prevTickNum >= 0) {
-                var histRes = await _supabase.from('nations_history').select('*')
-                    .eq('nation_id', nation.id).eq('tick', prevTickNum).limit(1);
-                if (histRes.data && histRes.data.length > 0) previousTick = histRes.data[0];
-            }
+            var histState = await fetchPreviousNationTick(nation.id, shardRes.data.current_tick);
+            previousTick = histState.previousTick;
+            historyFetchFailed = histState.historyFetchFailed;
         }
 
         render(factionsRes.data || [], partiesRes.data || [], relationsRes.data || []);
@@ -486,6 +486,9 @@ function renderRelations(relations) {
 // ---------- Stats ----------
 function renderStats() {
     var h = '';
+    if (historyFetchFailed) {
+        h += '<div class="stat-warning-badge">⚠ Trend deltas unavailable (history fetch failed).</div>';
+    }
     for (var s = 0; s < STAT_SECTIONS.length; s++) {
         var sec = STAT_SECTIONS[s];
         h += '<div id="' + sec.id + '" class="section-anchor"></div>';
