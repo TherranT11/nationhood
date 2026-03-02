@@ -16423,12 +16423,14 @@ Deno.serve(async (req) => {
             const nextTickAt = new Date(shard.next_tick_at);
 
             if (now < nextTickAt) {
+                const remainMs = nextTickAt.getTime() - now.getTime();
+                console.log(`[advance-tick] Not due — tick ${shard.current_tick}, next_tick_at=${shard.next_tick_at}, remaining=${Math.round(remainMs / 1000)}s`);
                 return new Response(
                     JSON.stringify({
                         status: "not_due",
                         current_tick: shard.current_tick,
                         next_tick_at: shard.next_tick_at,
-                        time_remaining_ms: nextTickAt.getTime() - now.getTime(),
+                        time_remaining_ms: remainMs,
                     }),
                     { headers: corsHeaders }
                 );
@@ -16438,6 +16440,7 @@ Deno.serve(async (req) => {
         // 3. Tick is due (or forced) — acquire lock
         const lockAcquired = await acquireTickLock(supabase);
         if (!lockAcquired) {
+            console.warn(`[advance-tick] Lock held — tick ${shard.current_tick}, tick_processing=${shard.tick_processing}`);
             return new Response(
                 JSON.stringify({
                     status: "locked",

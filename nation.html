@@ -600,7 +600,7 @@ async function renderNationPage(nation) {
         renderStatBox('National Debt', 'debt', nation.debt, 'Government debt obligations', 'currency', true, scaleRawToDollars(nation.debt)),
         renderStatBox('Debt Growth', 'debt_growth', nation.debt_growth, 'Rate of debt accumulation', null, true),
         renderStatBox('Inflation', 'inflation', nation.inflation, 'Rate of price increases', null, true),
-        renderStatBox('Interest Rates', 'interest_rates', nation.interest_rates, 'Central bank lending rate'),
+        renderStatBox('Interest Rates', 'interest_rates', nation.interest_rates, 'Central bank lending rate', null, true),
         renderStatBox('Trade Balance', 'trade_balance', nation.trade_balance, 'Exports minus imports', null, false, formatTradeBalance(nation.trade_balance)),
         renderStatBox('Currency Strength', 'currency_strength', nation.currency_strength, 'Value of national currency'),
         renderStatBox('Foreign Investment', 'foreign_investment', nation.foreign_investment, 'International capital inflow'),
