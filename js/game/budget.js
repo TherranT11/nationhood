@@ -893,8 +893,9 @@ export function buildShutdownStatInstMap(institutionConfig) {
  *
  * Effects (in addition to Collapsed institution decay for unfunded ministries):
  *   - Direct stat damage: stability -1.0 per tick
- *   - PM/President approval: -2 per tick (via gov approval event)
- *   - All ministers: -1/tick approval penalty (via updateMinisterApprovals)
+ *   - Gov approval event: -5 per tick (via adjustGovernmentApprovalEvent)
+ *   - All ministers: -6/tick approval penalty (via updateMinisterApprovals SHUTDOWN_MINISTER_PENALTY)
+ *   - Gov approval: -25 flat penalty (via calculateGovernmentApprovalTick SHUTDOWN_GOV_PENALTY)
  *   - Unfunded ministries suffer collapsing effect (handled by buildShutdownStatInstMap)
  *   - Inserts an active_crises row so it shows on nation.html
  *   - Fires a system event notification

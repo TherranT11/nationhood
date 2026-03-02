@@ -3119,8 +3119,6 @@ export async function updateMinisterApprovals(supabase, nation, currentTick, isS
     const results = [];
 
     for (const ministry of ministries) {
-        // Skip PM — government approval represents PM effectiveness
-        if (ministry.ministry_key === 'prime_minister') continue;
         // Skip vacant ministries (no minister appointed)
         if (!ministry.minister_first_name) continue;
 

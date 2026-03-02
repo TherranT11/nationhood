@@ -576,6 +576,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                             <div class="admin-section-title">Prime Minister</div>
                             <div class="admin-person-name">${activeHOG ? `${escapeHtml(activeHOG.first_name)} ${escapeHtml(activeHOG.last_name)}` : escapeHtml(pmName)}</div>
                             <div class="admin-person-details">${activeHOG ? `Age ${activeHOG.age} • ` : (pmAge !== '—' ? `Age ${pmAge} • ` : '')}<span class="admin-person-party">${activeHOG ? (allParties.find(p => p.id === activeHOG.faction_id)?.faction_name || pmPartyName) : pmPartyName}</span></div>
+                            ${primeMinister?.minister_approval != null ? `<div class="minister-approval" style="margin-top:6px;">Approval: <span class="${primeMinister.minister_approval < 35 ? 'low' : primeMinister.minister_approval < 50 ? 'mid' : 'high'}">${Math.round(primeMinister.minister_approval)}%</span></div>` : ''}
                             ${activeHOG ? `
                                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
                                     <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:#9C27B0;color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
@@ -672,6 +673,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                             <div class="admin-section-title">President${presidentData.terms_served ? ` — ${presidentData.terms_served === 1 ? '1st' : '2nd'} Term` : ''}</div>
                             <div class="admin-person-name">${escapeHtml(presidentData.first_name)} ${escapeHtml(presidentData.last_name)}</div>
                             <div class="admin-person-details">Age ${presidentData.age} · <span class="admin-person-party">${escapeHtml(presPartyName)}</span></div>
+                            ${primeMinister?.minister_approval != null ? `<div class="minister-approval" style="margin-top:6px;">Approval: <span class="${primeMinister.minister_approval < 35 ? 'low' : primeMinister.minister_approval < 50 ? 'mid' : 'high'}">${Math.round(primeMinister.minister_approval)}%</span></div>` : ''}
                             <div style="margin-top:8px;">
                                 <div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:4px;">${termRemaining <= 0 ? termRemainingDisplay : `Term Remaining: ${termRemainingDisplay}`}</div>
                                 <div style="height:4px;background:#333;border-radius:2px;overflow:hidden;">
@@ -703,7 +705,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                     <div class="administration-header"><div><div class="administration-title">${escapeHtml(adminLast)} Administration</div><div class="administration-subtitle">Single Party Government</div></div>${approvalHTML}</div>
                     <div class="administration-content">
                         <div class="admin-leaders-column">
-                            <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${escapeHtml(safePmName(primeMinister))}</div><div class="admin-person-details">${primeMinister?.minister_age ? `Age ${primeMinister.minister_age} • ` : ''}<span class="admin-person-party">${escapeHtml(majorityParty.party_name)}</span></div></div>
+                            <div class="admin-section"><div class="admin-section-title">Prime Minister</div><div class="admin-person-name">${escapeHtml(safePmName(primeMinister))}</div><div class="admin-person-details">${primeMinister?.minister_age ? `Age ${primeMinister.minister_age} • ` : ''}<span class="admin-person-party">${escapeHtml(majorityParty.party_name)}</span></div>${primeMinister?.minister_approval != null ? `<div class="minister-approval" style="margin-top:6px;">Approval: <span class="${primeMinister.minister_approval < 35 ? 'low' : primeMinister.minister_approval < 50 ? 'mid' : 'high'}">${Math.round(primeMinister.minister_approval)}%</span></div>` : ''}</div>
                             <div class="admin-section"><div class="admin-section-title">Head of State</div><div class="admin-person-name">${escapeHtml(hosFirst)} ${escapeHtml(hosLast)}</div><div class="admin-person-details">Age ${hosAge} • <span class="admin-person-party">${escapeHtml(majorityParty.party_name)}</span></div></div>
                         </div>
                         ${renderAdminChat()}
@@ -726,6 +728,11 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         const pmName = safePmName(primeMinister);
         const pmAge = primeMinister?.minister_age || '—';
         const pmParty = primeMinister ? (primeMinister.factions?.faction_name || getPartyNameById(primeMinister.party_id)) : '—';
+        const pmAppr = primeMinister?.minister_approval ?? null;
+        const pmApprHtml = pmAppr !== null ? (() => {
+            const cls = pmAppr < 35 ? 'low' : pmAppr < 50 ? 'mid' : 'high';
+            return `<div class="minister-approval" style="margin-top:6px;">Approval: <span class="${cls}">${Math.round(pmAppr)}%</span></div>`;
+        })() : '';
         const coalitionParties = coalition.party_ids.map(id => { const p = parties.find(x => x.party_id === id); const fallbackName = allParties.find(f => f.id === id)?.faction_name || 'Unknown'; return p ? { ...p, seats: allPartySeats[id] || p.seats || 0 } : { party_name: fallbackName, seats: allPartySeats[id] || 0 }; }).sort((a,b) => b.seats - a.seats);
         return `
             <div class="administration-box">
@@ -736,6 +743,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                             <div class="admin-section-title">Prime Minister</div>
                             <div class="admin-person-name">${activeHOG ? `${escapeHtml(activeHOG.first_name)} ${escapeHtml(activeHOG.last_name)}` : escapeHtml(pmName)}</div>
                             <div class="admin-person-details">${activeHOG ? `Age ${activeHOG.age} • ` : (pmAge !== '—' ? `Age ${pmAge} • ` : '')}<span class="admin-person-party">${escapeHtml(pmParty)}</span></div>
+                            ${pmApprHtml}
                             ${activeHOG ? `
                                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
                                     <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:#9C27B0;color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
@@ -1727,7 +1735,7 @@ async function purgeMinister(ministryKey) {
         const decayTicks = approvalBoost > 0 ? approvalBoost + 1 : 0;
 
         const { error: clearErr } = await _supabase.from('ministries').update({
-            minister_first_name: null, minister_last_name: null, minister_age: null, party_id: null
+            minister_first_name: null, minister_last_name: null, minister_age: null, party_id: null, minister_approval: 50
         }).eq('id', ministry.id);
         if (clearErr) throw clearErr;
 
@@ -2409,7 +2417,8 @@ async function resignPMAction() {
             minister_first_name: null,
             minister_last_name: null,
             minister_age: null,
-            party_id: null
+            party_id: null,
+            minister_approval: 50
         }).eq('id', ministry.id);
 
         alert('📋 ' + ministerName + ' has resigned from ' + (ministry.ministry_name || ministryKey) + '.');
