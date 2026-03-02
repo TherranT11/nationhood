@@ -1310,9 +1310,9 @@ function renderCommitteeBill(bill) {
     const isSponsor = bill.proposed_by === currentFaction?.id;
     let decreeActionsHTML = '';
     if (lawsIsAutocracy) {
-        decreeActionsHTML = `<div class="decree-actions">${isHeadFaction ? `<button class="decree-action-btn enact" onclick="event.stopPropagation(); enactDecree('${bill.id}')">⚡ Enact Decree</button>` : ''}${isSponsor ? `<button class="decree-action-btn retract-decree" onclick="event.stopPropagation(); retractBill('${bill.id}')">Retract</button>` : ''}</div>`;
+        decreeActionsHTML = `<div class="decree-actions" onclick="event.stopPropagation()">${isHeadFaction ? `<button class="decree-action-btn enact" onclick="event.stopPropagation(); enactDecree('${bill.id}')">⚡ Enact Decree</button>` : ''}${isSponsor ? `<button class="decree-action-btn retract-decree" onclick="event.stopPropagation(); retractBill('${bill.id}')">Retract</button>` : ''}</div>`;
     } else if (isSponsor) {
-        decreeActionsHTML = `<div class="decree-actions"><button class="decree-action-btn retract-decree" onclick="event.stopPropagation(); retractBill('${bill.id}')">Retract Bill</button></div>`;
+        decreeActionsHTML = `<div class="decree-actions" onclick="event.stopPropagation()"><button class="decree-action-btn retract-decree" onclick="event.stopPropagation(); retractBill('${bill.id}')">Retract Bill</button></div>`;
     }
     return `
         <div class="committee-bill clickable-bill" onclick="window.location.href='bill.html?id=${bill.id}'">
