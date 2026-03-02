@@ -293,7 +293,7 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
                     target_nation_id: a.target_nation_id,
                     target_nation_name: nationNameMap[a.target_nation_id] || 'Unknown',
                     appointed_at_tick: a.appointed_at_tick,
-                    term_length: a.term_length || 36,
+                    term_length: a.term_length || 60,
                     ambassador_first_name: a.ambassador_first_name,
                     ambassador_last_name: a.ambassador_last_name,
                     factions: a.factions
@@ -1221,8 +1221,9 @@ async function acceptTradeNegotiation(proposalId, negotiationId) {
         a.target_nation_id === neg.nation_a_id || a.target_nation_id === neg.nation_b_id
     );
     const isMoTAcceptor = diplomaticRoles.isMoT && !ourAmb;
-    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !isMoTAcceptor;
-    const role = isHoGOnly ? 'head_of_government' : isMoTAcceptor ? 'trade_minister' : 'ambassador';
+    const isFMAcceptor = diplomaticRoles.isFM && !ourAmb && !isMoTAcceptor;
+    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !isMoTAcceptor && !isFMAcceptor;
+    const role = isHoGOnly ? 'head_of_government' : isMoTAcceptor ? 'trade_minister' : isFMAcceptor ? 'foreign_minister' : 'ambassador';
 
     // Add ourselves as a participant
     const participants = neg.participants || [];
@@ -1856,7 +1857,7 @@ function renderRelationSection(relType, relClass, embassyStatus, ambassador) {
     // Ambassador term info
     let termHTML = '';
     if (ambassador && ambassador.appointed_at_tick != null) {
-        const termLength = ambassador.term_length || 36;
+        const termLength = ambassador.term_length || 60;
         const ticksServed = shardTick - ambassador.appointed_at_tick;
         const ticksRemaining = Math.max(0, termLength - ticksServed);
         const expiryTick = ambassador.appointed_at_tick + termLength;
@@ -1884,7 +1885,7 @@ function renderRelationSection(relType, relClass, embassyStatus, ambassador) {
     // Retirement warning
     let warningHTML = '';
     if (ambassador && ambassador.appointed_at_tick != null) {
-        const termLength = ambassador.term_length || 36;
+        const termLength = ambassador.term_length || 60;
         const ticksRemaining = Math.max(0, termLength - (shardTick - ambassador.appointed_at_tick));
         if (ticksRemaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && ticksRemaining > 0) {
             warningHTML = `
@@ -2079,7 +2080,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
         let ambWarningHTML = '';
         const myAmb = roles.ambassadorTo.find(a => a.target_nation_id === targetNation.id);
         if (myAmb && myAmb.appointed_at_tick != null) {
-            const tl = myAmb.term_length || 36;
+            const tl = myAmb.term_length || 60;
             const remaining = Math.max(0, tl - (shardTick - myAmb.appointed_at_tick));
             if (remaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && remaining > 0) {
                 const ambFullName = ((myAmb.ambassador_first_name || '') + ' ' + (myAmb.ambassador_last_name || '')).trim() + (myAmb.factions?.abbreviation ? ' (' + myAmb.factions.abbreviation + ')' : '');
@@ -2760,19 +2761,23 @@ async function renderWizardStep1() {
     const nationsWithCounterAmb = new Set(theirAmbs.map(a => a.nation_id));
 
     // Determine AP cost
-    const isHoGOnly = diplomaticRoles.isHoG && !hasAmbassador && !diplomaticRoles.isMoT;
+    const isHoGOnly = diplomaticRoles.isHoG && !hasAmbassador && !diplomaticRoles.isMoT && !diplomaticRoles.isFM;
     const isMoTOnly = diplomaticRoles.isMoT && !hasAmbassador && !diplomaticRoles.isHoG;
-    const canSelectAny = isHoGOnly || isMoTOnly; // HoG or MoT can select any nation
+    const isFMOnly = diplomaticRoles.isFM && !hasAmbassador && !diplomaticRoles.isMoT && !diplomaticRoles.isHoG;
+    const canSelectAny = isHoGOnly || isMoTOnly || isFMOnly; // HoG, MoT, or FM can select any nation
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
     let html = '';
     if (isHoGOnly) {
-        html += '<div class="trade-info-box warning" style="margin-bottom:12px;">No ambassador appointed. As Head of Government, you can propose initiatives at a higher AP cost (' + apCost + ' AP instead of 1 AP).</div>';
+        html += '<div class="trade-info-box warning" style="margin-bottom:12px;">No Trade Minister, Foreign Minister, or ambassador appointed. As Head of Government, you can propose at a higher AP cost (' + apCost + ' AP instead of ' + DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP + ' AP).</div>';
     }
     if (isMoTOnly) {
         html += '<div class="trade-info-box info" style="margin-bottom:12px;">As Minister of Trade, you can propose trade negotiations to any nation. Diplomatic initiatives still require an ambassador.</div>';
     }
-    html += '<p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;">Select a nation to negotiate with. Both nations must have active ambassadors, or you can draft as Head of Government or Minister of Trade.</p>';
+    if (isFMOnly) {
+        html += '<div class="trade-info-box info" style="margin-bottom:12px;">As Foreign Minister, you can propose trade negotiations to any nation. Diplomatic initiatives still require an ambassador.</div>';
+    }
+    html += '<p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;">Select a nation to negotiate with. Trade Ministers, Ambassadors, Foreign Ministers, and Heads of Government can initiate trade talks.</p>';
 
     const nations = allNations || [];
     for (const nation of nations) {
@@ -2789,7 +2794,7 @@ async function renderWizardStep1() {
         if (!weHaveAmb && !canSelectAny) statusNote = '<span style="color:#ff9800;">No ambassador posted</span>';
         else if (weHaveAmb && !hasCounter) statusNote = '<span style="color:#ff9800;">No counterpart ambassador</span>';
 
-        const roleLabel = ambName ? 'Your Amb: ' + escapeHtml(ambName + ambPartyInit) : isHoGOnly ? 'Drafting as HoG' : isMoTOnly ? 'Drafting as Min. of Trade' : 'No ambassador';
+        const roleLabel = ambName ? 'Your Amb: ' + escapeHtml(ambName + ambPartyInit) : isHoGOnly ? 'Drafting as HoG' : isMoTOnly ? 'Drafting as Min. of Trade' : isFMOnly ? 'Drafting as FM' : 'No ambassador';
 
         html += `
             <div class="wizard-nation-item ${canSelect ? '' : 'disabled'}" data-nation-id="${nation.id}" onclick="wizardSelectNation('${nation.id}')">
@@ -3125,7 +3130,7 @@ async function renderWizardStep3TradeProposal() {
     }
 
     const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
-    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb;
+    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isMoT && !diplomaticRoles.isFM;
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
     let html = `
@@ -3135,11 +3140,11 @@ async function renderWizardStep3TradeProposal() {
             </div>
 
             <p style="font-size:0.78rem;color:var(--text-muted);line-height:1.5;margin-bottom:14px;">
-                Open a trade negotiation channel with ${escapeHtml(targetName)}. Their ambassador must accept before the negotiation table opens.
+                Open a trade negotiation channel with ${escapeHtml(targetName)}. Their Trade Minister, Ambassador, or Head of Government must accept before the negotiation table opens.
                 Once open, both sides can choose the agreement type, draft articles, and negotiate terms.
             </p>
 
-            ${isHoGOnly ? '<div class="trade-info-box warning" style="margin-bottom:12px;">No ambassador appointed. Drafting as Head of Government costs ' + apCost + ' AP instead of 1 AP.</div>' : ''}
+            ${isHoGOnly ? '<div class="trade-info-box warning" style="margin-bottom:12px;">No Trade Minister, Foreign Minister, or ambassador appointed. Drafting as Head of Government costs ' + apCost + ' AP instead of ' + DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP + ' AP.</div>' : ''}
 
             <div class="trade-field">
                 <label>Negotiation Name</label>
@@ -3209,7 +3214,7 @@ async function renderWizardStep3AidProposal() {
     }
 
     const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
-    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isFM;
+    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isFM && !diplomaticRoles.isMoT;
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
     let html = `
@@ -3292,7 +3297,7 @@ async function submitAidProposal() {
     const agreementName = (nameInput?.value || '').trim() || 'Economic Aid Negotiations';
 
     const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
-    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isFM;
+    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isFM && !diplomaticRoles.isMoT;
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
     // Deduct AP
@@ -3482,6 +3487,15 @@ async function wizardSubmit() {
     const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
     if (!ourAmb) { alert('You are not ambassador to this nation.'); return; }
 
+    // Deduct AP for diplomatic initiative
+    const apCost = DIPLOMACY_CONFIG.PROPOSE_INITIATIVE_AP;
+    const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+    if (!apResult.success) {
+        alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (currentFaction.action_points || 0));
+        return;
+    }
+    currentFaction.action_points = apResult.newAp;
+
     // Get their ambassador
     const { data: theirAmb } = await _supabase
         .from('ambassadors')
@@ -3567,8 +3581,9 @@ async function submitTradeProposal() {
     }
 
     const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
-    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isMoT;
+    const isHoGOnly = diplomaticRoles.isHoG && !ourAmb && !diplomaticRoles.isMoT && !diplomaticRoles.isFM;
     const isMoTProposer = diplomaticRoles.isMoT && !ourAmb && !isHoGOnly;
+    const isFMProposer = diplomaticRoles.isFM && !ourAmb && !diplomaticRoles.isMoT && !isHoGOnly;
     const apCost = isHoGOnly ? DIPLOMACY_CONFIG.HOG_DRAFT_INITIATIVE_AP : DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP;
 
     // Deduct AP
@@ -3590,7 +3605,7 @@ async function submitTradeProposal() {
     const expiresAt = currentTick + DIPLOMACY_CONFIG.NEGOTIATION_DEFAULT_DURATION;
 
     // Determine proposer role
-    const proposerRole = isHoGOnly ? 'head_of_government' : isMoTProposer ? 'trade_minister' : 'ambassador';
+    const proposerRole = isHoGOnly ? 'head_of_government' : isMoTProposer ? 'trade_minister' : isFMProposer ? 'foreign_minister' : 'ambassador';
 
     // Build participant entry for the proposer
     const proposerParticipant = {
@@ -3648,7 +3663,7 @@ async function submitTradeProposal() {
         fired_at_tick: currentTick
     });
 
-    alert('"' + agreementName + '" trade negotiations proposed to ' + (targetNation?.name || 'Unknown') + '!\n\nTheir ambassador must accept (1 AP) to open the negotiation table.');
+    alert('"' + agreementName + '" trade negotiations proposed to ' + (targetNation?.name || 'Unknown') + '!\n\nTheir Trade Minister, Ambassador, or Head of Government must accept (' + DIPLOMACY_CONFIG.ACCEPT_TRADE_NEGOTIATION_AP + ' AP) to open the negotiation table.');
 
     // Reset and re-render wizard
     await renderInitiativeWizard();
@@ -5318,6 +5333,15 @@ async function submitInitiative() {
 
     const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === target.id);
     if (!ourAmb) { alert('You are not ambassador to this nation.'); return; }
+
+    // Deduct AP for diplomatic initiative
+    const apCost = DIPLOMACY_CONFIG.PROPOSE_INITIATIVE_AP;
+    const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+    if (!apResult.success) {
+        alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (currentFaction.action_points || 0));
+        return;
+    }
+    currentFaction.action_points = apResult.newAp;
 
     const ourAmbName = ((ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '')).trim() + (ourAmb.factions?.abbreviation ? ' (' + ourAmb.factions.abbreviation + ')' : '');
     const theirAmbName = ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim() + (theirAmb.factions?.abbreviation ? ' (' + theirAmb.factions.abbreviation + ')' : '');

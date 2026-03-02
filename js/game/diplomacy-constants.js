@@ -8,7 +8,7 @@
 export const DIPLOMACY_CONFIG = {
     // Ambassador actions
     FORMAL_PROTEST_AP: 2,
-    PROPOSE_INITIATIVE_AP: 3,
+    PROPOSE_INITIATIVE_AP: 2,
     COVERT_OP_AP: 4,
 
     // Foreign Minister actions
@@ -29,7 +29,7 @@ export const DIPLOMACY_CONFIG = {
     STATE_VISIT_COOLDOWN: 6,
     TREATY_RATIFICATION_VOTING_TICKS: 6,
     AMBASSADOR_CONFIRMATION_VOTING_TICKS: 6,
-    AMBASSADOR_TERM_LENGTH: 36,         // ticks (36 ticks = 3 years)
+    AMBASSADOR_TERM_LENGTH: 60,         // ticks (60 ticks = 5 years)
     AMBASSADOR_RETIREMENT_WARNING: 3,   // warn this many ticks before retirement
 
     // War stat penalties (per tick)
@@ -49,12 +49,12 @@ export const DIPLOMACY_CONFIG = {
     COVERT_BRIBE_THRESHOLD: 0.60,
 
     // Trade negotiation AP costs
-    PROPOSE_TRADE_NEGOTIATION_AP: 1,      // Ambassador or MoT proposes trade negotiations
-    ACCEPT_TRADE_NEGOTIATION_AP: 1,       // Other ambassador or MoT accepts
-    JOIN_NEGOTIATION_PM_AP: 2,            // PM/HoG party joins negotiation
-    JOIN_NEGOTIATION_FM_AP: 1,            // FM party joins
-    JOIN_NEGOTIATION_MOT_AP: 2,           // Minister of Trade joins (required)
-    HOG_DRAFT_INITIATIVE_AP: 3,           // HoG drafting when no ambassador (penalty)
+    PROPOSE_TRADE_NEGOTIATION_AP: 2,      // MoT, FM, or Ambassador proposes trade negotiations
+    ACCEPT_TRADE_NEGOTIATION_AP: 1,       // Other side's MoT, FM, Ambassador, or HoG accepts
+    JOIN_NEGOTIATION_PM_AP: 2,            // PM/HoG/President joins negotiation
+    JOIN_NEGOTIATION_FM_AP: 1,            // FM joins negotiation
+    JOIN_NEGOTIATION_MOT_AP: 2,           // Minister of Trade joins
+    HOG_DRAFT_INITIATIVE_AP: 3,           // HoG drafting when no MoT/FM/Ambassador (penalty)
     MOT_JOIN_DEADLINE_TICKS: 4,           // Ticks before negotiations cancel if MoT hasn't joined
 
     // Trade negotiation timing
