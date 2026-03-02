@@ -16393,7 +16393,9 @@ Deno.serve(async (req) => {
 
     try {
         // 0. Startup checks
+        console.log("[advance-tick] Step 0: Running preflight...");
         await ensureApRpcAvailability(supabase);
+        console.log("[advance-tick] Step 0: Preflight complete.");
 
         // 1. Check for force parameter (admin manual trigger)
         let force = false;
@@ -16403,13 +16405,16 @@ Deno.serve(async (req) => {
         } catch (_) {
             // No body or invalid JSON — not forced
         }
+        console.log(`[advance-tick] Step 1: force=${force}`);
 
         // 2. Check if tick is due (skip check if force=true)
+        console.log("[advance-tick] Step 2: Querying shard...");
         const { data: shard, error: shardError } = await supabase
             .from("shard")
             .select("next_tick_at, current_tick, tick_processing")
             .eq("name", "Alpha Shard")
             .single();
+        console.log(`[advance-tick] Step 2: Shard query done. error=${shardError?.message ?? 'none'}, tick=${shard?.current_tick}`);
 
         if (shardError || !shard) {
             console.error(`[advance-tick] Shard not found: ${shardError?.message}`);
