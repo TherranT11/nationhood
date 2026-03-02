@@ -1155,9 +1155,6 @@ async function advanceTick(supabase) {
         const { data: preApprovalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (preApprovalNation) Object.assign(nation, preApprovalNation);
 
-        // Record stat history for trend calculations (used by three-pillar voter preferences)
-        await recordStatHistory(supabase, nation, newTick);
-
         // Layer 1: Update minister approvals (drift-to-performance model)
         const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick, shutdownNow);
         if (ministerApprovalResults.length > 0) {
@@ -1390,6 +1387,8 @@ async function advanceTick(supabase) {
 
         // Final snapshot — capture everything that happened this tick
         const { data: finalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+        // Record stat history for trend calculations (used by three-pillar voter preferences)
+        await recordStatHistory(supabase, finalNation || nation, newTick);
         await snapshotNationHistory(supabase, finalNation || nation, newTick);
       } catch (nationErr) {
         console.error(`[advanceTick] FAILED processing nation ${nation.id} (${nation.name}):`, nationErr);
