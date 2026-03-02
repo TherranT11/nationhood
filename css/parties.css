@@ -448,6 +448,17 @@ body.light-mode .coup-risk-bar-track {
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
 }
+.mom-log-date {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 9px;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 6px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.mom-log-date:first-child { margin-top: 0; }
 
 /* ===== PERFORMANCE CREDIT PANEL ===== */
 .perf-panel {
