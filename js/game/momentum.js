@@ -57,8 +57,8 @@ export async function adjustMomentumAll(supabase, nationId, factionId, amount, s
     await adjustMomentum(supabase, nationId, factionId, null, amount, source);
 }
 /**
- * Apply a one-time event modifier to the government approval events component.
- * The events component decays 12% per tick, so transient shocks fade naturally.
+ * Apply a one-time event modifier to the government approval event modifier.
+ * The modifier decays 10% per tick, so transient shocks fade naturally.
  * Clamped to [-50, +50]. Writes an audit row to gov_approval_log.
  *
  * @param {object} supabase

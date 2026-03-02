@@ -2382,6 +2382,9 @@ async function statTrendBatch(supabase, nationId, statNames, lookback = 6) {
 }
 
 // ==================== MINISTER & GOVERNMENT APPROVAL SYSTEM ====================
+// Simplified "Drift-to-Performance" model:
+//   - Minister approval drifts toward the average performance of their owned stats
+//   - Government approval = average minister approval + vacancy penalty + event modifier
 
 /**
  * Reverse map: ministry_key → [stat_keys] derived from STAT_TO_MINISTRY.
@@ -2395,91 +2398,35 @@ for (const [statKey, ministryKey] of Object.entries(STAT_TO_MINISTRY)) {
 }
 
 /**
- * Threshold-based approval contribution for a single stat.
- * Returns how much a stat's current value helps or hurts the responsible minister.
+ * Simplified approval system configuration.
  *
- * Normal stats (higher=better): >=70 → +1.5, 50-69 → +0.5, 30-49 → -1.5, <30 → -3.0
- * Inverse stats (lower=better): <=15 → +1.5, 16-30 → +0.5, 31-50 → -1.5, >50  → -3.0
+ * Minister approval drifts toward the average "performance" of their owned stats
+ * each tick. Performance for a stat is its raw value (higher-is-better) or
+ * 100 - value (lower-is-better). Neutral stats are skipped.
  *
- * @param {string} statKey - nation stat key
- * @param {number} value   - current stat value
- * @returns {number} approval contribution (-3.0 to +1.5)
+ * Government approval = avg(filled minister approvals) + vacancy penalty + event modifier.
  */
-function statApprovalContribution(statKey, value) {
-    const sign = statDirectionSign(statKey);
-    if (sign === 0) return 0;
+const MINISTER_APPROVAL_CONFIG = {
+    // Per-tick drift rate: minister approval moves 15% of the gap toward target
+    DRIFT_RATE: 0.15,
 
-    if (sign === 1) {
-        // Higher is better
-        if (value >= 70) return 1.5;
-        if (value >= 50) return 0.5;
-        if (value >= 30) return -1.5;
-        return -3.0;
-    } else {
-        // Lower is better (inverse)
-        if (value <= 15) return 1.5;
-        if (value <= 30) return 0.5;
-        if (value <= 50) return -1.5;
-        return -3.0;
-    }
-}
+    // New minister starts at 50% approval and drifts to match their stats
+    NEW_MINISTER_APPROVAL: 50,
 
-const GOV_APPROVAL_CONFIG = {
-    // ─── New spec weights (Phase 4) ───
-    INSTITUTIONAL_WEIGHT: 0.45,
-    OUTCOMES_WEIGHT: 0.35,
-    EVENTS_WEIGHT: 0.20,
-
-    // Events component decay (5% per tick — transient shocks fade gradually)
-    EVENTS_DECAY_RATE: 0.05,
-
-    // Outcome stats: universal stats everyone cares about, with relative weights
-    OUTCOME_STATS: [
-        { stat: 'standard_of_living', weight: 0.18 },
-        { stat: 'unemployment',       weight: 0.15, inverted: true },
-        { stat: 'inflation',          weight: 0.12, inverted: true },
-        { stat: 'crime_rate',         weight: 0.10, inverted: true },
-        { stat: 'healthcare_quality', weight: 0.10 },
-        { stat: 'happiness',          weight: 0.10 },
-        { stat: 'poverty_rate',       weight: 0.08, inverted: true },
-        { stat: 'gdp_growth',         weight: 0.07 },
-        { stat: 'stability',          weight: 0.05 },
-        { stat: 'corruption',         weight: 0.05, inverted: true },
-    ],
-    OUTCOME_TREND_LOOKBACK: 8,
-    OUTCOME_TREND_WEIGHT: 0.6,    // 60% trend direction
-    OUTCOME_ABSOLUTE_WEIGHT: 0.4, // 40% absolute level
-
-    // Gov approval → momentum feedback
-    FEEDBACK_THRESHOLD: 2,          // min delta to trigger feedback
-    FEEDBACK_COALITION_COEFF: 0.15, // coalition gets 15% of delta as momentum
-    FEEDBACK_OPPOSITION_COEFF: 0.08, // opposition gets inverse 8%
-
-    // Vacancy penalty per unfilled ministry
-    VACANCY_PENALTY: -5,
-
-    // Embattled / Crisis thresholds (kept from original)
-    EMBATTLED_THRESHOLD: 30,
-    EMBATTLED_TICKS_REQUIRED: 5,
-    EMBATTLED_GOV_PENALTY: -1,
-    CRISIS_THRESHOLD: 20,
-    CRISIS_GOV_PENALTY: -2,
-
-    // Minister firing (kept from original)
+    // Firing a minister costs 1 AP and gives +3 to the event modifier
     FIRE_MINISTER_AP_COST: 1,
-    NEW_MINISTER_APPROVAL: 45,
     FIRE_GOV_APPROVAL_BONUS: 3,
 
-    // ─── Ministry funding → minister approval (Phase 5) ───
-    // Direct funding penalty: applied additively (not averaged with stat scores).
-    // At 0% funding the minister loses MINISTER_FUNDING_PENALTY_MAX per tick.
-    // Scales linearly: 50% funded → half the penalty, 100% funded → 0.
-    MINISTER_FUNDING_PENALTY_MAX: -2.0,
+    // Government approval: -3 per vacant ministry seat
+    VACANCY_PENALTY: -3,
 
-    // Per-institution penalty when funding falls below COLLAPSED threshold.
-    // Stacks: 3 collapsed institutions → 3 × penalty per tick.
-    MINISTER_COLLAPSED_INST_PENALTY: -1.0,
-    MINISTER_COLLAPSED_THRESHOLD: 25,    // funding % at or below → "collapsed"
+    // Event modifier decay: 10% per tick (transient shocks fade naturally)
+    EVENTS_DECAY_RATE: 0.10,
+
+    // Government shutdown: -6/tick direct penalty on minister approval
+    SHUTDOWN_MINISTER_PENALTY: -6,
+    // Government shutdown: -25 flat penalty on government approval
+    SHUTDOWN_GOV_PENALTY: -25,
 };
 
 /**
@@ -2552,8 +2499,8 @@ async function adjustMomentumAll(supabase, nationId, factionId, amount, source) 
     await adjustMomentum(supabase, nationId, factionId, null, amount, source);
 }
 /**
- * Apply a one-time event modifier to the government approval events component.
- * The events component decays 12% per tick, so transient shocks fade naturally.
+ * Apply a one-time event modifier to the government approval event modifier.
+ * The modifier decays 10% per tick, so transient shocks fade naturally.
  * Clamped to [-50, +50]. Writes an audit row to gov_approval_log.
  *
  * @param {object} supabase
@@ -12241,73 +12188,38 @@ async function processMinistryActions(supabase, nation, currentTick) {
  * @param {Array|null} budgetAllocations - rows from budget_item_allocations for the active budget (optional)
  * @returns {Array} results for logging
  */
-async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown = false, institutionConfig = null, budgetAllocations = null) {
-    // Try SELECT with embattled_since_tick; fall back without it if column doesn't exist yet
-    let ministries;
-    const { data: minData, error: minErr } = await supabase
+/**
+ * Drift-to-Performance minister approval model.
+ *
+ * Each minister's approval drifts toward the average "performance" of their
+ * owned stats. Performance = stat value for higher-is-better stats, or
+ * (100 - stat value) for lower-is-better stats. Neutral stats are skipped.
+ *
+ * approval += (targetApproval - currentApproval) × DRIFT_RATE
+ *
+ * During government shutdown, a flat penalty is applied on top of the drift.
+ *
+ * @param {object} supabase
+ * @param {object} nation - full nation row with current stat values
+ * @param {number} currentTick
+ * @param {boolean} [isShutdown=false]
+ * @returns {Array<object>} per-minister results for tick summary
+ */
+async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown = false) {
+    const cfg = MINISTER_APPROVAL_CONFIG;
+
+    const { data: ministries } = await supabase
         .from('ministries')
-        .select('id, ministry_key, minister_approval, minister_first_name, embattled_since_tick, party_id')
+        .select('id, ministry_key, minister_approval, minister_first_name, party_id')
         .eq('nation_id', nation.id)
         .eq('is_active', true);
 
-    if (minErr) {
-        console.warn(`[updateMinisterApprovals] SELECT with embattled_since_tick failed (${minErr.message}), retrying without it`);
-        const { data: fallbackData } = await supabase
-            .from('ministries')
-            .select('id, ministry_key, minister_approval, minister_first_name, party_id')
-            .eq('nation_id', nation.id)
-            .eq('is_active', true);
-        ministries = fallbackData;
-    } else {
-        ministries = minData;
-    }
-
     if (!ministries || ministries.length === 0) return [];
-
-    // During government shutdown, every minister takes a direct -6/tick approval hit
-    // on top of their normal stat-based scoring. A shutdown is a catastrophic failure
-    // of governance — public outrage should rapidly destroy minister approval.
-    const SHUTDOWN_MINISTER_PENALTY = -6;
-
-    // ── Build ministry_key → institution funding map ──
-    // Maps each ministry to its institutions' funding percentages so we can
-    // penalise ministers for underfunded/collapsed institutions.
-    const ministryFundingMap = {};  // ministry_key → [{ id, fundingPct }]
-    if (institutionConfig && institutionConfig.length > 0) {
-        // Build allocation lookup: institution id → { allocated, needed }
-        const allocMap = {};
-        for (const row of (budgetAllocations || [])) {
-            if (row.item_type === 'institution') {
-                allocMap[row.item_id] = {
-                    allocated: Number(row.allocation_amount || 0),
-                    needed: Number(row.needed_amount || 0)
-                };
-            }
-        }
-
-        for (const inst of institutionConfig) {
-            const key = inst.ministry_key;
-            if (!ministryFundingMap[key]) ministryFundingMap[key] = [];
-
-            let fundingPct;
-            if (isShutdown) {
-                // Shutdown forces all institutions to 0% funding
-                fundingPct = 0;
-            } else {
-                const alloc = allocMap[inst.id];
-                fundingPct = alloc && alloc.needed > 0
-                    ? Math.min(100, Math.round((alloc.allocated / alloc.needed) * 100))
-                    : 0;  // no allocation row = unfunded
-            }
-
-            ministryFundingMap[key].push({ id: inst.id, fundingPct });
-        }
-    }
 
     const results = [];
 
     for (const ministry of ministries) {
-        // Skip PM — their approval is derived from the composite government score
+        // Skip PM — government approval represents PM effectiveness
         if (ministry.ministry_key === 'prime_minister') continue;
         // Skip vacant ministries (no minister appointed)
         if (!ministry.minister_first_name) continue;
@@ -12315,277 +12227,117 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
         const ownedStats = MINISTRY_TO_STATS[ministry.ministry_key];
         if (!ownedStats || ownedStats.length === 0) continue;
 
-        // ── Component 1: Stat-based scoring (averaged) ──
-        let contributionSum = 0;
-        let statCount = 0;
+        // Calculate target approval = average performance of owned stats
+        let perfSum = 0;
+        let perfCount = 0;
         for (const statKey of ownedStats) {
-            const value = Number(nation[statKey] ?? 0);
-            const contribution = statApprovalContribution(statKey, value);
-            if (contribution !== 0 || statDirectionSign(statKey) !== 0) {
-                contributionSum += contribution;
-                statCount++;
-            }
+            const sign = statDirectionSign(statKey);
+            if (sign === 0) continue; // skip neutral stats (taxes, etc.)
+            const value = Number(nation[statKey] ?? 50);
+            // Higher-is-better: performance = value. Lower-is-better: performance = 100 - value.
+            perfSum += sign === 1 ? value : (100 - value);
+            perfCount++;
         }
 
-        // Skip ministers with no stat contributions AND no funding data UNLESS shutdown
-        const institutions = ministryFundingMap[ministry.ministry_key];
-        if (statCount === 0 && !isShutdown && !institutions) continue;
+        if (perfCount === 0) continue;
+        const targetApproval = perfSum / perfCount;
 
-        let avgDelta = statCount > 0 ? contributionSum / statCount : 0;
+        // Drift toward target
+        const oldApproval = ministry.minister_approval ?? cfg.NEW_MINISTER_APPROVAL;
+        let newApproval = oldApproval + (targetApproval - oldApproval) * cfg.DRIFT_RATE;
 
-        // ── Component 2: Funding penalty (additive, not averaged) ──
-        // A minister whose ministry is underfunded should lose approval directly,
-        // regardless of whether stat values have decayed yet.
-        let fundingPenalty = 0;
-        let collapsedPenalty = 0;
-        if (institutions && institutions.length > 0) {
-            const avgFunding = institutions.reduce((sum, i) => sum + i.fundingPct, 0) / institutions.length;
-            const fundingRatio = avgFunding / 100;  // 0.0–1.0
-
-            // Linear penalty: 0% funded → full penalty, 100% funded → 0
-            fundingPenalty = (1.0 - fundingRatio) * GOV_APPROVAL_CONFIG.MINISTER_FUNDING_PENALTY_MAX;
-
-            // ── Component 3: Collapsed institution penalty (additive, stacks) ──
-            const collapsedCount = institutions.filter(
-                i => i.fundingPct <= GOV_APPROVAL_CONFIG.MINISTER_COLLAPSED_THRESHOLD
-            ).length;
-            collapsedPenalty = collapsedCount * GOV_APPROVAL_CONFIG.MINISTER_COLLAPSED_INST_PENALTY;
-        }
-
-        avgDelta += fundingPenalty + collapsedPenalty;
-
-        // Government shutdown: stack a direct penalty on top of stat-based scoring
+        // Government shutdown: slam a direct penalty per tick
         if (isShutdown) {
-            avgDelta += SHUTDOWN_MINISTER_PENALTY;
+            newApproval += cfg.SHUTDOWN_MINISTER_PENALTY;
         }
 
-        const oldApproval = ministry.minister_approval ?? 50;
-        const newApproval = Math.round(Math.max(0, Math.min(100, oldApproval + avgDelta)) * 10) / 10;
+        newApproval = Math.round(Math.max(0, Math.min(100, newApproval)) * 10) / 10;
 
-        // Track embattled status
-        let embattledSinceTick = ministry.embattled_since_tick;
-        if (newApproval < GOV_APPROVAL_CONFIG.EMBATTLED_THRESHOLD) {
-            if (embattledSinceTick === null || embattledSinceTick === undefined) {
-                embattledSinceTick = currentTick;
-            }
-        } else {
-            embattledSinceTick = null;
-        }
-
-        // Update minister approval + embattled tracking
-        // Use error-checked update with fallback: if embattled_since_tick column
-        // doesn't exist yet (migration not applied), retry with just minister_approval
-        const { error: updateErr } = await supabase.from('ministries')
-            .update({
-                minister_approval: newApproval,
-                embattled_since_tick: embattledSinceTick
-            })
+        await supabase.from('ministries')
+            .update({ minister_approval: newApproval })
             .eq('id', ministry.id);
-
-        if (updateErr) {
-            // Fallback: update just minister_approval (embattled column may not exist)
-            await supabase.from('ministries')
-                .update({ minister_approval: newApproval })
-                .eq('id', ministry.id);
-        }
 
         results.push({
             ministry_key: ministry.ministry_key,
             old: oldApproval,
             new: newApproval,
-            delta: Math.round(avgDelta * 10) / 10,
-            fundingPenalty: Math.round(fundingPenalty * 10) / 10,
-            collapsedPenalty: Math.round(collapsedPenalty * 10) / 10,
-            embattled: embattledSinceTick !== null
+            target: Math.round(targetApproval * 10) / 10,
+            delta: Math.round((newApproval - oldApproval) * 10) / 10
         });
     }
 
     if (results.length > 0) {
-        const shutdownTag = isShutdown ? ' [SHUTDOWN -6/tick penalty active]' : '';
-        console.log(`[updateMinisterApprovals] ${nation.name}:${shutdownTag} ${results.map(r => {
-            const parts = [`${r.ministry_key} ${r.old}→${r.new} (${r.delta >= 0 ? '+' : ''}${r.delta})`];
-            if (r.fundingPenalty) parts.push(`fund:${r.fundingPenalty}`);
-            if (r.collapsedPenalty) parts.push(`collapsed:${r.collapsedPenalty}`);
-            return parts.join(' ');
-        }).join(', ')}`);
+        const shutdownTag = isShutdown ? ' [SHUTDOWN]' : '';
+        console.log(`[updateMinisterApprovals] ${nation.name}:${shutdownTag} ${results.map(r =>
+            `${r.ministry_key} ${r.old}→${r.new} (target=${r.target})`
+        ).join(', ')}`);
     }
 
     return results;
 }
 
-// ==================== LAYER 2: GOVERNMENT APPROVAL (COMPOSITE) ====================
-
+// ==================== LAYER 2: GOVERNMENT APPROVAL (SIMPLIFIED) ====================
 
 /**
- * Calculate composite government approval from three components:
- *   45% — Institutional: minister approval avg + embattled penalties + vacancy penalty
- *   35% — Outcomes: weighted trend+absolute blend across key nation stats
- *   20% — Events: transient modifier (decays 12%/tick), fed by adjustGovernmentApprovalEvent()
+ * Simplified government approval calculation.
  *
- * Stores the result in nations.gov_approval.
- * Caches component values in gov_approval_institutional, gov_approval_outcomes, gov_approval_events.
- * Triggers momentum feedback when gov approval shifts significantly.
+ * govApproval = avg(filled minister approvals) + vacancyPenalty + eventModifier
+ *
+ * No composite pillars, no trend lookback, no embattled tracking,
+ * no momentum feedback loop. Simple, transparent, and predictable.
  *
  * @param {object} supabase
  * @param {object} nation - nation row with current stat values
  * @param {number} currentTick
- * @param {boolean} [isShutdown=false] - whether the government is currently in shutdown
+ * @param {boolean} [isShutdown=false]
  * @returns {number|null} the computed government approval (0-100), or null if no government
  */
 async function calculateGovernmentApprovalTick(supabase, nation, currentTick, isShutdown = false) {
-    const cfg = GOV_APPROVAL_CONFIG;
+    const cfg = MINISTER_APPROVAL_CONFIG;
 
-    // Try SELECT with embattled_since_tick; fall back without it if column doesn't exist yet
-    let ministries;
-    const { data: govMinData, error: govMinErr } = await supabase
+    const { data: ministries } = await supabase
         .from('ministries')
-        .select('ministry_key, minister_approval, minister_first_name, embattled_since_tick')
+        .select('ministry_key, minister_approval, minister_first_name')
         .eq('nation_id', nation.id)
         .eq('is_active', true);
-
-    if (govMinErr) {
-        console.warn(`[calculateGovernmentApprovalTick] SELECT with embattled_since_tick failed (${govMinErr.message}), retrying without it`);
-        const { data: fallbackData } = await supabase
-            .from('ministries')
-            .select('ministry_key, minister_approval, minister_first_name')
-            .eq('nation_id', nation.id)
-            .eq('is_active', true);
-        ministries = fallbackData;
-    } else {
-        ministries = govMinData;
-    }
 
     if (!ministries || ministries.length === 0) return null;
 
     const filledMinistries = ministries.filter(m => m.minister_first_name);
     const vacantCount = ministries.length - filledMinistries.length;
 
-    // ─── Component A (45%): Institutional — minister avg + embattled + vacancy ───
+    // Average of all filled minister approvals
     let ministerSum = 0;
-    let embattledPenalty = 0;
-
     for (const m of filledMinistries) {
-        const approval = m.minister_approval ?? 50;
-        ministerSum += approval;
-
-        if (m.embattled_since_tick !== null && m.embattled_since_tick !== undefined && m.ministry_key !== 'prime_minister') {
-            const ticksEmbattled = currentTick - m.embattled_since_tick;
-            if (ticksEmbattled >= cfg.EMBATTLED_TICKS_REQUIRED) {
-                if (approval < cfg.CRISIS_THRESHOLD) {
-                    embattledPenalty += cfg.CRISIS_GOV_PENALTY;
-                } else {
-                    embattledPenalty += cfg.EMBATTLED_GOV_PENALTY;
-                }
-            }
-        }
+        ministerSum += (m.minister_approval ?? cfg.NEW_MINISTER_APPROVAL);
     }
-
     const ministerAvg = filledMinistries.length > 0 ? ministerSum / filledMinistries.length : 50;
-    const vacancyPenalty = vacantCount * (cfg.VACANCY_PENALTY || -5);
-    const institutional = Math.max(0, Math.min(100, ministerAvg + embattledPenalty + vacancyPenalty));
 
-    // ─── Component B (35%): Outcomes — weighted trend+absolute blend ───
-    const outcomeStatNames = cfg.OUTCOME_STATS.map(s => s.stat);
-    const trends = await statTrendBatch(supabase, nation.id, outcomeStatNames, cfg.OUTCOME_TREND_LOOKBACK);
+    // Vacancy penalty: -3 per unfilled ministry seat
+    const vacancyPenalty = vacantCount * cfg.VACANCY_PENALTY;
 
-    let outcomesScore = 50; // neutral default
-    let weightSum = 0;
-    let blendedSum = 0;
+    // Event modifier (decayed before this call by the tick processor)
+    const eventModifier = Number(nation.gov_approval_events ?? 0);
 
-    for (const entry of cfg.OUTCOME_STATS) {
-        const rawVal = Number(nation[entry.stat] ?? 50);
-        // Normalize absolute value to 0-100 quality scale (inverted stats: lower is better)
-        const absQuality = entry.inverted ? (100 - rawVal) : rawVal;
-        // Normalize trend: positive trend = good. For inverted stats, a negative raw trend is good.
-        const rawTrend = trends[entry.stat] || 0;
-        const trendSign = entry.inverted ? -rawTrend : rawTrend;
-        // Map trend to 0-100 scale: clamp trend to [-5, +5] range then scale
-        const trendQuality = Math.max(0, Math.min(100, 50 + trendSign * 10));
+    // Composite
+    let rawApproval = ministerAvg + vacancyPenalty + eventModifier;
 
-        const blended = absQuality * cfg.OUTCOME_ABSOLUTE_WEIGHT + trendQuality * cfg.OUTCOME_TREND_WEIGHT;
-        blendedSum += blended * entry.weight;
-        weightSum += entry.weight;
-    }
-
-    if (weightSum > 0) {
-        outcomesScore = Math.max(0, Math.min(100, blendedSum / weightSum));
-    }
-
-    // ─── Component C (20%): Events — transient modifier, decayed before this call ───
-    const eventsRaw = Number(nation.gov_approval_events ?? 0); // range: -50 to +50
-    // Map [-50, +50] → [0, 100]
-    const eventsComponent = Math.max(0, Math.min(100, 50 + eventsRaw));
-
-    // ─── Composite ───
-    let rawApproval = institutional * cfg.INSTITUTIONAL_WEIGHT
-        + outcomesScore * cfg.OUTCOMES_WEIGHT
-        + eventsComponent * cfg.EVENTS_WEIGHT;
-
-    // Government shutdown: slam a flat -25 penalty on the composite score.
-    // A shutdown is a catastrophic governance failure — the public doesn't
-    // forgive a non-functioning government regardless of minister averages.
+    // Government shutdown: flat penalty
     if (isShutdown) {
-        rawApproval -= 25;
+        rawApproval += cfg.SHUTDOWN_GOV_PENALTY;
     }
 
     const govApproval = Math.round(Math.max(0, Math.min(100, rawApproval)));
-    const prevGovApproval = Number(nation.gov_approval ?? 50);
 
-    // Store all components + composite on the nation
-    // Use error-checked update with fallback: if component columns don't exist yet
-    // (migration not applied), fall back to updating just gov_approval
-    const { error: govUpdErr } = await supabase.from('nations')
-        .update({
-            gov_approval: govApproval,
-            gov_approval_institutional: Math.round(institutional * 10) / 10,
-            gov_approval_outcomes: Math.round(outcomesScore * 10) / 10,
-            gov_approval_events: eventsRaw   // preserve raw value (already decayed)
-        })
+    // Store on nation
+    await supabase.from('nations')
+        .update({ gov_approval: govApproval })
         .eq('id', nation.id);
-
-    if (govUpdErr) {
-        // Fallback: component columns may not exist yet
-        await supabase.from('nations')
-            .update({ gov_approval: govApproval })
-            .eq('id', nation.id);
-    }
 
     // Update in-memory nation object
     nation.gov_approval = govApproval;
-    nation.gov_approval_institutional = institutional;
-    nation.gov_approval_outcomes = outcomesScore;
 
-    // ─── Momentum feedback: significant gov approval shifts affect party momentum ───
-    const delta = govApproval - prevGovApproval;
-    if (Math.abs(delta) > cfg.FEEDBACK_THRESHOLD) {
-        const coalition = await fetchActiveCoalition(supabase, nation.id);
-        const coalitionPartyIds = coalition?.party_ids || [];
-
-        // Coalition parties gain/lose momentum proportional to approval shift
-        for (const partyId of coalitionPartyIds) {
-            const momDelta = Math.round(delta * cfg.FEEDBACK_COALITION_COEFF * 100) / 100;
-            if (momDelta !== 0) {
-                await adjustMomentumAll(supabase, nation.id, partyId, momDelta, 'gov_approval_shift');
-            }
-        }
-
-        // Opposition benefits inversely (at reduced rate)
-        const { data: oppParties } = await supabase
-            .from('factions')
-            .select('id')
-            .eq('nation_id', nation.id)
-            .eq('faction_type', 'party')
-            .eq('is_npc', false);
-        for (const opp of (oppParties || [])) {
-            if (coalitionPartyIds.includes(opp.id)) continue;
-            const momDelta = Math.round(-delta * cfg.FEEDBACK_OPPOSITION_COEFF * 100) / 100;
-            if (momDelta !== 0) {
-                await adjustMomentumAll(supabase, nation.id, opp.id, momDelta, 'gov_approval_shift');
-            }
-        }
-    }
-
-    console.log(`[GovApproval] ${nation.name}: ${govApproval} (inst=${Math.round(institutional)}, outcomes=${Math.round(outcomesScore)}, events=${Math.round(eventsComponent)}, vacancies=${vacantCount}, embattled=${embattledPenalty})`);
+    console.log(`[GovApproval] ${nation.name}: ${govApproval} (avg=${Math.round(ministerAvg)}, vacancies=${vacantCount}×${cfg.VACANCY_PENALTY}=${vacancyPenalty}, events=${eventModifier}${isShutdown ? ', SHUTDOWN' : ''})`);
 
     return govApproval;
 }
@@ -16385,29 +16137,28 @@ async function advanceTick(supabase) {
         const { data: preApprovalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (preApprovalNation) Object.assign(nation, preApprovalNation);
 
-        // Record stat history for trend calculations (Phase 2)
+        // Record stat history for trend calculations (used by three-pillar voter preferences)
         await recordStatHistory(supabase, nation, newTick);
 
-        // Layer 1: Update minister approvals from stat thresholds + ministry funding
-        // During government shutdown, all ministers take a direct -6/tick approval penalty
-        const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick, shutdownNow, _institutionConfig, budgetItemAllocs);
+        // Layer 1: Update minister approvals (drift-to-performance model)
+        const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick, shutdownNow);
         if (ministerApprovalResults.length > 0) {
             summary.ministerApprovals = summary.ministerApprovals || [];
             summary.ministerApprovals.push({ nation: nation.name, results: ministerApprovalResults });
         }
 
-        // Decay gov_approval_events by 12% per tick (transient shocks fade naturally)
+        // Decay gov_approval_events by 10% per tick (transient shocks fade naturally)
         const oldEvents = Number(nation.gov_approval_events ?? 0);
         if (Math.abs(oldEvents) > 0.01) {
-            const decayed = Math.round(oldEvents * (1 - GOV_APPROVAL_CONFIG.EVENTS_DECAY_RATE) * 100) / 100;
+            const decayed = Math.round(oldEvents * (1 - MINISTER_APPROVAL_CONFIG.EVENTS_DECAY_RATE) * 100) / 100;
             await supabase.from('nations')
                 .update({ gov_approval_events: decayed })
                 .eq('id', nation.id);
             nation.gov_approval_events = decayed;
         }
 
-        // Layer 2: Calculate composite government approval
-        const govApproval = await calculateGovernmentApprovalTick(supabase, nation, newTick);
+        // Layer 2: Calculate government approval (avg minister + vacancy penalty + event modifier)
+        const govApproval = await calculateGovernmentApprovalTick(supabase, nation, newTick, shutdownNow);
 
         // Three-pillar voter preference recalculation
         await calculateThreePillarPreferences(supabase, nation, newTick);

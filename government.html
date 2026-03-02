@@ -464,33 +464,35 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
     const hosLast = currentNation.head_of_state_last_name || 'Unknown';
     const hosAge = currentNation.head_of_state_age || '—';
     const approvalColor = governmentApproval >= 60 ? '#4CAF50' : governmentApproval >= 40 ? 'var(--accent)' : '#ff4444';
-    const inst = Math.round(currentNation.gov_approval_institutional ?? 50);
-    const outc = Math.round(currentNation.gov_approval_outcomes ?? 50);
-    const evRaw = currentNation.gov_approval_events ?? 0;
-    const ev = Math.round(Math.max(0, Math.min(100, 50 + evRaw)));
+    // Compute tooltip breakdown from ministry data
+    const filledMinisters = ministryData.filter(m => m.minister_first_name);
+    const vacantCount = ministryData.length - filledMinisters.length;
+    const ministerAvg = filledMinisters.length > 0
+        ? Math.round(filledMinisters.reduce((sum, m) => sum + (m.minister_approval ?? 50), 0) / filledMinisters.length)
+        : 50;
+    const vacancyPenalty = vacantCount * -3;
+    const evMod = Math.round((currentNation.gov_approval_events ?? 0) * 10) / 10;
     const approvalHTML = `<div style="text-align:right;position:relative;" class="gov-approval-hover">
         <div style="font-size:0.7rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px;">Government Approval</div>
         <div style="font-size:1.4rem;font-weight:bold;color:${approvalColor};">${governmentApproval}%</div>
         <div class="gov-approval-tooltip">
             <div class="gov-tip-title">Approval Breakdown</div>
             <div class="gov-tip-row">
-                <span class="gov-tip-label">Institutional (45%)</span>
-                <div class="gov-tip-bar"><div class="gov-tip-bar-fill" style="width:${inst}%;background:#4CAF50"></div></div>
-                <span class="gov-tip-val">${inst}</span>
+                <span class="gov-tip-label">Minister Avg</span>
+                <div class="gov-tip-bar"><div class="gov-tip-bar-fill" style="width:${ministerAvg}%;background:#4CAF50"></div></div>
+                <span class="gov-tip-val">${ministerAvg}</span>
             </div>
-            <div class="gov-tip-desc">Minister performance, vacancies & crises</div>
+            <div class="gov-tip-desc">Average approval of filled cabinet ministers</div>
             <div class="gov-tip-row">
-                <span class="gov-tip-label">Outcomes (35%)</span>
-                <div class="gov-tip-bar"><div class="gov-tip-bar-fill" style="width:${outc}%;background:#2196F3"></div></div>
-                <span class="gov-tip-val">${outc}</span>
+                <span class="gov-tip-label">Vacancies</span>
+                <span class="gov-tip-val" style="color:${vacancyPenalty < 0 ? '#ff4444' : '#4CAF50'}">${vacancyPenalty === 0 ? '0' : vacancyPenalty}</span>
             </div>
-            <div class="gov-tip-desc">Economic & social stat trends</div>
+            <div class="gov-tip-desc">${vacantCount} vacant seat${vacantCount !== 1 ? 's' : ''} (-3 each)</div>
             <div class="gov-tip-row">
-                <span class="gov-tip-label">Events (20%)</span>
-                <div class="gov-tip-bar"><div class="gov-tip-bar-fill" style="width:${ev}%;background:#ff9800"></div></div>
-                <span class="gov-tip-val">${ev}</span>
+                <span class="gov-tip-label">Events</span>
+                <span class="gov-tip-val" style="color:${evMod > 0 ? '#4CAF50' : evMod < 0 ? '#ff4444' : 'var(--text-secondary)'}">${evMod > 0 ? '+' : ''}${evMod}</span>
             </div>
-            <div class="gov-tip-desc">Recent crises & events (decays over time)</div>
+            <div class="gov-tip-desc">Crises & events (decays over time)</div>
             ${(() => {
                 const events = currentNation._govApprovalEvents || [];
                 if (events.length === 0) return '';
@@ -1102,16 +1104,6 @@ function renderCabinet(ministries, coalition) {
         var appr = m.minister_approval ?? 50;
         var apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
 
-        // Embattled / Crisis badges
-        var statusBadge = '';
-        if (m.embattled_since_tick != null && (currentTick - m.embattled_since_tick) >= 5) {
-            if (appr < 20) {
-                statusBadge = '<span class="minister-badge crisis">CRISIS</span>';
-            } else {
-                statusBadge = '<span class="minister-badge embattled">EMBATTLED</span>';
-            }
-        }
-
         // Fire button: visible to PM party (parliamentary) — not for own party resignations
         var fireBtn = '';
         if (isPMParty && !isCaretaker && !isMyMinistry) {
@@ -1120,7 +1112,7 @@ function renderCabinet(ministries, coalition) {
         }
 
         return '<div class="ministry-card" style="border-top-color:' + mColor + ';">'
-            + '<div class="ministry-header"><div class="ministry-title">' + (m.ministry_name || title) + '</div>' + statusBadge + '</div>'
+            + '<div class="ministry-header"><div class="ministry-title">' + (m.ministry_name || title) + '</div></div>'
             + '<div class="ministry-body">'
             + '<div class="minister-name">' + escapeHtml(name) + '</div>'
             + '<div class="minister-details">' + (m.minister_age ? 'Age ' + m.minister_age + ' &bull; ' : '') + '<span class="minister-party" style="color:' + mColor + ';">' + mLogoHtml + escapeHtml(partyName) + '</span></div>'
@@ -1186,16 +1178,6 @@ function renderPresidentialMinistryCard(key, ministry) {
         const appr = ministry.minister_approval ?? 50;
         const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
 
-        // Embattled / Crisis badges
-        let statusBadge = '';
-        if (ministry.embattled_since_tick != null && (currentTick - ministry.embattled_since_tick) >= 5) {
-            if (appr < 20) {
-                statusBadge = '<span class="minister-badge crisis">CRISIS</span>';
-            } else {
-                statusBadge = '<span class="minister-badge embattled">EMBATTLED</span>';
-            }
-        }
-
         // Fire button for President's party
         let fireBtn = '';
         if (isPresidentParty) {
@@ -1204,7 +1186,7 @@ function renderPresidentialMinistryCard(key, ministry) {
         }
 
         return `<div class="ministry-card" style="border-top:3px solid ${pmColor};padding:10px 12px;">
-            <div class="ministry-header"><div class="ministry-title">${ministry.ministry_name || MINISTRY_NAMES[key]}</div>${statusBadge}</div>
+            <div class="ministry-header"><div class="ministry-title">${ministry.ministry_name || MINISTRY_NAMES[key]}</div></div>
             <div class="minister-name">${ministry.minister_first_name} ${ministry.minister_last_name}</div>
             <div class="minister-details">Age ${ministry.minister_age || '?'} • <span class="minister-party" style="color:${pmColor};">${pmLogoHtml}${partyName}</span></div>
             <div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>
@@ -1408,7 +1390,7 @@ async function confirmAssign() {
                 minister_first_name: selectedCandidate.firstName,
                 minister_last_name: selectedCandidate.lastName,
                 minister_age: selectedCandidate.age,
-                minister_approval: 45,
+                minister_approval: 50,
                 is_active: true
             }).eq('id', existing.id);
             if (error) throw error;
@@ -1421,7 +1403,7 @@ async function confirmAssign() {
                 minister_first_name: selectedCandidate.firstName,
                 minister_last_name: selectedCandidate.lastName,
                 minister_age: selectedCandidate.age,
-                minister_approval: 45,
+                minister_approval: 50,
                 is_active: true
             });
             if (error) throw error;
@@ -1517,7 +1499,7 @@ async function confirmAppointment() {
             minister_first_name: selectedCandidate.firstName,
             minister_last_name: selectedCandidate.lastName,
             minister_age: selectedCandidate.age,
-            minister_approval: 45
+            minister_approval: 50
         }).eq('id', fresh.id);
         if (error) throw error;
 
@@ -2373,7 +2355,7 @@ async function resignPMAction() {
 
     const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
     const ministryName = ministry.ministry_name || MINISTRY_NAMES[ministryKey] || ministryKey;
-    if (!confirm('Dismiss ' + ministerName + ' from ' + ministryName + '?\n\nCosts 1 AP. A replacement will need to be appointed.\nThe new minister starts at 45% approval.\nNote: The underlying national stats will not change.')) return;
+    if (!confirm('Dismiss ' + ministerName + ' from ' + ministryName + '?\n\nCosts 1 AP. A replacement will need to be appointed.\nThe new minister starts at 50% approval.\nNote: The underlying national stats will not change.')) return;
 
     try {
         // Deduct AP
@@ -2386,8 +2368,7 @@ async function resignPMAction() {
             minister_last_name: null,
             minister_age: null,
             party_id: null,
-            minister_approval: 45,
-            embattled_since_tick: null
+            minister_approval: 50
         }).eq('id', ministry.id);
 
         // Log minister dismissal for Regime Log

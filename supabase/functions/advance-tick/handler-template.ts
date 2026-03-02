@@ -1150,29 +1150,28 @@ async function advanceTick(supabase) {
         const { data: preApprovalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
         if (preApprovalNation) Object.assign(nation, preApprovalNation);
 
-        // Record stat history for trend calculations (Phase 2)
+        // Record stat history for trend calculations (used by three-pillar voter preferences)
         await recordStatHistory(supabase, nation, newTick);
 
-        // Layer 1: Update minister approvals from stat thresholds + ministry funding
-        // During government shutdown, all ministers take a direct -6/tick approval penalty
-        const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick, shutdownNow, _institutionConfig, budgetItemAllocs);
+        // Layer 1: Update minister approvals (drift-to-performance model)
+        const ministerApprovalResults = await updateMinisterApprovals(supabase, nation, newTick, shutdownNow);
         if (ministerApprovalResults.length > 0) {
             summary.ministerApprovals = summary.ministerApprovals || [];
             summary.ministerApprovals.push({ nation: nation.name, results: ministerApprovalResults });
         }
 
-        // Decay gov_approval_events by 12% per tick (transient shocks fade naturally)
+        // Decay gov_approval_events by 10% per tick (transient shocks fade naturally)
         const oldEvents = Number(nation.gov_approval_events ?? 0);
         if (Math.abs(oldEvents) > 0.01) {
-            const decayed = Math.round(oldEvents * (1 - GOV_APPROVAL_CONFIG.EVENTS_DECAY_RATE) * 100) / 100;
+            const decayed = Math.round(oldEvents * (1 - MINISTER_APPROVAL_CONFIG.EVENTS_DECAY_RATE) * 100) / 100;
             await supabase.from('nations')
                 .update({ gov_approval_events: decayed })
                 .eq('id', nation.id);
             nation.gov_approval_events = decayed;
         }
 
-        // Layer 2: Calculate composite government approval
-        const govApproval = await calculateGovernmentApprovalTick(supabase, nation, newTick);
+        // Layer 2: Calculate government approval (avg minister + vacancy penalty + event modifier)
+        const govApproval = await calculateGovernmentApprovalTick(supabase, nation, newTick, shutdownNow);
 
         // Three-pillar voter preference recalculation
         await calculateThreePillarPreferences(supabase, nation, newTick);

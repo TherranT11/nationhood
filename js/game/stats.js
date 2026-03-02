@@ -488,6 +488,9 @@ export async function statTrendBatch(supabase, nationId, statNames, lookback = 6
 }
 
 // ==================== MINISTER & GOVERNMENT APPROVAL SYSTEM ====================
+// Simplified "Drift-to-Performance" model:
+//   - Minister approval drifts toward the average performance of their owned stats
+//   - Government approval = average minister approval + vacancy penalty + event modifier
 
 /**
  * Reverse map: ministry_key → [stat_keys] derived from STAT_TO_MINISTRY.
@@ -501,91 +504,35 @@ for (const [statKey, ministryKey] of Object.entries(STAT_TO_MINISTRY)) {
 }
 
 /**
- * Threshold-based approval contribution for a single stat.
- * Returns how much a stat's current value helps or hurts the responsible minister.
+ * Simplified approval system configuration.
  *
- * Normal stats (higher=better): >=70 → +1.5, 50-69 → +0.5, 30-49 → -1.5, <30 → -3.0
- * Inverse stats (lower=better): <=15 → +1.5, 16-30 → +0.5, 31-50 → -1.5, >50  → -3.0
+ * Minister approval drifts toward the average "performance" of their owned stats
+ * each tick. Performance for a stat is its raw value (higher-is-better) or
+ * 100 - value (lower-is-better). Neutral stats are skipped.
  *
- * @param {string} statKey - nation stat key
- * @param {number} value   - current stat value
- * @returns {number} approval contribution (-3.0 to +1.5)
+ * Government approval = avg(filled minister approvals) + vacancy penalty + event modifier.
  */
-export function statApprovalContribution(statKey, value) {
-    const sign = statDirectionSign(statKey);
-    if (sign === 0) return 0;
+export const MINISTER_APPROVAL_CONFIG = {
+    // Per-tick drift rate: minister approval moves 15% of the gap toward target
+    DRIFT_RATE: 0.15,
 
-    if (sign === 1) {
-        // Higher is better
-        if (value >= 70) return 1.5;
-        if (value >= 50) return 0.5;
-        if (value >= 30) return -1.5;
-        return -3.0;
-    } else {
-        // Lower is better (inverse)
-        if (value <= 15) return 1.5;
-        if (value <= 30) return 0.5;
-        if (value <= 50) return -1.5;
-        return -3.0;
-    }
-}
+    // New minister starts at 50% approval and drifts to match their stats
+    NEW_MINISTER_APPROVAL: 50,
 
-export const GOV_APPROVAL_CONFIG = {
-    // ─── New spec weights (Phase 4) ───
-    INSTITUTIONAL_WEIGHT: 0.45,
-    OUTCOMES_WEIGHT: 0.35,
-    EVENTS_WEIGHT: 0.20,
-
-    // Events component decay (5% per tick — transient shocks fade gradually)
-    EVENTS_DECAY_RATE: 0.05,
-
-    // Outcome stats: universal stats everyone cares about, with relative weights
-    OUTCOME_STATS: [
-        { stat: 'standard_of_living', weight: 0.18 },
-        { stat: 'unemployment',       weight: 0.15, inverted: true },
-        { stat: 'inflation',          weight: 0.12, inverted: true },
-        { stat: 'crime_rate',         weight: 0.10, inverted: true },
-        { stat: 'healthcare_quality', weight: 0.10 },
-        { stat: 'happiness',          weight: 0.10 },
-        { stat: 'poverty_rate',       weight: 0.08, inverted: true },
-        { stat: 'gdp_growth',         weight: 0.07 },
-        { stat: 'stability',          weight: 0.05 },
-        { stat: 'corruption',         weight: 0.05, inverted: true },
-    ],
-    OUTCOME_TREND_LOOKBACK: 8,
-    OUTCOME_TREND_WEIGHT: 0.6,    // 60% trend direction
-    OUTCOME_ABSOLUTE_WEIGHT: 0.4, // 40% absolute level
-
-    // Gov approval → momentum feedback
-    FEEDBACK_THRESHOLD: 2,          // min delta to trigger feedback
-    FEEDBACK_COALITION_COEFF: 0.15, // coalition gets 15% of delta as momentum
-    FEEDBACK_OPPOSITION_COEFF: 0.08, // opposition gets inverse 8%
-
-    // Vacancy penalty per unfilled ministry
-    VACANCY_PENALTY: -5,
-
-    // Embattled / Crisis thresholds (kept from original)
-    EMBATTLED_THRESHOLD: 30,
-    EMBATTLED_TICKS_REQUIRED: 5,
-    EMBATTLED_GOV_PENALTY: -1,
-    CRISIS_THRESHOLD: 20,
-    CRISIS_GOV_PENALTY: -2,
-
-    // Minister firing (kept from original)
+    // Firing a minister costs 1 AP and gives +3 to the event modifier
     FIRE_MINISTER_AP_COST: 1,
-    NEW_MINISTER_APPROVAL: 45,
     FIRE_GOV_APPROVAL_BONUS: 3,
 
-    // ─── Ministry funding → minister approval (Phase 5) ───
-    // Direct funding penalty: applied additively (not averaged with stat scores).
-    // At 0% funding the minister loses MINISTER_FUNDING_PENALTY_MAX per tick.
-    // Scales linearly: 50% funded → half the penalty, 100% funded → 0.
-    MINISTER_FUNDING_PENALTY_MAX: -2.0,
+    // Government approval: -3 per vacant ministry seat
+    VACANCY_PENALTY: -3,
 
-    // Per-institution penalty when funding falls below COLLAPSED threshold.
-    // Stacks: 3 collapsed institutions → 3 × penalty per tick.
-    MINISTER_COLLAPSED_INST_PENALTY: -1.0,
-    MINISTER_COLLAPSED_THRESHOLD: 25,    // funding % at or below → "collapsed"
+    // Event modifier decay: 10% per tick (transient shocks fade naturally)
+    EVENTS_DECAY_RATE: 0.10,
+
+    // Government shutdown: -6/tick direct penalty on minister approval
+    SHUTDOWN_MINISTER_PENALTY: -6,
+    // Government shutdown: -25 flat penalty on government approval
+    SHUTDOWN_GOV_PENALTY: -25,
 };
 
 /**
