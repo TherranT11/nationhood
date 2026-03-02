@@ -103,8 +103,8 @@ ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS international_reputation NU
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS trade_agreements NUMERIC;
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS sanctions NUMERIC;
 
--- National approval
-ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS national_approval NUMERIC;
+-- Government approval
+ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS gov_approval NUMERIC;
 
 -- Voter demographics
 ALTER TABLE nations_history ADD COLUMN IF NOT EXISTS competition_voters NUMERIC;

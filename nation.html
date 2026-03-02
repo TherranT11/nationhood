@@ -571,7 +571,7 @@ async function renderNationPage(nation) {
     h += '<div class="overview-item"><div class="overview-label">Capital</div><div class="overview-value">' + escapeHtml(nation.capital || '—') + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">Government</div><div class="overview-value">' + (isPresidentialRepublic(nation) ? 'Presidential Republic' : (getCanonicalGovernmentType(nation, nation.government_type || '—'))) + '</div></div>';
     h += '<div class="overview-item"><div class="overview-label">Population</div><div class="overview-value">' + formatNumber(nation.population) + '</div></div>';
-    var govAppr = nation.gov_approval ?? nation.national_approval ?? 50;
+    var govAppr = nation.gov_approval ?? 50;
     var govInst = Math.round(nation.gov_approval_institutional ?? 50);
     var govOutc = Math.round(nation.gov_approval_outcomes ?? 50);
     var govEvRaw = nation.gov_approval_events ?? 0;
