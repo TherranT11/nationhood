@@ -398,10 +398,14 @@ function renderTimeline(entries) {
         var e = entries[i];
         h += '<div class="timeline-entry" data-idx="' + i + '">';
         h += '<span class="timeline-year view-field">' + (e.year || '') + '</span>';
-        h += '<span class="edit-field"><input class="edit-input-sm timeline-year-input" value="' + (e.year || '').replace(/"/g, '&quot;') + '" style="width:60px" placeholder="Year"></span>';
+        h += '<span class="edit-field"><input class="edit-input-sm timeline-year-input" value="' + (e.year || '').replace(/"/g, '&quot;') + '" style="width:70px" placeholder="Year"></span>';
         h += '<span class="timeline-event view-field">' + (e.event || '') + '</span>';
-        h += '<span class="edit-field" style="flex:1;display:flex;gap:4px;"><input class="edit-input-sm timeline-event-input" value="' + (e.event || '').replace(/"/g, '&quot;') + '" style="flex:1" placeholder="Event description">';
-        h += '<button class="timeline-remove-btn" onclick="removeTimelineEntry(' + i + ')">&#10005;</button></span>';
+        h += '<span class="edit-field" style="flex:1;display:flex;gap:4px;align-items:center;">';
+        h += '<input class="edit-input-sm timeline-event-input" value="' + (e.event || '').replace(/"/g, '&quot;') + '" style="flex:1" placeholder="Event description">';
+        h += '<button class="timeline-move-btn" onclick="moveTimelineEntry(' + i + ',-1)"' + (i === 0 ? ' disabled' : '') + ' title="Move up">&#9650;</button>';
+        h += '<button class="timeline-move-btn" onclick="moveTimelineEntry(' + i + ',1)"' + (i === entries.length - 1 ? ' disabled' : '') + ' title="Move down">&#9660;</button>';
+        h += '<button class="timeline-remove-btn" onclick="removeTimelineEntry(' + i + ')" title="Remove">&#10005;</button>';
+        h += '</span>';
         h += '</div>';
     }
     h += '</div>';
@@ -580,6 +584,17 @@ window.addTimelineEntry = function() {
 window.removeTimelineEntry = function(idx) {
     var entries = gatherTimeline();
     entries.splice(idx, 1);
+    renderTimeline(entries);
+    if (isEditing) document.getElementById('page').classList.add('editing');
+};
+
+window.moveTimelineEntry = function(idx, dir) {
+    var entries = gatherTimeline();
+    var target = idx + dir;
+    if (target < 0 || target >= entries.length) return;
+    var temp = entries[idx];
+    entries[idx] = entries[target];
+    entries[target] = temp;
     renderTimeline(entries);
     if (isEditing) document.getElementById('page').classList.add('editing');
 };
