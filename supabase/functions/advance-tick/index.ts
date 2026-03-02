@@ -3622,10 +3622,16 @@ async function applyTradeBalanceToGdpGrowth(supabase, nation) {
 async function applyGdpGrowth(supabase, nation) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
     const currentGdp = Number(nation.gdp ?? 0);
-    if (currentGdp <= 0) return;
+    const GDP_FLOOR = 1; // minimum $1M GDP to prevent permanent zero
+    if (currentGdp <= 0) {
+        // Recover from zero GDP: set to floor so growth can resume
+        nation.gdp = GDP_FLOOR;
+        await supabase.from('nations').update({ gdp: GDP_FLOOR }).eq('id', nation.id);
+        return;
+    }
 
     const monthlyChangePercent = (gdpGrowth - 50) / 50;
-    const newGdp = Math.max(0, currentGdp * (1 + monthlyChangePercent / 100));
+    const newGdp = Math.max(GDP_FLOOR, currentGdp * (1 + monthlyChangePercent / 100));
     nation.gdp = newGdp;
 
     await supabase.from('nations').update({ gdp: newGdp }).eq('id', nation.id);
@@ -16053,7 +16059,8 @@ async function advanceTick(supabase) {
             summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
         }
 
-        // Apply GDP growth rate
+        // Apply trade balance influence on GDP growth, then apply GDP growth rate
+        await applyTradeBalanceToGdpGrowth(supabase, nation);
         await applyGdpGrowth(supabase, nation);
 
         // Stat decay (equilibrium drift + erosion, modified by institution funding)

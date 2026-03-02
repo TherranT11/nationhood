@@ -2280,7 +2280,7 @@ async function retractBill(billId) {
             }
         }
 
-        await _supabase.from('bill_support').delete().eq('bill_id', billId);
+        await _supabase.rpc('withdraw_bill_votes', { p_bill_id: billId });
         await _supabase.from('bill_articles').delete().eq('bill_id', billId);
         await _supabase.from('bills').delete().eq('id', billId);
         await loadLawsData(); renderLawsPage();

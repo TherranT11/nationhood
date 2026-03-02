@@ -1764,7 +1764,7 @@ async function retractBill() {
 
         await _supabase.from('bill_comments').delete().eq('bill_id', billId);
         await _supabase.from('bill_amendment_requests').delete().eq('bill_id', billId);
-        await _supabase.from('bill_support').delete().eq('bill_id', billId);
+        await _supabase.rpc('withdraw_bill_votes', { p_bill_id: billId });
         await _supabase.from('bill_articles').delete().eq('bill_id', billId);
         await _supabase.from('bills').delete().eq('id', billId);
         alert('Retracted.');
@@ -1783,7 +1783,7 @@ async function retractBudgetBill() {
         await _supabase.from('budget_allocations').delete().eq('bill_id', billId);
         await _supabase.from('bill_comments').delete().eq('bill_id', billId);
         await _supabase.from('bill_amendment_requests').delete().eq('bill_id', billId);
-        await _supabase.from('bill_support').delete().eq('bill_id', billId);
+        await _supabase.rpc('withdraw_bill_votes', { p_bill_id: billId });
         await _supabase.from('bill_articles').delete().eq('bill_id', billId);
         await _supabase.from('bills').delete().eq('id', billId);
         alert('Budget bill retracted.');
@@ -1871,8 +1871,8 @@ async function respondToAmendment(reqId, response) {
                     await _supabase.from('bill_articles').insert({ bill_id: billId, policy_id: null, article_number: maxArt + 1, added_by: req.faction_id, article_title: req.article_title, article_text: req.article_text });
                 }
             }
-            // Amendment accepted — upgrade conditional support to full accept
-            await _supabase.from('bill_support').upsert({ bill_id: billId, faction_id: req.faction_id, stance: 'accept', seat_count: allPartySeats[req.faction_id] || 0 }, { onConflict: 'bill_id,faction_id' });
+            // Amendment accepted — upgrade conditional support to full accept (via RPC for cross-faction authorization)
+            await _supabase.rpc('convert_conditional_vote', { p_bill_id: billId, p_faction_id: req.faction_id, p_seat_count: allPartySeats[req.faction_id] || 0 });
         } else if (response === 'rejected' && req) {
             // Amendment rejected — remove conditional support, reset to no stance
             await _supabase.from('bill_support').delete().eq('bill_id', billId).eq('faction_id', req.faction_id).eq('stance', 'conditional');
@@ -2257,7 +2257,7 @@ function setupRealtimeComments() {
 
 function formatCurrency(amt) {
     if (amt === 0) return '$0';
-    const abs = Math.abs(amt), sign = amt < 0 ? '+' : '-';
+    const abs = Math.abs(amt), sign = amt < 0 ? '-' : '+';
     if (abs >= 1000) return `${sign}$${(abs / 1000) % 1 === 0 ? (abs / 1000).toFixed(0) : (abs / 1000).toFixed(1)}B`;
     return `${sign}$${abs}M`;
 }
