@@ -214,7 +214,7 @@ export const STAT_DECAY_CONFIG = {
     rail_network:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
     energy_generation:        { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
     efficiency:               { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    corruption:               { type: 'erosion', target: 10, speed: DECAY_SPEED.CRAWL },
+    corruption:               { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
     healthcare_quality:       { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
     healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
     beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.CRAWL },

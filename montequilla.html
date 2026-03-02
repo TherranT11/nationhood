@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Melizea | Nationhood Alpha</title>
+    <title>Montequilla | Nationhood Alpha</title>
     <link rel="stylesheet" href="css/sanestrella.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -12,7 +12,7 @@
 <!-- Loading state -->
 <div id="loading" class="loading-container">
     <div class="loading-spinner"></div>
-    <div>Loading Melizea...</div>
+    <div>Loading Montequilla...</div>
 </div>
 
 <!-- Main 3-column layout (hidden until loaded) -->
@@ -48,9 +48,9 @@
         <!-- Header -->
         <div class="nation-header">
             <div class="nation-header-row">
-                <img id="nation-flag" class="nation-flag" src="assets/flags/Melizea.png" alt="Flag of Melizea" onerror="this.onerror=null;this.src='assets/flags/Melizea.png';">
+                <img id="nation-flag" class="nation-flag" src="assets/flags/Montequilla.png" alt="Flag of Montequilla" onerror="this.onerror=null;this.src='assets/flags/Montequilla.png';">
                 <div class="nation-title-block">
-                    <h1 class="nation-title">Melizea</h1>
+                    <h1 class="nation-title">Montequilla</h1>
                     <div class="nation-subtitle" id="gov-type">Parliamentary Democracy</div>
                     <div class="nation-motto editable">
                         <span class="view-field" id="motto-view"></span>
@@ -109,7 +109,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 
-const NATION_NAME = 'Melizea';
+const NATION_NAME = 'Montequilla';
 let nation = null;
 let profile = null;
 let allNations = [];
@@ -328,7 +328,7 @@ async function loadPage() {
 
         profile = (profileRes.data && profileRes.data.length > 0) ? profileRes.data[0] : {};
 
-        // Check edit permission — only political parties in Melizea can edit
+        // Check edit permission — only political parties in Montequilla can edit
         userCanEdit = userFactionRes.data && userFactionRes.data.length > 0;
 
         // Load previous tick data

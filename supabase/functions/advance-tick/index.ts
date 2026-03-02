@@ -3622,10 +3622,16 @@ async function applyTradeBalanceToGdpGrowth(supabase, nation) {
 async function applyGdpGrowth(supabase, nation) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
     const currentGdp = Number(nation.gdp ?? 0);
-    if (currentGdp <= 0) return;
+    const GDP_FLOOR = 1; // minimum $1M GDP to prevent permanent zero
+    if (currentGdp <= 0) {
+        // Recover from zero GDP: set to floor so growth can resume
+        nation.gdp = GDP_FLOOR;
+        await supabase.from('nations').update({ gdp: GDP_FLOOR }).eq('id', nation.id);
+        return;
+    }
 
     const monthlyChangePercent = (gdpGrowth - 50) / 50;
-    const newGdp = Math.max(0, currentGdp * (1 + monthlyChangePercent / 100));
+    const newGdp = Math.max(GDP_FLOOR, currentGdp * (1 + monthlyChangePercent / 100));
     nation.gdp = newGdp;
 
     await supabase.from('nations').update({ gdp: newGdp }).eq('id', nation.id);
@@ -5828,7 +5834,12 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
             if (Object.keys(voteTotals).length > 0) {
                 const newSeats = allocateSeatsByVotes(voteTotals, newTotalSeats);
                 for (const [partyId, seats] of Object.entries(newSeats)) {
-                    await supabase.from('factions').update({ seats }).eq('id', partyId);
+                    const { error: seatErr } = await supabase.from('factions').update({ seats }).eq('id', partyId);
+                    if (seatErr) {
+                        console.error(`[enactFoundationalBill] Failed to update seats for faction ${partyId}:`, seatErr);
+                        await supabase.from('nations').update({ total_seats: currentTotalSeats }).eq('id', bill.nation_id);
+                        return false;
+                    }
                 }
                 redistributed = true;
                 console.log(`[enactFoundationalBill] Redistributed from election vote data.`);
@@ -5852,7 +5863,12 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
                     for (const f of factions) seatTotals[f.id] = f.seats || 0;
                     const newSeats = allocateSeatsByVotes(seatTotals, newTotalSeats);
                     for (const [partyId, seats] of Object.entries(newSeats)) {
-                        await supabase.from('factions').update({ seats }).eq('id', partyId);
+                        const { error: seatErr } = await supabase.from('factions').update({ seats }).eq('id', partyId);
+                        if (seatErr) {
+                            console.error(`[enactFoundationalBill] Failed to update seats for faction ${partyId}:`, seatErr);
+                            await supabase.from('nations').update({ total_seats: currentTotalSeats }).eq('id', bill.nation_id);
+                            return false;
+                        }
                     }
                 } else {
                     // All parties at 0 seats — distribute evenly
@@ -5861,7 +5877,12 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
                     for (const f of factions) {
                         const seats = perParty + (remainder > 0 ? 1 : 0);
                         if (remainder > 0) remainder--;
-                        await supabase.from('factions').update({ seats }).eq('id', f.id);
+                        const { error: seatErr } = await supabase.from('factions').update({ seats }).eq('id', f.id);
+                        if (seatErr) {
+                            console.error(`[enactFoundationalBill] Failed to update seats for faction ${f.id}:`, seatErr);
+                            await supabase.from('nations').update({ total_seats: currentTotalSeats }).eq('id', bill.nation_id);
+                            return false;
+                        }
                     }
                 }
             }
@@ -5872,9 +5893,8 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
         console.log(`[enactFoundationalBill] No seat change (already ${newTotalSeats}).`);
     }
 
-    // Update GAME_CONFIG for current session
-    GAME_CONFIG.TOTAL_SEATS = newTotalSeats;
-    GAME_CONFIG.MAJORITY_SEATS = Math.floor(newTotalSeats / 2) + 1;
+    // Sync in-memory config so downstream logic in the same tick uses the new seat count
+    initGameConfigForNation({ total_seats: newTotalSeats });
     return true;
 }
 
@@ -16067,7 +16087,8 @@ async function advanceTick(supabase) {
             summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
         }
 
-        // Apply GDP growth rate
+        // Apply trade balance influence on GDP growth, then apply GDP growth rate
+        await applyTradeBalanceToGdpGrowth(supabase, nation);
         await applyGdpGrowth(supabase, nation);
 
         // Stat decay (equilibrium drift + erosion, modified by institution funding)
