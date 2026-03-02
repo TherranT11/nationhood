@@ -245,7 +245,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { deductAP, generateArticle, EVENT_TYPES } from './js/game-common.js';
+import { deductAP, generateArticle, EVENT_TYPES, isGovernmentAutocracy } from './js/game-common.js';
 
 /* ══════════════════════════════════════════════════════
    PRIORITY CONSTANTS
@@ -306,6 +306,7 @@ let _opeds = [];
 let _playerArticles = [];
 let _nationName = 'Valdoria';
 let _currentEdition = 'national';
+let _isAutocracyRuler = false;
 
 /* ══════════════════════════════════════════════════════
    INIT
@@ -322,6 +323,7 @@ initPage('events', async (state) => {
   }
 
   _nationName = nation.name || 'Valdoria';
+  _isAutocracyRuler = isGovernmentAutocracy(nation) && faction && nation.ruling_faction_id === faction.id;
 
   // Load events from ALL nations, plus op-eds/parties/articles for current nation
   const [events, campaignActions, opeds, playerArticles, parties, leaderMap, nationNames] = await Promise.all([
@@ -775,9 +777,10 @@ function renderNewspaper(nation, faction, shard, articles, opeds, parties, playe
   const briefArticles = remaining.slice(6, 14);
   const currentTick = shard?.current_tick || 0;
 
-  // Split op-eds into featured (front page) and regular
-  const featuredOpeds = opeds.filter(o => o.is_front_page);
-  const regularOpeds = opeds.filter(o => !o.is_front_page);
+  // Split op-eds: dispatches at very top, then featured, then regular
+  const dispatchOpeds = opeds.filter(o => o.is_official_dispatch);
+  const featuredOpeds = opeds.filter(o => o.is_front_page && !o.is_official_dispatch);
+  const regularOpeds = opeds.filter(o => !o.is_front_page && !o.is_official_dispatch);
   const currentDate = shard?.current_date || tickToDate(currentTick);
 
   // Ticker items from headlines
@@ -826,10 +829,10 @@ function renderNewspaper(nation, faction, shard, articles, opeds, parties, playe
       Write Article
       <span class="np-article-btn__cost" style="background:rgba(76,175,80,0.15);color:#4CAF50;">Free</span>
     </button>
-    <button class="np-oped-btn" id="write-oped-btn" title="Write an Op-Ed (1 AP)">
-      <span class="np-oped-btn__icon">&#9998;</span>
-      Write Op-Ed
-      <span class="np-oped-btn__cost">1 AP</span>
+    <button class="np-oped-btn ${_isAutocracyRuler ? 'np-dispatch-btn' : ''}" id="write-oped-btn" title="${_isAutocracyRuler ? 'Issue Official Dispatch (2 AP)' : 'Write an Op-Ed (1 AP)'}">
+      <span class="np-oped-btn__icon">${_isAutocracyRuler ? '&#128220;' : '&#9998;'}</span>
+      ${_isAutocracyRuler ? 'Official Dispatch' : 'Write Op-Ed'}
+      <span class="np-oped-btn__cost">${_isAutocracyRuler ? '2 AP' : '1 AP'}</span>
     </button>
   </div>
 </header>
@@ -857,6 +860,7 @@ ${heroArticle && heroArticle.tier <= 1 ? `
 <!-- MAIN CONTENT -->
 <div class="np-content">
   <main class="np-content__main">
+    ${dispatchOpeds.length > 0 ? dispatchOpeds.map(o => renderDispatchBanner(o)).join('') : ''}
     ${heroArticle ? renderHeroArticle(heroArticle) : renderNoEvents()}
     ${featuredArticles.length > 0 ? `
     <hr class="np-divider np-divider--heavy">
@@ -1035,6 +1039,7 @@ function renderBrief(article) {
 }
 
 function renderOpEdCard(oped) {
+  if (oped.is_official_dispatch) return renderDispatchBanner(oped);
   const factionName = oped.factions?.faction_name || 'Anonymous';
   const abbr = oped.factions?.abbreviation || '?';
   const isFront = oped.is_front_page;
@@ -1049,6 +1054,25 @@ function renderOpEdCard(oped) {
       <p class="np-opinion-card__body">${escapeHtml(truncated).replace(/\n/g, '<br>')}</p>
       <div class="np-opinion-card__author">— ${escapeHtml(factionName)} (${escapeHtml(abbr)})</div>
       ${bodyText.length > 400 ? '<div class="np-opinion-card__readmore">Read full op-ed ›</div>' : ''}
+    </div>
+  `;
+}
+
+function renderDispatchBanner(oped) {
+  const bodyText = oped.body || '';
+  const truncated = bodyText.length > 300 ? bodyText.substring(0, 300) + '...' : bodyText;
+  const opedId = oped.id || '';
+  const authorName = oped.author_name || oped.factions?.faction_name || 'The Government';
+  return `
+    <div class="np-dispatch-banner" data-oped-id="${opedId}" style="cursor:pointer;" onclick="window._openReader && window._openReader('oped', '${opedId}')">
+      <div class="np-dispatch-banner__header">
+        <span class="np-dispatch-banner__icon">&#128220;</span>
+        <span class="np-dispatch-banner__label">OFFICIAL DISPATCH</span>
+      </div>
+      <h2 class="np-dispatch-banner__headline">${escapeHtml(oped.headline || 'Government Address')}</h2>
+      <p class="np-dispatch-banner__body">${escapeHtml(truncated).replace(/\n/g, '<br>')}</p>
+      <div class="np-dispatch-banner__author">— ${escapeHtml(authorName)}, Office of the Head of State</div>
+      ${bodyText.length > 300 ? '<div class="np-dispatch-banner__readmore">Read full dispatch ›</div>' : ''}
     </div>
   `;
 }
@@ -1292,7 +1316,28 @@ function setupOpEdModal(faction, nation, shard) {
   const previewContent = document.getElementById('oped-preview-content');
   const opedWordCountEl = document.getElementById('oped-word-count');
 
-  function getOpEdCost() { return frontPageCheck.checked ? 4 : 1; }
+  const isDispatch = _isAutocracyRuler;
+
+  // Adapt modal for Official Dispatch mode
+  if (isDispatch) {
+    modal.querySelector('.np-oped-editor__section-tag').textContent = 'Official Dispatch';
+    modal.querySelector('.np-oped-editor__section-tag').style.cssText = 'background:#b8860b;color:#1a1a1a;';
+    modal.querySelector('.np-oped-editor__title').textContent = 'Official Dispatch';
+    headline.placeholder = 'Address to the Nation...';
+    bodyEl.placeholder = 'The government hereby decrees... Issue your official statement to the citizens.';
+    // Hide front-page checkbox (always front page for dispatch)
+    frontPageCheck.closest('.np-oped-editor__field').style.display = 'none';
+    // Hide section selector (dispatch is always domestic)
+    topic.closest('.np-oped-editor__field').style.display = 'none';
+    // Hide AP reward hint (dispatch has +1 stability instead)
+    const rewardHint = modal.querySelector('.np-article-reward-hint');
+    if (rewardHint) rewardHint.innerHTML = '<strong>+1 Stability</strong> granted upon issuing dispatch. Once per tick.';
+    costBadge.textContent = '2 AP';
+    costLabel.textContent = '2 Action Points';
+    submitText.textContent = 'Issue Dispatch';
+  }
+
+  function getOpEdCost() { return isDispatch ? 2 : (frontPageCheck.checked ? 4 : 1); }
 
   frontPageCheck.addEventListener('change', () => {
     const cost = getOpEdCost();
@@ -1363,29 +1408,49 @@ function setupOpEdModal(faction, nation, shard) {
     }
 
     submitBtn.disabled = true;
-    submitText.textContent = 'Submitting...';
+    submitText.textContent = isDispatch ? 'Issuing...' : 'Submitting...';
     errorEl.classList.remove('np-oped-editor__error--visible');
 
-    const apCost = getOpEdCost();
-    const isFrontPage = frontPageCheck.checked;
+    const currentTick = shard?.current_tick || 0;
 
-    // Deduct AP (1 for normal, 4 for front page)
+    // Once-per-tick enforcement for Official Dispatch
+    if (isDispatch) {
+      const { data: existing } = await _supabase
+        .from('campaign_actions')
+        .select('id')
+        .eq('party_id', faction.id)
+        .eq('action_type', 'official_dispatch')
+        .eq('tick_performed', currentTick)
+        .limit(1);
+      if (existing && existing.length > 0) {
+        errorEl.textContent = 'You have already issued an Official Dispatch this tick.';
+        errorEl.classList.add('np-oped-editor__error--visible');
+        submitBtn.disabled = false;
+        submitText.textContent = 'Issue Dispatch';
+        return;
+      }
+    }
+
+    const apCost = getOpEdCost();
+    const isFrontPage = isDispatch ? true : frontPageCheck.checked;
+
+    // Deduct AP
     const apResult = await deductAP(_supabase, faction.id, apCost);
     if (!apResult.success) {
       errorEl.textContent = apResult.error || 'Insufficient AP.';
       errorEl.classList.add('np-oped-editor__error--visible');
       submitBtn.disabled = false;
-      submitText.textContent = 'Submit to Editor';
+      submitText.textContent = isDispatch ? 'Issue Dispatch' : 'Submit to Editor';
       return;
     }
 
     // Insert op-ed (supports both old and new schema via fallback)
     const leaderName = faction.leader_name || faction.faction_name || 'Anonymous';
-    const nextTick = (shard?.current_tick || 0) + 1;
+    const nextTick = currentTick + 1;
 
-    // Reward AP for long op-eds: +2 AP next tick if 1000+ words
+    // Reward AP for long op-eds: +2 AP next tick if 1000+ words (not for dispatch)
     const opedWordCount = b.split(/\s+/).filter(w => w.length > 0).length;
-    const opedRewardAp = opedWordCount >= 1000 ? 2 : 0;
+    const opedRewardAp = (!isDispatch && opedWordCount >= 1000) ? 2 : 0;
 
     let insertError = null;
     // Try new schema first (author_faction_id, section, published_tick, status)
@@ -1395,9 +1460,10 @@ function setupOpEdModal(faction, nation, shard) {
       author_name: leaderName,
       headline: h,
       body: b,
-      section: t,
+      section: isDispatch ? 'domestic' : t,
       status: 'published',
       is_front_page: isFrontPage,
+      is_official_dispatch: isDispatch || false,
       published_tick: nextTick,
       reward_ap: opedRewardAp,
       created_at: new Date().toISOString()
@@ -1409,7 +1475,8 @@ function setupOpEdModal(faction, nation, shard) {
         faction_id: faction.id,
         headline: h,
         body: b,
-        topic: t,
+        topic: isDispatch ? 'domestic' : t,
+        is_official_dispatch: isDispatch || false,
         publish_tick: nextTick,
         created_at: new Date().toISOString()
       }]);
@@ -1421,9 +1488,24 @@ function setupOpEdModal(faction, nation, shard) {
       errorEl.textContent = 'Failed to publish: ' + error.message;
       errorEl.classList.add('np-oped-editor__error--visible');
       submitBtn.disabled = false;
-      submitText.textContent = 'Submit to Editor';
+      submitText.textContent = isDispatch ? 'Issue Dispatch' : 'Submit to Editor';
       console.error('Op-ed insert failed:', error);
       return;
+    }
+
+    // Dispatch: +1 stability and log to campaign_actions
+    if (isDispatch) {
+      const newStability = Math.min(100, (nation.stability || 50) + 1);
+      await _supabase.from('nations').update({ stability: newStability }).eq('id', nation.id);
+      nation.stability = newStability;
+
+      await _supabase.from('campaign_actions').insert({
+        party_id: faction.id,
+        nation_id: nation.id,
+        action_type: 'official_dispatch',
+        tick_performed: currentTick,
+        result: { headline: h, stability_gained: 1 }
+      });
     }
 
     // Success — close modal and refresh
@@ -1431,11 +1513,17 @@ function setupOpEdModal(faction, nation, shard) {
     headline.value = '';
     bodyEl.value = '';
     frontPageCheck.checked = false;
-    costBadge.textContent = '1 AP';
-    costLabel.textContent = '1 Action Point';
+    if (isDispatch) {
+      costBadge.textContent = '2 AP';
+      costLabel.textContent = '2 Action Points';
+      submitText.textContent = 'Issue Dispatch';
+    } else {
+      costBadge.textContent = '1 AP';
+      costLabel.textContent = '1 Action Point';
+      submitText.textContent = 'Submit to Editor';
+    }
     headlineCount.textContent = '0';
     bodyCount.textContent = '0';
-    submitText.textContent = 'Submit to Editor';
     validate(); // reset preview
 
     // Reload and re-render
@@ -1674,12 +1762,14 @@ function setupReaderOverlay() {
       const factionName = oped.factions?.faction_name || 'Anonymous';
       const abbr = oped.factions?.abbreviation || '?';
       const isFront = oped.is_front_page;
+      const isDispatchOped = oped.is_official_dispatch;
+      const authorName = oped.author_name || factionName;
       html = `
-        <div class="np-reader__article">
-          ${isFront ? '<div class="np-reader__featured-badge">FEATURED OPINION</div>' : ''}
-          <div class="np-reader__section-tag" style="color:var(--np-section-opinion);">Opinion</div>
+        <div class="np-reader__article${isDispatchOped ? ' np-reader__article--dispatch' : ''}">
+          ${isDispatchOped ? '<div class="np-reader__dispatch-badge">&#128220; OFFICIAL DISPATCH</div>' : isFront ? '<div class="np-reader__featured-badge">FEATURED OPINION</div>' : ''}
+          <div class="np-reader__section-tag" style="color:${isDispatchOped ? '#b8860b' : 'var(--np-section-opinion)'};">${isDispatchOped ? 'Official Dispatch' : 'Opinion'}</div>
           <h1 class="np-reader__headline">${escapeHtml(oped.headline || 'Untitled')}</h1>
-          <div class="np-reader__byline">By ${escapeHtml(factionName)} (${escapeHtml(abbr)})</div>
+          <div class="np-reader__byline">${isDispatchOped ? 'Issued by ' + escapeHtml(authorName) + ', Office of the Head of State' : 'By ' + escapeHtml(factionName) + ' (' + escapeHtml(abbr) + ')'}</div>
           <hr class="np-reader__rule">
           <div class="np-reader__body">${escapeHtml(oped.body || '').replace(/\n/g, '<br>')}</div>
         </div>

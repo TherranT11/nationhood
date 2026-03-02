@@ -330,8 +330,7 @@ export function getAveragedInstitutionDecay(institutions) {
  */
 export const STAT_TO_MINISTRY = {
     // Finance
-    gdp: 'finance', gdp_growth: 'finance', debt: 'finance', debt_growth: 'finance',
-    inflation: 'finance', interest_rates: 'finance',
+    gdp_growth: 'finance', inflation: 'finance', interest_rates: 'finance',
     currency_strength: 'finance', credit: 'finance',
     income_tax: 'finance', corporate_tax: 'finance', sales_tax: 'finance',
     // Healthcare
