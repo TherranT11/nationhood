@@ -6,9 +6,10 @@
 import { GAME_CONFIG } from './config.js';
 import { isParliamentaryDemocracy, isPresidentialRepublic } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
-import { enactBill } from './bills.js';
+import { enactBill, failBill } from './bills.js';
 import { PM_FIRST_NAMES, PM_LAST_NAMES, PM_TRAIT_KEYS, getWeightedIdeologies, selectPMCandidate, weightedRandomPick } from './political-actions.js';
 import { fetchActiveCoalition } from './government-structure.js';
+import { adjustGovernmentApprovalEvent } from './momentum.js';
 
 /**
  * Generate 3 president candidates for a party (reuses PM candidate generation pattern).
@@ -683,6 +684,76 @@ export async function processParliamentaryPMTimeout(supabase, nation, currentTic
             console.error(`Error auto-selecting parliamentary PM for ${nation.name}:`, e);
         }
     }
+}
+
+// ==================== NOMINEE SELF-REJECTION ====================
+
+/**
+ * Called when the nominated party votes NO on their own minister confirmation bill.
+ * Immediately ends the vote as failed, applies -2 gov approval to the president,
+ * adds the party to rejected_parties so the president cannot re-nominate them.
+ *
+ * @param {object} supabase
+ * @param {string} billId - The minister_confirmation bill
+ * @param {string} nomineePartyId - The faction that is the nominee (and voted NO)
+ */
+export async function rejectOwnNomination(supabase, billId, nomineePartyId) {
+    const { data: bill } = await supabase.from('bills')
+        .select('id, bill_name, bill_type, nation_id, ministry_key, status, proposed_by')
+        .eq('id', billId).single();
+    if (!bill || bill.bill_type !== 'minister_confirmation' || bill.status !== 'floor') {
+        throw new Error('Bill is not an active minister confirmation vote');
+    }
+
+    const mKey = bill.ministry_key;
+    if (!mKey) throw new Error('No ministry_key on confirmation bill');
+
+    // Validate the nominee is actually the pending nominee for this ministry
+    const { data: ministry } = await supabase.from('ministries')
+        .select('id, pending_minister, rejected_parties')
+        .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
+        .maybeSingle();
+
+    if (!ministry?.pending_minister || ministry.pending_minister.party_id !== nomineePartyId) {
+        throw new Error('Your party is not the nominee for this confirmation');
+    }
+
+    // 1. Fail the bill immediately
+    await failBill(supabase, bill);
+
+    // 2. Add nominee's party to rejected_parties so President cannot re-nominate them
+    const existingRejected = ministry.rejected_parties || [];
+    if (!existingRejected.includes(nomineePartyId)) {
+        existingRejected.push(nomineePartyId);
+    }
+    await supabase.from('ministries').update({
+        confirmation_status: 'rejected',
+        pending_minister: null,
+        rejected_parties: existingRejected
+    }).eq('id', ministry.id);
+
+    // 3. Apply -2 government approval event (penalty to the president)
+    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, -2, 'minister:nominee_self_rejected');
+
+    // 4. Fire system event
+    try {
+        const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        await supabase.rpc('fire_system_event', {
+            p_trigger_key: 'bill_failed',
+            p_nation_id: bill.nation_id,
+            p_tick: shard?.current_tick || 0,
+            p_placeholders: {
+                nation: 'Unknown',
+                bill_name: bill.bill_name + ' (Nominee declined)',
+                sponsor: 'President',
+                votes_for: '0',
+                votes_against: '0'
+            }
+        });
+    } catch (e) { /* non-blocking */ }
+
+    console.log(`Nominee self-rejection: party ${nomineePartyId} declined nomination for ${mKey} (bill ${billId}). -2 gov approval applied.`);
+    return { rejected: true, ministryKey: mKey };
 }
 
 // Tick lock and tick mutation are intentionally Edge Function only.
