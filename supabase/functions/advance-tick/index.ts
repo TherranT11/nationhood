@@ -2108,7 +2108,7 @@ const STAT_DECAY_CONFIG = {
     rail_network:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
     energy_generation:        { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
     efficiency:               { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    corruption:               { type: 'erosion', target: 10, speed: DECAY_SPEED.CRAWL },
+    corruption:               { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
     healthcare_quality:       { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
     healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
     beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.CRAWL },
@@ -3622,16 +3622,10 @@ async function applyTradeBalanceToGdpGrowth(supabase, nation) {
 async function applyGdpGrowth(supabase, nation) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
     const currentGdp = Number(nation.gdp ?? 0);
-    const GDP_FLOOR = 1; // minimum $1M GDP to prevent permanent zero
-    if (currentGdp <= 0) {
-        // Recover from zero GDP: set to floor so growth can resume
-        nation.gdp = GDP_FLOOR;
-        await supabase.from('nations').update({ gdp: GDP_FLOOR }).eq('id', nation.id);
-        return;
-    }
+    if (currentGdp <= 0) return;
 
     const monthlyChangePercent = (gdpGrowth - 50) / 50;
-    const newGdp = Math.max(GDP_FLOOR, currentGdp * (1 + monthlyChangePercent / 100));
+    const newGdp = Math.max(0, currentGdp * (1 + monthlyChangePercent / 100));
     nation.gdp = newGdp;
 
     await supabase.from('nations').update({ gdp: newGdp }).eq('id', nation.id);
@@ -3899,6 +3893,72 @@ function getCompatiblePolicies(sector, allPolicies, faction, isAutocracy, exclud
 
             return { ...p, isOpposed, prerequisiteMissing, prerequisiteName, alreadyEnacted };
         });
+}
+
+// ────────── repeal-helper ──────────
+
+/**
+ * repeal-helper.js — shared repeal target resolution + reverse/delete executor
+ */
+
+function resolveRepealTargetLawId({ bill, article } = {}) {
+    if (article?.repeal_active_law_id) {
+        return article.repeal_active_law_id;
+    }
+
+    if (!bill) return null;
+    if (bill.repeal_active_law_id) return bill.repeal_active_law_id;
+
+    const fallbackArticle = (bill.bill_articles || []).find(a => a?.repeal_active_law_id);
+    return fallbackArticle?.repeal_active_law_id || null;
+}
+
+async function repealActiveLaw({
+    supabase,
+    nation,
+    currentTick,
+    currentActiveLaws,
+    reversePolicy,
+    bill,
+    article,
+}) {
+    const targetLawId = resolveRepealTargetLawId({ bill, article });
+
+    if (!targetLawId) {
+        return { success: false, reason: 'missing_target_id', targetLawId: null };
+    }
+
+    const targetLaw = (currentActiveLaws || []).find(l => l.id === targetLawId);
+    if (!targetLaw) {
+        return { success: false, reason: 'target_law_absent', targetLawId };
+    }
+
+    if (!targetLaw.policies) {
+        return { success: false, reason: 'missing_target_policy', targetLawId };
+    }
+
+    await reversePolicy(supabase, nation, targetLaw.policies, targetLaw.passed_tick, currentTick);
+
+    const { error: deleteError } = await supabase
+        .from('active_laws')
+        .delete()
+        .eq('id', targetLawId);
+
+    if (deleteError) {
+        return {
+            success: false,
+            reason: 'delete_failed',
+            targetLawId,
+            error: deleteError.message,
+        };
+    }
+
+    return {
+        success: true,
+        reason: 'repealed',
+        targetLawId,
+        policyName: targetLaw.policies.policy_name,
+    };
 }
 
 // ────────── bills ──────────
@@ -5595,9 +5655,7 @@ async function enactBill(supabase, bill, currentTick) {
         .select('*')
         .eq('id', bill.nation_id)
         .single();
-    if (!nation) {
-        return { success: false, error: `Nation ${bill.nation_id} not found` };
-    }
+    if (!nation) return { success: false, error: `Nation ${bill.nation_id} not found` };
 
     const { data: currentActiveLaws } = await supabase
         .from('active_laws')
@@ -5606,36 +5664,30 @@ async function enactBill(supabase, bill, currentTick) {
 
     // ── Repeal bill handling ──
     if (bill.bill_type === 'repeal') {
-        // Determine repeal target: prefer bill-level column, fall back to article-level
-        let repealTargetId = bill.repeal_active_law_id;
-        if (!repealTargetId) {
-            const repealArt = (bill.bill_articles || []).find(a => a.repeal_active_law_id);
-            if (repealArt) repealTargetId = repealArt.repeal_active_law_id;
-        }
+        const repealResult = await repealActiveLaw({
+            supabase,
+            nation,
+            currentTick,
+            currentActiveLaws,
+            reversePolicy,
+            bill,
+        });
 
-        if (repealTargetId) {
-            const targetLaw = (currentActiveLaws || []).find(l => l.id === repealTargetId);
-            if (targetLaw && targetLaw.policies) {
-                await reversePolicy(supabase, nation, targetLaw.policies, targetLaw.passed_tick, currentTick);
-                const { error: delErr } = await supabase.from('active_laws').delete().eq('id', repealTargetId);
-                if (delErr) {
-                    console.error(`[enactBill] Failed to delete active_law ${repealTargetId}:`, delErr.message);
-                    enactError = `Repeal target ${repealTargetId} could not be deleted: ${delErr.message}`;
-                } else {
-                    console.log(`[enactBill] Repealed active law ${repealTargetId} (${targetLaw.policies.policy_name})`);
-                }
+        if (!repealResult.success) {
+            if (repealResult.reason === 'missing_target_id') {
+                enactError = 'Repeal bill has no repeal_active_law_id on bill row or articles';
+            } else if (repealResult.reason === 'target_law_absent' || repealResult.reason === 'missing_target_policy') {
+                enactError = `Repeal target active_law ${repealResult.targetLawId} not found or missing policy`;
+            } else if (repealResult.reason === 'delete_failed') {
+                enactError = `Repeal target ${repealResult.targetLawId} could not be deleted: ${repealResult.error}`;
             } else {
-                enactError = `Repeal target active_law ${repealTargetId} not found or missing policy`;
-                console.error(`[enactBill] Repeal bill ${bill.id} ("${bill.bill_name}"): ${enactError}. Active laws count: ${(currentActiveLaws || []).length}`);
+                enactError = `Unknown repeal failure (${repealResult.reason})`;
             }
-        } else {
-            enactError = 'Repeal bill has no repeal_active_law_id on bill row or articles';
-            console.error(`[enactBill] Repeal bill ${bill.id} ("${bill.bill_name}") ${enactError}.`);
+            console.error(`[enactBill] Repeal bill ${bill.id} ("${bill.bill_name}") failed: ${enactError}`);
+            return { success: false, error: enactError, repealResult };
         }
 
-        if (enactError) {
-            return { success: false, error: enactError };
-        }
+        console.log(`[enactBill] Repealed active law ${repealResult.targetLawId} (${repealResult.policyName})`);
     } else {
         const articles = (bill.bill_articles || []).filter(a => a.policy_id);
 
@@ -5645,17 +5697,18 @@ async function enactBill(supabase, bill, currentTick) {
 
             // Repeal article — reverse and delete the targeted active law
             if (art.repeal_active_law_id) {
-                const targetLaw = (currentActiveLaws || []).find(l => l.id === art.repeal_active_law_id);
-                if (targetLaw && targetLaw.policies) {
-                    await reversePolicy(supabase, nation, targetLaw.policies, targetLaw.passed_tick, currentTick);
-                    const { error: delErr } = await supabase.from('active_laws').delete().eq('id', art.repeal_active_law_id);
-                    if (delErr) {
-                        console.error(`[enactBill] Failed to delete repealed law ${art.repeal_active_law_id}:`, delErr.message);
-                    } else {
-                        console.log(`[enactBill] Repealed active law ${art.repeal_active_law_id} (${policy.policy_name})`);
-                    }
+                const repealResult = await repealActiveLaw({
+                    supabase,
+                    nation,
+                    currentTick,
+                    currentActiveLaws,
+                    reversePolicy,
+                    article: art,
+                });
+                if (!repealResult.success) {
+                    console.error(`[enactBill] Repeal article failure (${repealResult.reason}) for active_law ${repealResult.targetLawId || 'n/a'}`);
                 } else {
-                    console.error(`[enactBill] Repeal article targets active_law ${art.repeal_active_law_id} but law not found or has no policy`);
+                    console.log(`[enactBill] Repealed active law ${repealResult.targetLawId} (${repealResult.policyName})`);
                 }
                 continue;
             }
@@ -8414,24 +8467,7 @@ async function signPresidentialBill(supabase, billId, presidentFactionId) {
         president_action_tick: currentTick
     }).eq('id', bill.id);
 
-    const enactment = await enactBill(supabase, bill, currentTick);
-    if (!enactment?.success) {
-        await markBillEnactmentFailed(supabase, bill, currentTick, enactment?.error || 'Unknown enactment failure');
-        try {
-            await supabase.rpc('fire_system_event', {
-                p_trigger_key: 'bill_failed',
-                p_nation_id: bill.nation_id,
-                p_tick: currentTick,
-                p_placeholders: {
-                    nation: 'Unknown',
-                    bill_name: bill.bill_name + ' (presidential signing failed)',
-                    sponsor: bill.factions?.faction_name || 'Unknown',
-                    votes_for: '0', votes_against: '0'
-                }
-            });
-        } catch (e) { /* non-blocking */ }
-        return;
-    }
+    await enactBill(supabase, bill, currentTick);
 
     try {
         await supabase.rpc('fire_system_event', {
@@ -8528,25 +8564,7 @@ async function processPresidentDesk(supabase, nation, currentTick) {
             president_action_tick: currentTick
         }).eq('id', bill.id);
 
-        const enactment = await enactBill(supabase, bill, currentTick);
-        if (!enactment?.success) {
-            await markBillEnactmentFailed(supabase, bill, currentTick, enactment?.error || 'Unknown enactment failure');
-            try {
-                await supabase.rpc('fire_system_event', {
-                    p_trigger_key: 'bill_failed',
-                    p_nation_id: nation.id,
-                    p_tick: currentTick,
-                    p_placeholders: {
-                        nation: nation.name,
-                        bill_name: bill.bill_name + ' (auto-sign enactment failed)',
-                        sponsor: bill.factions?.faction_name || 'Unknown',
-                        votes_for: '0', votes_against: '0'
-                    }
-                });
-            } catch (e) { /* non-blocking */ }
-            results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed_failed', error: enactment?.error });
-            continue;
-        }
+        await enactBill(supabase, bill, currentTick);
 
         try {
             await supabase.rpc('fire_system_event', {
@@ -16179,8 +16197,7 @@ async function advanceTick(supabase) {
             summary.ministryActions.push({ nation: nation.name, effects: ministryResults });
         }
 
-        // Apply trade balance influence on GDP growth, then apply GDP growth rate
-        await applyTradeBalanceToGdpGrowth(supabase, nation);
+        // Apply GDP growth rate
         await applyGdpGrowth(supabase, nation);
 
         // Stat decay (equilibrium drift + erosion, modified by institution funding)

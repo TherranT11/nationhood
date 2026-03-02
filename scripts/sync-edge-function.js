@@ -40,6 +40,7 @@ const MODULE_FILES = [
     'momentum.js',
     'budget.js',
     'government-structure.js',
+    'repeal-helper.js',
     'bills.js',
     'elections.js',
     'presidential.js',
