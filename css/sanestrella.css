@@ -270,6 +270,19 @@ body {
     margin-bottom: 32px;
 }
 
+
+.stat-warning-badge {
+    display: inline-block;
+    margin: 4px 0 14px;
+    padding: 4px 8px;
+    border: 1px solid #8a5f00;
+    border-radius: 999px;
+    background: rgba(240, 192, 64, 0.12);
+    color: #f0c040;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+}
+
 .stat-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -318,6 +331,7 @@ body {
 .stat-trend.neutral { color: #555; }
 .stat-trend.up.inverted { color: #ff5555; }
 .stat-trend.down.inverted { color: #4caf50; }
+.stat-trend.unavailable { color: #f0c040; }
 
 .stat-bar {
     height: 3px;
