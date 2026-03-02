@@ -12166,30 +12166,6 @@ async function processMinistryActions(supabase, nation, currentTick) {
 // ==================== LAYER 1: PER-TICK MINISTER APPROVAL ====================
 
 /**
- * Update each minister's approval based on the current state of their owned stats
- * AND the funding level of their ministry's institutions.
- *
- * Three additive components per tick:
- *   1. Stat-based scoring — threshold contribution averaged across owned stats
- *   2. Funding penalty — scales linearly from 0 at 100% funded to
- *      MINISTER_FUNDING_PENALTY_MAX at 0% funded (additive, not averaged)
- *   3. Collapsed-institution penalty — MINISTER_COLLAPSED_INST_PENALTY per
- *      institution funded below MINISTER_COLLAPSED_THRESHOLD (additive)
- *
- * Excludes prime_minister (PM approval comes from the composite government approval).
- *
- * Also tracks embattled status: if a minister stays below 30 approval for 5+ ticks,
- * they become "embattled" and impose penalties on government approval.
- *
- * @param {object} supabase
- * @param {object} nation - nation row with current stat values
- * @param {number} currentTick
- * @param {boolean} isShutdown - true during government shutdown (extra penalty)
- * @param {Array|null} institutionConfig - rows from ministry_institution_config (optional)
- * @param {Array|null} budgetAllocations - rows from budget_item_allocations for the active budget (optional)
- * @returns {Array} results for logging
- */
-/**
  * Drift-to-Performance minister approval model.
  *
  * Each minister's approval drifts toward the average "performance" of their

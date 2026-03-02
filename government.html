@@ -39,7 +39,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 (function () {
     'use strict';
@@ -1023,6 +1023,77 @@ function renderFormationInProgress(parties) {
         </div>`;
 }
 
+// ==================== MINISTRY STAT BREAKDOWN ====================
+
+/**
+ * Build a collapsible stat breakdown panel for a ministry card.
+ * Shows each stat the ministry owns, its current value, direction indicator,
+ * and its "performance" contribution to minister approval.
+ *
+ * @param {string} ministryKey - e.g. 'finance', 'healthcare'
+ * @returns {string} HTML string (empty if no stats mapped)
+ */
+function renderMinistryStatBreakdown(ministryKey) {
+    const stats = MINISTRY_TO_STATS[ministryKey];
+    if (!stats || stats.length === 0 || !currentNation) return '';
+
+    const panelId = 'mstat-' + ministryKey;
+    let rows = '';
+    let perfSum = 0;
+    let perfCount = 0;
+
+    for (const statKey of stats) {
+        const value = Number(currentNation[statKey] ?? 50);
+        const rounded = Math.round(value * 10) / 10;
+        const sign = statDirectionSign(statKey);
+
+        let perf = null;
+        let perfCls = 'neutral';
+        let dirArrow = '—';
+        let dirCls = 'flat';
+
+        if (sign === 1) {
+            perf = value;
+            perfCls = perf >= 60 ? 'good' : perf < 40 ? 'bad' : 'neutral';
+            dirArrow = '▲';
+            dirCls = 'up';
+        } else if (sign === -1) {
+            perf = 100 - value;
+            perfCls = perf >= 60 ? 'good' : perf < 40 ? 'bad' : 'neutral';
+            dirArrow = '▼';
+            dirCls = 'down';
+        }
+
+        if (perf !== null) {
+            perfSum += perf;
+            perfCount++;
+        }
+
+        const label = formatStatName(statKey);
+        const perfDisplay = perf !== null ? Math.round(perf) : '—';
+
+        rows += '<div class="ministry-stat-row">'
+            + '<span class="stat-name" title="' + escapeHtml(label) + '">' + escapeHtml(label) + '</span>'
+            + '<span class="stat-val">' + rounded + '</span>'
+            + '<span class="stat-dir ' + dirCls + '">' + dirArrow + '</span>'
+            + '<span class="stat-perf ' + perfCls + '">' + perfDisplay + '</span>'
+            + '</div>';
+    }
+
+    const target = perfCount > 0 ? Math.round(perfSum / perfCount) : '—';
+    const dateStr = tickToDate(currentTick);
+
+    return '<button class="ministry-stats-toggle" onclick="event.stopPropagation();this.classList.toggle(\'open\');document.getElementById(\'' + panelId + '\').classList.toggle(\'open\')">'
+        + '<span class="chevron">▶</span> Stat Breakdown'
+        + '</button>'
+        + '<div class="ministry-stats-panel" id="' + panelId + '">'
+        + '<div class="ministry-stat-row" style="font-weight:bold;color:var(--text-muted);margin-bottom:2px;">'
+        + '<span class="stat-name">Stat</span><span class="stat-val">Val</span><span class="stat-dir"></span><span class="stat-perf">Perf</span></div>'
+        + rows
+        + '<div class="ministry-stats-footer">Target Approval: ' + target + ' · ' + escapeHtml(dateStr) + '</div>'
+        + '</div>';
+}
+
 // ==================== CABINET ====================
 
 function renderCabinet(ministries, coalition) {
@@ -1068,7 +1139,7 @@ function renderCabinet(ministries, coalition) {
                 const mLogoHtml = mLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(mLogo, 16, mColor)}</span>` : '';
                 const appr = m.minister_approval ?? 50;
                 const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
-                return `<div class="ministry-card" style="border-top:3px solid ${mColor};padding:10px 12px;"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${escapeHtml(m.minister_first_name)} ${escapeHtml(m.minister_last_name)}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party" style="color:${mColor};">${mLogoHtml}${escapeHtml(partyName)}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests, m)}</div>`;
+                return `<div class="ministry-card" style="border-top:3px solid ${mColor};padding:10px 12px;"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${escapeHtml(m.minister_first_name)} ${escapeHtml(m.minister_last_name)}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party" style="color:${mColor};">${mLogoHtml}${escapeHtml(partyName)}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>${renderMinistryStatBreakdown(key)}${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests, m)}</div>`;
             } else {
                 return `<div class="ministry-card vacant" style="padding:10px 12px;"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests, null)}</div>`;
             }
@@ -1125,6 +1196,7 @@ function renderCabinet(ministries, coalition) {
             + '<div class="minister-name">' + escapeHtml(name) + '</div>'
             + '<div class="minister-details">' + (m.minister_age ? 'Age ' + m.minister_age + ' &bull; ' : '') + '<span class="minister-party" style="color:' + mColor + ';">' + mLogoHtml + escapeHtml(partyName) + '</span></div>'
             + '<div class="minister-approval">Approval: <span class="' + apprCls + '">' + Math.round(appr) + '%</span></div>'
+            + renderMinistryStatBreakdown(key)
             + resignBtn + fireBtn + '</div></div>';
     }).join('');
     return '<div class="ministry-grid">' + demCards + '</div>';
@@ -1198,6 +1270,7 @@ function renderPresidentialMinistryCard(key, ministry) {
             <div class="minister-name">${ministry.minister_first_name} ${ministry.minister_last_name}</div>
             <div class="minister-details">Age ${ministry.minister_age || '?'} • <span class="minister-party" style="color:${pmColor};">${pmLogoHtml}${partyName}</span></div>
             <div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>
+            ${renderMinistryStatBreakdown(key)}
             ${fireBtn}
         </div>`;
     }

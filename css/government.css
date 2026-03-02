@@ -178,6 +178,43 @@
         .minister-approval .high { color: var(--green); font-weight: bold; }
         .minister-approval .mid { color: var(--orange); font-weight: bold; }
         .minister-approval .low { color: var(--red); font-weight: bold; }
+
+        /* Collapsible stat breakdown panel */
+        .ministry-stats-toggle {
+            display: flex; align-items: center; gap: 4px; margin-top: 6px; padding: 3px 0;
+            font-size: 0.62rem; color: var(--text-muted); cursor: pointer; user-select: none;
+            border: none; background: none; width: 100%; text-align: left;
+        }
+        .ministry-stats-toggle:hover { color: var(--text-secondary); }
+        .ministry-stats-toggle .chevron {
+            display: inline-block; transition: transform 0.2s; font-size: 0.5rem;
+        }
+        .ministry-stats-toggle.open .chevron { transform: rotate(90deg); }
+        .ministry-stats-panel {
+            display: none; margin-top: 4px; padding: 6px 0 2px;
+            border-top: 1px solid var(--border-main);
+        }
+        .ministry-stats-panel.open { display: block; }
+        .ministry-stat-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 2px 0; font-size: 0.62rem; gap: 4px;
+        }
+        .ministry-stat-row .stat-name {
+            flex: 1; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .ministry-stat-row .stat-val { color: var(--text-primary); font-weight: bold; min-width: 28px; text-align: right; }
+        .ministry-stat-row .stat-perf { min-width: 28px; text-align: right; font-weight: bold; }
+        .ministry-stat-row .stat-perf.good { color: var(--green); }
+        .ministry-stat-row .stat-perf.bad { color: var(--red); }
+        .ministry-stat-row .stat-perf.neutral { color: var(--text-muted); }
+        .ministry-stat-row .stat-dir { min-width: 14px; text-align: center; font-size: 0.6rem; }
+        .ministry-stat-row .stat-dir.up { color: var(--green); }
+        .ministry-stat-row .stat-dir.down { color: var(--red); }
+        .ministry-stat-row .stat-dir.flat { color: var(--text-muted); }
+        .ministry-stats-footer {
+            font-size: 0.58rem; color: var(--text-muted); text-align: right;
+            padding-top: 4px; border-top: 1px solid var(--border-main); margin-top: 4px;
+        }
         .no-government { background: var(--bg-panel); border-left: 4px solid var(--orange); border-radius: 8px; padding: 20px; text-align: center; }
         .no-government-title { color: var(--orange); font-size: 1.1rem; font-weight: bold; margin-bottom: 8px; }
         .no-government-desc { color: var(--text-secondary); font-size: 0.85rem; }
