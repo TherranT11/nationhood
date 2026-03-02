@@ -2102,7 +2102,7 @@ export async function syncAmbassadorsForFailedConfirmationBills(supabase, failed
  *
  * 1. Retire ambassadors whose term has expired (current_tick - appointed_at_tick >= term_length).
  * 2. Cancel in-progress diplomatic proposals involving the retiring ambassador's nation pair.
- * 3. Appoint a replacement ambassador with a fresh 36-tick term.
+ * 3. Appoint a replacement ambassador with a fresh 60-tick term.
  * 4. Fire event log entries for retirements and lapsed negotiations.
  * 5. Show retirement warning at (term_length - AMBASSADOR_RETIREMENT_WARNING) ticks.
  */
@@ -2207,7 +2207,7 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
                 status: 'active',
                 is_active: true,
                 appointed_at_tick: currentTick,
-                term_length: termLength
+                term_length: DIPLOMACY_CONFIG.AMBASSADOR_TERM_LENGTH
             });
 
             // 4. Fire retirement event for this nation

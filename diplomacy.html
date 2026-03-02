@@ -293,7 +293,7 @@ async function detectDiplomaticRoles(faction, nation, coalition) {
                     target_nation_id: a.target_nation_id,
                     target_nation_name: nationNameMap[a.target_nation_id] || 'Unknown',
                     appointed_at_tick: a.appointed_at_tick,
-                    term_length: a.term_length || 36,
+                    term_length: a.term_length || 60,
                     ambassador_first_name: a.ambassador_first_name,
                     ambassador_last_name: a.ambassador_last_name,
                     factions: a.factions
@@ -1856,7 +1856,7 @@ function renderRelationSection(relType, relClass, embassyStatus, ambassador) {
     // Ambassador term info
     let termHTML = '';
     if (ambassador && ambassador.appointed_at_tick != null) {
-        const termLength = ambassador.term_length || 36;
+        const termLength = ambassador.term_length || 60;
         const ticksServed = shardTick - ambassador.appointed_at_tick;
         const ticksRemaining = Math.max(0, termLength - ticksServed);
         const expiryTick = ambassador.appointed_at_tick + termLength;
@@ -1884,7 +1884,7 @@ function renderRelationSection(relType, relClass, embassyStatus, ambassador) {
     // Retirement warning
     let warningHTML = '';
     if (ambassador && ambassador.appointed_at_tick != null) {
-        const termLength = ambassador.term_length || 36;
+        const termLength = ambassador.term_length || 60;
         const ticksRemaining = Math.max(0, termLength - (shardTick - ambassador.appointed_at_tick));
         if (ticksRemaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && ticksRemaining > 0) {
             warningHTML = `
@@ -2079,7 +2079,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
         let ambWarningHTML = '';
         const myAmb = roles.ambassadorTo.find(a => a.target_nation_id === targetNation.id);
         if (myAmb && myAmb.appointed_at_tick != null) {
-            const tl = myAmb.term_length || 36;
+            const tl = myAmb.term_length || 60;
             const remaining = Math.max(0, tl - (shardTick - myAmb.appointed_at_tick));
             if (remaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && remaining > 0) {
                 const ambFullName = ((myAmb.ambassador_first_name || '') + ' ' + (myAmb.ambassador_last_name || '')).trim() + (myAmb.factions?.abbreviation ? ' (' + myAmb.factions.abbreviation + ')' : '');
@@ -2767,7 +2767,7 @@ async function renderWizardStep1() {
 
     let html = '';
     if (isHoGOnly) {
-        html += '<div class="trade-info-box warning" style="margin-bottom:12px;">No ambassador appointed. As Head of Government, you can propose initiatives at a higher AP cost (' + apCost + ' AP instead of 1 AP).</div>';
+        html += '<div class="trade-info-box warning" style="margin-bottom:12px;">No ambassador appointed. As Head of Government, you can propose initiatives at a higher AP cost (' + apCost + ' AP instead of ' + DIPLOMACY_CONFIG.PROPOSE_TRADE_NEGOTIATION_AP + ' AP).</div>';
     }
     if (isMoTOnly) {
         html += '<div class="trade-info-box info" style="margin-bottom:12px;">As Minister of Trade, you can propose trade negotiations to any nation. Diplomatic initiatives still require an ambassador.</div>';
@@ -3481,6 +3481,15 @@ async function wizardSubmit() {
 
     const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === wizardTargetNation);
     if (!ourAmb) { alert('You are not ambassador to this nation.'); return; }
+
+    // Deduct AP for diplomatic initiative
+    const apCost = DIPLOMACY_CONFIG.PROPOSE_INITIATIVE_AP;
+    const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+    if (!apResult.success) {
+        alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (currentFaction.action_points || 0));
+        return;
+    }
+    currentFaction.action_points = apResult.newAp;
 
     // Get their ambassador
     const { data: theirAmb } = await _supabase
@@ -5318,6 +5327,15 @@ async function submitInitiative() {
 
     const ourAmb = diplomaticRoles.ambassadorTo.find(a => a.target_nation_id === target.id);
     if (!ourAmb) { alert('You are not ambassador to this nation.'); return; }
+
+    // Deduct AP for diplomatic initiative
+    const apCost = DIPLOMACY_CONFIG.PROPOSE_INITIATIVE_AP;
+    const apResult = await deductAP(_supabase, currentFaction.id, apCost);
+    if (!apResult.success) {
+        alert('Not enough AP (' + apCost + ' needed). Current AP: ' + (currentFaction.action_points || 0));
+        return;
+    }
+    currentFaction.action_points = apResult.newAp;
 
     const ourAmbName = ((ourAmb.ambassador_first_name || '') + ' ' + (ourAmb.ambassador_last_name || '')).trim() + (ourAmb.factions?.abbreviation ? ' (' + ourAmb.factions.abbreviation + ')' : '');
     const theirAmbName = ((theirAmb.ambassador_first_name || '') + ' ' + (theirAmb.ambassador_last_name || '')).trim() + (theirAmb.factions?.abbreviation ? ' (' + theirAmb.factions.abbreviation + ')' : '');

@@ -1022,7 +1022,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 const DIPLOMACY_CONFIG = {
     // Ambassador actions
     FORMAL_PROTEST_AP: 2,
-    PROPOSE_INITIATIVE_AP: 3,
+    PROPOSE_INITIATIVE_AP: 2,
     COVERT_OP_AP: 4,
 
     // Foreign Minister actions
@@ -1043,7 +1043,7 @@ const DIPLOMACY_CONFIG = {
     STATE_VISIT_COOLDOWN: 6,
     TREATY_RATIFICATION_VOTING_TICKS: 6,
     AMBASSADOR_CONFIRMATION_VOTING_TICKS: 6,
-    AMBASSADOR_TERM_LENGTH: 36,         // ticks (36 ticks = 3 years)
+    AMBASSADOR_TERM_LENGTH: 60,         // ticks (60 ticks = 5 years)
     AMBASSADOR_RETIREMENT_WARNING: 3,   // warn this many ticks before retirement
 
     // War stat penalties (per tick)
@@ -1063,7 +1063,7 @@ const DIPLOMACY_CONFIG = {
     COVERT_BRIBE_THRESHOLD: 0.60,
 
     // Trade negotiation AP costs
-    PROPOSE_TRADE_NEGOTIATION_AP: 1,      // Ambassador or MoT proposes trade negotiations
+    PROPOSE_TRADE_NEGOTIATION_AP: 2,      // Ambassador or MoT proposes trade negotiations
     ACCEPT_TRADE_NEGOTIATION_AP: 1,       // Other ambassador or MoT accepts
     JOIN_NEGOTIATION_PM_AP: 2,            // PM/HoG party joins negotiation
     JOIN_NEGOTIATION_FM_AP: 1,            // FM party joins
@@ -6003,7 +6003,7 @@ async function syncAmbassadorsForFailedConfirmationBills(supabase, failedBills) 
  *
  * 1. Retire ambassadors whose term has expired (current_tick - appointed_at_tick >= term_length).
  * 2. Cancel in-progress diplomatic proposals involving the retiring ambassador's nation pair.
- * 3. Appoint a replacement ambassador with a fresh 36-tick term.
+ * 3. Appoint a replacement ambassador with a fresh 60-tick term.
  * 4. Fire event log entries for retirements and lapsed negotiations.
  * 5. Show retirement warning at (term_length - AMBASSADOR_RETIREMENT_WARNING) ticks.
  */
@@ -6108,7 +6108,7 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
                 status: 'active',
                 is_active: true,
                 appointed_at_tick: currentTick,
-                term_length: termLength
+                term_length: DIPLOMACY_CONFIG.AMBASSADOR_TERM_LENGTH
             });
 
             // 4. Fire retirement event for this nation
