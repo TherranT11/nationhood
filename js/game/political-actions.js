@@ -1532,6 +1532,11 @@ export const SUCCESSOR_CONFIG = {
     DYNASTY_PREPARE_SUCCESSION_STRENGTH: 8,
     DYNASTY_PREPARE_EXIT_READINESS: 10,
     DYNASTY_PREPARE_DETECTION_CHANCE: 0.10,
+    // Family member successor (appointing own faction)
+    FAMILY_STABILITY_BOOST: 1,
+    FAMILY_COUP_READINESS: 7,
+    FAMILY_PILLAR_PENALTY: 5,
+    FAMILY_AP_PENALTY: 1,  // -1 AP/tick while active
 };
 
 export const MOBILIZE_CONFIG = {
@@ -4908,10 +4913,15 @@ export async function processInactivityDecay(supabase, nationId, currentTick) {
 // ==================== APPOINT SUCCESSOR ====================
 
 /**
- * Appoint a steward as Chosen Successor. Strongman-only, 9 AP.
- * Effects: target pillar +30 support, stability +7,
- * all other factions: loyalty -10, coup_readiness +5.
- * Sets a 60-tick cooldown on further appointments.
+ * Appoint a successor. Strongman-only, 9 AP.
+ *
+ * Two modes:
+ *  - targetFactionId !== strongmanFactionId: Appoint a steward as Chosen Successor.
+ *    Effects: target pillar +30, stability +7, rivals loyalty -10 / coup_readiness +5.
+ *  - targetFactionId === strongmanFactionId: Appoint a Close Family Member.
+ *    Effects: stability +1, all stewards coup_readiness +7, all pillars -5, -1 AP/tick ongoing.
+ *
+ * Both modes set a 60-tick cooldown on further appointments.
  */
 export async function executeAppointSuccessor(supabase, nationId, strongmanFactionId, targetFactionId, currentTick) {
     // 1. Validate: caller is ruling faction
@@ -4926,36 +4936,91 @@ export async function executeAppointSuccessor(supabase, nationId, strongmanFacti
         return { success: false, error: `Appointment on cooldown. ${nation.successor_cooldown_end_tick - currentTick} ticks remaining.` };
     }
 
-    // 3. Validate target has a living steward and is not the ruling faction
-    if (targetFactionId === strongmanFactionId) return { success: false, error: 'Cannot appoint your own faction.' };
-    const { data: targetSteward } = await supabase
-        .from('stewards')
-        .select('id, first_name, last_name, pillar_key, steward_type, is_chosen_successor')
-        .eq('faction_id', targetFactionId)
-        .eq('nation_id', nationId)
-        .eq('is_alive', true)
-        .single();
-    if (!targetSteward) return { success: false, error: 'Target faction has no living steward.' };
+    const isFamilyMember = targetFactionId === strongmanFactionId;
+
+    // 3. For steward appointment: validate target has a living steward
+    let targetSteward = null;
+    if (!isFamilyMember) {
+        const { data: ts } = await supabase
+            .from('stewards')
+            .select('id, first_name, last_name, pillar_key, steward_type, is_chosen_successor')
+            .eq('faction_id', targetFactionId)
+            .eq('nation_id', nationId)
+            .eq('is_alive', true)
+            .single();
+        if (!ts) return { success: false, error: 'Target faction has no living steward.' };
+        targetSteward = ts;
+    }
 
     // 4. Deduct AP
     const apResult = await deductAP(supabase, strongmanFactionId, SUCCESSOR_CONFIG.AP_COST);
     if (!apResult.success) return { success: false, error: 'Not enough AP.' };
 
-    // 5. Clear any existing successor
+    // 5. Clear any existing successor (steward-based)
     await supabase.from('stewards').update({
         is_chosen_successor: false,
         succession_strength: 0,
         successor_appointed_tick: null,
     }).eq('nation_id', nationId).eq('is_chosen_successor', true);
 
-    // 6. Set target steward as chosen successor
+    if (isFamilyMember) {
+        // === FAMILY MEMBER PATH ===
+        // 6a. Set nation flags
+        const newStability = Math.min(100, Number(nation.stability ?? 50) + SUCCESSOR_CONFIG.FAMILY_STABILITY_BOOST);
+        await supabase.from('nations').update({
+            stability: newStability,
+            successor_cooldown_end_tick: currentTick + SUCCESSOR_CONFIG.COOLDOWN_TICKS,
+            successor_is_family_member: true,
+        }).eq('id', nationId);
+
+        // 7a. All stewards: coup_readiness +7
+        const { data: allStewards } = await supabase
+            .from('stewards').select('id, coup_readiness')
+            .eq('nation_id', nationId).eq('is_alive', true);
+        for (const s of (allStewards || [])) {
+            const newCR = Math.min(100, (s.coup_readiness ?? 0) + SUCCESSOR_CONFIG.FAMILY_COUP_READINESS);
+            await supabase.from('stewards').update({ coup_readiness: newCR }).eq('id', s.id);
+        }
+
+        // 8a. All regime pillars: -5 support
+        const { data: pillars } = await supabase
+            .from('regime_pillars').select('id, support')
+            .eq('nation_id', nationId);
+        for (const p of (pillars || [])) {
+            const newSupport = Math.max(0, (p.support ?? 50) - SUCCESSOR_CONFIG.FAMILY_PILLAR_PENALTY);
+            await supabase.from('regime_pillars').update({ support: newSupport }).eq('id', p.id);
+        }
+
+        // 9a. Log
+        await supabase.from('campaign_actions').insert({
+            party_id: strongmanFactionId,
+            nation_id: nationId,
+            action_type: 'appoint_successor',
+            tick_performed: currentTick,
+            result: {
+                successor_name: 'Close Family Member',
+                is_family_member: true,
+                stability_gain: SUCCESSOR_CONFIG.FAMILY_STABILITY_BOOST,
+                pillar_penalty: SUCCESSOR_CONFIG.FAMILY_PILLAR_PENALTY,
+                coup_readiness_gain: SUCCESSOR_CONFIG.FAMILY_COUP_READINESS,
+            },
+        });
+
+        return { success: true, newAp: apResult.newAp, successorName: 'Close Family Member', isFamilyMember: true };
+    }
+
+    // === STEWARD PATH ===
+    // 6b. Set target steward as chosen successor
     await supabase.from('stewards').update({
         is_chosen_successor: true,
         successor_appointed_tick: currentTick,
         succession_strength: 0,
     }).eq('id', targetSteward.id);
 
-    // 7. Boost target's pillar support +30 (capped at 100)
+    // Clear family member flag if it was set
+    await supabase.from('nations').update({ successor_is_family_member: false }).eq('id', nationId);
+
+    // 7b. Boost target's pillar support +30 (capped at 100)
     const { data: targetPillar } = await supabase
         .from('regime_pillars')
         .select('id, support')
@@ -4967,14 +5032,14 @@ export async function executeAppointSuccessor(supabase, nationId, strongmanFacti
         await supabase.from('regime_pillars').update({ support: newSupport }).eq('id', targetPillar.id);
     }
 
-    // 8. Stability +7 (capped at 100)
+    // 8b. Stability +7 (capped at 100)
     const newStability = Math.min(100, Number(nation.stability ?? 50) + SUCCESSOR_CONFIG.STABILITY_BOOST);
     await supabase.from('nations').update({
         stability: newStability,
         successor_cooldown_end_tick: currentTick + SUCCESSOR_CONFIG.COOLDOWN_TICKS,
     }).eq('id', nationId);
 
-    // 9. All OTHER factions (not target, not strongman): loyalty -10, steward coup_readiness +5
+    // 9b. All OTHER factions (not target, not strongman): loyalty -10, steward coup_readiness +5
     const { data: otherFactions } = await supabase
         .from('factions')
         .select('id, loyalty')
@@ -4997,7 +5062,7 @@ export async function executeAppointSuccessor(supabase, nationId, strongmanFacti
         }
     }
 
-    // 10. Log
+    // 10b. Log
     const successorName = `${targetSteward.first_name} ${targetSteward.last_name}`;
     await supabase.from('campaign_actions').insert({
         party_id: strongmanFactionId,
@@ -5017,44 +5082,76 @@ export async function executeAppointSuccessor(supabase, nationId, strongmanFacti
 }
 
 /**
- * Revoke the current Chosen Successor. Strongman-only, free (no AP cost).
+ * Revoke the current Chosen Successor (steward or family member). Strongman-only, free (no AP cost).
  * Effects: stability -5, former successor faction loyalty -20, all stewards coup_readiness +3.
+ * For family member: just stability -5, coup_readiness +3, and clears the flag (restores AP).
  * Cooldown from original appointment persists.
  */
 export async function executeRevokeSuccessor(supabase, nationId, strongmanFactionId, currentTick) {
     const { data: nation } = await supabase
-        .from('nations').select('id, ruling_faction_id, stability')
+        .from('nations').select('id, ruling_faction_id, stability, successor_is_family_member')
         .eq('id', nationId).single();
     if (!nation) return { success: false, error: 'Nation not found.' };
     if (nation.ruling_faction_id !== strongmanFactionId) return { success: false, error: 'Only the Strongman can revoke.' };
 
-    // Find the current successor
-    const { data: currentSuccessor } = await supabase
-        .from('stewards')
-        .select('id, faction_id, first_name, last_name')
-        .eq('nation_id', nationId)
-        .eq('is_chosen_successor', true)
-        .eq('is_alive', true)
-        .maybeSingle();
-    if (!currentSuccessor) return { success: false, error: 'No successor to revoke.' };
+    const isFamilyRevoke = nation.successor_is_family_member;
 
-    // Clear successor tag
-    await supabase.from('stewards').update({
-        is_chosen_successor: false,
-        succession_strength: 0,
-        successor_appointed_tick: null,
-    }).eq('id', currentSuccessor.id);
+    if (!isFamilyRevoke) {
+        // Find the current steward successor
+        const { data: currentSuccessor } = await supabase
+            .from('stewards')
+            .select('id, faction_id, first_name, last_name')
+            .eq('nation_id', nationId)
+            .eq('is_chosen_successor', true)
+            .eq('is_alive', true)
+            .maybeSingle();
+        if (!currentSuccessor) return { success: false, error: 'No successor to revoke.' };
+
+        // Clear successor tag
+        await supabase.from('stewards').update({
+            is_chosen_successor: false,
+            succession_strength: 0,
+            successor_appointed_tick: null,
+        }).eq('id', currentSuccessor.id);
+
+        // Former successor's faction: loyalty -20
+        const { data: formerFaction } = await supabase.from('factions').select('id, loyalty').eq('id', currentSuccessor.faction_id).single();
+        if (formerFaction) {
+            const newLoy = Math.max(0, (formerFaction.loyalty ?? 50) - SUCCESSOR_CONFIG.REVOKE_LOYALTY_DROP);
+            await supabase.from('factions').update({ loyalty: newLoy }).eq('id', formerFaction.id);
+        }
+
+        // Log
+        const revokedName = `${currentSuccessor.first_name} ${currentSuccessor.last_name}`;
+        await supabase.from('campaign_actions').insert({
+            party_id: strongmanFactionId,
+            nation_id: nationId,
+            action_type: 'revoke_successor',
+            tick_performed: currentTick,
+            result: {
+                revoked_name: revokedName,
+                revoked_faction_id: currentSuccessor.faction_id,
+            },
+        });
+    } else {
+        // Family member revocation — clear the flag (this also restores AP generation)
+        await supabase.from('nations').update({ successor_is_family_member: false }).eq('id', nationId);
+
+        await supabase.from('campaign_actions').insert({
+            party_id: strongmanFactionId,
+            nation_id: nationId,
+            action_type: 'revoke_successor',
+            tick_performed: currentTick,
+            result: {
+                revoked_name: 'Close Family Member',
+                is_family_member: true,
+            },
+        });
+    }
 
     // Stability -5
     const newStability = Math.max(0, Number(nation.stability ?? 50) - SUCCESSOR_CONFIG.REVOKE_STABILITY_DROP);
     await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
-
-    // Former successor's faction: loyalty -20
-    const { data: formerFaction } = await supabase.from('factions').select('id, loyalty').eq('id', currentSuccessor.faction_id).single();
-    if (formerFaction) {
-        const newLoy = Math.max(0, (formerFaction.loyalty ?? 50) - SUCCESSOR_CONFIG.REVOKE_LOYALTY_DROP);
-        await supabase.from('factions').update({ loyalty: newLoy }).eq('id', formerFaction.id);
-    }
 
     // All stewards: coup_readiness +3
     const { data: allStewards } = await supabase
@@ -5067,20 +5164,7 @@ export async function executeRevokeSuccessor(supabase, nationId, strongmanFactio
         await supabase.from('stewards').update({ coup_readiness: newCR }).eq('id', s.id);
     }
 
-    // Log
-    const revokedName = `${currentSuccessor.first_name} ${currentSuccessor.last_name}`;
-    await supabase.from('campaign_actions').insert({
-        party_id: strongmanFactionId,
-        nation_id: nationId,
-        action_type: 'revoke_successor',
-        tick_performed: currentTick,
-        result: {
-            revoked_name: revokedName,
-            revoked_faction_id: currentSuccessor.faction_id,
-        },
-    });
-
-    return { success: true, revokedName };
+    return { success: true, revokedName: isFamilyRevoke ? 'Close Family Member' : undefined };
 }
 
 // ==================== DYNASTY ACTIONS ====================
