@@ -17840,15 +17840,22 @@ async function advanceTick(supabase) {
             }
         }
 
-        // Final snapshot — capture everything that happened this tick
-        const { data: finalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
-        // Record stat history for trend calculations (used by three-pillar voter preferences)
-        await recordStatHistory(supabase, finalNation || nation, newTick);
-        await snapshotNationHistory(supabase, finalNation || nation, newTick);
       } catch (nationErr) {
         console.error(`[advanceTick] FAILED processing nation ${nation.id} (${nation.name}):`, nationErr);
         summary.errors = summary.errors || [];
         summary.errors.push({ nation: nation.name, nationId: nation.id, error: String(nationErr) });
+      } finally {
+        // Always record history snapshot, even if processing failed partway through.
+        // Without this, a crash in any processing step (elections, crises, etc.)
+        // causes stat_history / nations_history to have gaps, which makes trend
+        // deltas show stale cumulative changes instead of per-tick changes.
+        try {
+            const { data: finalNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
+            await recordStatHistory(supabase, finalNation || nation, newTick);
+            await snapshotNationHistory(supabase, finalNation || nation, newTick);
+        } catch (snapErr) {
+            console.error(`[advanceTick] History snapshot FAILED for ${nation.id} (${nation.name}):`, snapErr);
+        }
       }
     }
 
