@@ -225,6 +225,7 @@ let budgetNation = null;    // Full nation data for budget calculations
 let budgetTradeTariffRevenue = null; // Trade engine tariff revenue for budget display
 let budgetAidData = null;           // Economic aid data { received, given, agreements }
 let budgetInstitutions = [];     // Institution config rows for budget display
+let nominatedFactionId = null; // Faction nominated in confirmation/minister_confirmation bills
 let selectedStrikeArticleId = null;
 let editingArticleId = null;
 let sponsorSelectedPolicy = null;
@@ -351,6 +352,16 @@ async function loadBillData() {
                 .select('*, factions(faction_name), policies(policy_name)')
                 .eq('bill_id', billId).eq('status', 'pending');
             amendmentRequests = amendments || [];
+        }
+
+        // Load nominated faction ID for confirmation bills
+        nominatedFactionId = null;
+        if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
+            const { data: amb } = await _supabase.from('ambassadors').select('faction_id').eq('id', bill.ambassador_id).maybeSingle();
+            nominatedFactionId = amb?.faction_id || null;
+        } else if (bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
+            const { data: min } = await _supabase.from('ministries').select('pending_minister').eq('nation_id', bill.nation_id).eq('ministry_key', bill.ministry_key).eq('is_active', true).maybeSingle();
+            nominatedFactionId = min?.pending_minister?.party_id || null;
         }
 
         const mySupport = bill.bill_support?.find(s => s.faction_id === currentFaction?.id);

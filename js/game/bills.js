@@ -1192,6 +1192,15 @@ export async function resolveExpiredVotes(supabase, nationId) {
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'default_resolution', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
             // Ambassador confirmation bill
+            // Check if nominee voted NO — auto-fail (withdrawal of nomination)
+            const { data: ambRow } = await supabase.from('ambassadors').select('faction_id').eq('id', bill.ambassador_id).maybeSingle();
+            const ambNomineeId = ambRow?.faction_id;
+            const nomineeVotedNo = ambNomineeId && (bill.bill_support || []).some(s => {
+                const st = s.stance === 'reject' ? 'no' : s.stance;
+                return s.faction_id === ambNomineeId && st === 'no';
+            });
+            if (nomineeVotedNo) passed = false;
+
             if (passed) {
                 await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
                 // Activate the ambassador — term starts now
@@ -1241,6 +1250,14 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 .select('id, pending_minister, rejected_parties')
                 .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
                 .maybeSingle();
+
+            // Check if nominee voted NO — auto-fail (withdrawal of nomination)
+            const minNomineeId = ministry?.pending_minister?.party_id;
+            const minNomineeVotedNo = minNomineeId && (bill.bill_support || []).some(s => {
+                const st = s.stance === 'reject' ? 'no' : s.stance;
+                return s.faction_id === minNomineeId && st === 'no';
+            });
+            if (minNomineeVotedNo) passed = false;
 
             if (passed) {
                 await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
