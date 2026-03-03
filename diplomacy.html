@@ -4973,7 +4973,8 @@ async function saveTradeArticle(negotiationId, articleType) {
             const direction = document.querySelector('input[name="tariff-dir"]:checked')?.value || 'mutual';
             const pct = parseInt(document.getElementById('tariff-pct')?.value || '50');
             if (!sector) { alert('Please select a sector.'); return; }
-            articleData = { sector: sector, direction: direction, reduction_pct: pct };
+            // Store author_nation_id so the trade engine can resolve directional tariff reductions
+            articleData = { sector: sector, direction: direction, reduction_pct: pct, author_nation_id: currentNation.id };
             break;
         }
         case 'supply_commitment': {

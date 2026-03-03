@@ -313,14 +313,14 @@ export function calculatePriceModifier(totalSupply, totalDemand) {
  * Components:
  *   base                  50 (neutral starting point)
  *   diplomatic_bonus      relation_score * 0.3           → -30 to +30
- *   trade_agreement       +20 if bilateral trade deal exists
+ *   trade_agreement       +15 to +25 depending on agreement type
  *   embargo_penalty       -40 if active embargo/sanctions between nations
  *   proximity_bonus       +10 if same region (future)
  *
  * @param {Object} nationA   – nation row
  * @param {Object} nationB   – nation row
  * @param {Object} relation  – diplomatic_relations row { relation_score, active_treaties }
- * @param {Object} [opts]    – { has_trade_agreement, has_embargo, same_region }
+ * @param {Object} [opts]    – { has_trade_agreement, has_fta, has_pta, has_rsc, has_embargo, same_region }
  * @returns {number} affinity score 0-100
  */
 export function calculateTradeAffinity(nationA, nationB, relation, opts) {
@@ -330,8 +330,15 @@ export function calculateTradeAffinity(nationA, nationB, relation, opts) {
     var relScore = (relation && Number(relation.relation_score)) || 0;
     var diplomaticBonus = relScore * 0.3;
 
-    // Bilateral trade agreement: significant affinity boost
-    var tradeBonus = (opts && opts.has_trade_agreement) ? 20 : 0;
+    // Bilateral trade agreement: type-specific affinity boost
+    // FTA (free trade) > RSC (supply contract) > PTA (partial reduction)
+    var tradeBonus = 0;
+    if (opts) {
+        if (opts.has_fta) tradeBonus = 25;
+        else if (opts.has_rsc) tradeBonus = 20;
+        else if (opts.has_pta) tradeBonus = 15;
+        else if (opts.has_trade_agreement) tradeBonus = 20;
+    }
 
     // Active embargo/sanctions between these two nations: major penalty
     var embargoPenalty = (opts && opts.has_embargo) ? -40 : 0;
@@ -587,8 +594,8 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
-    // Build bilateral flags from active proposals
-    // flagsMap["idA|idB"] = { has_trade_agreement, has_embargo }
+    // Build bilateral flags from active proposals (embargoes + legacy trade agreements)
+    // flagsMap["idA|idB"] = { has_trade_agreement, has_embargo, has_fta, has_pta, has_rsc }
     var flagsMap = {};
     if (activeProposals) {
         for (var i = 0; i < activeProposals.length; i++) {
@@ -604,6 +611,82 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
             if (p.proposal_type === 'embargo') {
                 flagsMap[k1].has_embargo = true;
                 flagsMap[k2].has_embargo = true;
+            }
+        }
+    }
+
+    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC) ──
+    var { data: activeTradeAgreements } = await supabase.from('trade_agreements')
+        .select('id, nation_a_id, nation_b_id, agreement_type, articles')
+        .eq('status', 'active')
+        .in('agreement_type', ['fta', 'pta', 'resource_supply']);
+
+    // Set type-specific affinity flags from trade_agreements
+    // Build tariff modifier map: tariffModMap[importerId|exporterId][sector] = reduction fraction (0-1)
+    var tariffModMap = {};
+    var activeRSCs = [];
+
+    if (activeTradeAgreements) {
+        for (var ti = 0; ti < activeTradeAgreements.length; ti++) {
+            var ta = activeTradeAgreements[ti];
+            var k1 = ta.nation_a_id + '|' + ta.nation_b_id;
+            var k2 = ta.nation_b_id + '|' + ta.nation_a_id;
+            if (!flagsMap[k1]) flagsMap[k1] = {};
+            if (!flagsMap[k2]) flagsMap[k2] = {};
+
+            if (ta.agreement_type === 'fta') {
+                flagsMap[k1].has_fta = true;
+                flagsMap[k2].has_fta = true;
+
+                // FTA: 100% tariff reduction on all sectors, except exempted ones
+                var arts = ta.articles || [];
+                var exemptSectors = {};
+                for (var ai = 0; ai < arts.length; ai++) {
+                    if (arts[ai].type === 'sector_exemption') {
+                        exemptSectors[arts[ai].data.sector] = true;
+                    }
+                }
+                if (!tariffModMap[k1]) tariffModMap[k1] = {};
+                if (!tariffModMap[k2]) tariffModMap[k2] = {};
+                for (var si = 0; si < sectors.length; si++) {
+                    if (!exemptSectors[sectors[si].key]) {
+                        tariffModMap[k1][sectors[si].key] = 1.0;
+                        tariffModMap[k2][sectors[si].key] = 1.0;
+                    }
+                }
+            } else if (ta.agreement_type === 'pta') {
+                flagsMap[k1].has_pta = true;
+                flagsMap[k2].has_pta = true;
+
+                // PTA: per-sector tariff reductions from tariff_reduction articles
+                var arts = ta.articles || [];
+                for (var ai = 0; ai < arts.length; ai++) {
+                    if (arts[ai].type !== 'tariff_reduction') continue;
+                    var d = arts[ai].data;
+                    var reduction = (d.reduction_pct || 0) / 100;
+                    var direction = d.direction || 'mutual';
+
+                    // Resolve direction: "your_exports" / "their_exports" relative to author
+                    var authorId = d.author_nation_id || ta.nation_a_id;
+                    var partnerId = (authorId === ta.nation_a_id) ? ta.nation_b_id : ta.nation_a_id;
+
+                    // your_exports: partner (importer) reduces tariffs on author's (exporter's) goods
+                    // their_exports: author (importer) reduces tariffs on partner's (exporter's) goods
+                    if (direction === 'mutual' || direction === 'your_exports') {
+                        var impExpKey = partnerId + '|' + authorId;
+                        if (!tariffModMap[impExpKey]) tariffModMap[impExpKey] = {};
+                        tariffModMap[impExpKey][d.sector] = Math.max(tariffModMap[impExpKey][d.sector] || 0, reduction);
+                    }
+                    if (direction === 'mutual' || direction === 'their_exports') {
+                        var impExpKey = authorId + '|' + partnerId;
+                        if (!tariffModMap[impExpKey]) tariffModMap[impExpKey] = {};
+                        tariffModMap[impExpKey][d.sector] = Math.max(tariffModMap[impExpKey][d.sector] || 0, reduction);
+                    }
+                }
+            } else if (ta.agreement_type === 'resource_supply') {
+                flagsMap[k1].has_rsc = true;
+                flagsMap[k2].has_rsc = true;
+                activeRSCs.push(ta);
             }
         }
     }
@@ -625,11 +708,7 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
-    // ── Step 4b: Fetch active Resource Supply Contracts and pre-allocate guaranteed volumes ──
-    var { data: activeRSCs } = await supabase.from('trade_agreements')
-        .select('id, nation_a_id, nation_b_id, articles')
-        .eq('status', 'active')
-        .eq('agreement_type', 'resource_supply');
+    // ── Step 4c: Pre-allocate RSC guaranteed volumes ──
 
     var rscPreAllocations = [];
     if (activeRSCs && activeRSCs.length > 0) {
@@ -827,11 +906,25 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         var gdp = Number(n.gdp) || 0;
         var tradeBalanceIdx = deriveTradeBalanceIndex(surplus, gdp);
 
-        // Tariff revenue: based on actual imports
+        // Tariff revenue: calculated bilaterally to account for FTA/PTA tariff reductions
         var budget = budgetMap[n.id];
-        var tariffRate = Number(n.tariffs) || 0;
+        var baseTariffRate = (Number(n.tariffs) || 0) / 100;
         var collectionRate = budget ? budget.collectionRate : 0.7;
-        var tariffRev = calculateTariffRevenue(totalImp, tariffRate, collectionRate);
+        var tariffRev = 0;
+
+        // Sum tariff revenue across all bilateral partner flows for this importer
+        for (var pi = 0; pi < partnerRows.length; pi++) {
+            var pr = partnerRows[pi];
+            if (pr.importer_nation_id !== n.id) continue;
+            var effectiveRate = baseTariffRate;
+            // Apply FTA/PTA tariff reduction if one exists for this importer-exporter pair and sector
+            var modKey = n.id + '|' + pr.exporter_nation_id;
+            if (tariffModMap[modKey] && tariffModMap[modKey][pr.sector] !== undefined) {
+                effectiveRate = baseTariffRate * (1 - tariffModMap[modKey][pr.sector]);
+            }
+            tariffRev += pr.trade_volume * effectiveRate * collectionRate;
+        }
+        tariffRev = Math.round(tariffRev);
 
         summaryRows.push({
             nation_id: n.id,
