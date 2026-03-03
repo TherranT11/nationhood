@@ -5512,7 +5512,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                     p_tick: currentTick,
                     p_placeholders: {
                         nation: nation?.name || 'Unknown',
-                        bill_name: bill.bill_name + ' (sent to President\'s desk)',
+                        bill_name: bill.bill_name,
                         sponsor: bill.factions?.faction_name || 'Unknown',
                         votes_for: String(votesFor),
                         votes_against: String(votesAgainst),
