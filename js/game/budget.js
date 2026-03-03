@@ -126,12 +126,12 @@ export const FISCAL_TO_MINISTRY_KEY = {
 
 /**
  * Compute inflation cost multiplier from the 0-100 inflation stat.
- * Inflation stat 50 = 0% increase, 100 = +25% increase, 0 = -25% increase.
- * Applied as (inflation - 50) / 2 percent increase per budget cycle.
- * e.g. inflation=56 → costs increase by 3%
+ * Inflation scale: 20 = 0% (stable prices), 0 = deflation, 100 = hyperinflation.
+ * Rate = (inflation - 20) * 0.5, applied as percentage cost adjustment.
+ * e.g. inflation=40 → rate = +10% → multiplier = 1.10
  */
 export function getInflationMultiplier(inflationStat) {
-    const pct = (Number(inflationStat || 50) - 50) / 2;
+    const pct = (Number(inflationStat || 20) - 20) * 0.5;
     return 1 + (pct / 100);
 }
 

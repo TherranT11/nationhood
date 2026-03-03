@@ -108,6 +108,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
+import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
 import { fetchPreviousNationTick } from './js/common.js';
 
 const NATION_NAME = 'Melizea';
@@ -139,7 +140,8 @@ const INVERTED = new Set([
     'corruption','polarization','sanctions','fuel_prices'
 ]);
 
-function colorClass(val, inverted) {
+function colorClass(val, inverted, key) {
+    if (key === 'inflation') return inflationColorClass(val);
     var n = Number(val) || 0;
     if (inverted) return n <= 30 ? 'good' : n <= 60 ? 'medium' : 'bad';
     return n >= 70 ? 'good' : n >= 40 ? 'medium' : 'bad';
@@ -183,7 +185,7 @@ function statCard(label, key, val, desc, format, inverted, displayVal) {
     else if (format === 'years') shown = (dv != null ? (Math.round(dv * 10) / 10) + ' yrs' : 'N/A');
     else shown = dv != null ? (Math.round(Number(dv) * 10) / 10).toString() : 'N/A';
 
-    var cc = colorClass(val, inverted);
+    var cc = colorClass(val, inverted, key);
     var trend = trendHTML(key, val, inverted, format === 'currency' || format === 'gdp');
     var rank = ranking(key, val, inverted);
     var rankHtml = rank ? '<div class="stat-rank' + (rank === 1 ? ' first' : '') + '">#' + rank + ' of ' + allNations.length + '</div>' : '';
@@ -208,7 +210,7 @@ var STAT_SECTIONS = [
         ['GDP Growth', 'gdp_growth', 'Monthly growth rate', null, false, function(n){ var p = (Number(n.gdp_growth ?? 50) - 50) / 50; return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; }],
         ['National Debt', 'debt', 'Government debt', 'currency', true, function(n){ return scaleGDP(n.debt); }],
         ['Debt Growth', 'debt_growth', 'Rate of debt increase', null, true],
-        ['Inflation', 'inflation', 'Price increase rate', null, true],
+        ['Inflation', 'inflation', 'Inflation growth rate', null, true, function(n){ return formatInflationRate(n.inflation) + ' \u2014 ' + getInflationLabel(n.inflation); }],
         ['Interest Rates', 'interest_rates', 'Central bank rate'],
         ['Trade Balance', 'trade_balance', 'Exports minus imports', null, false, function(n){ var v = Math.round(Number(n.trade_balance ?? 50)); if (v === 50) return 'Balanced'; return v + '% Exp / ' + (100-v) + '% Imp'; }],
         ['Currency Strength', 'currency_strength', 'National currency value'],

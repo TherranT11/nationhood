@@ -34,6 +34,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatNumber, scaleRawToDollars } from './js/common.js';
 import { formatCurrencyShort, escapeHtml } from './js/utils.js';
 import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, INVERTED_STATS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
+import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
 /**
  * Nation Page - Comprehensive Stats Display
  * With Rankings and Trend Arrows
@@ -599,7 +600,7 @@ async function renderNationPage(nation) {
         renderStatBox('GDP Growth', 'gdp_growth', nation.gdp_growth, 'Monthly economic growth rate', null, false, formatGdpGrowth(nation.gdp_growth)),
         renderStatBox('National Debt', 'debt', nation.debt, 'Government debt obligations', 'currency', true, scaleRawToDollars(nation.debt)),
         renderStatBox('Debt Growth', 'debt_growth', nation.debt_growth, 'Rate of debt accumulation', null, true),
-        renderStatBox('Inflation', 'inflation', nation.inflation, 'Rate of price increases', null, true),
+        renderStatBox('Inflation', 'inflation', nation.inflation, 'Inflation growth rate', null, true, formatInflationRate(nation.inflation) + ' \u2014 ' + getInflationLabel(nation.inflation)),
         renderStatBox('Interest Rates', 'interest_rates', nation.interest_rates, 'Central bank lending rate', null, true),
         renderStatBox('Trade Balance', 'trade_balance', nation.trade_balance, 'Exports minus imports', null, false, formatTradeBalance(nation.trade_balance)),
         renderStatBox('Currency Strength', 'currency_strength', nation.currency_strength, 'Value of national currency'),
@@ -828,7 +829,9 @@ function renderStatBox(name, statKey, value, description, format, inverted, disp
 
     var colorClass = 'medium';
     if (value !== null && value !== undefined) {
-        if (inverted) {
+        if (statKey === 'inflation') {
+            colorClass = inflationColorClass(value);
+        } else if (inverted) {
             if (numValue <= 30) colorClass = 'good';
             else if (numValue <= 60) colorClass = 'medium';
             else colorClass = 'bad';

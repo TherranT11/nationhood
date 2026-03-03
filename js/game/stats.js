@@ -191,7 +191,7 @@ const DECAY_SPEED = { CRAWL: 0.25, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 }
  */
 export const STAT_DECAY_CONFIG = {
     // ── Equilibrium (drift back to midpoint) ──
-    inflation:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    inflation:           { type: 'equilibrium', target: 28, speed: DECAY_SPEED.CRAWL },
     interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
@@ -402,6 +402,43 @@ export function statDirectionSign(statKey) {
     if (_HIGHER_IS_BETTER_SET.has(statKey)) return 1;
     if (_LOWER_IS_BETTER_SET.has(statKey)) return -1;
     return 0;
+}
+
+// ==================== INFLATION FORMATTING ====================
+
+/**
+ * Inflation scale: 20 = 0% (stable), 0 = -10% (deflation), 100 = +40% (hyperinflation).
+ * Rate formula: (value - 20) * 0.5
+ */
+const INFLATION_ZERO_POINT = 20;
+
+export function formatInflationRate(inflationStat) {
+    const val = Number(inflationStat ?? INFLATION_ZERO_POINT);
+    const rate = (val - INFLATION_ZERO_POINT) * 0.5;
+    const rounded = Math.round(rate * 10) / 10;
+    if (rounded === 0) return '0%';
+    return (rounded > 0 ? '+' : '') + rounded + '%';
+}
+
+export function getInflationLabel(inflationStat) {
+    const val = Number(inflationStat ?? INFLATION_ZERO_POINT);
+    if (val <= 5)  return 'Severe Deflation';
+    if (val <= 14) return 'Deflation';
+    if (val <= 19) return 'Mild Deflation';
+    if (val <= 25) return 'Stable';
+    if (val <= 40) return 'Low Inflation';
+    if (val <= 60) return 'Moderate Inflation';
+    if (val <= 80) return 'High Inflation';
+    return 'Hyperinflation';
+}
+
+export function inflationColorClass(inflationStat) {
+    const val = Number(inflationStat ?? INFLATION_ZERO_POINT);
+    if (val <= 5)  return 'bad';
+    if (val <= 14) return 'medium';
+    if (val <= 40) return 'good';
+    if (val <= 60) return 'medium';
+    return 'bad';
 }
 
 // ==================== STAT TREND CALCULATION ====================

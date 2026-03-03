@@ -284,7 +284,9 @@ function generateStatDescriptions(nation) {
     if (nation.healthcare_quality <= 30) descriptions.push("Healthcare infrastructure is severely lacking, affecting public health outcomes.");
     if (nation.gdp >= 100) descriptions.push("A powerful economy makes this country a major force in regional trade.");
     if (nation.debt >= 80) descriptions.push("Mounting national debt threatens long-term economic stability.");
-    if (nation.inflation >= 70) descriptions.push("Runaway inflation has eroded purchasing power and savings.");
+    if (nation.inflation >= 80) descriptions.push("Runaway inflation has eroded purchasing power and savings.");
+    else if (nation.inflation >= 60) descriptions.push("Rising inflation is squeezing household budgets and increasing the cost of living.");
+    if (nation.inflation <= 10) descriptions.push("Deflation has gripped the economy, discouraging spending and investment.");
     if (nation.population_growth <= 30) descriptions.push("Population decline poses challenges for the workforce and social services.");
     if (nation.emigration >= 70) descriptions.push("Brain drain is a serious concern as skilled workers seek opportunities abroad.");
     

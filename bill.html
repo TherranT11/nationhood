@@ -207,6 +207,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES } from './js/game-common.js';
+import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
@@ -2569,8 +2570,8 @@ function renderBudgetBillUI() {
 
     const budget = calculateNationalBudget(nation);
     applyTradeTariffOverride(budget, budgetTradeTariffRevenue);
-    const inflationStat = Number(nation.inflation || 50);
-    const inflationPct = (inflationStat - 50) / 2;
+    const inflationStat = Number(nation.inflation || 20);
+    const inflationPct = (inflationStat - 20) * 0.5;
     const totals = getBudgetTotals();
     // Three-state controls: showControls = buttons visible, canEdit = buttons clickable
     const showControls = currentBill && currentBill.status === 'committee' && !currentBill.early_resolution_status;
@@ -2645,8 +2646,8 @@ function renderBudgetBillUI() {
     h += budgetRevLine('AVAILABLE FOR ALLOCATION', totals.available, true);
     h += '</div>';
 
-    if (inflationPct > 0.1) {
-        h += '<div class="budget-inflation-notice">Inflation (' + inflationStat.toFixed(0) + '/100) has increased all costs by ~' + inflationPct.toFixed(1) + '% since last budget cycle</div>';
+    if (inflationPct > 1) {
+        h += '<div class="budget-inflation-notice">Inflation (' + formatInflationRate(inflationStat) + ' — ' + getInflationLabel(inflationStat) + ') has increased all costs by ~' + inflationPct.toFixed(1) + '% since last budget cycle</div>';
     }
     h += '</div>';
 
@@ -2658,11 +2659,11 @@ function renderBudgetBillUI() {
     const inflationMult = getInflationMultiplier(inflationStat);
     h += '<div class="budget-inflation-summary">';
     h += '<span class="budget-inflation-icon">📊</span>';
-    h += '<span>' + escapeHtml(budgetNation.name || 'Nation') + '\'s inflation is currently <strong>' + inflationStat.toFixed(0) + '/100</strong>. ';
-    if (inflationPct > 0.05) {
+    h += '<span>' + escapeHtml(budgetNation.name || 'Nation') + '\'s inflation is currently <strong>' + formatInflationRate(inflationStat) + ' (' + getInflationLabel(inflationStat) + ')</strong>. ';
+    if (inflationPct > 1) {
         h += 'That has raised all ministry costs by <strong class="budget-gap-deficit">+' + inflationPct.toFixed(1) + '%</strong> ';
         h += '(multiplier: ' + inflationMult.toFixed(3) + '×).';
-    } else if (inflationPct < -0.05) {
+    } else if (inflationPct < -1) {
         h += 'That has reduced all ministry costs by <strong class="budget-gap-surplus">' + inflationPct.toFixed(1) + '%</strong> ';
         h += '(multiplier: ' + inflationMult.toFixed(3) + '×).';
     } else {

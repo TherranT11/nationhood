@@ -153,6 +153,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, generateBudgetBill, SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game-common.js';
+import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 (function () {
     'use strict';
 let currentNation = null, currentFaction = null, currentSeats = 0;
@@ -790,18 +791,18 @@ async function renderBudgetBillContent() {
         h += '</div>';
 
         // --- Right: Expenditures ---
-        var inflationStat = Number(currentNation.inflation || 50);
-        var inflationPct = (inflationStat - 50) / 2;
+        var inflationStat = Number(currentNation.inflation || 20);
+        var inflationPct = (inflationStat - 20) * 0.5;
         var inflMult = getInflationMultiplier(inflationStat);
         h += '<div class="bp-col">';
         h += '<div class="bp-col-header">EXPENDITURES</div>';
         h += '<div class="bp-inflation-summary">';
         h += '<span>📊</span> ';
-        h += '<span>' + (currentNation.name || 'Nation') + '\'s inflation is currently <strong>' + inflationStat.toFixed(0) + '/100</strong>. ';
-        if (inflationPct > 0.05) {
+        h += '<span>' + (currentNation.name || 'Nation') + '\'s inflation is currently <strong>' + formatInflationRate(inflationStat) + ' (' + getInflationLabel(inflationStat) + ')</strong>. ';
+        if (inflationPct > 1) {
             h += 'That has raised all ministry costs by <strong class="bp-deficit">+' + inflationPct.toFixed(1) + '%</strong> ';
             h += '(multiplier: ' + inflMult.toFixed(3) + '×).';
-        } else if (inflationPct < -0.05) {
+        } else if (inflationPct < -1) {
             h += 'That has reduced all ministry costs by <strong class="bp-surplus">' + inflationPct.toFixed(1) + '%</strong> ';
             h += '(multiplier: ' + inflMult.toFixed(3) + '×).';
         } else {
