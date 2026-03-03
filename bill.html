@@ -1681,36 +1681,6 @@ async function vetoBillAction() {
     } catch (error) { console.error('Veto error:', error); alert('Error: ' + error.message); }
 }
 
-/**
- * Apply +1 ideology shift per ideology tag to the sponsor when a bill goes to floor.
- */
-async function applyProposalIdeologyShift(sponsorId, articles) {
-    if (!sponsorId || !articles || articles.length === 0) return;
-    const ideo = await loadFactionIdeology(_supabase, sponsorId);
-    if (!ideo) return;
-    const updateObj = {};
-    let hasChanges = false;
-    for (const art of articles) {
-        const p = art.policies || art;
-        if (!p) continue;
-        const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
-            ? p.ideologies.map(i => i.toUpperCase())
-            : (p.ideology ? [p.ideology.toUpperCase()] : []);
-        for (const tag of ideos) {
-            const mapping = IDEOLOGY_TO_AXIS[tag];
-            if (!mapping) continue;
-            const key = mapping.axisKey;
-            const current = updateObj[key] ?? ideo[key] ?? 0;
-            updateObj[key] = Math.max(-100, Math.min(100, current + 1 * mapping.direction));
-            hasChanges = true;
-        }
-    }
-    if (hasChanges) {
-        await _supabase.from('faction_ideology').update(updateObj).eq('faction_id', sponsorId);
-        console.log(`[Ideology] Proposal shift applied for sponsor ${sponsorId}:`, updateObj);
-    }
-}
-
 async function enactDecree() {
     if (!isAutocracy || !isHeadFaction) return;
     if (!confirm('⚡ ENACT this decree?\n\nThis will send it directly to the floor for a vote.\n\nProceed?')) return;
@@ -1732,9 +1702,6 @@ async function enactDecree() {
                 console.log(`Dynamic ideology penalty (decree→floor): ${dynamicPenalty} for sponsor`);
             }
         }
-
-        // Apply +1 ideology shift per ideology tag for sponsor (proposal shift)
-        await applyProposalIdeologyShift(currentBill.proposed_by, currentBill.bill_articles || []);
 
         alert('⚡ Decree sent to the floor!');
         window.location.reload();
@@ -1791,9 +1758,6 @@ async function sendToFloor() {
             }
         }
 
-        // Apply +1 ideology shift per ideology tag for sponsor (proposal shift)
-        await applyProposalIdeologyShift(currentBill.proposed_by, currentBill.bill_articles || []);
-
         alert('Bill sent to the floor!' + penaltyMsg);
         window.location.reload();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
@@ -1806,32 +1770,6 @@ async function retractBill() {
     }
     if (!confirm('Retract this? This cannot be undone.')) return;
     try {
-        // Reverse ideology shift: -1 per ideology tag (mirrors +1 proposer bonus)
-        if (currentBill && currentBill.proposed_by === currentFaction?.id) {
-            const ideo = await loadFactionIdeology(_supabase, currentBill.proposed_by);
-            if (ideo) {
-                const articles = currentBill.bill_articles || [];
-                const updateObj = {};
-                for (const art of articles) {
-                    const p = art.policies || art;
-                    if (!p) continue;
-                    const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
-                        ? p.ideologies.map(i => i.toUpperCase())
-                        : (p.ideology ? [p.ideology.toUpperCase()] : []);
-                    for (const tag of ideos) {
-                        const mapping = IDEOLOGY_TO_AXIS[tag];
-                        if (!mapping) continue;
-                        const reversal = -1 * mapping.direction;
-                        const key = mapping.axisKey;
-                        updateObj[key] = Math.max(-100, Math.min(100, (updateObj[key] ?? ideo[key] ?? 0) + reversal));
-                    }
-                }
-                if (Object.keys(updateObj).length > 0) {
-                    await _supabase.from('faction_ideology').update(updateObj).eq('faction_id', currentBill.proposed_by);
-                }
-            }
-        }
-
         await _supabase.from('bill_comments').delete().eq('bill_id', billId);
         await _supabase.from('bill_amendment_requests').delete().eq('bill_id', billId);
         await _supabase.rpc('withdraw_bill_votes', { p_bill_id: billId });
