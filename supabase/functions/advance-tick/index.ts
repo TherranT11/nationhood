@@ -4264,9 +4264,9 @@ async function syncVoteTallies(supabase, billId) {
 // ==================== ENACTMENT APPROVAL IMPACT ====================
 
 function calculateEnactmentApproval(articles, billSupport, sponsorId, factionIdeologies) {
-    const APPROVAL_CAP_POSITIVE = 2;
-    const APPROVAL_CAP_NEGATIVE = -5;
-    const OPPOSITION_KICKER = -1;
+    const APPROVAL_CAP_POSITIVE = 4;
+    const APPROVAL_CAP_NEGATIVE = -10;
+    const OPPOSITION_KICKER = -2;
 
     // Collect all ideology tags from bill articles
     const allTags = [];
@@ -4363,9 +4363,9 @@ async function applyEnactmentApproval(supabase, nationId, approvalDeltas) {
  * @param {string} nationId
  */
 async function applyBlocPreferenceOnPassage(supabase, bill, nationId) {
-    const ALIGNED_PREF_BONUS = 3;
-    const ALIGNED_MOMENTUM_BONUS = 3;
-    const OPPOSED_PREF_PENALTY = -4;
+    const ALIGNED_PREF_BONUS = 6;
+    const ALIGNED_MOMENTUM_BONUS = 6;
+    const OPPOSED_PREF_PENALTY = -8;
     const AXIS_THRESHOLD = 10; // distance from center (50) to count as "having" an opinion
 
     const sponsorId = bill.proposed_by;
@@ -4783,20 +4783,20 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
             const mapping = IDEOLOGY_TO_AXIS[tag];
             if (!mapping) continue;
 
-            // +1 for proposing (sponsor only)
+            // +2 for proposing (sponsor only)
             if (bill.proposed_by) {
-                addShift(bill.proposed_by, mapping.axisKey, 1 * mapping.direction);
+                addShift(bill.proposed_by, mapping.axisKey, 2 * mapping.direction);
             }
 
-            // +2 for voting YES (all YES voters including sponsor)
+            // +4 for voting YES (all YES voters including sponsor)
             for (const factionId of yesVoters) {
-                addShift(factionId, mapping.axisKey, 2 * mapping.direction);
+                addShift(factionId, mapping.axisKey, 4 * mapping.direction);
             }
 
-            // +2 if bill passed (YES voters only)
+            // +4 if bill passed (YES voters only)
             if (isPassed) {
                 for (const factionId of yesVoters) {
-                    addShift(factionId, mapping.axisKey, 2 * mapping.direction);
+                    addShift(factionId, mapping.axisKey, 4 * mapping.direction);
                 }
             }
         }
