@@ -14,7 +14,7 @@ import { adjustGovernmentApprovalEvent } from './momentum.js';
 /**
  * Generate 3 president candidates for a party (reuses PM candidate generation pattern).
  * Candidates are stored in pm_candidates table with candidate_type = 'presidential';
- * select-president.html reads them.
+ * select-candidate.html?role=president reads them.
  *
  * @param {string} candidateType - 'presidential' (default)
  */

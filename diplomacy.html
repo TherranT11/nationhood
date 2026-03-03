@@ -2172,7 +2172,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
             const adminNation = urlParams.get('nation_id') || sessionStorage.getItem('_admin_nation') || '';
             const adminFaction = urlParams.get('faction_id') || sessionStorage.getItem('_admin_faction') || '';
             const adminParams = [adminNation ? 'nation_id=' + adminNation : '', adminFaction ? 'faction_id=' + adminFaction : ''].filter(Boolean).join('&');
-            const ambUrl = 'select-ambassador.html?target=' + targetNation.id + (adminParams ? '&' + adminParams : '');
+            const ambUrl = 'select-candidate.html?role=ambassador&target=' + targetNation.id + (adminParams ? '&' + adminParams : '');
             fmButtons = `<button class="action-btn" onclick="window.location.href='${ambUrl}'">Appoint Ambassador</button>`;
         }
         fmButtons += `<button class="action-btn" style="margin-top:8px;" disabled>Formal Protest (Coming Soon)</button>`;

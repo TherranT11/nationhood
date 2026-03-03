@@ -34,8 +34,7 @@ const windowExports = {
     'doCourtGrassroots', 'closeDonorPanel', 'togglePollSelectAll', 'updatePollCost',
     'closePollSelector', 'doGeneratePoll', 'openPollSelector', 'toggleDenounceTarget'
   ],
-  'select-pm.html': ['selectCandidate', 'confirmSelection'],
-  'select-president.html': ['selectCandidate', 'confirmSelection'],
+  'select-candidate.html': ['selectCandidate', 'confirmSelection', 'regenerate'],
   'admin.html': [
     'authenticate', 'logout', 'showTab', 'setTickInterval', 'advanceTickAdmin',
     'onElectionNationSelect', 'runElection', 'previewElection',

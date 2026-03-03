@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Candidate | Nationhood Alpha</title>
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/select-candidate.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div id="top-bar"></div>
+
+<div id="content-area">
+    <div class="sc-page" id="sc-page">
+        <div class="sc-loading">
+            <div class="loading-spinner"></div>
+            <div>Loading candidates...</div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+
+import { _supabase } from './js/supabase-client.js';
+import { initPage, getAdminNationOverride, getAdminFactionOverride } from './js/common.js';
+import { getIdeologyClass, escapeHtml } from './js/utils.js';
+import {
+    initGameConfigForNation,
+    generatePMCandidates, selectPMCandidate,
+    selectPresidentCandidate,
+    isPresidentialRepublic, isGovernmentAutocracy,
+    fetchActiveCoalition, loadSeats, syncVoteTallies,
+    deductAP, adjustMomentumAll,
+    GAME_CONFIG
+} from './js/game-common.js';
+
+// ── Role detection ──
+const params = new URLSearchParams(window.location.search);
+const ROLE = params.get('role') || 'pm'; // pm | president | ambassador
+
+const ROLE_CONFIG = {
+    pm: {
+        icon: '\u{1F451}',
+        title: 'Select Your Prime Minister',
+        description: 'Your coalition has formed and your party holds the Prime Minister post. Choose who will lead the nation.',
+        badgePrefix: 'Appointing for',
+        confirmLabel: 'Appoint Prime Minister',
+        confirmWarning: '\u26A0 This choice is permanent for the duration of the term.',
+        confirmVerb: 'Appoint',
+        progressLabel: 'Appointing...',
+        emptyTitle: 'No Candidates',
+        initTab: 'government',
+        redirectUrl: 'government.html',
+        eventKey: 'pm_appointed',
+        showTraits: true,
+        showIdeology: true,
+    },
+    president: {
+        icon: '\u{1F3DB}',
+        title: 'Select Your Candidate',
+        description: 'Choose your party\'s presidential nominee for the upcoming election. Your candidate will compete against nominees from other parties in the popular vote.',
+        badgePrefix: 'Nominating for',
+        confirmLabel: 'Nominate Candidate',
+        confirmWarning: 'This choice is permanent. Your nominee will run in the presidential election.',
+        confirmVerb: 'Nominate',
+        progressLabel: 'Nominating...',
+        emptyTitle: 'Presidential Selection',
+        initTab: 'government',
+        redirectUrl: 'parties.html',
+        eventKey: null,
+        showTraits: true,
+        showIdeology: true,
+    },
+    ambassador: {
+        icon: '\u{1F3DB}\uFE0F',
+        title: 'Appoint Ambassador',
+        description: null, // set dynamically with target nation
+        badgePrefix: 'Foreign Minister:',
+        confirmLabel: 'Nominate Ambassador',
+        confirmWarning: null, // set dynamically based on autocracy
+        confirmVerb: null,
+        progressLabel: null,
+        emptyTitle: 'Ambassador Appointment',
+        initTab: 'diplomacy',
+        redirectUrl: null, // set dynamically
+        eventKey: null,
+        showTraits: false,
+        showIdeology: false,
+    },
+};
+
+const cfg = ROLE_CONFIG[ROLE] || ROLE_CONFIG.pm;
+
+let currentNation = null;
+let currentFaction = null;
+let candidates = [];
+let traits = {};
+let selectedCandidateId = null; // PM / President (UUID)
+let selectedCandidateIndex = null; // Ambassador (index)
+
+// Ambassador-specific state
+let targetNation = null;
+let allParties = [];
+let isAutocracy = false;
+
+const AMB_FIRST_NAMES = [
+    'Carlos','Diego','Fernando','H\u00E9ctor','Marcos','Ram\u00F3n','Jos\u00E9','Luis','Miguel',
+    'Antonio','Roberto','Francisco','Eduardo','Pablo','Alejandro','Rafael','Gabriel',
+    'Santiago','Andr\u00E9s','Javier','Ricardo','Tom\u00E1s','Emilio','Sergio','Nicol\u00E1s',
+    'Arturo','Enrique','Oscar','Felipe','Gonzalo','Ignacio','Mateo','Dante'
+];
+const AMB_LAST_NAMES = [
+    'Velasco','Salazar','Guerrero','R\u00EDos','Morales','Torres','Mendoza','Castillo',
+    'Herrera','Vargas','Reyes','Cruz','Navarro','Delgado','Ortiz','Romero','Flores',
+    'Ram\u00EDrez','Guzm\u00E1n','Medina','Soto','Pacheco','Ibarra','Carrasco','Espinoza',
+    'Montenegro','Echeverr\u00EDa','Valdez','C\u00F3rdoba','Aguilar','Paredes','Lara'
+];
+
+// ── Helper: diplomacy back URL (ambassador) ──
+function diploBackUrl() {
+    const p = [];
+    const on = getAdminNationOverride(); if (on) p.push('nation_id=' + on);
+    const of_ = getAdminFactionOverride(); if (of_) p.push('faction_id=' + of_);
+    return 'diplomacy.html' + (p.length ? '?' + p.join('&') : '');
+}
+
+// Set page title
+document.title = cfg.title + ' | Nationhood Alpha';
+
+// ── Init ──
+initPage(cfg.initTab, async (state) => {
+    const { nation, faction } = state;
+    currentNation = nation;
+    currentFaction = faction;
+
+    if (!nation || !faction) {
+        renderEmpty('No nation or party found.');
+        return;
+    }
+
+    if (ROLE === 'pm') await initPM();
+    else if (ROLE === 'president') await initPresident();
+    else if (ROLE === 'ambassador') await initAmbassador();
+});
+
+// ═══════════════════════════════════════
+//  PM init
+// ═══════════════════════════════════════
+async function initPM() {
+    // Guard: coalition must be formed
+    const { data: activeGov } = await _supabase
+        .from('government_formations')
+        .select('id, status')
+        .eq('nation_id', currentNation.id)
+        .in('status', ['formed', 'caretaker'])
+        .order('formed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (!activeGov) {
+        renderEmpty('No coalition has been finalized yet. A government must be formed before a Prime Minister can be appointed. <a href="elections.html">Go to Elections \u2192</a>');
+        return;
+    }
+
+    await loadTraits();
+    await loadPMCandidates();
+
+    if (candidates.length === 0) {
+        // Check if this faction is the PM party
+        const { data: gov } = await _supabase
+            .from('government_formations')
+            .select('ministry_assignments')
+            .eq('nation_id', currentNation.id)
+            .in('status', ['formed', 'caretaker'])
+            .order('formed_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        const pmPartyId = gov?.ministry_assignments?.prime_minister;
+
+        if (pmPartyId === currentFaction.id) {
+            const { data: shard } = await _supabase
+                .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            try {
+                await generatePMCandidates(_supabase, currentNation.id, currentFaction.id, shard?.current_tick || 0);
+                await loadPMCandidates();
+                if (candidates.length > 0) { renderCandidates(); return; }
+            } catch (e) {
+                console.error('Auto-generate PM candidates failed:', e);
+            }
+        }
+
+        // Check if already has active HOG
+        const { data: hog } = await _supabase
+            .from('head_of_government')
+            .select('*')
+            .eq('nation_id', currentNation.id)
+            .eq('faction_id', currentFaction.id)
+            .eq('active', true)
+            .maybeSingle();
+
+        if (hog) {
+            renderEmpty('You have already selected a Prime Minister. <a href="government.html">View Government \u2192</a>');
+        } else {
+            renderEmpty('No candidates available. Candidates are generated when a coalition is formed and your party receives the Prime Minister post.');
+        }
+        return;
+    }
+
+    renderCandidates();
+}
+
+async function loadPMCandidates() {
+    const { data: rows } = await _supabase
+        .from('pm_candidates')
+        .select('*')
+        .eq('nation_id', currentNation.id)
+        .eq('faction_id', currentFaction.id)
+        .eq('selected', false)
+        .order('created_at', { ascending: true });
+    candidates = rows || [];
+}
+
+// ═══════════════════════════════════════
+//  President init
+// ═══════════════════════════════════════
+async function initPresident() {
+    if (!isPresidentialRepublic(currentNation)) {
+        renderEmpty('This page is only for Presidential Democracies. <a href="government.html">Back to Government</a>');
+        return;
+    }
+
+    await loadTraits();
+
+    const { data: rows } = await _supabase
+        .from('pm_candidates')
+        .select('*')
+        .eq('nation_id', currentNation.id)
+        .eq('faction_id', currentFaction.id)
+        .eq('candidate_type', 'presidential')
+        .eq('selected', false)
+        .order('created_at', { ascending: true });
+    candidates = rows || [];
+
+    if (candidates.length === 0) {
+        const { data: nominated } = await _supabase
+            .from('pm_candidates')
+            .select('id')
+            .eq('nation_id', currentNation.id)
+            .eq('faction_id', currentFaction.id)
+            .eq('candidate_type', 'presidential')
+            .eq('selected', true)
+            .limit(1)
+            .maybeSingle();
+
+        if (nominated) {
+            renderEmpty('You have already nominated your presidential candidate. <a href="government.html">View Government</a>');
+        } else {
+            renderEmpty('No candidates available yet. Presidential nominees are generated 6 months before the election.');
+        }
+        return;
+    }
+
+    // Load election countdown
+    const { data: upcomingElection } = await _supabase
+        .from('elections')
+        .select('election_tick')
+        .eq('nation_id', currentNation.id)
+        .eq('status', 'scheduled')
+        .eq('election_type', 'presidential')
+        .order('election_tick', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+    const { data: shard } = await _supabase
+        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    window._upcomingElectionTick = upcomingElection?.election_tick || null;
+    window._currentTick = shard?.current_tick || 0;
+
+    renderCandidates();
+}
+
+// ═══════════════════════════════════════
+//  Ambassador init
+// ═══════════════════════════════════════
+async function initAmbassador() {
+    isAutocracy = isGovernmentAutocracy(currentNation);
+
+    const targetId = params.get('target');
+    if (!targetId) {
+        renderEmpty('No target nation specified. <a href="' + diploBackUrl() + '">Back to Diplomacy</a>');
+        return;
+    }
+
+    const { data: tNation } = await _supabase.from('nations').select('*').eq('id', targetId).single();
+    if (!tNation) {
+        renderEmpty('Target nation not found. <a href="' + diploBackUrl() + '">Back to Diplomacy</a>');
+        return;
+    }
+    targetNation = tNation;
+
+    // Check if already have active or pending ambassador
+    const { data: existing } = await _supabase
+        .from('ambassadors')
+        .select('id, status')
+        .eq('nation_id', currentNation.id)
+        .eq('target_nation_id', targetNation.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+    if (existing) {
+        const statusLabel = existing.status === 'active' ? 'an active' : 'a pending';
+        renderEmpty('You already have ' + statusLabel + ' ambassador to ' + targetNation.name + '. <a href="' + diploBackUrl() + '">Back to Diplomacy</a>');
+        return;
+    }
+
+    // Check FM role
+    const coalition = await fetchActiveCoalition(_supabase, currentNation.id);
+    const alloc = coalition?.ministry_allocations || {};
+    let isFM = alloc.foreign === currentFaction.id;
+
+    if (!isFM) {
+        const { data: fmEntry } = await _supabase
+            .from('ministries')
+            .select('party_id')
+            .eq('nation_id', currentNation.id)
+            .eq('ministry_key', 'foreign')
+            .eq('is_active', true)
+            .maybeSingle();
+        if (fmEntry && fmEntry.party_id === currentFaction.id) isFM = true;
+    }
+
+    if (!isFM) {
+        renderEmpty('Only the Foreign Minister can appoint ambassadors. <a href="' + diploBackUrl() + '">Back to Diplomacy</a>');
+        return;
+    }
+
+    if (!isAutocracy && !coalition) {
+        renderEmpty('No government is currently seated. Ambassador appointments require an active government. <a href="' + diploBackUrl() + '">Back to Diplomacy</a>');
+        return;
+    }
+
+    if (coalition?.status === 'caretaker') {
+        renderEmpty('Appointments are suspended during caretaker government. <a href="' + diploBackUrl() + '">Back to Diplomacy</a>');
+        return;
+    }
+
+    // Load all active parties
+    const { data: parties } = await _supabase
+        .from('factions')
+        .select('id, faction_name, color')
+        .eq('nation_id', currentNation.id);
+    allParties = parties || [];
+
+    if (allParties.length === 0) {
+        renderEmpty('No political parties found. <a href="' + diploBackUrl() + '">Back to Diplomacy</a>');
+        return;
+    }
+
+    generateAmbassadorCandidates();
+    renderCandidates();
+}
+
+function generateAmbassadorCandidates() {
+    candidates = allParties.map(party => ({
+        partyId: party.id,
+        partyName: party.faction_name,
+        partyColor: party.color || '#888',
+        firstName: AMB_FIRST_NAMES[Math.floor(Math.random() * AMB_FIRST_NAMES.length)],
+        lastName: AMB_LAST_NAMES[Math.floor(Math.random() * AMB_LAST_NAMES.length)],
+        age: 35 + Math.floor(Math.random() * 31)
+    }));
+    selectedCandidateIndex = null;
+}
+
+// ── Shared helpers ──
+async function loadTraits() {
+    const { data: traitRows } = await _supabase.from('leader_traits').select('*');
+    (traitRows || []).forEach(t => { traits[t.trait_key] = t; });
+}
+
+// ═══════════════════════════════════════
+//  Render
+// ═══════════════════════════════════════
+function renderCandidates() {
+    const page = document.getElementById('sc-page');
+
+    let cardsHTML;
+    if (ROLE === 'ambassador') {
+        cardsHTML = candidates.map((c, i) => `
+            <div class="sc-card" id="sc-card-${i}" onclick="selectCandidate(${i})">
+                <div class="sc-card-header">
+                    <div class="sc-card-avatar">\u{1F464}</div>
+                    <div class="sc-card-name">${c.firstName} ${c.lastName}</div>
+                    <div class="sc-card-age">Age ${c.age}</div>
+                </div>
+                <div class="sc-card-party">
+                    <div class="sc-party-label">Party Affiliation</div>
+                    <div class="sc-party-tag">
+                        <span class="sc-party-tag-dot" style="background:${c.partyColor}"></span>
+                        ${escapeHtml(c.partyName)}
+                    </div>
+                </div>
+                <div class="sc-card-footer">
+                    <div class="sc-select-indicator">Select</div>
+                </div>
+            </div>
+        `).join('');
+    } else {
+        cardsHTML = candidates.map(c => {
+            const trait = traits[c.trait_key] || {};
+            const ideoClass = getIdeologyClass(c.ideology);
+            const avatarIcon = ROLE === 'pm' ? '\u{1F464}' : '\u{1F3DB}';
+            const shiftSuffix = ROLE === 'president' ? ' if elected' : '';
+
+            return `
+                <div class="sc-card" id="sc-card-${c.id}" onclick="selectCandidate('${c.id}')">
+                    <div class="sc-card-header">
+                        <div class="sc-card-avatar">${avatarIcon}</div>
+                        <div class="sc-card-name">${c.first_name} ${c.last_name}</div>
+                        <div class="sc-card-age">Age ${c.age}</div>
+                    </div>
+
+                    <div class="sc-card-ideology">
+                        <div class="sc-ideology-label">Ideology</div>
+                        <div class="sc-ideology-tag ${ideoClass}">${c.ideology}</div>
+                        <div class="sc-ideology-shift">+15 shift toward ${c.ideology.charAt(0) + c.ideology.slice(1).toLowerCase()}${shiftSuffix}</div>
+                    </div>
+
+                    <div class="sc-card-trait">
+                        <div class="sc-trait-label">Leader Trait</div>
+                        <div class="sc-trait-name">${ROLE === 'pm' ? '\u{1F3F7}\uFE0F ' : ''}${trait.trait_name || c.trait_key}</div>
+                        <div class="sc-trait-desc">${trait.description || ''}</div>
+                        <div class="sc-trait-effect upside">${ROLE === 'pm' ? '\u25B2 ' : ''}${trait.upside || 'Unknown'}</div>
+                        <div class="sc-trait-effect downside">${ROLE === 'pm' ? '\u25BC ' : ''}${trait.downside || 'Unknown'}</div>
+                    </div>
+
+                    <div class="sc-card-footer">
+                        <div class="sc-select-indicator">Select</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // Election countdown for president
+    let extraHeaderHTML = '';
+    if (ROLE === 'president') {
+        const ticksRemaining = window._upcomingElectionTick && window._currentTick
+            ? window._upcomingElectionTick - window._currentTick
+            : null;
+        if (ticksRemaining && ticksRemaining > 0) {
+            extraHeaderHTML = `<div style="color:var(--text-secondary);font-size:0.8rem;margin-top:8px;">Election in ${ticksRemaining} month${ticksRemaining !== 1 ? 's' : ''}</div>`;
+        }
+    }
+
+    const description = ROLE === 'ambassador'
+        ? 'Select a candidate to serve as your nation\'s Ambassador to <strong>' + escapeHtml(targetNation.name) + '</strong>.'
+        : cfg.description;
+
+    const confirmWarning = ROLE === 'ambassador'
+        ? (isAutocracy ? 'The ambassador will be appointed immediately.' : 'A confirmation vote will be held in Parliament (51% required).')
+        : cfg.confirmWarning;
+
+    const confirmBtnLabel = ROLE === 'ambassador'
+        ? 'Nominate Ambassador <span class="ap-cost">1 AP</span>'
+        : cfg.confirmLabel;
+
+    const gridClass = ROLE === 'ambassador' ? 'sc-candidates auto-grid' : 'sc-candidates';
+
+    page.innerHTML = `
+        <div class="sc-header">
+            <span class="sc-header-icon">${cfg.icon}</span>
+            <h1>${cfg.title}</h1>
+            <p>${description}</p>
+            <div class="sc-party-badge">
+                <div class="sc-party-dot"></div>
+                <span>${cfg.badgePrefix} <strong>${escapeHtml(currentFaction.faction_name)}</strong></span>
+            </div>
+            ${extraHeaderHTML}
+        </div>
+
+        ${ROLE === 'ambassador' ? '<div class="sc-regen"><a onclick="regenerate()">Re-generate candidates</a></div>' : ''}
+
+        <div class="${gridClass}" id="sc-candidates">
+            ${cardsHTML}
+        </div>
+
+        <div class="sc-confirm-section" id="sc-confirm-section">
+            <div class="sc-confirm-summary" id="sc-confirm-summary">Select a candidate above</div>
+            <button class="sc-confirm-btn" id="sc-confirm-btn" disabled onclick="confirmSelection()">
+                ${confirmBtnLabel}
+            </button>
+            <div class="sc-confirm-warning">${confirmWarning}</div>
+        </div>
+    `;
+}
+
+// ═══════════════════════════════════════
+//  Select candidate
+// ═══════════════════════════════════════
+function selectCandidate(idOrIndex) {
+    document.querySelectorAll('.sc-card').forEach(el => el.classList.remove('selected'));
+
+    if (ROLE === 'ambassador') {
+        selectedCandidateIndex = idOrIndex;
+        document.getElementById('sc-card-' + idOrIndex).classList.add('selected');
+
+        const c = candidates[idOrIndex];
+        document.getElementById('sc-confirm-summary').innerHTML =
+            'Nominate <strong>' + escapeHtml(c.firstName) + ' ' + escapeHtml(c.lastName) + '</strong> (' +
+            escapeHtml(c.partyName) + ') as Ambassador to <strong>' + escapeHtml(targetNation.name) + '</strong>';
+    } else {
+        selectedCandidateId = idOrIndex;
+        document.getElementById('sc-card-' + idOrIndex).classList.add('selected');
+
+        const candidate = candidates.find(c => c.id === idOrIndex);
+        const trait = traits[candidate.trait_key] || {};
+
+        const verb = ROLE === 'pm' ? 'Appoint' : 'Nominate';
+        const suffix = ROLE === 'pm'
+            ? ' \u00B7 ' + candidate.ideology + ' (+5 shift)'
+            : ' \u00B7 ' + candidate.ideology;
+
+        document.getElementById('sc-confirm-summary').innerHTML =
+            verb + ' <strong>' + escapeHtml(candidate.first_name) + ' ' + escapeHtml(candidate.last_name) + '</strong> \u2014 ' +
+            '<span style="color:var(--accent)">' + (trait.trait_name || candidate.trait_key) + '</span>' + suffix;
+    }
+
+    document.getElementById('sc-confirm-btn').disabled = false;
+}
+
+// ═══════════════════════════════════════
+//  Confirm selection
+// ═══════════════════════════════════════
+async function confirmSelection() {
+    if (ROLE === 'ambassador') { await confirmAmbassador(); return; }
+    if (ROLE === 'president') { await confirmPresident(); return; }
+    await confirmPM();
+}
+
+async function confirmPM() {
+    if (!selectedCandidateId) return;
+
+    const candidate = candidates.find(c => c.id === selectedCandidateId);
+    const trait = traits[candidate.trait_key] || {};
+
+    if (!confirm(
+        '\u{1F451} Appoint ' + candidate.first_name + ' ' + candidate.last_name + ' as Prime Minister?\n\n' +
+        'Ideology: ' + candidate.ideology + ' (+5 shift)\n' +
+        'Trait: ' + (trait.trait_name || candidate.trait_key) + '\n' +
+        '  \u25B2 ' + (trait.upside || '') + '\n' +
+        '  \u25BC ' + (trait.downside || '') + '\n\n' +
+        'This choice is permanent for the duration of the term.'
+    )) return;
+
+    const btn = document.getElementById('sc-confirm-btn');
+    btn.disabled = true;
+    btn.textContent = 'Appointing...';
+
+    try {
+        const { data: shard } = await _supabase
+            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+
+        await selectPMCandidate(
+            _supabase,
+            selectedCandidateId,
+            currentNation.id,
+            currentFaction.id,
+            shard?.current_tick || 0
+        );
+
+        try {
+            await _supabase.rpc('fire_system_event', {
+                p_trigger_key: 'pm_appointed',
+                p_nation_id: currentNation.id,
+                p_tick: shard?.current_tick || 0,
+                p_placeholders: {
+                    nation: currentNation.name,
+                    pm_name: candidate.first_name + ' ' + candidate.last_name,
+                    party: currentFaction.faction_name,
+                    trait: trait.trait_name || candidate.trait_key
+                }
+            });
+        } catch (e) {
+            console.warn('Event fire failed (non-blocking):', e);
+        }
+
+        alert('\u{1F451} ' + candidate.first_name + ' ' + candidate.last_name + ' has been appointed Prime Minister!');
+        window.location.href = 'government.html';
+
+    } catch (e) {
+        console.error('Error appointing PM:', e);
+        alert('Error: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = 'Appoint Prime Minister';
+    }
+}
+
+async function confirmPresident() {
+    if (!selectedCandidateId) return;
+
+    const candidate = candidates.find(c => c.id === selectedCandidateId);
+    const trait = traits[candidate.trait_key] || {};
+
+    if (!confirm(
+        'Nominate ' + candidate.first_name + ' ' + candidate.last_name + ' as your presidential candidate?\n\n' +
+        'Ideology: ' + candidate.ideology + '\n' +
+        'Trait: ' + (trait.trait_name || candidate.trait_key) + '\n' +
+        '  ' + (trait.upside || '') + '\n' +
+        '  ' + (trait.downside || '') + '\n\n' +
+        'This choice is permanent. If your party wins the election, this candidate becomes President.'
+    )) return;
+
+    const btn = document.getElementById('sc-confirm-btn');
+    btn.disabled = true;
+    btn.textContent = 'Nominating...';
+
+    try {
+        const { data: shard } = await _supabase
+            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+
+        await selectPresidentCandidate(
+            _supabase,
+            selectedCandidateId,
+            currentNation.id,
+            currentFaction.id,
+            shard?.current_tick || 0
+        );
+
+        // Also update party leader to the nominee
+        await _supabase.from('factions').update({
+            leader_first_name: candidate.first_name,
+            leader_last_name: candidate.last_name,
+            leader_age: candidate.age
+        }).eq('id', currentFaction.id);
+
+        alert(candidate.first_name + ' ' + candidate.last_name + ' has been nominated as your presidential candidate and is now your Party Leader!');
+        window.location.href = 'parties.html';
+
+    } catch (e) {
+        console.error('Error nominating candidate:', e);
+        alert('Error: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = 'Nominate Candidate';
+    }
+}
+
+async function confirmAmbassador() {
+    if (selectedCandidateIndex === null) return;
+
+    const candidate = candidates[selectedCandidateIndex];
+
+    if ((currentFaction.action_points || 0) < 1) { alert('Not enough AP (need 1).'); return; }
+
+    const actionLabel = isAutocracy ? 'appoint' : 'nominate';
+    if (!confirm(
+        '\u{1F3DB}\uFE0F ' + actionLabel.charAt(0).toUpperCase() + actionLabel.slice(1) + ' ' +
+        candidate.firstName + ' ' + candidate.lastName + ' as Ambassador to ' + targetNation.name + '?\n\n' +
+        'Party: ' + candidate.partyName + '\n' +
+        'Cost: 1 AP\n' +
+        candidate.partyName + ' will gain +1 Approval.\n\n' +
+        (isAutocracy ? 'The ambassador will be appointed immediately.' : 'A confirmation bill will go to a floor vote in Parliament.')
+    )) return;
+
+    const btn = document.getElementById('sc-confirm-btn');
+    btn.disabled = true;
+    btn.textContent = isAutocracy ? 'Appointing...' : 'Nominating...';
+
+    try {
+        // Deduct 1 AP
+        const apResult = await deductAP(_supabase, currentFaction.id, 1);
+        if (!apResult.success) { alert('Not enough AP (need 1).'); btn.disabled = false; btn.textContent = 'Nominate Ambassador'; return; }
+        currentFaction.action_points = apResult.newAp;
+
+        const { data: shard } = await _supabase
+            .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shard?.current_tick || 0;
+
+        let confirmationBillId = null;
+
+        if (isAutocracy) {
+            const { data: insertedAmbassador, error: ambError } = await _supabase
+                .from('ambassadors')
+                .insert({
+                    nation_id: currentNation.id,
+                    target_nation_id: targetNation.id,
+                    faction_id: candidate.partyId,
+                    ambassador_first_name: candidate.firstName,
+                    ambassador_last_name: candidate.lastName,
+                    ambassador_age: candidate.age,
+                    status: 'active',
+                    is_active: true,
+                    appointed_at_tick: currentTick
+                })
+                .select()
+                .single();
+
+            if (ambError) throw ambError;
+        } else {
+            const billName = 'Confirmation of ' + candidate.firstName + ' ' + candidate.lastName + ' as Ambassador to ' + targetNation.name;
+            const preamble = 'This motion, filed by the ' + currentFaction.faction_name + ', confirms the appointment of ' + candidate.firstName + ' ' + candidate.lastName + ' (' + candidate.partyName + ') as Ambassador to ' + targetNation.name + '. A simple majority (51%) is required for confirmation.';
+
+            const { data: nominationResult, error: nominationError } = await _supabase.rpc('create_ambassador_nomination_with_bill', {
+                p_nation_id: currentNation.id,
+                p_target_nation_id: targetNation.id,
+                p_faction_id: candidate.partyId,
+                p_proposed_by: currentFaction.id,
+                p_first_name: candidate.firstName,
+                p_last_name: candidate.lastName,
+                p_age: candidate.age,
+                p_current_tick: currentTick,
+                p_bill_name: billName,
+                p_preamble: preamble,
+                p_voting_ends_tick: currentTick + 6
+            });
+
+            if (nominationError) throw nominationError;
+
+            const nominationRow = Array.isArray(nominationResult) ? nominationResult[0] : nominationResult;
+            if (!nominationRow?.ambassador_id || !nominationRow?.bill_id) {
+                throw new Error('Ambassador nomination failed: server did not return expected IDs.');
+            }
+
+            confirmationBillId = nominationRow.bill_id;
+        }
+
+        // +1 approval to the candidate's party
+        await adjustMomentumAll(_supabase, currentNation.id, candidate.partyId, 1, 'diplomacy:ambassador_selected');
+
+        // Democracy: auto-cast FM seats on the confirmation bill
+        if (!isAutocracy) {
+            if (!confirmationBillId) throw new Error('Missing confirmation bill ID from nomination RPC.');
+
+            const { data: parties } = await _supabase
+                .from('factions')
+                .select('id, faction_name')
+                .eq('nation_id', currentNation.id);
+            const seatData = await loadSeats(_supabase, currentNation.id, false, parties || [], currentFaction.id);
+            const mySeats = seatData.allPartySeats[currentFaction.id] || 0;
+
+            if (mySeats > 0) {
+                await _supabase.from('bill_support').upsert({
+                    bill_id: confirmationBillId,
+                    faction_id: currentFaction.id,
+                    stance: 'yes',
+                    seat_count: mySeats
+                });
+            }
+
+            await syncVoteTallies(_supabase, confirmationBillId);
+        }
+
+        const msg = isAutocracy
+            ? '\u{1F3DB}\uFE0F ' + candidate.firstName + ' ' + candidate.lastName + ' has been appointed Ambassador to ' + targetNation.name + '!'
+            : '\u{1F3DB}\uFE0F ' + candidate.firstName + ' ' + candidate.lastName + ' has been nominated as Ambassador to ' + targetNation.name + '. A confirmation vote has been filed in Parliament.';
+        alert(msg);
+        window.location.href = diploBackUrl();
+
+    } catch (e) {
+        console.error('Error nominating ambassador:', e);
+        alert('Error: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = 'Nominate Ambassador';
+    }
+}
+
+// ── Ambassador regenerate ──
+function regenerate() {
+    generateAmbassadorCandidates();
+    renderCandidates();
+}
+
+// ── Empty state ──
+function renderEmpty(message) {
+    document.getElementById('sc-page').innerHTML = `
+        <div class="sc-empty">
+            <span style="font-size:3rem;display:block;margin-bottom:16px;opacity:0.3;">${cfg.icon}</span>
+            <h3>${cfg.emptyTitle}</h3>
+            <p>${message}</p>
+        </div>
+    `;
+}
+
+// Expose functions for HTML onclick handlers
+window.selectCandidate = selectCandidate;
+window.confirmSelection = confirmSelection;
+window.regenerate = regenerate;
+</script>
+</body>
+</html>

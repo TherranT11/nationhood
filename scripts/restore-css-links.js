@@ -15,7 +15,7 @@ const cssDir = path.join(root, 'css');
 const dashboardPages = new Set([
   'world', 'nation', 'government', 'parties', 'elections', 'laws', 'bill',
   'diplomacy', 'events', 'factions', 'map', 'ministry-actions', 'economy',
-  'conflict', 'select-pm', 'select-ambassador', 'select-president'
+  'conflict', 'select-candidate'
 ]);
 
 const htmlFiles = fs.readdirSync(root).filter(f => f.endsWith('.html'));

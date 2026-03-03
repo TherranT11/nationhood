@@ -74,19 +74,11 @@ const imports = {
   'conflict.html': [
     `import { initPage } from './js/common.js';`,
   ],
-  'select-pm.html': [
+  'select-candidate.html': [
     `import { _supabase } from './js/supabase-client.js';`,
-    `import { initPage } from './js/common.js';`,
-    `import { initGameConfigForNation, generatePMCandidates, selectPMCandidate, GAME_CONFIG } from './js/game-common.js';`,
-  ],
-  'select-ambassador.html': [
-    `import { _supabase } from './js/supabase-client.js';`,
-    `import { initPage } from './js/common.js';`,
-  ],
-  'select-president.html': [
-    `import { _supabase } from './js/supabase-client.js';`,
-    `import { initPage } from './js/common.js';`,
-    `import { initGameConfigForNation, selectPresidentCandidate, GAME_CONFIG } from './js/game-common.js';`,
+    `import { initPage, getAdminNationOverride, getAdminFactionOverride } from './js/common.js';`,
+    `import { getIdeologyClass, escapeHtml } from './js/utils.js';`,
+    `import { initGameConfigForNation, generatePMCandidates, selectPMCandidate, selectPresidentCandidate, isPresidentialRepublic, isGovernmentAutocracy, fetchActiveCoalition, loadSeats, syncVoteTallies, deductAP, adjustMomentumAll, GAME_CONFIG } from './js/game-common.js';`,
   ],
 
   // GROUP B: CDN + supabase-client + game-common (no common.js)
