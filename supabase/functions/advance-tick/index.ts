@@ -10693,6 +10693,28 @@ function getPromiseableStats(nation) {
 
 // ==================== MOBILIZE (PARTY CHAIRMAN) ====================
 
+const SUCCESSOR_CONFIG = {
+    AP_COST: 9,
+    COOLDOWN_TICKS: 60,
+    PILLAR_BOOST: 30,
+    STABILITY_BOOST: 7,
+    OTHER_COUP_READINESS: 5,
+    OTHER_LOYALTY_DROP: 10,
+    REVOKE_STABILITY_DROP: 5,
+    REVOKE_COUP_READINESS: 3,
+    REVOKE_LOYALTY_DROP: 20,
+    POST_SUCCESSION_FORMER_LOYALTY: -15,
+    POST_SUCCESSION_OTHER_LOYALTY: -5,
+    DYNASTY_AP_COST: 1,
+    DYNASTY_SHADOW_SUCCESSION_STRENGTH: 3,
+    DYNASTY_CULTIVATE_LEGITIMACY: 1,
+    DYNASTY_CULTIVATE_SUCCESSION_STRENGTH: 5,
+    DYNASTY_CULTIVATE_STANDING_PENALTY: 1,
+    DYNASTY_PREPARE_SUCCESSION_STRENGTH: 8,
+    DYNASTY_PREPARE_EXIT_READINESS: 10,
+    DYNASTY_PREPARE_DETECTION_CHANCE: 0.10,
+};
+
 const MOBILIZE_CONFIG = {
     AP_COST: 3,
     MODES: {
@@ -11573,7 +11595,7 @@ async function processStewardTick(supabase, nation) {
 
     const { data: stewards } = await supabase
         .from('stewards')
-        .select('id, faction_id, pillar_key, steward_type, standing, power_base, true_loyalty, estimated_loyalty, personal_wealth, exit_readiness, coup_readiness')
+        .select('id, faction_id, pillar_key, steward_type, standing, power_base, true_loyalty, estimated_loyalty, personal_wealth, exit_readiness, coup_readiness, is_chosen_successor')
         .eq('nation_id', nation.id)
         .eq('is_alive', true);
 
@@ -11655,7 +11677,8 @@ async function processStewardTick(supabase, nation) {
         // ── True Loyalty ──
         let trueLoyalty = steward.true_loyalty;
         // Natural decay: -2/tick (loyalty erodes without active maintenance)
-        trueLoyalty -= 2;
+        // Chosen Successor has halved decay (-1/tick)
+        trueLoyalty -= steward.is_chosen_successor ? 1 : 2;
         // Regime crumbling → steward may turn disloyal faster
         if (pillarSupport < 35) trueLoyalty -= d2();
 
@@ -14063,6 +14086,333 @@ async function processInactivityDecay(supabase, nationId, currentTick) {
     return results;
 }
 
+// ==================== APPOINT SUCCESSOR ====================
+
+/**
+ * Appoint a steward as Chosen Successor. Strongman-only, 9 AP.
+ * Effects: target pillar +30 support, stability +7,
+ * all other factions: loyalty -10, coup_readiness +5.
+ * Sets a 60-tick cooldown on further appointments.
+ */
+async function executeAppointSuccessor(supabase, nationId, strongmanFactionId, targetFactionId, currentTick) {
+    // 1. Validate: caller is ruling faction
+    const { data: nation } = await supabase
+        .from('nations').select('id, ruling_faction_id, stability, successor_cooldown_end_tick')
+        .eq('id', nationId).single();
+    if (!nation) return { success: false, error: 'Nation not found.' };
+    if (nation.ruling_faction_id !== strongmanFactionId) return { success: false, error: 'Only the Strongman can appoint a successor.' };
+
+    // 2. Check cooldown
+    if (nation.successor_cooldown_end_tick && currentTick < nation.successor_cooldown_end_tick) {
+        return { success: false, error: `Appointment on cooldown. ${nation.successor_cooldown_end_tick - currentTick} ticks remaining.` };
+    }
+
+    // 3. Validate target has a living steward and is not the ruling faction
+    if (targetFactionId === strongmanFactionId) return { success: false, error: 'Cannot appoint your own faction.' };
+    const { data: targetSteward } = await supabase
+        .from('stewards')
+        .select('id, first_name, last_name, pillar_key, steward_type, is_chosen_successor')
+        .eq('faction_id', targetFactionId)
+        .eq('nation_id', nationId)
+        .eq('is_alive', true)
+        .single();
+    if (!targetSteward) return { success: false, error: 'Target faction has no living steward.' };
+
+    // 4. Deduct AP
+    const apResult = await deductAP(supabase, strongmanFactionId, SUCCESSOR_CONFIG.AP_COST);
+    if (!apResult.success) return { success: false, error: 'Not enough AP.' };
+
+    // 5. Clear any existing successor
+    await supabase.from('stewards').update({
+        is_chosen_successor: false,
+        succession_strength: 0,
+        successor_appointed_tick: null,
+    }).eq('nation_id', nationId).eq('is_chosen_successor', true);
+
+    // 6. Set target steward as chosen successor
+    await supabase.from('stewards').update({
+        is_chosen_successor: true,
+        successor_appointed_tick: currentTick,
+        succession_strength: 0,
+    }).eq('id', targetSteward.id);
+
+    // 7. Boost target's pillar support +30 (capped at 100)
+    const { data: targetPillar } = await supabase
+        .from('regime_pillars')
+        .select('id, support')
+        .eq('nation_id', nationId)
+        .eq('pillar_key', targetSteward.pillar_key)
+        .single();
+    if (targetPillar) {
+        const newSupport = Math.min(100, (targetPillar.support ?? 50) + SUCCESSOR_CONFIG.PILLAR_BOOST);
+        await supabase.from('regime_pillars').update({ support: newSupport }).eq('id', targetPillar.id);
+    }
+
+    // 8. Stability +7 (capped at 100)
+    const newStability = Math.min(100, Number(nation.stability ?? 50) + SUCCESSOR_CONFIG.STABILITY_BOOST);
+    await supabase.from('nations').update({
+        stability: newStability,
+        successor_cooldown_end_tick: currentTick + SUCCESSOR_CONFIG.COOLDOWN_TICKS,
+    }).eq('id', nationId);
+
+    // 9. All OTHER factions (not target, not strongman): loyalty -10, steward coup_readiness +5
+    const { data: otherFactions } = await supabase
+        .from('factions')
+        .select('id, loyalty')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'party')
+        .neq('id', strongmanFactionId)
+        .neq('id', targetFactionId);
+
+    for (const f of (otherFactions || [])) {
+        const newLoy = Math.max(0, (f.loyalty ?? 50) - SUCCESSOR_CONFIG.OTHER_LOYALTY_DROP);
+        await supabase.from('factions').update({ loyalty: newLoy }).eq('id', f.id);
+
+        // Boost their steward's coup_readiness
+        const { data: otherSteward } = await supabase
+            .from('stewards').select('id, coup_readiness')
+            .eq('faction_id', f.id).eq('nation_id', nationId).eq('is_alive', true).single();
+        if (otherSteward) {
+            const newCR = Math.min(100, (otherSteward.coup_readiness ?? 0) + SUCCESSOR_CONFIG.OTHER_COUP_READINESS);
+            await supabase.from('stewards').update({ coup_readiness: newCR }).eq('id', otherSteward.id);
+        }
+    }
+
+    // 10. Log
+    const successorName = `${targetSteward.first_name} ${targetSteward.last_name}`;
+    await supabase.from('campaign_actions').insert({
+        party_id: strongmanFactionId,
+        nation_id: nationId,
+        action_type: 'appoint_successor',
+        tick_performed: currentTick,
+        result: {
+            successor_name: successorName,
+            successor_steward_id: targetSteward.id,
+            successor_faction_id: targetFactionId,
+            stability_gain: SUCCESSOR_CONFIG.STABILITY_BOOST,
+            pillar_boost: SUCCESSOR_CONFIG.PILLAR_BOOST,
+        },
+    });
+
+    return { success: true, newAp: apResult.newAp, successorName };
+}
+
+/**
+ * Revoke the current Chosen Successor. Strongman-only, free (no AP cost).
+ * Effects: stability -5, former successor faction loyalty -20, all stewards coup_readiness +3.
+ * Cooldown from original appointment persists.
+ */
+async function executeRevokeSuccessor(supabase, nationId, strongmanFactionId, currentTick) {
+    const { data: nation } = await supabase
+        .from('nations').select('id, ruling_faction_id, stability')
+        .eq('id', nationId).single();
+    if (!nation) return { success: false, error: 'Nation not found.' };
+    if (nation.ruling_faction_id !== strongmanFactionId) return { success: false, error: 'Only the Strongman can revoke.' };
+
+    // Find the current successor
+    const { data: currentSuccessor } = await supabase
+        .from('stewards')
+        .select('id, faction_id, first_name, last_name')
+        .eq('nation_id', nationId)
+        .eq('is_chosen_successor', true)
+        .eq('is_alive', true)
+        .maybeSingle();
+    if (!currentSuccessor) return { success: false, error: 'No successor to revoke.' };
+
+    // Clear successor tag
+    await supabase.from('stewards').update({
+        is_chosen_successor: false,
+        succession_strength: 0,
+        successor_appointed_tick: null,
+    }).eq('id', currentSuccessor.id);
+
+    // Stability -5
+    const newStability = Math.max(0, Number(nation.stability ?? 50) - SUCCESSOR_CONFIG.REVOKE_STABILITY_DROP);
+    await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
+
+    // Former successor's faction: loyalty -20
+    const { data: formerFaction } = await supabase.from('factions').select('id, loyalty').eq('id', currentSuccessor.faction_id).single();
+    if (formerFaction) {
+        const newLoy = Math.max(0, (formerFaction.loyalty ?? 50) - SUCCESSOR_CONFIG.REVOKE_LOYALTY_DROP);
+        await supabase.from('factions').update({ loyalty: newLoy }).eq('id', formerFaction.id);
+    }
+
+    // All stewards: coup_readiness +3
+    const { data: allStewards } = await supabase
+        .from('stewards')
+        .select('id, coup_readiness')
+        .eq('nation_id', nationId)
+        .eq('is_alive', true);
+    for (const s of (allStewards || [])) {
+        const newCR = Math.min(100, (s.coup_readiness ?? 0) + SUCCESSOR_CONFIG.REVOKE_COUP_READINESS);
+        await supabase.from('stewards').update({ coup_readiness: newCR }).eq('id', s.id);
+    }
+
+    // Log
+    const revokedName = `${currentSuccessor.first_name} ${currentSuccessor.last_name}`;
+    await supabase.from('campaign_actions').insert({
+        party_id: strongmanFactionId,
+        nation_id: nationId,
+        action_type: 'revoke_successor',
+        tick_performed: currentTick,
+        result: {
+            revoked_name: revokedName,
+            revoked_faction_id: currentSuccessor.faction_id,
+        },
+    });
+
+    return { success: true, revokedName };
+}
+
+// ==================== DYNASTY ACTIONS ====================
+
+/**
+ * Execute a Dynasty action. Available only to factions whose steward is the Chosen Successor.
+ * Three modes: 'shadow', 'cultivate_image', 'prepare_succession'. Each costs 1 AP.
+ */
+async function executeDynastyAction(supabase, nationId, factionId, mode, targetFactionId, currentTick) {
+    // 1. Validate: caller's steward is the chosen successor
+    const { data: mySteward } = await supabase
+        .from('stewards')
+        .select('id, first_name, last_name, is_chosen_successor, succession_strength, exit_readiness, standing')
+        .eq('faction_id', factionId)
+        .eq('nation_id', nationId)
+        .eq('is_alive', true)
+        .single();
+    if (!mySteward || !mySteward.is_chosen_successor) {
+        return { success: false, error: 'Only the Chosen Successor can use Dynasty actions.' };
+    }
+
+    // 2. Validate mode
+    if (!['shadow', 'cultivate_image', 'prepare_succession'].includes(mode)) {
+        return { success: false, error: 'Invalid dynasty mode.' };
+    }
+
+    // 3. Deduct AP
+    const apResult = await deductAP(supabase, factionId, SUCCESSOR_CONFIG.DYNASTY_AP_COST);
+    if (!apResult.success) return { success: false, error: 'Not enough AP.' };
+
+    const result = { mode, newAp: apResult.newAp };
+
+    if (mode === 'shadow') {
+        // Requires a target faction
+        if (!targetFactionId) return { success: false, error: 'Shadow requires a target faction.' };
+
+        const { data: targetSteward } = await supabase
+            .from('stewards')
+            .select('id, first_name, last_name, true_loyalty, faction_id')
+            .eq('faction_id', targetFactionId)
+            .eq('nation_id', nationId)
+            .eq('is_alive', true)
+            .single();
+        if (!targetSteward) return { success: false, error: 'Target faction has no living steward.' };
+
+        // Reveal true loyalty
+        result.targetName = `${targetSteward.first_name} ${targetSteward.last_name}`;
+        result.trueLoyalty = targetSteward.true_loyalty;
+
+        // Succession strength +3
+        const newSS = (mySteward.succession_strength ?? 0) + SUCCESSOR_CONFIG.DYNASTY_SHADOW_SUCCESSION_STRENGTH;
+        await supabase.from('stewards').update({ succession_strength: newSS }).eq('id', mySteward.id);
+        result.successionStrengthGain = SUCCESSOR_CONFIG.DYNASTY_SHADOW_SUCCESSION_STRENGTH;
+
+        await supabase.from('campaign_actions').insert({
+            party_id: factionId,
+            nation_id: nationId,
+            action_type: 'dynasty_shadow',
+            tick_performed: currentTick,
+            result: {
+                target_faction_id: targetFactionId,
+                target_name: result.targetName,
+                true_loyalty: result.trueLoyalty,
+                succession_strength_gain: SUCCESSOR_CONFIG.DYNASTY_SHADOW_SUCCESSION_STRENGTH,
+            },
+        });
+
+    } else if (mode === 'cultivate_image') {
+        // Nation legitimacy +1
+        const { data: nationRow } = await supabase.from('nations').select('legitimacy').eq('id', nationId).single();
+        const newLeg = Math.min(100, Number(nationRow?.legitimacy ?? 50) + SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_LEGITIMACY);
+        await supabase.from('nations').update({ legitimacy: newLeg }).eq('id', nationId);
+
+        // Succession strength +5
+        const newSS = (mySteward.succession_strength ?? 0) + SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_SUCCESSION_STRENGTH;
+        await supabase.from('stewards').update({ succession_strength: newSS }).eq('id', mySteward.id);
+
+        // All OTHER stewards: standing -1
+        const { data: otherStewards } = await supabase
+            .from('stewards')
+            .select('id, standing')
+            .eq('nation_id', nationId)
+            .eq('is_alive', true)
+            .neq('id', mySteward.id);
+        for (const s of (otherStewards || [])) {
+            const newStanding = Math.max(0, (s.standing ?? 50) - SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_STANDING_PENALTY);
+            await supabase.from('stewards').update({ standing: newStanding }).eq('id', s.id);
+        }
+
+        result.legitimacyGain = SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_LEGITIMACY;
+        result.successionStrengthGain = SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_SUCCESSION_STRENGTH;
+
+        await supabase.from('campaign_actions').insert({
+            party_id: factionId,
+            nation_id: nationId,
+            action_type: 'dynasty_cultivate',
+            tick_performed: currentTick,
+            result: {
+                legitimacy_gain: SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_LEGITIMACY,
+                succession_strength_gain: SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_SUCCESSION_STRENGTH,
+                standing_penalty: SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_STANDING_PENALTY,
+            },
+        });
+
+    } else if (mode === 'prepare_succession') {
+        // Succession strength +8, exit_readiness +10
+        const newSS = (mySteward.succession_strength ?? 0) + SUCCESSOR_CONFIG.DYNASTY_PREPARE_SUCCESSION_STRENGTH;
+        const newER = Math.min(100, (mySteward.exit_readiness ?? 0) + SUCCESSOR_CONFIG.DYNASTY_PREPARE_EXIT_READINESS);
+        await supabase.from('stewards').update({
+            succession_strength: newSS,
+            exit_readiness: newER,
+        }).eq('id', mySteward.id);
+
+        // 10% detection chance
+        const detected = Math.random() < SUCCESSOR_CONFIG.DYNASTY_PREPARE_DETECTION_CHANCE;
+        result.successionStrengthGain = SUCCESSOR_CONFIG.DYNASTY_PREPARE_SUCCESSION_STRENGTH;
+        result.exitReadinessGain = SUCCESSOR_CONFIG.DYNASTY_PREPARE_EXIT_READINESS;
+        result.detected = detected;
+
+        if (detected) {
+            // Log a detection entry visible to the strongman (ruling faction)
+            const { data: nationRow } = await supabase.from('nations').select('ruling_faction_id').eq('id', nationId).single();
+            await supabase.from('campaign_actions').insert({
+                party_id: nationRow?.ruling_faction_id || factionId,
+                nation_id: nationId,
+                action_type: 'dynasty_detected_prepare',
+                tick_performed: currentTick,
+                result: {
+                    steward_name: `${mySteward.first_name} ${mySteward.last_name}`,
+                    faction_id: factionId,
+                },
+            });
+        }
+
+        // Log the prepare action to the acting faction
+        await supabase.from('campaign_actions').insert({
+            party_id: factionId,
+            nation_id: nationId,
+            action_type: 'dynasty_prepare',
+            tick_performed: currentTick,
+            result: {
+                succession_strength_gain: SUCCESSOR_CONFIG.DYNASTY_PREPARE_SUCCESSION_STRENGTH,
+                exit_readiness_gain: SUCCESSOR_CONFIG.DYNASTY_PREPARE_EXIT_READINESS,
+                detected,
+            },
+        });
+    }
+
+    return { success: true, ...result };
+}
+
 
 // ────────── election-simulation ──────────
 
@@ -16374,44 +16724,153 @@ async function advanceTick(supabase) {
                                 const hosName = `${nation.head_of_state_first_name || 'The Strongman'} ${nation.head_of_state_last_name || ''}`.trim();
                                 console.log(`[LeaderAging] Strongman ${hosName} of ${nation.name} has died at age ${newHosAge}`);
 
-                                // Generate a successor: random name, age 45-60
-                                const FIRST_NAMES = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
-                                const LAST_NAMES = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
-                                const newFirst = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
-                                const newLast = LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)];
-                                const newSuccessorAge = 45 + Math.floor(Math.random() * 16); // 45-60
+                                // Check for Chosen Successor
+                                const { data: chosenSuccessor } = await supabase.from('stewards')
+                                    .select('id, faction_id, first_name, last_name, age, pillar_key, steward_type, succession_strength')
+                                    .eq('nation_id', nation.id)
+                                    .eq('is_chosen_successor', true)
+                                    .eq('is_alive', true)
+                                    .maybeSingle();
 
-                                await supabase.from('nations').update({
-                                    head_of_state_first_name: newFirst,
-                                    head_of_state_last_name: newLast,
-                                    head_of_state_age: newSuccessorAge
-                                }).eq('id', nation.id);
-                                nation.head_of_state_first_name = newFirst;
-                                nation.head_of_state_last_name = newLast;
-                                nation.head_of_state_age = newSuccessorAge;
+                                if (chosenSuccessor) {
+                                    // === CLEAN SUCCESSION ===
+                                    console.log(`[LeaderAging] Clean succession: ${chosenSuccessor.first_name} ${chosenSuccessor.last_name} takes power`);
 
-                                // Log the death event
-                                await supabase.from('campaign_actions').insert({
-                                    party_id: nation.ruling_faction_id,
-                                    nation_id: nation.id,
-                                    action_type: 'strongman_death',
-                                    tick_performed: newTick,
-                                    result: {
-                                        deceased_name: hosName,
-                                        deceased_age: newHosAge,
-                                        successor_name: `${newFirst} ${newLast}`,
-                                        successor_age: newSuccessorAge,
-                                        cause: 'natural_causes'
+                                    // 1. Successor becomes new head of state
+                                    await supabase.from('nations').update({
+                                        head_of_state_first_name: chosenSuccessor.first_name,
+                                        head_of_state_last_name: chosenSuccessor.last_name,
+                                        head_of_state_age: chosenSuccessor.age,
+                                        successor_cooldown_end_tick: null,
+                                    }).eq('id', nation.id);
+                                    nation.head_of_state_first_name = chosenSuccessor.first_name;
+                                    nation.head_of_state_last_name = chosenSuccessor.last_name;
+                                    nation.head_of_state_age = chosenSuccessor.age;
+
+                                    // 2. Clear successor tag
+                                    await supabase.from('stewards').update({
+                                        is_chosen_successor: false,
+                                        succession_strength: 0,
+                                        successor_appointed_tick: null,
+                                        is_alive: false,
+                                        died_at_tick: newTick,
+                                    }).eq('id', chosenSuccessor.id);
+
+                                    // 3. Post-succession loyalty effects
+                                    const { data: allFactions } = await supabase.from('factions')
+                                        .select('id, loyalty')
+                                        .eq('nation_id', nation.id)
+                                        .eq('faction_type', 'party');
+                                    for (const fac of (allFactions || [])) {
+                                        const loyDrop = fac.id === chosenSuccessor.faction_id ? 15 : 5;
+                                        const newLoy = Math.max(0, (fac.loyalty ?? 50) - loyDrop);
+                                        await supabase.from('factions').update({ loyalty: newLoy }).eq('id', fac.id);
                                     }
-                                });
 
-                                agingResults.push({
-                                    type: 'strongman_death',
-                                    deceased: hosName,
-                                    deceasedAge: newHosAge,
-                                    successor: `${newFirst} ${newLast}`,
-                                    successorAge: newSuccessorAge
-                                });
+                                    // 4. Reset all stewards' coup_readiness to 0
+                                    await supabase.from('stewards').update({ coup_readiness: 0 })
+                                        .eq('nation_id', nation.id).eq('is_alive', true);
+
+                                    // 5. Generate replacement steward for the successor's old faction
+                                    const FIRST_NAMES = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
+                                    const LAST_NAMES = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
+                                    const replFirst = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
+                                    const replLast = LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)];
+                                    const replAge = 40 + Math.floor(Math.random() * 16); // 40-55
+
+                                    const PILLAR_TO_STEWARD_TYPE: Record<string, string> = {
+                                        military: 'general', security: 'intelligence_director',
+                                        bureaucracy: 'technocrat', oligarchy: 'oligarch',
+                                        media: 'media_mogul', religion: 'cleric',
+                                        legislature: 'party_chairman', judiciary: 'legal_authority',
+                                    };
+                                    const newStewardType = PILLAR_TO_STEWARD_TYPE[chosenSuccessor.pillar_key] || 'technocrat';
+
+                                    await supabase.from('stewards').insert({
+                                        nation_id: nation.id,
+                                        faction_id: chosenSuccessor.faction_id,
+                                        pillar_key: chosenSuccessor.pillar_key,
+                                        steward_type: newStewardType,
+                                        first_name: replFirst,
+                                        last_name: replLast,
+                                        age: replAge,
+                                        standing: 40,
+                                        power_base: 30,
+                                        true_loyalty: 50,
+                                        estimated_loyalty: 55,
+                                        personal_wealth: 0,
+                                        exit_readiness: 0,
+                                        coup_readiness: 0,
+                                        is_alive: true,
+                                        is_chosen_successor: false,
+                                        succession_strength: 0,
+                                        created_at_tick: newTick,
+                                    });
+
+                                    // 6. Log clean succession
+                                    const successorFullName = `${chosenSuccessor.first_name} ${chosenSuccessor.last_name}`;
+                                    await supabase.from('campaign_actions').insert({
+                                        party_id: chosenSuccessor.faction_id,
+                                        nation_id: nation.id,
+                                        action_type: 'clean_succession',
+                                        tick_performed: newTick,
+                                        result: {
+                                            deceased_name: hosName,
+                                            deceased_age: newHosAge,
+                                            successor_name: successorFullName,
+                                            successor_faction_id: chosenSuccessor.faction_id,
+                                            succession_strength: chosenSuccessor.succession_strength,
+                                            cause: 'natural_causes',
+                                        },
+                                    });
+
+                                    agingResults.push({
+                                        type: 'clean_succession',
+                                        deceased: hosName,
+                                        deceasedAge: newHosAge,
+                                        successor: successorFullName,
+                                        successorAge: chosenSuccessor.age,
+                                    });
+                                } else {
+                                    // === NO SUCCESSOR — random replacement (existing behavior) ===
+                                    const FIRST_NAMES = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
+                                    const LAST_NAMES = ['Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Ríos','Delgado','Espinoza','Guzmán','Navarro','Córdoba','Echeverría','Pacheco','Montero','Aguilar','Valenzuela','Carrasco','Ibarra'];
+                                    const newFirst = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
+                                    const newLast = LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)];
+                                    const newSuccessorAge = 45 + Math.floor(Math.random() * 16); // 45-60
+
+                                    await supabase.from('nations').update({
+                                        head_of_state_first_name: newFirst,
+                                        head_of_state_last_name: newLast,
+                                        head_of_state_age: newSuccessorAge,
+                                        successor_cooldown_end_tick: null,
+                                    }).eq('id', nation.id);
+                                    nation.head_of_state_first_name = newFirst;
+                                    nation.head_of_state_last_name = newLast;
+                                    nation.head_of_state_age = newSuccessorAge;
+
+                                    await supabase.from('campaign_actions').insert({
+                                        party_id: nation.ruling_faction_id,
+                                        nation_id: nation.id,
+                                        action_type: 'strongman_death',
+                                        tick_performed: newTick,
+                                        result: {
+                                            deceased_name: hosName,
+                                            deceased_age: newHosAge,
+                                            successor_name: `${newFirst} ${newLast}`,
+                                            successor_age: newSuccessorAge,
+                                            cause: 'natural_causes',
+                                        },
+                                    });
+
+                                    agingResults.push({
+                                        type: 'strongman_death',
+                                        deceased: hosName,
+                                        deceasedAge: newHosAge,
+                                        successor: `${newFirst} ${newLast}`,
+                                        successorAge: newSuccessorAge,
+                                    });
+                                }
                             }
                         }
                     }
