@@ -1485,6 +1485,8 @@ function setupOpEdModal(faction, nation, shard) {
     const error = insertError;
 
     if (error) {
+      // Refund AP since the insert failed
+      await deductAP(_supabase, faction.id, -apCost);
       errorEl.textContent = 'Failed to publish: ' + error.message;
       errorEl.classList.add('np-oped-editor__error--visible');
       submitBtn.disabled = false;
