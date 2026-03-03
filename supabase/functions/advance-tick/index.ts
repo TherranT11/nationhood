@@ -3996,12 +3996,14 @@ function calculateEnactmentApproval(articles, billSupport, sponsorId, factionIde
 
     if (Object.keys(axisNetScores).length === 0) return {};
 
-    // Build voter map: factionId -> stance
+    // Build voter map: factionId -> normalized stance
     const votes = {};
     votes[sponsorId] = 'yes';
     for (const s of (billSupport || [])) {
         if (s.faction_id !== sponsorId) {
-            votes[s.faction_id] = s.stance;
+            // Normalize: 'accept' → 'yes', 'reject' → 'no'
+            const normalized = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+            votes[s.faction_id] = normalized;
         }
     }
 
