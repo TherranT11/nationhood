@@ -5943,7 +5943,9 @@ async function enactBill(supabase, bill, currentTick) {
             .eq('id', bill.nation_id);
         if (taxErr) {
             console.error(`[enactBill] Failed to apply tax rate changes:`, taxErr.message);
+            return { success: false, error: `Tax rate update failed: ${taxErr.message}` };
         }
+        console.log(`[enactBill] Tax rates applied to nation ${bill.nation_id}:`, JSON.stringify(taxUpdates));
     }
 
     // Load ideology axes for all voting factions (sponsor + voters)
