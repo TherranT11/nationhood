@@ -7,7 +7,8 @@ import { GAME_CONFIG, initGameConfigForNation } from './config.js';
 import { isPresidentialRepublic } from './government-types.js';
 import { DIPLOMACY_CONFIG } from './diplomacy-constants.js';
 import { IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology } from './ideology.js';
-import { adjustMomentumAll } from './momentum.js';
+import { adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
+import { MINISTER_APPROVAL_CONFIG } from './stats.js';
 import { resolveBudgetBill } from './budget.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { resolveNoConfidence } from './elections.js';
@@ -260,14 +261,16 @@ export async function applyBlocPreferenceOnPassage(supabase, bill, nationId) {
         const { data: shard } = await supabase
             .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         for (const blocId of alignedBlocIds) {
-            await supabase.from('momentum_log').insert({
-                nation_id: nationId,
-                faction_id: sponsorId,
-                bloc_id: blocId,
-                amount: ALIGNED_MOMENTUM_BONUS,
-                source: 'bill:passage_aligned',
-                tick: shard?.current_tick || 0
-            }).catch(() => {});
+            try {
+                await supabase.from('momentum_log').insert({
+                    nation_id: nationId,
+                    faction_id: sponsorId,
+                    bloc_id: blocId,
+                    amount: ALIGNED_MOMENTUM_BONUS,
+                    source: 'bill:passage_aligned',
+                    tick: shard?.current_tick || 0
+                });
+            } catch (_) { /* non-blocking audit log */ }
         }
     }
 
@@ -1952,15 +1955,15 @@ export async function enactBill(supabase, bill, currentTick) {
                 }
             }
 
-            const { error: activeLawError } = await supabase.from('active_laws').insert({
+            const { error: activeLawError } = await supabase.from('active_laws').upsert({
                 nation_id: bill.nation_id,
                 policy_id: policy.id,
                 passed_tick: currentTick,
                 proposed_by: bill.proposed_by,
                 effects_applied_through_tick: currentTick - 1
-            });
+            }, { onConflict: 'nation_id,policy_id' });
             if (activeLawError) {
-                console.error(`[enactBill] Failed to insert active_law for policy ${policy.id} (${policy.policy_name}):`, activeLawError.message);
+                console.error(`[enactBill] Failed to upsert active_law for policy ${policy.id} (${policy.policy_name}):`, activeLawError.message);
             }
         }
     }
@@ -2040,6 +2043,10 @@ export async function enactBill(supabase, bill, currentTick) {
         passed_tick: currentTick,
         enact_error: null
     }).eq('id', bill.id);
+
+    // Legislative activity: boost gov_approval_events and record last bill tick
+    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+    await supabase.from('nations').update({ last_bill_passed_tick: currentTick }).eq('id', bill.nation_id);
 
     return { success: true };
 }
@@ -2234,6 +2241,11 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
     // Sync in-memory config so downstream logic in the same tick uses the new seat count
     initGameConfigForNation({ total_seats: newTotalSeats });
+
+    // Legislative activity: boost gov_approval_events and record last bill tick
+    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+    await supabase.from('nations').update({ last_bill_passed_tick: currentTick }).eq('id', bill.nation_id);
+
     return true;
 }
 

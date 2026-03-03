@@ -6,6 +6,7 @@
 import { GAME_CONFIG } from './config.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
+import { MINISTER_APPROVAL_CONFIG } from './stats.js';
 
 // ==================== NATIONAL BUDGET CALCULATION ====================
 
@@ -442,7 +443,8 @@ export async function resolveBudgetBill(supabase, bill, currentTick) {
         debt: newDebt,
         budget_reserves: newReserves,
         last_budget_tick: currentTick,
-        last_budget_bill_id: bill.id
+        last_budget_bill_id: bill.id,
+        last_bill_passed_tick: currentTick
     }).eq('id', nation.id);
 
     if (updateErr) {
@@ -450,6 +452,9 @@ export async function resolveBudgetBill(supabase, bill, currentTick) {
     }
 
     console.log(`[resolveBudgetBill] Nation ${nation.name}: spending=$${(totalSpending/1e9).toFixed(2)}B, gap=$${(gap/1e9).toFixed(2)}B, newDebt=$${(newDebt/1e9).toFixed(2)}B, last_budget_tick=${currentTick}`);
+
+    // Legislative activity: boost gov_approval_events for passing a budget
+    await adjustGovernmentApprovalEvent(supabase, nation.id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage:budget');
 }
 
 // ==================== ECONOMIC AID HELPERS ====================

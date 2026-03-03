@@ -197,14 +197,14 @@ export async function fetchActiveCoalition(supabase, nationId) {
 
         // Reconcile: if government_formations has a definitive status, ensure active_coalitions matches
         if (result.status === 'dissolved' || result.status === 'caretaker') {
-            supabase.from('active_coalitions')
-                .update(result.status === 'dissolved'
-                    ? { status: 'dissolved', dissolved_at: new Date().toISOString() }
-                    : { status: 'caretaker' })
-                .eq('nation_id', nationId)
-                .is('dissolved_at', null)
-                .then(() => {}) // fire-and-forget reconciliation
-                .catch(e => console.warn('Coalition table reconciliation failed:', e));
+            try {
+                await supabase.from('active_coalitions')
+                    .update(result.status === 'dissolved'
+                        ? { status: 'dissolved', dissolved_at: new Date().toISOString() }
+                        : { status: 'caretaker' })
+                    .eq('nation_id', nationId)
+                    .is('dissolved_at', null);
+            } catch (e) { console.warn('Coalition table reconciliation failed:', e); }
         }
 
         if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 15 * 1000);

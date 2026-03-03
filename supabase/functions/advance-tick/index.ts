@@ -2447,6 +2447,13 @@ const MINISTER_APPROVAL_CONFIG = {
     SHUTDOWN_MINISTER_PENALTY: -6,
     // Government shutdown: -25 flat penalty on government approval
     SHUTDOWN_GOV_PENALTY: -25,
+
+    // Legislative activity: bonus to gov_approval_events when a bill passes
+    BILL_PASSAGE_EVENT_BONUS: 3,
+
+    // Legislative inactivity: -1/tick to gov_approval_events after grace period
+    LEGISLATIVE_INACTIVITY_GRACE_TICKS: 6,
+    LEGISLATIVE_INACTIVITY_PENALTY: -1,
 };
 
 /**
@@ -3002,7 +3009,8 @@ async function resolveBudgetBill(supabase, bill, currentTick) {
         debt: newDebt,
         budget_reserves: newReserves,
         last_budget_tick: currentTick,
-        last_budget_bill_id: bill.id
+        last_budget_bill_id: bill.id,
+        last_bill_passed_tick: currentTick
     }).eq('id', nation.id);
 
     if (updateErr) {
@@ -3010,6 +3018,9 @@ async function resolveBudgetBill(supabase, bill, currentTick) {
     }
 
     console.log(`[resolveBudgetBill] Nation ${nation.name}: spending=$${(totalSpending/1e9).toFixed(2)}B, gap=$${(gap/1e9).toFixed(2)}B, newDebt=$${(newDebt/1e9).toFixed(2)}B, last_budget_tick=${currentTick}`);
+
+    // Legislative activity: boost gov_approval_events for passing a budget
+    await adjustGovernmentApprovalEvent(supabase, nation.id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage:budget');
 }
 
 // ==================== ECONOMIC AID HELPERS ====================
@@ -3798,14 +3809,14 @@ async function fetchActiveCoalition(supabase, nationId) {
 
         // Reconcile: if government_formations has a definitive status, ensure active_coalitions matches
         if (result.status === 'dissolved' || result.status === 'caretaker') {
-            supabase.from('active_coalitions')
-                .update(result.status === 'dissolved'
-                    ? { status: 'dissolved', dissolved_at: new Date().toISOString() }
-                    : { status: 'caretaker' })
-                .eq('nation_id', nationId)
-                .is('dissolved_at', null)
-                .then(() => {}) // fire-and-forget reconciliation
-                .catch(e => console.warn('Coalition table reconciliation failed:', e));
+            try {
+                await supabase.from('active_coalitions')
+                    .update(result.status === 'dissolved'
+                        ? { status: 'dissolved', dissolved_at: new Date().toISOString() }
+                        : { status: 'caretaker' })
+                    .eq('nation_id', nationId)
+                    .is('dissolved_at', null);
+            } catch (e) { console.warn('Coalition table reconciliation failed:', e); }
         }
 
         if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 15 * 1000);
@@ -4182,14 +4193,16 @@ async function applyBlocPreferenceOnPassage(supabase, bill, nationId) {
         const { data: shard } = await supabase
             .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         for (const blocId of alignedBlocIds) {
-            await supabase.from('momentum_log').insert({
-                nation_id: nationId,
-                faction_id: sponsorId,
-                bloc_id: blocId,
-                amount: ALIGNED_MOMENTUM_BONUS,
-                source: 'bill:passage_aligned',
-                tick: shard?.current_tick || 0
-            }).catch(() => {});
+            try {
+                await supabase.from('momentum_log').insert({
+                    nation_id: nationId,
+                    faction_id: sponsorId,
+                    bloc_id: blocId,
+                    amount: ALIGNED_MOMENTUM_BONUS,
+                    source: 'bill:passage_aligned',
+                    tick: shard?.current_tick || 0
+                });
+            } catch (_) { /* non-blocking audit log */ }
         }
     }
 
@@ -5874,15 +5887,15 @@ async function enactBill(supabase, bill, currentTick) {
                 }
             }
 
-            const { error: activeLawError } = await supabase.from('active_laws').insert({
+            const { error: activeLawError } = await supabase.from('active_laws').upsert({
                 nation_id: bill.nation_id,
                 policy_id: policy.id,
                 passed_tick: currentTick,
                 proposed_by: bill.proposed_by,
                 effects_applied_through_tick: currentTick - 1
-            });
+            }, { onConflict: 'nation_id,policy_id' });
             if (activeLawError) {
-                console.error(`[enactBill] Failed to insert active_law for policy ${policy.id} (${policy.policy_name}):`, activeLawError.message);
+                console.error(`[enactBill] Failed to upsert active_law for policy ${policy.id} (${policy.policy_name}):`, activeLawError.message);
             }
         }
     }
@@ -5962,6 +5975,10 @@ async function enactBill(supabase, bill, currentTick) {
         passed_tick: currentTick,
         enact_error: null
     }).eq('id', bill.id);
+
+    // Legislative activity: boost gov_approval_events and record last bill tick
+    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+    await supabase.from('nations').update({ last_bill_passed_tick: currentTick }).eq('id', bill.nation_id);
 
     return { success: true };
 }
@@ -6156,6 +6173,11 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
 
     // Sync in-memory config so downstream logic in the same tick uses the new seat count
     initGameConfigForNation({ total_seats: newTotalSeats });
+
+    // Legislative activity: boost gov_approval_events and record last bill tick
+    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+    await supabase.from('nations').update({ last_bill_passed_tick: currentTick }).eq('id', bill.nation_id);
+
     return true;
 }
 
@@ -12648,6 +12670,49 @@ async function calculateGovernmentApprovalTick(supabase, nation, currentTick, is
     return govApproval;
 }
 
+// ==================== LAYER 2b: LEGISLATIVE INACTIVITY PENALTY ====================
+
+/**
+ * Apply a per-tick penalty to gov_approval_events when the government has not
+ * passed any bills for an extended period.
+ *
+ * After LEGISLATIVE_INACTIVITY_GRACE_TICKS (6) ticks with no legislation, each
+ * subsequent tick injects LEGISLATIVE_INACTIVITY_PENALTY (-1) into gov_approval_events. The
+ * 10% per-tick decay on events means a sustained drought converges to about -10
+ * on the event modifier — enough to meaningfully drag government approval down
+ * without being catastrophic.
+ *
+ * Skipped when:
+ *  - No government is formed (no PM)
+ *  - Nation is in government shutdown (already penalized harder)
+ *
+ * @param {object} supabase
+ * @param {object} nation - full nation row
+ * @param {number} currentTick
+ * @param {boolean} [isShutdown=false]
+ */
+async function processLegislativeInactivity(supabase, nation, currentTick, isShutdown = false) {
+    const cfg = MINISTER_APPROVAL_CONFIG;
+
+    // Skip if no government formed or already in shutdown (which has its own penalties)
+    if (!nation.pm_party_id || isShutdown) return null;
+
+    const lastBillTick = nation.last_bill_passed_tick;
+    const ticksSinceLastBill = lastBillTick != null ? (currentTick - lastBillTick) : currentTick;
+
+    if (ticksSinceLastBill <= cfg.LEGISLATIVE_INACTIVITY_GRACE_TICKS) return null;
+
+    // Apply penalty via the event modifier system
+    await adjustGovernmentApprovalEvent(supabase, nation.id, cfg.LEGISLATIVE_INACTIVITY_PENALTY, 'legislative_inactivity');
+
+    // Update in-memory value so downstream calculations see it this tick
+    nation.gov_approval_events = Math.max(-50,
+        (Number(nation.gov_approval_events ?? 0) + cfg.LEGISLATIVE_INACTIVITY_PENALTY));
+
+    console.log(`[LegislativeInactivity] ${nation.name}: ${ticksSinceLastBill} ticks since last bill (grace=${cfg.LEGISLATIVE_INACTIVITY_GRACE_TICKS}), applied ${cfg.LEGISLATIVE_INACTIVITY_PENALTY} to events`);
+    return { ticksSinceLastBill, penalty: cfg.LEGISLATIVE_INACTIVITY_PENALTY };
+}
+
 async function processOngoingCosts(supabase, nation, currentTick) {
     const { data: activeLaws } = await supabase
         .from('active_laws')
@@ -17059,6 +17124,13 @@ async function advanceTick(supabase) {
         if (ministerApprovalResults.length > 0) {
             summary.ministerApprovals = summary.ministerApprovals || [];
             summary.ministerApprovals.push({ nation: nation.name, results: ministerApprovalResults });
+        }
+
+        // Legislative inactivity: penalize gov_approval_events when no bills passed recently
+        const inactivityResult = await processLegislativeInactivity(supabase, nation, newTick, shutdownNow);
+        if (inactivityResult) {
+            summary.legislativeInactivity = summary.legislativeInactivity || [];
+            summary.legislativeInactivity.push({ nation: nation.name, ...inactivityResult });
         }
 
         // Decay gov_approval_events by 10% per tick (transient shocks fade naturally)
