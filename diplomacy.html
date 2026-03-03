@@ -806,12 +806,25 @@ async function withdrawTradeAgreement(agreementId) {
     if (!ta) { alert('Could not load agreement.'); return; }
 
     const noticeTicks = ta.withdrawal_notice_ticks || 3;
-    const relPenalty = noticeTicks <= 1 ? 5 : noticeTicks <= 3 ? 3 : 1;
+    const articles = ta.articles || [];
 
-    if (!confirm('Withdraw from "' + (ta.agreement_name || 'trade agreement') + '"?\n\n' +
-        'Notice period: ' + noticeTicks + ' ticks\n' +
-        'Relations penalty: -' + relPenalty)) return;
+    // Check for negotiated breach_penalty article
+    const breachArt = articles.find(a => a.type === 'breach_penalty');
+    const breachData = breachArt ? breachArt.data : null;
 
+    // Use negotiated penalties if available, otherwise fall back to generic formula
+    const relPenalty = breachData ? (breachData.relations_penalty || 0) : (noticeTicks <= 1 ? 5 : noticeTicks <= 3 ? 3 : 1);
+    const financialPenalty = breachData ? (breachData.financial_penalty || 0) : 0;
+
+    let confirmMsg = 'Withdraw from "' + (ta.agreement_name || 'trade agreement') + '"?\n\n' +
+        'Notice period: ' + noticeTicks + ' ticks\n';
+    if (relPenalty > 0) confirmMsg += 'Relations penalty: -' + relPenalty + '\n';
+    if (financialPenalty > 0) confirmMsg += 'Financial penalty: $' + financialPenalty + 'M\n';
+    confirmMsg += '\nThis action cannot be undone.';
+
+    if (!confirm(confirmMsg)) return;
+
+    // Update agreement status
     await _supabase.from('trade_agreements').update({
         status: 'withdrawn',
         withdrawn_at_tick: shardTick + noticeTicks,
@@ -819,7 +832,36 @@ async function withdrawTradeAgreement(agreementId) {
         withdrawn_by_nation: currentNation.id
     }).eq('id', agreementId);
 
-    alert('Withdrawal notice filed. Agreement will terminate in ' + noticeTicks + ' ticks.');
+    // Apply breach penalties
+    const otherNationId = (ta.nation_a_id === currentNation.id) ? ta.nation_b_id : ta.nation_a_id;
+    const nA = currentNation.id < otherNationId ? currentNation.id : otherNationId;
+    const nB = currentNation.id < otherNationId ? otherNationId : currentNation.id;
+
+    // Apply relations penalty
+    if (relPenalty > 0) {
+        const { data: rel } = await _supabase.from('diplomatic_relations')
+            .select('id, relation_score')
+            .eq('nation_a_id', nA).eq('nation_b_id', nB).maybeSingle();
+        if (rel) {
+            const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) - relPenalty));
+            await _supabase.from('diplomatic_relations')
+                .update({ relation_score: newScore }).eq('id', rel.id);
+        }
+    }
+
+    // Apply financial penalty (deduct from withdrawing nation's treasury)
+    if (financialPenalty > 0) {
+        const { data: nation } = await _supabase.from('nations')
+            .select('id, treasury').eq('id', currentNation.id).single();
+        if (nation) {
+            const newTreasury = Math.max(0, (Number(nation.treasury) || 0) - financialPenalty);
+            await _supabase.from('nations')
+                .update({ treasury: newTreasury }).eq('id', currentNation.id);
+        }
+    }
+
+    alert('Withdrawal notice filed. Agreement will terminate in ' + noticeTicks + ' ticks.' +
+        (financialPenalty > 0 ? ' $' + financialPenalty + 'M deducted from treasury.' : ''));
     await renderAgreementsTab();
 }
 
@@ -4939,7 +4981,8 @@ async function saveTradeArticle(negotiationId, articleType) {
             const direction = document.querySelector('input[name="supply-dir"]:checked')?.value || 'we_buy';
             const pct = parseInt(document.getElementById('supply-pct')?.value || '60');
             if (!sector) { alert('Please select a resource.'); return; }
-            articleData = { sector: sector, direction: direction, commitment_pct: pct };
+            // Store author_nation_id so the trade engine can resolve "we" to a specific nation
+            articleData = { sector: sector, direction: direction, commitment_pct: pct, author_nation_id: currentNation.id };
             break;
         }
         case 'price_terms': {

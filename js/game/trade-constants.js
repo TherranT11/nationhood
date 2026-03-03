@@ -625,6 +625,74 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
+    // ── Step 4b: Fetch active Resource Supply Contracts and pre-allocate guaranteed volumes ──
+    var { data: activeRSCs } = await supabase.from('trade_agreements')
+        .select('id, nation_a_id, nation_b_id, articles')
+        .eq('status', 'active')
+        .eq('agreement_type', 'resource_supply');
+
+    var rscPreAllocations = [];
+    if (activeRSCs && activeRSCs.length > 0) {
+        for (var ri = 0; ri < activeRSCs.length; ri++) {
+            var rsc = activeRSCs[ri];
+            var arts = rsc.articles || [];
+
+            // Find supply_commitment and price_terms articles
+            var supplyArt = null;
+            var priceArt = null;
+            for (var ai = 0; ai < arts.length; ai++) {
+                if (arts[ai].type === 'supply_commitment') supplyArt = arts[ai].data;
+                if (arts[ai].type === 'price_terms') priceArt = arts[ai].data;
+            }
+
+            if (!supplyArt || !supplyArt.sector || !supplyArt.commitment_pct) continue;
+
+            // Resolve buyer/seller from direction + author_nation_id
+            var authorNationId = supplyArt.author_nation_id || rsc.nation_a_id;
+            var otherNationId = (authorNationId === rsc.nation_a_id) ? rsc.nation_b_id : rsc.nation_a_id;
+            var buyerNationId, sellerNationId;
+            if (supplyArt.direction === 'we_buy') {
+                buyerNationId = authorNationId;
+                sellerNationId = otherNationId;
+            } else {
+                sellerNationId = authorNationId;
+                buyerNationId = otherNationId;
+            }
+
+            // Calculate guaranteed volume from seller's export capacity
+            var sellerFlows = nationFlows[sellerNationId];
+            var buyerFlows = nationFlows[buyerNationId];
+            if (!sellerFlows || !buyerFlows) continue;
+
+            var sellerExport = (sellerFlows[supplyArt.sector] && sellerFlows[supplyArt.sector].exportCapacity) || 0;
+            var buyerDemand = (buyerFlows[supplyArt.sector] && buyerFlows[supplyArt.sector].importDemand) || 0;
+            if (sellerExport <= 0 || buyerDemand <= 0) continue;
+
+            var guaranteedVolume = Math.round(sellerExport * (supplyArt.commitment_pct / 100));
+            guaranteedVolume = Math.min(guaranteedVolume, buyerDemand);
+
+            // Apply price modifier based on price_terms article
+            var sectorPriceMod = priceModifiers[supplyArt.sector] || 1.0;
+            var rscPriceMod = sectorPriceMod;
+            if (priceArt) {
+                if (priceArt.price_type === 'fixed') rscPriceMod = 1.0;
+                else if (priceArt.price_type === 'discounted') rscPriceMod = sectorPriceMod * (1 - (priceArt.modifier_pct || 0) / 100);
+                else if (priceArt.price_type === 'premium') rscPriceMod = sectorPriceMod * (1 + (priceArt.modifier_pct || 0) / 100);
+            }
+
+            var adjustedVolume = Math.round(guaranteedVolume * rscPriceMod);
+            if (adjustedVolume <= 0) continue;
+
+            rscPreAllocations.push({
+                sellerNationId: sellerNationId,
+                buyerNationId: buyerNationId,
+                sector: supplyArt.sector,
+                volume: adjustedVolume,
+                agreementId: rsc.id
+            });
+        }
+    }
+
     // ── Step 5: Distribute trade — for each exporter×sector, match to importers ──
     // Track actual volumes: actualExports[nationId][sector], actualImports[nationId][sector]
     var actualExports = {};
@@ -640,6 +708,24 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
 
     var partnerRows = [];
 
+    // Pre-allocate RSC guaranteed volumes before normal distribution
+    for (var ri = 0; ri < rscPreAllocations.length; ri++) {
+        var rscAlloc = rscPreAllocations[ri];
+        if (actualExports[rscAlloc.sellerNationId] && actualImports[rscAlloc.buyerNationId]) {
+            actualExports[rscAlloc.sellerNationId][rscAlloc.sector] += rscAlloc.volume;
+            actualImports[rscAlloc.buyerNationId][rscAlloc.sector] += rscAlloc.volume;
+
+            partnerRows.push({
+                tick: currentTick,
+                exporter_nation_id: rscAlloc.sellerNationId,
+                importer_nation_id: rscAlloc.buyerNationId,
+                sector: rscAlloc.sector,
+                trade_volume: rscAlloc.volume,
+                affinity_score: affinityMap[rscAlloc.sellerNationId + '|' + rscAlloc.buyerNationId] || 0
+            });
+        }
+    }
+
     for (var si = 0; si < sectors.length; si++) {
         var sector = sectors[si];
         var priceMod = priceModifiers[sector.key];
@@ -649,8 +735,12 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
             var expCap = nationFlows[exporter.id][sector.key].exportCapacity;
             if (expCap <= 0) continue;
 
-            // Apply price modifier to export capacity
-            var adjustedCapacity = Math.round(expCap * priceMod);
+            // Subtract RSC pre-allocated exports from remaining capacity
+            var remainingExpCap = expCap - (actualExports[exporter.id][sector.key] || 0);
+            if (remainingExpCap <= 0) continue;
+
+            // Apply price modifier to remaining export capacity
+            var adjustedCapacity = Math.round(remainingExpCap * priceMod);
 
             // Build importer list for this exporter (everyone else with demand > 0)
             var importerList = [];
@@ -796,7 +886,8 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
 
     console.log('[processTradeFlows] tick ' + currentTick + ': ' + nationCount + ' nations, ' +
         flowRows.length + ' flow rows, ' + partnerRows.length + ' partner rows, ' +
-        'total volume $' + Math.round(totalGlobalVolume).toLocaleString());
+        'total volume $' + Math.round(totalGlobalVolume).toLocaleString() +
+        (rscPreAllocations.length > 0 ? ', ' + rscPreAllocations.length + ' RSC pre-allocations' : ''));
 
     return { processed: nationCount, totalVolume: totalGlobalVolume };
 }
