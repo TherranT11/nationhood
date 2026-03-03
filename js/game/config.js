@@ -41,6 +41,19 @@ export const GAME_CONFIG = {
     BUDGET_BILL_VOTING_TICKS: null,   // budget bills persist until passed (never expire) — used for early resolution grace
     BUDGET_BILL_MAX_FLOOR_TICKS: 4,   // budget bills auto-resolve after 4 ticks on the floor (forced vote)
     NO_BUDGET_PENALTY_TICKS: 24,     // how many ticks without a budget before max penalty
+    // Impeachment (Presidential systems only)
+    IMPEACHMENT_AP_COST: 7,
+    IMPEACHMENT_COMMITTEE_TICKS: 2,        // debate period before floor vote
+    IMPEACHMENT_MOTION_VOTING_TICKS: 6,    // floor vote window for impeachment motion
+    IMPEACHMENT_TRIAL_TICKS: 3,            // trial period (conviction vote window)
+    IMPEACHMENT_MOTION_COOLDOWN_TICKS: 10, // cooldown after failed motion
+    IMPEACHMENT_ACQUITTAL_COOLDOWN_TICKS: 20, // cooldown after acquittal
+    IMPEACHMENT_EMERGENCY_ELECTION_TICKS: 6,  // ticks until emergency presidential election
+    // Charge precondition thresholds
+    IMPEACHMENT_CORRUPTION_THRESHOLD: 40,     // corruption stat >= this for corruption charge
+    IMPEACHMENT_INCOMPETENCE_THRESHOLD: 25,   // gov_approval <= this for incompetence charge
+    IMPEACHMENT_INCOMPETENCE_TICKS: 6,        // consecutive ticks below threshold
+    IMPEACHMENT_VETO_ABUSE_COUNT: 2,          // vetoed bills with >66% support
 };
 /**
  * Update GAME_CONFIG with nation-specific seat values.

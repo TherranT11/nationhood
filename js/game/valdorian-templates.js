@@ -213,6 +213,7 @@ export const EVENT_TYPES = {
     coalition_formed:   { section: 'politics', tier: 2, label: 'Coalition Formed' },
     coalition_collapsed:{ section: 'politics', tier: 1, label: 'Coalition Collapsed' },
     no_confidence:      { section: 'politics', tier: 1, label: 'No-Confidence' },
+    impeachment:        { section: 'politics', tier: 1, label: 'Impeachment' },
     endorsement:        { section: 'politics', tier: 2, label: 'Endorsement Deal' },
     voter_outreach:     { section: 'politics', tier: 3, label: 'Voter Outreach' },
     fundraiser:         { section: 'politics', tier: 2, label: 'Fundraiser' },
@@ -336,6 +337,18 @@ export const HEADLINE_TEMPLATES = {
         { id: 'noc_h_03', template: "{pm_name} Survives No-Confidence Vote", conditions: [{ field: 'status', op: '==', value: 'failed' }], weight: 2 },
         { id: 'noc_h_04', template: "Parliament Turns on {pm_name} — No-Confidence Succeeds {vote_for}-{vote_against}", conditions: [{ field: 'status', op: '==', value: 'passed' }], weight: 2 },
         { id: 'noc_h_05', template: "{pm_name} Hangs On — No-Confidence Defeated by {margin} Votes", conditions: [{ field: 'status', op: '==', value: 'failed' }], weight: 1 },
+    ],
+
+    // ─────────── IMPEACHMENT ───────────
+    impeachment: [
+        { id: 'imp_h_01', template: "Impeachment Motion Filed Against President {president_name}", conditions: [{ field: 'status', op: '==', value: 'filed' }], weight: 1 },
+        { id: 'imp_h_02', template: "Legislature Votes to Impeach President {president_name}", conditions: [{ field: 'status', op: '==', value: 'impeached' }], weight: 3 },
+        { id: 'imp_h_03', template: "Impeachment Motion Fails — President {president_name} Vindicated", conditions: [{ field: 'status', op: '==', value: 'motion_failed' }], weight: 2 },
+        { id: 'imp_h_04', template: "President {president_name} Convicted and Removed From Office", conditions: [{ field: 'status', op: '==', value: 'convicted' }], weight: 3 },
+        { id: 'imp_h_05', template: "President {president_name} Acquitted — Survives Impeachment Trial", conditions: [{ field: 'status', op: '==', value: 'acquitted' }], weight: 2 },
+        { id: 'imp_h_06', template: "Charges Filed: {charges} — Impeachment Proceedings Begin", conditions: [{ field: 'status', op: '==', value: 'filed' }], weight: 2 },
+        { id: 'imp_h_07', template: "Historic Vote: {president_name} Impeached {vote_for}-{vote_against}", conditions: [{ field: 'status', op: '==', value: 'impeached' }], weight: 2 },
+        { id: 'imp_h_08', template: "VP {vp_name} Sworn In as Acting President After {president_name} Removed", conditions: [{ field: 'status', op: '==', value: 'convicted' }], weight: 2 },
     ],
 
     // ─────────── ENDORSEMENT ───────────

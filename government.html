@@ -693,6 +693,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                 <div class="coalition-parties">
                     <div class="coalition-party-tag" style="border-left:3px solid ${getPartyColorById(presidentFactionId)};padding-left:8px;">${getPartyLogoById(presidentFactionId) ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(getPartyLogoById(presidentFactionId), 16, getPartyColorById(presidentFactionId))}</span>` : ''}${escapeHtml(presPartyName)}<span class="seats">${presPartySeats} Seats</span></div>
                 </div>
+                ${renderImpeachmentButton()}
             </div>`;
     }
 
@@ -2151,6 +2152,255 @@ async function fileNoConfidence() {
         alert('Error: ' + e.message);
     }
 }
+
+// ==================== IMPEACH PRESIDENT ====================
+
+function renderImpeachmentButton() {
+    // Only presidential systems, only non-autocracy, only if we have a faction
+    if (!currentFaction || isAutocracy || !isPresidential) return '';
+    if (!presidentData) return '';
+
+    // President's own party cannot file impeachment
+    if (isPresidentParty) return '';
+
+    const mySeats = allPartySeats[currentFaction.id] || currentFaction.seats || 0;
+    if (mySeats < 1) {
+        return `
+            <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
+                <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" disabled>
+                    ⚖ Impeach President
+                </button>
+                <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">Need at least 1 seat in the legislature.</div>
+            </div>`;
+    }
+
+    return `
+        <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
+            <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="fileImpeachment()" id="impeach-btn">
+                ⚖ Impeach President <span class="ap-cost">${GAME_CONFIG.IMPEACHMENT_AP_COST} AP</span>
+            </button>
+            <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">File articles of impeachment against the President</div>
+        </div>`;
+}
+
+async function fileImpeachment() {
+    if (!currentFaction || !currentNation || !presidentData) return;
+
+    // Must have at least 1 seat
+    const mySeatsCheck = allPartySeats[currentFaction.id] || currentFaction.seats || 0;
+    if (mySeatsCheck < 1) {
+        alert('Need at least 1 seat in the legislature to file impeachment.');
+        return;
+    }
+
+    // Cannot impeach if you are the president's party
+    if (isPresidentParty) {
+        alert('The president\'s own party cannot file impeachment.');
+        return;
+    }
+
+    // AP check
+    if ((currentFaction.action_points || 0) < GAME_CONFIG.IMPEACHMENT_AP_COST) {
+        alert(`Not enough AP. You need ${GAME_CONFIG.IMPEACHMENT_AP_COST} AP (you have ${currentFaction.action_points || 0}).`);
+        return;
+    }
+
+    // Check: no existing active impeachment proceeding
+    const { data: existingProceeding } = await _supabase
+        .from('impeachment_proceedings')
+        .select('id')
+        .eq('nation_id', currentNation.id)
+        .neq('phase', 'resolved')
+        .limit(1)
+        .maybeSingle();
+
+    if (existingProceeding) {
+        alert('An impeachment proceeding is already active.');
+        return;
+    }
+
+    // Check: nation-level cooldown
+    if (currentNation.impeachment_cooldown_until_tick && currentTick < currentNation.impeachment_cooldown_until_tick) {
+        const remaining = currentNation.impeachment_cooldown_until_tick - currentTick;
+        alert(`Impeachment cooldown: ${remaining} tick${remaining !== 1 ? 's' : ''} remaining.`);
+        return;
+    }
+
+    // Build charge options with precondition checks
+    const charges = [];
+
+    // 1. Abuse of Power — always available
+    charges.push({ type: 'abuse_of_power', label: 'Abuse of Power', available: true, reason: '' });
+
+    // 2. Corruption — requires corruption stat >= threshold
+    const corruptionStat = currentNation.corruption ?? 0;
+    const corruptionAvail = corruptionStat >= GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD;
+    charges.push({
+        type: 'corruption',
+        label: 'Corruption',
+        available: corruptionAvail,
+        reason: corruptionAvail ? '' : `Requires corruption ≥ ${GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD} (currently ${corruptionStat})`
+    });
+
+    // 3. Incompetence — requires gov_approval <= threshold for consecutive ticks
+    // Simplified: check current approval as proxy
+    const govApproval = currentNation.gov_approval ?? 50;
+    const incompAvail = govApproval <= GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD;
+    charges.push({
+        type: 'incompetence',
+        label: 'Gross Incompetence',
+        available: incompAvail,
+        reason: incompAvail ? '' : `Requires gov approval ≤ ${GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD} (currently ${Math.round(govApproval)})`
+    });
+
+    // 4. Constitutional Violation — always available
+    charges.push({ type: 'constitutional_violation', label: 'Constitutional Violation', available: true, reason: '' });
+
+    // 5. Criminal Conduct — always available
+    charges.push({ type: 'criminal_conduct', label: 'Criminal Conduct', available: true, reason: '' });
+
+    // Build charge selection HTML
+    const chargeCheckboxes = charges.map((c, i) => {
+        const disabled = !c.available ? 'disabled' : '';
+        const opacity = !c.available ? 'opacity:0.4;' : '';
+        const tooltip = c.reason ? ` title="${c.reason}"` : '';
+        return `<label style="display:block;margin:8px 0;${opacity}"${tooltip}>
+            <input type="checkbox" name="impeach-charge" value="${c.type}" ${disabled} style="margin-right:8px;">
+            <strong>${c.label}</strong>${c.reason ? ` <span style="font-size:0.7rem;color:#888;">(${c.reason})</span>` : ''}
+        </label>`;
+    }).join('');
+
+    // Show charge selection modal via a custom confirm-like approach
+    // Create a modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:10000;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+        <div style="background:#1e1e1e;border:1px solid #444;border-radius:12px;padding:24px;max-width:440px;width:90%;max-height:80vh;overflow-y:auto;">
+            <div style="font-size:1.1rem;font-weight:bold;color:#ff4444;margin-bottom:4px;">⚖ IMPEACH PRESIDENT</div>
+            <div style="font-size:0.85rem;color:#aaa;margin-bottom:16px;">
+                President ${escapeHtml(presidentData.first_name)} ${escapeHtml(presidentData.last_name)}
+            </div>
+            <div style="font-size:0.8rem;color:#ccc;margin-bottom:12px;">Select at least one charge:</div>
+            <div id="impeach-charges-list">${chargeCheckboxes}</div>
+            <div style="margin-top:16px;padding-top:12px;border-top:1px solid #333;font-size:0.75rem;color:#888;line-height:1.5;">
+                <div>Cost: <strong style="color:#ffcc00;">${GAME_CONFIG.IMPEACHMENT_AP_COST} AP</strong></div>
+                <div>Committee debate: ${GAME_CONFIG.IMPEACHMENT_COMMITTEE_TICKS} ticks → Floor vote: ${GAME_CONFIG.IMPEACHMENT_MOTION_VOTING_TICKS} ticks</div>
+                <div>Requires <strong style="color:#4CAF50;">simple majority</strong> (50%+1 of all seats) to impeach</div>
+                <div style="margin-top:6px;">If impeached → Trial: ${GAME_CONFIG.IMPEACHMENT_TRIAL_TICKS}-tick conviction vote (⅔ supermajority)</div>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:20px;">
+                <button id="impeach-cancel-btn" style="flex:1;padding:10px;background:#333;color:#ccc;border:1px solid #555;border-radius:6px;cursor:pointer;font-size:0.85rem;">Cancel</button>
+                <button id="impeach-confirm-btn" style="flex:1;padding:10px;background:#B71C1C;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.85rem;font-weight:bold;">File Impeachment</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    // Wait for user decision
+    const result = await new Promise(resolve => {
+        overlay.querySelector('#impeach-cancel-btn').addEventListener('click', () => resolve(null));
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) resolve(null); });
+        overlay.querySelector('#impeach-confirm-btn').addEventListener('click', () => {
+            const checked = [...overlay.querySelectorAll('input[name="impeach-charge"]:checked')].map(cb => cb.value);
+            if (checked.length === 0) { alert('Select at least one charge.'); return; }
+            resolve(checked);
+        });
+    });
+
+    overlay.remove();
+    if (!result) return;
+
+    // Build charges array
+    const selectedCharges = result.map(type => {
+        const c = charges.find(ch => ch.type === type);
+        return { type, label: c.label };
+    });
+
+    const presName = `${presidentData.first_name} ${presidentData.last_name}`;
+    const motionName = `Articles of Impeachment Against President ${presName}`;
+
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shard?.current_tick || 0;
+
+        // Create the impeachment proceeding record
+        const { data: proceeding, error: procError } = await _supabase.from('impeachment_proceedings').insert({
+            nation_id: currentNation.id,
+            president_id: presidentData.id,
+            initiated_by_faction_id: currentFaction.id,
+            charges: selectedCharges,
+            phase: 'motion_committee',
+            created_at_tick: tick
+        }).select().single();
+
+        if (procError) throw procError;
+
+        // Create the impeachment motion bill — goes to committee first
+        const chargesList = selectedCharges.map(c => c.label).join(', ');
+        const { data: bill, error: billError } = await _supabase.from('bills').insert({
+            nation_id: currentNation.id,
+            proposed_by: currentFaction.id,
+            proposed_tick: tick,
+            bill_name: motionName,
+            bill_type: 'impeachment_motion',
+            status: 'committee',
+            impeachment_id: proceeding.id,
+            preamble: `This motion, filed by the ${currentFaction.faction_name}, calls for the impeachment of President ${presName} on the following charges: ${chargesList}. After ${GAME_CONFIG.IMPEACHMENT_COMMITTEE_TICKS} ticks of committee debate, the motion will proceed to a floor vote requiring an absolute majority (${GAME_CONFIG.MAJORITY_SEATS} of ${GAME_CONFIG.TOTAL_SEATS} seats) to pass.`
+        }).select().single();
+
+        if (billError) throw billError;
+
+        // Link the bill back to the proceeding
+        await _supabase.from('impeachment_proceedings')
+            .update({ motion_bill_id: bill.id })
+            .eq('id', proceeding.id);
+
+        // Race-condition guard: check for concurrent impeachment proceedings
+        const { count: procCount } = await _supabase.from('impeachment_proceedings')
+            .select('id', { count: 'exact', head: true })
+            .eq('nation_id', currentNation.id)
+            .neq('phase', 'resolved');
+        if (procCount > 1) {
+            // Another proceeding was created concurrently — delete ours
+            await _supabase.from('bills').delete().eq('id', bill.id);
+            await _supabase.from('impeachment_proceedings').delete().eq('id', proceeding.id);
+            alert('Another impeachment proceeding was just filed. Please refresh.');
+            return;
+        }
+
+        // Deduct AP after bill creation succeeds
+        const apResult = await deductAP(_supabase, currentFaction.id, GAME_CONFIG.IMPEACHMENT_AP_COST);
+        if (!apResult.success) { alert(`Not enough AP. You need ${GAME_CONFIG.IMPEACHMENT_AP_COST} AP.`); return; }
+        currentFaction.action_points = apResult.newAp;
+
+        // Auto-cast the filer's own vote as YES
+        const seatData = await loadSeats(_supabase, currentNation.id, false, allParties, currentFaction.id);
+        const mySeats = seatData.allPartySeats[currentFaction.id] || 0;
+        await _supabase.from('bill_support').upsert({
+            bill_id: bill.id,
+            faction_id: currentFaction.id,
+            stance: 'yes',
+            seat_count: mySeats
+        }, { onConflict: 'bill_id,faction_id' });
+
+        // Fire event for news
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation.id,
+            event_type: 'impeachment',
+            headline: `Impeachment Motion Filed Against President ${presName}`,
+            body: `The ${currentFaction.faction_name} has filed articles of impeachment against President ${presName}. Charges: ${chargesList}. A ${GAME_CONFIG.IMPEACHMENT_COMMITTEE_TICKS}-tick committee debate will precede the floor vote.`,
+            metadata: { status: 'filed', president_name: presName, charges: chargesList, filer: currentFaction.faction_name },
+            tick: tick
+        });
+
+        alert(`⚖ "${motionName}" has been filed!\n\n${GAME_CONFIG.IMPEACHMENT_COMMITTEE_TICKS}-tick committee debate begins now. The motion will then proceed to a floor vote.`);
+        window.location.href = `bill.html?id=${bill.id}`;
+    } catch (e) {
+        console.error('Impeachment error:', e);
+        alert('Error: ' + e.message);
+    }
+}
+
+window.fileImpeachment = fileImpeachment;
 
 // ==================== CALL EARLY ELECTIONS ====================
 
