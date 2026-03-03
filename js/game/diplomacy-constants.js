@@ -25,8 +25,16 @@ export const DIPLOMACY_CONFIG = {
     // Timing
     FM_REVIEW_EXPIRY_TICKS: 3,
     ULTIMATUM_DEADLINE_TICKS: 3,
-    STATE_VISIT_ACCEPT_WINDOW: 2,
-    STATE_VISIT_COOLDOWN: 6,
+    STATE_VISIT_AP: 4,
+    STATE_VISIT_ACCEPT_WINDOW: 3,
+    STATE_VISIT_COOLDOWN: 30,
+    STATE_VISIT_REP_BOOST: 3,
+    STATE_VISIT_STABILITY_BOOST: 2,
+    STATE_VISIT_RELATION_BOOST: 7,
+    STATE_VISIT_TRADE_BONUS: 5,         // +5 trade_balance if active trade agreement
+    STATE_VISIT_IO_REP_BONUS: 3,        // +3 int'l rep if shared IO membership (future)
+    STATE_VISIT_HIGH_REL_GDP_BONUS: 5,  // +5 gdp_growth if relations > 70
+    STATE_VISIT_FIRST_STABILITY: 1,     // +1 stability for first-ever visit
     TREATY_RATIFICATION_VOTING_TICKS: 6,
     AMBASSADOR_CONFIRMATION_VOTING_TICKS: 6,
     AMBASSADOR_TERM_LENGTH: 60,         // ticks (60 ticks = 5 years)

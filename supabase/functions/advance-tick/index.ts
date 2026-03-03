@@ -1039,8 +1039,16 @@ const DIPLOMACY_CONFIG = {
     // Timing
     FM_REVIEW_EXPIRY_TICKS: 3,
     ULTIMATUM_DEADLINE_TICKS: 3,
-    STATE_VISIT_ACCEPT_WINDOW: 2,
-    STATE_VISIT_COOLDOWN: 6,
+    STATE_VISIT_AP: 4,
+    STATE_VISIT_ACCEPT_WINDOW: 3,
+    STATE_VISIT_COOLDOWN: 30,
+    STATE_VISIT_REP_BOOST: 3,
+    STATE_VISIT_STABILITY_BOOST: 2,
+    STATE_VISIT_RELATION_BOOST: 7,
+    STATE_VISIT_TRADE_BONUS: 5,         // +5 trade_balance if active trade agreement
+    STATE_VISIT_IO_REP_BONUS: 3,        // +3 int'l rep if shared IO membership (future)
+    STATE_VISIT_HIGH_REL_GDP_BONUS: 5,  // +5 gdp_growth if relations > 70
+    STATE_VISIT_FIRST_STABILITY: 1,     // +1 stability for first-ever visit
     TREATY_RATIFICATION_VOTING_TICKS: 6,
     AMBASSADOR_CONFIRMATION_VOTING_TICKS: 6,
     AMBASSADOR_TERM_LENGTH: 60,         // ticks (60 ticks = 5 years)
@@ -16462,6 +16470,23 @@ async function advanceTick(supabase) {
         }
     } catch (expErr) {
         console.error('[advanceTick] Agreement expiration check failed (non-fatal):', expErr);
+    }
+
+    // 3.7 Expire pending state visit proposals past their accept window
+    try {
+        const { data: expiredVisits, error: svErr } = await supabase
+            .from('diplomatic_proposals')
+            .update({ status: 'expired' })
+            .eq('proposal_type', 'state_visit')
+            .eq('status', 'proposed')
+            .lte('fm_review_expires_tick', newTick)
+            .select('id');
+        if (!svErr && expiredVisits && expiredVisits.length > 0) {
+            summary.expiredStateVisits = expiredVisits.length;
+            console.log(`[advanceTick] Expired ${expiredVisits.length} state visit proposal(s)`);
+        }
+    } catch (svExpErr) {
+        console.error('[advanceTick] State visit expiration check failed (non-fatal):', svExpErr);
     }
 
     // 4. Process each nation
