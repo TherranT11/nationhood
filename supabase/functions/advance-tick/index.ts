@@ -2361,7 +2361,7 @@ const DECAY_SPEED = { CRAWL: 0.25, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 }
  */
 const STAT_DECAY_CONFIG = {
     // ── Equilibrium (drift back to midpoint) ──
-    inflation:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    inflation:           { type: 'equilibrium', target: 28, speed: DECAY_SPEED.CRAWL },
     interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
@@ -2939,12 +2939,12 @@ const FISCAL_TO_MINISTRY_KEY = {
 
 /**
  * Compute inflation cost multiplier from the 0-100 inflation stat.
- * Inflation stat 50 = 0% increase, 100 = +25% increase, 0 = -25% increase.
- * Applied as (inflation - 50) / 2 percent increase per budget cycle.
- * e.g. inflation=56 → costs increase by 3%
+ * Inflation scale: 20 = 0% (stable prices), 0 = deflation, 100 = hyperinflation.
+ * Rate = (inflation - 20) * 0.5, applied as percentage cost adjustment.
+ * e.g. inflation=40 → rate = +10% → multiplier = 1.10
  */
 function getInflationMultiplier(inflationStat) {
-    const pct = (Number(inflationStat || 50) - 50) / 2;
+    const pct = (Number(inflationStat || 20) - 20) * 0.5;
     return 1 + (pct / 100);
 }
 
