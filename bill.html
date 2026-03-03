@@ -229,7 +229,7 @@ let selectedStrikeArticleId = null;
 let editingArticleId = null;
 let sponsorSelectedPolicy = null;
 let selectedRepealLaw = null; // Active law selected for repeal article
-const SPECIAL_BILL_TYPES = ['no_confidence', 'confirmation', 'minister_confirmation', 'veto_override', 'repeal', 'budget'];
+const SPECIAL_BILL_TYPES = ['no_confidence', 'confirmation', 'minister_confirmation', 'veto_override', 'repeal', 'budget', 'impeachment_motion', 'impeachment_conviction'];
 
 const urlParams = new URLSearchParams(window.location.search);
 const billId = urlParams.get('id');
@@ -398,6 +398,10 @@ function renderBill() {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#1B5E20;">Budget</span>';
     } else if (bill.bill_type === 'ratification') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#0288D1;">🌐 Ratification</span>';
+    } else if (bill.bill_type === 'impeachment_motion') {
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#D32F2F;">⚖ Impeachment</span>';
+    } else if (bill.bill_type === 'impeachment_conviction') {
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#B71C1C;">⚖ Impeachment Trial</span>';
     }
     if (isFrozen) {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:#ff9800;color:#000;">FROZEN</span>';
@@ -653,6 +657,50 @@ function renderArticles() {
                     'Requires <strong style="color:#4CAF50;">simple majority</strong> (YES votes > NO votes) to pass.<br>' +
                     'If passed: coalition dissolved, PM removed, all ministries vacated.<br>' +
                     'If failed: filer loses 5 approval, PM gains 3 approval, ' + GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS + '-tick cooldown.' +
+                '</div>' +
+            '</div>';
+        document.getElementById('total-upfront').textContent = '$0M';
+        document.getElementById('total-ongoing').textContent = '$0M/mo';
+        return;
+    }
+
+    // Impeachment motion bills show a special notice
+    if (bill.bill_type === 'impeachment_motion') {
+        document.getElementById('bill-articles').innerHTML =
+            '<div class="article preamble" style="border-left-color:#D32F2F;">' +
+                '<div class="article-number" style="color:#D32F2F;">MOTION</div>' +
+                '<div class="article-title">Articles of Impeachment</div>' +
+                '<div class="article-description">' + (bill.preamble || 'This motion calls for the impeachment of the President.') + '</div>' +
+            '</div>' +
+            '<div class="repeal-notice" style="border-color:#D32F2F;">' +
+                '<div class="repeal-notice-icon">⚖</div>' +
+                '<div class="repeal-notice-text">This is an impeachment motion</div>' +
+                '<div class="repeal-notice-sub" style="color:#aaa;line-height:1.6;">' +
+                    'Requires <strong style="color:#4CAF50;">absolute majority</strong> (' + GAME_CONFIG.MAJORITY_SEATS + ' of ' + GAME_CONFIG.TOTAL_SEATS + ' seats) to impeach.<br>' +
+                    'If passed: President impeached, proceeds to conviction trial (⅔ supermajority).<br>' +
+                    'If failed: filer loses 5 approval, president gains 3 approval, ' + GAME_CONFIG.IMPEACHMENT_MOTION_COOLDOWN_TICKS + '-tick cooldown.' +
+                '</div>' +
+            '</div>';
+        document.getElementById('total-upfront').textContent = '$0M';
+        document.getElementById('total-ongoing').textContent = '$0M/mo';
+        return;
+    }
+
+    // Impeachment conviction/trial bills show a special notice
+    if (bill.bill_type === 'impeachment_conviction') {
+        document.getElementById('bill-articles').innerHTML =
+            '<div class="article preamble" style="border-left-color:#B71C1C;">' +
+                '<div class="article-number" style="color:#B71C1C;">TRIAL</div>' +
+                '<div class="article-title">Impeachment Conviction Vote</div>' +
+                '<div class="article-description">' + (bill.preamble || 'The legislature votes on whether to convict and remove the President from office.') + '</div>' +
+            '</div>' +
+            '<div class="repeal-notice" style="border-color:#B71C1C;">' +
+                '<div class="repeal-notice-icon">⚖</div>' +
+                '<div class="repeal-notice-text">This is an impeachment trial</div>' +
+                '<div class="repeal-notice-sub" style="color:#aaa;line-height:1.6;">' +
+                    'Requires <strong style="color:#ff4444;">⅔ supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' of ' + GAME_CONFIG.TOTAL_SEATS + ' seats) to convict.<br>' +
+                    'If convicted: President removed from office, VP succeeds, emergency election scheduled.<br>' +
+                    'If acquitted: President restored, acquittal voters lose 2 approval, ' + GAME_CONFIG.IMPEACHMENT_ACQUITTAL_COOLDOWN_TICKS + '-tick cooldown.' +
                 '</div>' +
             '</div>';
         document.getElementById('total-upfront').textContent = '$0M';
@@ -1557,7 +1605,7 @@ function renderSidebar() {
                 <div>
                     <span class="party-vote-name">${party.faction_name}</span>
                     <span class="party-vote-seats">(${seats})</span>
-                    ${isSp ? ` <span style="color:#ffcc00;font-size:0.7rem;">★ ${currentBill.bill_type === 'no_confidence' ? 'FILER' : 'SPONSOR'}</span>` : ''}
+                    ${isSp ? ` <span style="color:#ffcc00;font-size:0.7rem;">★ ${(currentBill.bill_type === 'no_confidence' || currentBill.bill_type === 'impeachment_motion' || currentBill.bill_type === 'impeachment_conviction') ? 'FILER' : 'SPONSOR'}</span>` : ''}
                 </div>
                 ${vote ? `<span class="support-status ${stanceClass}">${stanceLabel}</span>` : `<span class="party-vote-no-vote">${stanceLabel}${quorumHint}</span>`}
             </div>`;

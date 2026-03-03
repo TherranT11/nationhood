@@ -1597,6 +1597,176 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
             }
+        } else if (bill.bill_type === 'impeachment_motion' && bill.impeachment_id) {
+            // ── Impeachment Motion (Phase 1) ──
+            if (passed) {
+                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+                // Update proceeding: motion passed, president is impeached
+                await supabase.from('impeachment_proceedings').update({
+                    phase: 'trial',
+                    motion_result: 'passed'
+                }).eq('id', bill.impeachment_id);
+
+                // Immediate -15 gov_approval hit on president for being impeached
+                const { data: proceedingData } = await supabase.from('impeachment_proceedings')
+                    .select('president_id').eq('id', bill.impeachment_id).single();
+                if (proceedingData) {
+                    const { data: presidentRow } = await supabase.from('presidents')
+                        .select('faction_id').eq('id', proceedingData.president_id).single();
+                    if (presidentRow) {
+                        await adjustMomentumAll(supabase, bill.nation_id, presidentRow.faction_id, -15, 'impeachment:impeached');
+                    }
+                }
+
+                // Create conviction bill (Phase 2) — goes directly to floor with trial-length voting window
+                const { data: convictionBill } = await supabase.from('bills').insert({
+                    nation_id: bill.nation_id,
+                    proposed_by: bill.proposed_by,
+                    proposed_tick: currentTick,
+                    bill_name: bill.bill_name.replace('Impeachment of', 'Conviction of'),
+                    bill_type: 'impeachment_conviction',
+                    status: 'floor',
+                    voting_ends_tick: currentTick + GAME_CONFIG.IMPEACHMENT_TRIAL_TICKS,
+                    impeachment_id: bill.impeachment_id,
+                    preamble: 'The President has been impeached. Parliament must now vote on removal. A 2/3 supermajority (' + Math.ceil(totalSeats * 2 / 3) + ' of ' + totalSeats + ' seats) is required for conviction and removal from office.'
+                }).select('id').single();
+
+                if (convictionBill) {
+                    await supabase.from('impeachment_proceedings').update({
+                        conviction_bill_id: convictionBill.id
+                    }).eq('id', bill.impeachment_id);
+                }
+
+                // Fire impeachment event
+                try {
+                    await supabase.from('event_log').insert({
+                        nation_id: bill.nation_id,
+                        event_name: 'PRESIDENT IMPEACHED',
+                        event_type: 'impeachment',
+                        category: 'government',
+                        description_chosen: `Parliament has voted to impeach the President. The motion passed ${votesFor} to ${votesAgainst}. A trial period begins — a 2/3 supermajority vote is required for removal.`,
+                        fired_at_tick: currentTick,
+                        effects_applied: { impeachment_id: bill.impeachment_id, votes_for: votesFor, votes_against: votesAgainst }
+                    });
+                } catch (e) { /* non-blocking */ }
+            } else {
+                await failBill(supabase, bill);
+
+                // Motion failed — apply cooldown
+                await supabase.from('impeachment_proceedings').update({
+                    phase: 'resolved',
+                    motion_result: 'failed',
+                    resolved_at_tick: currentTick
+                }).eq('id', bill.impeachment_id);
+
+                await supabase.from('nations').update({
+                    impeachment_cooldown_until_tick: currentTick + GAME_CONFIG.IMPEACHMENT_MOTION_COOLDOWN_TICKS
+                }).eq('id', bill.nation_id);
+
+                // Filer takes -5 approval (partisan overreach)
+                await adjustMomentumAll(supabase, bill.nation_id, bill.proposed_by, -5, 'impeachment:failed_motion');
+
+                // President gets +3 approval (vindication)
+                const { data: proc } = await supabase.from('impeachment_proceedings')
+                    .select('president_id').eq('id', bill.impeachment_id).single();
+                if (proc) {
+                    const { data: presRow } = await supabase.from('presidents')
+                        .select('faction_id').eq('id', proc.president_id).single();
+                    if (presRow) {
+                        await adjustMomentumAll(supabase, bill.nation_id, presRow.faction_id, 3, 'impeachment:vindicated');
+                    }
+                }
+
+                // Record in campaign_actions for cooldown tracking
+                await supabase.from('campaign_actions').insert({
+                    nation_id: bill.nation_id,
+                    party_id: bill.proposed_by,
+                    action_type: 'impeachment_failed',
+                    tick_performed: currentTick,
+                    result: { impeachment_id: bill.impeachment_id }
+                });
+
+                try {
+                    await supabase.from('event_log').insert({
+                        nation_id: bill.nation_id,
+                        event_name: 'IMPEACHMENT MOTION FAILS',
+                        event_type: 'impeachment',
+                        category: 'government',
+                        description_chosen: `The impeachment motion has failed ${votesFor} to ${votesAgainst}. The President remains in office.`,
+                        fired_at_tick: currentTick,
+                        effects_applied: { impeachment_id: bill.impeachment_id, votes_for: votesFor, votes_against: votesAgainst, cooldown_ticks: GAME_CONFIG.IMPEACHMENT_MOTION_COOLDOWN_TICKS }
+                    });
+                } catch (e) { /* non-blocking */ }
+            }
+            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'impeachment_motion', earlyResolution: bill.early_resolution_status || null });
+
+        } else if (bill.bill_type === 'impeachment_conviction' && bill.impeachment_id) {
+            // ── Impeachment Conviction (Phase 2) ──
+            if (passed) {
+                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+                // Conviction logic handled by processImpeachmentConviction in handler-template
+                // Mark proceeding as convicted — the tick handler will process removal
+                await supabase.from('impeachment_proceedings').update({
+                    phase: 'resolved',
+                    conviction_result: 'convicted',
+                    resolved_at_tick: currentTick
+                }).eq('id', bill.impeachment_id);
+            } else {
+                await failBill(supabase, bill);
+                // Acquitted — president restored, long cooldown
+                await supabase.from('impeachment_proceedings').update({
+                    phase: 'resolved',
+                    conviction_result: 'acquitted',
+                    resolved_at_tick: currentTick
+                }).eq('id', bill.impeachment_id);
+
+                await supabase.from('nations').update({
+                    impeachment_cooldown_until_tick: currentTick + GAME_CONFIG.IMPEACHMENT_ACQUITTAL_COOLDOWN_TICKS
+                }).eq('id', bill.nation_id);
+
+                // President gets +5 approval (survived trial)
+                const { data: proc } = await supabase.from('impeachment_proceedings')
+                    .select('president_id').eq('id', bill.impeachment_id).single();
+                if (proc) {
+                    const { data: presRow } = await supabase.from('presidents')
+                        .select('faction_id').eq('id', proc.president_id).single();
+                    if (presRow) {
+                        await adjustMomentumAll(supabase, bill.nation_id, presRow.faction_id, 5, 'impeachment:acquitted');
+                    }
+                }
+
+                // Stability recovers +3
+                const { data: natRow } = await supabase.from('nations').select('stability').eq('id', bill.nation_id).single();
+                if (natRow) {
+                    await supabase.from('nations').update({
+                        stability: Math.min(100, Math.round(Number(natRow.stability || 0) + 3))
+                    }).eq('id', bill.nation_id);
+                }
+
+                // Parties that voted for conviction take -2 approval
+                const yesVoters = (bill.bill_support || []).filter(s => s.stance === 'yes' || s.stance === 'accept');
+                for (const v of yesVoters) {
+                    if (v.faction_id !== bill.proposed_by) {
+                        await adjustMomentumAll(supabase, bill.nation_id, v.faction_id, -2, 'impeachment:overreach');
+                    }
+                }
+                await adjustMomentumAll(supabase, bill.nation_id, bill.proposed_by, -2, 'impeachment:overreach');
+
+                try {
+                    await supabase.from('event_log').insert({
+                        nation_id: bill.nation_id,
+                        event_name: 'PRESIDENT ACQUITTED',
+                        event_type: 'impeachment',
+                        category: 'government',
+                        description_chosen: `The President has been acquitted. The conviction vote failed ${votesFor} to ${votesAgainst} (needed ${Math.ceil(totalSeats * 2 / 3)}). Full presidential powers are restored.`,
+                        fired_at_tick: currentTick,
+                        effects_applied: { impeachment_id: bill.impeachment_id, votes_for: votesFor, votes_against: votesAgainst, cooldown_ticks: GAME_CONFIG.IMPEACHMENT_ACQUITTAL_COOLDOWN_TICKS }
+                    });
+                } catch (e) { /* non-blocking */ }
+            }
+            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'impeachment_conviction', earlyResolution: bill.early_resolution_status || null });
+
         } else if (passed) {
             // Presidential systems: route regular/repeal bills to president's desk
             if (isPresidentialRepublic(nation)) {
