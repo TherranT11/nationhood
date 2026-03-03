@@ -3216,6 +3216,49 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
     return govApproval;
 }
 
+// ==================== LAYER 2b: LEGISLATIVE INACTIVITY PENALTY ====================
+
+/**
+ * Apply a per-tick penalty to gov_approval_events when the government has not
+ * passed any bills for an extended period.
+ *
+ * After LEGISLATIVE_INACTIVITY_GRACE_TICKS (6) ticks with no legislation, each
+ * subsequent tick injects LEGISLATIVE_INACTIVITY_PENALTY (-1) into gov_approval_events. The
+ * 10% per-tick decay on events means a sustained drought converges to about -10
+ * on the event modifier — enough to meaningfully drag government approval down
+ * without being catastrophic.
+ *
+ * Skipped when:
+ *  - No government is formed (no PM)
+ *  - Nation is in government shutdown (already penalized harder)
+ *
+ * @param {object} supabase
+ * @param {object} nation - full nation row
+ * @param {number} currentTick
+ * @param {boolean} [isShutdown=false]
+ */
+export async function processLegislativeInactivity(supabase, nation, currentTick, isShutdown = false) {
+    const cfg = MINISTER_APPROVAL_CONFIG;
+
+    // Skip if no government formed or already in shutdown (which has its own penalties)
+    if (!nation.pm_party_id || isShutdown) return null;
+
+    const lastBillTick = nation.last_bill_passed_tick;
+    const ticksSinceLastBill = lastBillTick != null ? (currentTick - lastBillTick) : currentTick;
+
+    if (ticksSinceLastBill <= cfg.LEGISLATIVE_INACTIVITY_GRACE_TICKS) return null;
+
+    // Apply penalty via the event modifier system
+    await adjustGovernmentApprovalEvent(supabase, nation.id, cfg.LEGISLATIVE_INACTIVITY_PENALTY, 'legislative_inactivity');
+
+    // Update in-memory value so downstream calculations see it this tick
+    nation.gov_approval_events = Math.max(-50,
+        (Number(nation.gov_approval_events ?? 0) + cfg.LEGISLATIVE_INACTIVITY_PENALTY));
+
+    console.log(`[LegislativeInactivity] ${nation.name}: ${ticksSinceLastBill} ticks since last bill (grace=${cfg.LEGISLATIVE_INACTIVITY_GRACE_TICKS}), applied ${cfg.LEGISLATIVE_INACTIVITY_PENALTY} to events`);
+    return { ticksSinceLastBill, penalty: cfg.LEGISLATIVE_INACTIVITY_PENALTY };
+}
+
 export async function processOngoingCosts(supabase, nation, currentTick) {
     const { data: activeLaws } = await supabase
         .from('active_laws')

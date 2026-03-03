@@ -1162,6 +1162,13 @@ async function advanceTick(supabase) {
             summary.ministerApprovals.push({ nation: nation.name, results: ministerApprovalResults });
         }
 
+        // Legislative inactivity: penalize gov_approval_events when no bills passed recently
+        const inactivityResult = await processLegislativeInactivity(supabase, nation, newTick, shutdownNow);
+        if (inactivityResult) {
+            summary.legislativeInactivity = summary.legislativeInactivity || [];
+            summary.legislativeInactivity.push({ nation: nation.name, ...inactivityResult });
+        }
+
         // Decay gov_approval_events by 10% per tick (transient shocks fade naturally)
         const oldEvents = Number(nation.gov_approval_events ?? 0);
         if (Math.abs(oldEvents) > 0.01) {
