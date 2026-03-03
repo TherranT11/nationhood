@@ -171,15 +171,11 @@ const FLAG_URLS = {
     'Palvera': 'https://raw.githubusercontent.com/TherranT11/nationhood/main/assets/flags/Palvera.png'
 };
 
-// Nation wiki page URLs (encyclopedia pages)
-const WIKI_URLS = {
-    'Melizea': 'melizea.html',
-    'Avelia': 'avelia.html',
-    'Sangreza': 'sangreza.html',
-    'San Estrella': 'sanestrella.html',
-    'Montequilla': 'montequilla.html',
-    'Palvera': 'palvera.html'
-};
+// Nation info page URL builder
+function nationInfoUrl(nationName) {
+    const slug = nationName.toLowerCase().replace(/\s+/g, '');
+    return 'nation-info.html?name=' + slug;
+}
 
 // ==================== INIT ====================
 
@@ -1849,9 +1845,8 @@ async function renderNationCardBody(nationId) {
         `;
 
         // Nation Info link
-        const wikiUrl = WIKI_URLS[targetNation.name];
-        if (wikiUrl) {
-            html += `<a href="${wikiUrl}" class="nation-info-link">Nation Info</a>`;
+        if (targetNation.name) {
+            html += `<a href="${nationInfoUrl(targetNation.name)}" class="nation-info-link">Nation Info</a>`;
         }
 
         // Relation section
