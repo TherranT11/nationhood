@@ -3788,14 +3788,14 @@ async function fetchActiveCoalition(supabase, nationId) {
 
         // Reconcile: if government_formations has a definitive status, ensure active_coalitions matches
         if (result.status === 'dissolved' || result.status === 'caretaker') {
-            supabase.from('active_coalitions')
-                .update(result.status === 'dissolved'
-                    ? { status: 'dissolved', dissolved_at: new Date().toISOString() }
-                    : { status: 'caretaker' })
-                .eq('nation_id', nationId)
-                .is('dissolved_at', null)
-                .then(() => {}) // fire-and-forget reconciliation
-                .catch(e => console.warn('Coalition table reconciliation failed:', e));
+            try {
+                await supabase.from('active_coalitions')
+                    .update(result.status === 'dissolved'
+                        ? { status: 'dissolved', dissolved_at: new Date().toISOString() }
+                        : { status: 'caretaker' })
+                    .eq('nation_id', nationId)
+                    .is('dissolved_at', null);
+            } catch (e) { console.warn('Coalition table reconciliation failed:', e); }
         }
 
         if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 15 * 1000);
@@ -4172,14 +4172,16 @@ async function applyBlocPreferenceOnPassage(supabase, bill, nationId) {
         const { data: shard } = await supabase
             .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         for (const blocId of alignedBlocIds) {
-            await supabase.from('momentum_log').insert({
-                nation_id: nationId,
-                faction_id: sponsorId,
-                bloc_id: blocId,
-                amount: ALIGNED_MOMENTUM_BONUS,
-                source: 'bill:passage_aligned',
-                tick: shard?.current_tick || 0
-            }).catch(() => {});
+            try {
+                await supabase.from('momentum_log').insert({
+                    nation_id: nationId,
+                    faction_id: sponsorId,
+                    bloc_id: blocId,
+                    amount: ALIGNED_MOMENTUM_BONUS,
+                    source: 'bill:passage_aligned',
+                    tick: shard?.current_tick || 0
+                });
+            } catch (_) { /* non-blocking audit log */ }
         }
     }
 
@@ -5686,15 +5688,15 @@ async function enactBill(supabase, bill, currentTick) {
                 }
             }
 
-            const { error: activeLawError } = await supabase.from('active_laws').insert({
+            const { error: activeLawError } = await supabase.from('active_laws').upsert({
                 nation_id: bill.nation_id,
                 policy_id: policy.id,
                 passed_tick: currentTick,
                 proposed_by: bill.proposed_by,
                 effects_applied_through_tick: currentTick - 1
-            });
+            }, { onConflict: 'nation_id,policy_id' });
             if (activeLawError) {
-                console.error(`[enactBill] Failed to insert active_law for policy ${policy.id} (${policy.policy_name}):`, activeLawError.message);
+                console.error(`[enactBill] Failed to upsert active_law for policy ${policy.id} (${policy.policy_name}):`, activeLawError.message);
             }
         }
     }
