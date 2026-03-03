@@ -6078,3 +6078,247 @@ body.light-mode .edit-logo-option:hover {
     .attack-history-row { flex-wrap: wrap; }
     .attack-history-headline { min-width: 100%; }
 }
+
+/* ==================== APPOINT SUCCESSOR + DYNASTY ==================== */
+
+/* Chosen Successor badge */
+.reg-chosen-successor-badge {
+    display: inline-block;
+    background: #FFD700;
+    color: #1a1a1a;
+    font-weight: 700;
+    font-size: 0.6rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.5px;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+
+/* Successor panel (Strongman appoint/revoke) */
+.reg-successor-panel {
+    padding: 12px 16px;
+    background: rgba(226, 224, 214, 0.04);
+    border: 1px solid rgba(226, 224, 214, 0.08);
+    border-radius: 3px;
+}
+
+.reg-successor-cost {
+    font-size: 0.7rem;
+    color: #FFD700;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+
+.reg-successor-desc {
+    font-size: 0.75rem;
+    color: #8a8778;
+    line-height: 1.6;
+    margin-bottom: 12px;
+}
+.reg-successor-desc strong { color: #e2e0d6; }
+
+.reg-successor-targets {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+}
+
+.reg-successor-target-btn {
+    padding: 6px 10px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #e2e0d6;
+    background: rgba(226, 224, 214, 0.04);
+    border: 1px solid rgba(226, 224, 214, 0.08);
+    border-left: 3px solid #666;
+    border-radius: 3px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s, border-color 0.15s;
+}
+.reg-successor-target-btn:hover { background: rgba(226, 224, 214, 0.1); }
+.reg-successor-target-btn.selected {
+    background: rgba(255, 215, 0, 0.12);
+    border-color: rgba(255, 215, 0, 0.3);
+    border-left-color: #FFD700;
+    color: #FFD700;
+}
+
+.reg-successor-submit {
+    width: 100%;
+    padding: 8px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #FFD700;
+    background: rgba(255, 215, 0, 0.1);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.reg-successor-submit:hover:not(:disabled) { background: rgba(255, 215, 0, 0.2); }
+.reg-successor-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.reg-successor-none {
+    font-size: 0.7rem;
+    color: #6b6a5e;
+    font-style: italic;
+    padding: 4px 0;
+}
+
+/* Successor card (showing current successor) */
+.reg-successor-card {
+    padding: 10px 14px;
+    background: rgba(255, 215, 0, 0.06);
+    border: 1px solid rgba(255, 215, 0, 0.25);
+    border-radius: 3px;
+    margin-bottom: 10px;
+}
+.reg-successor-card-label {
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: #FFD700;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+}
+.reg-successor-card-name {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #e2e0d6;
+}
+.reg-successor-card-info {
+    font-size: 0.7rem;
+    color: #8a8778;
+    margin-top: 2px;
+}
+.reg-successor-card-stat {
+    font-size: 0.65rem;
+    color: #FFD700;
+    margin-top: 6px;
+    font-weight: 600;
+}
+
+.reg-successor-revoke-btn {
+    width: 100%;
+    padding: 6px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #ff5722;
+    background: rgba(255, 87, 34, 0.08);
+    border: 1px solid rgba(255, 87, 34, 0.2);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.reg-successor-revoke-btn:hover { background: rgba(255, 87, 34, 0.15); }
+
+.reg-successor-revoke-warning {
+    font-size: 0.6rem;
+    color: #ff5722;
+    margin-top: 6px;
+    line-height: 1.4;
+    opacity: 0.7;
+}
+
+.reg-successor-cooldown {
+    font-size: 0.7rem;
+    color: #6b6a5e;
+    font-style: italic;
+    padding: 8px 0;
+}
+
+/* Dynasty action modes */
+.reg-dynasty-modes {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.reg-dynasty-mode-btn {
+    padding: 8px 10px;
+    background: rgba(255, 215, 0, 0.04);
+    border: 1px solid rgba(255, 215, 0, 0.12);
+    border-radius: 3px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s, border-color 0.15s;
+    color: #e2e0d6;
+}
+.reg-dynasty-mode-btn:hover {
+    background: rgba(255, 215, 0, 0.1);
+    border-color: rgba(255, 215, 0, 0.25);
+}
+.reg-dynasty-mode-name {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #FFD700;
+    letter-spacing: 0.5px;
+}
+.reg-dynasty-mode-desc {
+    font-size: 0.65rem;
+    color: #8a8778;
+    margin-top: 2px;
+    line-height: 1.4;
+}
+
+/* Shadow target buttons (inside dynasty panel) */
+.reg-shadow-targets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+.reg-shadow-target-btn {
+    padding: 4px 8px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: #e2e0d6;
+    background: rgba(226, 224, 214, 0.04);
+    border: 1px solid rgba(226, 224, 214, 0.08);
+    border-left: 3px solid #666;
+    border-radius: 3px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+}
+.reg-shadow-target-btn:hover { background: rgba(226, 224, 214, 0.1); }
+.reg-shadow-target-btn.selected {
+    background: rgba(255, 215, 0, 0.12);
+    border-color: rgba(255, 215, 0, 0.3);
+    border-left-color: #FFD700;
+    color: #FFD700;
+}
+.reg-shadow-submit {
+    margin-top: 6px;
+    padding: 5px 12px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #FFD700;
+    background: rgba(255, 215, 0, 0.1);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    border-radius: 3px;
+    cursor: pointer;
+}
+.reg-shadow-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+.reg-shadow-submit:hover:not(:disabled) { background: rgba(255, 215, 0, 0.2); }
+
+.reg-steward-action-dynasty {
+    border-color: rgba(255, 215, 0, 0.2);
+    background: rgba(255, 215, 0, 0.03);
+}
+
+/* Light mode overrides */
+body.light-mode .reg-chosen-successor-badge { background: #E6B800; color: #fff; }
+body.light-mode .reg-successor-panel { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.08); }
+body.light-mode .reg-successor-desc strong { color: #333; }
+body.light-mode .reg-successor-card { background: rgba(255, 215, 0, 0.08); border-color: rgba(255, 215, 0, 0.3); }
+body.light-mode .reg-successor-card-name { color: #333; }
+body.light-mode .reg-dynasty-mode-btn { background: rgba(255, 215, 0, 0.06); border-color: rgba(255, 215, 0, 0.15); color: #333; }
+body.light-mode .reg-dynasty-mode-desc { color: #666; }

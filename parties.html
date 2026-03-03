@@ -20,7 +20,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, formatCurrency } from './js/common.js';
 import { tickToDate, escapeHtml, getIdeologyClass } from './js/utils.js';
-import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize, ensureBlocApprovals, selectPresidentCandidate, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_VECTORS, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, computeAttackCredibility, executeAttack } from './js/game-common.js';
+import { loadSeats, fetchActiveCoalition, isGovernmentAutocracy, isPresidentialRepublic, initGameConfigForNation, GAME_CONFIG, runElectionPreview, STAT_TO_MINISTRY, statDirectionSign, ISSUE_CATEGORY_STATS, RALLY_CONFIG, RALLY_OUTCOMES, getRallyOutcomeWeights, getRallyRiskLevel, executeRally, IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, MAKE_PROMISE_CONFIG, executeMakePromise, getPromiseableStats, getFullIdeologyProfile, loadNationIdeologies, getIdeologyLabel, PM_FIRST_NAMES, PM_LAST_NAMES, PILLAR_TO_STEWARD_TYPE, STEWARD_TYPE_LABELS, STEWARD_TYPE_DESCRIPTIONS, deductAP, disbandParty, MOBILIZE_CONFIG, executeMobilize, ensureBlocApprovals, selectPresidentCandidate, OUTREACH_CONFIG, computeOutreachAlignment, calcOutreachEffect, calcOutreachFriction, executeOutreach, ATTACK_CONFIG, ATTACK_VECTORS, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, computeAttackCredibility, executeAttack, SUCCESSOR_CONFIG, executeAppointSuccessor, executeRevokeSuccessor, executeDynastyAction } from './js/game-common.js';
 import { getPartyIconSVG, PARTY_ICONS, PARTY_COLOR_PALETTE, colorDistance } from './js/party-icons.js';
 
 let currentFaction = null;
@@ -112,7 +112,7 @@ async function renderAutocracyParties(el, f, n) {
     // Fetch stewards for this nation (all rows — alive and dead — for pillar claim display)
     const { data: stewardRows } = await _supabase
         .from('stewards')
-        .select('id, faction_id, pillar_key, steward_type, first_name, last_name, age, standing, power_base, true_loyalty, estimated_loyalty, personal_wealth, exit_readiness, coup_readiness, is_alive')
+        .select('id, faction_id, pillar_key, steward_type, first_name, last_name, age, standing, power_base, true_loyalty, estimated_loyalty, personal_wealth, exit_readiness, coup_readiness, is_alive, is_chosen_successor, succession_strength, successor_appointed_tick')
         .eq('nation_id', n.id);
 
     // Fetch regime log — all player actions for this nation (most recent first)
@@ -297,10 +297,13 @@ async function renderAutocracyParties(el, f, n) {
         const revActive = n.revolution_started_tick != null && n.revolution_duration != null;
         const revRemaining = revActive ? Math.max(0, n.revolution_duration - (currentTick - n.revolution_started_tick)) : 0;
 
-        // Succession — derived: if no other factions have >60 loyalty, undesignated
-        const potentialSuccessor = nonRuling.find(p => (p.loyalty ?? 0) >= 60);
-        const successionLabel = potentialSuccessor ? potentialSuccessor.faction_name : 'UNDESIGNATED';
-        const successionColor = potentialSuccessor ? '#8a8778' : '#ff5722';
+        // Succession — backed by explicit Chosen Successor appointment
+        const chosenSuccessorSteward = (stewardRows || []).find(s => s.is_chosen_successor && s.is_alive !== false);
+        const successorFactionName = chosenSuccessorSteward ? factionNameMap[chosenSuccessorSteward.faction_id] : null;
+        const successionLabel = chosenSuccessorSteward
+            ? `${chosenSuccessorSteward.first_name} ${chosenSuccessorSteward.last_name}`
+            : 'UNDESIGNATED';
+        const successionColor = chosenSuccessorSteward ? '#FFD700' : '#ff5722';
 
         // Regime vitals
         const pressF = Math.round(Number(n.press_freedom ?? 50));
@@ -363,10 +366,12 @@ async function renderAutocracyParties(el, f, n) {
             if (factionSteward) {
                 const sTypeLabel = STEWARD_TYPE_LABELS[factionSteward.steward_type] || '';
                 const claimedFactionName = factionNameMap[factionSteward.faction_id] || faction.faction_name;
+                const isStewardSuccessor = factionSteward.is_chosen_successor;
                 stewardIntelHtml = `
                     <div class="reg-intel-steward">
                         <span class="reg-intel-steward-name">${escapeHtml(factionSteward.first_name)} ${escapeHtml(factionSteward.last_name)}</span>
                         <span class="reg-intel-steward-type">${escapeHtml(sTypeLabel)}</span>
+                        ${isStewardSuccessor ? '<span class="reg-chosen-successor-badge">CHOSEN SUCCESSOR</span>' : ''}
                         <span class="reg-intel-steward-faction">${escapeHtml(claimedFactionName)}</span>
                         ${isStrongman ? `<span class="reg-intel-stat">
                             <span class="reg-intel-label">EST. LOYALTY</span>
@@ -584,7 +589,7 @@ async function renderAutocracyParties(el, f, n) {
                         <div class="reg-steward-status">
                             <div class="reg-steward-status-header">
                                 <div class="reg-steward-status-identity">
-                                    <div class="reg-steward-status-name">${escapeHtml(mySteward.first_name)} ${escapeHtml(mySteward.last_name)}, Age ${mySteward.age} <span class="reg-steward-status-badge">${escapeHtml(stTypeLabel)}</span></div>
+                                    <div class="reg-steward-status-name">${escapeHtml(mySteward.first_name)} ${escapeHtml(mySteward.last_name)}, Age ${mySteward.age} <span class="reg-steward-status-badge">${escapeHtml(stTypeLabel)}</span>${mySteward.is_chosen_successor ? ' <span class="reg-chosen-successor-badge">CHOSEN SUCCESSOR</span>' : ''}</div>
                                     <div class="reg-steward-status-desc">${escapeHtml(stTypeDesc)}</div>
                                 </div>
                                 <div class="reg-steward-status-ap">
@@ -597,7 +602,7 @@ async function renderAutocracyParties(el, f, n) {
                                 <div class="reg-steward-status-stat">
                                     <span class="reg-steward-status-stat-label">TRUE LOYALTY</span>
                                     <span class="reg-steward-status-stat-val" style="color:${stewardStatColor(stTrueLoyalty)}">${stTrueLoyalty}</span>
-                                    <span class="reg-steward-status-stat-sub">-2/tick natural decay</span>
+                                    <span class="reg-steward-status-stat-sub">${mySteward.is_chosen_successor ? '-1/tick (successor)' : '-2/tick natural decay'}</span>
                                 </div>
                                 <div class="reg-steward-status-stat">
                                     <span class="reg-steward-status-stat-label">COUP READINESS</span>
@@ -614,6 +619,11 @@ async function renderAutocracyParties(el, f, n) {
                                     <span class="reg-steward-status-stat-val" style="color:${coupColor(stExitReadiness)}">${stExitReadiness}</span>
                                     <span class="reg-steward-status-stat-sub">${exitSub}</span>
                                 </div>
+                                ${mySteward.is_chosen_successor ? `<div class="reg-steward-status-stat">
+                                    <span class="reg-steward-status-stat-label">SUCCESSION STRENGTH</span>
+                                    <span class="reg-steward-status-stat-val" style="color:#FFD700">${mySteward.succession_strength ?? 0}</span>
+                                    <span class="reg-steward-status-stat-sub">Dynasty progress</span>
+                                </div>` : ''}
                             </div>
 
                             <div class="reg-steward-status-gap">
@@ -658,6 +668,23 @@ async function renderAutocracyParties(el, f, n) {
             const isGeneral = mySteward.steward_type === 'general';
             const isSecurityChief = mySteward.steward_type === 'security_chief';
             const isPartyChairman = mySteward.steward_type === 'party_chairman' && !isStrongman;
+
+            const isChosenSuccessor = mySteward.is_chosen_successor;
+
+            // Build dynasty shadow target buttons (other factions with living stewards)
+            let dynastyShadowTargetsHtml = '';
+            if (isChosenSuccessor) {
+                const shadowTargets = (allFactions || []).filter(p => p.id !== f.id && stewardByFaction[p.id]);
+                const shadowBtns = shadowTargets.map(p => {
+                    const pColor = p.party_color || '#666';
+                    const sSteward = stewardByFaction[p.id];
+                    const sLabel = STEWARD_TYPE_LABELS[sSteward?.steward_type] || '';
+                    return `<button class="reg-shadow-target-btn" data-faction-id="${p.id}" data-faction-name="${escapeHtml(p.faction_name)}" style="border-left-color:${pColor}">${escapeHtml(p.faction_name)} <span style="opacity:0.5;font-size:0.65rem">${escapeHtml(sLabel)}</span></button>`;
+                }).join('');
+                dynastyShadowTargetsHtml = shadowTargets.length > 0
+                    ? `<div class="reg-shadow-targets">${shadowBtns}</div><button class="reg-shadow-submit" id="dynasty-shadow-submit" disabled>SHADOW</button>`
+                    : `<div class="reg-steward-action-req">No targets available</div>`;
+            }
 
             // Build surveillance target buttons (other factions with living stewards, excluding self and strongman)
             let surveillanceTargetsHtml = '';
@@ -716,6 +743,33 @@ async function renderAutocracyParties(el, f, n) {
                                 </button>
                             </div>` : '<div class="reg-steward-action-req">Not enough AP</div>'}
                         </div>` : ''}
+                        ${isChosenSuccessor ? `<div class="reg-steward-action-btn reg-steward-action-dynasty" id="steward-dynasty-panel">
+                            <div class="reg-steward-action-header">
+                                <span class="reg-steward-action-name">DYNASTY</span>
+                                <span class="reg-steward-action-cost">1 AP</span>
+                            </div>
+                            <div class="reg-steward-action-desc">As Chosen Successor, prepare for your future reign.</div>
+                            ${stAP >= 1 ? `
+                            <div class="reg-dynasty-modes">
+                                <div class="reg-dynasty-mode-btn" data-mode="shadow">
+                                    <div class="reg-dynasty-mode-name">Shadow</div>
+                                    <div class="reg-dynasty-mode-desc">Attach to another player's institution. Learn their true loyalty.</div>
+                                    <div class="reg-steward-action-effects">True Loyalty revealed &middot; Succession Strength <strong>+${SUCCESSOR_CONFIG.DYNASTY_SHADOW_SUCCESSION_STRENGTH}</strong></div>
+                                    ${dynastyShadowTargetsHtml}
+                                </div>
+                                <button class="reg-dynasty-mode-btn" data-mode="cultivate_image" id="dynasty-cultivate-btn">
+                                    <div class="reg-dynasty-mode-name">Cultivate Image</div>
+                                    <div class="reg-dynasty-mode-desc">Public appearances. Build your legitimacy.</div>
+                                    <div class="reg-steward-action-effects">Legitimacy <strong>+${SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_LEGITIMACY}</strong> &middot; Succession Strength <strong>+${SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_SUCCESSION_STRENGTH}</strong> &middot; All rivals: Standing <strong>-${SUCCESSOR_CONFIG.DYNASTY_CULTIVATE_STANDING_PENALTY}</strong></div>
+                                </button>
+                                <button class="reg-dynasty-mode-btn" data-mode="prepare_succession" id="dynasty-prepare-btn">
+                                    <div class="reg-dynasty-mode-name">Prepare Succession</div>
+                                    <div class="reg-dynasty-mode-desc">Legal groundwork. Behind-the-scenes maneuvering.</div>
+                                    <div class="reg-steward-action-effects">Succession Strength <strong>+${SUCCESSOR_CONFIG.DYNASTY_PREPARE_SUCCESSION_STRENGTH}</strong> &middot; Exit Readiness <strong>+${SUCCESSOR_CONFIG.DYNASTY_PREPARE_EXIT_READINESS}</strong></div>
+                                    <div class="reg-steward-action-risk">Detection Risk: <span class="reg-steward-action-risk-val">${Math.round(SUCCESSOR_CONFIG.DYNASTY_PREPARE_DETECTION_CHANCE * 100)}%</span></div>
+                                </button>
+                            </div>` : '<div class="reg-steward-action-req">Not enough AP</div>'}
+                        </div>` : ''}
                         <button class="reg-steward-action-btn" id="steward-embezzle-btn" ${(stAP < 1 || !hasMinistry) ? 'disabled' : ''}>
                             <div class="reg-steward-action-header">
                                 <span class="reg-steward-action-name">EMBEZZLE</span>
@@ -759,7 +813,8 @@ async function renderAutocracyParties(el, f, n) {
                 let stewardHtml = '';
                 if (claimedSteward) {
                     const claimedFactionName = factionNameMap[claimedSteward.faction_id] || 'Unknown';
-                    stewardHtml = `<div class="reg-pillar-steward">${escapeHtml(claimedSteward.first_name)} ${escapeHtml(claimedSteward.last_name)} \u2014 ${escapeHtml(claimedFactionName)}</div>`;
+                    const isPillarSuccessor = claimedSteward.is_chosen_successor;
+                    stewardHtml = `<div class="reg-pillar-steward">${escapeHtml(claimedSteward.first_name)} ${escapeHtml(claimedSteward.last_name)} \u2014 ${escapeHtml(claimedFactionName)}${isPillarSuccessor ? ' <span class="reg-chosen-successor-badge">HEIR</span>' : ''}</div>`;
                 }
 
                 return `
@@ -808,7 +863,15 @@ async function renderAutocracyParties(el, f, n) {
             coalition_accepted: 'COALITION FORMED',
             coalition_betrayed: 'BETRAYAL',
             coalition_detected: 'COALITION DETECTED',
-            coalition_dissolved: 'COALITION DISSOLVED'
+            coalition_dissolved: 'COALITION DISSOLVED',
+            appoint_successor: 'SUCCESSOR APPOINTED',
+            revoke_successor: 'SUCCESSOR REVOKED',
+            clean_succession: 'SUCCESSION',
+            strongman_death: 'STRONGMAN DIED',
+            dynasty_shadow: 'DYNASTY: SHADOW',
+            dynasty_cultivate: 'DYNASTY: CULTIVATE',
+            dynasty_prepare: 'DYNASTY: PREPARE',
+            dynasty_detected_prepare: 'PREPARE DETECTED'
         };
 
         let regimeLogHtml = '';
@@ -878,6 +941,25 @@ async function renderAutocracyParties(el, f, n) {
                     detail = `Secret coalition: ${r.faction_a_name} + ${r.faction_b_name} discovered`;
                 } else if (entry.action_type === 'coalition_dissolved') {
                     detail = r.partner_faction ? `Coalition with ${r.partner_faction} dissolved` : 'Coalition dissolved';
+                } else if (entry.action_type === 'appoint_successor') {
+                    detail = `${r.successor_name} appointed as Chosen Successor`;
+                } else if (entry.action_type === 'revoke_successor') {
+                    detail = `${r.revoked_name} revoked as successor`;
+                } else if (entry.action_type === 'clean_succession') {
+                    detail = `${r.successor_name} assumes power after ${r.deceased_name} dies at age ${r.deceased_age}`;
+                } else if (entry.action_type === 'strongman_death') {
+                    detail = `${r.deceased_name} died at age ${r.deceased_age}. ${r.successor_name} takes power`;
+                } else if (entry.action_type === 'dynasty_shadow') {
+                    if (entry.party_id !== f.id) return '';
+                    detail = `Shadowed: True Loyalty = ${r.true_loyalty}`;
+                } else if (entry.action_type === 'dynasty_cultivate') {
+                    detail = `Legitimacy +${r.legitimacy_gain}, Succession Strength +${r.succession_strength_gain}`;
+                } else if (entry.action_type === 'dynasty_prepare') {
+                    if (entry.party_id !== f.id && !isStrongman) return '';
+                    detail = `Succession preparation${r.detected ? ' \u2014 DETECTED' : ''}`;
+                } else if (entry.action_type === 'dynasty_detected_prepare') {
+                    if (!isStrongman) return '';
+                    detail = `${r.steward_name} caught preparing succession`;
                 }
 
                 if (!label) return ''; // Hidden entry (e.g. secret coalition not visible to strongman)
@@ -926,6 +1008,66 @@ async function renderAutocracyParties(el, f, n) {
                         ` : `<div class="reg-demand-exhausted">All factions have been demanded this tick.</div>`}
                     </div>
                 </div>`;
+        }
+
+        // ── APPOINT SUCCESSOR PANEL (Strongman only) ──
+        let appointSuccessorHtml = '';
+        if (isStrongman) {
+            const cooldownActive = n.successor_cooldown_end_tick && currentTick < n.successor_cooldown_end_tick;
+            const hasSuccessor = !!chosenSuccessorSteward;
+            const cooldownTicks = cooldownActive ? (n.successor_cooldown_end_tick - currentTick) : 0;
+            const stAP = f.action_points ?? 0;
+
+            if (hasSuccessor) {
+                const successorFacName = factionNameMap[chosenSuccessorSteward.faction_id] || 'Unknown';
+                const ssTypeLabel = STEWARD_TYPE_LABELS[chosenSuccessorSteward.steward_type] || '';
+                appointSuccessorHtml = `
+                    <div class="reg-section">
+                        <div class="reg-section-title">SUCCESSION</div>
+                        <div class="reg-successor-panel">
+                            <div class="reg-successor-card">
+                                <div class="reg-successor-card-label">CHOSEN SUCCESSOR</div>
+                                <div class="reg-successor-card-name">${escapeHtml(chosenSuccessorSteward.first_name)} ${escapeHtml(chosenSuccessorSteward.last_name)}</div>
+                                <div class="reg-successor-card-info">${escapeHtml(successorFacName)} &middot; ${escapeHtml(ssTypeLabel)}</div>
+                                <div class="reg-successor-card-stat">Succession Strength: ${chosenSuccessorSteward.succession_strength ?? 0}</div>
+                            </div>
+                            <button class="reg-successor-revoke-btn" id="revoke-successor-btn">REVOKE APPOINTMENT</button>
+                            <div class="reg-successor-revoke-warning">Stability &minus;${SUCCESSOR_CONFIG.REVOKE_STABILITY_DROP}. Former successor: Loyalty &minus;${SUCCESSOR_CONFIG.REVOKE_LOYALTY_DROP}. All stewards: Coup Readiness +${SUCCESSOR_CONFIG.REVOKE_COUP_READINESS}.</div>
+                        </div>
+                    </div>`;
+            } else if (cooldownActive) {
+                appointSuccessorHtml = `
+                    <div class="reg-section">
+                        <div class="reg-section-title">SUCCESSION</div>
+                        <div class="reg-successor-panel">
+                            <div class="reg-successor-cooldown">Successor appointment on cooldown. ${cooldownTicks} tick${cooldownTicks !== 1 ? 's' : ''} remaining.</div>
+                        </div>
+                    </div>`;
+            } else {
+                const eligibleFactions = nonRuling.filter(p => stewardByFaction[p.id]);
+                const targetBtns = eligibleFactions.map(p => {
+                    const s = stewardByFaction[p.id];
+                    const sLabel = STEWARD_TYPE_LABELS[s?.steward_type] || '';
+                    const pColor = p.party_color || '#666';
+                    return `<button class="reg-successor-target-btn" data-faction-id="${p.id}" data-faction-name="${escapeHtml(p.faction_name)}" style="border-left-color:${pColor}">${escapeHtml(p.faction_name)} <span style="opacity:0.5;font-size:0.65rem">${escapeHtml(sLabel)} \u2014 ${escapeHtml(s.first_name)} ${escapeHtml(s.last_name)}</span></button>`;
+                }).join('');
+
+                appointSuccessorHtml = `
+                    <div class="reg-section">
+                        <div class="reg-section-title">APPOINT SUCCESSOR</div>
+                        <div class="reg-successor-panel">
+                            <div class="reg-successor-cost">${SUCCESSOR_CONFIG.AP_COST} AP &middot; ${SUCCESSOR_CONFIG.COOLDOWN_TICKS}-tick cooldown</div>
+                            <div class="reg-successor-desc">
+                                Designate a steward as your chosen successor. Their pillar gains <strong>+${SUCCESSOR_CONFIG.PILLAR_BOOST}</strong> support.
+                                Stability <strong>+${SUCCESSOR_CONFIG.STABILITY_BOOST}</strong>. All other factions: loyalty <strong>&minus;${SUCCESSOR_CONFIG.OTHER_LOYALTY_DROP}</strong>, coup readiness <strong>+${SUCCESSOR_CONFIG.OTHER_COUP_READINESS}</strong>.
+                            </div>
+                            ${eligibleFactions.length > 0 ? `
+                                <div class="reg-successor-targets">${targetBtns}</div>
+                                <button class="reg-successor-submit" id="appoint-successor-btn" disabled ${stAP < SUCCESSOR_CONFIG.AP_COST ? 'title="Not enough AP"' : ''}>APPOINT (${SUCCESSOR_CONFIG.AP_COST} AP)</button>
+                            ` : `<div class="reg-successor-none">No eligible stewards. A faction needs a living steward to be appointed.</div>`}
+                        </div>
+                    </div>`;
+            }
         }
 
         // ── DEMAND BANNER (non-strongman with pending demand) ──
@@ -1227,6 +1369,7 @@ async function renderAutocracyParties(el, f, n) {
 
                         ${threatHtml}
                         ${demandLoyaltyHtml}
+                        ${appointSuccessorHtml}
                     </div>
 
                     <div class="reg-col-right">
@@ -1812,7 +1955,14 @@ async function renderAutocracyParties(el, f, n) {
             const success = Math.random() * 100 < effectiveCoupChance;
 
             if (success) {
-                await _supabase.from('nations').update({ ruling_faction_id: f.id }).eq('id', n.id);
+                await _supabase.from('nations').update({
+                    ruling_faction_id: f.id,
+                    successor_cooldown_end_tick: null,
+                }).eq('id', n.id);
+                // Clear any chosen successor (new regime)
+                await _supabase.from('stewards').update({
+                    is_chosen_successor: false, succession_strength: 0, successor_appointed_tick: null,
+                }).eq('nation_id', n.id).eq('is_chosen_successor', true);
                 await _supabase.from('stewards').update({ coup_readiness: 0 }).eq('id', mySteward.id);
                 await _supabase.from('campaign_actions').insert({
                     party_id: f.id, nation_id: n.id,
@@ -1837,6 +1987,100 @@ async function renderAutocracyParties(el, f, n) {
                 }).eq('id', c.id);
             }
 
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
+    // ── APPOINT SUCCESSOR HANDLERS (Strongman) ──
+    let selectedSuccessorFactionId = null;
+    el.querySelectorAll('.reg-successor-target-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            el.querySelectorAll('.reg-successor-target-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            selectedSuccessorFactionId = btn.dataset.factionId;
+            const submitBtn = document.getElementById('appoint-successor-btn');
+            if (submitBtn) submitBtn.disabled = (f.action_points ?? 0) < SUCCESSOR_CONFIG.AP_COST;
+        });
+    });
+
+    const appointBtn = document.getElementById('appoint-successor-btn');
+    if (appointBtn) {
+        appointBtn.addEventListener('click', async () => {
+            if (!selectedSuccessorFactionId) { alert('Select a faction first.'); return; }
+            if (!confirm(`Appoint this faction's steward as Chosen Successor? Costs ${SUCCESSOR_CONFIG.AP_COST} AP.`)) return;
+            appointBtn.disabled = true;
+            appointBtn.textContent = 'APPOINTING...';
+
+            const result = await executeAppointSuccessor(_supabase, n.id, f.id, selectedSuccessorFactionId, currentTick);
+            if (!result.success) { alert(result.error || 'Failed to appoint successor.'); await renderAutocracyParties(el, f, n); return; }
+            f.action_points = result.newAp;
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
+    const revokeBtn = document.getElementById('revoke-successor-btn');
+    if (revokeBtn) {
+        revokeBtn.addEventListener('click', async () => {
+            if (!confirm('Revoke successor appointment? This will cause instability.')) return;
+            revokeBtn.disabled = true;
+            revokeBtn.textContent = 'REVOKING...';
+
+            const result = await executeRevokeSuccessor(_supabase, n.id, f.id, currentTick);
+            if (!result.success) { alert(result.error || 'Failed to revoke.'); await renderAutocracyParties(el, f, n); return; }
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
+    // ── DYNASTY HANDLERS (Chosen Successor) ──
+    let selectedShadowFactionId = null;
+    el.querySelectorAll('.reg-shadow-target-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            el.querySelectorAll('.reg-shadow-target-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            selectedShadowFactionId = btn.dataset.factionId;
+            const submitBtn = document.getElementById('dynasty-shadow-submit');
+            if (submitBtn) submitBtn.disabled = false;
+        });
+    });
+
+    const shadowSubmitBtn = document.getElementById('dynasty-shadow-submit');
+    if (shadowSubmitBtn) {
+        shadowSubmitBtn.addEventListener('click', async () => {
+            if (!selectedShadowFactionId) return;
+            shadowSubmitBtn.disabled = true;
+            shadowSubmitBtn.textContent = 'SHADOWING...';
+
+            const result = await executeDynastyAction(_supabase, n.id, f.id, 'shadow', selectedShadowFactionId, currentTick);
+            if (!result.success) { alert(result.error || 'Failed.'); await renderAutocracyParties(el, f, n); return; }
+            f.action_points = result.newAp;
+            alert(`Shadow report: ${result.targetName}'s True Loyalty is ${result.trueLoyalty}. Succession Strength +${result.successionStrengthGain}.`);
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
+    const cultivateBtn = document.getElementById('dynasty-cultivate-btn');
+    if (cultivateBtn) {
+        cultivateBtn.addEventListener('click', async () => {
+            cultivateBtn.disabled = true;
+            const result = await executeDynastyAction(_supabase, n.id, f.id, 'cultivate_image', null, currentTick);
+            if (!result.success) { alert(result.error || 'Failed.'); await renderAutocracyParties(el, f, n); return; }
+            f.action_points = result.newAp;
+            alert(`Image cultivated. Legitimacy +${result.legitimacyGain}, Succession Strength +${result.successionStrengthGain}. Rivals' standing reduced.`);
+            await renderAutocracyParties(el, f, n);
+        });
+    }
+
+    const prepareBtn = document.getElementById('dynasty-prepare-btn');
+    if (prepareBtn) {
+        prepareBtn.addEventListener('click', async () => {
+            prepareBtn.disabled = true;
+            const result = await executeDynastyAction(_supabase, n.id, f.id, 'prepare_succession', null, currentTick);
+            if (!result.success) { alert(result.error || 'Failed.'); await renderAutocracyParties(el, f, n); return; }
+            f.action_points = result.newAp;
+            const msg = result.detected
+                ? `Succession preparation underway... but you were DETECTED! The Strongman knows.`
+                : `Succession preparation underway. Succession Strength +${result.successionStrengthGain}, Exit Readiness +${result.exitReadinessGain}.`;
+            alert(msg);
             await renderAutocracyParties(el, f, n);
         });
     }
