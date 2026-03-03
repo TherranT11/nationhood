@@ -647,7 +647,12 @@ async function submitTaxBill(nation) {
             });
         }
         if (articles.length > 0) {
-            await _supabase.from('bill_articles').insert(articles);
+            var { error: articleError } = await _supabase.from('bill_articles').insert(articles);
+            if (articleError) {
+                // Articles failed — delete the orphaned bill and propagate the error
+                await _supabase.from('bills').delete().eq('id', bill.id);
+                throw new Error('Failed to save tax articles: ' + articleError.message);
+            }
         }
 
         // Auto-add sponsor support
