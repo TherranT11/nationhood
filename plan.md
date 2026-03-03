@@ -1,64 +1,65 @@
-# Automatic Inactivity Decay System — Implementation Plan
+# Plan: Make Resource Supply Contracts (RSC) Mechanically Functional
 
-## Overview
+## Current State
+- RSC negotiation UI works: players can draft supply_commitment, price_terms, duration, breach_penalty articles
+- `trade_agreements` table stores all this structured data correctly
+- `processExpiredTradeAgreements()` already handles duration/expiry (sets status='expired')
+- Withdrawal UI exists (`withdrawTradeAgreement()`)
 
-Factions that don't spend AP for extended periods will suffer automatic penalties during tick processing: momentum decay, approval loss with every voter bloc, and eventually auto-disbanding right before elections. This incentivizes active play and naturally clears out abandoned factions.
+## What's Broken
+1. `processTradeFlows()` only queries `diplomatic_proposals` for a boolean `has_trade_agreement` flag — never reads `trade_agreements` table
+2. RSC supply commitments (sector, commitment_pct, direction) are stored but never enforced
+3. Price terms (discounted/premium) are stored but never applied to trade value
+4. Breach penalties on withdrawal use a generic formula instead of the negotiated breach_penalty article
 
----
+## Implementation
 
-## Rules (IMPLEMENTED)
+### Step 1: Make processTradeFlows read and enforce active RSCs
+**Files:** `js/game/trade-constants.js`, `supabase/functions/advance-tick/index.ts`
 
-- **After 6 ticks** of no AP spent: lose **5 Momentum** and **3 Approval** with **every voter bloc**, **every tick**
-- **After 12 ticks** of no AP spent: party **auto-disbands** (runs right before elections in the tick loop)
-- Spending any AP resets the inactivity timer (`last_ap_spent_tick` updated automatically by `deductAP()`)
+In `processTradeFlows()`, after computing nationFlows and before the distribution loop:
 
----
+1. Query `trade_agreements` where `status = 'active'` and `agreement_type = 'resource_supply'`
+2. Parse each RSC's articles to extract `supply_commitment` (sector, direction, commitment_pct) and `price_terms`
+3. **Pre-allocate guaranteed volumes before normal distribution:**
+   - Identify buyer and seller from `supply_commitment.direction` + nation_a_id/nation_b_id
+   - Calculate guaranteed volume: `seller's export capacity in that sector × (commitment_pct / 100)`
+   - Cap at buyer's remaining import demand in that sector
+   - Record the pre-allocation in `actualExports`/`actualImports` and `partnerRows`
+   - This reduces the seller's remaining capacity and buyer's remaining demand for the normal distribution pass
+4. Keep the existing `has_trade_agreement` affinity bonus (+20) — RSCs still count as trade agreements
 
-## Config Constants (in `js/game/config.js` → `GAME_CONFIG`)
+### Step 2: Apply price terms to RSC trade volumes
+**Files:** same as Step 1
 
-```javascript
-INACTIVITY_GRACE_TICKS: 6,            // no penalty for first 6 ticks of inactivity
-INACTIVITY_MOMENTUM_DECAY: 5,         // -5 momentum per voter bloc per tick while inactive
-INACTIVITY_APPROVAL_DECAY: 3,         // -3 approval per voter bloc per tick while inactive
-INACTIVITY_DISBAND_TICKS: 12,         // auto-disband after 12 ticks of inactivity
-```
+For RSC pre-allocated volumes, adjust the trade value based on `price_terms`:
+- `market`: use the normal sector price modifier (no change)
+- `discounted`: multiply value by `(1 - modifier_pct/100)` — seller gets less revenue
+- `premium`: multiply value by `(1 + modifier_pct/100)` — seller gets more revenue
+- `fixed`: use price modifier of 1.0 (neutral, ignores supply/demand swings)
 
----
+This affects the `trade_volume` recorded in `trade_partners` for RSC flows.
 
-## Implementation Summary
+### Step 3: Enforce negotiated breach penalties on withdrawal
+**File:** `diplomacy.html` — `withdrawTradeAgreement()` function
 
-### 1. `markFactionActive()` in `deductAP()` — `js/game/config.js`
-Every AP-spending action automatically updates `last_ap_spent_tick` to the current shard tick.
+Currently the withdrawal uses a generic formula: `relPenalty = noticeTicks <= 1 ? 5 : noticeTicks <= 3 ? 3 : 1`
 
-### 2. `processInactivityDecay()` — `js/game/political-actions.js`
-Per-nation function called each tick. For each non-NPC faction:
-1. Compute `ticksInactive = currentTick - (last_ap_spent_tick || founded_tick || 0)`
-2. Skip if `ticksInactive <= 6`
-3. If `ticksInactive >= 12`: auto-disband (nation_id = null, abandoned_at = now, 24-tick cooldown)
-4. Otherwise: -5 momentum and -3 approval on every `faction_bloc_approval` row
+Change to:
+1. Check if the agreement has a `breach_penalty` article in its `articles` JSONB
+2. If present, apply the negotiated penalties:
+   - `relations_penalty`: reduce bilateral relation_score by this amount
+   - `financial_penalty`: deduct from withdrawing nation's treasury (in millions)
+3. If no breach_penalty article exists, fall back to the current generic formula
+4. Show the actual penalties in the confirmation dialog
 
-### 3. Tick Loop Placement — `handler-template.ts`
-Runs right BEFORE `processElections()` so disbanded parties lose their seats in the upcoming election.
+### Step 4: Sync edge function
+**File:** `supabase/functions/advance-tick/index.ts`
 
-### 4. Admin Dashboard — `admin.html`
-- Fetches `last_ap_spent_tick` and `founded_tick` in player query
-- Color-coded inactivity badge on each player card (orange = decaying, red = will disband)
-- "Inactive" filter button alongside existing All / In Nation / No Nation filters
-- Kick/DELETE buttons fixed (window scope exports added)
+Mirror all changes from Steps 1-2 in the edge function's copy of `processTradeFlows()`.
 
-### 5. SQL Migration — `sql/add_inactivity_decay.sql`
-- `ALTER TABLE factions ADD COLUMN IF NOT EXISTS last_ap_spent_tick INTEGER DEFAULT NULL`
-- Backfill to current shard tick for all active factions
-
----
-
-## Files Modified
-
-| File | Changes |
-|------|---------|
-| `js/game/config.js` | Add inactivity constants to GAME_CONFIG, `markFactionActive()` in `deductAP()` |
-| `js/game/political-actions.js` | `processInactivityDecay()` function |
-| `supabase/functions/advance-tick/handler-template.ts` | Wire `processInactivityDecay` before elections |
-| `admin.html` | Inactivity badges, Inactive filter, fix Kick/DELETE window scope |
-| `sql/add_inactivity_decay.sql` | Column creation + backfill migration |
-| `supabase/functions/advance-tick/index.ts` | Auto-regenerated by sync script |
+## What Already Works (No Changes Needed)
+- Duration/expiration: `processExpiredTradeAgreements()` already expires agreements when `expires_at_tick <= currentTick`
+- Auto-renewal: could be added later but not required for core functionality
+- The `trade_agreements` insert on ratification (both bills pass → row created with correct articles, duration, expiry)
+- The `has_trade_agreement` boolean flag from `diplomatic_proposals` — existing FTAs/PTAs continue to get the +20 affinity bonus
