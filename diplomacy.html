@@ -998,6 +998,11 @@ function filterInbox(filter) {
 function renderInboxCard(p) {
     const pd = p.proposal_data || {};
 
+    // ── State visit proposal — render specialized card ──
+    if (p.proposal_type === 'state_visit') {
+        return renderStateVisitInboxCard(p, pd);
+    }
+
     // ── Trade negotiation proposal — render specialized card ──
     if (p.proposal_type === 'trade_negotiation') {
         return renderTradeNegInboxCard(p, pd);
@@ -1135,6 +1140,75 @@ function renderInboxCard(p) {
             ${articlesHTML}
             ${effectsHTML}
             ${strikeArticlesHTML}
+            ${actionsHTML}
+        </div>
+    `;
+}
+
+function renderStateVisitInboxCard(p, pd) {
+    const isIncoming = p.target_nation_id === currentNation.id;
+    const needsOurAction = p.status === 'proposed' && isIncoming;
+
+    const statusBadge = needsOurAction
+        ? '<span class="proposal-status-badge badge-action">Awaiting Your Response</span>'
+        : '<span class="proposal-status-badge badge-waiting">Awaiting Response</span>';
+
+    const typeBadge = '<span class="classification-badge" style="background:#5c3a1a;color:#FFD700;">STATE VISIT</span>';
+
+    // Deadline info
+    const deadlineTick = pd.accept_deadline_tick;
+    const ticksLeft = deadlineTick ? Math.max(0, deadlineTick - shardTick) : '?';
+    const expired = deadlineTick && shardTick > deadlineTick;
+
+    // Preview of expected benefits
+    let benefitsHTML = '<div style="font-size:0.78rem;color:var(--text-muted);padding:8px 0;line-height:1.6;">';
+    benefitsHTML += '<strong>' + escapeHtml(pd.visitor_pm || 'Unknown') + '</strong> of <strong>' + escapeHtml(pd.visitor_nation || 'Unknown') + '</strong> requests a State Visit.';
+    benefitsHTML += '<br><br><strong>Expected Benefits (both nations):</strong>';
+    benefitsHTML += '<br>&nbsp;&nbsp;+' + DIPLOMACY_CONFIG.STATE_VISIT_REP_BOOST + ' International Reputation';
+    benefitsHTML += '<br>&nbsp;&nbsp;+' + DIPLOMACY_CONFIG.STATE_VISIT_STABILITY_BOOST + ' Stability';
+    benefitsHTML += '<br>&nbsp;&nbsp;+' + DIPLOMACY_CONFIG.STATE_VISIT_RELATION_BOOST + ' Relations';
+
+    if (pd.has_trade_agreement) {
+        benefitsHTML += '<br>&nbsp;&nbsp;+' + DIPLOMACY_CONFIG.STATE_VISIT_TRADE_BONUS + ' Trade Balance <span style="color:#4caf50;">(trade agreement active)</span>';
+    }
+    if (pd.high_relations) {
+        benefitsHTML += '<br>&nbsp;&nbsp;+' + DIPLOMACY_CONFIG.STATE_VISIT_HIGH_REL_GDP_BONUS + ' GDP Growth <span style="color:#4caf50;">(high relations)</span>';
+    }
+    if (pd.is_first) {
+        benefitsHTML += '<br>&nbsp;&nbsp;+' + DIPLOMACY_CONFIG.STATE_VISIT_FIRST_STABILITY + ' Stability <span style="color:#FFD700;">(first-ever visit!)</span>';
+    }
+    if (pd.is_target_autocracy) {
+        benefitsHTML += '<br><br><span style="color:#ff9800;">Autocracy domestic risk: 1D12 dice roll on visitor\'s gov approval</span>';
+    }
+    benefitsHTML += '</div>';
+
+    let actionsHTML = '';
+    if (needsOurAction && !expired) {
+        actionsHTML = `
+            <div class="inbox-card-actions">
+                <button class="proposal-accept-btn" onclick="acceptStateVisit('${p.id}')">Accept Visit</button>
+                <button class="proposal-reject-btn" onclick="declineStateVisit('${p.id}')">Decline</button>
+            </div>
+        `;
+    } else if (expired) {
+        actionsHTML = '<div style="color:#f44;font-size:0.78rem;padding:4px 0;">Invitation expired.</div>';
+    }
+
+    return `
+        <div class="inbox-card ${needsOurAction && !expired ? 'requires-action' : ''}">
+            <div class="inbox-card-header">
+                <div class="inbox-card-name">State Visit from ${escapeHtml(pd.visitor_nation || 'Unknown')}</div>
+                <div class="inbox-card-badges">
+                    ${typeBadge}
+                    ${statusBadge}
+                </div>
+            </div>
+            <div class="inbox-card-meta">
+                ${escapeHtml(pd.visitor_nation || 'Unknown')} &rarr; ${escapeHtml(pd.host_nation || 'Unknown')}
+                &middot; Proposed ${p.proposed_at_tick != null ? tickToDate(p.proposed_at_tick) : '—'}
+                &middot; ${expired ? '<span style="color:#f44;">Expired</span>' : 'Expires in ' + ticksLeft + ' tick(s)'}
+            </div>
+            ${benefitsHTML}
             ${actionsHTML}
         </div>
     `;
@@ -2033,7 +2107,7 @@ function renderActionPanel(targetNation, roles, ambassador, pendingAmbassador, t
                 <p class="action-desc">As Head of Government, you may authorize major diplomatic decisions.</p>
                 <button class="action-btn" disabled>Declare War (Coming Soon)</button>
                 <button class="action-btn" style="margin-top:8px;" disabled>Propose Alliance (Coming Soon)</button>
-                <button class="action-btn" style="margin-top:8px;" disabled>State Visit (Coming Soon)</button>
+                <button class="action-btn state-visit-btn" style="margin-top:8px;" onclick="initiateStateVisit('${targetNation.id}')">State Visit (${DIPLOMACY_CONFIG.STATE_VISIT_AP} AP)</button>
             </div>
         `;
     }
@@ -5590,6 +5664,406 @@ async function strikeArticles(proposalId) {
     if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
 }
 
+// ==================== STATE VISIT ====================
+
+async function initiateStateVisit(targetNationId) {
+    if (!currentNation || !currentFaction) { alert('No nation/faction loaded.'); return; }
+    if (!diplomaticRoles.isHoG) { alert('Only the Head of Government can initiate a State Visit.'); return; }
+
+    // Fetch target nation
+    const { data: targetNation } = await _supabase.from('nations').select('*').eq('id', targetNationId).single();
+    if (!targetNation) { alert('Target nation not found.'); return; }
+
+    // Get current tick
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+
+    // Check cooldown — target nation cannot be visited if cooldown active
+    const { data: recentVisit } = await _supabase
+        .from('diplomatic_action_log')
+        .select('id, cooldown_until_tick')
+        .eq('target_nation_id', targetNationId)
+        .eq('action_type', 'state_visit')
+        .gt('cooldown_until_tick', currentTick)
+        .order('cooldown_until_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (recentVisit) {
+        const ticksLeft = recentVisit.cooldown_until_tick - currentTick;
+        alert(targetNation.name + ' was recently visited. Cooldown: ' + ticksLeft + ' tick(s) remaining.');
+        return;
+    }
+
+    // Check if there's already a pending state visit proposal from us to this nation
+    const { data: pendingVisit } = await _supabase
+        .from('diplomatic_proposals')
+        .select('id')
+        .eq('proposing_nation_id', currentNation.id)
+        .eq('target_nation_id', targetNationId)
+        .eq('proposal_type', 'state_visit')
+        .eq('status', 'proposed')
+        .maybeSingle();
+
+    if (pendingVisit) {
+        alert('A State Visit invitation to ' + targetNation.name + ' is already pending.');
+        return;
+    }
+
+    // Gather preview data
+    const relation = await fetchDiplomaticRelation(currentNation.id, targetNationId);
+    const relScore = relation?.relation_score ?? 30;
+
+    // Check for active trade agreement between the two nations
+    const natA = currentNation.id < targetNationId ? currentNation.id : targetNationId;
+    const natB = currentNation.id < targetNationId ? targetNationId : currentNation.id;
+    const { data: tradeAgs } = await _supabase
+        .from('trade_agreements')
+        .select('id')
+        .eq('status', 'active')
+        .eq('nation_a_id', natA)
+        .eq('nation_b_id', natB)
+        .limit(1);
+    const hasTradeAgreement = tradeAgs && tradeAgs.length > 0;
+
+    // Check if first-ever visit
+    const { data: pastVisits } = await _supabase
+        .from('diplomatic_action_log')
+        .select('id')
+        .eq('nation_id', currentNation.id)
+        .eq('target_nation_id', targetNationId)
+        .eq('action_type', 'state_visit')
+        .limit(1);
+    const isFirstVisit = !pastVisits || pastVisits.length === 0;
+
+    const highRelations = relScore > 70;
+
+    // Check autocracy
+    const isTargetAutocracy = isGovernmentAutocracy(targetNation);
+
+    // Build preview
+    const hosName = ((currentNation.head_of_state_first_name || '') + ' ' + (currentNation.head_of_state_last_name || '')).trim() || 'Head of State';
+
+    let previewLines = [
+        'STATE VISIT PREVIEW',
+        '═══════════════════════════════',
+        hosName + ' visits ' + targetNation.name,
+        '',
+        'Cost: ' + DIPLOMACY_CONFIG.STATE_VISIT_AP + ' AP (deducted now)',
+        'Accept Window: ' + DIPLOMACY_CONFIG.STATE_VISIT_ACCEPT_WINDOW + ' ticks for ' + targetNation.name + ' to accept',
+        '',
+        '── BASE BENEFITS (on acceptance) ──',
+        '+' + DIPLOMACY_CONFIG.STATE_VISIT_REP_BOOST + ' International Reputation (both nations)',
+        '+' + DIPLOMACY_CONFIG.STATE_VISIT_STABILITY_BOOST + ' Stability (both nations)',
+        '+' + DIPLOMACY_CONFIG.STATE_VISIT_RELATION_BOOST + ' Relations',
+        '',
+        '── CONDITIONAL BONUSES ──',
+    ];
+
+    if (hasTradeAgreement) {
+        previewLines.push('[ACTIVE] Trade Agreement: +' + DIPLOMACY_CONFIG.STATE_VISIT_TRADE_BONUS + ' Trade Balance (both)');
+    } else {
+        previewLines.push('[  --  ] Trade Agreement: +' + DIPLOMACY_CONFIG.STATE_VISIT_TRADE_BONUS + ' Trade Balance (requires active agreement)');
+    }
+
+    if (highRelations) {
+        previewLines.push('[ACTIVE] High Relations (>' + 70 + '): +' + DIPLOMACY_CONFIG.STATE_VISIT_HIGH_REL_GDP_BONUS + ' GDP Growth (both)');
+    } else {
+        previewLines.push('[  --  ] High Relations (>' + 70 + '): +' + DIPLOMACY_CONFIG.STATE_VISIT_HIGH_REL_GDP_BONUS + ' GDP Growth (current: ' + relScore + ')');
+    }
+
+    if (isFirstVisit) {
+        previewLines.push('[ACTIVE] First Visit Ever: +' + DIPLOMACY_CONFIG.STATE_VISIT_FIRST_STABILITY + ' Stability (both) + Hero Story');
+    } else {
+        previewLines.push('[  --  ] First Visit Ever: already visited');
+    }
+
+    if (isTargetAutocracy) {
+        previewLines.push('');
+        previewLines.push('WARNING: ' + targetNation.name + ' is an Autocracy.');
+        previewLines.push('Domestic approval dice roll (1D12): 1-6 = -3 gov approval, 7-12 = +3 gov approval');
+    }
+
+    previewLines.push('');
+    previewLines.push('If declined or expired: nothing happens, AP still spent.');
+
+    if (!confirm(previewLines.join('\n'))) return;
+
+    // Deduct AP
+    const apResult = await deductAP(_supabase, currentFaction.id, DIPLOMACY_CONFIG.STATE_VISIT_AP, currentFaction.action_points);
+    if (!apResult.success) {
+        alert('Not enough AP. Need ' + DIPLOMACY_CONFIG.STATE_VISIT_AP + ', have ' + (currentFaction.action_points || 0) + '.');
+        return;
+    }
+    currentFaction.action_points = apResult.newBalance;
+
+    // Create diplomatic_proposals entry for target nation's inbox
+    const { error: proposalErr } = await _supabase
+        .from('diplomatic_proposals')
+        .insert({
+            proposing_nation_id: currentNation.id,
+            target_nation_id: targetNationId,
+            proposed_by_faction_id: currentFaction.id,
+            proposal_type: 'state_visit',
+            proposal_tier: 2,
+            status: 'proposed',
+            proposal_data: {
+                name: 'State Visit from ' + currentNation.name,
+                visitor_pm: hosName,
+                visitor_nation: currentNation.name,
+                host_nation: targetNation.name,
+                proposer_nation_name: currentNation.name,
+                target_nation_name: targetNation.name,
+                is_first: isFirstVisit,
+                has_trade_agreement: hasTradeAgreement,
+                high_relations: highRelations,
+                is_target_autocracy: isTargetAutocracy,
+                accept_deadline_tick: currentTick + DIPLOMACY_CONFIG.STATE_VISIT_ACCEPT_WINDOW,
+                relation_score: relScore
+            },
+            fm_review_expires_tick: currentTick + DIPLOMACY_CONFIG.STATE_VISIT_ACCEPT_WINDOW,
+            proposed_at_tick: currentTick
+        });
+
+    if (proposalErr) {
+        alert('Error proposing State Visit: ' + proposalErr.message);
+        return;
+    }
+
+    alert('State Visit invitation sent to ' + targetNation.name + '!\n\nThey have ' + DIPLOMACY_CONFIG.STATE_VISIT_ACCEPT_WINDOW + ' ticks to accept.');
+
+    // Refresh the nation card and inbox
+    if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
+    await renderDiploHeader();
+}
+
+async function acceptStateVisit(proposalId) {
+    // Fetch proposal
+    const { data: proposal, error: fetchErr } = await _supabase
+        .from('diplomatic_proposals')
+        .select('*')
+        .eq('id', proposalId)
+        .single();
+
+    if (fetchErr || !proposal) { alert('Could not load proposal.'); return; }
+    if (proposal.proposal_type !== 'state_visit') { alert('Not a state visit proposal.'); return; }
+
+    // Authorization: caller must be target nation's HoG
+    await refreshRoles();
+    if (!diplomaticRoles.isHoG || proposal.target_nation_id !== currentNation.id) {
+        alert('Only the Head of Government of the visited nation can accept a State Visit.');
+        return;
+    }
+
+    // Check if accept window expired
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const currentTick = shard?.current_tick || 0;
+    const pd = proposal.proposal_data || {};
+
+    if (pd.accept_deadline_tick && currentTick > pd.accept_deadline_tick) {
+        alert('This State Visit invitation has expired.');
+        await _supabase.from('diplomatic_proposals').update({ status: 'expired' }).eq('id', proposalId);
+        await renderInboxTab();
+        return;
+    }
+
+    if (!confirm('Accept State Visit from ' + (pd.visitor_nation || 'Unknown') + '?\n\nBoth nations will receive diplomatic benefits.')) return;
+
+    // Fetch both nations for stat updates
+    const visitorNationId = proposal.proposing_nation_id;
+    const hostNationId = proposal.target_nation_id;
+
+    const [visitorRes, hostRes] = await Promise.all([
+        _supabase.from('nations').select('*').eq('id', visitorNationId).single(),
+        _supabase.from('nations').select('*').eq('id', hostNationId).single()
+    ]);
+    const visitorNation = visitorRes.data;
+    const hostNation = hostRes.data;
+    if (!visitorNation || !hostNation) { alert('Could not load nation data.'); return; }
+
+    // Re-check conditional bonuses at acceptance time
+    const natA = visitorNationId < hostNationId ? visitorNationId : hostNationId;
+    const natB = visitorNationId < hostNationId ? hostNationId : visitorNationId;
+
+    const [relRes, tradeRes, pastRes] = await Promise.all([
+        _supabase.from('diplomatic_relations').select('relation_score').eq('nation_a_id', natA).eq('nation_b_id', natB).maybeSingle(),
+        _supabase.from('trade_agreements').select('id').eq('status', 'active').eq('nation_a_id', natA).eq('nation_b_id', natB).limit(1),
+        _supabase.from('diplomatic_action_log').select('id').eq('nation_id', visitorNationId).eq('target_nation_id', hostNationId).eq('action_type', 'state_visit').limit(1)
+    ]);
+
+    const relScore = relRes.data?.relation_score ?? 30;
+    const hasTradeAgreement = tradeRes.data && tradeRes.data.length > 0;
+    const isFirstVisit = !pastRes.data || pastRes.data.length === 0;
+    const highRelations = relScore > 70;
+    const isTargetAutocracy = isGovernmentAutocracy(hostNation);
+    const isVisitorAutocracy = isGovernmentAutocracy(visitorNation);
+
+    // ── Apply base benefits ──
+    const repBoost = DIPLOMACY_CONFIG.STATE_VISIT_REP_BOOST;
+    const stabBoost = DIPLOMACY_CONFIG.STATE_VISIT_STABILITY_BOOST;
+    const relBoost = DIPLOMACY_CONFIG.STATE_VISIT_RELATION_BOOST;
+
+    // Build stat updates for both nations
+    const visitorUpdates = {
+        international_reputation: Math.min(100, (visitorNation.international_reputation || 0) + repBoost),
+        stability: Math.min(100, Math.round(Number(visitorNation.stability || 0) + stabBoost))
+    };
+    const hostUpdates = {
+        international_reputation: Math.min(100, (hostNation.international_reputation || 0) + repBoost),
+        stability: Math.min(100, Math.round(Number(hostNation.stability || 0) + stabBoost))
+    };
+
+    // ── Conditional bonuses ──
+    let bonusSummary = [];
+
+    // Trade agreement bonus
+    if (hasTradeAgreement) {
+        const tradeBonus = DIPLOMACY_CONFIG.STATE_VISIT_TRADE_BONUS;
+        visitorUpdates.trade_balance = Math.min(100, (visitorNation.trade_balance || 0) + tradeBonus);
+        hostUpdates.trade_balance = Math.min(100, (hostNation.trade_balance || 0) + tradeBonus);
+        bonusSummary.push('+' + tradeBonus + ' Trade Balance (trade agreement)');
+    }
+
+    // High relations bonus
+    if (highRelations) {
+        const gdpBonus = DIPLOMACY_CONFIG.STATE_VISIT_HIGH_REL_GDP_BONUS;
+        visitorUpdates.gdp_growth = Math.min(100, (visitorNation.gdp_growth || 0) + gdpBonus);
+        hostUpdates.gdp_growth = Math.min(100, (hostNation.gdp_growth || 0) + gdpBonus);
+        bonusSummary.push('+' + gdpBonus + ' GDP Growth (high relations)');
+    }
+
+    // First visit bonus
+    if (isFirstVisit) {
+        const firstStab = DIPLOMACY_CONFIG.STATE_VISIT_FIRST_STABILITY;
+        visitorUpdates.stability = Math.min(100, visitorUpdates.stability + firstStab);
+        hostUpdates.stability = Math.min(100, hostUpdates.stability + firstStab);
+        bonusSummary.push('+' + firstStab + ' Stability (first visit)');
+    }
+
+    // Autocracy approval dice roll — applies to the visiting PM's nation if target is autocracy
+    let autocracyResult = null;
+    if (isTargetAutocracy) {
+        const roll = Math.floor(Math.random() * 12) + 1; // 1D12
+        const approvalChange = roll <= 6 ? -3 : 3;
+        visitorUpdates.gov_approval = Math.max(0, Math.min(100, Math.round(Number(visitorNation.gov_approval ?? 50) + approvalChange)));
+        autocracyResult = { roll, change: approvalChange };
+        bonusSummary.push('Autocracy dice: rolled ' + roll + ' → ' + (approvalChange > 0 ? '+' : '') + approvalChange + ' Gov Approval (visitor)');
+    }
+    if (isVisitorAutocracy) {
+        const roll = Math.floor(Math.random() * 12) + 1;
+        const approvalChange = roll <= 6 ? -3 : 3;
+        hostUpdates.gov_approval = Math.max(0, Math.min(100, Math.round(Number(hostNation.gov_approval ?? 50) + approvalChange)));
+        if (!autocracyResult) autocracyResult = {};
+        autocracyResult.host_roll = roll;
+        autocracyResult.host_change = approvalChange;
+        bonusSummary.push('Autocracy dice (host): rolled ' + roll + ' → ' + (approvalChange > 0 ? '+' : '') + approvalChange + ' Gov Approval (host)');
+    }
+
+    // ── Apply all updates ──
+    await Promise.all([
+        _supabase.from('nations').update(visitorUpdates).eq('id', visitorNationId),
+        _supabase.from('nations').update(hostUpdates).eq('id', hostNationId)
+    ]);
+
+    // Update relations
+    const newRelScore = Math.min(100, relScore + relBoost);
+    if (relRes.data) {
+        await _supabase.from('diplomatic_relations').update({ relation_score: newRelScore }).eq('nation_a_id', natA).eq('nation_b_id', natB);
+    } else {
+        await _supabase.from('diplomatic_relations').insert({ nation_a_id: natA, nation_b_id: natB, relation_score: newRelScore });
+    }
+
+    // Mark proposal as active
+    await _supabase.from('diplomatic_proposals').update({
+        status: 'active',
+        activated_at_tick: currentTick
+    }).eq('id', proposalId);
+
+    // Write to diplomatic_action_log for cooldown tracking
+    await _supabase.from('diplomatic_action_log').insert({
+        nation_id: visitorNationId,
+        target_nation_id: hostNationId,
+        faction_id: proposal.proposed_by_faction_id,
+        action_type: 'state_visit',
+        action_data: {
+            visitor_pm: pd.visitor_pm,
+            visitor_nation: pd.visitor_nation,
+            host_nation: pd.host_nation,
+            is_first: isFirstVisit,
+            has_trade_agreement: hasTradeAgreement,
+            high_relations: highRelations,
+            relation_boost: relBoost,
+            rep_boost: repBoost,
+            stability_boost: stabBoost,
+            autocracy_result: autocracyResult,
+            bonuses: bonusSummary
+        },
+        ap_cost: DIPLOMACY_CONFIG.STATE_VISIT_AP,
+        applied_at_tick: currentTick,
+        cooldown_until_tick: currentTick + DIPLOMACY_CONFIG.STATE_VISIT_COOLDOWN,
+        processed: true
+    });
+
+    // Fire event for all nations
+    try {
+        const { data: allNations } = await _supabase.from('nations').select('id');
+        if (allNations && allNations.length > 0) {
+            const eventRows = allNations.map(n => ({
+                nation_id: n.id,
+                event_name: 'State Visit',
+                event_type: 'state_visit',
+                category: 'Diplomatic',
+                description_chosen: pd.visitor_pm + ' of ' + pd.visitor_nation + ' conducted a State Visit to ' + pd.host_nation + '.' +
+                    (isFirstVisit ? ' This historic first visit marks a new chapter in bilateral relations.' : '') +
+                    (hasTradeAgreement ? ' Trade discussions featured prominently.' : '') +
+                    (highRelations ? ' The warm reception reflected strong bilateral ties.' : ''),
+                fired_at_tick: currentTick,
+                effects: {
+                    visitor_pm: pd.visitor_pm,
+                    visitor_nation: pd.visitor_nation,
+                    host_nation: pd.host_nation,
+                    is_first: isFirstVisit
+                }
+            }));
+            await _supabase.from('event_log').insert(eventRows);
+        }
+    } catch (e) {
+        console.warn('Error firing state visit event:', e);
+    }
+
+    // Build result message
+    let resultMsg = 'State Visit Accepted!\n\n' +
+        pd.visitor_pm + ' visited ' + pd.host_nation + '\n\n' +
+        'Base Effects:\n' +
+        '  +' + repBoost + ' International Reputation (both)\n' +
+        '  +' + stabBoost + ' Stability (both)\n' +
+        '  +' + relBoost + ' Relations (' + relScore + ' → ' + newRelScore + ')\n';
+
+    if (bonusSummary.length > 0) {
+        resultMsg += '\nBonuses:\n  ' + bonusSummary.join('\n  ') + '\n';
+    }
+
+    resultMsg += '\n' + pd.host_nation + ' is now on a ' + DIPLOMACY_CONFIG.STATE_VISIT_COOLDOWN + '-tick visit cooldown.';
+
+    alert(resultMsg);
+
+    // Refresh
+    await renderInboxTab();
+    await renderDiploHeader();
+    if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
+}
+
+async function declineStateVisit(proposalId) {
+    if (!confirm('Decline this State Visit invitation? The visiting nation will not be refunded their AP.')) return;
+
+    await _supabase.from('diplomatic_proposals').update({ status: 'rejected' }).eq('id', proposalId);
+
+    alert('State Visit declined.');
+    await renderInboxTab();
+    await renderDiploHeader();
+    if (selectedTargetNation) await renderNationCardBody(selectedTargetNation.id);
+}
+
 // Expose functions for HTML onclick/onchange handlers
 window.showDiploTab = showDiploTab;
 window.toggleNationCard = toggleNationCard;
@@ -5654,6 +6128,10 @@ window.inboxStrikeArticles = inboxStrikeArticles;
 window.fmApprove = fmApprove;
 window.fmEscalate = fmEscalate;
 window.fmReject = fmReject;
+// State Visit exports
+window.initiateStateVisit = initiateStateVisit;
+window.acceptStateVisit = acceptStateVisit;
+window.declineStateVisit = declineStateVisit;
 </script>
 
 </body>

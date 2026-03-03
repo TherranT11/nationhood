@@ -956,6 +956,23 @@ async function advanceTick(supabase) {
         console.error('[advanceTick] Agreement expiration check failed (non-fatal):', expErr);
     }
 
+    // 3.7 Expire pending state visit proposals past their accept window
+    try {
+        const { data: expiredVisits, error: svErr } = await supabase
+            .from('diplomatic_proposals')
+            .update({ status: 'expired' })
+            .eq('proposal_type', 'state_visit')
+            .eq('status', 'proposed')
+            .lte('fm_review_expires_tick', newTick)
+            .select('id');
+        if (!svErr && expiredVisits && expiredVisits.length > 0) {
+            summary.expiredStateVisits = expiredVisits.length;
+            console.log(`[advanceTick] Expired ${expiredVisits.length} state visit proposal(s)`);
+        }
+    } catch (svExpErr) {
+        console.error('[advanceTick] State visit expiration check failed (non-fatal):', svExpErr);
+    }
+
     // 4. Process each nation
     for (const nation of nationList) {
       try {
