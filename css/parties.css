@@ -6314,6 +6314,39 @@ body.light-mode .edit-logo-option:hover {
     background: rgba(255, 215, 0, 0.03);
 }
 
+/* Family member successor option */
+.reg-successor-family-divider {
+    font-size: 0.6rem;
+    color: #6b6a5e;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 6px 0 2px;
+    text-align: center;
+}
+.reg-successor-family-btn {
+    border-left-color: #FFD700 !important;
+    background: rgba(255, 215, 0, 0.04);
+}
+.reg-successor-family-btn.selected {
+    background: rgba(255, 215, 0, 0.15);
+    border-color: rgba(255, 215, 0, 0.35);
+    border-left-color: #FFD700 !important;
+    color: #FFD700;
+}
+.reg-successor-family-warning {
+    font-size: 0.6rem;
+    color: #ff9800;
+    line-height: 1.4;
+    margin-top: 4px;
+    padding: 4px 8px;
+    background: rgba(255, 152, 0, 0.06);
+    border-radius: 3px;
+}
+.reg-successor-card-family {
+    border-color: rgba(255, 152, 0, 0.3);
+    background: rgba(255, 152, 0, 0.06);
+}
+
 /* Light mode overrides */
 body.light-mode .reg-chosen-successor-badge { background: #E6B800; color: #fff; }
 body.light-mode .reg-successor-panel { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.08); }

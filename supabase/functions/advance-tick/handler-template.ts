@@ -859,6 +859,11 @@ async function advanceTick(supabase) {
             if (isInGovernment) apGain += 1;
             if ((faction.approval_rating ?? 50) > 60) apGain += 1;
 
+            // Family member successor penalty: ruling faction loses 1 AP/tick
+            if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) {
+                apGain = Math.max(1, apGain - 1);
+            }
+
             const result = await accumulateAP(supabase, faction.id, apGain);
             if (result.success) {
                 console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+${apGain})`);
@@ -1350,6 +1355,7 @@ async function advanceTick(supabase) {
                                         head_of_state_last_name: chosenSuccessor.last_name,
                                         head_of_state_age: chosenSuccessor.age,
                                         successor_cooldown_end_tick: null,
+                                        successor_is_family_member: false,
                                     }).eq('id', nation.id);
                                     nation.head_of_state_first_name = chosenSuccessor.first_name;
                                     nation.head_of_state_last_name = chosenSuccessor.last_name;
@@ -1439,6 +1445,62 @@ async function advanceTick(supabase) {
                                         successor: successorFullName,
                                         successorAge: chosenSuccessor.age,
                                     });
+                                } else if (nation.successor_is_family_member) {
+                                    // === FAMILY MEMBER SUCCESSION ===
+                                    console.log(`[LeaderAging] Family succession in ${nation.name}`);
+                                    const FIRST_NAMES = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
+                                    const famFirst = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
+                                    // Family member keeps the dynasty name
+                                    const famLast = nation.head_of_state_last_name || 'Unknown';
+                                    const famAge = 30 + Math.floor(Math.random() * 16); // 30-45
+
+                                    await supabase.from('nations').update({
+                                        head_of_state_first_name: famFirst,
+                                        head_of_state_last_name: famLast,
+                                        head_of_state_age: famAge,
+                                        successor_cooldown_end_tick: null,
+                                        successor_is_family_member: false,
+                                    }).eq('id', nation.id);
+                                    nation.head_of_state_first_name = famFirst;
+                                    nation.head_of_state_last_name = famLast;
+                                    nation.head_of_state_age = famAge;
+
+                                    // Reset coup readiness
+                                    await supabase.from('stewards').update({ coup_readiness: 0 })
+                                        .eq('nation_id', nation.id).eq('is_alive', true);
+
+                                    // Mild loyalty hit — all factions -5
+                                    const { data: famFactions } = await supabase.from('factions')
+                                        .select('id, loyalty')
+                                        .eq('nation_id', nation.id)
+                                        .eq('faction_type', 'party');
+                                    for (const fac of (famFactions || [])) {
+                                        const newLoy = Math.max(0, (fac.loyalty ?? 50) - 5);
+                                        await supabase.from('factions').update({ loyalty: newLoy }).eq('id', fac.id);
+                                    }
+
+                                    const famFullName = `${famFirst} ${famLast}`;
+                                    await supabase.from('campaign_actions').insert({
+                                        party_id: nation.ruling_faction_id,
+                                        nation_id: nation.id,
+                                        action_type: 'clean_succession',
+                                        tick_performed: newTick,
+                                        result: {
+                                            deceased_name: hosName,
+                                            deceased_age: newHosAge,
+                                            successor_name: famFullName,
+                                            is_family_member: true,
+                                            cause: 'natural_causes',
+                                        },
+                                    });
+
+                                    agingResults.push({
+                                        type: 'clean_succession',
+                                        deceased: hosName,
+                                        deceasedAge: newHosAge,
+                                        successor: famFullName,
+                                        successorAge: famAge,
+                                    });
                                 } else {
                                     // === NO SUCCESSOR — random replacement (existing behavior) ===
                                     const FIRST_NAMES = ['Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastián','Luca','Andrés','Gabriel','Joaquín','Mariana','Carlos','Tomas','Rafael','Edwin','Emilio','Catalina','Fernando','Renata'];
@@ -1452,6 +1514,7 @@ async function advanceTick(supabase) {
                                         head_of_state_last_name: newLast,
                                         head_of_state_age: newSuccessorAge,
                                         successor_cooldown_end_tick: null,
+                                        successor_is_family_member: false,
                                     }).eq('id', nation.id);
                                     nation.head_of_state_first_name = newFirst;
                                     nation.head_of_state_last_name = newLast;

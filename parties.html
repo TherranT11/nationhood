@@ -297,13 +297,14 @@ async function renderAutocracyParties(el, f, n) {
         const revActive = n.revolution_started_tick != null && n.revolution_duration != null;
         const revRemaining = revActive ? Math.max(0, n.revolution_duration - (currentTick - n.revolution_started_tick)) : 0;
 
-        // Succession — backed by explicit Chosen Successor appointment
+        // Succession — backed by explicit Chosen Successor appointment or family member
         const chosenSuccessorSteward = (stewardRows || []).find(s => s.is_chosen_successor && s.is_alive !== false);
-        const successorFactionName = chosenSuccessorSteward ? factionNameMap[chosenSuccessorSteward.faction_id] : null;
+        const isFamilyMemberSuccessor = n.successor_is_family_member === true;
+        const hasAnySuccessor = !!chosenSuccessorSteward || isFamilyMemberSuccessor;
         const successionLabel = chosenSuccessorSteward
             ? `${chosenSuccessorSteward.first_name} ${chosenSuccessorSteward.last_name}`
-            : 'UNDESIGNATED';
-        const successionColor = chosenSuccessorSteward ? '#FFD700' : '#ff5722';
+            : isFamilyMemberSuccessor ? 'FAMILY MEMBER' : 'UNDESIGNATED';
+        const successionColor = hasAnySuccessor ? '#FFD700' : '#ff5722';
 
         // Regime vitals
         const pressF = Math.round(Number(n.press_freedom ?? 50));
@@ -1019,6 +1020,7 @@ async function renderAutocracyParties(el, f, n) {
             const stAP = f.action_points ?? 0;
 
             if (hasSuccessor) {
+                // Steward successor card
                 const successorFacName = factionNameMap[chosenSuccessorSteward.faction_id] || 'Unknown';
                 const ssTypeLabel = STEWARD_TYPE_LABELS[chosenSuccessorSteward.steward_type] || '';
                 appointSuccessorHtml = `
@@ -1035,6 +1037,21 @@ async function renderAutocracyParties(el, f, n) {
                             <div class="reg-successor-revoke-warning">Stability &minus;${SUCCESSOR_CONFIG.REVOKE_STABILITY_DROP}. Former successor: Loyalty &minus;${SUCCESSOR_CONFIG.REVOKE_LOYALTY_DROP}. All stewards: Coup Readiness +${SUCCESSOR_CONFIG.REVOKE_COUP_READINESS}.</div>
                         </div>
                     </div>`;
+            } else if (isFamilyMemberSuccessor) {
+                // Family member successor card
+                appointSuccessorHtml = `
+                    <div class="reg-section">
+                        <div class="reg-section-title">SUCCESSION</div>
+                        <div class="reg-successor-panel">
+                            <div class="reg-successor-card reg-successor-card-family">
+                                <div class="reg-successor-card-label">CLOSE FAMILY MEMBER</div>
+                                <div class="reg-successor-card-name">Dynasty Succession</div>
+                                <div class="reg-successor-card-info">AP generation: <strong>&minus;${SUCCESSOR_CONFIG.FAMILY_AP_PENALTY}/tick</strong> while active</div>
+                            </div>
+                            <button class="reg-successor-revoke-btn" id="revoke-successor-btn">REVOKE APPOINTMENT</button>
+                            <div class="reg-successor-revoke-warning">Stability &minus;${SUCCESSOR_CONFIG.REVOKE_STABILITY_DROP}. All stewards: Coup Readiness +${SUCCESSOR_CONFIG.REVOKE_COUP_READINESS}.</div>
+                        </div>
+                    </div>`;
             } else if (cooldownActive) {
                 appointSuccessorHtml = `
                     <div class="reg-section">
@@ -1044,6 +1061,7 @@ async function renderAutocracyParties(el, f, n) {
                         </div>
                     </div>`;
             } else {
+                // Build target buttons: steward factions + own faction (family member)
                 const eligibleFactions = nonRuling.filter(p => stewardByFaction[p.id]);
                 const targetBtns = eligibleFactions.map(p => {
                     const s = stewardByFaction[p.id];
@@ -1051,6 +1069,10 @@ async function renderAutocracyParties(el, f, n) {
                     const pColor = p.party_color || '#666';
                     return `<button class="reg-successor-target-btn" data-faction-id="${p.id}" data-faction-name="${escapeHtml(p.faction_name)}" style="border-left-color:${pColor}">${escapeHtml(p.faction_name)} <span style="opacity:0.5;font-size:0.65rem">${escapeHtml(sLabel)} \u2014 ${escapeHtml(s.first_name)} ${escapeHtml(s.last_name)}</span></button>`;
                 }).join('');
+
+                // Family member option — own faction
+                const rulingColor = f.party_color || '#FFD700';
+                const familyBtn = `<button class="reg-successor-target-btn reg-successor-family-btn" data-faction-id="${f.id}" data-faction-name="Close Family Member" style="border-left-color:${rulingColor}">${escapeHtml(f.faction_name)} <span style="opacity:0.5;font-size:0.65rem">Close Family Member</span></button>`;
 
                 appointSuccessorHtml = `
                     <div class="reg-section">
@@ -1061,10 +1083,13 @@ async function renderAutocracyParties(el, f, n) {
                                 Designate a steward as your chosen successor. Their pillar gains <strong>+${SUCCESSOR_CONFIG.PILLAR_BOOST}</strong> support.
                                 Stability <strong>+${SUCCESSOR_CONFIG.STABILITY_BOOST}</strong>. All other factions: loyalty <strong>&minus;${SUCCESSOR_CONFIG.OTHER_LOYALTY_DROP}</strong>, coup readiness <strong>+${SUCCESSOR_CONFIG.OTHER_COUP_READINESS}</strong>.
                             </div>
-                            ${eligibleFactions.length > 0 ? `
-                                <div class="reg-successor-targets">${targetBtns}</div>
-                                <button class="reg-successor-submit" id="appoint-successor-btn" disabled ${stAP < SUCCESSOR_CONFIG.AP_COST ? 'title="Not enough AP"' : ''}>APPOINT (${SUCCESSOR_CONFIG.AP_COST} AP)</button>
-                            ` : `<div class="reg-successor-none">No eligible stewards. A faction needs a living steward to be appointed.</div>`}
+                            <div class="reg-successor-targets">
+                                ${targetBtns}
+                                <div class="reg-successor-family-divider">or appoint from your own dynasty</div>
+                                ${familyBtn}
+                                <div class="reg-successor-family-warning">All stewards: Coup Readiness <strong>+${SUCCESSOR_CONFIG.FAMILY_COUP_READINESS}</strong>. Stability <strong>+${SUCCESSOR_CONFIG.FAMILY_STABILITY_BOOST}</strong>. All pillars <strong>&minus;${SUCCESSOR_CONFIG.FAMILY_PILLAR_PENALTY}</strong>. AP generation <strong>&minus;${SUCCESSOR_CONFIG.FAMILY_AP_PENALTY}/tick</strong>.</div>
+                            </div>
+                            <button class="reg-successor-submit" id="appoint-successor-btn" disabled ${stAP < SUCCESSOR_CONFIG.AP_COST ? 'title="Not enough AP"' : ''}>APPOINT (${SUCCESSOR_CONFIG.AP_COST} AP)</button>
                         </div>
                     </div>`;
             }
@@ -1958,6 +1983,7 @@ async function renderAutocracyParties(el, f, n) {
                 await _supabase.from('nations').update({
                     ruling_faction_id: f.id,
                     successor_cooldown_end_tick: null,
+                    successor_is_family_member: false,
                 }).eq('id', n.id);
                 // Clear any chosen successor (new regime)
                 await _supabase.from('stewards').update({
