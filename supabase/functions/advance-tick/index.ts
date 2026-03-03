@@ -9032,14 +9032,14 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
             }
 
             if (statCount > 0) {
-                perfDelta = (creditSum / statCount) * 3; // sensitivity multiplier
+                perfDelta = (creditSum / statCount) * 1.5; // sensitivity multiplier (reduced from 3)
             }
         }
 
-        // Decay toward 50 + apply trend-based delta
+        // Decay toward 50 + apply trend-based delta; floor at 15 (max display penalty = -35)
         const oldPerf = Number(row.performance_perception ?? 50);
         let newPerf = oldPerf * (1 - PERF_DECAY) + 50 * PERF_DECAY + perfDelta;
-        newPerf = Math.round(Math.max(0, Math.min(100, newPerf)) * 100) / 100;
+        newPerf = Math.round(Math.max(15, Math.min(100, newPerf)) * 100) / 100;
 
         // ─── PILLAR 3: Momentum (-50 to +50) ───
         // Decays 15% per tick. Adjusted externally via adjustMomentum().
