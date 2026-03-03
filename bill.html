@@ -867,8 +867,9 @@ function renderArticles() {
             const p = art.policies;
             if (!p) {
                 // Text-only article
+                const hasEffectData = !!art.effect_data;
                 const textActions = canEditArticles ? '<div class="article-sponsor-actions">' +
-                    '<button class="article-action-btn edit" onclick="openEditArticleModal(\'' + art.id + '\')">Edit</button>' +
+                    (hasEffectData ? '' : '<button class="article-action-btn edit" onclick="openEditArticleModal(\'' + art.id + '\')">Edit</button>') +
                     '<button class="article-action-btn rescind" onclick="rescindArticle(\'' + art.id + '\')">Remove</button>' +
                 '</div>' : '';
                 return '<div class="article" style="border-left:3px solid #2196F3;">' +
@@ -2088,7 +2089,7 @@ async function rescindArticle(articleId) {
 
 function openEditArticleModal(articleId) {
     const art = (currentBill.bill_articles || []).find(a => a.id === articleId);
-    if (!art || art.policy_id) return; // Only text articles can be edited
+    if (!art || art.policy_id || art.effect_data) return; // Only text articles can be edited (not policy or tax-rate articles)
     editingArticleId = articleId;
     document.getElementById('edit-article-title').value = art.article_title || '';
     document.getElementById('edit-article-body').value = art.article_text || '';

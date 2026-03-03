@@ -22,11 +22,7 @@
   "ministry-actions.html:isAutocracy",
   "parties.html:currentFaction",
   "parties.html:currentNation",
-  "select-ambassador.html:currentNation",
-  "select-ambassador.html:currentFaction",
-  "select-ambassador.html:isAutocracy",
-  "select-pm.html:currentNation",
-  "select-pm.html:currentFaction",
-  "select-president.html:currentNation",
-  "select-president.html:currentFaction"
+  "select-candidate.html:currentNation",
+  "select-candidate.html:currentFaction",
+  "select-candidate.html:isAutocracy"
 ]

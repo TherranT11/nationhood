@@ -7,7 +7,7 @@ import { GAME_CONFIG, initGameConfigForNation } from './config.js';
 import { isPresidentialRepublic } from './government-types.js';
 import { DIPLOMACY_CONFIG } from './diplomacy-constants.js';
 import { IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology } from './ideology.js';
-import { adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
+import { adjustMomentum, adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
 import { MINISTER_APPROVAL_CONFIG } from './stats.js';
 import { resolveBudgetBill } from './budget.js';
 import { fetchActiveCoalition } from './government-structure.js';
@@ -58,9 +58,9 @@ export async function syncVoteTallies(supabase, billId) {
 // ==================== ENACTMENT APPROVAL IMPACT ====================
 
 export function calculateEnactmentApproval(articles, billSupport, sponsorId, factionIdeologies) {
-    const APPROVAL_CAP_POSITIVE = 2;
-    const APPROVAL_CAP_NEGATIVE = -5;
-    const OPPOSITION_KICKER = -1;
+    const APPROVAL_CAP_POSITIVE = 4;
+    const APPROVAL_CAP_NEGATIVE = -10;
+    const OPPOSITION_KICKER = -2;
 
     // Collect all ideology tags from bill articles
     const allTags = [];
@@ -157,9 +157,9 @@ export async function applyEnactmentApproval(supabase, nationId, approvalDeltas)
  * @param {string} nationId
  */
 export async function applyBlocPreferenceOnPassage(supabase, bill, nationId) {
-    const ALIGNED_PREF_BONUS = 3;
-    const ALIGNED_MOMENTUM_BONUS = 3;
-    const OPPOSED_PREF_PENALTY = -4;
+    const ALIGNED_PREF_BONUS = 6;
+    const ALIGNED_MOMENTUM_BONUS = 6;
+    const OPPOSED_PREF_PENALTY = -8;
     const AXIS_THRESHOLD = 10; // distance from center (50) to count as "having" an opinion
 
     const sponsorId = bill.proposed_by;
@@ -577,20 +577,20 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
             const mapping = IDEOLOGY_TO_AXIS[tag];
             if (!mapping) continue;
 
-            // +1 for proposing (sponsor only)
+            // +2 for proposing (sponsor only)
             if (bill.proposed_by) {
-                addShift(bill.proposed_by, mapping.axisKey, 1 * mapping.direction);
+                addShift(bill.proposed_by, mapping.axisKey, 2 * mapping.direction);
             }
 
-            // +2 for voting YES (all YES voters including sponsor)
+            // +4 for voting YES (all YES voters including sponsor)
             for (const factionId of yesVoters) {
-                addShift(factionId, mapping.axisKey, 2 * mapping.direction);
+                addShift(factionId, mapping.axisKey, 4 * mapping.direction);
             }
 
-            // +2 if bill passed (YES voters only)
+            // +4 if bill passed (YES voters only)
             if (isPassed) {
                 for (const factionId of yesVoters) {
-                    addShift(factionId, mapping.axisKey, 2 * mapping.direction);
+                    addShift(factionId, mapping.axisKey, 4 * mapping.direction);
                 }
             }
         }
@@ -2011,6 +2011,41 @@ export async function enactBill(supabase, bill, currentTick) {
             .eq('id', bill.nation_id);
         if (taxErr) {
             console.error(`[enactBill] Failed to apply tax rate changes:`, taxErr.message);
+            return { success: false, error: `Tax rate update failed: ${taxErr.message}` };
+        }
+        console.log(`[enactBill] Tax rates applied to nation ${bill.nation_id}:`, JSON.stringify(taxUpdates));
+
+        // ── Apply tax-change approval/momentum effects ──
+        // These match the preview shown in the economy.html tax cards.
+        if (bill.proposed_by) {
+            for (const [taxKey, newRate] of Object.entries(taxUpdates)) {
+                const oldRate = Number(nation[taxKey] ?? 0);
+                const rateDiff = newRate - oldRate;
+                if (rateDiff === 0) continue;
+
+                if (taxKey === 'corporate_tax') {
+                    // Corporate tax: flat momentum hit on Business Owners voter bloc
+                    const blocImpact = rateDiff > 0 ? -3 : 2;
+                    const { data: boBlocRows } = await supabase
+                        .from('voter_blocs')
+                        .select('id')
+                        .eq('nation_id', bill.nation_id)
+                        .eq('bloc_name', 'Business Owners')
+                        .eq('is_active', true)
+                        .limit(1);
+                    if (boBlocRows && boBlocRows.length > 0) {
+                        await adjustMomentum(supabase, bill.nation_id, bill.proposed_by, boBlocRows[0].id, blocImpact, 'tax:corporate_tax');
+                        console.log(`[enactBill] Corporate tax momentum: ${blocImpact} on Business Owners for sponsor ${bill.proposed_by}`);
+                    }
+                } else {
+                    // Income / Sales tax: general momentum hit on sponsor
+                    const approvalImpact = rateDiff > 0 ? rateDiff * -2 : Math.abs(rateDiff) * 1;
+                    if (approvalImpact !== 0) {
+                        await adjustMomentumAll(supabase, bill.nation_id, bill.proposed_by, approvalImpact, `tax:${taxKey}`);
+                        console.log(`[enactBill] ${taxKey} momentum: ${approvalImpact} for sponsor ${bill.proposed_by}`);
+                    }
+                }
+            }
         }
     }
 

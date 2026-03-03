@@ -14,7 +14,7 @@ import { adjustGovernmentApprovalEvent } from './momentum.js';
 /**
  * Generate 3 president candidates for a party (reuses PM candidate generation pattern).
  * Candidates are stored in pm_candidates table with candidate_type = 'presidential';
- * select-president.html reads them.
+ * select-candidate.html?role=president reads them.
  *
  * @param {string} candidateType - 'presidential' (default)
  */
@@ -265,7 +265,10 @@ export async function signPresidentialBill(supabase, billId, presidentFactionId)
         president_action_tick: currentTick
     }).eq('id', bill.id);
 
-    await enactBill(supabase, bill, currentTick);
+    const enactment = await enactBill(supabase, bill, currentTick);
+    if (!enactment?.success) {
+        throw new Error(enactment?.error || 'Bill enactment failed after presidential signature');
+    }
 
     try {
         await supabase.rpc('fire_system_event', {
@@ -362,7 +365,12 @@ export async function processPresidentDesk(supabase, nation, currentTick) {
             president_action_tick: currentTick
         }).eq('id', bill.id);
 
-        await enactBill(supabase, bill, currentTick);
+        const enactment = await enactBill(supabase, bill, currentTick);
+        if (!enactment?.success) {
+            console.error(`[processPresidentDesk] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
+            results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: enactment?.error });
+            continue;
+        }
 
         try {
             await supabase.rpc('fire_system_event', {

@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parliament | Nationhood Alpha</title>
+    <style>
+/* ===== RESET & BASE ===== */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg-body: #121212;
+    --bg-panel: #1a1a1a;
+    --bg-card: #252525;
+    --bg-hover: #2a2a2a;
+    --border-main: #333;
+    --border-light: #222;
+    --border-accent: #ffcc00;
+    --text-primary: #e0e0e0;
+    --text-secondary: #888;
+    --text-muted: #666;
+    --text-dim: #555;
+    --accent: #ffcc00;
+    --accent-hover: #e6b800;
+    --green: #4CAF50;
+    --red: #ff4444;
+    --blue: #2196F3;
+    --orange: #ff9800;
+    --shadow-card: rgba(0,0,0,0.5);
+    --shadow-accent: rgba(255,204,0,0.4);
+}
+
+body {
+    background: var(--bg-body);
+    color: var(--text-primary);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* ===== TOP BAR ===== */
+.top-bar {
+    background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+    border-bottom: 3px solid var(--accent);
+    box-shadow: 0 4px 12px var(--shadow-card);
+    z-index: 100;
+    flex-shrink: 0;
+}
+.top-bar-row1 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px 6px;
+}
+.top-bar-left { display: flex; align-items: center; gap: 20px; }
+.tick-info { display: flex; gap: 30px; align-items: center; }
+.tick-item { display: flex; flex-direction: column; }
+.tick-label { font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+.tick-value { font-size: 1rem; color: var(--accent); font-weight: bold; }
+.tick-countdown { font-size: 1.1rem; color: var(--green); font-weight: bold; font-family: 'Courier New', monospace; }
+.top-bar-right { display: flex; align-items: center; gap: 15px; }
+.nation-badge {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding-right: 20px; border-right: 1px solid var(--border-main); min-width: 70px;
+}
+.nation-flag-img { width: 48px; height: 32px; background: #ffb380; border-radius: 3px; border: 1px solid #444; }
+.nation-name { font-size: 0.65rem; color: var(--accent); font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+.party-badge {
+    background: var(--bg-card);
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    color: var(--accent);
+    font-weight: bold;
+}
+.logout-btn {
+    background: transparent; border: 1px solid var(--red); color: var(--red);
+    padding: 4px 10px; cursor: pointer; border-radius: 4px; font-size: 0.7rem;
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+/* Nav tabs */
+.nav-tabs { display: flex; padding: 0 20px; gap: 2px; border-top: 1px solid var(--border-main); }
+.nav-tab {
+    padding: 7px 14px; background: transparent; border: none; color: var(--text-secondary);
+    font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1px; cursor: pointer;
+    border-radius: 4px 4px 0 0; transition: background 0.2s, color 0.2s; white-space: nowrap;
+    text-decoration: none; position: relative;
+}
+.nav-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.nav-tab.active { background: var(--bg-body); color: var(--accent); border-top: 2px solid var(--accent); }
+.nav-badge {
+    position: absolute; top: 2px; right: -2px;
+    background: #ff4444; color: #fff;
+    font-size: 0.6rem; font-weight: bold;
+    min-width: 16px; height: 16px; line-height: 16px;
+    text-align: center; border-radius: 50%; padding: 0 3px;
+}
+
+/* ===== PARLIAMENT LAYOUT ===== */
+.parliament-layout {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* ===== MAIN CHAMBER FEED ===== */
+.chamber-feed {
+    overflow-y: auto;
+    padding: 24px;
+}
+
+.chamber-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+.chamber-title {
+    color: var(--accent);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+.chamber-filters {
+    display: flex;
+    gap: 8px;
+}
+.filter-chip {
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    border: 1px solid var(--border-main);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: 0.2s;
+}
+.filter-chip:hover { border-color: var(--accent); color: var(--text-primary); }
+.filter-chip.active { background: var(--accent); color: #121212; border-color: var(--accent); font-weight: bold; }
+
+/* --- Parliament Half-Circle --- */
+.parliament-viz {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-main);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+    text-align: center;
+}
+.parliament-viz-title {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 12px;
+}
+.parliament-semicircle {
+    position: relative;
+    width: 280px;
+    height: 140px;
+    margin: 0 auto 16px;
+    overflow: hidden;
+}
+.semicircle-bg {
+    width: 280px;
+    height: 280px;
+    border-radius: 50%;
+    background: conic-gradient(
+        #E91E63 0deg 108deg,
+        #2196F3 108deg 180deg,
+        #4CAF50 180deg 252deg,
+        #FF9800 252deg 306deg,
+        #9C27B0 306deg 360deg
+    );
+    position: relative;
+}
+.semicircle-bg::after {
+    content: '';
+    position: absolute;
+    width: 180px;
+    height: 180px;
+    background: var(--bg-panel);
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+.seat-total {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 1.4rem;
+    font-weight: bold;
+    color: var(--accent);
+}
+.seat-total-label {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+.parliament-legend {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+}
+.legend-item { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--text-secondary); }
+.legend-swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.legend-seats { color: var(--text-muted); font-size: 0.72rem; font-weight: 600; }
+
+/* --- Section Dividers --- */
+.section-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin: 24px 0 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-light);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.section-count {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    background: var(--bg-card);
+    padding: 2px 8px;
+    border-radius: 3px;
+}
+
+/* --- Bill Cards --- */
+.bill-card {
+    background: var(--bg-panel);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.bill-card:hover {
+    transform: translateY(-2px);
+}
+.bill-card.committee {
+    border: 2px solid var(--orange);
+}
+.bill-card.committee:hover { box-shadow: 0 6px 20px rgba(255,152,0,0.3); }
+.bill-card.floor {
+    border: 2px solid var(--green);
+}
+.bill-card.floor:hover { box-shadow: 0 6px 20px rgba(76,175,80,0.3); }
+.bill-card.president-desk {
+    border: 2px solid var(--blue);
+}
+.bill-card.president-desk:hover { box-shadow: 0 6px 20px rgba(33,150,243,0.3); }
+.bill-card.recent-passed {
+    border: 2px solid var(--green);
+    opacity: 0.7;
+}
+.bill-card.recent-failed {
+    border: 2px solid var(--red);
+    opacity: 0.7;
+}
+
+.bill-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+.bill-card-left { flex: 1; }
+.bill-card-name {
+    font-size: 1.1rem;
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+.bill-card.committee .bill-card-name { color: var(--orange); }
+.bill-card.floor .bill-card-name { color: var(--green); }
+.bill-card.president-desk .bill-card-name { color: var(--blue); }
+.bill-card.recent-passed .bill-card-name { color: var(--green); }
+.bill-card.recent-failed .bill-card-name { color: var(--red); }
+
+.bill-card-sponsor {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+.bill-card-type {
+    font-size: 0.68rem;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.type-policy { background: #2a2a1a; color: var(--orange); border: 1px solid var(--orange); }
+.type-budget { background: #1a2a1a; color: var(--green); border: 1px solid var(--green); }
+.type-ratification { background: #1a1a2a; color: var(--blue); border: 1px solid var(--blue); }
+.type-repeal { background: #2a1a1a; color: var(--red); border: 1px solid var(--red); }
+
+/* Bill articles preview */
+.bill-articles-preview {
+    background: var(--bg-card);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+}
+.article-preview-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid #333;
+    font-size: 0.85rem;
+}
+.article-preview-item:last-child { border-bottom: none; }
+.article-preview-name { color: var(--text-primary); }
+.article-ideology-badge {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: #fff;
+    font-weight: bold;
+}
+.ideo-aligned { background: var(--green); }
+.ideo-opposed { background: var(--red); }
+.ideo-neutral { background: #666; }
+
+/* Support bar */
+.support-bar-section { margin-bottom: 12px; }
+.support-bar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.support-label { font-size: 0.75rem; color: var(--text-secondary); }
+.support-percent { font-size: 1rem; font-weight: bold; }
+.support-percent.enough { color: var(--green); }
+.support-percent.pending { color: var(--orange); }
+
+.support-bar-track {
+    height: 8px;
+    background: #333;
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+.support-bar-fill {
+    height: 100%;
+    transition: width 0.3s;
+    border-radius: 4px;
+}
+.support-bar-fill.committee-fill { background: linear-gradient(90deg, #ff9800 0%, #ffcc00 100%); }
+.support-bar-fill.floor-fill { background: linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%); }
+.support-bar-fill.enough { background: linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%); }
+.threshold-marker {
+    position: absolute;
+    left: 51%;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    background: #fff;
+    z-index: 1;
+}
+
+/* Vote tally (floor bills) */
+.vote-tally {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 12px;
+    font-size: 0.85rem;
+}
+.votes-for { color: var(--green); font-weight: bold; }
+.votes-against { color: var(--red); font-weight: bold; }
+.votes-abstain { color: var(--text-muted); }
+.voting-deadline {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+.voting-deadline strong { color: var(--text-secondary); }
+
+/* Inline vote buttons */
+.inline-vote-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-main);
+}
+.vote-btn {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: transform 0.2s, opacity 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.vote-btn:hover { transform: translateY(-1px); }
+.vote-btn.yes { background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); color: #fff; }
+.vote-btn.no { background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%); color: #fff; }
+.vote-btn.abstain { background: #333; color: #888; }
+.vote-btn.cast {
+    opacity: 0.5;
+    cursor: default;
+    transform: none;
+}
+.vote-btn.cast.active {
+    opacity: 1;
+    box-shadow: 0 0 0 2px #fff;
+}
+
+/* Committee action buttons */
+.committee-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-main);
+}
+.stance-btn {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    font-weight: bold;
+    transition: opacity 0.2s;
+}
+.stance-btn:hover { opacity: 0.85; }
+.stance-btn.support { background: var(--green); color: #fff; }
+.stance-btn.oppose { background: var(--red); color: #fff; }
+.stance-btn.amend { background: var(--blue); color: #fff; }
+.stance-btn.send-floor { background: var(--accent); color: #121212; }
+
+/* Recently resolved banner */
+.resolved-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82rem;
+    font-weight: bold;
+    margin-top: 8px;
+}
+.resolved-banner.passed { color: var(--green); }
+.resolved-banner.failed { color: var(--red); }
+
+/* Click hint */
+.click-hint {
+    text-align: right;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    margin-top: 8px;
+    opacity: 0.7;
+}
+.bill-card:hover .click-hint { opacity: 1; color: var(--accent); }
+
+/* ===== SIDEBAR ===== */
+.parliament-sidebar {
+    background: var(--bg-panel);
+    border-left: 2px solid var(--border-main);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-section {
+    padding: 18px;
+    border-bottom: 1px solid var(--border-main);
+}
+.sidebar-section:last-child { border-bottom: none; }
+
+.sidebar-heading {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 12px;
+}
+
+/* Party info card */
+.party-info-card {
+    background: var(--bg-card);
+    border-radius: 6px;
+    padding: 14px;
+    border-left: 3px solid var(--accent);
+}
+.party-info-name {
+    font-size: 1rem;
+    color: var(--accent);
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+.party-info-role {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+}
+.party-stats-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-light);
+    font-size: 0.82rem;
+}
+.party-stats-row:last-child { border-bottom: none; }
+.party-stat-label { color: var(--text-secondary); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.party-stat-val { color: var(--accent); font-weight: bold; }
+.party-stat-val.green { color: var(--green); }
+
+/* AP bar */
+.ap-bar-container { margin-top: 10px; }
+.ap-bar-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+.ap-bar {
+    height: 6px;
+    background: #333;
+    border-radius: 3px;
+    overflow: hidden;
+}
+.ap-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), #e6b800);
+    border-radius: 3px;
+}
+
+/* Draft button */
+.draft-bill-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #ffcc00 0%, #e6b800 100%);
+    border: none;
+    border-radius: 6px;
+    color: #121212;
+    font-weight: bold;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 12px;
+}
+.draft-bill-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px var(--shadow-accent); }
+.draft-bill-btn .ap-cost {
+    background: rgba(0,0,0,0.2);
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-left: 8px;
+    font-size: 0.8rem;
+}
+
+/* Quick actions */
+.quick-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.quick-action-btn {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: 0.2s;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.quick-action-btn.primary {
+    background: linear-gradient(135deg, #1B5E20 0%, #2E7D32 100%);
+    border: 1px solid var(--green);
+    color: #fff;
+    font-weight: bold;
+}
+.quick-action-btn.primary:hover { box-shadow: 0 4px 12px rgba(76,175,80,0.3); }
+.quick-action-btn.secondary {
+    background: transparent;
+    border: 1px solid var(--border-main);
+    color: var(--text-secondary);
+}
+.quick-action-btn.secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Coalition status */
+.coalition-status-card {
+    background: var(--bg-card);
+    border-radius: 6px;
+    padding: 14px;
+    border-left: 3px solid var(--green);
+}
+.coalition-label {
+    font-size: 0.72rem;
+    color: var(--green);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: bold;
+    margin-bottom: 8px;
+}
+.coalition-members {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.coalition-member {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.82rem;
+    padding: 4px 0;
+}
+.coalition-member-name { color: var(--text-primary); }
+.coalition-member-seats { color: var(--accent); font-weight: bold; font-size: 0.78rem; }
+.coalition-member.lead .coalition-member-name { color: var(--accent); font-weight: bold; }
+.coalition-total {
+    display: flex;
+    justify-content: space-between;
+    padding-top: 8px;
+    margin-top: 8px;
+    border-top: 1px solid var(--border-main);
+    font-size: 0.82rem;
+    font-weight: bold;
+}
+.coalition-total-label { color: var(--text-secondary); }
+.coalition-total-val { color: var(--green); }
+
+/* Election countdown */
+.election-card {
+    background: linear-gradient(135deg, #1a1a2a 0%, #151520 100%);
+    border: 1px solid #334;
+    border-radius: 6px;
+    padding: 14px;
+}
+.election-card-title {
+    font-size: 0.72rem;
+    color: var(--blue);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+.election-countdown {
+    font-size: 1.4rem;
+    color: var(--accent);
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+    margin-bottom: 4px;
+}
+.election-date {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+.election-link {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 0.78rem;
+    color: var(--blue);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+}
+.election-link:hover { border-bottom-color: var(--blue); }
+
+/* Approval gauge */
+.approval-gauge {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+}
+.gauge-ring {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: conic-gradient(var(--green) 0% 62%, #333 62% 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+.gauge-ring::after {
+    content: '';
+    width: 36px;
+    height: 36px;
+    background: var(--bg-card);
+    border-radius: 50%;
+    position: absolute;
+}
+.gauge-value {
+    position: relative;
+    z-index: 1;
+    font-size: 0.72rem;
+    font-weight: bold;
+    color: var(--green);
+}
+.gauge-label {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+.gauge-label strong { color: var(--text-primary); display: block; }
+
+/* Ideology tags (inline) */
+.ideology-tag {
+    display: inline-block; padding: 3px 8px; border-radius: 3px;
+    font-size: 0.68rem; font-weight: bold; text-transform: uppercase; margin-right: 4px;
+}
+.tag-liberty { background: #9C27B0; color: white; }
+.tag-progress { background: #00BCD4; color: white; }
+.tag-equality { background: #E91E63; color: white; }
+.tag-globalism { background: #3F51B5; color: white; }
+
+/* ===== EMPTY STATE ===== */
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-dim);
+}
+.empty-state-icon { font-size: 2.5rem; opacity: 0.3; margin-bottom: 12px; }
+.empty-state-text { font-size: 0.85rem; color: var(--text-muted); }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 900px) {
+    .parliament-layout { grid-template-columns: 1fr; }
+    .parliament-sidebar {
+        border-left: none;
+        border-top: 2px solid var(--border-main);
+        max-height: 400px;
+    }
+}
+@media (max-width: 768px) {
+    .nav-tabs { overflow-x: auto; }
+    .chamber-feed { padding: 16px; }
+    .bill-card { padding: 16px; }
+    .inline-vote-row { flex-wrap: wrap; }
+    .vote-btn { min-width: 80px; }
+}
+    </style>
+</head>
+<body>
+
+<!-- ===== TOP BAR ===== -->
+<div class="top-bar">
+    <div class="top-bar-row1">
+        <div class="top-bar-left">
+            <div class="nation-badge">
+                <div class="nation-flag-img"></div>
+                <div class="nation-name">San Estrella</div>
+            </div>
+            <div class="tick-info">
+                <div class="tick-item">
+                    <span class="tick-label">Date</span>
+                    <span class="tick-value">March, 2006</span>
+                </div>
+                <div class="tick-item">
+                    <span class="tick-label">Tick</span>
+                    <span class="tick-value">27</span>
+                </div>
+                <div class="tick-item">
+                    <span class="tick-label">Next Tick</span>
+                    <span class="tick-countdown">04:32:18</span>
+                </div>
+            </div>
+        </div>
+        <div class="top-bar-right">
+            <div class="party-badge">PSD</div>
+            <button class="logout-btn">Logout</button>
+        </div>
+    </div>
+    <div class="nav-tabs">
+        <a class="nav-tab" href="#">Dashboard</a>
+        <a class="nav-tab active" href="#">Parliament</a>
+        <a class="nav-tab" href="#">Party</a>
+        <a class="nav-tab" href="#">Economy</a>
+        <a class="nav-tab" href="#">Diplomacy</a>
+        <a class="nav-tab" href="#">Government</a>
+        <a class="nav-tab" href="#">
+            Elections
+            <span class="nav-badge">!</span>
+        </a>
+    </div>
+</div>
+
+<!-- ===== PARLIAMENT LAYOUT ===== -->
+<div class="parliament-layout">
+
+    <!-- ===== MAIN: CHAMBER FEED ===== -->
+    <div class="chamber-feed">
+
+        <div class="chamber-header">
+            <div class="chamber-title">Chamber Floor</div>
+            <div class="chamber-filters">
+                <button class="filter-chip active">All</button>
+                <button class="filter-chip">Committee</button>
+                <button class="filter-chip">Floor Vote</button>
+                <button class="filter-chip">Recent</button>
+            </div>
+        </div>
+
+        <!-- Parliament Visualization -->
+        <div class="parliament-viz">
+            <div class="parliament-viz-title">National Legislature &mdash; 50 Seats</div>
+            <div class="parliament-semicircle">
+                <div class="semicircle-bg"></div>
+                <div class="seat-total">50<br><span class="seat-total-label">seats</span></div>
+            </div>
+            <div class="parliament-legend">
+                <div class="legend-item"><span class="legend-swatch" style="background:#E91E63;"></span> PSD <span class="legend-seats">15</span></div>
+                <div class="legend-item"><span class="legend-swatch" style="background:#2196F3;"></span> NRP <span class="legend-seats">10</span></div>
+                <div class="legend-item"><span class="legend-swatch" style="background:#4CAF50;"></span> VDP <span class="legend-seats">10</span></div>
+                <div class="legend-item"><span class="legend-swatch" style="background:#FF9800;"></span> FLP <span class="legend-seats">8</span></div>
+                <div class="legend-item"><span class="legend-swatch" style="background:#9C27B0;"></span> CPE <span class="legend-seats">7</span></div>
+            </div>
+        </div>
+
+        <!-- FLOOR VOTE SECTION -->
+        <div class="section-label">
+            Floor Votes
+            <span class="section-count">2 active</span>
+        </div>
+
+        <!-- Floor Bill 1: Active voting -->
+        <div class="bill-card floor">
+            <div class="bill-card-header">
+                <div class="bill-card-left">
+                    <div class="bill-card-name">The National Healthcare Reform Act</div>
+                    <div class="bill-card-sponsor">Proposed by <strong>PSD</strong> &middot; Tick 25</div>
+                </div>
+                <span class="bill-card-type type-policy">Policy</span>
+            </div>
+
+            <div class="bill-articles-preview">
+                <div class="article-preview-item">
+                    <span class="article-preview-name">Art. II &mdash; Universal Healthcare Coverage</span>
+                    <span class="article-ideology-badge ideo-aligned">Aligned</span>
+                </div>
+                <div class="article-preview-item">
+                    <span class="article-preview-name">Art. III &mdash; Medical Research Funding</span>
+                    <span class="article-ideology-badge ideo-neutral">Neutral</span>
+                </div>
+            </div>
+
+            <div class="vote-tally">
+                <span class="votes-for">&#10003; 28 For (56%)</span>
+                <span class="votes-against">&#10007; 14 Against (28%)</span>
+                <span class="votes-abstain">&mdash; 3 Abstain</span>
+            </div>
+
+            <div class="support-bar-section">
+                <div class="support-bar-track">
+                    <div class="threshold-marker"></div>
+                    <div class="support-bar-fill floor-fill enough" style="width: 66.7%;"></div>
+                </div>
+            </div>
+
+            <div class="voting-deadline">Voting ends: <strong>April, 2006</strong> (Tick 28)</div>
+
+            <div class="inline-vote-row">
+                <button class="vote-btn yes cast active">&#10003; Yes (Your Vote)</button>
+                <button class="vote-btn no cast">&#10007; No</button>
+                <button class="vote-btn abstain cast">&mdash; Abstain</button>
+            </div>
+
+            <div class="click-hint">Click to view full bill details &rarr;</div>
+        </div>
+
+        <!-- Floor Bill 2: Budget -->
+        <div class="bill-card floor">
+            <div class="bill-card-header">
+                <div class="bill-card-left">
+                    <div class="bill-card-name">FY 2006 National Budget</div>
+                    <div class="bill-card-sponsor">Proposed by <strong>PSD (Coalition)</strong> &middot; Tick 26</div>
+                </div>
+                <span class="bill-card-type type-budget">Budget</span>
+            </div>
+
+            <div class="vote-tally">
+                <span class="votes-for">&#10003; 22 For (44%)</span>
+                <span class="votes-against">&#10007; 18 Against (36%)</span>
+                <span class="votes-abstain">&mdash; 0 Abstain</span>
+            </div>
+
+            <div class="support-bar-section">
+                <div class="support-bar-track">
+                    <div class="threshold-marker"></div>
+                    <div class="support-bar-fill floor-fill" style="width: 55%;"></div>
+                </div>
+            </div>
+
+            <div class="voting-deadline">Voting ends: <strong>April, 2006</strong> (Tick 28)</div>
+
+            <div class="inline-vote-row">
+                <button class="vote-btn yes">&#10003; Vote Yes</button>
+                <button class="vote-btn no">&#10007; Vote No</button>
+                <button class="vote-btn abstain">&mdash; Abstain</button>
+            </div>
+
+            <div class="click-hint">Click to view full budget breakdown &rarr;</div>
+        </div>
+
+
+        <!-- COMMITTEE SECTION -->
+        <div class="section-label">
+            In Committee
+            <span class="section-count">2 bills</span>
+        </div>
+
+        <!-- Committee Bill 1 -->
+        <div class="bill-card committee">
+            <div class="bill-card-header">
+                <div class="bill-card-left">
+                    <div class="bill-card-name">The Agricultural Modernization Act</div>
+                    <div class="bill-card-sponsor">Proposed by <strong>VDP</strong> &middot; Tick 26</div>
+                </div>
+                <span class="bill-card-type type-policy">Policy</span>
+            </div>
+
+            <div class="bill-articles-preview">
+                <div class="article-preview-item">
+                    <span class="article-preview-name">Art. II &mdash; Sustainable Farming Subsidies</span>
+                    <span class="article-ideology-badge ideo-opposed">Opposed</span>
+                </div>
+                <div class="article-preview-item">
+                    <span class="article-preview-name">Art. III &mdash; Rural Infrastructure Investment</span>
+                    <span class="article-ideology-badge ideo-aligned">Aligned</span>
+                </div>
+            </div>
+
+            <div class="support-bar-section">
+                <div class="support-bar-header">
+                    <span class="support-label">Committee Support</span>
+                    <span class="support-percent pending">42%</span>
+                </div>
+                <div class="support-bar-track">
+                    <div class="threshold-marker"></div>
+                    <div class="support-bar-fill committee-fill" style="width: 42%;"></div>
+                </div>
+            </div>
+
+            <div class="committee-actions">
+                <button class="stance-btn support">Support</button>
+                <button class="stance-btn oppose">Oppose</button>
+                <button class="stance-btn amend">Propose Amendment</button>
+            </div>
+
+            <div class="click-hint">Click to view full bill details &rarr;</div>
+        </div>
+
+        <!-- Committee Bill 2: Ratification -->
+        <div class="bill-card committee">
+            <div class="bill-card-header">
+                <div class="bill-card-left">
+                    <div class="bill-card-name">Avelia-San Estrella Free Trade Agreement Ratification</div>
+                    <div class="bill-card-sponsor">Proposed by <strong>NRP</strong> &middot; Tick 27</div>
+                </div>
+                <span class="bill-card-type type-ratification">Ratification</span>
+            </div>
+
+            <div class="support-bar-section">
+                <div class="support-bar-header">
+                    <span class="support-label">Committee Support</span>
+                    <span class="support-percent enough">68%</span>
+                </div>
+                <div class="support-bar-track">
+                    <div class="threshold-marker"></div>
+                    <div class="support-bar-fill committee-fill enough" style="width: 68%;"></div>
+                </div>
+            </div>
+
+            <div class="committee-actions">
+                <button class="stance-btn support" style="opacity:0.5; cursor:default;">&#10003; Supported</button>
+                <button class="stance-btn send-floor">Send to Floor &rarr;</button>
+            </div>
+
+            <div class="click-hint">Click to view agreement details &rarr;</div>
+        </div>
+
+
+        <!-- RECENT SECTION -->
+        <div class="section-label">
+            Recently Resolved
+            <span class="section-count">2 bills</span>
+        </div>
+
+        <!-- Recently Passed -->
+        <div class="bill-card recent-passed">
+            <div class="bill-card-header">
+                <div class="bill-card-left">
+                    <div class="bill-card-name">The Education Standards Act</div>
+                    <div class="bill-card-sponsor">Proposed by <strong>PSD</strong> &middot; Resolved Tick 25</div>
+                </div>
+                <span class="bill-card-type type-policy">Policy</span>
+            </div>
+            <div class="resolved-banner passed">&#10003; PASSED &mdash; 32 for / 12 against (72%)</div>
+            <div class="click-hint">Click to view details &rarr;</div>
+        </div>
+
+        <!-- Recently Failed -->
+        <div class="bill-card recent-failed">
+            <div class="bill-card-header">
+                <div class="bill-card-left">
+                    <div class="bill-card-name">The Military Expansion Act</div>
+                    <div class="bill-card-sponsor">Proposed by <strong>FLP</strong> &middot; Resolved Tick 25</div>
+                </div>
+                <span class="bill-card-type type-policy">Policy</span>
+            </div>
+            <div class="resolved-banner failed">&#10007; FAILED &mdash; 18 for / 28 against (39%)</div>
+            <div class="click-hint">Click to view details &rarr;</div>
+        </div>
+
+    </div>
+
+    <!-- ===== SIDEBAR ===== -->
+    <div class="parliament-sidebar">
+
+        <!-- Your Party -->
+        <div class="sidebar-section">
+            <div class="sidebar-heading">Your Party</div>
+            <div class="party-info-card">
+                <div class="party-info-name">Partido Social Democrata</div>
+                <div class="party-info-role">Coalition Lead &middot; Government</div>
+                <div style="margin: 8px 0;">
+                    <span class="ideology-tag tag-liberty">Liberty</span>
+                    <span class="ideology-tag tag-progress">Progress</span>
+                </div>
+                <div class="party-stats-row">
+                    <span class="party-stat-label">Seats</span>
+                    <span class="party-stat-val">15 / 50</span>
+                </div>
+                <div class="party-stats-row">
+                    <span class="party-stat-label">Approval</span>
+                    <span class="party-stat-val green">62%</span>
+                </div>
+                <div class="ap-bar-container">
+                    <div class="ap-bar-header">
+                        <span>Action Points</span>
+                        <span style="color:var(--accent); font-weight:bold;">7 / 10</span>
+                    </div>
+                    <div class="ap-bar">
+                        <div class="ap-bar-fill" style="width: 70%;"></div>
+                    </div>
+                </div>
+            </div>
+            <button class="draft-bill-btn">Draft a Bill <span class="ap-cost">2 AP</span></button>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="sidebar-section">
+            <div class="sidebar-heading">Quick Actions</div>
+            <div class="quick-actions">
+                <button class="quick-action-btn primary">&#128200; Budget Preview</button>
+                <button class="quick-action-btn secondary">&#128220; View All Laws</button>
+                <button class="quick-action-btn secondary">&#128214; Passed Laws Archive</button>
+            </div>
+        </div>
+
+        <!-- Coalition Status -->
+        <div class="sidebar-section">
+            <div class="sidebar-heading">Coalition Status</div>
+            <div class="coalition-status-card">
+                <div class="coalition-label">Government Coalition</div>
+                <div class="coalition-members">
+                    <div class="coalition-member lead">
+                        <span class="coalition-member-name">PSD (Lead)</span>
+                        <span class="coalition-member-seats">15 seats</span>
+                    </div>
+                    <div class="coalition-member">
+                        <span class="coalition-member-name">VDP</span>
+                        <span class="coalition-member-seats">10 seats</span>
+                    </div>
+                    <div class="coalition-member">
+                        <span class="coalition-member-name">CPE</span>
+                        <span class="coalition-member-seats">7 seats</span>
+                    </div>
+                </div>
+                <div class="coalition-total">
+                    <span class="coalition-total-label">Coalition Total</span>
+                    <span class="coalition-total-val">32 / 50 (64%)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Approval Gauge -->
+        <div class="sidebar-section">
+            <div class="sidebar-heading">Public Approval</div>
+            <div class="approval-gauge">
+                <div class="gauge-ring">
+                    <span class="gauge-value">62%</span>
+                </div>
+                <div class="gauge-label">
+                    <strong>Trending Up</strong>
+                    +3% since last election
+                </div>
+            </div>
+        </div>
+
+        <!-- Next Election -->
+        <div class="sidebar-section">
+            <div class="sidebar-heading">Next Election</div>
+            <div class="election-card">
+                <div class="election-card-title">Parliamentary Election</div>
+                <div class="election-countdown">9 ticks</div>
+                <div class="election-date">Estimated: December, 2006</div>
+                <a href="#" class="election-link">View Election Forecast &rarr;</a>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>

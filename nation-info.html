@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Avelia | Nationhood Alpha</title>
+    <title>Nation Info | Nationhood Alpha</title>
     <link rel="stylesheet" href="css/sanestrella.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -12,7 +12,7 @@
 <!-- Loading state -->
 <div id="loading" class="loading-container">
     <div class="loading-spinner"></div>
-    <div>Loading Avelia...</div>
+    <div>Loading nation...</div>
 </div>
 
 <!-- Main 3-column layout (hidden until loaded) -->
@@ -48,10 +48,10 @@
         <!-- Header -->
         <div class="nation-header">
             <div class="nation-header-row">
-                <img id="nation-flag" class="nation-flag" src="assets/flags/Avelia1.png" alt="Flag of Avelia" onerror="this.onerror=null;this.src='assets/flags/Avelia1.png';">
+                <img id="nation-flag" class="nation-flag" src="" alt="Flag" onerror="this.style.display='none';">
                 <div class="nation-title-block">
-                    <h1 class="nation-title">Avelia</h1>
-                    <div class="nation-subtitle" id="gov-type">Presidential Republic</div>
+                    <h1 class="nation-title" id="nation-title"></h1>
+                    <div class="nation-subtitle" id="gov-type"></div>
                     <div class="nation-motto editable">
                         <span class="view-field" id="motto-view"></span>
                         <span class="edit-field"><input class="edit-input-sm" id="motto-edit" placeholder="National motto"></span>
@@ -110,7 +110,21 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 import { fetchPreviousNationTick } from './js/common.js';
 
-const NATION_NAME = 'Avelia';
+// Resolve nation name from query parameter: nation-info.html?name=sangreza
+const NATION_SLUG = new URLSearchParams(window.location.search).get('name');
+if (!NATION_SLUG) { window.location.href = 'world.html'; }
+
+// Map slugs to proper nation names (handles spaces and casing)
+const SLUG_TO_NAME = {
+    'melizea': 'Melizea',
+    'avelia': 'Avelia',
+    'sangreza': 'Sangreza',
+    'montequilla': 'Montequilla',
+    'sanestrella': 'San Estrella',
+    'palvera': 'Palvera'
+};
+const NATION_NAME = SLUG_TO_NAME[NATION_SLUG.toLowerCase()] || NATION_SLUG.charAt(0).toUpperCase() + NATION_SLUG.slice(1);
+
 let nation = null;
 let profile = null;
 let allNations = [];
@@ -154,7 +168,7 @@ function ranking(key, val, inverted) {
 }
 
 function trendHTML(key, current, inverted, isCurrency) {
-    if (historyFetchFailed) return '<span class="stat-trend unavailable" title="Trend unavailable: history fetch failed">⚠ unavailable</span>';
+    if (historyFetchFailed) return '<span class="stat-trend unavailable" title="Trend unavailable: history fetch failed">&#9888; unavailable</span>';
     if (!previousTick || current == null) return '<span class="stat-trend neutral">&mdash;</span>';
     var hKey = key === 'GDP' ? 'gdp' : key;
     var prev = previousTick[hKey];
@@ -319,6 +333,11 @@ async function loadPage() {
         nation = nationRes.data;
         allNations = allRes.data || [];
 
+        // Update page title and header with nation data
+        document.title = nation.name + ' | Nationhood Alpha';
+        document.getElementById('nation-title').textContent = nation.name;
+        document.getElementById('gov-type').textContent = nation.government_type || '';
+
         // Parallel: profile, previous tick, factions, parties, relations, user faction check
         var [profileRes, shardRes, factionsRes, partiesRes, relationsRes, userFactionRes] = await Promise.all([
             _supabase.from('nation_profiles').select('*').eq('nation_id', nation.id).limit(1),
@@ -331,7 +350,7 @@ async function loadPage() {
 
         profile = (profileRes.data && profileRes.data.length > 0) ? profileRes.data[0] : {};
 
-        // Check edit permission — only Avelia political parties can edit
+        // Check edit permission — only factions in this nation can edit
         userCanEdit = userFactionRes.data && userFactionRes.data.length > 0;
 
         // Load previous tick data
@@ -350,11 +369,8 @@ async function loadPage() {
 
 // ---------- Render ----------
 function render(factions, parties, relations) {
-    // Flag
+    // Flag from profile
     if (profile.flag_url) document.getElementById('nation-flag').src = profile.flag_url;
-
-    // Government type
-    document.getElementById('gov-type').textContent = nation.government_type || 'Presidential Republic';
 
     // Motto
     document.getElementById('motto-view').textContent = profile.motto || '';
@@ -487,7 +503,7 @@ function renderRelations(relations) {
 function renderStats() {
     var h = '';
     if (historyFetchFailed) {
-        h += '<div class="stat-warning-badge">⚠ Trend deltas unavailable (history fetch failed).</div>';
+        h += '<div class="stat-warning-badge">&#9888; Trend deltas unavailable (history fetch failed).</div>';
     }
     for (var s = 0; s < STAT_SECTIONS.length; s++) {
         var sec = STAT_SECTIONS[s];

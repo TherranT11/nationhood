@@ -2623,7 +2623,7 @@ async function renderParties() {
 
     const { data: allBlocApprovals } = await _supabase
         .from('faction_bloc_approval')
-        .select('faction_id, momentum, bloc_id, preference_score, ideology_alignment, performance_perception')
+        .select('faction_id, momentum, bloc_id, preference_score, ideology_alignment, performance_perception, ideology_drift')
         .in('faction_id', allPartyIds);
 
     const { data: blocs } = await _supabase
@@ -3107,7 +3107,8 @@ async function renderParties() {
         }
 
         if (p.perf !== 50) {
-            mods.push({ type: 'performance', label: 'Performance Perception', value: p.perf - 50 });
+            const perfVal = p.perf - 50;
+            mods.push({ type: 'performance', label: 'Governance Track Record (ministry stat trends)', value: perfVal, permanent: true });
         }
         // Add momentum log entries for this bloc
         const logMods = blocModifiers[r.blocId] || [];

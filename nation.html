@@ -208,17 +208,22 @@ async function loadPreviousTickData(nationId) {
     }
 
     // No history row for the exact previous tick — fall back to the most recent
-    // available snapshot so arrows still display approximate deltas rather than
-    // showing nothing at all. This handles cases where tick processing was
-    // interrupted and some snapshot rows are missing.
+    // available snapshot, but only if it's within 2 ticks. Beyond that the delta
+    // spans too many ticks and becomes misleading (shows stale cumulative change).
+    const MAX_FALLBACK_AGE = 2;
     console.warn('[loadPreviousTickData] No history row for tick', previousTick,
-        '— falling back to most recent snapshot.');
+        '— falling back to most recent snapshot (max age:', MAX_FALLBACK_AGE, 'ticks).');
     const { data: fallbackRows } = await _supabase.from('nations_history')
-        .select('*').eq('nation_id', nationId).order('tick', { ascending: false }).limit(1);
+        .select('*').eq('nation_id', nationId)
+        .gte('tick', shard.current_tick - MAX_FALLBACK_AGE - 1)
+        .lt('tick', shard.current_tick)
+        .order('tick', { ascending: false }).limit(1);
     if (fallbackRows && fallbackRows.length > 0) {
         previousTickData = fallbackRows[0];
         qCacheSet(cacheKey, fallbackRows[0], 2 * 60 * 1000); // shorter TTL for fallback
         console.warn('[loadPreviousTickData] Using fallback snapshot from tick', fallbackRows[0].tick);
+    } else {
+        console.warn('[loadPreviousTickData] No recent snapshot within', MAX_FALLBACK_AGE, 'ticks — trend arrows will show neutral.');
     }
 }
 

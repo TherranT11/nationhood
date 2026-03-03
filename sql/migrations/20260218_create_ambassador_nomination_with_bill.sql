@@ -1,4 +1,4 @@
--- Ensure ambassador nomination RPC exists with the expected signature used by select-ambassador.html.
+-- Ensure ambassador nomination RPC exists with the expected signature used by select-candidate.html?role=ambassador.
 CREATE OR REPLACE FUNCTION public.create_ambassador_nomination_with_bill(
     p_nation_id UUID,
     p_target_nation_id UUID,

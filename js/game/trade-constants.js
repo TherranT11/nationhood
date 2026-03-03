@@ -152,6 +152,14 @@ export function calculateExportCapacity(nation, sector, opts) {
         capacity *= 0.7;
     }
 
+    // ── Stability modifier ──
+    // Political instability disrupts production across all sectors.
+    // Below 40 stability, export capacity starts degrading.
+    // At stability 20, capacity is halved. At 0, no exports at all.
+    var stability = Number(nation.stability) || 50;
+    var stabilityMod = Math.min(1.0, stability / 40);
+    capacity *= stabilityMod;
+
     // ── Currency strength modifier ──
     // Affects export VALUE (what appears on trade page).
     // Weak currency = exports are cheaper = lower value per unit.
@@ -313,14 +321,14 @@ export function calculatePriceModifier(totalSupply, totalDemand) {
  * Components:
  *   base                  50 (neutral starting point)
  *   diplomatic_bonus      relation_score * 0.3           → -30 to +30
- *   trade_agreement       +20 if bilateral trade deal exists
+ *   trade_agreement       +15 to +25 depending on agreement type
  *   embargo_penalty       -40 if active embargo/sanctions between nations
  *   proximity_bonus       +10 if same region (future)
  *
  * @param {Object} nationA   – nation row
  * @param {Object} nationB   – nation row
  * @param {Object} relation  – diplomatic_relations row { relation_score, active_treaties }
- * @param {Object} [opts]    – { has_trade_agreement, has_embargo, same_region }
+ * @param {Object} [opts]    – { has_trade_agreement, has_fta, has_pta, has_rsc, has_embargo, same_region }
  * @returns {number} affinity score 0-100
  */
 export function calculateTradeAffinity(nationA, nationB, relation, opts) {
@@ -330,8 +338,15 @@ export function calculateTradeAffinity(nationA, nationB, relation, opts) {
     var relScore = (relation && Number(relation.relation_score)) || 0;
     var diplomaticBonus = relScore * 0.3;
 
-    // Bilateral trade agreement: significant affinity boost
-    var tradeBonus = (opts && opts.has_trade_agreement) ? 20 : 0;
+    // Bilateral trade agreement: type-specific affinity boost
+    // FTA (free trade) > RSC (supply contract) > PTA (partial reduction)
+    var tradeBonus = 0;
+    if (opts) {
+        if (opts.has_fta) tradeBonus = 25;
+        else if (opts.has_rsc) tradeBonus = 20;
+        else if (opts.has_pta) tradeBonus = 15;
+        else if (opts.has_trade_agreement) tradeBonus = 20;
+    }
 
     // Active embargo/sanctions between these two nations: major penalty
     var embargoPenalty = (opts && opts.has_embargo) ? -40 : 0;
@@ -534,6 +549,13 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                 impDem = calculateImportDemand(n, sector, importOpts);
             }
 
+            // Export controls: nations can cap exports per sector (e.g., OPEC strategy)
+            // export_caps is a JSONB object like { energy: 50, minerals: 75 } meaning % of capacity
+            var exportCaps = n.export_caps;
+            if (exportCaps && exportCaps[sector.key] != null) {
+                expCap = Math.round(expCap * (exportCaps[sector.key] / 100));
+            }
+
             nationFlows[n.id][sector.key] = { exportCapacity: expCap, importDemand: impDem };
             sectorAgg[sector.key].totalSupply += expCap;
             sectorAgg[sector.key].totalDemand += impDem;
@@ -587,8 +609,8 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
-    // Build bilateral flags from active proposals
-    // flagsMap["idA|idB"] = { has_trade_agreement, has_embargo }
+    // Build bilateral flags from active proposals (embargoes + legacy trade agreements)
+    // flagsMap["idA|idB"] = { has_trade_agreement, has_embargo, has_fta, has_pta, has_rsc }
     var flagsMap = {};
     if (activeProposals) {
         for (var i = 0; i < activeProposals.length; i++) {
@@ -604,6 +626,82 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
             if (p.proposal_type === 'embargo') {
                 flagsMap[k1].has_embargo = true;
                 flagsMap[k2].has_embargo = true;
+            }
+        }
+    }
+
+    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC) ──
+    var { data: activeTradeAgreements } = await supabase.from('trade_agreements')
+        .select('id, nation_a_id, nation_b_id, agreement_type, articles')
+        .eq('status', 'active')
+        .in('agreement_type', ['fta', 'pta', 'resource_supply']);
+
+    // Set type-specific affinity flags from trade_agreements
+    // Build tariff modifier map: tariffModMap[importerId|exporterId][sector] = reduction fraction (0-1)
+    var tariffModMap = {};
+    var activeRSCs = [];
+
+    if (activeTradeAgreements) {
+        for (var ti = 0; ti < activeTradeAgreements.length; ti++) {
+            var ta = activeTradeAgreements[ti];
+            var k1 = ta.nation_a_id + '|' + ta.nation_b_id;
+            var k2 = ta.nation_b_id + '|' + ta.nation_a_id;
+            if (!flagsMap[k1]) flagsMap[k1] = {};
+            if (!flagsMap[k2]) flagsMap[k2] = {};
+
+            if (ta.agreement_type === 'fta') {
+                flagsMap[k1].has_fta = true;
+                flagsMap[k2].has_fta = true;
+
+                // FTA: 100% tariff reduction on all sectors, except exempted ones
+                var arts = ta.articles || [];
+                var exemptSectors = {};
+                for (var ai = 0; ai < arts.length; ai++) {
+                    if (arts[ai].type === 'sector_exemption') {
+                        exemptSectors[arts[ai].data.sector] = true;
+                    }
+                }
+                if (!tariffModMap[k1]) tariffModMap[k1] = {};
+                if (!tariffModMap[k2]) tariffModMap[k2] = {};
+                for (var si = 0; si < sectors.length; si++) {
+                    if (!exemptSectors[sectors[si].key]) {
+                        tariffModMap[k1][sectors[si].key] = 1.0;
+                        tariffModMap[k2][sectors[si].key] = 1.0;
+                    }
+                }
+            } else if (ta.agreement_type === 'pta') {
+                flagsMap[k1].has_pta = true;
+                flagsMap[k2].has_pta = true;
+
+                // PTA: per-sector tariff reductions from tariff_reduction articles
+                var arts = ta.articles || [];
+                for (var ai = 0; ai < arts.length; ai++) {
+                    if (arts[ai].type !== 'tariff_reduction') continue;
+                    var d = arts[ai].data;
+                    var reduction = (d.reduction_pct || 0) / 100;
+                    var direction = d.direction || 'mutual';
+
+                    // Resolve direction: "your_exports" / "their_exports" relative to author
+                    var authorId = d.author_nation_id || ta.nation_a_id;
+                    var partnerId = (authorId === ta.nation_a_id) ? ta.nation_b_id : ta.nation_a_id;
+
+                    // your_exports: partner (importer) reduces tariffs on author's (exporter's) goods
+                    // their_exports: author (importer) reduces tariffs on partner's (exporter's) goods
+                    if (direction === 'mutual' || direction === 'your_exports') {
+                        var impExpKey = partnerId + '|' + authorId;
+                        if (!tariffModMap[impExpKey]) tariffModMap[impExpKey] = {};
+                        tariffModMap[impExpKey][d.sector] = Math.max(tariffModMap[impExpKey][d.sector] || 0, reduction);
+                    }
+                    if (direction === 'mutual' || direction === 'their_exports') {
+                        var impExpKey = authorId + '|' + partnerId;
+                        if (!tariffModMap[impExpKey]) tariffModMap[impExpKey] = {};
+                        tariffModMap[impExpKey][d.sector] = Math.max(tariffModMap[impExpKey][d.sector] || 0, reduction);
+                    }
+                }
+            } else if (ta.agreement_type === 'resource_supply') {
+                flagsMap[k1].has_rsc = true;
+                flagsMap[k2].has_rsc = true;
+                activeRSCs.push(ta);
             }
         }
     }
@@ -625,6 +723,70 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
+    // ── Step 4c: Pre-allocate RSC guaranteed volumes ──
+
+    var rscPreAllocations = [];
+    if (activeRSCs && activeRSCs.length > 0) {
+        for (var ri = 0; ri < activeRSCs.length; ri++) {
+            var rsc = activeRSCs[ri];
+            var arts = rsc.articles || [];
+
+            // Find supply_commitment and price_terms articles
+            var supplyArt = null;
+            var priceArt = null;
+            for (var ai = 0; ai < arts.length; ai++) {
+                if (arts[ai].type === 'supply_commitment') supplyArt = arts[ai].data;
+                if (arts[ai].type === 'price_terms') priceArt = arts[ai].data;
+            }
+
+            if (!supplyArt || !supplyArt.sector || !supplyArt.commitment_pct) continue;
+
+            // Resolve buyer/seller from direction + author_nation_id
+            var authorNationId = supplyArt.author_nation_id || rsc.nation_a_id;
+            var otherNationId = (authorNationId === rsc.nation_a_id) ? rsc.nation_b_id : rsc.nation_a_id;
+            var buyerNationId, sellerNationId;
+            if (supplyArt.direction === 'we_buy') {
+                buyerNationId = authorNationId;
+                sellerNationId = otherNationId;
+            } else {
+                sellerNationId = authorNationId;
+                buyerNationId = otherNationId;
+            }
+
+            // Calculate guaranteed volume from seller's export capacity
+            var sellerFlows = nationFlows[sellerNationId];
+            var buyerFlows = nationFlows[buyerNationId];
+            if (!sellerFlows || !buyerFlows) continue;
+
+            var sellerExport = (sellerFlows[supplyArt.sector] && sellerFlows[supplyArt.sector].exportCapacity) || 0;
+            var buyerDemand = (buyerFlows[supplyArt.sector] && buyerFlows[supplyArt.sector].importDemand) || 0;
+            if (sellerExport <= 0 || buyerDemand <= 0) continue;
+
+            var guaranteedVolume = Math.round(sellerExport * (supplyArt.commitment_pct / 100));
+            guaranteedVolume = Math.min(guaranteedVolume, buyerDemand);
+
+            // Apply price modifier based on price_terms article
+            var sectorPriceMod = priceModifiers[supplyArt.sector] || 1.0;
+            var rscPriceMod = sectorPriceMod;
+            if (priceArt) {
+                if (priceArt.price_type === 'fixed') rscPriceMod = 1.0;
+                else if (priceArt.price_type === 'discounted') rscPriceMod = sectorPriceMod * (1 - (priceArt.modifier_pct || 0) / 100);
+                else if (priceArt.price_type === 'premium') rscPriceMod = sectorPriceMod * (1 + (priceArt.modifier_pct || 0) / 100);
+            }
+
+            var adjustedVolume = Math.round(guaranteedVolume * rscPriceMod);
+            if (adjustedVolume <= 0) continue;
+
+            rscPreAllocations.push({
+                sellerNationId: sellerNationId,
+                buyerNationId: buyerNationId,
+                sector: supplyArt.sector,
+                volume: adjustedVolume,
+                agreementId: rsc.id
+            });
+        }
+    }
+
     // ── Step 5: Distribute trade — for each exporter×sector, match to importers ──
     // Track actual volumes: actualExports[nationId][sector], actualImports[nationId][sector]
     var actualExports = {};
@@ -640,6 +802,24 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
 
     var partnerRows = [];
 
+    // Pre-allocate RSC guaranteed volumes before normal distribution
+    for (var ri = 0; ri < rscPreAllocations.length; ri++) {
+        var rscAlloc = rscPreAllocations[ri];
+        if (actualExports[rscAlloc.sellerNationId] && actualImports[rscAlloc.buyerNationId]) {
+            actualExports[rscAlloc.sellerNationId][rscAlloc.sector] += rscAlloc.volume;
+            actualImports[rscAlloc.buyerNationId][rscAlloc.sector] += rscAlloc.volume;
+
+            partnerRows.push({
+                tick: currentTick,
+                exporter_nation_id: rscAlloc.sellerNationId,
+                importer_nation_id: rscAlloc.buyerNationId,
+                sector: rscAlloc.sector,
+                trade_volume: rscAlloc.volume,
+                affinity_score: affinityMap[rscAlloc.sellerNationId + '|' + rscAlloc.buyerNationId] || 0
+            });
+        }
+    }
+
     for (var si = 0; si < sectors.length; si++) {
         var sector = sectors[si];
         var priceMod = priceModifiers[sector.key];
@@ -649,17 +829,32 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
             var expCap = nationFlows[exporter.id][sector.key].exportCapacity;
             if (expCap <= 0) continue;
 
-            // Apply price modifier to export capacity
-            var adjustedCapacity = Math.round(expCap * priceMod);
+            // Subtract RSC pre-allocated exports from remaining capacity
+            var remainingExpCap = expCap - (actualExports[exporter.id][sector.key] || 0);
+            if (remainingExpCap <= 0) continue;
+
+            // Apply price modifier to remaining export capacity
+            var adjustedCapacity = Math.round(remainingExpCap * priceMod);
 
             // Build importer list for this exporter (everyone else with demand > 0)
             var importerList = [];
             for (var ii = 0; ii < nationCount; ii++) {
                 if (ii === ei) continue;
                 var importer = nationList[ii];
+
+                // Hard embargo block: zero trade between embargoed pairs
+                var pairFlags = flagsMap[exporter.id + '|' + importer.id];
+                if (pairFlags && pairFlags.has_embargo) continue;
+
                 var impDem = nationFlows[importer.id][sector.key].importDemand;
                 // Subtract what they've already received from other exporters
                 var remainingDemand = impDem - actualImports[importer.id][sector.key];
+                if (remainingDemand <= 0) continue;
+
+                // Price-responsive demand: high prices reduce demand, low prices increase it
+                // Uses square root for partial elasticity (not fully elastic)
+                var priceDampener = 1 / Math.sqrt(priceMod);
+                remainingDemand = Math.round(remainingDemand * priceDampener);
                 if (remainingDemand <= 0) continue;
 
                 var aff = affinityMap[exporter.id + '|' + importer.id] || 0;
@@ -737,11 +932,25 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         var gdp = Number(n.gdp) || 0;
         var tradeBalanceIdx = deriveTradeBalanceIndex(surplus, gdp);
 
-        // Tariff revenue: based on actual imports
+        // Tariff revenue: calculated bilaterally to account for FTA/PTA tariff reductions
         var budget = budgetMap[n.id];
-        var tariffRate = Number(n.tariffs) || 0;
+        var baseTariffRate = (Number(n.tariffs) || 0) / 100;
         var collectionRate = budget ? budget.collectionRate : 0.7;
-        var tariffRev = calculateTariffRevenue(totalImp, tariffRate, collectionRate);
+        var tariffRev = 0;
+
+        // Sum tariff revenue across all bilateral partner flows for this importer
+        for (var pi = 0; pi < partnerRows.length; pi++) {
+            var pr = partnerRows[pi];
+            if (pr.importer_nation_id !== n.id) continue;
+            var effectiveRate = baseTariffRate;
+            // Apply FTA/PTA tariff reduction if one exists for this importer-exporter pair and sector
+            var modKey = n.id + '|' + pr.exporter_nation_id;
+            if (tariffModMap[modKey] && tariffModMap[modKey][pr.sector] !== undefined) {
+                effectiveRate = baseTariffRate * (1 - tariffModMap[modKey][pr.sector]);
+            }
+            tariffRev += pr.trade_volume * effectiveRate * collectionRate;
+        }
+        tariffRev = Math.round(tariffRev);
 
         summaryRows.push({
             nation_id: n.id,
@@ -758,9 +967,54 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
 
         totalGlobalVolume += totalExp;
 
-        // Update the nation's trade_balance stat
+        // ── Trade-driven stat nudges ──
+        var nationUpdates = { trade_balance: tradeBalanceIdx };
+
+        // Currency strength: trade surplus strengthens currency, deficit weakens it
+        // Gentler than GDP nudge: (tradeBalance - 50) / 100 → range -0.5 to +0.5 per tick
+        var currentCurrency = Number(n.currency_strength) || 50;
+        var currencyNudge = (tradeBalanceIdx - 50) / 100;
+        if (Math.abs(currencyNudge) >= 0.01) {
+            nationUpdates.currency_strength = Math.round(Math.max(0, Math.min(100, currentCurrency + currencyNudge)) * 10) / 10;
+        }
+
+        // Inflation from import prices: weighted average price modifier of imports
+        // If average import prices > 1.0, inflation pressure rises (imported inflation)
+        var importWeightedPrice = 0;
+        var totalImpForPrice = 0;
+        for (var si2 = 0; si2 < sectors.length; si2++) {
+            var sKey2 = sectors[si2].key;
+            var impVol2 = actualImports[n.id][sKey2] || 0;
+            if (impVol2 > 0) {
+                importWeightedPrice += impVol2 * (priceModifiers[sKey2] || 1.0);
+                totalImpForPrice += impVol2;
+            }
+        }
+        var avgImportPrice = totalImpForPrice > 0 ? importWeightedPrice / totalImpForPrice : 1.0;
+        // Nudge inflation: (avgPrice - 1.0) scaled to ±0.5 per tick
+        var currentInflation = Number(n.inflation) || 50;
+        var inflationNudge = (avgImportPrice - 1.0) * 1.0; // price 1.5 → +0.5 nudge, price 0.7 → -0.3
+        if (Math.abs(inflationNudge) >= 0.01) {
+            nationUpdates.inflation = Math.round(Math.max(0, Math.min(100, currentInflation + inflationNudge)) * 10) / 10;
+        }
+
+        // Unemployment from trade displacement: net imports in job-heavy sectors (manufacturing + services)
+        // indicate domestic producers being outcompeted → unemployment pressure
+        var mfgNet = (actualImports[n.id]['manufactured_goods'] || 0) - (actualExports[n.id]['manufactured_goods'] || 0);
+        var svcNet = (actualImports[n.id]['services_finance'] || 0) - (actualExports[n.id]['services_finance'] || 0);
+        if (gdp > 0) {
+            var displacementRatio = (mfgNet + svcNet) / gdp;
+            // Positive ratio = net importer in job sectors → unemployment nudge up
+            // Negative ratio = net exporter in job sectors → unemployment nudge down (job creation)
+            var unemploymentNudge = Math.max(-0.5, Math.min(0.5, displacementRatio * 100));
+            if (Math.abs(unemploymentNudge) >= 0.01) {
+                var currentUnemployment = Number(n.unemployment) || 50;
+                nationUpdates.unemployment = Math.round(Math.max(0, Math.min(100, currentUnemployment + unemploymentNudge)) * 10) / 10;
+            }
+        }
+
         await supabase.from('nations')
-            .update({ trade_balance: tradeBalanceIdx })
+            .update(nationUpdates)
             .eq('id', n.id);
     }
 
@@ -796,7 +1050,8 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
 
     console.log('[processTradeFlows] tick ' + currentTick + ': ' + nationCount + ' nations, ' +
         flowRows.length + ' flow rows, ' + partnerRows.length + ' partner rows, ' +
-        'total volume $' + Math.round(totalGlobalVolume).toLocaleString());
+        'total volume $' + Math.round(totalGlobalVolume).toLocaleString() +
+        (rscPreAllocations.length > 0 ? ', ' + rscPreAllocations.length + ' RSC pre-allocations' : ''));
 
     return { processed: nationCount, totalVolume: totalGlobalVolume };
 }

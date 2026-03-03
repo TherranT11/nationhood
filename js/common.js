@@ -59,11 +59,17 @@ export async function fetchPreviousNationTick(nationId, currentTick) {
     const prev = (histRes.data && histRes.data.length > 0) ? histRes.data[0] : null;
     if (prev) return { previousTick: prev, historyFetchFailed: false };
 
-    // Exact previous tick not found — fall back to most recent snapshot
+    // Exact previous tick not found — fall back to most recent snapshot.
+    // Cap at 2 ticks of staleness: if the nearest snapshot is >2 ticks old
+    // the delta would span many ticks and be misleading (e.g. "+4" when the
+    // stat hasn't changed in 17 ticks).  In that case return null so the UI
+    // shows "—" instead of a stale cumulative delta.
+    const MAX_FALLBACK_AGE = 2;
     const fbRes = await _supabase
         .from('nations_history')
         .select('*')
         .eq('nation_id', nationId)
+        .gte('tick', currentTick - MAX_FALLBACK_AGE - 1)
         .lt('tick', currentTick)
         .order('tick', { ascending: false })
         .limit(1);
