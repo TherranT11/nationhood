@@ -137,10 +137,20 @@ initPage('diplomacy', async (state) => {
         .from('factions')
         .select('id, faction_name, color')
         .eq('nation_id', currentNation.id);
-    allParties = parties || [];
+
+    // Load rejected ambassador nominations for this target nation
+    const { data: rejectedAmbassadors } = await _supabase
+        .from('ambassadors')
+        .select('faction_id')
+        .eq('nation_id', currentNation.id)
+        .eq('target_nation_id', targetNation.id)
+        .eq('status', 'rejected');
+    const rejectedPartyIds = new Set((rejectedAmbassadors || []).map(a => a.faction_id));
+
+    allParties = (parties || []).filter(p => !rejectedPartyIds.has(p.id));
 
     if (allParties.length === 0) {
-        renderEmpty(`No political parties found. <a href="${diploBackUrl()}">Back to Diplomacy</a>`);
+        renderEmpty(`No eligible parties remain for ambassador nomination. <a href="${diploBackUrl()}">Back to Diplomacy</a>`);
         return;
     }
 
@@ -249,6 +259,15 @@ async function confirmNomination() {
     btn.textContent = isAutocracy ? 'Appointing...' : 'Nominating...';
 
     try {
+        // Server-side check: ensure party wasn't rejected for this post
+        const { data: priorRejection } = await _supabase.from('ambassadors')
+            .select('id').eq('nation_id', currentNation.id).eq('target_nation_id', targetNation.id)
+            .eq('faction_id', candidate.partyId).eq('status', 'rejected').limit(1);
+        if (priorRejection && priorRejection.length > 0) {
+            alert('This party was previously rejected for this ambassadorship and cannot be re-nominated.');
+            btn.disabled = false; btn.textContent = 'Nominate Ambassador'; return;
+        }
+
         // Deduct 1 AP
         const apResult = await deductAP(_supabase, currentFaction.id, 1);
         if (!apResult.success) { alert('Not enough AP (need 1).'); btn.disabled = false; btn.textContent = 'Nominate Ambassador'; return; }
