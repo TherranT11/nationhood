@@ -1093,7 +1093,7 @@ function renderFloorBill(bill, isVetoed) {
                     }
                     const chipHTML = renderIdeologyChips(art.policies);
                     return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
-                }).join(''))))))))))}
+                }).join('')))))))))))}
             </div>
             ${isVetoed ? `<div class="vetoed-stamp">${isPresidential ? '⛔ VETOED BY PRESIDENT' : '⛔ VETOED BY HEAD FACTION'}</div>` : `
                 <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span>${(bill.votes_abstain || 0) > 0 ? `<span style="color:#888;font-size:0.75rem;margin-left:8px;">— ${bill.votes_abstain} Abstain</span>` : ''}<span style="color:var(--text-secondary);font-size:0.75rem;margin-left:8px;">${GAME_CONFIG.TOTAL_SEATS - (bill.votes_for || 0) - (bill.votes_against || 0) - (bill.votes_abstain || 0)} undeclared</span></div>
@@ -1344,7 +1344,7 @@ function renderCommitteeBill(bill) {
                     }
                     const chipHTML = renderIdeologyChips(art.policies);
                     return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.policies?.policy_name || 'Unknown'}</span>${chipHTML}<div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
-                }).join(''))))))
+                }).join(''))))))}
             </div>
             ${decreeActionsHTML}
             ${!lawsIsAutocracy ? `<div class="click-hint" style="color:#ff9800;">Click to view full ${termBill.toLowerCase()} & negotiate →</div>` : ''}
