@@ -1081,8 +1081,8 @@ function renderTaxationTab(nation) {
     var salesTax = Math.round(Number(nation.sales_tax || 0));
 
     // Store original rates on first render (don't overwrite if already set)
-    if (!originalRates.income_tax && !originalRates.corporate_tax && !originalRates.sales_tax) {
-        originalRates = { income_tax: incomeTax, corporate_tax: corpTax, sales_tax: salesTax };
+    if (!originalRates._initialized) {
+        originalRates = { income_tax: incomeTax, corporate_tax: corpTax, sales_tax: salesTax, _initialized: true };
     }
 
     var avgRate = (incomeTax + corpTax + salesTax) / 3;

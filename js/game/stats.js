@@ -234,14 +234,6 @@ for (const key of Object.keys(STAT_DECAY_CONFIG)) {
     }
 }
 
-// ==================== STAT → VOTER BLOC REACTIONS ====================
-// When a stat changes during a tick, apply momentum to a specific voter bloc.
-// rate_up:   momentum per 1-point increase (negative = bad for bloc)
-// rate_down: momentum per 1-point decrease (positive = good for bloc)
-export const STAT_BLOC_REACTIONS = [
-    { stat: 'corporate_tax', bloc_name: 'Business Owners', rate_up: -2.5, rate_down: 1.0 },
-];
-
 // ==================== INSTITUTION FUNDING DECAY TIERS ====================
 // Institutions counteract natural stat decay. At 100% funding, decay is fully
 // blocked. Below 100%, the rates below REPLACE the natural decay rate for stats
