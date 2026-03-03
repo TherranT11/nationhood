@@ -11774,7 +11774,16 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
         }
 
         // -preference with ALL blocs
-        await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.BROKEN_ALL_PREF, 'promise:broken_penalty');
+        const { data: allBlocRows } = await supabase
+            .from('faction_bloc_approval')
+            .select('id, preference_score')
+            .eq('faction_id', promise.party_id);
+        for (const row of (allBlocRows || [])) {
+            const newPref = Math.max(0, Math.round(row.preference_score + cfg.BROKEN_ALL_PREF));
+            await supabase.from('faction_bloc_approval')
+                .update({ preference_score: newPref })
+                .eq('id', row.id);
+        }
 
         // -momentum
         await adjustMomentumAll(supabase, promise.nation_id, promise.party_id, cfg.BROKEN_MOMENTUM, 'promise:broken');
