@@ -5512,7 +5512,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                     p_tick: currentTick,
                     p_placeholders: {
                         nation: nation?.name || 'Unknown',
-                        bill_name: bill.bill_name + ' (sent to President\'s desk)',
+                        bill_name: bill.bill_name,
                         sponsor: bill.factions?.faction_name || 'Unknown',
                         votes_for: String(votesFor),
                         votes_against: String(votesAgainst),
@@ -6038,6 +6038,7 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
     if (targetNations) targetNations.forEach(n => { nationNameMap[n.id] = n.name; });
 
     for (const amb of ambassadors) {
+      try {
         const appointedTick = amb.appointed_at_tick;
         if (appointedTick == null) continue; // No term tracking — skip
 
@@ -6052,11 +6053,15 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
             const yearsServed = Math.floor(ticksServed / 12);
 
             // 1. Retire the ambassador
-            await supabase.from('ambassadors').update({
+            const { error: retireErr } = await supabase.from('ambassadors').update({
                 status: 'recalled',
                 is_active: false,
                 recalled_at_tick: currentTick
             }).eq('id', amb.id);
+            if (retireErr) {
+                console.error(`[processAmbassadorRetirements] Failed to retire ${ambName}:`, retireErr);
+                continue;
+            }
 
             // 2. Cancel in-progress diplomatic proposals involving this nation pair
             const cancelStatuses = ['proposed', 'fm_review', 'ratification'];
@@ -6106,7 +6111,7 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
             while (newLast === amb.ambassador_last_name);
             const newAge = 35 + Math.floor(Math.random() * 20); // 35-54
 
-            await supabase.from('ambassadors').insert({
+            const { error: insertErr } = await supabase.from('ambassadors').insert({
                 nation_id: nation.id,
                 target_nation_id: amb.target_nation_id,
                 faction_id: amb.faction_id,
@@ -6118,18 +6123,22 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
                 appointed_at_tick: currentTick,
                 term_length: DIPLOMACY_CONFIG.AMBASSADOR_TERM_LENGTH
             });
+            if (insertErr) {
+                console.error(`[processAmbassadorRetirements] Failed to create replacement for ${ambName}:`, insertErr);
+                // Ambassador was already retired — continue without replacement
+            }
 
             // 4. Fire retirement event for this nation
             await supabase.from('event_log').insert({
                 nation_id: nation.id,
                 event_name: 'Ambassador Retired',
                 category: 'Diplomatic',
-                description_chosen: `${ambName} has retired after ${yearsServed} year${yearsServed !== 1 ? 's' : ''} of service as Ambassador to ${targetNationName}. ${newFirst} ${newLast} has been appointed as replacement.`,
+                description_chosen: `${ambName} has retired after ${yearsServed} year${yearsServed !== 1 ? 's' : ''} of service as Ambassador to ${targetNationName}.${insertErr ? '' : ` ${newFirst} ${newLast} has been appointed as replacement.`}`,
                 fired_at_tick: currentTick
             });
 
-            results.push({ ambassadorId: amb.id, name: ambName, target: targetNationName, action: 'retired', replacement: `${newFirst} ${newLast}` });
-            console.log(`[processAmbassadorRetirements] ${ambName} retired from ${nation.name} → ${targetNationName}. Replaced by ${newFirst} ${newLast}.`);
+            results.push({ ambassadorId: amb.id, name: ambName, target: targetNationName, action: 'retired', replacement: insertErr ? null : `${newFirst} ${newLast}` });
+            console.log(`[processAmbassadorRetirements] ${ambName} retired from ${nation.name} → ${targetNationName}.${insertErr ? ' (replacement failed)' : ` Replaced by ${newFirst} ${newLast}.`}`);
 
         // ---- RETIREMENT WARNING (3 ticks before) ----
         } else if (ticksRemaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && !amb.retirement_warning_shown) {
@@ -6148,6 +6157,9 @@ async function processAmbassadorRetirements(supabase, nation, currentTick) {
             results.push({ ambassadorId: amb.id, name: ambName, target: targetNationName, action: 'warning' });
             console.log(`[processAmbassadorRetirements] Retirement warning for ${ambName} (${nation.name} → ${targetNationName}): ${ticksRemaining} ticks remaining.`);
         }
+      } catch (ambErr) {
+        console.error(`[processAmbassadorRetirements] Error processing ambassador ${amb.id}:`, ambErr);
+      }
     }
 
     return results;
@@ -10393,8 +10405,8 @@ const MAKE_PROMISE_CONFIG = {
     AP_COST: 2,
     MONEY_COST: 0,
     STAT_DELTA: 10,                    // Promise to change stat by ±10
-    DEADLINE_DICE: 24,                 // 1D24 + base
-    DEADLINE_BASE: 6,                  // base ticks added to roll
+    DEADLINE_DICE: 12,                 // 1D12 + base
+    DEADLINE_BASE: 12,                 // base ticks added to roll (range: 13-24)
     APPROVAL_ON_PROMISE_STAT: 4,       // immediate bump with affected blocs (stat type)
     APPROVAL_ON_PROMISE_CRISIS: 2,     // immediate bump with all blocs (crisis type)
     APPROVAL_IF_KEPT: 12,              // permanent legacy reward
@@ -10466,7 +10478,7 @@ async function executeMakePromise(supabase, factionId, nationId, currentTick, pr
     const approvalByBloc = {};
     for (const row of (approvalRows || [])) approvalByBloc[row.bloc_id] = row;
 
-    // ── 4. Roll deadline: 1D24 + 6 ──
+    // ── 4. Roll deadline: 1D12 + 12 ──
     const deadlineRoll = Math.floor(Math.random() * cfg.DEADLINE_DICE) + 1;
     const deadlineTicks = deadlineRoll + cfg.DEADLINE_BASE;
     const tickDeadline = currentTick + deadlineTicks;
@@ -11129,7 +11141,27 @@ async function processPromiseTick(supabase, nation, currentTick) {
         .from('active_crises').select('id, crisis_id').eq('nation_id', nation.id);
     const activeCrisisIds = new Set((activeCrises || []).map(ac => ac.id));
 
+    // Build set of governing faction IDs (ruling faction + coalition members)
+    const governingFactionIds = new Set([
+        nation.ruling_faction_id,
+        ...coalitionPartyIds,
+    ].filter(Boolean));
+
     for (const promise of activePromises) {
+        const isGoverning = governingFactionIds.has(promise.party_id);
+
+        // If not governing and deadline passed: expire silently, no downside
+        if (!isGoverning && currentTick >= promise.tick_deadline) {
+            await supabase.from('fundraiser_promises')
+                .update({ status: 'expired', tick_resolved: currentTick, updated_at: new Date().toISOString() })
+                .eq('id', promise.id);
+            results.push({ promise, resolution: 'expired' });
+            continue;
+        }
+
+        // If not governing: promise is dormant — skip evaluation entirely
+        if (!isGoverning) continue;
+
         // For crisis_resolution promises, check if the crisis is still active
         if (promise.demand_type === 'crisis_resolution' && promise.conditions?.crisis_id) {
             if (!activeCrisisIds.has(promise.conditions.crisis_id)) {

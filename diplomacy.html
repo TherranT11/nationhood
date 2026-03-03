@@ -1920,6 +1920,8 @@ function renderRelationSection(relType, relClass, embassyStatus, ambassador) {
 
 function renderActiveProposals(proposals) {
     const proposalTypeLabels = {
+        diplomatic_initiative: 'Diplomatic Initiative',
+        trade_negotiation: 'Trade Agreement',
         cultural_exchange: 'Cultural Exchange',
         visa_agreement: 'Visa Agreement',
         joint_statement: 'Joint Statement',
@@ -1933,12 +1935,18 @@ function renderActiveProposals(proposals) {
     };
 
     const rows = proposals.map(p => {
-        const label = proposalTypeLabels[p.proposal_type] || p.proposal_type;
+        const pd = p.proposal_data || {};
+        const name = pd.name || proposalTypeLabels[p.proposal_type] || p.proposal_type;
+        const typeLabel = proposalTypeLabels[p.proposal_type] || p.proposal_type;
         const tierBadge = p.proposal_tier === 3 ? 'T3' : p.proposal_tier === 2 ? 'T2' : 'T1';
+        const enacted = p.activated_at_tick != null ? tickToDate(p.activated_at_tick) : '';
         return `
-            <div style="background:var(--bg-card);padding:8px 10px;border-radius:4px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-size:0.82rem;color:var(--text-primary);">${label}</span>
-                <span style="font-size:0.65rem;color:var(--text-muted);background:var(--bg-hover);padding:2px 8px;border-radius:3px;">${tierBadge} &middot; ${p.status}</span>
+            <div style="background:var(--bg-card);padding:8px 10px;border-radius:4px;margin-bottom:6px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:0.82rem;color:var(--text-primary);">${escapeHtml(name)}</span>
+                    <span style="font-size:0.65rem;color:var(--text-muted);background:var(--bg-hover);padding:2px 8px;border-radius:3px;">${tierBadge} &middot; ${typeLabel}</span>
+                </div>
+                ${enacted ? '<div style="font-size:0.68rem;color:var(--text-muted);margin-top:3px;">Enacted: ' + enacted + '</div>' : ''}
             </div>
         `;
     }).join('');
@@ -2149,7 +2157,7 @@ async function fetchActiveProposals(myNationId, targetNationId) {
     try {
         const { data } = await _supabase
             .from('diplomatic_proposals')
-            .select('proposal_type, proposal_tier, status, activated_at_tick')
+            .select('proposal_type, proposal_tier, status, activated_at_tick, proposal_data')
             .or(
                 'and(proposing_nation_id.eq.' + myNationId + ',target_nation_id.eq.' + targetNationId + '),' +
                 'and(proposing_nation_id.eq.' + targetNationId + ',target_nation_id.eq.' + myNationId + ')'

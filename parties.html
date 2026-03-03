@@ -801,7 +801,7 @@ async function renderAutocracyParties(el, f, n) {
 
         // Build pillar cards for Strongman view (support values, no claim buttons)
         let pillarCardsHtml = '';
-        if (isStrongman && regimePillars && regimePillars.length > 0) {
+        if (regimePillars && regimePillars.length > 0) {
             const cards = PILLAR_ORDER.map(key => {
                 const p = pillarMap[key];
                 if (!p) return '';
@@ -840,6 +840,8 @@ async function renderAutocracyParties(el, f, n) {
         // ── REGIME LOG ──
         const ACTION_LABELS = {
             rally: 'RALLY',
+            outreach: 'OUTREACH',
+            attack: 'ATTACK',
             make_promise: 'PROMISE MADE',
             press_conference: 'PRESS CONFERENCE',
             purge_minister: 'PURGE',
@@ -853,6 +855,8 @@ async function renderAutocracyParties(el, f, n) {
             loyalty_demand_refused: 'REFUSED',
             loyalty_demand_expired: 'DEMAND EXPIRED',
             steward_show_of_force: 'SHOW OF FORCE',
+            steward_mobilize: 'MOBILIZE',
+            steward_detected_mobilize: 'MOBILIZE DETECTED',
             steward_surveillance: 'SURVEILLANCE',
             steward_embezzle: 'EMBEZZLED',
             steward_conspire: 'CONSPIRED',
@@ -872,7 +876,9 @@ async function renderAutocracyParties(el, f, n) {
             dynasty_shadow: 'DYNASTY: SHADOW',
             dynasty_cultivate: 'DYNASTY: CULTIVATE',
             dynasty_prepare: 'DYNASTY: PREPARE',
-            dynasty_detected_prepare: 'PREPARE DETECTED'
+            dynasty_detected_prepare: 'PREPARE DETECTED',
+            official_dispatch: 'OFFICIAL DISPATCH',
+            party_disbanded: 'PARTY DISBANDED'
         };
 
         let regimeLogHtml = '';
@@ -906,18 +912,52 @@ async function renderAutocracyParties(el, f, n) {
                     detail = r.faction_name ? `${r.faction_name} refused` : 'Refused demand';
                 } else if (entry.action_type === 'loyalty_demand_expired') {
                     detail = r.target_faction ? `${r.target_faction} ignored demand` : 'Demand expired';
+                } else if (entry.action_type === 'outreach') {
+                    detail = r.blocName ? `Outreach to ${r.blocName}` : '';
+                } else if (entry.action_type === 'attack') {
+                    detail = r.headline || (r.targetName ? `Attacked ${r.targetName}` : '');
                 } else if (entry.action_type === 'claim_power') {
                     detail = r.method || '';
                 } else if (entry.action_type === 'steward_show_of_force') {
                     detail = `${r.steward_name} deployed troops. Rivals: coup readiness ${r.rivals_coup_readiness}, unrest ${r.civil_unrest}, happiness ${r.happiness}`;
+                } else if (entry.action_type === 'steward_mobilize') {
+                    // Performer sees full details; Strongman sees detected ones; others see rally_regime only
+                    if (entry.party_id === f.id) {
+                        detail = r.mode === 'rally_regime'
+                            ? `${r.steward_name} rallied for the regime. Legitimacy +${r.legitimacy_change}`
+                            : `${r.steward_name} rallied for self. Coup readiness +${r.coup_readiness_change}${r.detected ? ' \u2014 DETECTED' : ''}`;
+                    } else if (r.mode === 'rally_regime') {
+                        detail = `${r.steward_name} rallied for the regime`;
+                    } else if (r.detected || isStrongman) {
+                        // Strongman sees detected self-rallies; others only see if detected
+                        detail = `${r.steward_name} rallied for self${r.detected ? ' \u2014 DETECTED' : ''}`;
+                    } else {
+                        return ''; // Secret self-rally, not detected, viewer is not performer or Strongman
+                    }
+                } else if (entry.action_type === 'steward_detected_mobilize') {
+                    detail = `${r.steward_name} (${r.faction_name}) caught rallying for self! Standing penalty`;
                 } else if (entry.action_type === 'steward_surveillance') {
                     // Only visible to the player who performed it
                     if (entry.party_id !== f.id) return '';
                     detail = `Investigated ${r.target_faction}: Loyalty ${r.true_loyalty}, ${r.secret_coalitions}`;
                 } else if (entry.action_type === 'steward_embezzle') {
-                    detail = `Embezzled $${r.embezzled}M from ${MINISTRY_SHORT[r.ministry] || r.ministry}${r.detected ? ' \u2014 DETECTED' : ''}`;
+                    // Performer sees full details; detected ones visible to Strongman too
+                    if (entry.party_id === f.id) {
+                        detail = `Embezzled $${r.embezzled}M from ${MINISTRY_SHORT[r.ministry] || r.ministry}${r.detected ? ' \u2014 DETECTED' : ''}`;
+                    } else if (r.detected || isStrongman) {
+                        detail = `Embezzled from ${MINISTRY_SHORT[r.ministry] || r.ministry}${r.detected ? ' \u2014 DETECTED' : ''}`;
+                    } else {
+                        return '';
+                    }
                 } else if (entry.action_type === 'steward_conspire') {
-                    detail = `Conspiracy advanced (readiness: ${r.new_coup_readiness}, loyalty -${r.loyalty_drop})${r.detected ? ' \u2014 DETECTED' : ''}`;
+                    // Performer sees full details; detected ones visible to Strongman too
+                    if (entry.party_id === f.id) {
+                        detail = `Conspiracy advanced (readiness: ${r.new_coup_readiness}, loyalty -${r.loyalty_drop})${r.detected ? ' \u2014 DETECTED' : ''}`;
+                    } else if (r.detected || isStrongman) {
+                        detail = `Conspiracy activity${r.detected ? ' \u2014 DETECTED' : ''}`;
+                    } else {
+                        return '';
+                    }
                 } else if (['steward_detected_embezzle', 'steward_detected_conspire'].includes(entry.action_type)) {
                     detail = `${r.steward_name} (${r.faction_name}) caught! Standing -15`;
                 } else if (entry.action_type === 'coup_success') {
@@ -925,11 +965,11 @@ async function renderAutocracyParties(el, f, n) {
                 } else if (entry.action_type === 'coup_failed') {
                     detail = `${r.steward_name} (${r.faction_name}) failed \u2014 executed`;
                 } else if (entry.action_type === 'coalition_proposed') {
-                    if (r.coalition_type === 'secret' && isStrongman) { detail = ''; label = ''; }
-                    else detail = `${r.coalition_type === 'public' ? 'Public' : 'Secret'} coalition proposed to ${r.target_faction}`;
+                    if (r.coalition_type === 'secret' && isStrongman) return '';
+                    detail = `${r.coalition_type === 'public' ? 'Public' : 'Secret'} coalition proposed to ${r.target_faction}`;
                 } else if (entry.action_type === 'coalition_accepted') {
-                    if (r.coalition_type === 'secret' && isStrongman) { detail = ''; label = ''; }
-                    else detail = `${r.coalition_type === 'public' ? 'Public' : 'Secret'} coalition formed with ${r.partner_faction}`;
+                    if (r.coalition_type === 'secret' && isStrongman) return '';
+                    detail = `${r.coalition_type === 'public' ? 'Public' : 'Secret'} coalition formed with ${r.partner_faction}`;
                 } else if (entry.action_type === 'coalition_betrayed') {
                     // Only visible to the Strongman and the reporter — never the betrayed faction
                     if (!isStrongman && r.reporter_faction_id !== f.id) return '';
@@ -961,6 +1001,10 @@ async function renderAutocracyParties(el, f, n) {
                 } else if (entry.action_type === 'dynasty_detected_prepare') {
                     if (!isStrongman) return '';
                     detail = `${r.steward_name} caught preparing succession`;
+                } else if (entry.action_type === 'official_dispatch') {
+                    detail = r.headline || '';
+                } else if (entry.action_type === 'party_disbanded') {
+                    detail = r.faction_name ? `${r.faction_name} disbanded${r.reason === 'inactivity' ? ' (inactivity)' : ''}` : '';
                 }
 
                 if (!label) return ''; // Hidden entry (e.g. secret coalition not visible to strongman)

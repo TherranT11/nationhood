@@ -1212,8 +1212,8 @@ export const MAKE_PROMISE_CONFIG = {
     AP_COST: 2,
     MONEY_COST: 0,
     STAT_DELTA: 10,                    // Promise to change stat by ±10
-    DEADLINE_DICE: 24,                 // 1D24 + base
-    DEADLINE_BASE: 6,                  // base ticks added to roll
+    DEADLINE_DICE: 12,                 // 1D12 + base
+    DEADLINE_BASE: 12,                 // base ticks added to roll (range: 13-24)
     APPROVAL_ON_PROMISE_STAT: 4,       // immediate bump with affected blocs (stat type)
     APPROVAL_ON_PROMISE_CRISIS: 2,     // immediate bump with all blocs (crisis type)
     APPROVAL_IF_KEPT: 12,              // permanent legacy reward
@@ -1285,7 +1285,7 @@ export async function executeMakePromise(supabase, factionId, nationId, currentT
     const approvalByBloc = {};
     for (const row of (approvalRows || [])) approvalByBloc[row.bloc_id] = row;
 
-    // ── 4. Roll deadline: 1D24 + 6 ──
+    // ── 4. Roll deadline: 1D12 + 12 ──
     const deadlineRoll = Math.floor(Math.random() * cfg.DEADLINE_DICE) + 1;
     const deadlineTicks = deadlineRoll + cfg.DEADLINE_BASE;
     const tickDeadline = currentTick + deadlineTicks;
@@ -1948,7 +1948,27 @@ export async function processPromiseTick(supabase, nation, currentTick) {
         .from('active_crises').select('id, crisis_id').eq('nation_id', nation.id);
     const activeCrisisIds = new Set((activeCrises || []).map(ac => ac.id));
 
+    // Build set of governing faction IDs (ruling faction + coalition members)
+    const governingFactionIds = new Set([
+        nation.ruling_faction_id,
+        ...coalitionPartyIds,
+    ].filter(Boolean));
+
     for (const promise of activePromises) {
+        const isGoverning = governingFactionIds.has(promise.party_id);
+
+        // If not governing and deadline passed: expire silently, no downside
+        if (!isGoverning && currentTick >= promise.tick_deadline) {
+            await supabase.from('fundraiser_promises')
+                .update({ status: 'expired', tick_resolved: currentTick, updated_at: new Date().toISOString() })
+                .eq('id', promise.id);
+            results.push({ promise, resolution: 'expired' });
+            continue;
+        }
+
+        // If not governing: promise is dormant — skip evaluation entirely
+        if (!isGoverning) continue;
+
         // For crisis_resolution promises, check if the crisis is still active
         if (promise.demand_type === 'crisis_resolution' && promise.conditions?.crisis_id) {
             if (!activeCrisisIds.has(promise.conditions.crisis_id)) {

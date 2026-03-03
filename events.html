@@ -668,9 +668,23 @@ function eventLogToEvent(entry, nationNames, leaderMap) {
   // Look up faction leader if faction_id is present
   const factionLeader = entry.faction_id ? (leaderMap[entry.faction_id] || null) : null;
 
-  // Extract bill name
+  // Extract bill name from description (e.g., "passed the Independent Judiciary Act" or "rejected the Tax Reform Act")
+  const billDescMatch = desc.match(/(?:passed|rejected|signed|vetoed)\s+(?:the\s+)?(.+?)(?:\s+in\s+a\s|\.\s|,\s)/i);
   const billMatch = desc.match(/(?:bill|act|law)\s+"?([^".,]+)"?/i);
-  const billName = billMatch ? billMatch[1] : subjectName;
+  const billName = billDescMatch ? billDescMatch[1] : (billMatch ? billMatch[1] : subjectName);
+
+  // Extract sponsor/party name from description (e.g., "sponsored by New Avelia Party")
+  const sponsorMatch = desc.match(/sponsored by\s+(.+?)(?:[,.]|$)/i);
+  const billPartyName = sponsorMatch ? sponsorMatch[1].trim() : null;
+
+  // Extract vote counts from description (e.g., "97-23 vote" or "97 for and 23 against")
+  const voteMatch = desc.match(/(\d+)\s*[-–]\s*(\d+)\s*vote/i) || desc.match(/(\d+)\s+for\s+and\s+(\d+)\s+against/i);
+  const parsedVotesFor = voteMatch ? parseInt(voteMatch[1]) : (effects.votes_for || 0);
+  const parsedVotesAgainst = voteMatch ? parseInt(voteMatch[2]) : (effects.votes_against || 0);
+
+  // For bill events, use sponsor as party_name; otherwise fallback to subjectName
+  const isBillEvent = event_type === 'bill_vote_pass' || event_type === 'bill_vote_fail';
+  const resolvedPartyName = isBillEvent && billPartyName ? billPartyName : subjectName;
 
   return {
     event_type,
@@ -681,7 +695,7 @@ function eventLogToEvent(entry, nationNames, leaderMap) {
     pm_name: pmName,
     crisis_name: subjectName,
     bill_name: billName,
-    party_name: subjectName,
+    party_name: resolvedPartyName,
     target_name: subjectName,
     stat_name: subjectName,
     leader_name: factionLeader || pmName,
@@ -690,9 +704,11 @@ function eventLogToEvent(entry, nationNames, leaderMap) {
     description: desc,
     severity: meta.tier <= 1 ? 'severe' : 'moderate',
     outcome: name.includes('FAIL') ? 'failed' : name.includes('PASS') ? 'passed' : '',
-    votes_for: effects.votes_for || 0,
-    votes_against: effects.votes_against || 0,
-    margin: Math.abs((effects.votes_for || 0) - (effects.votes_against || 0)),
+    vote_for: parsedVotesFor,
+    vote_against: parsedVotesAgainst,
+    votes_for: parsedVotesFor,
+    votes_against: parsedVotesAgainst,
+    margin: Math.abs(parsedVotesFor - parsedVotesAgainst),
     tick,
     _source: entry,
   };
