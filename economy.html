@@ -657,10 +657,13 @@ async function submitTaxBill(nation) {
 
         // Auto-add sponsor support
         var mySeats = currentFaction.seats || 0;
-        await _supabase.from('bill_support').insert({
+        var { error: supportError } = await _supabase.from('bill_support').insert({
             bill_id: bill.id, faction_id: currentFaction.id,
             stance: 'accept', seat_count: mySeats
         });
+        if (supportError) {
+            console.error('Failed to add sponsor support:', supportError.message);
+        }
 
         // Trigger NPC committee votes for democracies
         if (!isAutocracyGov) {
@@ -1170,7 +1173,7 @@ function renderTaxationTab(nation) {
     if (isPresidentialRepublic(nation)) {
         h += '<div class="tax-info-callout">';
         h += '<span class="tax-info-callout-icon">&#8505;</span>';
-        h += '<span class="tax-info-callout-text">Rate changes of <strong>&pm;3% or less</strong> can be made by executive order. Larger changes require a <strong>bill</strong> through the legislature. Effects scale with rate.</span>';
+        h += '<span class="tax-info-callout-text">Tax reform bills passed by the legislature must be <strong>signed by the President</strong> before taking effect. The President may veto, triggering a &frac23; override vote.</span>';
         h += '</div>';
     }
 

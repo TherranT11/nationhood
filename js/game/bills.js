@@ -7,7 +7,7 @@ import { GAME_CONFIG, initGameConfigForNation } from './config.js';
 import { isPresidentialRepublic } from './government-types.js';
 import { DIPLOMACY_CONFIG } from './diplomacy-constants.js';
 import { IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology } from './ideology.js';
-import { adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
+import { adjustMomentum, adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
 import { MINISTER_APPROVAL_CONFIG } from './stats.js';
 import { resolveBudgetBill } from './budget.js';
 import { fetchActiveCoalition } from './government-structure.js';
@@ -2014,6 +2014,39 @@ export async function enactBill(supabase, bill, currentTick) {
             return { success: false, error: `Tax rate update failed: ${taxErr.message}` };
         }
         console.log(`[enactBill] Tax rates applied to nation ${bill.nation_id}:`, JSON.stringify(taxUpdates));
+
+        // ── Apply tax-change approval/momentum effects ──
+        // These match the preview shown in the economy.html tax cards.
+        if (bill.proposed_by) {
+            for (const [taxKey, newRate] of Object.entries(taxUpdates)) {
+                const oldRate = Number(nation[taxKey] ?? 0);
+                const rateDiff = newRate - oldRate;
+                if (rateDiff === 0) continue;
+
+                if (taxKey === 'corporate_tax') {
+                    // Corporate tax: flat momentum hit on Business Owners voter bloc
+                    const blocImpact = rateDiff > 0 ? -3 : 2;
+                    const { data: boBlocRows } = await supabase
+                        .from('voter_blocs')
+                        .select('id')
+                        .eq('nation_id', bill.nation_id)
+                        .eq('bloc_name', 'Business Owners')
+                        .eq('is_active', true)
+                        .limit(1);
+                    if (boBlocRows && boBlocRows.length > 0) {
+                        await adjustMomentum(supabase, bill.nation_id, bill.proposed_by, boBlocRows[0].id, blocImpact, 'tax:corporate_tax');
+                        console.log(`[enactBill] Corporate tax momentum: ${blocImpact} on Business Owners for sponsor ${bill.proposed_by}`);
+                    }
+                } else {
+                    // Income / Sales tax: general momentum hit on sponsor
+                    const approvalImpact = rateDiff > 0 ? rateDiff * -2 : Math.abs(rateDiff) * 1;
+                    if (approvalImpact !== 0) {
+                        await adjustMomentumAll(supabase, bill.nation_id, bill.proposed_by, approvalImpact, `tax:${taxKey}`);
+                        console.log(`[enactBill] ${taxKey} momentum: ${approvalImpact} for sponsor ${bill.proposed_by}`);
+                    }
+                }
+            }
+        }
     }
 
     // Load ideology axes for all voting factions (sponsor + voters)
