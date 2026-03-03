@@ -513,7 +513,12 @@ export async function ensureBlocApprovals(supabase, factionId, nationId) {
 export async function processIdeologyShifts(supabase, nationId, resolutions, currentTick) {
     if (!resolutions || resolutions.length === 0) return;
 
-    const billIds = resolutions.map(r => r.billId);
+    // Only process bills with terminal resolutions — skip deferred bills
+    // to avoid double-counting when they resolve on a subsequent tick.
+    const terminalResolutions = resolutions.filter(r => r.result !== 'deferred');
+    if (terminalResolutions.length === 0) return;
+
+    const billIds = terminalResolutions.map(r => r.billId);
 
     const { data: bills } = await supabase
         .from('bills')
@@ -528,7 +533,10 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
     );
     if (legislativeBills.length === 0) return;
 
-    const passedBillIds = new Set(resolutions.filter(r => r.result === 'passed').map(r => r.billId));
+    // Include 'president_desk' as passed — these bills passed the floor vote
+    // and are awaiting presidential action; the passage bonus should apply now
+    // since processIdeologyShifts won't run again when the president signs.
+    const passedBillIds = new Set(terminalResolutions.filter(r => r.result === 'passed' || r.result === 'president_desk').map(r => r.billId));
 
     // Accumulate shifts: { factionId: { axisKey: totalShift } }
     const factionShifts = {};
