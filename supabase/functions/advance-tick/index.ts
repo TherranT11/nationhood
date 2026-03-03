@@ -378,6 +378,14 @@ function calculateExportCapacity(nation, sector, opts) {
         capacity *= 0.7;
     }
 
+    // ── Stability modifier ──
+    // Political instability disrupts production across all sectors.
+    // Below 40 stability, export capacity starts degrading.
+    // At stability 20, capacity is halved. At 0, no exports at all.
+    var stability = Number(nation.stability) || 50;
+    var stabilityMod = Math.min(1.0, stability / 40);
+    capacity *= stabilityMod;
+
     // ── Currency strength modifier ──
     // Affects export VALUE (what appears on trade page).
     // Weak currency = exports are cheaper = lower value per unit.
@@ -767,6 +775,13 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 impDem = calculateImportDemand(n, sector, importOpts);
             }
 
+            // Export controls: nations can cap exports per sector (e.g., OPEC strategy)
+            // export_caps is a JSONB object like { energy: 50, minerals: 75 } meaning % of capacity
+            var exportCaps = n.export_caps;
+            if (exportCaps && exportCaps[sector.key] != null) {
+                expCap = Math.round(expCap * (exportCaps[sector.key] / 100));
+            }
+
             nationFlows[n.id][sector.key] = { exportCapacity: expCap, importDemand: impDem };
             sectorAgg[sector.key].totalSupply += expCap;
             sectorAgg[sector.key].totalDemand += impDem;
@@ -1052,9 +1067,20 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             for (var ii = 0; ii < nationCount; ii++) {
                 if (ii === ei) continue;
                 var importer = nationList[ii];
+
+                // Hard embargo block: zero trade between embargoed pairs
+                var pairFlags = flagsMap[exporter.id + '|' + importer.id];
+                if (pairFlags && pairFlags.has_embargo) continue;
+
                 var impDem = nationFlows[importer.id][sector.key].importDemand;
                 // Subtract what they've already received from other exporters
                 var remainingDemand = impDem - actualImports[importer.id][sector.key];
+                if (remainingDemand <= 0) continue;
+
+                // Price-responsive demand: high prices reduce demand, low prices increase it
+                // Uses square root for partial elasticity (not fully elastic)
+                var priceDampener = 1 / Math.sqrt(priceMod);
+                remainingDemand = Math.round(remainingDemand * priceDampener);
                 if (remainingDemand <= 0) continue;
 
                 var aff = affinityMap[exporter.id + '|' + importer.id] || 0;
@@ -1167,9 +1193,54 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 
         totalGlobalVolume += totalExp;
 
-        // Update the nation's trade_balance stat
+        // ── Trade-driven stat nudges ──
+        var nationUpdates = { trade_balance: tradeBalanceIdx };
+
+        // Currency strength: trade surplus strengthens currency, deficit weakens it
+        // Gentler than GDP nudge: (tradeBalance - 50) / 100 → range -0.5 to +0.5 per tick
+        var currentCurrency = Number(n.currency_strength) || 50;
+        var currencyNudge = (tradeBalanceIdx - 50) / 100;
+        if (Math.abs(currencyNudge) >= 0.01) {
+            nationUpdates.currency_strength = Math.round(Math.max(0, Math.min(100, currentCurrency + currencyNudge)) * 10) / 10;
+        }
+
+        // Inflation from import prices: weighted average price modifier of imports
+        // If average import prices > 1.0, inflation pressure rises (imported inflation)
+        var importWeightedPrice = 0;
+        var totalImpForPrice = 0;
+        for (var si2 = 0; si2 < sectors.length; si2++) {
+            var sKey2 = sectors[si2].key;
+            var impVol2 = actualImports[n.id][sKey2] || 0;
+            if (impVol2 > 0) {
+                importWeightedPrice += impVol2 * (priceModifiers[sKey2] || 1.0);
+                totalImpForPrice += impVol2;
+            }
+        }
+        var avgImportPrice = totalImpForPrice > 0 ? importWeightedPrice / totalImpForPrice : 1.0;
+        // Nudge inflation: (avgPrice - 1.0) scaled to ±0.5 per tick
+        var currentInflation = Number(n.inflation) || 50;
+        var inflationNudge = (avgImportPrice - 1.0) * 1.0; // price 1.5 → +0.5 nudge, price 0.7 → -0.3
+        if (Math.abs(inflationNudge) >= 0.01) {
+            nationUpdates.inflation = Math.round(Math.max(0, Math.min(100, currentInflation + inflationNudge)) * 10) / 10;
+        }
+
+        // Unemployment from trade displacement: net imports in job-heavy sectors (manufacturing + services)
+        // indicate domestic producers being outcompeted → unemployment pressure
+        var mfgNet = (actualImports[n.id]['manufactured_goods'] || 0) - (actualExports[n.id]['manufactured_goods'] || 0);
+        var svcNet = (actualImports[n.id]['services_finance'] || 0) - (actualExports[n.id]['services_finance'] || 0);
+        if (gdp > 0) {
+            var displacementRatio = (mfgNet + svcNet) / gdp;
+            // Positive ratio = net importer in job sectors → unemployment nudge up
+            // Negative ratio = net exporter in job sectors → unemployment nudge down (job creation)
+            var unemploymentNudge = Math.max(-0.5, Math.min(0.5, displacementRatio * 100));
+            if (Math.abs(unemploymentNudge) >= 0.01) {
+                var currentUnemployment = Number(n.unemployment) || 50;
+                nationUpdates.unemployment = Math.round(Math.max(0, Math.min(100, currentUnemployment + unemploymentNudge)) * 10) / 10;
+            }
+        }
+
         await supabase.from('nations')
-            .update({ trade_balance: tradeBalanceIdx })
+            .update(nationUpdates)
             .eq('id', n.id);
     }
 
