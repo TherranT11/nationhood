@@ -532,19 +532,41 @@ for (const [statKey, ministryKey] of Object.entries(STAT_TO_MINISTRY)) {
 }
 
 /**
- * Simplified approval system configuration.
+ * Build a stat_baselines object for a ministry: { statKey: currentValue, ... }
+ * Only includes stats with a non-zero direction sign (skips neutral stats like taxes).
  *
- * Minister approval drifts toward the average "performance" of their owned stats
- * each tick. Performance for a stat is its raw value (higher-is-better) or
- * 100 - value (lower-is-better). Neutral stats are skipped.
+ * @param {string} ministryKey - e.g. 'finance', 'labor'
+ * @param {object} nation - nation row with current stat values
+ * @returns {object} baseline snapshot for the ministry's owned stats
+ */
+export function buildMinistryBaselines(ministryKey, nation) {
+    const stats = MINISTRY_TO_STATS[ministryKey];
+    if (!stats) return {};
+    const baselines = {};
+    for (const statKey of stats) {
+        if (statDirectionSign(statKey) === 0) continue;
+        baselines[statKey] = Number(nation[statKey] ?? 50);
+    }
+    return baselines;
+}
+
+/**
+ * Delta-based approval system configuration.
+ *
+ * Minister approval starts at 50 and moves based on how their owned stats
+ * change relative to their baseline (snapshot at appointment time).
+ * Pure delta model: ministers are judged on improvement, not inherited state.
  *
  * Government approval = avg(filled minister approvals) + vacancy penalty + event modifier.
  */
 export const MINISTER_APPROVAL_CONFIG = {
-    // Per-tick drift rate: minister approval moves 15% of the gap toward target
-    DRIFT_RATE: 0.15,
+    // Per-tick sensitivity: how much each point of average delta moves approval
+    DELTA_SENSITIVITY: 0.6,
 
-    // New minister starts at 50% approval and drifts to match their stats
+    // Slow stagnation decay: if stats are flat, approval drifts down slightly per tick
+    STAGNATION_DECAY: -0.3,
+
+    // New minister starts at 50% approval
     NEW_MINISTER_APPROVAL: 50,
 
     // Firing a minister costs 1 AP and gives +3 to the event modifier

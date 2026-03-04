@@ -604,6 +604,11 @@ function eventLogToEvent(entry, nationNames, leaderMap) {
   else if (name.includes('FORMATION_SNAP')) event_type = 'election';
   else if (name.includes('EMERGENCY_MINORITY')) event_type = 'coalition_formed';
   else if (name.includes('ELECTION')) event_type = 'election';
+  // Impeachment
+  else if (name.includes('IMPEACH') && name.includes('CONVICT')) event_type = 'impeachment';
+  else if (name.includes('IMPEACH') && name.includes('ACQUIT')) event_type = 'impeachment';
+  else if (name.includes('IMPEACH') && name.includes('MOTION')) event_type = 'impeachment';
+  else if (name.includes('IMPEACH')) event_type = 'impeachment';
   // Coup
   else if (name.includes('COUP')) event_type = 'coup_attempt';
   // Scandal
@@ -658,33 +663,75 @@ function eventLogToEvent(entry, nationNames, leaderMap) {
   const meta = EVENT_TYPES[event_type];
   if (!meta) return null;
 
-  // Extract crisis/subject name from event_name (e.g., "CRISIS_STARTED: Government Shutdown" → "Government Shutdown")
-  const subjectName = rawName.replace(/^(?:CRISIS_(?:STARTED|RESOLVED|ONGOING)|REVOLUTION_\w+|DEMOCRATIC_REVOLUTION):\s*/i, '').trim() || rawName;
+  // Extract subject name from event_name (strip common prefixes)
+  const subjectName = rawName
+    .replace(/^(?:CRISIS_(?:STARTED|RESOLVED|ONGOING)|REVOLUTION_\w+|DEMOCRATIC_REVOLUTION|ECONOMIC_CRISIS|MINISTRY_CRISIS|SOVEREIGN_DEFAULT|CURRENCY_COLLAPSE|HYPERINFLATION|MILESTONE|STAT_DECAY|MOMENTUM_DECAY|BUDGET_STALL|INACTION):\s*/i, '')
+    .trim() || rawName;
 
-  // Extract party name from description if available (e.g., "The Smith Government has fallen")
+  // Extract party/PM names from description
   const pmMatch = desc.match(/(?:the\s+)?(\w+)\s+Government/i);
-  const pmName = effects.pm_last_name || (pmMatch ? pmMatch[1] : 'the Prime Minister');
+  const pmName = effects.pm_last_name || (pmMatch ? pmMatch[1] : '');
 
   // Look up faction leader if faction_id is present
   const factionLeader = entry.faction_id ? (leaderMap[entry.faction_id] || null) : null;
 
-  // Extract bill name from description (e.g., "passed the Independent Judiciary Act" or "rejected the Tax Reform Act")
+  // Extract bill name from description
   const billDescMatch = desc.match(/(?:passed|rejected|signed|vetoed)\s+(?:the\s+)?(.+?)(?:\s+in\s+a\s|\.\s|,\s)/i);
   const billMatch = desc.match(/(?:bill|act|law)\s+"?([^".,]+)"?/i);
   const billName = billDescMatch ? billDescMatch[1] : (billMatch ? billMatch[1] : subjectName);
 
-  // Extract sponsor/party name from description (e.g., "sponsored by New Avelia Party")
+  // Extract sponsor/party name from description
   const sponsorMatch = desc.match(/sponsored by\s+(.+?)(?:[,.]|$)/i);
   const billPartyName = sponsorMatch ? sponsorMatch[1].trim() : null;
 
-  // Extract vote counts from description (e.g., "97-23 vote" or "97 for and 23 against")
-  const voteMatch = desc.match(/(\d+)\s*[-–]\s*(\d+)\s*vote/i) || desc.match(/(\d+)\s+for\s+and\s+(\d+)\s+against/i);
+  // Extract vote counts from description or effects
+  const voteMatch = desc.match(/(\d+)\s*[-–]\s*(\d+)\s*vote/i) || desc.match(/(\d+)\s+(?:for|to)\s+(?:and\s+)?(\d+)\s*(?:against)?/i);
   const parsedVotesFor = voteMatch ? parseInt(voteMatch[1]) : (effects.votes_for || 0);
   const parsedVotesAgainst = voteMatch ? parseInt(voteMatch[2]) : (effects.votes_against || 0);
 
-  // For bill events, use sponsor as party_name; otherwise fallback to subjectName
+  // ── Determine status for conditional templates ──
+  let status = '';
+  if (event_type === 'no_confidence') {
+    if (name.includes('FALL') || name.includes('SUCCEED') || name.includes('PASS')) status = 'passed';
+    else if (name.includes('FAIL') || name.includes('SURVIV') || name.includes('DEFEAT')) status = 'failed';
+    else status = 'filed';
+  } else if (event_type === 'budget_vote') {
+    status = (name.includes('PASS') || name.includes('APPROVED')) ? 'passed' : 'failed';
+  } else if (event_type === 'impeachment') {
+    if (name.includes('CONVICT') || name.includes('REMOVED')) status = 'convicted';
+    else if (name.includes('ACQUIT') || name.includes('SURVIV')) status = 'acquitted';
+    else if (name.includes('MOTION') && name.includes('FAIL')) status = 'motion_failed';
+    else if (name.includes('IMPEACH') && !name.includes('MOTION')) status = 'impeached';
+    else status = 'filed';
+  }
+
+  // ── Extract two-nation fields from description ──
+  // Patterns: "X declares war on Y", "X and Y sign", "peace between X and Y"
+  const twoNationMatch = desc.match(/(\w[\w\s]+?)\s+(?:declares?\s+war\s+on|attacks?|invades?)\s+(\w[\w\s]+?)(?:[,.]|$)/i)
+    || desc.match(/(?:between|:)\s+(\w[\w\s]+?)\s+and\s+(\w[\w\s]+?)(?:[,.]|$)/i);
+  const nation_a = twoNationMatch ? twoNationMatch[1].trim() : nationName;
+  const nation_b = twoNationMatch ? twoNationMatch[2].trim() : '';
+
+  // ── Extract event-type-specific fields ──
   const isBillEvent = event_type === 'bill_vote_pass' || event_type === 'bill_vote_fail';
-  const resolvedPartyName = isBillEvent && billPartyName ? billPartyName : subjectName;
+
+  // party_name: use sponsor for bills, faction name for faction events, otherwise leave empty
+  let resolvedPartyName = '';
+  if (isBillEvent && billPartyName) resolvedPartyName = billPartyName;
+  else if (factionLeader) resolvedPartyName = factionLeader;
+  else if (entry.faction_id && entry._source?.factions?.faction_name) resolvedPartyName = entry._source.factions.faction_name;
+
+  // scandal_type from description
+  const scandalMatch = desc.match(/(?:scandal|allegation|accused of|charged with)\s+(?:involving\s+)?(.+?)(?:[,.]|$)/i);
+
+  // ministry_name from event name or description
+  const ministryMatch = rawName.match(/MINISTRY[_ ]CRISIS:\s*(.+)/i) || desc.match(/(\w[\w\s]+?)\s+(?:ministry|sector|services)/i);
+
+  // currency_name from description
+  const currencyMatch = desc.match(/(?:the\s+)?(\w+(?:\s+\w+)?)\s+(?:has\s+)?(?:collapsed|fell|dropped|plummeted|hit)/i);
+
+  // coalition parties from description
+  const coalitionMatch = desc.match(/(?:coalition|alliance|government)\s+(?:of|between|with)\s+(.+?)(?:\.|$)/i);
 
   return {
     event_type,
@@ -699,17 +746,65 @@ function eventLogToEvent(entry, nationNames, leaderMap) {
     target_name: subjectName,
     stat_name: subjectName,
     leader_name: factionLeader || pmName,
-    bloc_name: '',
+    bloc_name: effects.bloc_name || '',
     subject_name: subjectName,
     description: desc,
     severity: meta.tier <= 1 ? 'severe' : 'moderate',
     outcome: name.includes('FAIL') ? 'failed' : name.includes('PASS') ? 'passed' : '',
+    status,
     vote_for: parsedVotesFor,
     vote_against: parsedVotesAgainst,
     votes_for: parsedVotesFor,
     votes_against: parsedVotesAgainst,
     margin: Math.abs(parsedVotesFor - parsedVotesAgainst),
     tick,
+
+    // Two-nation events (war, peace, alliance, ambassador, exercises)
+    declarer: nation_a,
+    target: nation_b,
+    nation_a,
+    nation_b,
+    declarer_pm: pmName,
+    visitor_pm: pmName,
+    visitor_nation: nation_a,
+    host_nation: nation_b,
+
+    // Election (best-effort from description)
+    winner_name: effects.winner_name || desc.match(/(\w[\w\s]+?)\s+(?:wins?|won|claims?|sweeps?)/i)?.[1] || '',
+    winner_seats: effects.winner_seats || desc.match(/(\d+)\s+seats/i)?.[1] || '',
+    runner_up_name: effects.runner_up_name || '',
+    turnout: effects.turnout || '',
+
+    // Coalition
+    coalition_parties: coalitionMatch ? coalitionMatch[1].trim() : '',
+    defecting_party: effects.defecting_party || '',
+
+    // Scandal
+    scandal_type: scandalMatch ? scandalMatch[1].trim() : (effects.scandal_type || ''),
+
+    // Ministry / Currency / Inflation
+    ministry_name: ministryMatch ? ministryMatch[1].trim() : (effects.ministry_name || ''),
+    currency_name: currencyMatch ? currencyMatch[1].trim() : (effects.currency_name || ''),
+    inflation_value: effects.inflation_value || '',
+    debt_to_gdp: effects.debt_to_gdp || '',
+
+    // Crisis duration
+    duration_ticks: effects.duration_ticks || effects.ticks_active || '',
+
+    // IO / Alliance
+    io_name: effects.io_name || subjectName,
+    alliance_type: effects.alliance_type || 'alliance',
+
+    // Inaction / Budget stall
+    issue_name: effects.issue_name || subjectName,
+    stall_duration: effects.stall_duration || '',
+
+    // Budget
+    total_spending: effects.total_spending || 0,
+
+    // Impeachment
+    president_name: effects.president_name || pmName,
+
     _source: entry,
   };
 }

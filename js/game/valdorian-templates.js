@@ -146,7 +146,7 @@ export function selectTemplate(templates, eventData) {
  * Also handles word pool draws: {negative_adjective}, {positive_adjective}, etc.
  */
 export function fillTemplate(templateStr, eventData) {
-    return templateStr.replace(/\{(\w+)\}/g, (match, key) => {
+    const filled = templateStr.replace(/\{(\w+)\}/g, (match, key) => {
         if (key === 'negative_adjective') return drawFromPool('negative_adjectives');
         if (key === 'positive_adjective') return drawFromPool('positive_adjectives');
         if (key === 'negative_framing') {
@@ -156,9 +156,11 @@ export function fillTemplate(templateStr, eventData) {
         }
         if (key === 'alternative_action') return drawFromPool('alternative_actions');
         if (key === 'crisis_intensifier') return drawFromPool('crisis_intensifiers');
-        if (eventData[key] !== undefined && eventData[key] !== null) return String(eventData[key]);
-        return match; // leave unfilled if no data
+        if (eventData[key] !== undefined && eventData[key] !== null && eventData[key] !== '') return String(eventData[key]);
+        return ''; // strip unfilled vars instead of leaving raw {placeholder} text
     });
+    // Clean up artefacts from stripped vars: double spaces, empty parens, dangling dashes/colons
+    return filled.replace(/\s{2,}/g, ' ').replace(/\(\s*\)/g, '').replace(/\s+—\s*$/g, '').replace(/:\s*$/g, '').replace(/^\s+|\s+$/g, '').replace(/\s([.,;])/g, '$1');
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -308,11 +310,13 @@ export const HEADLINE_TEMPLATES = {
 
     // ─────────── ELECTION ───────────
     election: [
-        { id: 'election_h_01', template: "{winner_name} Wins Election — {winner_seats} Seats", conditions: [], weight: 1 },
+        { id: 'election_h_01', template: "{winner_name} Wins Election — {winner_seats} Seats", conditions: [{ field: 'winner_name', op: '!=', value: '' }], weight: 2 },
         { id: 'election_h_02', template: "Landslide: {winner_name} Sweeps to Power", conditions: [{ field: 'margin', op: '>', value: 20 }], weight: 3 },
         { id: 'election_h_03', template: "Razor-Thin: {winner_name} Edges Out {runner_up_name}", conditions: [{ field: 'margin', op: '<', value: 3 }], weight: 3 },
-        { id: 'election_h_04', template: "Election Night: {winner_name} Claims Victory in {nation_name}", conditions: [], weight: 1 },
+        { id: 'election_h_04', template: "Election Night: {winner_name} Claims Victory in {nation_name}", conditions: [{ field: 'winner_name', op: '!=', value: '' }], weight: 1 },
         { id: 'election_h_05', template: "Upset: {winner_name} Topples {incumbent_name} in Stunning Result", conditions: [{ field: 'is_upset', op: '==', value: true }], weight: 3 },
+        { id: 'election_h_06', template: "Election Results In: {nation_name} Voters Head to the Polls", conditions: [], weight: 1 },
+        { id: 'election_h_07', template: "{nation_name} Holds Elections — New Government Expected", conditions: [], weight: 1 },
     ],
 
     // ─────────── COALITION ───────────
@@ -337,6 +341,7 @@ export const HEADLINE_TEMPLATES = {
         { id: 'noc_h_03', template: "{pm_name} Survives No-Confidence Vote", conditions: [{ field: 'status', op: '==', value: 'failed' }], weight: 2 },
         { id: 'noc_h_04', template: "Parliament Turns on {pm_name} — No-Confidence Succeeds {vote_for}-{vote_against}", conditions: [{ field: 'status', op: '==', value: 'passed' }], weight: 2 },
         { id: 'noc_h_05', template: "{pm_name} Hangs On — No-Confidence Defeated by {margin} Votes", conditions: [{ field: 'status', op: '==', value: 'failed' }], weight: 1 },
+        { id: 'noc_h_06', template: "No-Confidence Vote Shakes {nation_name} Government", conditions: [], weight: 1 },
     ],
 
     // ─────────── IMPEACHMENT ───────────
@@ -349,14 +354,16 @@ export const HEADLINE_TEMPLATES = {
         { id: 'imp_h_06', template: "Charges Filed: {charges} — Impeachment Proceedings Begin", conditions: [{ field: 'status', op: '==', value: 'filed' }], weight: 2 },
         { id: 'imp_h_07', template: "Historic Vote: {president_name} Impeached {vote_for}-{vote_against}", conditions: [{ field: 'status', op: '==', value: 'impeached' }], weight: 2 },
         { id: 'imp_h_08', template: "VP {vp_name} Sworn In as Acting President After {president_name} Removed", conditions: [{ field: 'status', op: '==', value: 'convicted' }], weight: 2 },
+        { id: 'imp_h_09', template: "Impeachment Crisis Rocks {nation_name}", conditions: [], weight: 1 },
     ],
 
     // ─────────── ENDORSEMENT ───────────
     endorsement: [
-        { id: 'endorse_h_01', template: "{bloc_name} Endorses {party_name}", conditions: [], weight: 1 },
+        { id: 'endorse_h_01', template: "{bloc_name} Endorses {party_name}", conditions: [{ field: 'bloc_name', op: '!=', value: '' }], weight: 2 },
         { id: 'endorse_h_02', template: "{bloc_name} Backs {party_name} — Major Boost Ahead of Election", conditions: [{ field: 'election_within', op: '<', value: 10 }], weight: 2 },
         { id: 'endorse_h_03', template: "Surprise Endorsement: {bloc_name} Breaks with Tradition for {party_name}", conditions: [{ field: 'is_surprise', op: '==', value: true }], weight: 3 },
-        { id: 'endorse_h_04', template: "{party_name} Secures Key {bloc_name} Endorsement", conditions: [], weight: 1 },
+        { id: 'endorse_h_04', template: "{party_name} Secures Key Endorsement in {nation_name}", conditions: [], weight: 1 },
+        { id: 'endorse_h_05', template: "New Endorsement Shakes Up {nation_name} Politics", conditions: [], weight: 1 },
     ],
 
     // ─────────── ATTACK CAMPAIGN ───────────
@@ -369,9 +376,10 @@ export const HEADLINE_TEMPLATES = {
 
     // ─────────── VOTER OUTREACH ───────────
     voter_outreach: [
-        { id: 'outreach_h_01', template: "{party_name} Launches Outreach in {bloc_name} Communities", conditions: [], weight: 1 },
-        { id: 'outreach_h_02', template: "{party_name} Canvassers Hit the Streets Targeting {bloc_name} Voters", conditions: [], weight: 1 },
+        { id: 'outreach_h_01', template: "{party_name} Launches Outreach in {bloc_name} Communities", conditions: [{ field: 'bloc_name', op: '!=', value: '' }], weight: 2 },
+        { id: 'outreach_h_02', template: "{party_name} Canvassers Hit the Streets Targeting {bloc_name} Voters", conditions: [{ field: 'bloc_name', op: '!=', value: '' }], weight: 1 },
         { id: 'outreach_h_03', template: "{party_name} Expands Ground Game with {bloc_name} Outreach Drive", conditions: [{ field: 'effect', op: '>', value: 3 }], weight: 2 },
+        { id: 'outreach_h_04', template: "{party_name} Launches Voter Outreach Campaign in {nation_name}", conditions: [], weight: 1 },
     ],
 
     // ─────────── FUNDRAISER ───────────
@@ -389,26 +397,28 @@ export const HEADLINE_TEMPLATES = {
 
     // ─────────── SCANDAL ───────────
     scandal: [
-        { id: 'scandal_h_01', template: "Scandal: {party_name} Rocked by {scandal_type} Allegations", conditions: [], weight: 1 },
-        { id: 'scandal_h_02', template: "{leader_name} Under Fire — {scandal_type} Claims Surface", conditions: [], weight: 1 },
-        { id: 'scandal_h_03', template: "Opposition Demands Investigation After {party_name} {scandal_type}", conditions: [], weight: 1 },
+        { id: 'scandal_h_01', template: "Scandal: {party_name} Rocked by {scandal_type} Allegations", conditions: [{ field: 'scandal_type', op: '!=', value: '' }], weight: 2 },
+        { id: 'scandal_h_02', template: "{leader_name} Under Fire — {scandal_type} Claims Surface", conditions: [{ field: 'scandal_type', op: '!=', value: '' }], weight: 1 },
+        { id: 'scandal_h_03', template: "Scandal Rocks {nation_name} Politics", conditions: [], weight: 1 },
         { id: 'scandal_h_04', template: "Leaked Documents Reveal {party_name} {scandal_type}", conditions: [{ field: 'severity', op: '>', value: 7 }], weight: 3 },
-        { id: 'scandal_h_05', template: "Political Firestorm: {scandal_type} Scandal Engulfs {party_name}", conditions: [{ field: 'severity', op: '>', value: 8 }], weight: 3 },
+        { id: 'scandal_h_05', template: "Political Firestorm: Scandal Engulfs {nation_name} Government", conditions: [], weight: 1 },
     ],
 
     // ─────────── BUDGET ───────────
     budget_vote: [
-        { id: 'budget_h_01', template: "Parliament Passes {nation_name} Budget", conditions: [{ field: 'passed', op: '==', value: true }], weight: 1 },
-        { id: 'budget_h_02', template: "Budget Rejected — Government Faces Shutdown Threat", conditions: [{ field: 'passed', op: '==', value: false }], weight: 2 },
+        { id: 'budget_h_01', template: "Parliament Passes {nation_name} Budget", conditions: [{ field: 'status', op: '==', value: 'passed' }], weight: 1 },
+        { id: 'budget_h_02', template: "Budget Rejected — Government Faces Shutdown Threat", conditions: [{ field: 'status', op: '==', value: 'failed' }], weight: 2 },
         { id: 'budget_h_03', template: "{nation_name} Budget Passes with Slim Majority", conditions: [{ field: 'margin', op: '<', value: 5 }], weight: 2 },
         { id: 'budget_h_04', template: "Historic Budget: {nation_name} Approves Record Spending", conditions: [{ field: 'total_spending', op: '>', value: 1000000 }], weight: 2 },
+        { id: 'budget_h_05', template: "{nation_name} Budget Vote: Legislature Decides", conditions: [], weight: 1 },
     ],
 
     // ─────────── STAT MILESTONE ───────────
     stat_milestone: [
-        { id: 'stat_m_h_01', template: "{stat_name} Reaches {direction} Threshold in {nation_name}", conditions: [], weight: 1 },
-        { id: 'stat_m_h_02', template: "Alarm: {stat_name} Hits Critical Level", conditions: [{ field: 'is_negative', op: '==', value: true }], weight: 2 },
+        { id: 'stat_m_h_01', template: "{stat_name} Reaches New Threshold in {nation_name}", conditions: [], weight: 1 },
+        { id: 'stat_m_h_02', template: "Alarm: {stat_name} Hits Critical Level in {nation_name}", conditions: [{ field: 'is_negative', op: '==', value: true }], weight: 2 },
         { id: 'stat_m_h_03', template: "{nation_name} Celebrates: {stat_name} at Record High", conditions: [{ field: 'is_positive', op: '==', value: true }], weight: 2 },
+        { id: 'stat_m_h_04', template: "{nation_name}: {stat_name} Indicator Shifts", conditions: [], weight: 1 },
     ],
 
     // ─────────── ECONOMIC CRISIS ───────────
@@ -494,7 +504,7 @@ export const HEADLINE_TEMPLATES = {
     ],
 
     coup_attempt: [
-        { id: 'coup_h_01', template: "Coup Attempt in {nation_name} — {outcome}", conditions: [], weight: 1 },
+        { id: 'coup_h_01', template: "Coup Attempt in {nation_name}", conditions: [], weight: 1 },
         { id: 'coup_h_02', template: "Military Seizes Power in {nation_name}", conditions: [{ field: 'success', op: '==', value: true }], weight: 3 },
         { id: 'coup_h_03', template: "Failed Coup: {nation_name} Government Survives Takeover Attempt", conditions: [{ field: 'success', op: '==', value: false }], weight: 3 },
         { id: 'coup_h_04', template: "Tanks in the Streets: Coup Unfolds in {nation_name}", conditions: [], weight: 2 },
@@ -666,7 +676,7 @@ export const LEDE_TEMPLATES = {
         { id: 'rally_l_01', conditions: [{ field: 'momentum_change', op: '>', value: 5 }], template: "The {party_name} drew large crowds to a rally in the capital, campaigning on {ideology_tag} themes. Party leader {leader_name} called for {subject_name}, energizing {primary_energized_bloc} and {secondary_energized_bloc} voters." },
         { id: 'rally_l_02', conditions: [{ field: 'blocs_alienated', op: '>', value: 0 }], template: "A {party_name} rally on {subject_name} drew a mixed response. While {primary_energized_bloc} voters responded positively, {primary_alienated_bloc} communities criticized the party's message as divisive." },
         { id: 'rally_l_03', conditions: [{ field: 'momentum_change', op: '<', value: 3 }], template: "{party_name} held a low-key rally on {subject_name}. Turnout was modest and the event generated little media attention." },
-        { id: 'rally_l_04', conditions: [], template: "The {party_name} rallied supporters around {subject_name} at an event in the capital. {leader_name} addressed the crowd, emphasizing the party's {ideology_tag} platform." },
+        { id: 'rally_l_04', conditions: [], template: "The {party_name} rallied supporters around {subject_name} at an event in the capital. {leader_name} addressed the crowd, emphasizing the party's platform and vision for {nation_name}." },
     ],
 
     // ─── Crisis Started ───
@@ -740,7 +750,8 @@ export const LEDE_TEMPLATES = {
 
     // ─── Election ───
     election: [
-        { id: 'election_l_01', conditions: [], template: "Voters in {nation_name} have spoken. {winner_name} has won the election with {winner_seats} seats, securing a mandate to form the next government. Voter turnout was {turnout}%." },
+        { id: 'election_l_01', conditions: [{ field: 'winner_name', op: '!=', value: '' }], template: "Voters in {nation_name} have spoken. {winner_name} has won the election with {winner_seats} seats, securing a mandate to form the next government." },
+        { id: 'election_l_02', conditions: [], template: "Voters in {nation_name} have gone to the polls in an election that could reshape the political landscape. Results are expected to determine the direction of the next government." },
     ],
 
     // ─── Bill Pass/Fail ───

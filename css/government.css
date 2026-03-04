@@ -202,19 +202,23 @@
         .ministry-stat-row .stat-name {
             flex: 1; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
-        .ministry-stat-row .stat-val { color: var(--text-primary); font-weight: bold; min-width: 28px; text-align: right; }
-        .ministry-stat-row .stat-perf { min-width: 28px; text-align: right; font-weight: bold; }
-        .ministry-stat-row .stat-perf.good { color: var(--green); }
-        .ministry-stat-row .stat-perf.bad { color: var(--red); }
-        .ministry-stat-row .stat-perf.neutral { color: var(--text-muted); }
-        .ministry-stat-row .stat-dir { min-width: 14px; text-align: center; font-size: 0.6rem; }
-        .ministry-stat-row .stat-dir.up { color: var(--green); }
-        .ministry-stat-row .stat-dir.down { color: var(--red); }
-        .ministry-stat-row .stat-dir.flat { color: var(--text-muted); }
+        .ministry-stat-row .stat-val { color: var(--text-primary); font-weight: bold; min-width: 32px; text-align: right; }
+        .ministry-stat-row .stat-delta { min-width: 32px; text-align: right; font-weight: bold; }
+        .ministry-stat-row .stat-delta.good { color: var(--green); }
+        .ministry-stat-row .stat-delta.bad { color: var(--red); }
+        .ministry-stat-row .stat-delta.flat { color: var(--text-muted); }
+        .ministry-stat-row .stat-dot { min-width: 12px; text-align: center; font-size: 0.5rem; }
+        .ministry-stat-row .stat-dot.good { color: var(--green); }
+        .ministry-stat-row .stat-dot.bad { color: var(--red); }
+        .ministry-stat-row .stat-dot.flat { color: var(--text-muted); }
+        .ministry-stat-row.ministry-stat-header { font-weight: bold; color: var(--text-muted); margin-bottom: 2px; }
         .ministry-stats-footer {
-            font-size: 0.58rem; color: var(--text-muted); text-align: right;
+            font-size: 0.62rem; color: var(--text-muted); text-align: right;
             padding-top: 4px; border-top: 1px solid var(--border-main); margin-top: 4px;
+            font-style: italic;
         }
+        .ministry-stats-footer.good { color: var(--green); }
+        .ministry-stats-footer.bad { color: var(--red); }
         .no-government { background: var(--bg-panel); border-left: 4px solid var(--orange); border-radius: 8px; padding: 20px; text-align: center; }
         .no-government-title { color: var(--orange); font-size: 1.1rem; font-weight: bold; margin-bottom: 8px; }
         .no-government-desc { color: var(--text-secondary); font-size: 0.85rem; }

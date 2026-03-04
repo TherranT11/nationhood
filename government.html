@@ -39,7 +39,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, generatePMCandidates, deductAP, CANONICAL_GOVERNMENT_TYPES, FORMATION_DEADLINE_TICKS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, formatStatName, buildMinistryBaselines, adjustMomentumAll, adjustGovernmentApprovalEvent, callEarlyElectionsAction, closeAdministration, nominateMinister, resignPM, rolloverAdministration } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 (function () {
     'use strict';
@@ -1044,70 +1044,99 @@ function renderFormationInProgress(parties) {
 
 /**
  * Build a collapsible stat breakdown panel for a ministry card.
- * Shows each stat the ministry owns, its current value, direction indicator,
- * and its "performance" contribution to minister approval.
+ * Shows each stat's current value, delta since appointment, and a colored
+ * indicator showing whether the stat moved in a good or bad direction.
  *
  * @param {string} ministryKey - e.g. 'finance', 'healthcare'
+ * @param {object} [ministry] - ministry row (with stat_baselines) for delta display
  * @returns {string} HTML string (empty if no stats mapped)
  */
-function renderMinistryStatBreakdown(ministryKey) {
+function renderMinistryStatBreakdown(ministryKey, ministry) {
     const stats = MINISTRY_TO_STATS[ministryKey];
     if (!stats || stats.length === 0 || !currentNation) return '';
 
     const panelId = 'mstat-' + ministryKey;
+    const baselines = ministry?.stat_baselines || {};
     let rows = '';
-    let perfSum = 0;
-    let perfCount = 0;
+    let deltaSum = 0;
+    let deltaCount = 0;
 
     for (const statKey of stats) {
         const value = Number(currentNation[statKey] ?? 50);
         const rounded = Math.round(value * 10) / 10;
         const sign = statDirectionSign(statKey);
 
-        let perf = null;
-        let perfCls = 'neutral';
-        let dirArrow = '—';
-        let dirCls = 'flat';
+        if (sign === 0) continue; // skip neutral stats
 
-        if (sign === 1) {
-            perf = value;
-            perfCls = perf >= 60 ? 'good' : perf < 40 ? 'bad' : 'neutral';
-            dirArrow = '▲';
-            dirCls = 'up';
-        } else if (sign === -1) {
-            perf = 100 - value;
-            perfCls = perf >= 60 ? 'good' : perf < 40 ? 'bad' : 'neutral';
-            dirArrow = '▼';
-            dirCls = 'down';
+        const baseline = baselines[statKey] != null ? Number(baselines[statKey]) : null;
+        const hasDelta = baseline !== null;
+
+        // Delta in the "good" direction: positive = improvement, negative = worsening
+        const rawDelta = hasDelta ? value - baseline : 0;
+        const goodDelta = rawDelta * sign; // normalized: positive = good
+        const absDelta = Math.abs(rawDelta);
+        const deltaRounded = Math.round(absDelta * 10) / 10;
+
+        if (hasDelta) {
+            deltaSum += goodDelta;
+            deltaCount++;
         }
 
-        if (perf !== null) {
-            perfSum += perf;
-            perfCount++;
+        // Delta display: ↑3.2 or ↓1.5 or —
+        let deltaStr = '—';
+        let deltaCls = 'flat';
+        if (hasDelta && absDelta >= 0.1) {
+            const arrow = goodDelta > 0 ? '↑' : '↓';
+            deltaStr = arrow + deltaRounded;
+            deltaCls = goodDelta > 0 ? 'good' : 'bad';
+        } else if (hasDelta) {
+            deltaStr = '—';
+            deltaCls = 'flat';
         }
+
+        // Colored dot: green = improving, red = worsening, muted = flat
+        const dotCls = !hasDelta || absDelta < 0.1 ? 'flat' : goodDelta > 0 ? 'good' : 'bad';
 
         const label = formatStatName(statKey);
-        const perfDisplay = perf !== null ? Math.round(perf) : '—';
+        const baselineRounded = hasDelta ? Math.round(baseline * 10) / 10 : '?';
+        const directionWord = sign === 1 ? 'Higher is better' : 'Lower is better';
+        const tooltip = hasDelta
+            ? 'Was ' + baselineRounded + '% when appointed. Now ' + rounded + '%. ' + directionWord + '.'
+            : 'No baseline recorded. ' + directionWord + '.';
 
-        rows += '<div class="ministry-stat-row">'
-            + '<span class="stat-name" title="' + escapeHtml(label) + '">' + escapeHtml(label) + '</span>'
-            + '<span class="stat-val">' + rounded + '</span>'
-            + '<span class="stat-dir ' + dirCls + '">' + dirArrow + '</span>'
-            + '<span class="stat-perf ' + perfCls + '">' + perfDisplay + '</span>'
+        rows += '<div class="ministry-stat-row" title="' + escapeHtml(tooltip) + '">'
+            + '<span class="stat-name">' + escapeHtml(label) + '</span>'
+            + '<span class="stat-val">' + rounded + '%</span>'
+            + '<span class="stat-delta ' + deltaCls + '">' + deltaStr + '</span>'
+            + '<span class="stat-dot ' + dotCls + '">●</span>'
             + '</div>';
     }
 
-    const target = perfCount > 0 ? Math.round(perfSum / perfCount) : '—';
-    const dateStr = tickToDate(currentTick);
+    // Overall trend line
+    let trendText = 'No data';
+    let trendCls = 'flat';
+    if (deltaCount > 0) {
+        const avgDelta = deltaSum / deltaCount;
+        if (Math.abs(avgDelta) < 0.5) {
+            trendText = 'Approval holding steady';
+            trendCls = 'flat';
+        } else if (avgDelta > 0) {
+            trendText = 'Approval trending upward';
+            trendCls = 'good';
+        } else {
+            trendText = 'Approval trending downward';
+            trendCls = 'bad';
+        }
+    }
 
     return '<button class="ministry-stats-toggle" onclick="event.stopPropagation();this.classList.toggle(\'open\');document.getElementById(\'' + panelId + '\').classList.toggle(\'open\')">'
-        + '<span class="chevron">▶</span> Stat Breakdown'
+        + '<span class="chevron">▶</span> Performance Since Appointed'
         + '</button>'
         + '<div class="ministry-stats-panel" id="' + panelId + '">'
-        + '<div class="ministry-stat-row" style="font-weight:bold;color:var(--text-muted);margin-bottom:2px;">'
-        + '<span class="stat-name">Stat</span><span class="stat-val">Val</span><span class="stat-dir"></span><span class="stat-perf">Perf</span></div>'
+        + '<div class="ministry-stat-row ministry-stat-header">'
+        + '<span class="stat-name">Stat</span><span class="stat-val">Now</span><span class="stat-delta">Change</span><span class="stat-dot"></span></div>'
         + rows
-        + '<div class="ministry-stats-footer">Target Approval: ' + target + ' · ' + escapeHtml(dateStr) + '</div>'
+        + '<div class="ministry-stats-footer ' + trendCls + '">Overall: ' + trendText + '</div>'
         + '</div>';
 }
 
@@ -1156,7 +1185,7 @@ function renderCabinet(ministries, coalition) {
                 const mLogoHtml = mLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:5px;">${getPartyIconSVG(mLogo, 16, mColor)}</span>` : '';
                 const appr = m.minister_approval ?? 50;
                 const apprCls = appr < 35 ? 'low' : appr < 50 ? 'mid' : 'high';
-                return `<div class="ministry-card" style="border-top:3px solid ${mColor};padding:10px 12px;"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${escapeHtml(m.minister_first_name)} ${escapeHtml(m.minister_last_name)}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party" style="color:${mColor};">${mLogoHtml}${escapeHtml(partyName)}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>${renderMinistryStatBreakdown(key)}${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests, m)}</div>`;
+                return `<div class="ministry-card" style="border-top:3px solid ${mColor};padding:10px 12px;"><div class="ministry-title">${m.ministry_name || MINISTRY_NAMES[key]}</div><div class="minister-name">${escapeHtml(m.minister_first_name)} ${escapeHtml(m.minister_last_name)}</div><div class="minister-details">Age ${m.minister_age || '?'} • <span class="minister-party" style="color:${mColor};">${mLogoHtml}${escapeHtml(partyName)}</span></div><div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>${renderMinistryStatBreakdown(key, m)}${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, true, requests, m)}</div>`;
             } else {
                 return `<div class="ministry-card vacant" style="padding:10px 12px;"><div class="ministry-title">${MINISTRY_NAMES[key]}</div><div class="minister-name" style="color:var(--text-muted);">Vacant</div>${requests.length > 0 ? `<span class="request-badge">${requests.length}</span>` : ''}${renderMinistryActions(key, false, requests, null)}</div>`;
             }
@@ -1213,7 +1242,7 @@ function renderCabinet(ministries, coalition) {
             + '<div class="minister-name">' + escapeHtml(name) + '</div>'
             + '<div class="minister-details">' + (m.minister_age ? 'Age ' + m.minister_age + ' &bull; ' : '') + '<span class="minister-party" style="color:' + mColor + ';">' + mLogoHtml + escapeHtml(partyName) + '</span></div>'
             + '<div class="minister-approval">Approval: <span class="' + apprCls + '">' + Math.round(appr) + '%</span></div>'
-            + renderMinistryStatBreakdown(key)
+            + renderMinistryStatBreakdown(key, m)
             + resignBtn + fireBtn + '</div></div>';
     }).join('');
     return '<div class="ministry-grid">' + demCards + '</div>';
@@ -1294,7 +1323,7 @@ function renderPresidentialMinistryCard(key, ministry) {
             <div class="minister-name">${ministry.minister_first_name} ${ministry.minister_last_name}</div>
             <div class="minister-details">Age ${ministry.minister_age || '?'} • <span class="minister-party" style="color:${pmColor};">${pmLogoHtml}${partyName}</span></div>
             <div class="minister-approval">Approval: <span class="${apprCls}">${Math.round(appr)}%</span></div>
-            ${renderMinistryStatBreakdown(key)}
+            ${renderMinistryStatBreakdown(key, ministry)}
             ${resignBtn}${fireBtn}
         </div>`;
     }
@@ -1508,6 +1537,7 @@ async function confirmAssign() {
                 minister_last_name: selectedCandidate.lastName,
                 minister_age: selectedCandidate.age,
                 minister_approval: 50,
+                stat_baselines: buildMinistryBaselines(assignMinistryKey, currentNation),
                 is_active: true
             }).eq('id', existing.id);
             if (error) throw error;
@@ -1521,6 +1551,7 @@ async function confirmAssign() {
                 minister_last_name: selectedCandidate.lastName,
                 minister_age: selectedCandidate.age,
                 minister_approval: 50,
+                stat_baselines: buildMinistryBaselines(assignMinistryKey, currentNation),
                 is_active: true
             });
             if (error) throw error;
@@ -1622,7 +1653,8 @@ async function confirmAppointment() {
             minister_first_name: selectedCandidate.firstName,
             minister_last_name: selectedCandidate.lastName,
             minister_age: selectedCandidate.age,
-            minister_approval: 50
+            minister_approval: 50,
+            stat_baselines: buildMinistryBaselines('prime_minister', currentNation)
         }).eq('id', fresh.id);
         if (error) throw error;
 
@@ -1850,7 +1882,7 @@ async function purgeMinister(ministryKey) {
         const decayTicks = approvalBoost > 0 ? approvalBoost + 1 : 0;
 
         const { error: clearErr } = await _supabase.from('ministries').update({
-            minister_first_name: null, minister_last_name: null, minister_age: null, party_id: null, minister_approval: 50
+            minister_first_name: null, minister_last_name: null, minister_age: null, party_id: null, minister_approval: 50, stat_baselines: null
         }).eq('id', ministry.id);
         if (clearErr) throw clearErr;
 
@@ -2740,7 +2772,8 @@ async function resignPMAction() {
             minister_last_name: null,
             minister_age: null,
             party_id: null,
-            minister_approval: 50
+            minister_approval: 50,
+            stat_baselines: null
         }).eq('id', ministry.id);
 
         // Log minister dismissal for Regime Log
@@ -2785,7 +2818,8 @@ async function resignPMAction() {
             minister_last_name: null,
             minister_age: null,
             party_id: null,
-            minister_approval: 50
+            minister_approval: 50,
+            stat_baselines: null
         };
         // In presidential systems, reset confirmation_status so President can re-nominate
         if (isPresidential) {
@@ -3024,19 +3058,37 @@ function renderAdminCard(admin, isCurrent) {
     // Detail sections
     let detailHTML = '';
 
-    // Info grid
+    // Info grid — adapt labels for presidential vs parliamentary
+    const isPres = admin.government_type === 'Presidential';
+    const hogLabel = isPres ? 'President' : 'Head of State';
+    const hogName = isPres
+        ? (admin.president_name || admin.head_of_state || 'Unknown')
+        : (admin.head_of_state || 'Unknown');
+    const hogParty = isPres
+        ? (admin.president_party_name || admin.pm_party_name || '')
+        : '';
+
+    const govLeaderLabel = isPres ? 'Governing Party' : 'Prime Minister';
+    const govLeaderName = isPres
+        ? (admin.president_party_name || admin.pm_party_name || '—')
+        : (admin.prime_minister || 'Not yet selected');
+    const govLeaderSub = isPres
+        ? ''
+        : escapeHtml(admin.pm_party_name || '');
+
     detailHTML += `<div class="past-admin-detail-grid">
         <div class="pad-info-box">
-            <div class="pad-info-label">Head of State</div>
-            <div class="pad-info-value">${escapeHtml(admin.head_of_state || 'Unknown')}</div>
+            <div class="pad-info-label">${hogLabel}</div>
+            <div class="pad-info-value">${escapeHtml(hogName)}</div>
+            ${hogParty ? `<div class="pad-info-sub">${escapeHtml(hogParty)}</div>` : ''}
         </div>
         <div class="pad-info-box">
-            <div class="pad-info-label">Prime Minister</div>
-            <div class="pad-info-value">${escapeHtml(admin.prime_minister || 'Not yet selected')}</div>
-            <div class="pad-info-sub">${escapeHtml(admin.pm_party_name || '')}</div>
+            <div class="pad-info-label">${govLeaderLabel}</div>
+            <div class="pad-info-value">${escapeHtml(govLeaderName)}</div>
+            ${govLeaderSub ? `<div class="pad-info-sub">${govLeaderSub}</div>` : ''}
         </div>
         <div class="pad-info-box">
-            <div class="pad-info-label">Coalition</div>
+            <div class="pad-info-label">${isPres ? 'Party Seats' : 'Coalition'}</div>
             <div class="pad-info-value">${seatCount} / ${GAME_CONFIG.TOTAL_SEATS} seats</div>
             <div class="pad-info-sub">${durationText}${admin.end_reason ? ' &middot; Ended: ' + (END_REASON_LABELS[admin.end_reason] || admin.end_reason) : ''}</div>
         </div>
@@ -3149,7 +3201,9 @@ function renderAdminCard(admin, isCurrent) {
                         <span class="past-admin-date">${dateRange}</span>
                     </div>
                     <div class="past-admin-meta">
-                        PM: <span class="pm-name">${admin.prime_minister || 'TBD'}</span> &middot; ${admin.pm_party_name || ''}
+                        ${isPres
+                            ? `<span class="pm-name">${escapeHtml(admin.president_name || admin.head_of_state || 'TBD')}</span> &middot; ${escapeHtml(admin.president_party_name || admin.pm_party_name || '')}`
+                            : `PM: <span class="pm-name">${admin.prime_minister || 'TBD'}</span> &middot; ${admin.pm_party_name || ''}`}
                         ${partyList ? ` &middot; ${partyList}` : ''}
                         ${seatCount ? ` &middot; ${seatCount}/${GAME_CONFIG.TOTAL_SEATS} seats` : ''}
                     </div>

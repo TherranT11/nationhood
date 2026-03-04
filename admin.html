@@ -607,7 +607,12 @@ import { _supabase } from './js/supabase-client.js';
 import { fmtBudgetCurrency } from './js/utils.js';
 import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, processElections, processEvents, processCrises, processLoyaltyTick, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, applyGdpGrowth, processGovernmentVacancy, processIdeologyShifts, resolveExpiredVotes, resolveNoConfidence, processRevolution, autoResolveStaleShakeups, processPresidentDesk, processPresidentialTermEnd, processPresidentCandidateTimeout, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates, processPMTraitEffects, calculateNationalBudget, initGameConfigForNation, FORMATION_DEADLINE_TICKS, CANONICAL_GOVERNMENT_TYPES, IDEOLOGY_AXES, NATION_STAT_COLUMNS, getCanonicalGovernmentType, isGovernmentAutocracy, isGovernmentPresidential, recalcDerivedApproval, runElectionPreview, runPresidentialElectionPreview, runManualElectionByGovernmentType, formatStatName, STAT_DECAY_CONFIG, normalizeNationStatKey, SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES, BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, OPINION_TRIGGERS, REPORTERS, generateArticle, generateTickArticles } from './js/game-common.js';
 
-    const ADMIN_PASSWORD = 'nationhood2000';
+    const ADMIN_PW_HASH = 'dd5e5d55d1f108d2d4706f35672acf7eef98156c70101dd07279c1aa436de3b4';
+    async function hashPassword(pw) {
+        const encoded = new TextEncoder().encode(pw);
+        const buf = await crypto.subtle.digest('SHA-256', encoded);
+        return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
     let isAuthenticated = false;
     let nations = [];
     let selectedElectionNation = null;
@@ -621,10 +626,10 @@ import { GAME_CONFIG, RAW_SCALING_DIVISORS, FISCAL_CATEGORIES, FISCAL_TO_MINISTR
         document.getElementById(`tab-${tabName}`).classList.add('active');
         if (tabName === 'integrity') showIntegrityView('clusters');
     }
-    function authenticate() {
+    async function authenticate() {
         const password = document.getElementById('admin-password').value;
         const errorDiv = document.getElementById('auth-error');
-        if (password === ADMIN_PASSWORD) {
+        if (await hashPassword(password) === ADMIN_PW_HASH) {
             isAuthenticated = true;
             document.getElementById('login-section').classList.add('hidden');
             document.getElementById('admin-section').classList.remove('hidden');

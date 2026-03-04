@@ -279,7 +279,7 @@ export async function signPresidentialBill(supabase, billId, presidentFactionId)
                 nation: 'Unknown',
                 bill_name: bill.bill_name + ' (signed by President)',
                 sponsor: bill.factions?.faction_name || 'Unknown',
-                votes_for: '0', votes_against: '0',
+                votes_for: '0', votes_against: '0', votes_abstain: '0',
                 article_count: String((bill.bill_articles || []).length)
             }
         });
@@ -334,7 +334,7 @@ export async function vetoPresidentialBill(supabase, billId, presidentFactionId)
                 nation: 'Unknown',
                 bill_name: bill.bill_name + ' (VETOED by President)',
                 sponsor: bill.factions?.faction_name || 'Unknown',
-                votes_for: '0', votes_against: '0'
+                votes_for: '0', votes_against: '0', votes_abstain: '0'
             }
         });
     } catch (e) { /* non-blocking */ }
@@ -755,7 +755,8 @@ export async function rejectOwnNomination(supabase, billId, nomineePartyId) {
                 bill_name: bill.bill_name + ' (Nominee declined)',
                 sponsor: 'President',
                 votes_for: '0',
-                votes_against: '0'
+                votes_against: '0',
+                votes_abstain: '0'
             }
         });
     } catch (e) { /* non-blocking */ }

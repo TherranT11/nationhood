@@ -152,7 +152,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, resolveExpiredVotes, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, generateBudgetBill, SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, formatStatName, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, calculateIdeologyPenalty, formatMinorSector, signPresidentialBill, vetoPresidentialBill, getRequiredSeats, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, getIdeologyChipClass, generateBudgetBill, SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 (function () {
     'use strict';
@@ -234,20 +234,16 @@ initPage('laws', async (state) => {
     markBillsSeen(seenFloorIds);
     cleanSeenBills(seenFloorIds);
 
-    // Auto-resolve any floor bills whose voting window has expired
-    const resolutions = await resolveExpiredVotes(_supabase, currentNation.id);
-    if (resolutions.length > 0) {
-        // Reload data after resolutions
-        await loadLawsData();
-        // Show notification
-        const msgs = resolutions.map(r => {
-            const earlyTag = (r.earlyResolution === 'majority_reached' || r.earlyResolution === 'quorum_reached') ? ' (Early Majority)'
-                : (r.earlyResolution === 'majority_opposed' || r.earlyResolution === 'quorum_opposed') ? ' (Majority Opposed)' : '';
-            return r.result === 'passed'
-                ? '✅ ' + r.billName + ' PASSED' + earlyTag + ' (' + r.votesFor + ' for / ' + r.votesAgainst + ' against)'
-                : r.result === 'failed'
-                    ? '❌ ' + r.billName + ' FAILED' + earlyTag + ' (' + r.votesFor + ' for / ' + r.votesAgainst + ' against)'
-                    : '📋 ' + r.billName + ' — ' + r.result + ' (' + r.votesFor + ' for / ' + r.votesAgainst + ' against)';
+    // Bill resolution now happens server-side in the advance-tick edge function.
+    // Show any bills resolved on this tick so players see results.
+    const recentlyResolved = (recentBills || []).filter(b => b.passed_tick === currentNation.current_tick);
+    if (recentlyResolved.length > 0) {
+        const msgs = recentlyResolved.map(r => {
+            const earlyTag = (r.early_resolution_status === 'majority_reached' || r.early_resolution_status === 'quorum_reached') ? ' (Early Majority)'
+                : (r.early_resolution_status === 'majority_opposed' || r.early_resolution_status === 'quorum_opposed') ? ' (Majority Opposed)' : '';
+            return r.status === 'passed'
+                ? '✅ ' + (r.bill_name || 'Bill') + ' PASSED' + earlyTag
+                : '❌ ' + (r.bill_name || 'Bill') + ' FAILED' + earlyTag;
         });
         setTimeout(() => { alert('Vote Results:\n\n' + msgs.join('\n')); }, 500);
     }
@@ -1052,7 +1048,7 @@ function renderFloorBill(bill, isVetoed) {
     var billTitle = (bill.bill_name || 'Unnamed ' + termBill) + typeBadge + votedBadge;
 
     return `
-        <div class="floor-bill ${isVetoed ? 'vetoed' : ''} clickable-bill" onclick="window.location.href='bill.html?id=${bill.id}'">
+        <div class="floor-bill ${isVetoed ? 'vetoed' : ''} clickable-bill" onclick="if(!event.target.closest('.decree-actions,.veto-banner'))window.location.href='bill.html?id=${bill.id}'">
             <div class="committee-bill-header">
                 <div>
                     <div class="floor-bill-name">` + billTitle + `</div>
@@ -1319,7 +1315,7 @@ function renderCommitteeBill(bill) {
         decreeActionsHTML = `<div class="decree-actions" onclick="event.stopPropagation()"><button class="decree-action-btn retract-decree" onclick="event.stopPropagation(); retractBill('${bill.id}')">Retract Bill</button></div>`;
     }
     return `
-        <div class="committee-bill clickable-bill" onclick="window.location.href='bill.html?id=${bill.id}'">
+        <div class="committee-bill clickable-bill" onclick="if(!event.target.closest('.decree-actions'))window.location.href='bill.html?id=${bill.id}'">
             <div class="committee-bill-header">
                 <div>
                     <div class="committee-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : (bill.bill_type === 'foundational' ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>' : (bill.bill_type === 'default_resolution' ? ' <span style="background:#b71c1c;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">💀 Default Resolution</span>' : (bill.bill_type === 'ratification' ? ' <span style="background:#00695C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🌐 Ratification</span>' : (bill.bill_type === 'budget' ? ' <span style="background:#ff9800;color:#000;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">💰 Budget</span>' : (bill.bill_type === 'impeachment_motion' ? ' <span style="background:#D32F2F;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Impeachment</span>' : '')))))}</div>

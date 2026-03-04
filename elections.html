@@ -24,7 +24,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, fetchActiveCoalition, runElectionPreview, getPartyAlignment, distributeVotes, allocateSeatsByVotes, dissolveCoalition, generatePMCandidates, rolloverAdministration } from './js/game-common.js';
+import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, fetchActiveCoalition, runElectionPreview, getPartyAlignment, distributeVotes, allocateSeatsByVotes, dissolveCoalition, generatePMCandidates, rolloverAdministration, buildMinistryBaselines } from './js/game-common.js';
 import { getPartyIconSVG } from './js/party-icons.js';
 (function () {
     'use strict';
@@ -1562,7 +1562,8 @@ async function formGovernment() {
                     minister_first_name: minister.first_name,
                     minister_last_name: minister.last_name,
                     minister_age: minister.age,
-                    minister_approval: 50
+                    minister_approval: 50,
+                    stat_baselines: buildMinistryBaselines(ministryKey, currentNation)
                 };
 
                 const { data: existing, error: lookupErr } = await _supabase.from('ministries')

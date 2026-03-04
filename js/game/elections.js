@@ -1952,6 +1952,27 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
     const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
     const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
 
+    // For presidential systems, fetch latest parliamentary election seats (more reliable than faction.seats)
+    let presidentPartySeats = faction?.seats || 0;
+    if (!presidentPartySeats) {
+        const { data: latestParl } = await supabase
+            .from('elections')
+            .select('results')
+            .eq('nation_id', nationId)
+            .eq('status', 'completed')
+            .eq('election_type', 'parliamentary')
+            .order('election_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (latestParl?.results?.votes) {
+            const entry = latestParl.results.votes.find(v => v.party_id === factionId);
+            presidentPartySeats = entry?.total_seats || entry?.seats || 0;
+        } else if (latestParl?.results?.seats) {
+            const entry = latestParl.results.seats.find(s => s.party_id === factionId);
+            presidentPartySeats = entry?.total_seats || entry?.seats || 0;
+        }
+    }
+
     // Parse year safely from current_date (handles formats like "Month Day, Year" or just "Year")
     const dateStr = shardData?.current_date || '';
     const yearMatch = dateStr.match(/\d{4}/);
@@ -1965,8 +1986,8 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         president_name: `${candidate.first_name} ${candidate.last_name}`,
         president_party_id: factionId,
         president_party_name: faction?.faction_name || '',
-        coalition_parties: [{ party_id: factionId, party_name: faction?.faction_name || '', seats: faction?.seats || 0 }],
-        total_seats: faction?.seats || 0,
+        coalition_parties: [{ party_id: factionId, party_name: faction?.faction_name || '', seats: presidentPartySeats }],
+        total_seats: presidentPartySeats,
         government_type: 'Presidential',
         started_at_tick: currentTick,
         started_at_date: dateStr,

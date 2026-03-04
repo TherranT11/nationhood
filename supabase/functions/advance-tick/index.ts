@@ -2665,19 +2665,37 @@ for (const [statKey, ministryKey] of Object.entries(STAT_TO_MINISTRY)) {
 }
 
 /**
- * Simplified approval system configuration.
+ * Build a stat_baselines object for a ministry: { statKey: currentValue, ... }
+ * Only includes stats with a non-zero direction sign (skips neutral stats like taxes).
+ */
+function buildMinistryBaselines(ministryKey, nation) {
+    const stats = MINISTRY_TO_STATS[ministryKey];
+    if (!stats) return {};
+    const baselines = {};
+    for (const statKey of stats) {
+        if (statDirectionSign(statKey) === 0) continue;
+        baselines[statKey] = Number(nation[statKey] ?? 50);
+    }
+    return baselines;
+}
+
+/**
+ * Delta-based approval system configuration.
  *
- * Minister approval drifts toward the average "performance" of their owned stats
- * each tick. Performance for a stat is its raw value (higher-is-better) or
- * 100 - value (lower-is-better). Neutral stats are skipped.
+ * Minister approval starts at 50 and moves based on how their owned stats
+ * change relative to their baseline (snapshot at appointment time).
+ * Pure delta model: ministers are judged on improvement, not inherited state.
  *
  * Government approval = avg(filled minister approvals) + vacancy penalty + event modifier.
  */
 const MINISTER_APPROVAL_CONFIG = {
-    // Per-tick drift rate: minister approval moves 15% of the gap toward target
-    DRIFT_RATE: 0.15,
+    // Per-tick sensitivity: how much each point of average delta moves approval
+    DELTA_SENSITIVITY: 0.6,
 
-    // New minister starts at 50% approval and drifts to match their stats
+    // Slow stagnation decay: if stats are flat, approval drifts down slightly per tick
+    STAGNATION_DECAY: -0.3,
+
+    // New minister starts at 50% approval
     NEW_MINISTER_APPROVAL: 50,
 
     // Firing a minister costs 1 AP and gives +3 to the event modifier
@@ -5302,6 +5320,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         sponsor: bill.factions?.faction_name || 'Unknown',
                         votes_for: String(votesFor),
                         votes_against: String(votesAgainst),
+                        votes_abstain: String(votesAbstain),
                         reason: `quorum not met after two attempts (${participating}/${quorumThreshold} participating)`
                     }
                 });
@@ -5349,6 +5368,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                     sponsor: bill.factions?.faction_name || 'Unknown',
                     votes_for: String(votesFor),
                     votes_against: String(votesAgainst),
+                    votes_abstain: String(votesAbstain),
                     article_count: '0'
                 }
             });
@@ -5443,7 +5463,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                         bill_name: bill.bill_name,
                         sponsor: bill.factions?.faction_name || 'Unknown',
                         votes_for: String(votesFor),
-                        votes_against: String(votesAgainst)
+                        votes_against: String(votesAgainst),
+                        votes_abstain: String(votesAbstain)
                     }
                 });
             }
@@ -5498,6 +5519,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                         energy: 'Ministry of Energy', transportation: 'Ministry of Transportation',
                         security: 'Ministry of Security'
                     };
+                    // Fetch full nation for stat baselines
+                    const { data: fullNationForBaseline } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
                     await supabase.from('ministries').update({
                         party_id: pm.party_id,
                         minister_first_name: pm.first_name,
@@ -5506,7 +5529,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                         minister_approval: 50,
                         ministry_name: ministryNames[mKey] || mKey,
                         confirmation_status: 'confirmed',
-                        pending_minister: null
+                        pending_minister: null,
+                        stat_baselines: fullNationForBaseline ? buildMinistryBaselines(mKey, fullNationForBaseline) : {}
                     }).eq('id', ministry.id);
                 }
 
@@ -5552,7 +5576,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                             bill_name: bill.bill_name,
                             sponsor: bill.factions?.faction_name || 'Unknown',
                             votes_for: String(votesFor),
-                            votes_against: String(votesAgainst)
+                            votes_against: String(votesAgainst),
+                            votes_abstain: String(votesAbstain)
                         }
                     });
                 } catch (e) { /* non-blocking */ }
@@ -5581,7 +5606,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                                     bill_name: `${originalBill.bill_name} (override enactment failed)`,
                                     sponsor: originalBill.factions?.faction_name || 'Unknown',
                                     votes_for: '0',
-                                    votes_against: '0'
+                                    votes_against: '0',
+                                    votes_abstain: '0'
                                 }
                             });
                         } catch (e) { /* non-blocking */ }
@@ -5592,7 +5618,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         p_trigger_key: 'bill_passed',
                         p_nation_id: bill.nation_id,
                         p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), article_count: '0' }
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain), article_count: '0' }
                     });
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
@@ -5603,7 +5629,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         p_trigger_key: 'bill_failed',
                         p_nation_id: bill.nation_id,
                         p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain) }
                     });
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
@@ -5647,7 +5673,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                             p_trigger_key: 'bill_passed',
                             p_nation_id: bill.nation_id,
                             p_tick: currentTick,
-                            p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), article_count: '0' }
+                            p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain), article_count: '0' }
                         });
                     } catch (e) { /* non-blocking */ }
                 }
@@ -5663,7 +5689,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         p_trigger_key: 'bill_failed',
                         p_nation_id: bill.nation_id,
                         p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain) }
                     });
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
@@ -5778,7 +5804,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         p_trigger_key: 'bill_passed',
                         p_nation_id: bill.nation_id,
                         p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), article_count: '0' }
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain), article_count: '0' }
                     });
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'trade_ratification', earlyResolution: bill.early_resolution_status || null });
@@ -5793,7 +5819,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         p_trigger_key: 'bill_failed',
                         p_nation_id: bill.nation_id,
                         p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain) }
                     });
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'trade_ratification', earlyResolution: bill.early_resolution_status || null });
@@ -5808,7 +5834,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         p_trigger_key: 'bill_passed',
                         p_nation_id: bill.nation_id,
                         p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), article_count: '0' }
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain), article_count: '0' }
                     });
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
@@ -5819,7 +5845,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         p_trigger_key: 'bill_failed',
                         p_nation_id: bill.nation_id,
                         p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain) }
                     });
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
@@ -6012,6 +6038,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         sponsor: bill.factions?.faction_name || 'Unknown',
                         votes_for: String(votesFor),
                         votes_against: String(votesAgainst),
+                        votes_abstain: String(votesAbstain),
                         article_count: String((bill.bill_articles || []).length)
                     }
                 });
@@ -6029,7 +6056,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                             bill_name: `${bill.bill_name} (enactment failed)`,
                             sponsor: bill.factions?.faction_name || 'Unknown',
                             votes_for: String(votesFor),
-                            votes_against: String(votesAgainst)
+                            votes_against: String(votesAgainst),
+                            votes_abstain: String(votesAbstain)
                         }
                     });
                     results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_enactment', votesFor, votesAgainst, error: enactment?.error, earlyResolution: bill.early_resolution_status || null });
@@ -6061,7 +6089,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                     bill_name: bill.bill_name,
                     sponsor: bill.factions?.faction_name || 'Unknown',
                     votes_for: String(votesFor),
-                    votes_against: String(votesAgainst)
+                    votes_against: String(votesAgainst),
+                    votes_abstain: String(votesAbstain)
                 }
             });
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
@@ -8647,6 +8676,27 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
     const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
     const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
 
+    // For presidential systems, fetch latest parliamentary election seats (more reliable than faction.seats)
+    let presidentPartySeats = faction?.seats || 0;
+    if (!presidentPartySeats) {
+        const { data: latestParl } = await supabase
+            .from('elections')
+            .select('results')
+            .eq('nation_id', nationId)
+            .eq('status', 'completed')
+            .eq('election_type', 'parliamentary')
+            .order('election_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (latestParl?.results?.votes) {
+            const entry = latestParl.results.votes.find((v: any) => v.party_id === factionId);
+            presidentPartySeats = entry?.total_seats || entry?.seats || 0;
+        } else if (latestParl?.results?.seats) {
+            const entry = latestParl.results.seats.find((s: any) => s.party_id === factionId);
+            presidentPartySeats = entry?.total_seats || entry?.seats || 0;
+        }
+    }
+
     // Parse year safely from current_date (handles formats like "Month Day, Year" or just "Year")
     const dateStr = shardData?.current_date || '';
     const yearMatch = dateStr.match(/\d{4}/);
@@ -8660,8 +8710,8 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         president_name: `${candidate.first_name} ${candidate.last_name}`,
         president_party_id: factionId,
         president_party_name: faction?.faction_name || '',
-        coalition_parties: [{ party_id: factionId, party_name: faction?.faction_name || '', seats: faction?.seats || 0 }],
-        total_seats: faction?.seats || 0,
+        coalition_parties: [{ party_id: factionId, party_name: faction?.faction_name || '', seats: presidentPartySeats }],
+        total_seats: presidentPartySeats,
         government_type: 'Presidential',
         started_at_tick: currentTick,
         started_at_date: dateStr,
@@ -8993,7 +9043,7 @@ async function signPresidentialBill(supabase, billId, presidentFactionId) {
                 nation: 'Unknown',
                 bill_name: bill.bill_name + ' (signed by President)',
                 sponsor: bill.factions?.faction_name || 'Unknown',
-                votes_for: '0', votes_against: '0',
+                votes_for: '0', votes_against: '0', votes_abstain: '0',
                 article_count: String((bill.bill_articles || []).length)
             }
         });
@@ -9048,7 +9098,7 @@ async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
                 nation: 'Unknown',
                 bill_name: bill.bill_name + ' (VETOED by President)',
                 sponsor: bill.factions?.faction_name || 'Unknown',
-                votes_for: '0', votes_against: '0'
+                votes_for: '0', votes_against: '0', votes_abstain: '0'
             }
         });
     } catch (e) { /* non-blocking */ }
@@ -9469,7 +9519,8 @@ async function rejectOwnNomination(supabase, billId, nomineePartyId) {
                 bill_name: bill.bill_name + ' (Nominee declined)',
                 sponsor: 'President',
                 votes_for: '0',
-                votes_against: '0'
+                votes_against: '0',
+                votes_abstain: '0'
             }
         });
     } catch (e) { /* non-blocking */ }
@@ -11738,6 +11789,26 @@ async function processPromiseTick(supabase, nation, currentTick) {
             results.push({ promise, resolution: 'broken' });
             continue;
         }
+
+        // Per-tick penalty: governing party with unfulfilled promise loses approval with the promised bloc
+        // -1D3 approval per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
+        if (isGoverning && promise.bloc_id) {
+            const cfg = MAKE_PROMISE_CONFIG;
+            const penaltyAmount = -(Math.floor(Math.random() * (cfg.PENALTY_PER_TICK_MAX - cfg.PENALTY_PER_TICK_MIN + 1)) + cfg.PENALTY_PER_TICK_MIN);
+            const { data: penaltyBlocRow } = await supabase
+                .from('faction_bloc_approval')
+                .select('id, approval')
+                .eq('faction_id', promise.party_id)
+                .eq('bloc_id', promise.bloc_id)
+                .single();
+            if (penaltyBlocRow) {
+                const newApproval = Math.max(0, Math.round(penaltyBlocRow.approval + penaltyAmount));
+                await supabase.from('faction_bloc_approval')
+                    .update({ approval: newApproval })
+                    .eq('id', penaltyBlocRow.id);
+            }
+            results.push({ promise, resolution: 'tick_penalty', penaltyAmount });
+        }
     }
 
     return results;
@@ -11751,7 +11822,7 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
 
     if (resolution === 'fulfilled') {
         // ── REWARDS ──
-        // +preference with affected bloc
+        // +preference with affected bloc (KEPT_PREF_BONUS)
         const { data: blocRow } = await supabase
             .from('faction_bloc_approval')
             .select('id, preference_score')
@@ -11764,6 +11835,18 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
             await supabase.from('faction_bloc_approval')
                 .update({ preference_score: newPref })
                 .eq('id', blocRow.id);
+        }
+
+        // +approval with ALL blocs (APPROVAL_IF_KEPT — the main +12 reward)
+        const { data: allBlocRows } = await supabase
+            .from('faction_bloc_approval')
+            .select('id, approval')
+            .eq('faction_id', promise.party_id);
+        for (const row of (allBlocRows || [])) {
+            const newApproval = Math.min(100, Math.round(row.approval + cfg.APPROVAL_IF_KEPT));
+            await supabase.from('faction_bloc_approval')
+                .update({ approval: newApproval })
+                .eq('id', row.id);
         }
 
         // +momentum
@@ -12862,15 +12945,19 @@ async function processMinistryActions(supabase, nation, currentTick) {
 // ==================== LAYER 1: PER-TICK MINISTER APPROVAL ====================
 
 /**
- * Drift-to-Performance minister approval model.
+ * Delta-based minister approval model.
  *
- * Each minister's approval drifts toward the average "performance" of their
- * owned stats. Performance = stat value for higher-is-better stats, or
- * (100 - stat value) for lower-is-better stats. Neutral stats are skipped.
+ * Each minister's approval moves based on how their owned stats have changed
+ * relative to their baseline (snapshot at appointment time). Ministers are
+ * judged on improvement/deterioration, not inherited state.
  *
- * approval += (targetApproval - currentApproval) × DRIFT_RATE
+ * For each stat: delta = (current - baseline) × directionSign
+ *   (positive delta = good direction, negative = bad direction)
+ * avgDelta = average of all deltas
+ * approval += avgDelta × DELTA_SENSITIVITY
+ * If avgDelta ≈ 0 (stagnation), apply a small decay.
  *
- * During government shutdown, a flat penalty is applied on top of the drift.
+ * Ministers without baselines get them auto-set to current values (migration path).
  *
  * @param {object} supabase
  * @param {object} nation - full nation row with current stat values
@@ -12883,7 +12970,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
 
     const { data: ministries } = await supabase
         .from('ministries')
-        .select('id, ministry_key, minister_approval, minister_first_name, party_id')
+        .select('id, ministry_key, minister_approval, minister_first_name, party_id, stat_baselines')
         .eq('nation_id', nation.id)
         .eq('is_active', true);
 
@@ -12898,24 +12985,43 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
         const ownedStats = MINISTRY_TO_STATS[ministry.ministry_key];
         if (!ownedStats || ownedStats.length === 0) continue;
 
-        // Calculate target approval = average performance of owned stats
-        let perfSum = 0;
-        let perfCount = 0;
+        // Auto-set baselines for ministers that don't have them yet (migration path)
+        let baselines = ministry.stat_baselines;
+        if (!baselines || Object.keys(baselines).length === 0) {
+            baselines = buildMinistryBaselines(ministry.ministry_key, nation);
+            await supabase.from('ministries')
+                .update({ stat_baselines: baselines })
+                .eq('id', ministry.id);
+        }
+
+        // Calculate average delta: how much each stat moved in the "good" direction
+        let deltaSum = 0;
+        let deltaCount = 0;
         for (const statKey of ownedStats) {
             const sign = statDirectionSign(statKey);
             if (sign === 0) continue; // skip neutral stats (taxes, etc.)
-            const value = Number(nation[statKey] ?? 50);
-            // Higher-is-better: performance = value. Lower-is-better: performance = 100 - value.
-            perfSum += sign === 1 ? value : (100 - value);
-            perfCount++;
+            const current = Number(nation[statKey] ?? 50);
+            const baseline = Number(baselines[statKey] ?? current);
+            // sign=1 (higher-is-better): improvement = current - baseline (positive = good)
+            // sign=-1 (lower-is-better): improvement = baseline - current (positive = good)
+            const delta = (current - baseline) * sign;
+            deltaSum += delta;
+            deltaCount++;
         }
 
-        if (perfCount === 0) continue;
-        const targetApproval = perfSum / perfCount;
+        if (deltaCount === 0) continue;
+        const avgDelta = deltaSum / deltaCount;
 
-        // Drift toward target
         const oldApproval = ministry.minister_approval ?? cfg.NEW_MINISTER_APPROVAL;
-        let newApproval = oldApproval + (targetApproval - oldApproval) * cfg.DRIFT_RATE;
+        let newApproval = oldApproval;
+
+        if (Math.abs(avgDelta) < 0.5) {
+            // Stagnation: stats haven't moved meaningfully — slow decay
+            newApproval += cfg.STAGNATION_DECAY;
+        } else {
+            // Apply delta-based movement
+            newApproval += avgDelta * cfg.DELTA_SENSITIVITY;
+        }
 
         // Government shutdown: slam a direct penalty per tick
         if (isShutdown) {
@@ -12932,7 +13038,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
             ministry_key: ministry.ministry_key,
             old: oldApproval,
             new: newApproval,
-            target: Math.round(targetApproval * 10) / 10,
+            avgDelta: Math.round(avgDelta * 10) / 10,
             delta: Math.round((newApproval - oldApproval) * 10) / 10
         });
     }
@@ -12940,7 +13046,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
     if (results.length > 0) {
         const shutdownTag = isShutdown ? ' [SHUTDOWN]' : '';
         console.log(`[updateMinisterApprovals] ${nation.name}:${shutdownTag} ${results.map(r =>
-            `${r.ministry_key} ${r.old}→${r.new} (target=${r.target})`
+            `${r.ministry_key} ${r.old}→${r.new} (avgDelta=${r.avgDelta})`
         ).join(', ')}`);
     }
 
@@ -14132,13 +14238,18 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
         .eq('ministry_key', 'prime_minister').eq('is_active', true)
         .maybeSingle();
 
+    // Fetch full nation for stat baselines
+    const { data: nationForBaseline } = await supabase.from('nations').select('*').eq('id', nationId).single();
+    const pmBaselines = nationForBaseline ? buildMinistryBaselines('prime_minister', nationForBaseline) : {};
+
     if (pmMinistry) {
         await supabase.from('ministries').update({
             party_id: factionId,
             minister_first_name: candidate.first_name,
             minister_last_name: candidate.last_name,
             minister_age: candidate.age,
-            minister_approval: 50
+            minister_approval: 50,
+            stat_baselines: pmBaselines
         }).eq('id', pmMinistry.id);
     } else {
         await supabase.from('ministries').insert({
@@ -14150,7 +14261,8 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
             minister_first_name: candidate.first_name,
             minister_last_name: candidate.last_name,
             minister_age: candidate.age,
-            minister_approval: 50
+            minister_approval: 50,
+            stat_baselines: pmBaselines
         });
     }
 
