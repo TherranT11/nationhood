@@ -1017,7 +1017,9 @@ function renderGovernment(nation, coalition, ministries, allParties, hog, govTyp
         const coalParties = coalition.party_ids.map((id, idx) => {
             const p = allParties.find(x => x.id === id);
             const seats = allPartySeats[id] || p?.seats || 0;
-            return { name: p?.faction_name || 'Unknown', abbr: p?.abbreviation || '?', seats, color: partyColor(idx) };
+            const name = p?.faction_name || 'Unknown';
+            const abbr = p?.abbreviation || name.split(/\s+/).map(w => w[0]).join('').toUpperCase() || '?';
+            return { name, abbr, seats, color: p?.party_color || partyColor(idx) };
         }).sort((a, b) => b.seats - a.seats);
         const coalTotal = coalParties.reduce((s, p) => s + p.seats, 0);
 
