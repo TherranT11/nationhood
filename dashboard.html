@@ -589,6 +589,7 @@ initPage('dashboard', async (state) => {
         hogRes,
         scheduledElectionRes,
         relationsRes,
+        otherNationsRes,
         ambassadorsRes,
         blocsRes,
         blocApprovalsRes,
@@ -603,11 +604,12 @@ initPage('dashboard', async (state) => {
         _supabase.from('head_of_government').select('*, leader_traits(*)').eq('nation_id', nation.id).eq('active', true).maybeSingle(),
         _supabase.from('elections').select('election_tick, election_type, status').eq('nation_id', nation.id).eq('status', 'scheduled').order('election_tick', { ascending: true }).limit(1).maybeSingle(),
         _supabase.from('diplomatic_relations').select('*').or('nation_a_id.eq.' + nation.id + ',nation_b_id.eq.' + nation.id),
-        _supabase.from('ambassadors').select('*, factions(abbreviation)').eq('nation_id', nation.id).eq('is_active', true),
+        _supabase.from('nations').select('id, name').neq('id', nation.id),
+        _supabase.from('ambassadors').select('*, factions(abbreviation)').eq('nation_id', nation.id),
         _supabase.from('voter_blocs').select('id, bloc_name, population_weight').eq('nation_id', nation.id).eq('is_active', true),
         _supabase.from('faction_bloc_approval').select('bloc_id, preference_score').eq('faction_id', faction.id),
         _supabase.from('event_log').select('*').eq('nation_id', nation.id).order('fired_at_tick', { ascending: false }).limit(20),
-        _supabase.from('op_eds').select('*, factions!author_faction_id(faction_name, abbreviation, party_color)').eq('nation_id', nation.id).order('created_at', { ascending: false }).limit(5),
+        _supabase.from('op_eds').select('*').eq('nation_id', nation.id).order('created_at', { ascending: false }).limit(5),
     ]);
 
     const coalition = coalitionRes;
@@ -618,6 +620,9 @@ initPage('dashboard', async (state) => {
     const hog = hogRes.data;
     const scheduledElection = scheduledElectionRes.data;
     const relations = relationsRes.data || [];
+    const otherNations = otherNationsRes.data || [];
+    const nationNameMap = {};
+    for (const n of otherNations) nationNameMap[n.id] = n.name;
     const ambassadors = ambassadorsRes.data || [];
     const blocs = blocsRes.data || [];
     const blocApprovals = blocApprovalsRes.data || [];
@@ -626,7 +631,7 @@ initPage('dashboard', async (state) => {
 
     const isAuto = isAutocracy(nation);
     const isPresidential = isPresidentialRepublic(nation);
-    const govType = getCanonicalGovernmentType(nation, nation.government_type || '');
+    const govType = getCanonicalGovernmentType(nation);
     const currentTick = shard?.current_tick || 0;
 
     // Load real seat counts
@@ -649,7 +654,7 @@ initPage('dashboard', async (state) => {
     renderGovernment(nation, coalition, ministries, allParties, hog, govType, totalSeats, allPartySeats);
 
     // ─── QUICK ACTIONS ───
-    renderQuickActions(faction);
+    renderQuickActions(faction, coalition, govType, isPresidential);
 
     // ─── DEADLINES ───
     renderDeadlines(shard, scheduledElection, currentTick);
@@ -658,10 +663,10 @@ initPage('dashboard', async (state) => {
     renderPartySnapshot(faction, blocs, blocApprovals);
 
     // ─── APPOINTMENTS ───
-    renderAppointments(ministries, ambassadors, nation);
+    renderAppointments(ministries, ambassadors, nation, nationNameMap);
 
     // ─── TREATIES ───
-    renderTreaties(nation, relations);
+    renderTreaties(nation, relations, nationNameMap);
 
     // ─── TOP STORIES ───
     renderStories(eventLog, opEds, faction, currentTick);
@@ -743,7 +748,7 @@ function renderAlerts(nation, faction, coalition, ministries, scheduledElection,
     );
     for (const evt of crisisEvents.slice(0, 2)) {
         const name = (evt.event_name || '').replace(/_/g, ' ');
-        const desc = evt.description || evt.event_data?.description || '';
+        const desc = evt.description_chosen || evt.description || evt.event_data?.description || '';
         alerts.push(`
           <div class="alert alert--crisis">
             <div class="alert__icon" style="color:var(--dred)">!!</div>
@@ -961,7 +966,7 @@ function renderGovernment(nation, coalition, ministries, allParties, hog, govTyp
       </div>`;
 }
 
-function renderQuickActions(faction) {
+function renderQuickActions(faction, coalition, govType, isPresidential) {
     const panel = document.getElementById('qa-panel');
     const body = document.getElementById('qa-body');
     const badge = document.getElementById('qa-badge');
@@ -969,20 +974,39 @@ function renderQuickActions(faction) {
     panel.style.display = '';
     badge.textContent = ap + ' AP remaining';
 
+    // Core actions available to all
     const actions = [
-        { name: 'Campaign Rally', cost: 1, href: 'elections.html' },
-        { name: 'Write Op-Ed', cost: 1, href: 'parties.html' },
-        { name: 'Policy Pledge', cost: 1, href: 'elections.html' },
-        { name: 'Media Blitz', cost: 2, href: 'elections.html' },
-        { name: 'Opposition Research', cost: 2, href: 'elections.html' },
-        { name: 'Party Congress', cost: 3, href: 'parties.html' },
+        { name: 'Hold Rally', cost: 3, href: 'parties.html' },
+        { name: 'Voter Outreach', cost: 4, href: 'parties.html' },
+        { name: 'Promise', cost: 2, href: 'parties.html' },
+        { name: 'Attack', cost: 3, href: 'parties.html' },
     ];
 
+    const isAuto = govType === 'Autocracy';
+    const isPM = coalition && coalition.lead_party_id === faction.id;
+
+    if (isAuto) {
+        actions.push({ name: 'Decree', cost: 2, href: 'government.html' });
+        actions.push({ name: 'Purge Dissidents', cost: 4, href: 'government.html' });
+    } else if (isPresidential) {
+        const isPresident = isPM;
+        actions.push({ name: 'Executive Order', cost: 5, href: 'government.html', disabled: !isPresident });
+        actions.push({ name: 'Impeachment', cost: 7, href: 'government.html' });
+    } else {
+        actions.push({ name: 'Vote of No Confidence', cost: 5, href: 'government.html' });
+        if (isPM) {
+            actions.push({ name: 'Call Early Elections', cost: 0, href: 'government.html' });
+        }
+    }
+
     body.innerHTML = '<div class="quick-actions">' +
-        actions.map(a => `
-          <a class="qa-btn" href="${a.href}" ${ap < a.cost ? 'style="opacity:0.4;pointer-events:none;"' : ''}>
-            ${a.name} <span class="qa-btn__cost">${a.cost} AP</span>
-          </a>`).join('') +
+        actions.map(a => {
+            const isDisabled = ap < a.cost || a.disabled;
+            return `
+              <a class="qa-btn" href="${a.href}" ${isDisabled ? 'style="opacity:0.4;pointer-events:none;"' : ''}>
+                ${a.name} ${a.cost > 0 ? `<span class="qa-btn__cost">${a.cost} AP</span>` : ''}
+              </a>`;
+        }).join('') +
         '</div>';
 }
 
@@ -1035,24 +1059,14 @@ function renderPartySnapshot(faction, blocs, blocApprovals) {
     panel.style.display = '';
     badge.textContent = faction.abbreviation || '';
 
-    // Ideology axes (from faction table fields)
-    const axes = [];
-    if (faction.ideology_value_1) axes.push({ label: faction.ideology_value_1.substring(0, 4), val: '1' });
-    if (faction.ideology_value_2) axes.push({ label: faction.ideology_value_2.substring(0, 4), val: '2' });
-
-    // Build from actual faction ideology fields if available
-    const ideologyFields = [
-        { key: 'axis_liberty_equality', label: 'Lib' },
-        { key: 'axis_tradition_progress', label: 'Prog' },
-        { key: 'axis_security_freedom', label: 'Free' },
-        { key: 'axis_individualism_collectivism', label: 'Coll' },
-    ];
+    // Ideology tags from faction
     let axisHTML = '';
-    const axisCells = ideologyFields
-        .filter(f => faction[f.key] != null)
-        .map(f => `<div class="axis-mini__item"><span class="axis-mini__label">${f.label}</span><span class="axis-mini__val">${Math.round(faction[f.key])}</span></div>`);
-    if (axisCells.length > 0) {
-        axisHTML = `<div class="axis-mini">${axisCells.join('')}</div>`;
+    const ideologyTags = [faction.ideology_value_1, faction.ideology_value_2].filter(Boolean);
+    if (ideologyTags.length > 0) {
+        axisHTML = '<div class="axis-mini">' +
+            ideologyTags.map(tag =>
+                `<div class="axis-mini__item"><span class="axis-mini__label">Ideology</span><span class="axis-mini__val" style="font-size:10px;">${escapeHtml(tag)}</span></div>`
+            ).join('') + '</div>';
     }
 
     // Bloc support
@@ -1078,7 +1092,7 @@ function renderPartySnapshot(faction, blocs, blocApprovals) {
         (blocRows ? '<div class="sub-label">Bloc Support</div>' + blocRows : '<div class="dash-empty">No bloc data</div>');
 }
 
-function renderAppointments(ministries, ambassadors, nation) {
+function renderAppointments(ministries, ambassadors, nation, nationNameMap) {
     const panel = document.getElementById('appt-panel');
     const body = document.getElementById('appt-body');
     panel.style.display = '';
@@ -1105,10 +1119,12 @@ function renderAppointments(ministries, ambassadors, nation) {
 
     // Ambassadors
     for (const amb of ambassadors.slice(0, 3)) {
-        const name = `${(amb.first_name || '')[0] || ''}. ${amb.last_name || ''}`;
-        const target = amb.target_nation_name || 'Unknown';
+        const name = `${(amb.ambassador_first_name || '')[0] || ''}. ${amb.ambassador_last_name || ''}`;
+        const target = nationNameMap[amb.target_nation_id] || 'Unknown';
         if (amb.status === 'recalled') {
             rows.push(`<div class="appt-row"><span class="appt-row__role">Amb. ${escapeHtml(target)}</span><span class="appt-row__recalled">Recalled</span></div>`);
+        } else if (amb.status === 'resigned') {
+            rows.push(`<div class="appt-row"><span class="appt-row__role">Amb. ${escapeHtml(target)}</span><span class="appt-row__recalled">Resigned</span></div>`);
         } else {
             rows.push(`<div class="appt-row"><span class="appt-row__role">Amb. ${escapeHtml(target)}</span><span class="appt-row__holder">${escapeHtml(name)}</span></div>`);
         }
@@ -1117,16 +1133,16 @@ function renderAppointments(ministries, ambassadors, nation) {
     body.innerHTML = rows.length ? rows.join('') : '<div class="dash-empty">No appointments</div>';
 }
 
-function renderTreaties(nation, relations) {
+function renderTreaties(nation, relations, nationNameMap) {
     const panel = document.getElementById('treaties-panel');
     const body = document.getElementById('treaties-body');
     if (relations.length === 0) return;
     panel.style.display = '';
 
-    // Fetch nation names (we have IDs only in relations)
     const rows = relations.slice(0, 6).map(rel => {
         const isA = rel.nation_a_id === nation.id;
-        const otherName = isA ? (rel.nation_b_name || 'Unknown') : (rel.nation_a_name || 'Unknown');
+        const otherId = isA ? rel.nation_b_id : rel.nation_a_id;
+        const otherName = nationNameMap[otherId] || 'Unknown';
         const score = rel.relation_score ?? 50;
         let color = 'var(--dtxt-secondary)';
         let label = 'Neutral';
@@ -1155,7 +1171,7 @@ function renderStories(eventLog, opEds, faction, currentTick) {
     // Convert recent events to story items
     for (const evt of eventLog.slice(0, 4)) {
         const name = (evt.event_name || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        const desc = evt.description || '';
+        const desc = evt.description_chosen || evt.description || '';
         let section = 'Politics';
         let sectionColor = 'var(--dpurple)';
 
@@ -1175,9 +1191,9 @@ function renderStories(eventLog, opEds, faction, currentTick) {
 
     // Op-eds
     for (const ed of opEds.slice(0, 2)) {
-        const isYours = ed.author_faction_id === faction.id;
+        const isYours = (ed.author_faction_id || ed.faction_id) === faction.id;
         stories.push({
-            headline: ed.title || 'Untitled Op-Ed',
+            headline: ed.headline || 'Untitled Op-Ed',
             section: 'Opinion',
             sectionColor: 'var(--dtxt-muted)',
             relevance: isYours ? 'Your op-ed' : '',
