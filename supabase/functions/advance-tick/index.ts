@@ -13675,7 +13675,7 @@ async function processEvents(supabase, nation, currentTick) {
  * - Deactivates crises when ALL recovery conditions are met
  * - Effects cascade: nation stats, government/coalition approval, minister approval
  */
-async function processCrises(supabase, nation, currentTick) {
+async function processCrises(supabase, nation, currentTick, budgetItemAllocs) {
     // 1. Load all active crisis templates
     const { data: crisisTemplates } = await supabase
         .from('crisis_templates')
@@ -13699,30 +13699,70 @@ async function processCrises(supabase, nation, currentTick) {
     const nationUpdates = {};
     const statBounds = {}; // { stat_key: { floor: highestFloor, ceiling: lowestCeiling } }
 
+    // Helper: compute institution funding % from budget_item_allocations
+    // If no budget exists or institution not found, returns 100 (no crisis)
+    let _instFundingCache = null;
+    function getInstitutionFundingPct(instId) {
+        if (!_instFundingCache) {
+            _instFundingCache = {};
+            if (budgetItemAllocs) {
+                for (const alloc of budgetItemAllocs) {
+                    if (alloc.item_type === 'institution') {
+                        const needed = Number(alloc.needed_amount) || 0;
+                        const allocated = Number(alloc.allocation_amount) || 0;
+                        _instFundingCache[alloc.item_id] = needed > 0
+                            ? Math.min(100, Math.round((allocated / needed) * 100))
+                            : 100;
+                    }
+                }
+            }
+        }
+        return _instFundingCache[instId] !== undefined ? _instFundingCache[instId] : 100;
+    }
+
     // 3. Check inactive crises for activation
     for (const template of crisisTemplates) {
         if (activeMap[template.id]) continue; // already active
         if (template.id === GOVERNMENT_SHUTDOWN_CRISIS_ID) continue; // managed by dedicated shutdown code
 
-        const triggers = template.crisis_triggers || [];
-        if (triggers.length === 0) continue;
+        let allTriggersMet = false;
 
-        let allTriggersMet = true;
-        for (const trigger of triggers) {
-            const resolvedKey = normalizeNationStatKey(trigger.stat_key) || trigger.stat_key;
-            const statValue = nation[resolvedKey];
-            if (statValue === null || statValue === undefined) {
-                allTriggersMet = false;
-                break;
+        if (template.crisis_type === 'ministry') {
+            // Ministry crisis: check institution funding levels
+            const institutionIds = template.institution_ids || [];
+            const threshold = Number(template.funding_threshold_pct) || 0;
+            if (institutionIds.length === 0 || !nation.last_budget_bill_id) continue;
+
+            allTriggersMet = true;
+            for (const instId of institutionIds) {
+                const pct = getInstitutionFundingPct(instId);
+                if (pct >= threshold) {
+                    allTriggersMet = false;
+                    break;
+                }
             }
-            const val = Number(statValue);
-            if (trigger.operator === 'gte' && val < Number(trigger.threshold)) {
-                allTriggersMet = false;
-                break;
-            }
-            if (trigger.operator === 'lte' && val > Number(trigger.threshold)) {
-                allTriggersMet = false;
-                break;
+        } else {
+            // Stat-based crisis: check crisis_triggers
+            const triggers = template.crisis_triggers || [];
+            if (triggers.length === 0) continue;
+
+            allTriggersMet = true;
+            for (const trigger of triggers) {
+                const resolvedKey = normalizeNationStatKey(trigger.stat_key) || trigger.stat_key;
+                const statValue = nation[resolvedKey];
+                if (statValue === null || statValue === undefined) {
+                    allTriggersMet = false;
+                    break;
+                }
+                const val = Number(statValue);
+                if (trigger.operator === 'gte' && val < Number(trigger.threshold)) {
+                    allTriggersMet = false;
+                    break;
+                }
+                if (trigger.operator === 'lte' && val > Number(trigger.threshold)) {
+                    allTriggersMet = false;
+                    break;
+                }
             }
         }
 
@@ -13955,24 +13995,43 @@ async function processCrises(supabase, nation, currentTick) {
         }
 
         // 4c. Check end / recovery triggers AFTER effects applied (prevents flicker)
-        const endTriggers = template.crisis_end_triggers || [];
-        let allEndConditionsMet = endTriggers.length > 0;
+        let allEndConditionsMet = false;
 
-        for (const endTrigger of endTriggers) {
-            const resolvedEndKey = normalizeNationStatKey(endTrigger.stat_key) || endTrigger.stat_key;
-            const statValue = nation[resolvedEndKey];
-            if (statValue === null || statValue === undefined) {
-                allEndConditionsMet = false;
-                break;
+        if (template.crisis_type === 'ministry') {
+            // Ministry crisis: resolve when ALL institutions are at/above recovery_threshold_pct
+            const institutionIds = template.institution_ids || [];
+            const recoveryPct = Number(template.recovery_threshold_pct) || (Number(template.funding_threshold_pct) + 20);
+            if (institutionIds.length > 0) {
+                allEndConditionsMet = true;
+                for (const instId of institutionIds) {
+                    const pct = getInstitutionFundingPct(instId);
+                    if (pct < recoveryPct) {
+                        allEndConditionsMet = false;
+                        break;
+                    }
+                }
             }
-            const val = Number(statValue);
-            if (endTrigger.operator === 'gte' && val < Number(endTrigger.threshold)) {
-                allEndConditionsMet = false;
-                break;
-            }
-            if (endTrigger.operator === 'lte' && val > Number(endTrigger.threshold)) {
-                allEndConditionsMet = false;
-                break;
+        } else {
+            // Stat-based crisis: check crisis_end_triggers
+            const endTriggers = template.crisis_end_triggers || [];
+            allEndConditionsMet = endTriggers.length > 0;
+
+            for (const endTrigger of endTriggers) {
+                const resolvedEndKey = normalizeNationStatKey(endTrigger.stat_key) || endTrigger.stat_key;
+                const statValue = nation[resolvedEndKey];
+                if (statValue === null || statValue === undefined) {
+                    allEndConditionsMet = false;
+                    break;
+                }
+                const val = Number(statValue);
+                if (endTrigger.operator === 'gte' && val < Number(endTrigger.threshold)) {
+                    allEndConditionsMet = false;
+                    break;
+                }
+                if (endTrigger.operator === 'lte' && val > Number(endTrigger.threshold)) {
+                    allEndConditionsMet = false;
+                    break;
+                }
             }
         }
 
@@ -17846,7 +17905,7 @@ async function advanceTick(supabase) {
 
         // Crises (persistent negative events that apply effects every tick)
         // Runs BEFORE approval calculations so crisis stat/event effects propagate in the same tick.
-        const crisisResults = await processCrises(supabase, nation, newTick);
+        const crisisResults = await processCrises(supabase, nation, newTick, budgetItemAllocs);
         if (crisisResults.length > 0) {
             summary.crises = summary.crises || [];
             summary.crises.push({ nation: nation.name, crises: crisisResults });

@@ -1361,7 +1361,7 @@ async function advanceTick(supabase) {
 
         // Crises (persistent negative events that apply effects every tick)
         // Runs BEFORE approval calculations so crisis stat/event effects propagate in the same tick.
-        const crisisResults = await processCrises(supabase, nation, newTick);
+        const crisisResults = await processCrises(supabase, nation, newTick, budgetItemAllocs);
         if (crisisResults.length > 0) {
             summary.crises = summary.crises || [];
             summary.crises.push({ nation: nation.name, crises: crisisResults });
