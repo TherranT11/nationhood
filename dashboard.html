@@ -634,6 +634,19 @@ initPage('dashboard', async (state) => {
     const govType = getCanonicalGovernmentType(nation);
     const currentTick = shard?.current_tick || 0;
 
+    // For autocracy: fetch current faction's steward to determine action type
+    let mySteward = null;
+    if (isAuto) {
+        const { data: stewardRow } = await _supabase
+            .from('stewards')
+            .select('steward_type')
+            .eq('nation_id', nation.id)
+            .eq('faction_id', faction.id)
+            .eq('is_alive', true)
+            .maybeSingle();
+        mySteward = stewardRow;
+    }
+
     // Load real seat counts
     const { allPartySeats, currentSeats } = await loadSeats(_supabase, nation.id, isAuto, allParties, faction.id);
     for (const p of allParties) {
@@ -654,7 +667,7 @@ initPage('dashboard', async (state) => {
     renderGovernment(nation, coalition, ministries, allParties, hog, govType, totalSeats, allPartySeats);
 
     // ─── QUICK ACTIONS ───
-    renderQuickActions(faction, coalition, govType, isPresidential);
+    renderQuickActions(faction, nation, coalition, govType, isPresidential, mySteward);
 
     // ─── DEADLINES ───
     renderDeadlines(shard, scheduledElection, currentTick);
@@ -966,7 +979,7 @@ function renderGovernment(nation, coalition, ministries, allParties, hog, govTyp
       </div>`;
 }
 
-function renderQuickActions(faction, coalition, govType, isPresidential) {
+function renderQuickActions(faction, nation, coalition, govType, isPresidential, mySteward) {
     const panel = document.getElementById('qa-panel');
     const body = document.getElementById('qa-body');
     const badge = document.getElementById('qa-badge');
@@ -986,8 +999,23 @@ function renderQuickActions(faction, coalition, govType, isPresidential) {
     const isPM = coalition && coalition.lead_party_id === faction.id;
 
     if (isAuto) {
+        const isStrongman = faction.id === nation.ruling_faction_id;
         actions.push({ name: 'Decree', cost: 2, href: 'government.html' });
         actions.push({ name: 'Purge Dissidents', cost: 4, href: 'government.html' });
+        if (isStrongman) {
+            actions.push({ name: 'Demand Loyalty', cost: 2, href: 'parties.html' });
+        } else if (mySteward) {
+            // Steward-specific action based on steward_type
+            const stewardActions = {
+                general:              { name: 'Show of Force',  cost: 3 },
+                security_chief:       { name: 'Surveillance',   cost: 1 },
+                party_chairman:       { name: 'Mobilize',       cost: 3 },
+            };
+            const sa = stewardActions[mySteward.steward_type];
+            if (sa) {
+                actions.push({ name: sa.name, cost: sa.cost, href: 'parties.html' });
+            }
+        }
     } else if (isPresidential) {
         const isPresident = isPM;
         actions.push({ name: 'Executive Order', cost: 5, href: 'government.html', disabled: !isPresident });
