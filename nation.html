@@ -5,11 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nation | Nationhood Alpha</title>
     
-    <!-- Supabase SDK -->
-    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Shared Styles -->
-<!-- Page-Specific Styles -->
-        <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/nation.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -156,24 +157,236 @@ let allNations = [];
 let totalNations = 0;
 let previousTickData = null;
 var statEffectsByKey = {};
+let sparklineHistory = {}; // statKey → array of last 10 values
+let activeCrises = [];
+
+// Collapsed state for sections (persisted in sessionStorage)
+var sectionState = JSON.parse(sessionStorage.getItem('nationSectionState') || '{}');
+var defaultOpen = { economic: true, taxation: true, labor: true, infrastructure: true, social: true, governance: true, security: true, immigration: true };
+
+// ===== CATEGORY DEFINITIONS =====
+var STAT_CATEGORIES = [
+    { id: 'economic', label: 'Economic', icon: '\u{1F4B0}', blocs: ['Business Owners', 'Urban Workers'],
+      stats: [
+        { name: 'GDP', key: 'gdp', desc: 'Gross domestic product', format: 'gdp' },
+        { name: 'GDP Growth', key: 'gdp_growth', desc: 'Monthly economic growth rate', format: 'gdpgrowth' },
+        { name: 'National Debt', key: 'debt', desc: 'Government debt obligations', format: 'currency', inverted: true },
+        { name: 'Debt Growth', key: 'debt_growth', desc: 'Rate of debt accumulation', inverted: true },
+        { name: 'Inflation', key: 'inflation', desc: 'Inflation growth rate', inverted: true, format: 'inflation' },
+        { name: 'Interest Rates', key: 'interest_rates', desc: 'Central bank lending rate', inverted: true },
+        { name: 'Trade Balance', key: 'trade_balance', desc: 'Exports minus imports', format: 'trade' },
+        { name: 'Currency Strength', key: 'currency_strength', desc: 'Value of national currency' },
+        { name: 'Foreign Investment', key: 'foreign_investment', desc: 'International capital inflow' },
+        { name: 'Credit Rating', key: 'credit', desc: 'National creditworthiness' }
+    ]},
+    { id: 'taxation', label: 'Taxation', icon: '\u{1F3DB}', blocs: ['Business Owners', 'Urban Workers', 'Urban Progressives'],
+      stats: [
+        { name: 'Income Tax', key: 'income_tax', desc: 'Rate on personal income' },
+        { name: 'Corporate Tax', key: 'corporate_tax', desc: 'Rate on business profits' },
+        { name: 'Sales Tax', key: 'sales_tax', desc: 'Tax on goods and services' },
+        { name: 'Tariffs', key: 'tariffs', desc: 'Import/export duties' }
+    ]},
+    { id: 'labor', label: 'Labor & Employment', icon: '\u{1F464}', blocs: ['Urban Workers', 'Business Owners'],
+      stats: [
+        { name: 'Unemployment', key: 'unemployment', desc: 'Percentage without work', inverted: true },
+        { name: 'Labor Participation', key: 'labor_force_participation', desc: 'Working-age adults employed' },
+        { name: 'Minimum Wage', key: 'minimum_wage', desc: 'Lowest legal hourly wage' },
+        { name: 'Union Strength', key: 'union_strength', desc: 'Power of labor unions' },
+        { name: 'Poverty Rate', key: 'poverty_rate', desc: 'Population below poverty line', inverted: true },
+        { name: 'Income Inequality', key: 'income_inequality', desc: 'Gap between rich and poor', inverted: true }
+    ]},
+    { id: 'demographics', label: 'Demographics', icon: '\u{1F465}', blocs: [],
+      stats: [
+        { name: 'Population Growth', key: 'population_growth', desc: 'Rate of population change' },
+        { name: 'Birth Rate', key: 'birth_rate', desc: 'Births per 1,000 people' },
+        { name: 'Death Rate', key: 'death_rate', desc: 'Deaths per 1,000 people', inverted: true },
+        { name: 'Median Age', key: 'median_age', desc: 'Average age of population', format: 'years' },
+        { name: 'Eligible Voters', key: 'eligible_voters', desc: 'Citizens able to vote' },
+        { name: 'Ethnic Diversity', key: 'ethnic_diversity', desc: 'Cultural heterogeneity' }
+    ]},
+    { id: 'healthcare', label: 'Healthcare', icon: '\u{1F3E5}', blocs: ['Urban Progressives', 'Ethnic Minorities'],
+      stats: [
+        { name: 'Healthcare Quality', key: 'healthcare_quality', desc: 'Overall medical care standard' },
+        { name: 'Healthcare Access', key: 'healthcare_accessibility', desc: 'Access to medical services' },
+        { name: 'Hospital Beds', key: 'beds_per_100k', desc: 'Beds per 100,000 people' },
+        { name: 'Life Expectancy', key: 'lifespan', desc: 'Average lifespan in years' },
+        { name: 'Drug Use', key: 'drug_use', desc: 'Substance abuse prevalence', inverted: true }
+    ]},
+    { id: 'education', label: 'Education', icon: '\u{1F393}', blocs: ['Academics & Professionals', 'Urban Progressives'],
+      stats: [
+        { name: 'Literacy Rate', key: 'literacy', desc: 'Population able to read/write' },
+        { name: 'Higher Education', key: 'higher_education', desc: 'University graduation rate' },
+        { name: 'Education Access', key: 'education_accessibility', desc: 'Access to schooling' },
+        { name: 'Academic Immigration', key: 'academic_immigration', desc: 'Scholars attracted to nation' }
+    ]},
+    { id: 'infrastructure', label: 'Infrastructure', icon: '\u{1F3D7}', blocs: ['Business Owners', 'Rural Traditionalists'],
+      stats: [
+        { name: 'Physical Infra.', key: 'physical_infrastructure', desc: 'Roads, bridges, ports' },
+        { name: 'Digital Infra.', key: 'digital_infrastructure', desc: 'Internet and tech networks' },
+        { name: 'Rail Network', key: 'rail_network', desc: 'Train connectivity' },
+        { name: 'Urbanization', key: 'urbanization', desc: 'Population in cities' },
+        { name: 'Energy Generation', key: 'energy_generation', desc: 'Power production capacity' },
+        { name: 'Renewable Energy', key: 'renewable_energy_percentage', desc: 'Clean energy percentage' }
+    ]},
+    { id: 'resources', label: 'Resources', icon: '\u{26CF}', blocs: [],
+      stats: [
+        { name: 'Arable Land', key: 'arable_land', desc: 'Farmable territory' },
+        { name: 'Rare Minerals', key: 'rare_minerals', desc: 'Valuable mineral deposits' },
+        { name: 'Oil & Gas', key: 'oil_and_gas', desc: 'Fossil fuel reserves' },
+        { name: 'Fuel Prices', key: 'fuel_prices', desc: 'Cost of energy', inverted: true }
+    ]},
+    { id: 'environment', label: 'Environment', icon: '\u{1F30D}', blocs: ['Urban Progressives'],
+      stats: [
+        { name: 'Pollution', key: 'pollution', desc: 'Air and water contamination', inverted: true },
+        { name: 'Carbon Emissions', key: 'carbon_emissions', desc: 'Greenhouse gas output', inverted: true }
+    ]},
+    { id: 'social', label: 'Social', icon: '\u{1F3E0}', blocs: ['Religious Conservatives', 'Ethnic Minorities', 'Urban Workers'],
+      stats: [
+        { name: 'Standard of Living', key: 'standard_of_living', desc: 'Quality of life index' },
+        { name: 'Happiness', key: 'happiness', desc: 'National wellbeing index' },
+        { name: 'Religiosity', key: 'religious', desc: 'Strength of religious institutions' },
+        { name: 'Social Mobility', key: 'social_mobility', desc: 'Ability to change class' },
+        { name: 'Benefits', key: 'benefits', desc: 'Social welfare programs' },
+        { name: 'Crime Rate', key: 'crime_rate', desc: 'Criminal incidents per capita', inverted: true },
+        { name: 'Incarceration Rate', key: 'incarceration_rate', desc: 'Imprisoned population', inverted: true }
+    ]},
+    { id: 'governance', label: 'Governance', icon: '\u{1F3DB}', blocs: ['Academics & Professionals', 'Ethnic Minorities', 'Urban Progressives'],
+      stats: [
+        { name: 'Stability', key: 'stability', desc: 'Government steadiness' },
+        { name: 'Legitimacy', key: 'legitimacy', desc: 'Public trust in government' },
+        { name: 'Efficiency', key: 'efficiency', desc: 'Bureaucratic effectiveness' },
+        { name: 'Corruption', key: 'corruption', desc: 'Abuse of public office', inverted: true },
+        { name: 'Press Freedom', key: 'press_freedom', desc: 'Media independence' },
+        { name: 'Judicial Ind.', key: 'judicial_independence', desc: 'Court system fairness' },
+        { name: 'Freedom Index', key: 'freedom_index', desc: 'Civil liberties rating' },
+        { name: 'Polarization', key: 'polarization', desc: 'Political division', inverted: true }
+    ]},
+    { id: 'security', label: 'Security', icon: '\u{1F6E1}', blocs: ['Military & Security', 'Nationalist Bloc'],
+      stats: [
+        { name: 'Civil Unrest', key: 'civil_unrest', desc: 'Protests and riots', inverted: true },
+        { name: 'Terrorism Threat', key: 'terrorism', desc: 'Extremist activity level', inverted: true },
+        { name: 'Political Violence', key: 'political_violence', desc: 'Politically motivated attacks', inverted: true }
+    ]},
+    { id: 'immigration', label: 'Immigration', icon: '\u{2708}', blocs: ['Nationalist Bloc', 'Rural Traditionalists', 'Ethnic Minorities'],
+      stats: [
+        { name: 'Immigration', key: 'immigration', desc: 'People entering legally' },
+        { name: 'Illegal Immigration', key: 'illegal_immigration', desc: 'Undocumented arrivals', inverted: true },
+        { name: 'Emigration', key: 'emigration', desc: 'Citizens leaving (brain drain)', inverted: true }
+    ]},
+    { id: 'international', label: 'International', icon: '\u{1F310}', blocs: [],
+      stats: [
+        { name: 'Intl. Reputation', key: 'international_reputation', desc: 'Global standing and respect' },
+        { name: 'Trade Agreements', key: 'trade_agreements', desc: 'Active trade deals' },
+        { name: 'Sanctions', key: 'sanctions', desc: 'International penalties', inverted: true }
+    ]}
+];
+
+// ===== HELPER FUNCTIONS =====
+
+function healthColor(val, inverted) {
+    var v = inverted ? 100 - val : val;
+    if (v >= 65) return 'var(--n-green)';
+    if (v >= 45) return 'var(--n-yellow)';
+    if (v >= 25) return 'var(--n-orange)';
+    return 'var(--n-red)';
+}
+
+function healthColorRaw(val, inverted) {
+    var v = inverted ? 100 - val : val;
+    if (v >= 65) return '#4ade80';
+    if (v >= 45) return '#facc15';
+    if (v >= 25) return '#f97316';
+    return '#ef4444';
+}
+
+function catHealth(cat, nation) {
+    var scored = cat.stats.filter(function(s) {
+        var v = nation[s.key];
+        return v !== null && v !== undefined;
+    });
+    if (!scored.length) return 50;
+    var sum = 0;
+    for (var i = 0; i < scored.length; i++) {
+        var v = Number(nation[scored[i].key]);
+        if (isNaN(v)) v = 50;
+        v = Math.min(v, 100);
+        if (scored[i].inverted) v = 100 - v;
+        sum += v;
+    }
+    return sum / scored.length;
+}
+
+function buildSparklineSVG(data, color, w, h) {
+    w = w || 48; h = h || 14;
+    if (!data || data.length < 2) return '<span style="font-family:var(--n-font-mono);font-size:9px;color:var(--n-tertiary);">\u2014</span>';
+    var mn = Math.min.apply(null, data), mx = Math.max.apply(null, data), r = mx - mn || 1;
+    var pts = data.map(function(v, i) {
+        return ((i / (data.length - 1)) * w).toFixed(1) + ',' + (h - ((v - mn) / r) * h).toFixed(1);
+    }).join(' ');
+    var lastY = (h - ((data[data.length - 1] - mn) / r) * h).toFixed(1);
+    return '<svg width="' + w + '" height="' + h + '" style="display:block;flex-shrink:0;">' +
+        '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linejoin="round"/>' +
+        '<circle cx="' + w + '" cy="' + lastY + '" r="1.5" fill="' + color + '"/></svg>';
+}
+
+function buildRankBar(rank, total) {
+    total = total || totalNations || 6;
+    if (!rank) return '';
+    var pipColor = rank <= 2 ? '#4ade80' : rank <= 4 ? '#facc15' : '#ef4444';
+    var h = '<div class="stat-card__rank">';
+    for (var i = 0; i < total; i++) {
+        if (i < rank) {
+            h += '<div class="stat-card__rank-pip" style="background:' + pipColor + ';"></div>';
+        } else {
+            h += '<div class="stat-card__rank-pip stat-card__rank-pip--empty"></div>';
+        }
+    }
+    h += '<span class="stat-card__rank-label">#' + rank + '</span></div>';
+    return h;
+}
+
+function isSectionOpen(catId) {
+    if (sectionState[catId] !== undefined) return sectionState[catId];
+    return !!defaultOpen[catId];
+}
+
+function toggleSection(catId) {
+    var isOpen = isSectionOpen(catId);
+    sectionState[catId] = !isOpen;
+    sessionStorage.setItem('nationSectionState', JSON.stringify(sectionState));
+    var header = document.querySelector('.cat-header[data-cat="' + catId + '"]');
+    var body = document.getElementById('cat-body-' + catId);
+    if (!header || !body) return;
+    if (sectionState[catId]) {
+        header.classList.add('cat-header--open');
+        body.classList.add('cat-body--open');
+    } else {
+        header.classList.remove('cat-header--open');
+        body.classList.remove('cat-body--open');
+    }
+}
 
 // Initialize page
 initPage('nation', async (state) => {
     const { nation, faction } = state;
-    
+
     if (!nation) {
-        document.getElementById('content-area').innerHTML = '<div class="placeholder-panel"><div class="ph-icon">🏴</div><h3>No Nation Selected</h3><p>Your party is not assigned to a nation yet.</p></div>';
+        document.getElementById('content-area').innerHTML = '<div class="loading-container"><div style="font-size:24px">No Nation</div><div>Your party is not assigned to a nation yet.</div></div>';
         return;
     }
-    
+
     // Fix placeholder government_type values from DB
     if (!nation.government_type || nation.government_type.toLowerCase().includes('your_gov_here')) {
         if (nation.name === 'San Estrella') nation.government_type = CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC;
     }
 
-    await loadAllNations();
-    await loadPreviousTickData(nation.id);
-    await loadStatEffectSources(nation.id, nation);
+    await Promise.all([
+        loadAllNations(),
+        loadPreviousTickData(nation.id),
+        loadStatEffectSources(nation.id, nation),
+        loadSparklineHistory(nation.id),
+        loadActiveCrises(nation.id)
+    ]);
     await renderNationPage(nation);
 });
 
@@ -225,6 +438,52 @@ async function loadPreviousTickData(nationId) {
         console.warn('[loadPreviousTickData] Using fallback snapshot from tick', fallbackRows[0].tick);
     } else {
         console.warn('[loadPreviousTickData] No recent snapshot within', MAX_FALLBACK_AGE, 'ticks — trend arrows will show neutral.');
+    }
+}
+
+async function loadSparklineHistory(nationId) {
+    var cacheKey = 'sparkline_' + nationId;
+    var cached = qCache(cacheKey);
+    if (cached) { sparklineHistory = cached; return; }
+    var { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    if (!shard) return;
+    var fromTick = Math.max(0, shard.current_tick - 10);
+    var { data: rows } = await _supabase.from('nations_history')
+        .select('*').eq('nation_id', nationId)
+        .gte('tick', fromTick).order('tick', { ascending: true });
+    if (!rows || rows.length === 0) return;
+    // Build per-stat arrays
+    var allKeys = [];
+    for (var ci = 0; ci < STAT_CATEGORIES.length; ci++) {
+        for (var si = 0; si < STAT_CATEGORIES[ci].stats.length; si++) {
+            allKeys.push(STAT_CATEGORIES[ci].stats[si].key);
+        }
+    }
+    var map = {};
+    for (var ki = 0; ki < allKeys.length; ki++) {
+        var k = allKeys[ki];
+        var vals = [];
+        for (var ri = 0; ri < rows.length; ri++) {
+            var v = rows[ri][k];
+            if (v !== null && v !== undefined) vals.push(Number(v));
+        }
+        if (vals.length > 0) map[k] = vals;
+    }
+    sparklineHistory = map;
+    qCacheSet(cacheKey, map, 2 * 60 * 1000);
+}
+
+async function loadActiveCrises(nationId) {
+    var cacheKey = 'crises_' + nationId;
+    var cached = qCache(cacheKey);
+    if (cached) { activeCrises = cached; return; }
+    var res = await _supabase
+        .from('active_crises')
+        .select('crisis_id, crisis_templates(name, description, crisis_end_triggers(stat_key), crisis_effects(stat_key, change_per_tick, target))')
+        .eq('nation_id', nationId);
+    if (!res.error && res.data) {
+        activeCrises = res.data;
+        qCacheSet(cacheKey, res.data, 2 * 60 * 1000);
     }
 }
 
@@ -443,7 +702,6 @@ async function getShardTick() {
 }
 
 async function renderRevolutionBanner(nation) {
-    // Check for post-revolution celebration banner (query event_log for recent DEMOCRATIC_REVOLUTION)
     var currentTick = await getShardTick();
     var revRes = await _supabase
         .from('event_log')
@@ -454,421 +712,374 @@ async function renderRevolutionBanner(nation) {
         .limit(1)
         .maybeSingle();
     if (revRes.data && (currentTick - revRes.data.fired_at_tick) <= 5) {
-        var ticksAgo = currentTick - revRes.data.fired_at_tick;
         var electionTick = revRes.data.fired_at_tick + 3;
         var ticksUntilElection = Math.max(0, electionTick - currentTick);
         var h = '<div class="revolution-complete-banner">';
-        h += '<div class="revolution-icon">&#x1F3DB;</div>';
-        h += '<div class="revolution-title">Revolution in the Streets!</div>';
-        h += '<div class="revolution-subtitle">' + revRes.data.description_used + '</div>';
+        h += '<div class="revolution-banner__title">Revolution in the Streets!</div>';
+        h += '<div class="revolution-banner__subtitle">' + escapeHtml(revRes.data.description_used) + '</div>';
+        h += '<div class="revolution-banner__tags">';
         if (ticksUntilElection > 0) {
-            h += '<div style="margin-top:12px;">';
-            h += '<span class="revolution-tag">Emergency Elections in ' + ticksUntilElection + ' tick' + (ticksUntilElection !== 1 ? 's' : '') + '</span>';
-            h += '<span class="revolution-tag">Democracy Established</span>';
-            h += '</div>';
+            h += '<span class="revolution-tag revolution-tag--green">Emergency Elections in ' + ticksUntilElection + ' tick' + (ticksUntilElection !== 1 ? 's' : '') + '</span>';
         } else {
-            h += '<div style="margin-top:12px;"><span class="revolution-tag">Democracy Established</span><span class="revolution-tag">Elections Complete</span></div>';
+            h += '<span class="revolution-tag revolution-tag--green">Elections Complete</span>';
         }
-        h += '</div>';
+        h += '<span class="revolution-tag revolution-tag--green">Democracy Established</span></div></div>';
         return h;
     }
-
-    // Check for active revolution countdown (Autocracy only)
     if (isAutocracy(nation) && nation.revolution_started_tick != null && nation.revolution_duration != null) {
         var elapsed = currentTick - nation.revolution_started_tick;
         var remaining = Math.max(0, nation.revolution_duration - elapsed);
         var h = '<div class="revolution-banner">';
-        h += '<div class="revolution-icon">&#x1F525;</div>';
-        h += '<div class="revolution-title">Democratic Revolution</div>';
-        h += '<div class="revolution-subtitle">The people demand democracy. Pro-democracy protests grow stronger each day. The regime must act to restore order — or fall.</div>';
-        h += '<div class="revolution-countdown">' + remaining + ' tick' + (remaining !== 1 ? 's' : '') + ' until revolution</div>';
+        h += '<div class="revolution-banner__title">Democratic Revolution</div>';
+        h += '<div class="revolution-banner__subtitle">The people demand democracy. Pro-democracy protests grow stronger each day.</div>';
+        h += '<div class="revolution-banner__countdown">' + remaining + ' tick' + (remaining !== 1 ? 's' : '') + ' until revolution</div>';
         h += '</div>';
         return h;
     }
-
     return '';
 }
 
-async function renderCrisisSection(nationId, nation) {
-    var h = '<div class="crisis-section"><div class="section-header">Ongoing Crises</div><div class="crisis-grid">';
+// ===== DISPLAY HELPERS =====
 
-    var crises = [];
-    var cacheKey = 'crises_' + nationId;
-    var cached = qCache(cacheKey);
-    if (cached) {
-        crises = cached;
-    } else {
-        var res = await _supabase
-            .from('active_crises')
-            .select('crisis_id, crisis_templates(name, description, crisis_end_triggers(stat_key), crisis_effects(stat_key, change_per_tick, target))')
-            .eq('nation_id', nationId);
-        if (!res.error && res.data) {
-            crises = res.data;
-            qCacheSet(cacheKey, crises, 2 * 60 * 1000);
-        }
-    }
-
-    // Add revolution crisis box if active
-    var hasRevolution = nation && isAutocracy(nation) && nation.revolution_started_tick != null && nation.revolution_duration != null;
-    if (hasRevolution) {
-        var currentTick = await getShardTick();
-        var elapsed = currentTick - nation.revolution_started_tick;
-        var remaining = Math.max(0, nation.revolution_duration - elapsed);
-        h += '<div class="crisis-box active">';
-        h += '<div class="crisis-name">Democratic Revolution</div>';
-        h += '<div class="crisis-desc">The people demand democracy. Revolution grows stronger each day. ' + remaining + ' tick' + (remaining !== 1 ? 's' : '') + ' remain.</div>';
-        h += '<div class="crisis-rising">Worsening: <span>Stability</span>, <span>Civil Unrest</span>, <span>Intl. Reputation</span></div>';
-        h += '<div class="crisis-recovery">Avert: <span>Stability &ge; 15</span> or <span>Freedom &le; 50</span> or <span>Unrest &le; 70</span></div>';
-        h += '</div>';
-    }
-
-    if (crises.length === 0 && !hasRevolution) {
-        h += '<div class="crisis-box">No active crises</div>';
-        h += '<div class="crisis-box">No active crises</div>';
-    } else {
-        for (var i = 0; i < crises.length; i++) {
-            var c = crises[i];
-            var t = c.crisis_templates;
-            if (!t) continue;
-            var endTriggers = t.crisis_end_triggers || [];
-            var statNames = [];
-            for (var j = 0; j < endTriggers.length; j++) {
-                statNames.push(prettyStatName(endTriggers[j].stat_key));
-            }
-            var effects = t.crisis_effects || [];
-            var risingStats = [];
-            var fallingStats = [];
-            for (var k = 0; k < effects.length; k++) {
-                if (effects[k].target === 'nation' && effects[k].stat_key) {
-                    if (effects[k].change_per_tick > 0) {
-                        risingStats.push(prettyStatName(effects[k].stat_key));
-                    } else if (effects[k].change_per_tick < 0) {
-                        fallingStats.push(prettyStatName(effects[k].stat_key));
-                    }
-                }
-            }
-            h += '<div class="crisis-box active">';
-            h += '<div class="crisis-name">' + t.name + '</div>';
-            h += '<div class="crisis-desc">' + t.description + '</div>';
-            if (risingStats.length > 0) {
-                h += '<div class="crisis-rising">Rising: <span>' + risingStats.join('</span>, <span>') + '</span></div>';
-            }
-            if (fallingStats.length > 0) {
-                h += '<div class="crisis-falling">Falling: <span>' + fallingStats.join('</span>, <span>') + '</span></div>';
-            }
-            if (statNames.length > 0) {
-                h += '<div class="crisis-recovery">Recovery: <span>' + statNames.join('</span>, <span>') + '</span></div>';
-            }
-            h += '</div>';
-        }
-        // Fill empty slot if odd number of crises
-        var totalBoxes = crises.length + (hasRevolution ? 1 : 0);
-        if (totalBoxes % 2 !== 0) {
-            h += '<div class="crisis-box">No additional crises</div>';
-        }
-    }
-
-    h += '</div></div>';
-    return h;
-}
-
-/**
- * Main render — uses string concatenation to avoid template literal escaping issues
- */
-async function renderNationPage(nation) {
-    var h = '';
-
-    // Overview
-    h += '<div class="nation-overview">';
-    h += '<h1>' + escapeHtml(nation.name) + '</h1>';
-    h += '<div class="overview-grid">';
-    h += '<div class="overview-item"><div class="overview-label">Capital</div><div class="overview-value">' + escapeHtml(nation.capital || '—') + '</div></div>';
-    h += '<div class="overview-item"><div class="overview-label">Government</div><div class="overview-value">' + (isPresidentialRepublic(nation) ? 'Presidential Republic' : (getCanonicalGovernmentType(nation, nation.government_type || '—'))) + '</div></div>';
-    h += '<div class="overview-item"><div class="overview-label">Population</div><div class="overview-value">' + formatNumber(nation.population) + '</div></div>';
-    var govAppr = nation.gov_approval ?? 50;
-    h += '<div class="overview-item"><div class="overview-label">Government Approval</div><div class="overview-value gold">' + govAppr + '%</div></div>';
-    h += '<div class="overview-item"><div class="overview-label">GDP</div><div class="overview-value gold">' + formatCurrencyShort(scaleRawToDollars(nation.gdp)) + '</div></div>';
-    h += '</div></div>';
-
-    // Revolution banner (above crises)
-    h += await renderRevolutionBanner(nation);
-
-    // Crises
-    h += await renderCrisisSection(nation.id, nation);
-
-    // Stats
-    h += '<div class="stats-section">';
-
-    // ECONOMIC
-    h += sectorBlock('💰', 'Economic', [
-        renderStatBox('GDP', 'gdp', nation.gdp, 'Gross domestic product', 'gdp', false, scaleRawToDollars(nation.gdp)),
-        renderStatBox('GDP Growth', 'gdp_growth', nation.gdp_growth, 'Monthly economic growth rate', null, false, formatGdpGrowth(nation.gdp_growth)),
-        renderStatBox('National Debt', 'debt', nation.debt, 'Government debt obligations', 'currency', true, scaleRawToDollars(nation.debt)),
-        renderStatBox('Debt Growth', 'debt_growth', nation.debt_growth, 'Rate of debt accumulation', null, true),
-        renderStatBox('Inflation', 'inflation', nation.inflation, 'Inflation growth rate', null, true, formatInflationRate(nation.inflation) + ' \u2014 ' + getInflationLabel(nation.inflation)),
-        renderStatBox('Interest Rates', 'interest_rates', nation.interest_rates, 'Central bank lending rate', null, true),
-        renderStatBox('Trade Balance', 'trade_balance', nation.trade_balance, 'Exports minus imports', null, false, formatTradeBalance(nation.trade_balance)),
-        renderStatBox('Currency Strength', 'currency_strength', nation.currency_strength, 'Value of national currency'),
-        renderStatBox('Foreign Investment', 'foreign_investment', nation.foreign_investment, 'International capital inflow'),
-        renderStatBox('Credit Rating', 'credit', nation.credit, 'National creditworthiness')
-    ]);
-
-    // TAXATION
-    h += sectorBlock('🧾', 'Taxation', [
-        renderStatBox('Income Tax', 'income_tax', nation.income_tax, 'Tax rate on personal income'),
-        renderStatBox('Corporate Tax', 'corporate_tax', nation.corporate_tax, 'Tax rate on business profits'),
-        renderStatBox('Sales Tax', 'sales_tax', nation.sales_tax, 'Tax on goods and services'),
-        renderStatBox('Tariffs', 'tariffs', nation.tariffs, 'Import/export duties')
-    ]);
-
-    // LABOR
-    h += sectorBlock('👷', 'Labor & Employment', [
-        renderStatBox('Unemployment', 'unemployment', nation.unemployment, 'Percentage without work', null, true),
-        renderStatBox('Labor Participation', 'labor_force_participation', nation.labor_force_participation, 'Working-age adults employed'),
-        renderStatBox('Minimum Wage', 'minimum_wage', nation.minimum_wage, 'Lowest legal hourly wage'),
-        renderStatBox('Union Strength', 'union_strength', nation.union_strength, 'Power of labor unions'),
-        renderStatBox('Poverty Rate', 'poverty_rate', nation.poverty_rate, 'Population below poverty line', null, true),
-        renderStatBox('Income Inequality', 'income_inequality', nation.income_inequality, 'Gap between rich and poor', null, true)
-    ]);
-
-    // DEMOGRAPHICS
-    h += sectorBlock('👥', 'Demographics', [
-        renderStatBox('Population Growth', 'population_growth', nation.population_growth, 'Rate of population change'),
-        renderStatBox('Birth Rate', 'birth_rate', nation.birth_rate, 'Births per 1,000 people'),
-        renderStatBox('Death Rate', 'death_rate', nation.death_rate, 'Deaths per 1,000 people', null, true),
-        renderStatBox('Median Age', 'median_age', nation.median_age, 'Average age of population', 'years'),
-        renderStatBox('Eligible Voters', 'eligible_voters', nation.eligible_voters, 'Citizens able to vote'),
-        renderStatBox('Ethnic Diversity', 'ethnic_diversity', nation.ethnic_diversity, 'Cultural heterogeneity')
-    ]);
-
-    // HEALTHCARE
-    h += sectorBlock('🏥', 'Healthcare', [
-        renderStatBox('Healthcare Quality', 'healthcare_quality', nation.healthcare_quality, 'Overall medical care standard'),
-        renderStatBox('Healthcare Accessibility', 'healthcare_accessibility', nation.healthcare_accessibility, 'Access to medical services across the population'),
-        renderStatBox('Hospital Beds', 'beds_per_100k', nation.beds_per_100k, 'Beds per 100,000 people'),
-        renderStatBox('Life Expectancy', 'lifespan', nation.lifespan, 'Average lifespan in years'),
-        renderStatBox('Drug Use', 'drug_use', nation.drug_use, 'Substance abuse prevalence', null, true)
-    ]);
-
-    // EDUCATION
-    h += sectorBlock('🎓', 'Education', [
-        renderStatBox('Literacy Rate', 'literacy', nation.literacy, 'Population able to read/write'),
-        renderStatBox('Higher Education', 'higher_education', nation.higher_education, 'University graduation rate'),
-        renderStatBox('Education Accessibility', 'education_accessibility', nation.education_accessibility, 'Access to schooling across the population'),
-        renderStatBox('Academic Immigration', 'academic_immigration', nation.academic_immigration, 'Scholars attracted to nation')
-    ]);
-
-    // INFRASTRUCTURE
-    h += sectorBlock('🏗️', 'Infrastructure', [
-        renderStatBox('Physical Infrastructure', 'physical_infrastructure', nation.physical_infrastructure, 'Roads, bridges, ports, and public works'),
-        renderStatBox('Digital Infrastructure', 'digital_infrastructure', nation.digital_infrastructure, 'Internet and tech networks'),
-        renderStatBox('Rail Network', 'rail_network', nation.rail_network, 'Train connectivity'),
-        renderStatBox('Urbanization', 'urbanization', nation.urbanization, 'Population in cities'),
-        renderStatBox('Energy Generation', 'energy_generation', nation.energy_generation, 'Power production capacity'),
-        renderStatBox('Renewable Energy', 'renewable_energy_percentage', nation.renewable_energy_percentage, 'Clean energy percentage')
-    ]);
-
-    // RESOURCES
-    h += sectorBlock('⛏️', 'Resources', [
-        renderStatBox('Arable Land', 'arable_land', nation.arable_land, 'Farmable territory'),
-        renderStatBox('Rare Minerals', 'rare_minerals', nation.rare_minerals, 'Valuable mineral deposits'),
-        renderStatBox('Oil & Gas', 'oil_and_gas', nation.oil_and_gas, 'Fossil fuel reserves'),
-        renderStatBox('Fuel Prices', 'fuel_prices', nation.fuel_prices, 'Cost of energy', null, true)
-    ]);
-
-    // ENVIRONMENT
-    h += sectorBlock('🌍', 'Environment', [
-        renderStatBox('Pollution', 'pollution', nation.pollution, 'Air and water contamination', null, true),
-        renderStatBox('Carbon Emissions', 'carbon_emissions', nation.carbon_emissions, 'Greenhouse gas output', null, true)
-    ]);
-
-    // SOCIAL
-    h += sectorBlock('🏠', 'Social', [
-        renderStatBox('Standard of Living', 'standard_of_living', nation.standard_of_living, 'Quality of life index'),
-        renderStatBox('Happiness', 'happiness', nation.happiness, 'National wellbeing index'),
-        renderStatBox('Religiosity', 'religious', nation.religious, 'Strength of religious belief and institutions'),
-        renderStatBox('Social Mobility', 'social_mobility', nation.social_mobility, 'Ability to change class'),
-        renderStatBox('Benefits', 'benefits', nation.benefits, 'Social welfare programs'),
-        renderStatBox('Crime Rate', 'crime_rate', nation.crime_rate, 'Criminal incidents per capita', null, true),
-        renderStatBox('Incarceration Rate', 'incarceration_rate', nation.incarceration_rate, 'Imprisoned population', null, true)
-    ]);
-
-    // GOVERNANCE
-    h += sectorBlock('🏛️', 'Governance', [
-        renderStatBox('Stability', 'stability', nation.stability, 'Government steadiness'),
-        renderStatBox('Legitimacy', 'legitimacy', nation.legitimacy, 'Public trust in government'),
-        renderStatBox('Efficiency', 'efficiency', nation.efficiency, 'Bureaucratic effectiveness'),
-        renderStatBox('Corruption', 'corruption', nation.corruption, 'Abuse of public office', null, true),
-        renderStatBox('Press Freedom', 'press_freedom', nation.press_freedom, 'Media independence'),
-        renderStatBox('Judicial Independence', 'judicial_independence', nation.judicial_independence, 'Court system fairness'),
-        renderStatBox('Freedom Index', 'freedom_index', nation.freedom_index, 'Civil liberties rating'),
-        renderStatBox('Polarization', 'polarization', nation.polarization, 'Political division', null, true)
-    ]);
-
-    // SECURITY
-    h += sectorBlock('🛡️', 'Security', [
-        renderStatBox('Civil Unrest', 'civil_unrest', nation.civil_unrest, 'Protests and riots', null, true),
-        renderStatBox('Terrorism Threat', 'terrorism', nation.terrorism, 'Extremist activity level', null, true),
-        renderStatBox('Political Violence', 'political_violence', nation.political_violence, 'Politically motivated attacks', null, true)
-    ]);
-
-    // IMMIGRATION
-    h += sectorBlock('✈️', 'Immigration', [
-        renderStatBox('Immigration', 'immigration', nation.immigration, 'People entering legally'),
-        renderStatBox('Illegal Immigration', 'illegal_immigration', nation.illegal_immigration, 'Undocumented arrivals', null, true),
-        renderStatBox('Emigration', 'emigration', nation.emigration, 'Citizens leaving (brain drain)', null, true)
-    ]);
-
-    // INTERNATIONAL
-    h += sectorBlock('🌐', 'International', [
-        renderStatBox('Intl. Reputation', 'international_reputation', nation.international_reputation, 'Global standing and respect'),
-        renderStatBox('Trade Agreements', 'trade_agreements', nation.trade_agreements, 'Active trade deals', 'count'),
-        renderStatBox('Sanctions', 'sanctions', nation.sanctions, 'International penalties', null, true)
-    ]);
-
-    h += '</div>'; // end stats-section
-
-    document.getElementById('content-area').innerHTML = h;
-    attachStatBoxClickHandlers();
-}
-
-// ===== Affected-By: Click Handlers =====
-
-function attachStatBoxClickHandlers() {
-    var statBoxes = document.querySelectorAll('.stat-box[data-stat-key]');
-    for (var i = 0; i < statBoxes.length; i++) {
-        statBoxes[i].addEventListener('click', handleStatBoxClick);
-    }
-}
-
-function handleStatBoxClick(e) {
-    var box = this;
-    var statKey = box.getAttribute('data-stat-key');
-    var panel = document.getElementById('abp-' + statKey);
-    if (!panel) return;
-
-    var isOpen = box.classList.contains('stat-box-expanded');
-
-    // Accordion: close all open panels
-    var allExpanded = document.querySelectorAll('.stat-box-expanded');
-    for (var i = 0; i < allExpanded.length; i++) {
-        allExpanded[i].classList.remove('stat-box-expanded');
-        var otherPanel = allExpanded[i].querySelector('.affected-by-panel');
-        if (otherPanel) otherPanel.innerHTML = '';
-    }
-
-    // If was already open, just close (done above)
-    if (isOpen) return;
-
-    // Populate and open
-    box.classList.add('stat-box-expanded');
-    panel.innerHTML = buildAffectedByContent(statKey);
-}
-
-function buildAffectedByContent(statKey) {
-    var effects = statEffectsByKey[statKey] || [];
-    if (effects.length === 0) {
-        return '<div class="affected-by-empty">No active effects</div>';
-    }
-
-    var h = '<div class="affected-by-title">Affected By</div>';
-    for (var i = 0; i < effects.length; i++) {
-        var eff = effects[i];
-        var arrow = eff.direction === 'up' ? '&#9650;' : '&#9660;';
-        var arrowClass = eff.direction === 'up' ? 'ab-arrow-up' : 'ab-arrow-down';
-        var typeClass = 'ab-type-' + eff.type.toLowerCase().replace(/ /g, '-');
-        h += '<div class="affected-by-row">';
-        h += '<span class="ab-name">' + eff.name + '</span>';
-        h += '<span class="ab-arrow ' + arrowClass + '">' + arrow + '</span>';
-        h += '<span class="ab-type ' + typeClass + '">' + eff.type + '</span>';
-        h += '</div>';
-    }
-    return h;
-}
-
-// ===== End Affected-By Click Handlers =====
-
-/**
- * Helper: wrap stat boxes in a sector block
- */
-function sectorBlock(icon, title, boxes) {
-    return '<div class="sector-block"><div class="sector-header"><span class="sector-icon">' + icon + '</span> ' + title + '</div><div class="stat-boxes">' + boxes.join('') + '</div></div>';
-}
-
-/**
- * Convert gdp_growth (0-100) to display percentage: 0 = -1.00%, 50 = 0.00%, 100 = +1.00%
- */
 function formatGdpGrowth(rawValue) {
     var v = Number(rawValue ?? 50);
     var pct = (v - 50) / 50;
     return (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
 }
 
-/**
- * Convert trade_balance (0-100) to export/import split display.
- * 0 = 100% Imports, 50 = Balanced, 100 = 100% Exports
- */
 function formatTradeBalance(rawValue) {
     var v = Math.round(Number(rawValue ?? 50));
     if (v >= 50) {
-        var expPct = v;
-        var impPct = 100 - v;
+        var expPct = v, impPct = 100 - v;
         if (impPct === 0) return '100% Exports';
         if (expPct === impPct) return 'Balanced';
         return expPct + '% Exp / ' + impPct + '% Imp';
     } else {
-        var impPct = 100 - v;
-        var expPct = v;
+        var impPct = 100 - v, expPct = v;
         if (expPct === 0) return '100% Imports';
         return expPct + '% Exp / ' + impPct + '% Imp';
     }
 }
 
-/**
- * Render a single stat box with ranking and trend
- */
-function renderStatBox(name, statKey, value, description, format, inverted, displayValue) {
-    format = format || null;
-    inverted = inverted || false;
-    var numValue = parseInt(value) || 0;
+function getDisplayValue(stat, nation) {
+    var raw = nation[stat.key];
+    var format = stat.format;
+    if (raw === null || raw === undefined) return 'N/A';
+    if (format === 'gdp') return formatCurrencyShort(scaleRawToDollars(raw));
+    if (format === 'currency') return formatCurrencyShort(scaleRawToDollars(raw));
+    if (format === 'gdpgrowth') return formatGdpGrowth(raw);
+    if (format === 'trade') return formatTradeBalance(raw);
+    if (format === 'inflation') return formatInflationRate(raw) + ' \u2014 ' + getInflationLabel(raw);
+    if (format === 'years') return (Math.round(Number(raw) * 10) / 10) + ' yrs';
+    return Math.round(Number(raw) * 10) / 10;
+}
 
-    var colorClass = 'medium';
-    if (value !== null && value !== undefined) {
-        if (statKey === 'inflation') {
-            colorClass = inflationColorClass(value);
-        } else if (inverted) {
-            if (numValue <= 30) colorClass = 'good';
-            else if (numValue <= 60) colorClass = 'medium';
-            else colorClass = 'bad';
-        } else {
-            if (numValue >= 70) colorClass = 'good';
-            else if (numValue >= 40) colorClass = 'medium';
-            else colorClass = 'bad';
+// ===== MAIN RENDER =====
+
+async function renderNationPage(nation) {
+    var h = '';
+    var govAppr = nation.gov_approval ?? 50;
+    var apprColor = govAppr < 40 ? 'var(--n-red)' : govAppr < 60 ? 'var(--n-yellow)' : 'var(--n-green)';
+
+    // ---- Header bar ----
+    h += '<div class="nation-header">';
+    h += '<div class="nation-header__name">' + escapeHtml(nation.name) + '</div>';
+    h += '<div class="nation-header__stats">';
+    var headerStats = [
+        { l: 'Capital', v: escapeHtml(nation.capital || '\u2014') },
+        { l: 'Government', v: isPresidentialRepublic(nation) ? 'Presidential Republic' : getCanonicalGovernmentType(nation, nation.government_type || '\u2014') },
+        { l: 'Population', v: formatNumber(nation.population) },
+        { l: 'Approval', v: govAppr + '%', c: apprColor },
+        { l: 'GDP', v: formatCurrencyShort(scaleRawToDollars(nation.gdp)), c: 'var(--n-green)' }
+    ];
+    for (var hi = 0; hi < headerStats.length; hi++) {
+        var hs = headerStats[hi];
+        h += '<div class="nation-header__stat"><div class="nation-header__stat-label">' + hs.l + '</div>';
+        h += '<div class="nation-header__stat-value"' + (hs.c ? ' style="color:' + hs.c + '"' : '') + '>' + hs.v + '</div></div>';
+    }
+    h += '</div></div>';
+
+    // ---- Body ----
+    h += '<div class="nation-body">';
+
+    // Revolution banner
+    h += await renderRevolutionBanner(nation);
+
+    // ---- Summary row ----
+    var alertCount = 0;
+    for (var ci = 0; ci < STAT_CATEGORIES.length; ci++) {
+        for (var si = 0; si < STAT_CATEGORIES[ci].stats.length; si++) {
+            var sv = Number(nation[STAT_CATEGORIES[ci].stats[si].key] ?? 50);
+            var inv = STAT_CATEGORIES[ci].stats[si].inverted;
+            var effective = inv ? 100 - sv : sv;
+            if (effective < 15) alertCount++;
         }
     }
 
-    var showValue = (displayValue !== undefined) ? displayValue : value;
-    var formattedValue = (showValue !== null && showValue !== undefined) ? (typeof showValue === 'number' ? Math.round(showValue * 10) / 10 : showValue) : 'N/A';
-    if (format === 'currency' && typeof showValue === 'number') formattedValue = formatCurrencyShort(showValue);
-    else if (format === 'gdp' && typeof showValue === 'number') formattedValue = formatCurrencyShort(showValue);
-    else if (format === 'years' && typeof showValue === 'number') formattedValue = Math.round(showValue * 10) / 10 + ' yrs';
+    h += '<div class="nation-summary">';
+    // Crises card
+    h += '<div class="nation-summary__card">';
+    h += '<span class="nation-summary__label">Ongoing Crises</span>';
+    var hasRevolution = isAutocracy(nation) && nation.revolution_started_tick != null && nation.revolution_duration != null;
+    if (activeCrises.length === 0 && !hasRevolution) {
+        h += '<span class="nation-summary__empty">No active crises</span>';
+    } else {
+        if (hasRevolution) {
+            h += '<div class="crisis-summary-item"><span class="crisis-summary-item__name">Democratic Revolution</span></div>';
+        }
+        for (var cri = 0; cri < activeCrises.length; cri++) {
+            var ct = activeCrises[cri].crisis_templates;
+            if (!ct) continue;
+            h += '<div class="crisis-summary-item"><span class="crisis-summary-item__name">' + escapeHtml(ct.name) + '</span>';
+            h += '<span class="crisis-summary-item__desc">' + escapeHtml(ct.description || '') + '</span></div>';
+        }
+    }
+    h += '</div>';
 
-    var trendArrow = getTrendArrow(statKey, value, inverted, format);
-    var rank = calculateRanking(statKey, value, inverted);
-    var rankHTML = rank ? '<div class="stat-box-footer"><span class="ranking-badge' + (rank === 1 ? ' first' : '') + '">#' + rank + ' of ' + totalNations + '</span></div>' : '';
+    // Alerts card
+    h += '<div class="nation-summary__card' + (alertCount > 0 ? ' nation-summary__card--alerts' : '') + '">';
+    h += '<span class="nation-summary__label">Stat Alerts</span>';
+    if (alertCount === 0) {
+        h += '<span style="font-family:var(--n-font-sans);font-size:12px;color:var(--n-green);">All stats within normal range</span>';
+    } else {
+        h += '<span class="nation-summary__count" style="color:var(--n-orange);">' + alertCount + '</span>';
+        h += '<span class="nation-summary__count-text">stats flagged \u2014 approaching crisis thresholds or bloc pain points</span>';
+    }
+    h += '</div>';
 
-    var effectCount = (statEffectsByKey[statKey] || []).length;
-    var effectHint = effectCount > 0 ? '<span class="stat-effect-dot" title="' + effectCount + ' active effect' + (effectCount !== 1 ? 's' : '') + '"></span>' : '';
+    // Nation health grid
+    h += '<div class="nation-summary__card nation-summary__card--health">';
+    h += '<span class="nation-summary__label">Nation Health</span>';
+    h += '<div class="nation-health-grid">';
+    for (var gi = 0; gi < STAT_CATEGORIES.length; gi++) {
+        var gCat = STAT_CATEGORIES[gi];
+        var gH = catHealth(gCat, nation);
+        var gC = healthColorRaw(gH, false);
+        h += '<div class="nation-health-cell" data-scroll-cat="' + gCat.id + '" title="' + gCat.label + ': ' + Math.round(gH) + '" style="background:' + gC + '22;border:1px solid ' + gC + '44;">';
+        h += '<span>' + gCat.icon + '</span></div>';
+    }
+    h += '</div></div>';
+    h += '</div>'; // end summary row
 
-    return '<div class="stat-box ' + colorClass + '" data-stat-key="' + statKey + '">' +
-        '<div class="stat-box-header">' +
-            '<span class="stat-box-name">' + effectHint + name + '</span>' +
-            '<span class="stat-box-value ' + colorClass + '">' + formattedValue + ' ' + trendArrow + '</span>' +
-        '</div>' +
-        '<div class="stat-box-desc">' + description + '</div>' +
-        rankHTML +
-        '<div class="affected-by-panel" id="abp-' + statKey + '"></div>' +
-    '</div>';
+    // ---- Category sections ----
+    for (var ci = 0; ci < STAT_CATEGORIES.length; ci++) {
+        h += renderCategory(STAT_CATEGORIES[ci], nation);
+    }
+
+    h += '</div>'; // end nation-body
+    document.getElementById('content-area').innerHTML = h;
+    attachHandlers();
+}
+
+function renderCategory(cat, nation) {
+    var hScore = catHealth(cat, nation);
+    var hc = healthColor(hScore, false);
+    var hcRaw = healthColorRaw(hScore, false);
+    var isOpen = isSectionOpen(cat.id);
+
+    // Count alerts in this category
+    var alerts = 0;
+    for (var i = 0; i < cat.stats.length; i++) {
+        var sv = Number(nation[cat.stats[i].key] ?? 50);
+        var effective = cat.stats[i].inverted ? 100 - sv : sv;
+        if (effective < 15) alerts++;
+    }
+
+    var h = '<div class="cat-section">';
+
+    // Header
+    h += '<div class="cat-header' + (isOpen ? ' cat-header--open' : '') + '" data-cat="' + cat.id + '">';
+    h += '<span class="cat-header__icon">' + cat.icon + '</span>';
+    h += '<span class="cat-header__label" style="color:' + hc + ';">' + cat.label + '</span>';
+    // Bloc tags
+    if (cat.blocs && cat.blocs.length > 0) {
+        h += '<div class="cat-header__blocs">';
+        for (var bi = 0; bi < cat.blocs.length; bi++) {
+            h += '<span class="cat-header__bloc">' + escapeHtml(cat.blocs[bi]) + '</span>';
+        }
+        h += '</div>';
+    }
+    // Alert badge
+    if (alerts > 0) {
+        h += '<span class="cat-header__alert-badge">\u26A0 ' + alerts + '</span>';
+    }
+    // Health bar
+    h += '<div class="cat-header__health-bar"><div class="cat-header__health-fill" style="width:' + Math.min(hScore, 100) + '%;background:' + hc + ';"></div></div>';
+    h += '<span class="cat-header__health-score" style="color:' + hc + ';">' + Math.round(hScore) + '</span>';
+    // Chevron
+    h += '<span class="cat-header__chevron">\u25BC</span>';
+    h += '</div>';
+
+    // Body
+    h += '<div class="cat-body' + (isOpen ? ' cat-body--open' : '') + '" id="cat-body-' + cat.id + '">';
+
+    // Stat cards grid
+    h += '<div class="stat-grid">';
+    for (var si = 0; si < cat.stats.length; si++) {
+        h += renderStatCard(cat.stats[si], nation);
+    }
+    h += '</div>';
+
+    h += '</div>'; // end cat-body
+    h += '</div>'; // end cat-section
+    return h;
+}
+
+function renderStatCard(stat, nation) {
+    var raw = nation[stat.key];
+    var numVal = (raw !== null && raw !== undefined) ? Number(raw) : 50;
+    if (isNaN(numVal)) numVal = 50;
+    var inv = stat.inverted || false;
+    var hc = healthColor(numVal, inv);
+    var hcRaw = healthColorRaw(numVal, inv);
+
+    var displayVal = getDisplayValue(stat, nation);
+
+    // Trend
+    var trendHTML = '';
+    if (previousTickData) {
+        var histKey = stat.key === 'GDP' ? 'gdp' : stat.key;
+        var prevVal = previousTickData[histKey];
+        if (prevVal !== null && prevVal !== undefined && raw !== null && raw !== undefined) {
+            var delta = Number(raw) - Number(prevVal);
+            if (Math.abs(delta) >= 0.01) {
+                var tDir = inv ? -delta : delta;
+                var tColor = tDir > 0 ? 'var(--n-green)' : 'var(--n-red)';
+                trendHTML = '<span class="stat-card__trend" style="color:' + tColor + ';">' + (tDir > 0 ? '\u25B2' : '\u25BC') + '</span>';
+            }
+        }
+    }
+
+    // Tag (e.g. inflation label)
+    var tagHTML = '';
+    if (stat.key === 'inflation' && raw !== null && raw !== undefined) {
+        var label = getInflationLabel(raw);
+        if (label) {
+            tagHTML = '<span class="stat-card__tag" style="color:var(--n-green);background:var(--n-green-dim);border:1px solid rgba(74,222,128,0.2);">' + label + '</span>';
+        }
+    }
+
+    // Sparkline
+    var sparkData = sparklineHistory[stat.key] || null;
+    var sparkHTML = buildSparklineSVG(sparkData, hcRaw);
+
+    // Rank
+    var rank = calculateRanking(stat.key, raw, inv);
+    var rankHTML = buildRankBar(rank);
+
+    // Alert (stat below 15 effective)
+    var effective = inv ? 100 - numVal : numVal;
+    var isAlert = effective < 15;
+
+    // Effect dot
+    var effectCount = (statEffectsByKey[stat.key] || []).length;
+
+    var h = '<div class="stat-card" data-stat-key="' + stat.key + '" style="border-left-color:' + hcRaw + ';">';
+
+    // Alert triangle
+    if (isAlert) h += '<div class="stat-card__alert-tri"></div>';
+
+    // Top row
+    h += '<div class="stat-card__top">';
+    h += '<div class="stat-card__name-area">';
+    if (effectCount > 0) h += '<span class="stat-card__effect-dot" title="' + effectCount + ' active effect' + (effectCount !== 1 ? 's' : '') + '"></span>';
+    h += '<span class="stat-card__name">' + escapeHtml(stat.name) + '</span>';
+    h += trendHTML;
+    h += tagHTML;
+    h += '</div>';
+    h += '<div class="stat-card__value-area">';
+    h += '<span class="stat-card__sparkline">' + sparkHTML + '</span>';
+    h += '<span class="stat-card__value" style="color:' + hc + ';">' + displayVal + '</span>';
+    h += '</div></div>';
+
+    // Bottom row
+    h += '<div class="stat-card__bottom">';
+    h += '<span class="stat-card__desc">' + escapeHtml(stat.desc || '') + '</span>';
+    h += rankHTML;
+    h += '</div>';
+
+    // Alert message
+    if (isAlert) {
+        h += '<div class="stat-card__alert-msg">\u26A0 Critical \u2014 stat at ' + Math.round(numVal) + (inv ? ' (inverted: ' + Math.round(effective) + ' effective)' : '') + '</div>';
+    }
+
+    // Affected-by panel
+    h += '<div class="stat-card__abp" id="abp-' + stat.key + '"></div>';
+
+    h += '</div>';
+    return h;
+}
+
+// ===== CLICK HANDLERS =====
+
+function attachHandlers() {
+    // Section toggles
+    var headers = document.querySelectorAll('.cat-header[data-cat]');
+    for (var i = 0; i < headers.length; i++) {
+        headers[i].addEventListener('click', function() {
+            toggleSection(this.getAttribute('data-cat'));
+        });
+    }
+
+    // Health grid cells → scroll to category
+    var cells = document.querySelectorAll('.nation-health-cell[data-scroll-cat]');
+    for (var i = 0; i < cells.length; i++) {
+        cells[i].addEventListener('click', function() {
+            var catId = this.getAttribute('data-scroll-cat');
+            // Open the section if closed
+            if (!isSectionOpen(catId)) toggleSection(catId);
+            var el = document.querySelector('.cat-header[data-cat="' + catId + '"]');
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    }
+
+    // Stat card click → affected-by panel
+    var cards = document.querySelectorAll('.stat-card[data-stat-key]');
+    for (var i = 0; i < cards.length; i++) {
+        cards[i].addEventListener('click', handleStatCardClick);
+    }
+}
+
+function handleStatCardClick(e) {
+    var card = this;
+    var statKey = card.getAttribute('data-stat-key');
+    var panel = document.getElementById('abp-' + statKey);
+    if (!panel) return;
+
+    var isOpen = card.classList.contains('stat-card--expanded');
+
+    // Accordion: close all
+    var allExpanded = document.querySelectorAll('.stat-card--expanded');
+    for (var i = 0; i < allExpanded.length; i++) {
+        allExpanded[i].classList.remove('stat-card--expanded');
+        var p = allExpanded[i].querySelector('.stat-card__abp');
+        if (p) p.innerHTML = '';
+    }
+
+    if (isOpen) return;
+
+    card.classList.add('stat-card--expanded');
+    panel.innerHTML = buildAffectedByContent(statKey);
+}
+
+function buildAffectedByContent(statKey) {
+    var effects = statEffectsByKey[statKey] || [];
+    if (effects.length === 0) {
+        return '<div class="abp-empty">No active effects</div>';
+    }
+    var h = '<div class="abp-title">Affected By</div>';
+    for (var i = 0; i < effects.length; i++) {
+        var eff = effects[i];
+        var arrow = eff.direction === 'up' ? '&#9650;' : '&#9660;';
+        var arrowClass = eff.direction === 'up' ? 'abp-arrow--up' : 'abp-arrow--down';
+        var typeClass = 'abp-type--' + eff.type.toLowerCase().replace(/ /g, '-');
+        h += '<div class="abp-row">';
+        h += '<span class="abp-name">' + escapeHtml(eff.name) + '</span>';
+        h += '<span class="abp-arrow ' + arrowClass + '">' + arrow + '</span>';
+        h += '<span class="abp-type ' + typeClass + '">' + escapeHtml(eff.type) + '</span>';
+        h += '</div>';
+    }
+    return h;
 }
 
 </script>
