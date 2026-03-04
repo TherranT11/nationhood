@@ -36,6 +36,8 @@
     --your-party-bg: #2a2410;
     --stat-card-border-top: #333;
     --tag-bg: #252525;
+    --bg-danger-subtle: #2a1a1a;
+    --bg-success-subtle: #1a2a1a;
 }
 
 body.light-mode {
@@ -72,6 +74,8 @@ body.light-mode {
     --your-party-bg: #faf5e0;
     --stat-card-border-top: #d0d0d0;
     --tag-bg: #e8e8e8;
+    --bg-danger-subtle: #fde8e8;
+    --bg-success-subtle: #e8f5e9;
 }
 
 body {
