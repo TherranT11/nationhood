@@ -320,6 +320,7 @@
     color: var(--dtxt-secondary); display: flex; align-items: center; gap: 4px;
   }
   .cabinet-row__party-tag { font-size: 8px; font-weight: 700; padding: 1px 4px; }
+  .cabinet-row__approval { font-size: 9px; font-weight: 600; margin-left: auto; }
 
   /* ── Deadlines ── */
   .deadline-row {
@@ -1029,10 +1030,12 @@ function renderGovernment(nation, coalition, ministries, allParties, hog, govTyp
         const name = `${(m.minister_first_name || '')[0] || ''}. ${m.minister_last_name || ''}`;
         const pAbbr = m.factions?.abbreviation || '';
         const pColor = m.factions?.party_color || 'var(--dblue)';
+        const appr = Math.round(m.minister_approval ?? 50);
+        const apprColor = appr >= 60 ? 'var(--dgreen)' : appr >= 40 ? 'var(--dtxt-secondary)' : appr >= 25 ? 'var(--damber)' : 'var(--dred)';
         return `
           <div class="cabinet-row">
             <span class="cabinet-row__ministry">${key.charAt(0).toUpperCase() + key.slice(1)}</span>
-            <span class="cabinet-row__holder">${escapeHtml(name)} <span class="cabinet-row__party-tag" style="background:${pColor}22;color:${pColor}">${escapeHtml(pAbbr)}</span></span>
+            <span class="cabinet-row__holder">${escapeHtml(name)} <span class="cabinet-row__party-tag" style="background:${pColor}22;color:${pColor}">${escapeHtml(pAbbr)}</span> <span class="cabinet-row__approval" style="color:${apprColor}">${appr}%</span></span>
           </div>`;
     }).join('');
 
