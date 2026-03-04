@@ -39,8 +39,8 @@ import { getPartyIconSVG } from './js/party-icons.js';
  * - Only coalition (invited) parties see support options
  * - A party can only support ONE coalition at a time
  * - Proposer auto-supports their own coalition
- * - Instant formation: ALL coalition members support + 51%+ seats + all ministries assigned
- * - Tick resolution: half+ coalition members support + 51%+ seats → best qualifying wins
+ * - Instant formation: ALL coalition members support + majority seats + all ministries assigned
+ * - Tick resolution: half+ coalition members support + majority seats → best qualifying wins
  * - If no coalition qualifies after tick: extend 1 tick, stability -1, all parties lose 1d3 approval
  */
 
@@ -712,7 +712,7 @@ async function loadFormationsList() {
         <div class="create-proposal-section" id="create-proposal-section">
             <div style="font-size: 1rem; color: #ffcc00; font-weight: bold; margin-bottom: 4px;">Propose a Government</div>
             <div style="font-size: 0.82rem; color: #888; margin-bottom: 16px;">
-                Select which parties will form the coalition government. You need 51%+ of seats to form a government.
+                Select which parties will form the coalition government. You need ${GAME_CONFIG.MAJORITY_SEATS}+ seats to form a government.
             </div>
 
             ${!canPropose ? `
@@ -741,7 +741,7 @@ async function loadFormationsList() {
                 <div class="proposal-seat-preview" id="proposal-seat-preview">
                     Coalition seats: <span class="preview-seats" id="preview-seats">${mySeats}</span> / ${totalLegislatureSeats}
                     (<span id="preview-pct">${totalLegislatureSeats ? Math.round((mySeats / totalLegislatureSeats) * 100) : 0}</span>%)
-                    <span id="preview-threshold" style="margin-left: 8px; font-size: 0.8rem; color: #888;">— needs 51%</span>
+                    <span id="preview-threshold" style="margin-left: 8px; font-size: 0.8rem; color: #888;">— needs ${GAME_CONFIG.MAJORITY_SEATS} seats</span>
                 </div>
                 <button class="action-btn" style="max-width: 300px; margin: 0 auto; display: block;" onclick="createProposal()">
                     Submit Proposal
@@ -757,7 +757,7 @@ async function loadFormationsList() {
                     const partyIds = f.party_ids || [];
                     const coalitionSeats = getCoalitionSeats(partyIds);
                     const coalitionPct = getCoalitionSeatPct(partyIds);
-                    const meetsThreshold = coalitionPct >= 51;
+                    const meetsThreshold = coalitionSeats >= GAME_CONFIG.MAJORITY_SEATS;
                     const ideologies = getCoalitionIdeologies(partyIds);
                     const partyChips = partyIds.map((pid, pIdx) => {
                         const p = allParties.find(x => x.id === pid);
@@ -817,12 +817,12 @@ function updateSeatPreview() {
     const allIds = [currentFaction.id, ...proposalSelectedParties.filter(p => p !== currentFaction.id)];
     const seats = getCoalitionSeats(allIds);
     const pct = totalLegislatureSeats ? Math.round((seats / totalLegislatureSeats) * 100) : 0;
-    const meets = pct >= 51;
+    const meets = seats >= GAME_CONFIG.MAJORITY_SEATS;
 
     previewSeats.textContent = seats;
     previewSeats.className = 'preview-seats ' + (meets ? 'meets' : 'below');
     previewPct.textContent = pct;
-    previewThreshold.textContent = meets ? '✓ Meets 51% threshold' : '— needs 51%';
+    previewThreshold.textContent = meets ? `✓ Meets ${GAME_CONFIG.MAJORITY_SEATS}-seat threshold` : `— needs ${GAME_CONFIG.MAJORITY_SEATS} seats`;
     previewThreshold.style.color = meets ? '#4CAF50' : '#888';
 }
 
@@ -836,9 +836,8 @@ async function createProposal() {
 
     const partyIds = [currentFaction.id, ...proposalSelectedParties.filter(p => p !== currentFaction.id)];
     const coalitionSeats = getCoalitionSeats(partyIds);
-    const coalitionPct = totalLegislatureSeats ? Math.round((coalitionSeats / totalLegislatureSeats) * 100) : 0;
-    if (coalitionPct < 51) {
-        alert('Your coalition does not meet the 51% seat threshold. Add more parties.');
+    if (coalitionSeats < GAME_CONFIG.MAJORITY_SEATS) {
+        alert(`Your coalition does not meet the ${GAME_CONFIG.MAJORITY_SEATS}-seat threshold. Add more parties.`);
         return;
     }
 
@@ -945,7 +944,7 @@ function renderFormationDetail(formation) {
 
     const coalitionSeats = getCoalitionSeats(partyIds);
     const coalitionPct = getCoalitionSeatPct(partyIds);
-    const meetsThreshold = coalitionPct >= 51;
+    const meetsThreshold = coalitionSeats >= GAME_CONFIG.MAJORITY_SEATS;
     const ideologies = getCoalitionIdeologies(partyIds);
     const iAmInCoalition = partyIds.includes(currentFaction.id);
 
@@ -1028,7 +1027,7 @@ function renderFormationDetail(formation) {
         const supportCount = coalitionParties.filter(p => supportMap[p.id] === true).length;
         blockers.push(`${supportCount}/${coalitionParties.length} coalition members supporting.`);
     }
-    if (!meetsThreshold) blockers.push(`Coalition has ${coalitionPct}% of seats (need 51%).`);
+    if (!meetsThreshold) blockers.push(`Coalition has ${coalitionSeats} seats (need ${GAME_CONFIG.MAJORITY_SEATS}).`);
 
     const chatMsgsHTML = chatMessages.length > 0
         ? chatMessages.map(msg => renderChatMessage(msg)).join('')
@@ -1068,7 +1067,7 @@ function renderFormationDetail(formation) {
             <div class="formation-parties-row" id="formation-parties-row">${partyChipsHTML}</div>
             <div class="formation-stats">
                 <span class="formation-stat">Seats: <span class="stat-highlight ${meetsThreshold ? '' : 'below-threshold'}">${coalitionSeats} (${coalitionPct}%)</span></span>
-                <span class="formation-stat">Threshold: <span class="stat-highlight">${meetsThreshold ? '✓ Meets 51%' : '✗ Below 51%'}</span></span>
+                <span class="formation-stat">Threshold: <span class="stat-highlight">${meetsThreshold ? `✓ Meets ${GAME_CONFIG.MAJORITY_SEATS} seats` : `✗ Below ${GAME_CONFIG.MAJORITY_SEATS} seats`}</span></span>
             </div>
             ${ideologies.length > 0 ? `<div class="formation-ideologies">${renderIdeologyChips(ideologies)}</div>` : ''}
             ${isProposer ? `
@@ -1078,7 +1077,7 @@ function renderFormationDetail(formation) {
                 <div class="proposal-seat-preview" id="edit-seat-preview">
                     Coalition seats: <span class="preview-seats" id="edit-preview-seats">${coalitionSeats}</span> / ${totalLegislatureSeats}
                     (<span id="edit-preview-pct">${coalitionPct}</span>%)
-                    <span id="edit-preview-threshold" style="margin-left: 8px; font-size: 0.8rem; color: ${meetsThreshold ? '#4CAF50' : '#888'};">${meetsThreshold ? '✓ Meets 51% threshold' : '— needs 51%'}</span>
+                    <span id="edit-preview-threshold" style="margin-left: 8px; font-size: 0.8rem; color: ${meetsThreshold ? '#4CAF50' : '#888'};">${meetsThreshold ? `✓ Meets ${GAME_CONFIG.MAJORITY_SEATS}-seat threshold` : `— needs ${GAME_CONFIG.MAJORITY_SEATS} seats`}</span>
                 </div>
                 <button class="action-btn" style="max-width: 300px; margin: 8px auto 0; display: block;" onclick="saveCoalitionEdit('${formation.id}')">Save Changes</button>
             </div>
@@ -1237,8 +1236,8 @@ async function refreshFormButton(assignments) {
     }
 
     const coalitionParties = allParties.filter(p => activeFormationPartyIds.includes(p.id));
-    const coalitionPct = getCoalitionSeatPct(activeFormationPartyIds);
-    const meetsThreshold = coalitionPct >= 51;
+    const coalitionSeats = getCoalitionSeats(activeFormationPartyIds);
+    const meetsThreshold = coalitionSeats >= GAME_CONFIG.MAJORITY_SEATS;
 
     const pmPartyId = assignments.prime_minister || null;
     const isPMParty = pmPartyId === currentFaction.id;
@@ -1252,7 +1251,7 @@ async function refreshFormButton(assignments) {
         const supportCount = coalitionParties.filter(p => supportMap[p.id] === true).length;
         blockers.push(`${supportCount}/${coalitionParties.length} coalition members supporting.`);
     }
-    if (!meetsThreshold) blockers.push(`Coalition has ${coalitionPct}% of seats (need 51%).`);
+    if (!meetsThreshold) blockers.push(`Coalition has ${coalitionSeats} seats (need ${GAME_CONFIG.MAJORITY_SEATS}).`);
 
     const section = document.getElementById('form-gov-section');
     if (!section) return;
@@ -1417,12 +1416,12 @@ function updateEditSeatPreview() {
 
     const seats = getCoalitionSeats(editSelectedParties);
     const pct = totalLegislatureSeats ? Math.round((seats / totalLegislatureSeats) * 100) : 0;
-    const meets = pct >= 51;
+    const meets = seats >= GAME_CONFIG.MAJORITY_SEATS;
 
     previewSeats.textContent = seats;
     previewSeats.className = 'preview-seats ' + (meets ? 'meets' : 'below');
     previewPct.textContent = pct;
-    previewThreshold.textContent = meets ? '✓ Meets 51% threshold' : '— needs 51%';
+    previewThreshold.textContent = meets ? `✓ Meets ${GAME_CONFIG.MAJORITY_SEATS}-seat threshold` : `— needs ${GAME_CONFIG.MAJORITY_SEATS} seats`;
     previewThreshold.style.color = meets ? '#4CAF50' : '#888';
 }
 
@@ -1433,9 +1432,8 @@ async function saveCoalitionEdit(formationId) {
         return;
     }
     const editSeats = getCoalitionSeats(editSelectedParties);
-    const editPct = totalLegislatureSeats ? Math.round((editSeats / totalLegislatureSeats) * 100) : 0;
-    if (editPct < 51) {
-        alert('Your coalition does not meet the 51% seat threshold. Add more parties.');
+    if (editSeats < GAME_CONFIG.MAJORITY_SEATS) {
+        alert(`Your coalition does not meet the ${GAME_CONFIG.MAJORITY_SEATS}-seat threshold. Add more parties.`);
         return;
     }
 
