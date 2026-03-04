@@ -1,835 +1,706 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create Your Party | Nationhood Alpha</title>
-    
-        <link rel="stylesheet" href="css/createparty.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create Your Party | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root {
+  --bg-0: #0e0e0c;
+  --bg-1: #141412;
+  --bg-2: #1a1a17;
+  --bg-3: #1e1e1a;
+  --bg-4: #24241f;
+  --bg-5: #2c2c26;
+  --bg-hover: #282822;
+  --text-bright: #e2e0d6;
+  --text-primary: #c4c2b8;
+  --text-secondary: #8a8778;
+  --text-muted: #6b6a5e;
+  --text-dim: #4a4940;
+  --text-ghost: #333229;
+  --border-hair: rgba(255,255,255,0.04);
+  --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08);
+  --border-2: rgba(255,255,255,0.12);
+  --green: #5cb85c;
+  --green-faint: rgba(92,184,92,0.08);
+  --green-border: rgba(92,184,92,0.18);
+  --red: #d9534f;
+  --red-faint: rgba(217,83,79,0.08);
+  --red-border: rgba(217,83,79,0.18);
+  --amber: #c8a64e;
+  --amber-faint: rgba(200,166,78,0.08);
+  --amber-border: rgba(200,166,78,0.18);
+  --blue: #5b9bd5;
+  --blue-faint: rgba(91,155,213,0.08);
+  --blue-border: rgba(91,155,213,0.18);
+  --purple: #8b7ec8;
+  --purple-faint: rgba(139,126,200,0.08);
+  --purple-border: rgba(139,126,200,0.18);
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 16px;
+}
+
+.page-header {
+  text-align: center;
+  padding: 48px 0 16px;
+  max-width: 560px;
+}
+.page-header h1 {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.page-header .title {
+  font-family: var(--font-ui);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: 6px;
+}
+.page-header .subtitle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* Ideology summary bar */
+.ideo-bar {
+  width: 100%;
+  max-width: 560px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.ideo-bar .label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.ideo-bar .tags {
+  display: flex;
+  gap: 6px;
+}
+.ideo-tag {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--purple-faint);
+  color: var(--purple);
+  border: 1px solid var(--purple-border);
+}
+
+/* Form panel */
+.form-panel {
+  width: 100%;
+  max-width: 560px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  margin-bottom: 8px;
+}
+.form-panel__header {
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--border-hair);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.form-panel__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+.form-panel__title {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.form-panel__body {
+  padding: 12px;
+}
+
+/* Input styling */
+.input-group {
+  margin-bottom: 14px;
+}
+.input-group:last-child {
+  margin-bottom: 0;
+}
+.input-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.input-label .hint {
+  font-weight: 400;
+  color: var(--text-ghost);
+  text-transform: none;
+  letter-spacing: 0;
+}
+input[type="text"], textarea {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  color: var(--text-bright);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  transition: border-color 0.15s;
+}
+input[type="text"]:focus, textarea:focus {
+  outline: none;
+  border-color: var(--border-2);
+}
+textarea {
+  resize: vertical;
+  min-height: 48px;
+  font-family: var(--font-ui);
+}
+.char-counter {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--text-ghost);
+  margin-top: 3px;
+}
+.inline-fields {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 10px;
+}
+
+/* Color palette */
+.cp-color-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.cp-swatch {
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.15s;
+}
+.cp-swatch:hover { border-color: var(--border-2); }
+.cp-swatch.active { border-color: var(--text-bright); }
+.cp-hex-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.cp-hex-input {
+  width: 72px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  color: var(--text-bright);
+  padding: 4px 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.cp-hex-input:focus { outline: none; border-color: var(--border-2); }
+.cp-color-preview {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border-1);
+}
+
+/* Logo grid */
+.cp-logo-grid {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border-0);
+  padding: 6px;
+  background: var(--bg-1);
+}
+.cp-icon-cat {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-ghost);
+  margin: 4px 0 3px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--border-hair);
+}
+.cp-icon-cat:first-child { margin-top: 0; }
+.cp-icon-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-bottom: 3px;
+}
+.cp-icon-opt {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: var(--bg-3);
+  color: var(--text-secondary);
+  transition: border-color 0.15s, background 0.15s;
+}
+.cp-icon-opt:hover { background: var(--bg-hover); border-color: var(--border-1); }
+.cp-icon-opt.active { border-color: var(--amber); background: var(--amber-faint); }
+
+/* Preview card */
+.preview-card {
+  width: 100%;
+  max-width: 560px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  margin-bottom: 12px;
+}
+.preview-card__header {
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--border-hair);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.preview-card__body {
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.preview-logo {
+  width: 36px;
+  height: 36px;
+  background: var(--bg-4);
+  border: 1px solid var(--border-0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+.preview-info {
+  flex: 1;
+}
+.preview-name {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-bright);
+}
+.preview-abbr {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  display: inline-block;
+  margin-left: 6px;
+}
+.preview-desc {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Action buttons */
+.action-bar {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 48px;
+}
+.btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 7px 14px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-0);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.btn:hover {
+  background: var(--bg-4);
+  color: var(--text-secondary);
+  border-color: var(--border-1);
+}
+.btn-next {
+  background: var(--bg-3);
+}
+.btn-next:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.btn-next.ready {
+  background: var(--green-faint);
+  color: var(--green);
+  border-color: var(--green-border);
+}
+.btn-next.ready:hover {
+  background: rgba(92,184,92,0.14);
+}
+
+.error-msg {
+  width: 100%;
+  max-width: 560px;
+  background: var(--red-faint);
+  border: 1px solid var(--red-border);
+  border-left: 3px solid var(--red);
+  color: var(--red);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  display: none;
+}
+
+.loading-msg {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 80px 20px;
+}
+</style>
 </head>
 <body>
 
-<div class="container" id="main-container">
-    <h1 id="page-title">Create Your Party</h1>
-    <div class="subtitle" id="nation-subtitle">Loading...</div>
-    <div class="flavor-text" id="flavor-text">
-        Your political party will start fresh, with zero seats in the legislature but high hopes to earn votes.
+<div id="loading" class="loading-msg">AUTHENTICATING...</div>
+
+<div id="page-content" style="display:none;">
+  <div class="page-header">
+    <h1>Step 2 of 3</h1>
+    <div class="title">Build Your Party</div>
+    <div class="subtitle">Name your political party, choose a color and logo. This is how other players will see you.</div>
+  </div>
+
+  <div class="ideo-bar">
+    <span class="label">Ideology</span>
+    <div class="tags" id="ideo-tags"></div>
+  </div>
+
+  <div id="error-message" class="error-msg"></div>
+
+  <!-- Name + Abbreviation -->
+  <div class="form-panel">
+    <div class="form-panel__header">
+      <div class="form-panel__dot" style="background:var(--blue)"></div>
+      <span class="form-panel__title">Identity</span>
     </div>
-    
-    <!-- Autocracy Info (hidden by default) -->
-    <div id="autocracy-section" style="display: none;">
-        <div class="autocracy-info">
-            <div class="strongman-title">Strongman Leader</div>
-            <div class="strongman-name" id="strongman-name">—</div>
-            <div class="strongman-age" id="strongman-age">—</div>
-            <div class="strongman-desc">Rules until dead or deposed. All factions operate under the Strongman's regime.</div>
+    <div class="form-panel__body">
+      <div class="inline-fields">
+        <div class="input-group">
+          <label class="input-label">Party Name</label>
+          <input type="text" id="party-name" placeholder="The Progressive Workers Alliance" maxlength="100">
         </div>
-        <div class="autocracy-warning">
-            <strong>⚠️ Autocracy Rules:</strong><br>
-            • Factions are named automatically<br>
-            • Maximum 4 factions per autocracy<br>
-            • No elections — power is seized, not voted for<br>
-            • Seats are split evenly among all factions
+        <div class="input-group">
+          <label class="input-label">Abbreviation</label>
+          <input type="text" id="party-abbr" placeholder="PWA" maxlength="3" style="text-transform:uppercase; font-family:var(--font-mono); font-weight:700; letter-spacing:0.1em;">
+          <div class="char-counter"><span id="abbr-counter">0</span>/3</div>
         </div>
-        <div class="faction-number" id="faction-number">You will be Faction #1</div>
+      </div>
+      <div class="input-group">
+        <label class="input-label">Description <span class="hint">(optional, max 200 chars)</span></label>
+        <textarea id="party-desc" maxlength="200" rows="2" placeholder="A brief description of your party's platform..."></textarea>
+      </div>
     </div>
+  </div>
 
-    <!-- Ideologies Section (hidden for autocracy) -->
-    <div class="ideologies-section" id="ideologies-section">
-        <h2>Choose Your Ideologies</h2>
-        <div class="ideology-instruction">
-            Select <strong>exactly 2 ideologies</strong> from different axes. When you select one ideology, its opposite will be disabled.
-        </div>
-        
-        <!-- LIBERTY vs EQUALITY -->
-        <div class="ideology-axis">
-            <div class="axis-label">Liberty ↔ Equality</div>
-            <div class="ideology-pair">
-                <div class="ideology-card ideology-liberty" data-ideology="Liberty" data-opposite="Equality">
-                    <div class="ideology-name">Liberty</div>
-                    <div class="ideology-desc">The state of being free within society from oppressive restrictions imposed by authority on one's way of life, behavior, or political views.</div>
-                </div>
-                <div class="ideology-card ideology-equality" data-ideology="Equality" data-opposite="Liberty">
-                    <div class="ideology-name">Equality</div>
-                    <div class="ideology-desc">The belief that all individuals should be treated the same and have the same access to opportunities, rights, and legal protections regardless of their background.</div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- FREEDOM vs SECURITY -->
-        <div class="ideology-axis">
-            <div class="axis-label">Freedom ↔ Security</div>
-            <div class="ideology-pair">
-                <div class="ideology-card ideology-freedom" data-ideology="Freedom" data-opposite="Security">
-                    <div class="ideology-name">Freedom</div>
-                    <div class="ideology-desc">The power or right to act, speak, or think as one wants without hindrance or restraint, often focused on individual autonomy.</div>
-                </div>
-                <div class="ideology-card ideology-security" data-ideology="Security" data-opposite="Freedom">
-                    <div class="ideology-name">Security</div>
-                    <div class="ideology-desc">The state of being free from danger or threat, usually involving the protection of individuals and the collective through laws, enforcement, and infrastructure.</div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- INDIVIDUALISM vs COLLECTIVISM -->
-        <div class="ideology-axis">
-            <div class="axis-label">Individualism ↔ Collectivism</div>
-            <div class="ideology-pair">
-                <div class="ideology-card ideology-individualism" data-ideology="Individualism" data-opposite="Collectivism">
-                    <div class="ideology-name">Individualism</div>
-                    <div class="ideology-desc">The belief that personal self-reliance and independent action are the foundations of a thriving society. Favors private enterprise, personal responsibility, and minimal collective obligation.</div>
-                </div>
-                <div class="ideology-card ideology-collectivism" data-ideology="Collectivism" data-opposite="Individualism">
-                    <div class="ideology-name">Collectivism</div>
-                    <div class="ideology-desc">The belief that communal structures and shared institutions produce better outcomes for all. Favors public services, cooperative ownership, and collective decision-making over individual action.</div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- TRADITION vs PROGRESS -->
-        <div class="ideology-axis">
-            <div class="axis-label">Tradition ↔ Progress</div>
-            <div class="ideology-pair">
-                <div class="ideology-card ideology-tradition" data-ideology="Tradition" data-opposite="Progress">
-                    <div class="ideology-name">Tradition</div>
-                    <div class="ideology-desc">The transmission of customs, beliefs, and social patterns from generation to generation to maintain cultural continuity and stability.</div>
-                </div>
-                <div class="ideology-card ideology-progress" data-ideology="Progress" data-opposite="Tradition">
-                    <div class="ideology-name">Progress</div>
-                    <div class="ideology-desc">The movement toward a refined, improved, or otherwise desired state, typically involving social reform, scientific advancement, and the challenging of old norms.</div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- NATIONALISM vs GLOBALISM -->
-        <div class="ideology-axis">
-            <div class="axis-label">Nationalism ↔ Globalism</div>
-            <div class="ideology-pair">
-                <div class="ideology-card ideology-nationalism" data-ideology="Nationalism" data-opposite="Globalism">
-                    <div class="ideology-name">Nationalism</div>
-                    <div class="ideology-desc">An ideology that emphasizes loyalty and devotion to a specific nation, prioritizing its interests and culture above those of other nations or groups.</div>
-                </div>
-                <div class="ideology-card ideology-globalism" data-ideology="Globalism" data-opposite="Nationalism">
-                    <div class="ideology-name">Globalism</div>
-                    <div class="ideology-desc">The operation or planning of economic and foreign policy on a global basis, believing that nations should act together to solve worldwide challenges.</div>
-                </div>
-            </div>
-        </div>
+  <!-- Color -->
+  <div class="form-panel">
+    <div class="form-panel__header">
+      <div class="form-panel__dot" style="background:var(--amber)"></div>
+      <span class="form-panel__title">Color</span>
     </div>
-    
-    <!-- Party Naming Section (modified for autocracy) -->
-    <div class="naming-section" id="naming-section">
-        <h2 id="naming-title">Name Your Party</h2>
-        
-        <div class="selected-ideologies" style="margin-bottom: 25px;" id="ideology-display">
-            <span class="selected-label">Selected Ideologies:</span>
-            <div class="selected-tags" id="selected-tags">
-                <span style="color: #666;">None selected (pick 2)</span>
-            </div>
-        </div>
-
-        <div class="input-group" id="name-group">
-            <label class="input-label">Party Name</label>
-            <input type="text" id="party-name" placeholder="e.g., The Progressive Workers Alliance" maxlength="100">
-        </div>
-        
-        <div class="input-group" id="abbr-group">
-            <label class="input-label">Abbreviation (3 characters)</label>
-            <input type="text" id="party-abbr" placeholder="e.g., PWA" maxlength="3" style="text-transform: uppercase;">
-            <div class="char-counter"><span id="abbr-counter">0</span>/3</div>
-        </div>
-
-        <div class="input-group" id="color-group">
-            <label class="input-label">Party Color</label>
-            <div id="cp-color-palette" class="cp-color-palette"></div>
-            <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
-                <span style="color:#888;font-size:0.8rem;">Custom:</span>
-                <input type="text" id="cp-custom-hex" class="cp-hex-input" maxlength="7" placeholder="#E63946" oninput="onCpHexInput(this)">
-                <div id="cp-color-preview" class="cp-color-preview"></div>
-            </div>
-        </div>
-
-        <div class="input-group" id="logo-group">
-            <label class="input-label">Party Logo</label>
-            <div id="cp-logo-grid" class="cp-logo-grid"></div>
-        </div>
-
-        <div class="input-group" id="desc-group">
-            <label class="input-label">Party Description <span style="color:#666;font-weight:400;">(optional, max 200 chars)</span></label>
-            <textarea id="party-desc" maxlength="200" rows="2" placeholder="A brief description of your party's identity and platform..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid #444;border-radius:6px;color:#e0e0e0;padding:10px 12px;font-size:0.85rem;font-family:inherit;resize:vertical;box-sizing:border-box;"></textarea>
-        </div>
+    <div class="form-panel__body">
+      <div id="cp-color-palette" class="cp-color-palette"></div>
+      <div class="cp-hex-row">
+        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-ghost);text-transform:uppercase;letter-spacing:0.08em;">Custom</span>
+        <input type="text" id="cp-custom-hex" class="cp-hex-input" maxlength="7" placeholder="#E63946">
+        <div id="cp-color-preview" class="cp-color-preview"></div>
+      </div>
     </div>
+  </div>
 
-    <!-- Action Buttons -->
-    <div class="action-buttons">
-        <button class="btn btn-back" onclick="goBack()">← BACK</button>
-        <button class="btn btn-confirm" id="confirm-btn" onclick="createParty()" disabled>CONFIRM & CREATE PARTY</button>
+  <!-- Logo -->
+  <div class="form-panel">
+    <div class="form-panel__header">
+      <div class="form-panel__dot" style="background:var(--teal)"></div>
+      <span class="form-panel__title">Logo</span>
     </div>
-    
-    <div id="error-message" class="error" style="display: none;"></div>
+    <div class="form-panel__body">
+      <div id="cp-logo-grid" class="cp-logo-grid"></div>
+    </div>
+  </div>
+
+  <!-- Preview -->
+  <div class="preview-card" id="preview-card" style="display:none;">
+    <div class="preview-card__header">
+      <div class="form-panel__dot" style="background:var(--green)"></div>
+      <span class="form-panel__title">Preview</span>
+    </div>
+    <div class="preview-card__body">
+      <div class="preview-logo" id="preview-logo"></div>
+      <div class="preview-info">
+        <span class="preview-name" id="preview-name"></span>
+        <span class="preview-abbr" id="preview-abbr"></span>
+        <div class="preview-desc" id="preview-desc"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="action-bar">
+    <button class="btn" onclick="goBack()">&#x25C0; BACK</button>
+    <button class="btn btn-next" id="btn-next" disabled onclick="proceed()">SELECT NATION &#x25B6;</button>
+  </div>
 </div>
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { PARTY_ICONS, PARTY_COLOR_PALETTE, DEFAULT_PARTY_ICON, getPartyIconSVG, getDefaultPartyColor, colorDistance } from './js/party-icons.js';
-import { PM_FIRST_NAMES, PM_LAST_NAMES } from './js/game-common.js';
+import { PARTY_ICONS, PARTY_COLOR_PALETTE, DEFAULT_PARTY_ICON, getPartyIconSVG, getDefaultPartyColor } from './js/party-icons.js';
 import { escapeHtml } from './js/utils.js';
 
-function generateLeader() {
-    const first = PM_FIRST_NAMES[Math.floor(Math.random() * PM_FIRST_NAMES.length)];
-    const last = PM_LAST_NAMES[Math.floor(Math.random() * PM_LAST_NAMES.length)];
-    const age = 35 + Math.floor(Math.random() * 20); // 35-54
-    return { first, last, age };
-}
+const urlParams = new URLSearchParams(window.location.search);
+const ideology1 = urlParams.get('ideology1');
+const ideology2 = urlParams.get('ideology2');
+
 let currentUser = null;
 let _cpSelectedColor = null;
 let _cpSelectedLogo = DEFAULT_PARTY_ICON;
-    let selectedNation = null;
-    let selectedIdeologies = [];
-    let isAutocracy = false;
-    let nationData = null;
-    let factionNumber = 1;
-    
-    // Sangreza National Front faction names
-    const AUTOCRACY_FACTION_NAMES = [
-        'Security Directorate',
-        'Vanguard Front',
-        'Committee for State Security',
-        'Solidarity Wing',
-        'National Oversight Commission',
-        'Department of Public Order',
-        'Command Council',
-        'National Defense League',
-        'Sovereignty Bloc',
-        'Strategy & Logistics Group',
-        'Patriotic Union',
-        'Central Secretariat',
-        'Administrative Cadre',
-        'General Assembly of Labor',
-        'Planning & Development Board',
-        'Technocratic Circle',
-        'Foreign Affairs Bureau',
-        'Civic Renewal Society',
-        'Industrial Cooperation Group',
-        'Scientific Advancement Front'
-    ];
 
-    // Ideology → axis mapping for client-side fallback
-   const IDEOLOGY_AXIS_MAP = {
-    'Liberty':        { axis: 'liberty_equality',           dir: -1 },
-    'Equality':       { axis: 'liberty_equality',           dir:  1 },
-    'Tradition':      { axis: 'tradition_progress',         dir: -1 },
-    'Progress':       { axis: 'tradition_progress',         dir:  1 },
-    'Security':       { axis: 'security_freedom',           dir: -1 },
-    'Freedom':        { axis: 'security_freedom',           dir:  1 },
-    'Globalism':      { axis: 'globalism_nationalism',      dir: -1 },
-    'Nationalism':    { axis: 'globalism_nationalism',      dir:  1 },
-    'Individualism':  { axis: 'individualism_collectivism', dir: -1 },
-    'Collectivism':   { axis: 'individualism_collectivism', dir:  1 }
-};
-    
-    const urlParams = new URLSearchParams(window.location.search);
-    const nationParam = urlParams.get('nation');
-    
-    async function init() {
-        const { data: { user } } = await _supabase.auth.getUser();
-        if (!user) {
-            window.location.href = "login.html";
-            return;
-        }
-        currentUser = user;
-        
-        // Check if user already has a party
-        const { data: existingParty } = await _supabase
-            .from('factions')
-            .select('*, needs_rebuild')
-            .eq('id', currentUser.id)
-            .eq('faction_type', 'party')
-            .single();
+async function init() {
+  const { data: { user } } = await _supabase.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+  currentUser = user;
 
-        if (existingParty && existingParty.nation_id) {
-            if (existingParty.needs_rebuild) {
-                // Party survived a revolution — show rebuild banner, allow editing
-                const rebuildBanner = document.createElement('div');
-                rebuildBanner.style.cssText = 'background:linear-gradient(135deg,#2a1a00,#1a1200);border:2px solid #ff9800;border-radius:12px;padding:20px;margin-bottom:24px;text-align:center;';
-                rebuildBanner.innerHTML = '<div style="font-size:1.8rem;margin-bottom:8px;">&#x1F3DB;</div>'
-                    + '<div style="font-size:1.1rem;color:#ff9800;font-weight:bold;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Rebuild Your Party</div>'
-                    + '<div style="font-size:0.85rem;color:var(--text-secondary);line-height:1.5;">Your party survived the revolution! Update your party name, ideology, and platform for the new democratic era.</div>';
-                const form = document.querySelector('.main-container') || document.querySelector('form') || document.body;
-                form.insertBefore(rebuildBanner, form.firstChild);
-            } else {
-                showError('You already have a party in ' + existingParty.nation + '. You can only have one party.');
-                document.getElementById('confirm-btn').disabled = true;
-                return;
-            }
-        }
-        
-        if (!nationParam) {
-            showError('No nation specified. Please select a nation first.');
-            return;
-        }
-        
-        // Map URL slugs back to proper nation names
-        const slugToName = {
-            'melizea': 'Melizea',
-            'avelia': 'Avelia',
-            'sangreza': 'Sangreza',
-            'montequilla': 'Montequilla',
-            'sanestrella': 'San Estrella',
-            'palvera': 'Palvera'
-        };
-        selectedNation = slugToName[nationParam.toLowerCase()] || nationParam.charAt(0).toUpperCase() + nationParam.slice(1);
-        document.getElementById('nation-subtitle').textContent = `Joining ${selectedNation}`;
-        
-        // Fetch nation data to check government type
-        const { data: nation, error: nationError } = await _supabase
-            .from('nations')
-            .select('*')
-            .eq('name', selectedNation)
-            .single();
-        
-        if (nationError || !nation) {
-            showError('Nation not found: ' + selectedNation);
-            return;
-        }
-        
-        nationData = nation;
-        
-        // Check government type
-        if (nation.government_type === 'Autocracy') {
-            isAutocracy = true;
-            await setupAutocracyMode(nation);
-        } else {
-            setupDemocracyMode();
-        }
-    }
-    
-    /**
-     * Configure the page for autocracy mode
-     */
-    async function setupAutocracyMode(nation) {
-        const container = document.getElementById('main-container');
-        container.classList.add('autocracy');
-        
-        // Update titles
-        document.getElementById('page-title').textContent = 'Join the Regime';
-        document.getElementById('flavor-text').textContent = 
-            `${selectedNation} is ruled by an iron fist. Your faction will operate within the Sangreza National Front, vying for influence and power.`;
-        
-        // Show autocracy info
-        document.getElementById('autocracy-section').style.display = 'block';
-        document.getElementById('strongman-name').textContent = 
-            (nation.head_of_state_first_name || 'Unknown') + ' ' + (nation.head_of_state_last_name || 'Leader');
-        document.getElementById('strongman-age').textContent = 
-            'Age ' + (nation.head_of_state_age || '??');
-        
-        // Count existing factions to determine number and taken names
-        const { data: existingFactions, count } = await _supabase
-            .from('factions')
-            .select('id, faction_name', { count: 'exact' })
-            .eq('nation_id', nation.id)
-            .eq('faction_type', 'party')
-            .eq('is_npc', false);
-        
-        factionNumber = (count || 0) + 1;
-        
-        if (factionNumber > nation.max_parties) {
-            showError(`${selectedNation} already has the maximum ${nation.max_parties} factions. You cannot join.`);
-            document.getElementById('confirm-btn').disabled = true;
-            return;
-        }
-        
-        document.getElementById('faction-number').textContent = `You will be Faction #${factionNumber}`;
-        
-        // Build list of taken names
-        const takenNames = (existingFactions || []).map(f => f.faction_name);
-        
-        // Replace party name input with dropdown
-        const nameGroup = document.getElementById('name-group');
-        const availableNames = AUTOCRACY_FACTION_NAMES.filter(n => !takenNames.includes(n));
-        
-        nameGroup.innerHTML = `
-            <label class="input-label">Choose Your Faction</label>
-            <select id="party-name" style="
-                width: 100%;
-                padding: 12px;
-                background: #1a1a1a;
-                border: 2px solid #444;
-                color: white;
-                border-radius: 4px;
-                font-size: 1rem;
-                box-sizing: border-box;
-            ">
-                <option value="">— Select a faction name —</option>
-                ${availableNames.map(n => `<option value="${n}">${n}</option>`).join('')}
-            </select>
-            <div style="font-size: 0.75rem; color: #666; margin-top: 5px;">
-                ${takenNames.length > 0 ? 'Already taken: ' + takenNames.map(n => escapeHtml(n)).join(', ') : 'All faction names are available'}
-            </div>
-        `;
-        
-        // Auto-generate abbreviation from selection
-        document.getElementById('party-name').addEventListener('change', function() {
-            const name = this.value;
-            if (name) {
-                // Generate abbreviation from first letters of each word
-                const abbr = name.split(/[\s&]+/).filter(w => w.length > 0).map(w => w[0].toUpperCase()).join('').slice(0, 3);
-                document.getElementById('party-abbr').value = abbr;
-                document.getElementById('abbr-counter').textContent = abbr.length;
-            } else {
-                document.getElementById('party-abbr').value = '';
-                document.getElementById('abbr-counter').textContent = '0';
-            }
-            validateAutocracyForm();
-        });
-        
-        // Hide abbreviation input (auto-generated)
-        document.getElementById('party-abbr').disabled = true;
-        
-        // Hide ideology section
-        document.getElementById('ideologies-section').style.display = 'none';
-        document.getElementById('ideology-display').style.display = 'none';
-        document.getElementById('naming-title').textContent = 'Your Faction';
-        
-        document.getElementById('confirm-btn').textContent = 'JOIN THE REGIME';
-        setupPartyIdentityPicker();
-    }
+  // Check if user already has a party
+  const { data: faction } = await _supabase
+    .from('factions').select('id, nation_id').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
+  if (faction && faction.nation_id) {
+    window.location.href = 'dashboard.html';
+    return;
+  }
 
-    function validateAutocracyForm() {
-        const name = document.getElementById('party-name').value;
-        document.getElementById('confirm-btn').disabled = !name;
-    }
-    
-    /**
-     * Configure the page for democracy mode (default behavior)
-     */
-    function setupDemocracyMode() {
-        setupIdeologySelection();
-        setupInputValidation();
-        setupPartyIdentityPicker();
-    }
-    
-    function setupIdeologySelection() {
-        const cards = document.querySelectorAll('.ideology-card');
-        
-        cards.forEach(card => {
-            card.addEventListener('click', () => {
-                if (card.classList.contains('disabled')) return;
-                
-                const ideology = card.getAttribute('data-ideology');
-                const opposite = card.getAttribute('data-opposite');
-                
-                if (card.classList.contains('selected')) {
-                    card.classList.remove('selected');
-                    selectedIdeologies = selectedIdeologies.filter(i => i !== ideology);
-                    
-                    const oppositeCard = document.querySelector(`[data-ideology="${opposite}"]`);
-                    if (oppositeCard) {
-                        oppositeCard.classList.remove('disabled');
-                    }
-                } else {
-                    if (selectedIdeologies.length >= 2) return;
-                    
-                    card.classList.add('selected');
-                    selectedIdeologies.push(ideology);
-                    
-                    const oppositeCard = document.querySelector(`[data-ideology="${opposite}"]`);
-                    if (oppositeCard) {
-                        oppositeCard.classList.add('disabled');
-                    }
-                }
-                
-                updateSelectedDisplay();
-                validateForm();
-            });
-        });
-    }
-    
-    function updateSelectedDisplay() {
-        const tagsContainer = document.getElementById('selected-tags');
-        
-        if (selectedIdeologies.length === 0) {
-            tagsContainer.innerHTML = '<span style="color: #666;">None selected (pick 2)</span>';
-        } else {
-            tagsContainer.innerHTML = selectedIdeologies.map(ideology => 
-                `<span class="ideology-tag ${ideology.toLowerCase()}">${ideology}</span>`
-            ).join('');
-        }
-    }
-    
-    function setupInputValidation() {
-        const partyName = document.getElementById('party-name');
-        const partyAbbr = document.getElementById('party-abbr');
-        const abbrCounter = document.getElementById('abbr-counter');
-        
-        partyName.addEventListener('input', validateForm);
-        
-        partyAbbr.addEventListener('input', () => {
-            partyAbbr.value = partyAbbr.value.toUpperCase();
-            abbrCounter.textContent = partyAbbr.value.length;
-            validateForm();
-        });
-    }
-    
-    function validateForm() {
-        const partyName = document.getElementById('party-name').value.trim();
-        const partyAbbr = document.getElementById('party-abbr').value.trim();
-        const confirmBtn = document.getElementById('confirm-btn');
-        
-        const isValid = 
-            selectedIdeologies.length === 2 &&
-            partyName.length > 0 &&
-            partyAbbr.length === 3;
-        
-        confirmBtn.disabled = !isValid;
-    }
+  if (!ideology1 || !ideology2) {
+    window.location.href = 'faction-select.html';
+    return;
+  }
 
-    /**
-     * Client-side fallback: directly insert faction_ideology row
-     * if the RPC call fails. Uses the same ±30 logic.
-     */
-    async function initializeIdeologyFallback(factionId, ideo1, ideo2) {
-        const m1 = IDEOLOGY_AXIS_MAP[ideo1];
-        const m2 = IDEOLOGY_AXIS_MAP[ideo2];
-        if (!m1 || !m2) {
-            console.error('Unknown ideology tags:', ideo1, ideo2);
-            return;
-        }
+  // Show ideology tags
+  document.getElementById('ideo-tags').innerHTML =
+    `<span class="ideo-tag">${escapeHtml(ideology1)}</span><span class="ideo-tag">${escapeHtml(ideology2)}</span>`;
 
-        const row = {
-            faction_id: factionId,
-            liberty_equality: 0,
-            tradition_progress: 0,
-            security_freedom: 0,
-            globalism_nationalism: 0,
-            individualism_collectivism: 0,
-            declared_axis_1: m1.axis,
-            declared_direction_1: m1.dir,
-            declared_axis_2: m2.axis,
-            declared_direction_2: m2.dir
-        };
+  setupColorPicker();
+  setupLogoPicker();
+  setupValidation();
 
-        // Set ±30 on the two declared axes
-        row[m1.axis] = 30 * m1.dir;
-        row[m2.axis] = 30 * m2.dir;
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('page-content').style.display = 'flex';
+  document.getElementById('page-content').style.flexDirection = 'column';
+  document.getElementById('page-content').style.alignItems = 'center';
+  document.getElementById('page-content').style.width = '100%';
+}
 
-        const { error } = await _supabase
-            .from('faction_ideology')
-            .upsert(row, { onConflict: 'faction_id' });
+function setupColorPicker() {
+  const paletteEl = document.getElementById('cp-color-palette');
+  const defaultColor = getDefaultPartyColor(0);
+  _cpSelectedColor = defaultColor;
+  paletteEl.innerHTML = PARTY_COLOR_PALETTE.map(c => {
+    const isActive = c.hex === defaultColor;
+    return `<div class="cp-swatch ${isActive ? 'active' : ''}" data-hex="${c.hex}" style="background:${c.hex};" title="${c.label}" onclick="onCpSelectColor('${c.hex}')"></div>`;
+  }).join('');
+  const hexInput = document.getElementById('cp-custom-hex');
+  if (hexInput) hexInput.value = defaultColor;
+  const preview = document.getElementById('cp-color-preview');
+  if (preview) preview.style.background = defaultColor;
+}
 
-        if (error) {
-            console.error('Ideology fallback insert also failed:', error);
-        } else {
-            console.log('Ideology initialized via client-side fallback');
-        }
-    }
+function setupLogoPicker() {
+  const logoEl = document.getElementById('cp-logo-grid');
+  let html = '';
+  const categories = {};
+  for (const [key, icon] of Object.entries(PARTY_ICONS)) {
+    if (!categories[icon.category]) categories[icon.category] = [];
+    categories[icon.category].push({ key, ...icon });
+  }
+  for (const [cat, icons] of Object.entries(categories)) {
+    html += `<div class="cp-icon-cat">${cat}</div><div class="cp-icon-row">`;
+    html += icons.map(ic => {
+      const isActive = ic.key === DEFAULT_PARTY_ICON;
+      return `<div class="cp-icon-opt ${isActive ? 'active' : ''}" data-icon="${ic.key}" title="${ic.label}" onclick="onCpSelectLogo('${ic.key}')">${getPartyIconSVG(ic.key, 18)}</div>`;
+    }).join('');
+    html += `</div>`;
+  }
+  logoEl.innerHTML = html;
+}
 
-    // Ideology opposition penalty (inline version for seeding)
-    // Mirrors ideologyOppositionMultiplier() from ideology.js
-    function _seedOppositionMult(factionIdeo, bloc) {
-        const AXES = ['liberty_equality','tradition_progress','security_freedom','globalism_nationalism','individualism_collectivism'];
-        let opposed = 0, aligned = 0;
-        for (const ax of AXES) {
-            const ps = factionIdeo[ax] || 0;
-            const bs = bloc['axis_' + ax] ?? 50;
-            if (Math.abs(ps) < 20 || Math.abs(bs - 50) < 10) continue;
-            if ((ps < 0 ? 'L' : 'R') === (bs < 50 ? 'L' : 'R')) aligned++; else opposed++;
-        }
-        if (opposed >= 2) return 0.70;
-        if (opposed === 1) return 0.80;
-        if (aligned === 0) return 0.90;
-        return 1.0;
-    }
+function setupValidation() {
+  const nameInput = document.getElementById('party-name');
+  const abbrInput = document.getElementById('party-abbr');
+  const descInput = document.getElementById('party-desc');
+  const abbrCounter = document.getElementById('abbr-counter');
 
-    // Seed faction_bloc_approval rows for a new faction with ideology-aware starting values
-    async function seedBlocApprovalsForFaction(factionId, nationId) {
-        try {
-            const { data: blocs, error: blocErr } = await _supabase
-                .from('voter_blocs')
-                .select('id, axis_liberty_equality, axis_tradition_progress, axis_security_freedom, axis_globalism_nationalism, axis_individualism_collectivism')
-                .eq('nation_id', nationId)
-                .eq('is_active', true);
+  nameInput.addEventListener('input', () => { validateForm(); updatePreview(); });
+  descInput.addEventListener('input', updatePreview);
+  abbrInput.addEventListener('input', () => {
+    abbrInput.value = abbrInput.value.toUpperCase();
+    abbrCounter.textContent = abbrInput.value.length;
+    validateForm();
+    updatePreview();
+  });
+}
 
-            if (blocErr) {
-                console.warn('Failed to fetch voter blocs for approval seeding:', blocErr.message);
-                return;
-            }
-            if (!blocs || blocs.length === 0) {
-                console.log('No active voter blocs found — skipping approval seeding.');
-                return;
-            }
+function validateForm() {
+  const name = document.getElementById('party-name').value.trim();
+  const abbr = document.getElementById('party-abbr').value.trim();
+  const btn = document.getElementById('btn-next');
+  const valid = name.length > 0 && abbr.length === 3;
+  btn.disabled = !valid;
+  btn.classList.toggle('ready', valid);
+}
 
-            // Load faction ideology for opposition penalty
-            const { data: ideo } = await _supabase.from('faction_ideology')
-                .select('liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-                .eq('faction_id', factionId)
-                .maybeSingle();
+function updatePreview() {
+  const name = document.getElementById('party-name').value.trim();
+  const abbr = document.getElementById('party-abbr').value.trim();
+  const desc = document.getElementById('party-desc').value.trim();
+  const card = document.getElementById('preview-card');
 
-            const rows = blocs.map(bloc => {
-                const mult = ideo ? _seedOppositionMult(ideo, bloc) : 1.0;
-                return {
-                    faction_id: factionId,
-                    bloc_id: bloc.id,
-                    preference_score: Math.round(40 * mult * 100) / 100
-                };
-            });
+  if (!name) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
 
-            const { error: upsertErr } = await _supabase
-                .from('faction_bloc_approval')
-                .upsert(rows, { onConflict: 'faction_id,bloc_id', ignoreDuplicates: true });
+  const logoEl = document.getElementById('preview-logo');
+  logoEl.innerHTML = getPartyIconSVG(_cpSelectedLogo, 22);
+  logoEl.style.color = _cpSelectedColor || 'var(--text-secondary)';
 
-            if (upsertErr) {
-                console.warn('Failed to seed bloc approvals:', upsertErr.message);
-            } else {
-                console.log(`Seeded ${rows.length} bloc approval rows for faction ${factionId} (ideology-adjusted)`);
-            }
-        } catch (e) {
-            console.warn('Bloc approval seeding non-blocking error:', e);
-        }
-    }
+  const nameEl = document.getElementById('preview-name');
+  nameEl.textContent = name;
 
-    async function createParty() {
-        const confirmBtn = document.getElementById('confirm-btn');
-        confirmBtn.disabled = true;
-        confirmBtn.textContent = 'CREATING...';
-        
-        // Clear state cache since we're about to change faction data
-        sessionStorage.removeItem('nationhood_state');
-        
-        try {
-            const nation = nationData;
+  const abbrEl = document.getElementById('preview-abbr');
+  if (abbr) {
+    abbrEl.textContent = abbr;
+    abbrEl.style.display = 'inline-block';
+    abbrEl.style.background = _cpSelectedColor ? _cpSelectedColor + '22' : 'var(--blue-faint)';
+    abbrEl.style.color = _cpSelectedColor || 'var(--blue)';
+    abbrEl.style.border = '1px solid ' + (_cpSelectedColor ? _cpSelectedColor + '44' : 'var(--blue-border)');
+  } else {
+    abbrEl.style.display = 'none';
+  }
 
-            // Fetch current shard tick for founded_tick
-            const { data: _shardData } = await _supabase
-                .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-            const currentTick = _shardData?.current_tick || 0;
+  const descEl = document.getElementById('preview-desc');
+  descEl.textContent = desc || '';
+}
 
-            if (isAutocracy) {
-                // --- AUTOCRACY JOIN ---
-                const partyName = document.getElementById('party-name').value;
-                const partyAbbr = document.getElementById('party-abbr').value;
-                
-                if (!partyName) { showError('Please select a faction name.'); confirmBtn.disabled = false; confirmBtn.textContent = 'JOIN THE REGIME'; return; }
-                
-                // Update faction record
-                const cpDesc = document.getElementById('party-desc')?.value?.trim() || null;
-                const leader = generateLeader();
-                const { error: updateError } = await _supabase
-                    .from('factions')
-                    .upsert({
-                        id: currentUser.id,
-                        faction_type: 'party',
-                        faction_name: partyName,
-                        nation_id: nation.id,
-                        nation: selectedNation,
-                        abbreviation: partyAbbr,
-                        ideology_value_1: null,
-                        ideology_value_2: null,
-                        needs_rebuild: false,
-                        party_color: _cpSelectedColor || getDefaultPartyColor(factionNumber - 1),
-                        party_logo: _cpSelectedLogo || DEFAULT_PARTY_ICON,
-                        party_description: cpDesc,
-                        leader_first_name: leader.first,
-                        leader_last_name: leader.last,
-                        leader_age: leader.age,
-                        founded_tick: currentTick,
-                        action_points: 5,
-                        seats: 0,
-                        approval_rating: null
-                    });
+function onCpSelectColor(hex) {
+  _cpSelectedColor = hex;
+  document.querySelectorAll('.cp-swatch').forEach(el => {
+    el.classList.toggle('active', el.dataset.hex === hex);
+  });
+  const hexInput = document.getElementById('cp-custom-hex');
+  if (hexInput) hexInput.value = hex;
+  const preview = document.getElementById('cp-color-preview');
+  if (preview) preview.style.background = hex;
+  updatePreview();
+}
 
-                if (updateError) {
-                    if (updateError.code === '23505') {
-                        showError('That faction name was just taken by another player. Please refresh and choose another.');
-                        confirmBtn.disabled = false;
-                        confirmBtn.textContent = 'JOIN THE REGIME';
-                        return;
-                    }
-                    throw updateError;
-                }
-                
-                // Call autocracy join to handle seat distribution
-                const { data: joinResult, error: joinError } = await _supabase
-                    .rpc('autocracy_join_nation', {
-                        p_faction_id: currentUser.id,
-                        p_nation_id: nation.id
-                    });
-                
-                if (joinError) throw joinError;
-                
-                if (joinResult && !joinResult.success) {
-                    throw new Error(joinResult.message);
-                }
-                
-                const seatsAssigned = joinResult?.seats_assigned || 0;
+function onCpHexInput(el) {
+  let val = el.value.trim();
+  if (!val.startsWith('#')) val = '#' + val;
+  if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+    _cpSelectedColor = val;
+    document.querySelectorAll('.cp-swatch').forEach(s => {
+      s.classList.toggle('active', s.dataset.hex.toUpperCase() === val.toUpperCase());
+    });
+    const preview = document.getElementById('cp-color-preview');
+    if (preview) preview.style.background = val;
+    updatePreview();
+  }
+}
 
-                // Initialize faction_ideology row with neutral scores for autocracy factions
-                try {
-                    await _supabase.from('faction_ideology').upsert({
-                        faction_id: currentUser.id,
-                        liberty_equality: 0,
-                        tradition_progress: 0,
-                        security_freedom: 0,
-                        globalism_nationalism: 0,
-                        individualism_collectivism: 0
-                    }, { onConflict: 'faction_id' });
-                } catch (e) { console.warn('Ideology init (autocracy) non-blocking:', e); }
+function onCpSelectLogo(key) {
+  _cpSelectedLogo = key;
+  document.querySelectorAll('.cp-icon-opt').forEach(el => {
+    el.classList.toggle('active', el.dataset.icon === key);
+  });
+  updatePreview();
+}
 
-                // Seed bloc approval rows for the new faction
-                await seedBlocApprovalsForFaction(currentUser.id, nation.id);
+function goBack() {
+  window.location.href = 'faction-select.html';
+}
 
-                alert(`🏛️ ${partyName} has joined the regime in ${selectedNation}!\n\nYou have been assigned ${seatsAssigned} seats.\n${factionNumber === 1 ? '\nAs the first faction, you serve under the Strongman.' : ''}`);
-                window.location.href = 'nation.html';
-                
-            } else {
-                // --- DEMOCRACY JOIN ---
-                const partyName = document.getElementById('party-name').value.trim();
-                const partyAbbr = document.getElementById('party-abbr').value.trim();
-                
-                const demoDesc = document.getElementById('party-desc')?.value?.trim() || null;
-                const demoLeader = generateLeader();
-                const { error: updateError } = await _supabase
-                    .from('factions')
-                    .upsert({
-                        id: currentUser.id,
-                        faction_type: 'party',
-                        faction_name: partyName,
-                        nation_id: nation.id,
-                        nation: selectedNation,
-                        ideology_value_1: selectedIdeologies[0],
-                        ideology_value_2: selectedIdeologies[1],
-                        abbreviation: partyAbbr,
-                        seats: 0,
-                        needs_rebuild: false,
-                        party_color: _cpSelectedColor || getDefaultPartyColor(factionNumber - 1),
-                        party_logo: _cpSelectedLogo || DEFAULT_PARTY_ICON,
-                        party_description: demoDesc,
-                        leader_first_name: demoLeader.first,
-                        leader_last_name: demoLeader.last,
-                        leader_age: demoLeader.age,
-                        founded_tick: currentTick,
-                        action_points: 5,
-                        approval_rating: null
-                    });
-                
-                if (updateError) throw updateError;
+function proceed() {
+  const name = document.getElementById('party-name').value.trim();
+  const abbr = document.getElementById('party-abbr').value.trim();
+  const desc = document.getElementById('party-desc').value.trim();
 
-                // Initialize ideology spectrum — try RPC first, fallback to direct insert
-                const { error: ideoError } = await _supabase.rpc('initialize_faction_ideology', {
-                    p_faction_id: currentUser.id,
-                    p_ideology_1: selectedIdeologies[0],
-                    p_ideology_2: selectedIdeologies[1]
-                });
-                if (ideoError) {
-                    console.warn('Ideology RPC failed, using client-side fallback:', ideoError);
-                    await initializeIdeologyFallback(currentUser.id, selectedIdeologies[0], selectedIdeologies[1]);
-                }
+  if (!name || abbr.length !== 3) return;
 
-                // Seed bloc approval rows for the new faction
-                await seedBlocApprovalsForFaction(currentUser.id, nation.id);
+  // Store party data in sessionStorage for select-nation to use
+  const partyData = {
+    name: name,
+    abbreviation: abbr,
+    description: desc,
+    color: _cpSelectedColor,
+    logo: _cpSelectedLogo,
+    ideology1: ideology1,
+    ideology2: ideology2
+  };
+  sessionStorage.setItem('nationhood_pending_party', JSON.stringify(partyData));
+  window.location.href = 'select-nation.html';
+}
 
-                alert(`🎉 ${partyName} has been created! Welcome to the ${selectedNation} political scene.`);
-                window.location.href = 'nation.html';
-            }
-            
-        } catch (error) {
-            console.error('Error creating party:', error);
-            showError('Error creating party: ' + error.message);
-            confirmBtn.disabled = false;
-            confirmBtn.textContent = isAutocracy ? 'JOIN THE REGIME' : 'CONFIRM & CREATE PARTY';
-        }
-    }
-    
-    function showError(message) {
-        const errorDiv = document.getElementById('error-message');
-        errorDiv.textContent = message;
-        errorDiv.style.display = 'block';
-    }
-    
-    function goBack() {
-        window.location.href = 'dashboard.html';
-    }
+// Add oninput handler for custom hex
+document.getElementById('cp-custom-hex').addEventListener('input', function() { onCpHexInput(this); });
 
-    function setupPartyIdentityPicker() {
-        // Populate color palette
-        const paletteEl = document.getElementById('cp-color-palette');
-        if (paletteEl) {
-            // Determine default color based on existing party count
-            const defaultIdx = factionNumber - 1;
-            const defaultColor = getDefaultPartyColor(defaultIdx);
-            _cpSelectedColor = defaultColor;
-            paletteEl.innerHTML = PARTY_COLOR_PALETTE.map(c => {
-                const isActive = c.hex === defaultColor;
-                return `<div class="cp-swatch ${isActive ? 'active' : ''}" data-hex="${c.hex}" style="background:${c.hex};" title="${c.label}" onclick="onCpSelectColor('${c.hex}')"></div>`;
-            }).join('');
-            const hexInput = document.getElementById('cp-custom-hex');
-            if (hexInput) hexInput.value = defaultColor;
-            const preview = document.getElementById('cp-color-preview');
-            if (preview) preview.style.background = defaultColor;
-        }
+init();
 
-        // Populate logo grid
-        const logoEl = document.getElementById('cp-logo-grid');
-        if (logoEl) {
-            let html = '';
-            const categories = {};
-            for (const [key, icon] of Object.entries(PARTY_ICONS)) {
-                if (!categories[icon.category]) categories[icon.category] = [];
-                categories[icon.category].push({ key, ...icon });
-            }
-            for (const [cat, icons] of Object.entries(categories)) {
-                html += `<div class="cp-icon-cat">${cat}</div><div class="cp-icon-row">`;
-                html += icons.map(ic => {
-                    const isActive = ic.key === DEFAULT_PARTY_ICON;
-                    return `<div class="cp-icon-opt ${isActive ? 'active' : ''}" data-icon="${ic.key}" title="${ic.label}" onclick="onCpSelectLogo('${ic.key}')">${getPartyIconSVG(ic.key, 22)}</div>`;
-                }).join('');
-                html += `</div>`;
-            }
-            logoEl.innerHTML = html;
-        }
-    }
-
-    function onCpSelectColor(hex) {
-        _cpSelectedColor = hex;
-        document.querySelectorAll('.cp-swatch').forEach(el => {
-            el.classList.toggle('active', el.dataset.hex === hex);
-        });
-        const hexInput = document.getElementById('cp-custom-hex');
-        if (hexInput) hexInput.value = hex;
-        const preview = document.getElementById('cp-color-preview');
-        if (preview) preview.style.background = hex;
-    }
-
-    function onCpHexInput(input) {
-        let val = input.value.trim();
-        if (!val.startsWith('#')) val = '#' + val;
-        if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
-            _cpSelectedColor = val;
-            document.querySelectorAll('.cp-swatch').forEach(el => {
-                el.classList.toggle('active', el.dataset.hex.toUpperCase() === val.toUpperCase());
-            });
-            const preview = document.getElementById('cp-color-preview');
-            if (preview) preview.style.background = val;
-        }
-    }
-
-    function onCpSelectLogo(key) {
-        _cpSelectedLogo = key;
-        document.querySelectorAll('.cp-icon-opt').forEach(el => {
-            el.classList.toggle('active', el.dataset.icon === key);
-        });
-    }
-
-    init();
-
-// Expose functions for HTML onclick/onchange handlers
 window.goBack = goBack;
-window.createParty = createParty;
+window.proceed = proceed;
 window.onCpSelectColor = onCpSelectColor;
-window.onCpHexInput = onCpHexInput;
 window.onCpSelectLogo = onCpSelectLogo;
 </script>
-
 </body>
 </html>
