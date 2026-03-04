@@ -1307,10 +1307,10 @@ async function advanceTick(supabase) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
-        // Autocracy seat rebalancing: if factions were deleted and seats are vacant,
+        // Seat rebalancing: if factions were disbanded and seats are vacant,
         // proportionally redistribute the empty seats across remaining factions.
-        if (isAutocracy(nation)) {
-            const seatResult = await rebalanceAutocracySeats(supabase, nation);
+        {
+            const seatResult = await rebalanceVacantSeats(supabase, nation);
             if (seatResult) {
                 summary.seatRebalancing = summary.seatRebalancing || [];
                 summary.seatRebalancing.push(seatResult);

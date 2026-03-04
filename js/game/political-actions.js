@@ -2102,16 +2102,14 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
 // ==================== AUTOCRACY SEAT REBALANCING ====================
 
 /**
- * In autocracies, if a faction is deleted (or for any reason the sum of all
+ * If a faction is disbanded (or for any reason the sum of all
  * faction seats is less than the nation's total_seats), proportionally
  * redistribute the vacant seats across the remaining factions.
  *
  * Uses the Largest Remainder method (same as allocateSeatsByVotes in
  * election-simulation.js) with existing seat counts as weights.
  */
-export async function rebalanceAutocracySeats(supabase, nation) {
-    if (!isAutocracy(nation)) return null;
-
+export async function rebalanceVacantSeats(supabase, nation) {
     const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
 
     const { data: factions, error } = await supabase
@@ -2127,7 +2125,7 @@ export async function rebalanceAutocracySeats(supabase, nation) {
 
     if (vacantSeats <= 0) return null; // No vacant seats
 
-    console.log(`[rebalanceAutocracySeats] ${nation.name}: ${vacantSeats} vacant seat(s) detected (${currentSum}/${totalSeats}). Redistributing.`);
+    console.log(`[rebalanceVacantSeats] ${nation.name}: ${vacantSeats} vacant seat(s) detected (${currentSum}/${totalSeats}). Redistributing.`);
 
     // Proportional redistribution using Largest Remainder (Hamilton) method
     // Weight = each faction's current seats
@@ -2177,7 +2175,7 @@ export async function rebalanceAutocracySeats(supabase, nation) {
     }
 
     if (updates.length > 0) {
-        console.log(`[rebalanceAutocracySeats] ${nation.name}: Seats rebalanced:`,
+        console.log(`[rebalanceVacantSeats] ${nation.name}: Seats rebalanced:`,
             updates.map(u => `${u.name}: ${u.oldSeats}→${u.newSeats}`).join(', '));
     }
 
@@ -4692,10 +4690,10 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         throw new Error(`Disband is on cooldown for ${remaining} more tick${remaining !== 1 ? 's' : ''}.`);
     }
 
-    // 2. Fetch nation for autocracy/ruling checks
+    // 2. Fetch nation for autocracy/ruling checks + seat redistribution
     const { data: nation } = await supabase
         .from('nations')
-        .select('ruling_faction_id, government_type')
+        .select('id, name, ruling_faction_id, government_type, total_seats')
         .eq('id', nationId)
         .single();
 
@@ -4823,6 +4821,11 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
             result: { faction_name: faction?.faction_name || 'Unknown' }
         });
     if (logErr) console.warn('disbandParty: could not log action:', logErr);
+
+    // 8. Immediately redistribute vacant seats to remaining parties
+    if (nation) {
+        await rebalanceVacantSeats(supabase, nation);
+    }
 
     return { result: 'disbanded' };
 }
