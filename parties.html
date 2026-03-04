@@ -703,7 +703,7 @@ async function renderAutocracyParties(el, f, n) {
             }
 
             stewardActionsHtml = `
-                <div class="reg-section">
+                <div class="reg-section" id="steward-actions-section">
                     <div class="reg-section-title">STEWARD ACTIONS</div>
                     <div class="reg-steward-actions">
                         ${isGeneral ? `<button class="reg-steward-action-btn reg-steward-action-general" id="steward-showofforce-btn" ${stAP < 3 ? 'disabled' : ''}>
@@ -1039,7 +1039,7 @@ async function renderAutocracyParties(el, f, n) {
             }).join('');
 
             demandLoyaltyHtml = `
-                <div class="reg-section">
+                <div class="reg-section" id="demand-loyalty-section">
                     <div class="reg-section-title">DEMAND LOYALTY</div>
                     <div class="reg-demand-panel">
                         <div class="reg-demand-cost">2 AP &middot; Target one player</div>
@@ -5503,6 +5503,14 @@ async function renderParties() {
     }
 
     renderAttack();
+
+    // Scroll to the section specified in the URL hash (from dashboard quick actions)
+    if (window.location.hash) {
+        const target = document.getElementById(window.location.hash.substring(1));
+        if (target) {
+            setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+        }
+    }
 
 }
 

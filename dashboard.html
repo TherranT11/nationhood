@@ -1070,10 +1070,10 @@ function renderQuickActions(faction, nation, coalition, govType, isPresidential,
 
     // Core actions available to all
     const actions = [
-        { name: 'Hold Rally', cost: 3, href: 'parties.html' },
-        { name: 'Voter Outreach', cost: 4, href: 'parties.html' },
-        { name: 'Promise', cost: 2, href: 'parties.html' },
-        { name: 'Attack', cost: 3, href: 'parties.html' },
+        { name: 'Hold Rally', cost: 3, href: 'parties.html#rally-container' },
+        { name: 'Voter Outreach', cost: 4, href: 'parties.html#outreach-container' },
+        { name: 'Promise', cost: 2, href: 'parties.html#promise-maker-container' },
+        { name: 'Attack', cost: 3, href: 'parties.html#attack-container' },
     ];
 
     const isAuto = govType === 'Autocracy';
@@ -1081,30 +1081,30 @@ function renderQuickActions(faction, nation, coalition, govType, isPresidential,
 
     if (isAuto) {
         const isStrongman = faction.id === nation.ruling_faction_id;
-        actions.push({ name: 'Decree', cost: 2, href: 'government.html' });
-        actions.push({ name: 'Purge Dissidents', cost: 4, href: 'government.html' });
+        actions.push({ name: 'Decree', cost: 2, href: 'government.html#cabinet-section' });
+        actions.push({ name: 'Purge Dissidents', cost: 4, href: 'government.html#cabinet-section' });
         if (isStrongman) {
-            actions.push({ name: 'Demand Loyalty', cost: 2, href: 'parties.html' });
+            actions.push({ name: 'Demand Loyalty', cost: 2, href: 'parties.html#demand-loyalty-section' });
         } else if (mySteward) {
             // Steward-specific action based on steward_type
             const stewardActions = {
-                general:              { name: 'Show of Force',  cost: 3 },
-                security_chief:       { name: 'Surveillance',   cost: 1 },
-                party_chairman:       { name: 'Mobilize',       cost: 3 },
+                general:              { name: 'Show of Force',  cost: 3, hash: '#steward-actions-section' },
+                security_chief:       { name: 'Surveillance',   cost: 1, hash: '#steward-actions-section' },
+                party_chairman:       { name: 'Mobilize',       cost: 3, hash: '#steward-actions-section' },
             };
             const sa = stewardActions[mySteward.steward_type];
             if (sa) {
-                actions.push({ name: sa.name, cost: sa.cost, href: 'parties.html' });
+                actions.push({ name: sa.name, cost: sa.cost, href: 'parties.html' + sa.hash });
             }
         }
     } else if (isPresidential) {
         const isPresident = isPM;
-        actions.push({ name: 'Executive Order', cost: 5, href: 'government.html', disabled: !isPresident });
-        actions.push({ name: 'Impeachment', cost: 7, href: 'government.html' });
+        actions.push({ name: 'Executive Order', cost: 5, href: 'government.html#cabinet-section', disabled: !isPresident });
+        actions.push({ name: 'Impeachment', cost: 7, href: 'government.html#impeachment' });
     } else {
-        actions.push({ name: 'Vote of No Confidence', cost: 5, href: 'government.html' });
+        actions.push({ name: 'Vote of No Confidence', cost: 5, href: 'government.html#no-confidence' });
         if (isPM) {
-            actions.push({ name: 'Call Early Elections', cost: 0, href: 'government.html' });
+            actions.push({ name: 'Call Early Elections', cost: 0, href: 'government.html#early-elections' });
         }
     }
 

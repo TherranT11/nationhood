@@ -388,7 +388,7 @@ async function renderGovernmentPage() {
                     <div class="info-row"><span class="info-label">Majority Threshold</span><span class="info-value">${GAME_CONFIG.MAJORITY_SEATS} Seats</span></div>
                 </div>
 
-                <div class="section-header">Cabinet</div>
+                <div class="section-header" id="cabinet-section">Cabinet</div>
                 ${renderCabinet(ministries, coalition)}
 
                 <div class="section-header">Current Parliamentary Makeup</div>
@@ -415,6 +415,14 @@ async function renderGovernmentPage() {
 
         // Load admin chat messages
         loadAdminChat();
+
+        // Scroll to the section specified in the URL hash (from dashboard quick actions)
+        if (window.location.hash) {
+            const target = document.getElementById(window.location.hash.substring(1));
+            if (target) {
+                setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+            }
+        }
 
     } catch (error) {
         console.error('Error loading government data:', error);
@@ -1996,7 +2004,7 @@ function renderNoConfidenceButton(coalition) {
     const mySeats = allPartySeats[currentFaction.id] || currentFaction.seats || 0;
     if (mySeats < 1) {
         return `
-            <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
+            <div id="no-confidence" style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
                 <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" disabled>
                     ⚡ Vote of No Confidence
                 </button>
@@ -2005,7 +2013,7 @@ function renderNoConfidenceButton(coalition) {
     }
 
     return `
-        <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
+        <div id="no-confidence" style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
             <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="fileNoConfidence()" id="no-confidence-btn">
                 ⚡ Vote of No Confidence <span class="ap-cost">${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP</span>
             </button>
@@ -2174,7 +2182,7 @@ function renderImpeachmentButton() {
     const mySeats = allPartySeats[currentFaction.id] || currentFaction.seats || 0;
     if (mySeats < 1) {
         return `
-            <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
+            <div id="impeachment" style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
                 <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" disabled>
                     ⚖ Impeach President
                 </button>
@@ -2183,7 +2191,7 @@ function renderImpeachmentButton() {
     }
 
     return `
-        <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
+        <div id="impeachment" style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
             <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="fileImpeachment()" id="impeach-btn">
                 ⚖ Impeach President <span class="ap-cost">${GAME_CONFIG.IMPEACHMENT_AP_COST} AP</span>
             </button>
@@ -2420,7 +2428,7 @@ function renderEarlyElectionsButton(coalition) {
     if (!isPMParty) return '';
 
     return `
-        <div style="text-align:center;margin-top:12px;">
+        <div id="early-elections" style="text-align:center;margin-top:12px;">
             <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="callEarlyElections()" id="early-elections-btn">
                 ⚡ Call Early Elections
             </button>
