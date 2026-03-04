@@ -8,7 +8,7 @@ import { isPresidentialRepublic } from './government-types.js';
 import { DIPLOMACY_CONFIG } from './diplomacy-constants.js';
 import { IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology } from './ideology.js';
 import { adjustMomentum, adjustMomentumAll, adjustGovernmentApprovalEvent } from './momentum.js';
-import { MINISTER_APPROVAL_CONFIG } from './stats.js';
+import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 import { resolveBudgetBill } from './budget.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { resolveNoConfidence } from './elections.js';
@@ -1293,6 +1293,8 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         energy: 'Ministry of Energy', transportation: 'Ministry of Transportation',
                         security: 'Ministry of Security'
                     };
+                    // Fetch full nation for stat baselines
+                    const { data: fullNation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
                     await supabase.from('ministries').update({
                         party_id: pm.party_id,
                         minister_first_name: pm.first_name,
@@ -1301,7 +1303,8 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         minister_approval: 50,
                         ministry_name: ministryNames[mKey] || mKey,
                         confirmation_status: 'confirmed',
-                        pending_minister: null
+                        pending_minister: null,
+                        stat_baselines: fullNation ? buildMinistryBaselines(mKey, fullNation) : {}
                     }).eq('id', ministry.id);
                 }
 

@@ -2665,19 +2665,37 @@ for (const [statKey, ministryKey] of Object.entries(STAT_TO_MINISTRY)) {
 }
 
 /**
- * Simplified approval system configuration.
+ * Build a stat_baselines object for a ministry: { statKey: currentValue, ... }
+ * Only includes stats with a non-zero direction sign (skips neutral stats like taxes).
+ */
+function buildMinistryBaselines(ministryKey, nation) {
+    const stats = MINISTRY_TO_STATS[ministryKey];
+    if (!stats) return {};
+    const baselines = {};
+    for (const statKey of stats) {
+        if (statDirectionSign(statKey) === 0) continue;
+        baselines[statKey] = Number(nation[statKey] ?? 50);
+    }
+    return baselines;
+}
+
+/**
+ * Delta-based approval system configuration.
  *
- * Minister approval drifts toward the average "performance" of their owned stats
- * each tick. Performance for a stat is its raw value (higher-is-better) or
- * 100 - value (lower-is-better). Neutral stats are skipped.
+ * Minister approval starts at 50 and moves based on how their owned stats
+ * change relative to their baseline (snapshot at appointment time).
+ * Pure delta model: ministers are judged on improvement, not inherited state.
  *
  * Government approval = avg(filled minister approvals) + vacancy penalty + event modifier.
  */
 const MINISTER_APPROVAL_CONFIG = {
-    // Per-tick drift rate: minister approval moves 15% of the gap toward target
-    DRIFT_RATE: 0.15,
+    // Per-tick sensitivity: how much each point of average delta moves approval
+    DELTA_SENSITIVITY: 0.6,
 
-    // New minister starts at 50% approval and drifts to match their stats
+    // Slow stagnation decay: if stats are flat, approval drifts down slightly per tick
+    STAGNATION_DECAY: -0.3,
+
+    // New minister starts at 50% approval
     NEW_MINISTER_APPROVAL: 50,
 
     // Firing a minister costs 1 AP and gives +3 to the event modifier
@@ -5498,6 +5516,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                         energy: 'Ministry of Energy', transportation: 'Ministry of Transportation',
                         security: 'Ministry of Security'
                     };
+                    // Fetch full nation for stat baselines
+                    const { data: fullNationForBaseline } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
                     await supabase.from('ministries').update({
                         party_id: pm.party_id,
                         minister_first_name: pm.first_name,
@@ -5506,7 +5526,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                         minister_approval: 50,
                         ministry_name: ministryNames[mKey] || mKey,
                         confirmation_status: 'confirmed',
-                        pending_minister: null
+                        pending_minister: null,
+                        stat_baselines: fullNationForBaseline ? buildMinistryBaselines(mKey, fullNationForBaseline) : {}
                     }).eq('id', ministry.id);
                 }
 
@@ -12862,15 +12883,19 @@ async function processMinistryActions(supabase, nation, currentTick) {
 // ==================== LAYER 1: PER-TICK MINISTER APPROVAL ====================
 
 /**
- * Drift-to-Performance minister approval model.
+ * Delta-based minister approval model.
  *
- * Each minister's approval drifts toward the average "performance" of their
- * owned stats. Performance = stat value for higher-is-better stats, or
- * (100 - stat value) for lower-is-better stats. Neutral stats are skipped.
+ * Each minister's approval moves based on how their owned stats have changed
+ * relative to their baseline (snapshot at appointment time). Ministers are
+ * judged on improvement/deterioration, not inherited state.
  *
- * approval += (targetApproval - currentApproval) × DRIFT_RATE
+ * For each stat: delta = (current - baseline) × directionSign
+ *   (positive delta = good direction, negative = bad direction)
+ * avgDelta = average of all deltas
+ * approval += avgDelta × DELTA_SENSITIVITY
+ * If avgDelta ≈ 0 (stagnation), apply a small decay.
  *
- * During government shutdown, a flat penalty is applied on top of the drift.
+ * Ministers without baselines get them auto-set to current values (migration path).
  *
  * @param {object} supabase
  * @param {object} nation - full nation row with current stat values
@@ -12883,7 +12908,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
 
     const { data: ministries } = await supabase
         .from('ministries')
-        .select('id, ministry_key, minister_approval, minister_first_name, party_id')
+        .select('id, ministry_key, minister_approval, minister_first_name, party_id, stat_baselines')
         .eq('nation_id', nation.id)
         .eq('is_active', true);
 
@@ -12898,24 +12923,43 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
         const ownedStats = MINISTRY_TO_STATS[ministry.ministry_key];
         if (!ownedStats || ownedStats.length === 0) continue;
 
-        // Calculate target approval = average performance of owned stats
-        let perfSum = 0;
-        let perfCount = 0;
+        // Auto-set baselines for ministers that don't have them yet (migration path)
+        let baselines = ministry.stat_baselines;
+        if (!baselines || Object.keys(baselines).length === 0) {
+            baselines = buildMinistryBaselines(ministry.ministry_key, nation);
+            await supabase.from('ministries')
+                .update({ stat_baselines: baselines })
+                .eq('id', ministry.id);
+        }
+
+        // Calculate average delta: how much each stat moved in the "good" direction
+        let deltaSum = 0;
+        let deltaCount = 0;
         for (const statKey of ownedStats) {
             const sign = statDirectionSign(statKey);
             if (sign === 0) continue; // skip neutral stats (taxes, etc.)
-            const value = Number(nation[statKey] ?? 50);
-            // Higher-is-better: performance = value. Lower-is-better: performance = 100 - value.
-            perfSum += sign === 1 ? value : (100 - value);
-            perfCount++;
+            const current = Number(nation[statKey] ?? 50);
+            const baseline = Number(baselines[statKey] ?? current);
+            // sign=1 (higher-is-better): improvement = current - baseline (positive = good)
+            // sign=-1 (lower-is-better): improvement = baseline - current (positive = good)
+            const delta = (current - baseline) * sign;
+            deltaSum += delta;
+            deltaCount++;
         }
 
-        if (perfCount === 0) continue;
-        const targetApproval = perfSum / perfCount;
+        if (deltaCount === 0) continue;
+        const avgDelta = deltaSum / deltaCount;
 
-        // Drift toward target
         const oldApproval = ministry.minister_approval ?? cfg.NEW_MINISTER_APPROVAL;
-        let newApproval = oldApproval + (targetApproval - oldApproval) * cfg.DRIFT_RATE;
+        let newApproval = oldApproval;
+
+        if (Math.abs(avgDelta) < 0.5) {
+            // Stagnation: stats haven't moved meaningfully — slow decay
+            newApproval += cfg.STAGNATION_DECAY;
+        } else {
+            // Apply delta-based movement
+            newApproval += avgDelta * cfg.DELTA_SENSITIVITY;
+        }
 
         // Government shutdown: slam a direct penalty per tick
         if (isShutdown) {
@@ -12932,7 +12976,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
             ministry_key: ministry.ministry_key,
             old: oldApproval,
             new: newApproval,
-            target: Math.round(targetApproval * 10) / 10,
+            avgDelta: Math.round(avgDelta * 10) / 10,
             delta: Math.round((newApproval - oldApproval) * 10) / 10
         });
     }
@@ -12940,7 +12984,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick, isShutdown
     if (results.length > 0) {
         const shutdownTag = isShutdown ? ' [SHUTDOWN]' : '';
         console.log(`[updateMinisterApprovals] ${nation.name}:${shutdownTag} ${results.map(r =>
-            `${r.ministry_key} ${r.old}→${r.new} (target=${r.target})`
+            `${r.ministry_key} ${r.old}→${r.new} (avgDelta=${r.avgDelta})`
         ).join(', ')}`);
     }
 
@@ -14132,13 +14176,18 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
         .eq('ministry_key', 'prime_minister').eq('is_active', true)
         .maybeSingle();
 
+    // Fetch full nation for stat baselines
+    const { data: nationForBaseline } = await supabase.from('nations').select('*').eq('id', nationId).single();
+    const pmBaselines = nationForBaseline ? buildMinistryBaselines('prime_minister', nationForBaseline) : {};
+
     if (pmMinistry) {
         await supabase.from('ministries').update({
             party_id: factionId,
             minister_first_name: candidate.first_name,
             minister_last_name: candidate.last_name,
             minister_age: candidate.age,
-            minister_approval: 50
+            minister_approval: 50,
+            stat_baselines: pmBaselines
         }).eq('id', pmMinistry.id);
     } else {
         await supabase.from('ministries').insert({
@@ -14150,7 +14199,8 @@ async function selectPMCandidate(supabase, candidateId, nationId, factionId, cur
             minister_first_name: candidate.first_name,
             minister_last_name: candidate.last_name,
             minister_age: candidate.age,
-            minister_approval: 50
+            minister_approval: 50,
+            stat_baselines: pmBaselines
         });
     }
 
