@@ -307,11 +307,15 @@
 /* ---------- Stat cards grid ---------- */
 .stat-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 8px;
+    max-width: 100%;
+}
+@media (min-width: 1200px) {
+    .stat-grid { grid-template-columns: repeat(6, 1fr); }
 }
 @media (max-width: 900px) {
-    .stat-grid { grid-template-columns: 1fr 1fr; }
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 600px) {
     .stat-grid { grid-template-columns: 1fr; }
