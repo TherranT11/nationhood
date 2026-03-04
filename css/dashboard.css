@@ -118,6 +118,26 @@ body {
     color: var(--accent);
     font-weight: bold;
 }
+.topbar-ap {
+    display: flex; align-items: center; gap: 4px;
+    background: var(--party-badge-bg); border: 1px solid var(--party-badge-border);
+    border-radius: 4px; padding: 4px 8px;
+}
+.topbar-ap__label {
+    font-size: 0.65rem; font-weight: 700; color: var(--text-secondary);
+    letter-spacing: 0.04em; margin-right: 2px;
+}
+.topbar-ap__pip {
+    display: inline-block; width: 5px; height: 12px; background: var(--amber, #ff9800);
+    border-radius: 1px;
+}
+.topbar-ap__pip--empty {
+    background: transparent; border: 1px solid var(--border-main, #444);
+}
+.topbar-ap__count {
+    font-size: 0.8rem; font-weight: 800; color: var(--amber, #ff9800);
+    margin-left: 3px; min-width: 12px; text-align: right;
+}
 .logout-btn {
     background: transparent; border: 1px solid var(--red); color: var(--red);
     padding: 4px 10px; cursor: pointer; border-radius: 4px; font-size: 0.7rem;
