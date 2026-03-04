@@ -96,22 +96,6 @@
   .banner__stat-val { color: var(--dtxt-secondary); font-weight: 600; }
   .banner__stat-val--up { color: var(--dgreen); }
   .banner__stat-val--down { color: var(--dred); }
-  .banner__ap {
-    display: flex; align-items: center; gap: 8px;
-    background: var(--dbg-3); border: 1px solid var(--dborder-0);
-    padding: 7px 12px; flex-shrink: 0;
-  }
-  .banner__ap-label {
-    font-family: var(--dfont-mono); font-size: 9px; font-weight: 600;
-    color: var(--dtxt-dim); letter-spacing: 0.06em; text-transform: uppercase;
-  }
-  .banner__ap-pips { display: flex; gap: 3px; }
-  .banner__ap-pip { width: 8px; height: 16px; background: var(--damber); }
-  .banner__ap-pip--empty { background: var(--dbg-5); border: 1px solid var(--dborder-0); }
-  .banner__ap-count {
-    font-family: var(--dfont-mono); font-size: 16px; font-weight: 800;
-    color: var(--damber); line-height: 1; min-width: 16px; text-align: right;
-  }
 
   /* ── Layout ── */
   .dashboard {
@@ -577,7 +561,6 @@ import { initPage, formatNumber } from './js/common.js';
 import { isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, loadSeats, fetchActiveCoalition, GAME_CONFIG } from './js/game-common.js';
 import { escapeHtml } from './js/utils.js';
 
-const MAX_AP = 6;
 
 // Palette helper for party colors
 const PARTY_COLORS = ['var(--dblue)', 'var(--dorange)', 'var(--dteal)', 'var(--dpurple)', 'var(--dgreen)', 'var(--dred)', 'var(--damber)'];
@@ -725,7 +708,6 @@ initPage('dashboard', async (state) => {
 
 function renderBanner(faction, coalition, seats, totalSeats) {
     const el = document.getElementById('dash-banner');
-    const ap = faction.action_points ?? 0;
     const momentum = faction.momentum ?? 0;
     const approval = Math.round(faction.approval_rating ?? 0);
     const treasury = faction.party_funds ?? 0;
@@ -747,13 +729,6 @@ function renderBanner(faction, coalition, seats, totalSeats) {
     const momClass = momentum > 0 ? 'banner__stat-val--up' : momentum < 0 ? 'banner__stat-val--down' : '';
     const momSign = momentum > 0 ? '+' : '';
 
-    let pipsHTML = '';
-    for (let i = 0; i < MAX_AP; i++) {
-        pipsHTML += i < ap
-            ? '<div class="banner__ap-pip"></div>'
-            : '<div class="banner__ap-pip banner__ap-pip--empty"></div>';
-    }
-
     el.innerHTML = `
       <div class="banner__inner">
         <div class="banner__left">
@@ -770,11 +745,6 @@ function renderBanner(faction, coalition, seats, totalSeats) {
               <span class="banner__stat"><span class="banner__stat-label">Treasury</span> <span class="banner__stat-val">${formatNumber(treasury)}</span></span>
             </div>
           </div>
-        </div>
-        <div class="banner__ap">
-          <div class="banner__ap-label">Action Points</div>
-          <div class="banner__ap-pips">${pipsHTML}</div>
-          <div class="banner__ap-count">${ap}</div>
         </div>
       </div>`;
     el.style.display = '';

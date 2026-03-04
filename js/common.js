@@ -277,6 +277,7 @@ export function renderTopBar(activeTab) {
             </div>
             <div class="top-bar-right">
                 <span class="party-badge" id="party-badge">…</span>
+                <span class="topbar-ap" id="topbar-ap"></span>
                 <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle" title="Toggle light/dark mode">☀️ Light</button>
                 <button class="logout-btn" onclick="handleLogout()">Abandon Session</button>
             </div>
@@ -470,6 +471,18 @@ export function updateTopBarInfo(faction, shard, nation) {
         } else {
             badge.textContent = '[No Party]';
         }
+    }
+
+    const apEl = document.getElementById('topbar-ap');
+    if (apEl && faction) {
+        const ap = faction.action_points ?? 0;
+        const maxPips = 10; // compact pip display
+        const filled = Math.min(ap, maxPips);
+        let pips = '';
+        for (let i = 0; i < maxPips; i++) {
+            pips += i < filled ? '<span class="topbar-ap__pip"></span>' : '<span class="topbar-ap__pip topbar-ap__pip--empty"></span>';
+        }
+        apEl.innerHTML = '<span class="topbar-ap__label">AP</span>' + pips + '<span class="topbar-ap__count">' + ap + '</span>';
     }
     
     const nationFlag = document.getElementById('nation-flag');
