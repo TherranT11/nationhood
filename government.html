@@ -3058,19 +3058,37 @@ function renderAdminCard(admin, isCurrent) {
     // Detail sections
     let detailHTML = '';
 
-    // Info grid
+    // Info grid — adapt labels for presidential vs parliamentary
+    const isPres = admin.government_type === 'Presidential';
+    const hogLabel = isPres ? 'President' : 'Head of State';
+    const hogName = isPres
+        ? (admin.president_name || admin.head_of_state || 'Unknown')
+        : (admin.head_of_state || 'Unknown');
+    const hogParty = isPres
+        ? (admin.president_party_name || admin.pm_party_name || '')
+        : '';
+
+    const govLeaderLabel = isPres ? 'Governing Party' : 'Prime Minister';
+    const govLeaderName = isPres
+        ? (admin.president_party_name || admin.pm_party_name || '—')
+        : (admin.prime_minister || 'Not yet selected');
+    const govLeaderSub = isPres
+        ? ''
+        : escapeHtml(admin.pm_party_name || '');
+
     detailHTML += `<div class="past-admin-detail-grid">
         <div class="pad-info-box">
-            <div class="pad-info-label">Head of State</div>
-            <div class="pad-info-value">${escapeHtml(admin.head_of_state || 'Unknown')}</div>
+            <div class="pad-info-label">${hogLabel}</div>
+            <div class="pad-info-value">${escapeHtml(hogName)}</div>
+            ${hogParty ? `<div class="pad-info-sub">${escapeHtml(hogParty)}</div>` : ''}
         </div>
         <div class="pad-info-box">
-            <div class="pad-info-label">Prime Minister</div>
-            <div class="pad-info-value">${escapeHtml(admin.prime_minister || 'Not yet selected')}</div>
-            <div class="pad-info-sub">${escapeHtml(admin.pm_party_name || '')}</div>
+            <div class="pad-info-label">${govLeaderLabel}</div>
+            <div class="pad-info-value">${escapeHtml(govLeaderName)}</div>
+            ${govLeaderSub ? `<div class="pad-info-sub">${govLeaderSub}</div>` : ''}
         </div>
         <div class="pad-info-box">
-            <div class="pad-info-label">Coalition</div>
+            <div class="pad-info-label">${isPres ? 'Party Seats' : 'Coalition'}</div>
             <div class="pad-info-value">${seatCount} / ${GAME_CONFIG.TOTAL_SEATS} seats</div>
             <div class="pad-info-sub">${durationText}${admin.end_reason ? ' &middot; Ended: ' + (END_REASON_LABELS[admin.end_reason] || admin.end_reason) : ''}</div>
         </div>
@@ -3183,7 +3201,9 @@ function renderAdminCard(admin, isCurrent) {
                         <span class="past-admin-date">${dateRange}</span>
                     </div>
                     <div class="past-admin-meta">
-                        PM: <span class="pm-name">${admin.prime_minister || 'TBD'}</span> &middot; ${admin.pm_party_name || ''}
+                        ${isPres
+                            ? `<span class="pm-name">${escapeHtml(admin.president_name || admin.head_of_state || 'TBD')}</span> &middot; ${escapeHtml(admin.president_party_name || admin.pm_party_name || '')}`
+                            : `PM: <span class="pm-name">${admin.prime_minister || 'TBD'}</span> &middot; ${admin.pm_party_name || ''}`}
                         ${partyList ? ` &middot; ${partyList}` : ''}
                         ${seatCount ? ` &middot; ${seatCount}/${GAME_CONFIG.TOTAL_SEATS} seats` : ''}
                     </div>
