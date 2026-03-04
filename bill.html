@@ -207,6 +207,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernmentPresidential, loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies, loadFactionIdeology, IDEOLOGY_TO_AXIS, deductAP, calculateBillSupport, POLICY_STANCES, IDEOLOGY_AXES, MAJOR_SECTORS, adjustMomentumAll, calculateBillDynamicPenalty, signPresidentialBill, syncVoteTallies, vetoPresidentialBill, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost, RAW_SCALING_DIVISORS, getIdeologyChipClass, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, rejectOwnNomination } from './js/game-common.js';
+import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isAutocracy = false, isHeadFaction = false, headFactionId = null;
@@ -225,6 +226,7 @@ let budgetNation = null;    // Full nation data for budget calculations
 let budgetTradeTariffRevenue = null; // Trade engine tariff revenue for budget display
 let budgetAidData = null;           // Economic aid data { received, given, agreements }
 let budgetInstitutions = [];     // Institution config rows for budget display
+let nominatedFactionId = null; // Faction nominated in confirmation/minister_confirmation bills
 let selectedStrikeArticleId = null;
 let editingArticleId = null;
 let sponsorSelectedPolicy = null;
@@ -236,7 +238,10 @@ const billId = urlParams.get('id');
 
 function _getCompatiblePolicies(sector) {
     const excludeIds = (currentBill?.bill_articles || []).map(a => a.policy_id);
-    return getCompatiblePolicies(sector, allPolicies, currentFaction, isAutocracy, excludeIds);
+    // Also exclude policies that were struck (removed via accepted strike deals)
+    const struckIds = currentBill?.struck_policy_ids || [];
+    const allExcluded = [...excludeIds, ...struckIds];
+    return getCompatiblePolicies(sector, allPolicies, currentFaction, isAutocracy, allExcluded);
 }
 
 initPage('laws', async (state) => {
@@ -348,6 +353,16 @@ async function loadBillData() {
                 .select('*, factions(faction_name), policies(policy_name)')
                 .eq('bill_id', billId).eq('status', 'pending');
             amendmentRequests = amendments || [];
+        }
+
+        // Load nominated faction ID for confirmation bills
+        nominatedFactionId = null;
+        if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
+            const { data: amb } = await _supabase.from('ambassadors').select('faction_id').eq('id', bill.ambassador_id).maybeSingle();
+            nominatedFactionId = amb?.faction_id || null;
+        } else if (bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
+            const { data: min } = await _supabase.from('ministries').select('pending_minister').eq('nation_id', bill.nation_id).eq('ministry_key', bill.ministry_key).eq('is_active', true).maybeSingle();
+            nominatedFactionId = min?.pending_minister?.party_id || null;
         }
 
         const mySupport = bill.bill_support?.find(s => s.faction_id === currentFaction?.id);
@@ -1379,7 +1394,10 @@ function renderSidebar() {
                 <div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div>
                 <div class="no-amendments">No conditional support offers</div>
             `}
-            ${!isSponsor ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button><button class="add-strike-btn" onclick="openStrikeAmendmentModal()">✂ Strike Article</button></div>` : ''}
+            ${(() => {
+                const myLocked = currentFaction && billSupport.find(s => s.faction_id === currentFaction.id)?.locked;
+                return (!isSponsor && !myLocked) ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button><button class="add-strike-btn" onclick="openStrikeAmendmentModal()">✂ Strike Article</button></div>` : '';
+            })()}
         </div>`;
 
     } else if (isCommittee) {
@@ -1393,14 +1411,16 @@ function renderSidebar() {
                     const isMe = party.id === currentFaction?.id;
                     const stance = billSupport.find(s => s.faction_id === party.id);
                     const hasPendingAmendment = amendmentRequests.some(r => r.faction_id === party.id);
+                    const isLocked = stance?.locked === true;
                     let sc = 'pending', st = 'PENDING';
                     if (isSp) { sc = 'sponsor'; st = 'SPONSOR'; }
+                    else if (stance?.stance === 'accept' && isLocked) { sc = 'accept'; st = 'LOCKED'; }
                     else if (stance?.stance === 'accept') { sc = 'accept'; st = 'ACCEPT'; }
                     else if (stance?.stance === 'reject') { sc = 'reject'; st = 'REJECT'; }
                     else if (hasPendingAmendment) { sc = 'conditional'; st = 'CONDITIONAL'; }
 
-                    // Non-sponsor current player gets Accept/Reject buttons
-                    const actionBtns = (isMe && !isSp) ? `<div class="stance-buttons">
+                    // Non-sponsor current player gets Accept/Reject buttons (hidden if locked)
+                    const actionBtns = (isMe && !isSp && !isLocked) ? `<div class="stance-buttons">
                         <button class="stance-btn accept-btn ${sc === 'accept' ? 'active' : ''}" onclick="setCommitteeStance('accept')">✓ Accept</button>
                         <button class="stance-btn reject-btn ${sc === 'reject' ? 'active' : ''}" onclick="setCommitteeStance('reject')">✗ Reject</button>
                     </div>` : '';
@@ -1410,6 +1430,7 @@ function renderSidebar() {
                             <div><div class="support-party">${party.faction_name}</div><div class="support-seats">${seats} seats</div></div>
                             <span class="support-status ${sc}">${st}</span>
                         </div>
+                        ${isLocked && isMe ? '<div style="color:#aaa;font-size:0.75rem;margin-top:4px;">Support locked — strike deal accepted</div>' : ''}
                         ${actionBtns}
                     </div>`;
                 }).join('')}
@@ -1436,7 +1457,11 @@ function renderSidebar() {
                         </div>`;
                     }).join('')}
                 </div>` : (!isSponsor ? `<div class="support-box-header" style="border-top:1px solid #333;"><div class="support-box-title">Conditional Support</div></div><div class="no-amendments">No conditional support offers</div>` : '')}
-            ${!isSponsor && bill.bill_type !== 'foundational' && bill.bill_type !== 'confirmation' && bill.bill_type !== 'minister_confirmation' && bill.bill_type !== 'veto_override' && bill.bill_type !== 'budget' ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button><button class="add-strike-btn" onclick="openStrikeAmendmentModal()">✂ Strike Article</button></div>` : ''}
+            ${(() => {
+                const myLocked2 = currentFaction && billSupport.find(s => s.faction_id === currentFaction.id)?.locked;
+                const canAmend = !isSponsor && !myLocked2 && bill.bill_type !== 'foundational' && bill.bill_type !== 'confirmation' && bill.bill_type !== 'minister_confirmation' && bill.bill_type !== 'veto_override' && bill.bill_type !== 'budget';
+                return canAmend ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button><button class="add-strike-btn" onclick="openStrikeAmendmentModal()">✂ Strike Article</button></div>` : '';
+            })()}
         </div>`;
 
     } else if (isFloor) {
@@ -1638,6 +1663,12 @@ function renderSidebar() {
 async function setCommitteeStance(stance) {
     if (!currentFaction || !currentBill || currentBill.status !== 'committee') return;
     if (currentBill.proposed_by === currentFaction.id) return; // sponsor can't change stance
+    // Block changes if support is locked (strike was accepted)
+    const mySupport = (currentBill.bill_support || []).find(s => s.faction_id === currentFaction.id);
+    if (mySupport?.locked) {
+        alert('Your support is locked — a strike deal was accepted.');
+        return;
+    }
     try {
         const { error } = await _supabase.from('bill_support').upsert({
             bill_id: billId,
@@ -1888,6 +1919,9 @@ function selectAmendmentPolicy(id) {
 
 async function submitAmendment() {
     if (!selectedAmendmentPolicy || !currentFaction) return;
+    const mySupport = (currentBill.bill_support || []).find(s => s.faction_id === currentFaction.id);
+    if (mySupport?.locked) { alert('Your support is locked — a strike deal was accepted.'); return; }
+    if ((currentBill.struck_policy_ids || []).includes(selectedAmendmentPolicy.id)) { alert('This policy was struck from the bill and cannot be re-added.'); return; }
     try {
         const { error } = await _supabase.from('bill_amendment_requests').insert({ bill_id: billId, faction_id: currentFaction.id, policy_id: selectedAmendmentPolicy.id, request_type: 'add', status: 'pending' });
         if (error) throw error;
@@ -1905,13 +1939,29 @@ async function respondToAmendment(reqId, response) {
         const req = amendmentRequests.find(r => r.id === reqId);
         await _supabase.from('bill_amendment_requests').update({ status: response }).eq('id', reqId);
         if (response === 'accepted') {
+            // Convert conditional vote to locked accept FIRST (before article deletion
+            // cascade-deletes the amendment request and orphan cleanup removes the vote)
+            await _supabase.rpc('convert_conditional_vote', { p_bill_id: billId, p_faction_id: req.faction_id, p_seat_count: allPartySeats[req.faction_id] || 0 });
+
             if (req.request_type === 'strike' && req.target_article_id) {
-                // Strike accepted — remove the targeted article
+                // Strike accepted — record the struck policy so it can't be re-added
+                const targetArticle = (currentBill.bill_articles || []).find(a => a.id === req.target_article_id);
+                if (targetArticle?.policy_id) {
+                    const existing = currentBill.struck_policy_ids || [];
+                    if (!existing.includes(targetArticle.policy_id)) {
+                        await _supabase.from('bills').update({
+                            struck_policy_ids: [...existing, targetArticle.policy_id]
+                        }).eq('id', billId);
+                    }
+                }
+
+                // Remove the targeted article
                 const articleCount = (currentBill.bill_articles || []).length;
                 if (articleCount <= 1) {
                     if (!confirm('This is the last article in the bill. Removing it will leave the bill with only a preamble. Continue?')) {
-                        // Revert the status update
+                        // Revert: set amendment back to pending and unlock support
                         await _supabase.from('bill_amendment_requests').update({ status: 'pending' }).eq('id', reqId);
+                        await _supabase.from('bill_support').update({ stance: 'conditional', locked: false }).eq('bill_id', billId).eq('faction_id', req.faction_id);
                         return;
                     }
                 }
@@ -1928,8 +1978,6 @@ async function respondToAmendment(reqId, response) {
                     await _supabase.from('bill_articles').insert({ bill_id: billId, policy_id: null, article_number: maxArt + 1, added_by: req.faction_id, article_title: req.article_title, article_text: req.article_text });
                 }
             }
-            // Amendment accepted — upgrade conditional support to full accept (via RPC for cross-faction authorization)
-            await _supabase.rpc('convert_conditional_vote', { p_bill_id: billId, p_faction_id: req.faction_id, p_seat_count: allPartySeats[req.faction_id] || 0 });
         } else if (response === 'rejected' && req) {
             // Amendment rejected — remove conditional support, reset to no stance
             await _supabase.from('bill_support').delete().eq('bill_id', billId).eq('faction_id', req.faction_id).eq('stance', 'conditional');
@@ -1948,6 +1996,8 @@ function openTextAmendmentModal() {
 function closeTextAmendmentModal() { document.getElementById('text-amendment-modal').classList.remove('active'); }
 
 async function submitTextAmendment() {
+    const mySupport = (currentBill.bill_support || []).find(s => s.faction_id === currentFaction?.id);
+    if (mySupport?.locked) { alert('Your support is locked — a strike deal was accepted.'); return; }
     const title = document.getElementById('text-amendment-title').value.trim();
     const body = document.getElementById('text-amendment-body').value.trim();
     if (!body) { alert('Please enter article text.'); return; }
@@ -2003,6 +2053,8 @@ function selectStrikeArticle(articleId) {
 
 async function submitStrikeAmendment() {
     if (!selectedStrikeArticleId || !currentFaction) return;
+    const mySupport = (currentBill.bill_support || []).find(s => s.faction_id === currentFaction.id);
+    if (mySupport?.locked) { alert('Your support is locked — a strike deal was accepted.'); return; }
     try {
         const { error } = await _supabase.from('bill_amendment_requests').insert({
             bill_id: billId,
@@ -2222,6 +2274,9 @@ function selectRepealLaw(lawId) {
 
 async function submitSponsorAddArticle() {
     if ((!sponsorSelectedPolicy && !selectedRepealLaw) || !currentFaction) return;
+    if (sponsorSelectedPolicy && (currentBill.struck_policy_ids || []).includes(sponsorSelectedPolicy.id)) {
+        alert('This policy was struck from the bill and cannot be re-added.'); return;
+    }
     try {
         const { data: existingArticles } = await _supabase.from('bill_articles')
             .select('article_number').eq('bill_id', billId)
@@ -2488,8 +2543,8 @@ function renderBudgetBillUI() {
 
     const budget = calculateNationalBudget(nation);
     applyTradeTariffOverride(budget, budgetTradeTariffRevenue);
-    const inflationStat = Number(nation.inflation || 50);
-    const inflationPct = (inflationStat - 50) / 2;
+    const inflationStat = Number(nation.inflation || 20);
+    const inflationPct = (inflationStat - 20) * 0.5;
     const totals = getBudgetTotals();
     // Three-state controls: showControls = buttons visible, canEdit = buttons clickable
     const showControls = currentBill && currentBill.status === 'committee' && !currentBill.early_resolution_status;
@@ -2564,8 +2619,8 @@ function renderBudgetBillUI() {
     h += budgetRevLine('AVAILABLE FOR ALLOCATION', totals.available, true);
     h += '</div>';
 
-    if (inflationPct > 0.1) {
-        h += '<div class="budget-inflation-notice">Inflation (' + inflationStat.toFixed(0) + '/100) has increased all costs by ~' + inflationPct.toFixed(1) + '% since last budget cycle</div>';
+    if (inflationPct > 1) {
+        h += '<div class="budget-inflation-notice">Inflation (' + formatInflationRate(inflationStat) + ' — ' + getInflationLabel(inflationStat) + ') has increased all costs by ~' + inflationPct.toFixed(1) + '% since last budget cycle</div>';
     }
     h += '</div>';
 
@@ -2577,11 +2632,11 @@ function renderBudgetBillUI() {
     const inflationMult = getInflationMultiplier(inflationStat);
     h += '<div class="budget-inflation-summary">';
     h += '<span class="budget-inflation-icon">📊</span>';
-    h += '<span>' + escapeHtml(budgetNation.name || 'Nation') + '\'s inflation is currently <strong>' + inflationStat.toFixed(0) + '/100</strong>. ';
-    if (inflationPct > 0.05) {
+    h += '<span>' + escapeHtml(budgetNation.name || 'Nation') + '\'s inflation is currently <strong>' + formatInflationRate(inflationStat) + ' (' + getInflationLabel(inflationStat) + ')</strong>. ';
+    if (inflationPct > 1) {
         h += 'That has raised all ministry costs by <strong class="budget-gap-deficit">+' + inflationPct.toFixed(1) + '%</strong> ';
         h += '(multiplier: ' + inflationMult.toFixed(3) + '×).';
-    } else if (inflationPct < -0.05) {
+    } else if (inflationPct < -1) {
         h += 'That has reduced all ministry costs by <strong class="budget-gap-surplus">' + inflationPct.toFixed(1) + '%</strong> ';
         h += '(multiplier: ' + inflationMult.toFixed(3) + '×).';
     } else {

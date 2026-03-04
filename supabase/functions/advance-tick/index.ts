@@ -2361,7 +2361,7 @@ const DECAY_SPEED = { CRAWL: 0.25, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 }
  */
 const STAT_DECAY_CONFIG = {
     // ── Equilibrium (drift back to midpoint) ──
-    inflation:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    inflation:           { type: 'equilibrium', target: 28, speed: DECAY_SPEED.CRAWL },
     interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
@@ -2939,12 +2939,12 @@ const FISCAL_TO_MINISTRY_KEY = {
 
 /**
  * Compute inflation cost multiplier from the 0-100 inflation stat.
- * Inflation stat 50 = 0% increase, 100 = +25% increase, 0 = -25% increase.
- * Applied as (inflation - 50) / 2 percent increase per budget cycle.
- * e.g. inflation=56 → costs increase by 3%
+ * Inflation scale: 20 = 0% (stable prices), 0 = deflation, 100 = hyperinflation.
+ * Rate = (inflation - 20) * 0.5, applied as percentage cost adjustment.
+ * e.g. inflation=40 → rate = +10% → multiplier = 1.10
  */
 function getInflationMultiplier(inflationStat) {
-    const pct = (Number(inflationStat || 50) - 50) / 2;
+    const pct = (Number(inflationStat || 20) - 20) * 0.5;
     return 1 + (pct / 100);
 }
 
@@ -4291,12 +4291,14 @@ function calculateEnactmentApproval(articles, billSupport, sponsorId, factionIde
 
     if (Object.keys(axisNetScores).length === 0) return {};
 
-    // Build voter map: factionId -> stance
+    // Build voter map: factionId -> normalized stance
     const votes = {};
     votes[sponsorId] = 'yes';
     for (const s of (billSupport || [])) {
         if (s.faction_id !== sponsorId) {
-            votes[s.faction_id] = s.stance;
+            // Normalize: 'accept' → 'yes', 'reject' → 'no'
+            const normalized = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+            votes[s.faction_id] = normalized;
         }
     }
 
@@ -5396,6 +5398,15 @@ async function resolveExpiredVotes(supabase, nationId) {
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'default_resolution', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
             // Ambassador confirmation bill
+            // Check if nominee voted NO — auto-fail (withdrawal of nomination)
+            const { data: ambRow } = await supabase.from('ambassadors').select('faction_id').eq('id', bill.ambassador_id).maybeSingle();
+            const ambNomineeId = ambRow?.faction_id;
+            const nomineeVotedNo = ambNomineeId && (bill.bill_support || []).some(s => {
+                const st = s.stance === 'reject' ? 'no' : s.stance;
+                return s.faction_id === ambNomineeId && st === 'no';
+            });
+            if (nomineeVotedNo) passed = false;
+
             if (passed) {
                 await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
                 // Activate the ambassador — term starts now
@@ -5445,6 +5456,14 @@ async function resolveExpiredVotes(supabase, nationId) {
                 .select('id, pending_minister, rejected_parties')
                 .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
                 .maybeSingle();
+
+            // Check if nominee voted NO — auto-fail (withdrawal of nomination)
+            const minNomineeId = ministry?.pending_minister?.party_id;
+            const minNomineeVotedNo = minNomineeId && (bill.bill_support || []).some(s => {
+                const st = s.stance === 'reject' ? 'no' : s.stance;
+                return s.faction_id === minNomineeId && st === 'no';
+            });
+            if (minNomineeVotedNo) passed = false;
 
             if (passed) {
                 await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
@@ -9611,14 +9630,14 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
             }
 
             if (statCount > 0) {
-                perfDelta = (creditSum / statCount) * 3; // sensitivity multiplier
+                perfDelta = (creditSum / statCount) * 1.5; // sensitivity multiplier (reduced from 3)
             }
         }
 
-        // Decay toward 50 + apply trend-based delta
+        // Decay toward 50 + apply trend-based delta; floor at 15 (max display penalty = -35)
         const oldPerf = Number(row.performance_perception ?? 50);
         let newPerf = oldPerf * (1 - PERF_DECAY) + 50 * PERF_DECAY + perfDelta;
-        newPerf = Math.round(Math.max(0, Math.min(100, newPerf)) * 100) / 100;
+        newPerf = Math.round(Math.max(15, Math.min(100, newPerf)) * 100) / 100;
 
         // ─── PILLAR 3: Momentum (-50 to +50) ───
         // Decays 15% per tick. Adjusted externally via adjustMomentum().

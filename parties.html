@@ -3126,11 +3126,12 @@ async function renderParties() {
             const icon = modIcons[mod.type] || '·';
             const dateHtml = mod.date ? `<span class="vba-mod-date">${escapeHtml(mod.date)}</span>` : '';
             const permHtml = mod.permanent ? `<span class="vba-mod-perm">PERM</span>` : '';
+            const liveHtml = mod.live ? `<span class="vba-mod-perm" style="background:rgba(96,165,250,0.15);color:#60a5fa;">LIVE</span>` : '';
             modRowsHtml += `
                 <div class="vba-mod-row">
                     <span class="vba-mod-icon" style="color:${iconColor}">${icon}</span>
                     <span class="vba-mod-label">${escapeHtml(mod.label)}</span>
-                    ${dateHtml}${permHtml}
+                    ${dateHtml}${permHtml}${liveHtml}
                     <span class="vba-mod-val" style="color:${vbaModColor(mod.value)}">${vbaFormatMod(mod.value)}</span>
                 </div>`;
         }
