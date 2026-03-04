@@ -260,25 +260,26 @@ export function renderTopBar(activeTab) {
                     <img class="nation-flag" id="nation-flag" src="" alt="" style="display: none;">
                     <span class="nation-name" id="nation-name">Loading...</span>
                 </div>
+                <div class="top-bar-sep"></div>
                 <div class="tick-info">
                     <div class="tick-item">
                         <div class="tick-label">Game Date</div>
-                        <div class="tick-value" id="game-date">Loading…</div>
+                        <div class="tick-value" id="game-date">--</div>
                     </div>
                     <div class="tick-item">
                         <div class="tick-label">Tick</div>
-                        <div class="tick-value" id="tick-number">—</div>
+                        <div class="tick-value" id="tick-number">--</div>
                     </div>
                     <div class="tick-item">
-                        <div class="tick-label">Next Tick In</div>
-                        <div class="tick-countdown" id="tick-countdown">—</div>
+                        <div class="tick-label">Next Tick</div>
+                        <div class="tick-value" id="tick-countdown">--</div>
                     </div>
                 </div>
             </div>
             <div class="top-bar-right">
-                <span class="party-badge" id="party-badge">…</span>
+                <span class="party-badge" id="party-badge">--</span>
                 <span class="topbar-ap" id="topbar-ap"></span>
-                <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle" title="Toggle light/dark mode">☀️ Light</button>
+                <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle" title="Toggle light/dark mode">Light</button>
                 <button class="logout-btn" onclick="handleLogout()">Abandon Session</button>
             </div>
         </div>
@@ -730,7 +731,7 @@ export function updateThemeButton() {
     const btn = document.getElementById('theme-toggle');
     if (!btn) return;
     const isLight = document.body.classList.contains('light-mode');
-    btn.textContent = isLight ? '🌙 Dark' : '☀️ Light';
+    btn.textContent = isLight ? 'Dark' : 'Light';
 }
 
 // Apply saved theme immediately (before page renders fully)
