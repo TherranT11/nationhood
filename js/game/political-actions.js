@@ -4781,8 +4781,17 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         }
     }
 
-    // 5. Core disband — null out nation_id, reset all stats to fresh defaults
-    //    Do this BEFORE deletes so if it fails, no data is lost.
+    // 5. Zero seats first (while nation_id still set so rebalance can find remaining parties)
+    await supabase.from('factions')
+        .update({ seats: 0 })
+        .eq('id', factionId);
+
+    // 6. Immediately redistribute vacated seats to remaining parties
+    if (nation) {
+        await rebalanceVacantSeats(supabase, nation);
+    }
+
+    // 7. Core disband — null out nation_id, reset all stats to fresh defaults
     const { error: disbandErr } = await supabase
         .from('factions')
         .update({
@@ -4790,7 +4799,6 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
             abandoned_at: new Date().toISOString(),
             disband_cooldown_until_tick: currentTick + 24,
             action_points: 0,
-            seats: 0,
             approval_rating: null,
             last_seen_tick: null,
             founded_tick: null
@@ -4799,8 +4807,7 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
 
     if (disbandErr) throw new Error('Failed to disband party: ' + disbandErr.message);
 
-    // 6. Clean up all faction-related data from the old nation
-    //    Delete voter bloc approval/momentum rows, promises, donor trust, etc.
+    // 8. Clean up all faction-related data from the old nation
     await supabase.from('faction_bloc_approval').delete().eq('faction_id', factionId);
     await supabase.from('faction_ideology').delete().eq('faction_id', factionId);
     await supabase.from('ideology_history').delete().eq('faction_id', factionId);
@@ -4810,7 +4817,7 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     await supabase.from('bill_support').delete().eq('faction_id', factionId);
     await supabase.from('campaign_actions').delete().eq('party_id', factionId);
 
-    // 7. Audit log
+    // 9. Audit log
     const { error: logErr } = await supabase
         .from('campaign_actions')
         .insert({
@@ -4821,11 +4828,6 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
             result: { faction_name: faction?.faction_name || 'Unknown' }
         });
     if (logErr) console.warn('disbandParty: could not log action:', logErr);
-
-    // 8. Immediately redistribute vacant seats to remaining parties
-    if (nation) {
-        await rebalanceVacantSeats(supabase, nation);
-    }
 
     return { result: 'disbanded' };
 }
@@ -4881,26 +4883,40 @@ export async function processInactivityDecay(supabase, nationId, currentTick) {
             await supabase.from('bill_support').delete().eq('faction_id', faction.id);
             await supabase.from('campaign_actions').delete().eq('party_id', faction.id);
 
-            // Remove from nation, zero seats, set cooldown
+            // Zero seats first (while nation_id still set so rebalance can find remaining parties)
             await supabase.from('factions')
+                .update({ seats: 0 })
+                .eq('id', faction.id);
+
+            // Redistribute vacated seats to remaining parties
+            const { data: nationRow } = await supabase.from('nations')
+                .select('id, name, total_seats').eq('id', nationId).single();
+            if (nationRow) {
+                await rebalanceVacantSeats(supabase, nationRow);
+            }
+
+            // Now remove from nation
+            const { error: disbandErr } = await supabase.from('factions')
                 .update({
                     nation_id: null,
                     nation: null,
                     abandoned_at: new Date().toISOString(),
                     disband_cooldown_until_tick: currentTick + 24,
                     action_points: 0,
-                    seats: 0,
                     approval_rating: null,
                     last_seen_tick: null,
                     founded_tick: null
                 })
                 .eq('id', faction.id);
+            if (disbandErr) {
+                console.error(`[InactivityDisband] FAILED to null nation_id for "${faction.faction_name}":`, disbandErr.message);
+            }
 
             // Event log
             await supabase.from('event_log').insert({
                 nation_id: nationId,
                 event_name: 'PARTY_DISBANDED_INACTIVITY',
-                description_used: `${faction.faction_name} has been dissolved due to prolonged inactivity (${ticksInactive} ticks idle). Their seats will be vacated at the next election. Ambassadors remain at their posts until their terms expire.`,
+                description_used: `${faction.faction_name} has been dissolved due to prolonged inactivity (${ticksInactive} ticks idle). Their seats have been redistributed to remaining parties. Ambassadors remain at their posts until their terms expire.`,
                 category: 'POLITICAL',
                 effects_applied: {
                     faction_id: faction.id,
