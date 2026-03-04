@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Select Nation | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root {
+  --bg-0: #0e0e0c;
+  --bg-1: #141412;
+  --bg-2: #1a1a17;
+  --bg-3: #1e1e1a;
+  --bg-4: #24241f;
+  --bg-5: #2c2c26;
+  --bg-hover: #282822;
+  --text-bright: #e2e0d6;
+  --text-primary: #c4c2b8;
+  --text-secondary: #8a8778;
+  --text-muted: #6b6a5e;
+  --text-dim: #4a4940;
+  --text-ghost: #333229;
+  --border-hair: rgba(255,255,255,0.04);
+  --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08);
+  --border-2: rgba(255,255,255,0.12);
+  --green: #5cb85c;
+  --green-faint: rgba(92,184,92,0.08);
+  --green-border: rgba(92,184,92,0.18);
+  --red: #d9534f;
+  --red-faint: rgba(217,83,79,0.08);
+  --red-border: rgba(217,83,79,0.18);
+  --amber: #c8a64e;
+  --amber-faint: rgba(200,166,78,0.08);
+  --amber-border: rgba(200,166,78,0.18);
+  --blue: #5b9bd5;
+  --blue-faint: rgba(91,155,213,0.08);
+  --blue-border: rgba(91,155,213,0.18);
+  --purple: #8b7ec8;
+  --purple-faint: rgba(139,126,200,0.08);
+  --purple-border: rgba(139,126,200,0.18);
+  --teal: #5aafa5;
+  --teal-faint: rgba(90,175,165,0.08);
+  --teal-border: rgba(90,175,165,0.18);
+  --orange: #d48a3c;
+  --orange-faint: rgba(212,138,60,0.08);
+  --orange-border: rgba(212,138,60,0.18);
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+  --font-serif: 'IBM Plex Serif', Georgia, serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px 60px;
+}
+
+.page-header {
+  text-align: center;
+  margin-bottom: 32px;
+  max-width: 600px;
+}
+
+.page-header__title {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.page-header__heading {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: 6px;
+}
+
+.page-header__sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.nation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+  max-width: 1000px;
+  width: 100%;
+}
+
+.nation-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  padding: 0;
+  cursor: pointer;
+  transition: border-color 0.1s, background 0.1s;
+}
+
+.nation-card:hover {
+  border-color: var(--border-2);
+  background: var(--bg-3);
+}
+
+.nation-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-hair);
+  background: var(--bg-3);
+}
+
+.nation-card__name {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-bright);
+}
+
+.nation-card__govt {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.nation-card__body {
+  padding: 12px 14px;
+}
+
+.nation-card__stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.stat-row__label {
+  color: var(--text-muted);
+}
+
+.stat-row__val {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.stat-row__val--slots-open {
+  color: var(--green);
+}
+
+.stat-row__val--slots-full {
+  color: var(--red);
+}
+
+.nation-card__action {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-hair);
+}
+
+.join-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 5px 14px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-0);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.1s;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.join-btn:hover {
+  background: var(--bg-4);
+  color: var(--text-secondary);
+  border-color: var(--border-1);
+}
+
+.join-btn--full {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.loading-state {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 40px;
+}
+
+.logout-row {
+  margin-top: 32px;
+}
+
+.logout-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 5px 14px;
+  background: transparent;
+  border: 1px solid var(--red-border);
+  color: var(--red);
+  cursor: pointer;
+  transition: all 0.1s;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.logout-btn:hover {
+  background: var(--red-faint);
+}
+
+@media (max-width: 700px) {
+  .nation-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <div class="page-header__title">Nationhood // Party Setup</div>
+  <div class="page-header__heading">Select a Nation to Join</div>
+  <div class="page-header__sub">Choose a nation and create your political party. Each nation has its own government, economy, and political landscape.</div>
+</div>
+
+<div class="nation-grid" id="nation-grid">
+  <div class="loading-state">Loading nations...</div>
+</div>
+
+<div class="logout-row">
+  <button class="logout-btn" id="logout-btn">Abandon Session</button>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { escapeHtml } from './js/utils.js';
+
+async function init() {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) {
+        window.location.href = 'login.html';
+        return;
+    }
+
+    // Check if user already has a party with a nation
+    const { data: existingParty } = await _supabase
+        .from('factions')
+        .select('id, nation_id')
+        .eq('id', user.id)
+        .eq('faction_type', 'party')
+        .not('nation_id', 'is', null)
+        .maybeSingle();
+
+    if (existingParty && existingParty.nation_id) {
+        window.location.href = 'dashboard.html';
+        return;
+    }
+
+    // Load all nations
+    const { data: nations, error } = await _supabase
+        .from('nations')
+        .select('*')
+        .order('name');
+
+    if (error || !nations) {
+        document.getElementById('nation-grid').innerHTML =
+            '<div class="loading-state" style="color:var(--red);">Failed to load nations.</div>';
+        return;
+    }
+
+    // Count player parties per nation
+    const { data: partyCounts } = await _supabase
+        .from('factions')
+        .select('nation_id')
+        .eq('faction_type', 'party')
+        .eq('is_npc', false);
+
+    const countMap = {};
+    (partyCounts || []).forEach(f => {
+        countMap[f.nation_id] = (countMap[f.nation_id] || 0) + 1;
+    });
+
+    const grid = document.getElementById('nation-grid');
+    grid.innerHTML = '';
+
+    for (const nation of nations) {
+        const playerCount = countMap[nation.id] || 0;
+        const maxParties = nation.max_parties || 8;
+        const isFull = playerCount >= maxParties;
+        const slug = nation.name.toLowerCase().replace(/\s+/g, '');
+
+        const govType = nation.government_type || 'Unknown';
+        let govClass = '';
+        if (govType === 'Autocracy') {
+            govClass = 'background:var(--red-faint);color:var(--red);border:1px solid var(--red-border);';
+        } else if (govType.includes('Presidential')) {
+            govClass = 'background:var(--purple-faint);color:var(--purple);border:1px solid var(--purple-border);';
+        } else {
+            govClass = 'background:var(--green-faint);color:var(--green);border:1px solid var(--green-border);';
+        }
+
+        const slotsClass = isFull ? 'stat-row__val--slots-full' : 'stat-row__val--slots-open';
+
+        const card = document.createElement('div');
+        card.className = 'nation-card';
+        card.innerHTML = `
+            <div class="nation-card__header">
+                <span class="nation-card__name">${escapeHtml(nation.name)}</span>
+                <span class="nation-card__govt" style="${govClass}">${escapeHtml(govType)}</span>
+            </div>
+            <div class="nation-card__body">
+                <div class="nation-card__stats">
+                    <div class="stat-row">
+                        <span class="stat-row__label">Population</span>
+                        <span class="stat-row__val">${(nation.population || 0).toLocaleString()}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-row__label">Capital</span>
+                        <span class="stat-row__val">${escapeHtml(nation.capital || 'Unknown')}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-row__label">Player Parties</span>
+                        <span class="stat-row__val ${slotsClass}">${playerCount} / ${maxParties}</span>
+                    </div>
+                </div>
+                <div class="nation-card__action">
+                    ${isFull
+                        ? '<span class="join-btn join-btn--full">FULL</span>'
+                        : `<button class="join-btn" data-nation="${escapeHtml(slug)}">JOIN</button>`
+                    }
+                </div>
+            </div>
+        `;
+
+        if (!isFull) {
+            card.addEventListener('click', () => {
+                window.location.href = 'createparty.html?nation=' + encodeURIComponent(slug);
+            });
+        }
+
+        grid.appendChild(card);
+    }
+}
+
+document.getElementById('logout-btn').addEventListener('click', async () => {
+    await _supabase.auth.signOut();
+    window.location.href = 'index.html';
+});
+
+init();
+</script>
+
+</body>
+</html>

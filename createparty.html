@@ -680,7 +680,7 @@ let _cpSelectedLogo = DEFAULT_PARTY_ICON;
                 await seedBlocApprovalsForFaction(currentUser.id, nation.id);
 
                 alert(`🏛️ ${partyName} has joined the regime in ${selectedNation}!\n\nYou have been assigned ${seatsAssigned} seats.\n${factionNumber === 1 ? '\nAs the first faction, you serve under the Strongman.' : ''}`);
-                window.location.href = 'nation.html';
+                window.location.href = 'select-nation.html';
                 
             } else {
                 // --- DEMOCRACY JOIN ---
@@ -730,7 +730,7 @@ let _cpSelectedLogo = DEFAULT_PARTY_ICON;
                 await seedBlocApprovalsForFaction(currentUser.id, nation.id);
 
                 alert(`🎉 ${partyName} has been created! Welcome to the ${selectedNation} political scene.`);
-                window.location.href = 'nation.html';
+                window.location.href = 'select-nation.html';
             }
             
         } catch (error) {
@@ -748,7 +748,7 @@ let _cpSelectedLogo = DEFAULT_PARTY_ICON;
     }
     
     function goBack() {
-        window.location.href = 'dashboard.html';
+        window.location.href = 'faction-select.html';
     }
 
     function setupPartyIdentityPicker() {

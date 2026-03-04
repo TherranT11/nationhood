@@ -583,7 +583,10 @@ function initials(first, last) {
 // ─── INIT ───
 initPage('dashboard', async (state) => {
     const { user, faction, nation, shard } = state;
-    if (!faction || !nation) return;
+    if (!faction || !faction.nation_id || !nation) {
+        window.location.href = 'faction-select.html';
+        return;
+    }
 
     // Fire all data loads in parallel
     const [
@@ -703,7 +706,7 @@ initPage('dashboard', async (state) => {
 
     // ─── TOP STORIES ───
     renderStories(eventLog, opEds, faction, currentTick);
-});
+}, /* requireFaction */ false);
 
 // ═══════════════════════════════════════════════════════
 // RENDER FUNCTIONS
