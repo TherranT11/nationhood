@@ -43,17 +43,16 @@ import { formatInflationRate, getInflationLabel, inflationColorClass } from './j
 
 // ===== SPARKLINE HISTORY DIAGNOSTIC =====
 // Run in browser console: debugSparklines()
+// Uses _nationId stashed during page init to avoid auth re-query
+var _nationId = null;
 window.debugSparklines = async function() {
-    const { data: { user } } = await _supabase.auth.getUser();
-    const { data: faction } = await _supabase.from('factions').select('nation_id').eq('user_id', user.id).single();
-    const nationId = faction?.nation_id;
-    if (!nationId) { console.error('No nation found'); return; }
+    if (!_nationId) { console.error('Nation ID not set — page may not have loaded yet'); return; }
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     const tick = shard?.current_tick || 0;
     console.log('%c=== SPARKLINE HISTORY AUDIT ===', 'font-weight:bold;font-size:14px;color:#0af');
-    console.log('Nation ID:', nationId, '| Current tick:', tick);
+    console.log('Nation ID:', _nationId, '| Current tick:', tick);
     const { data: rows, error } = await _supabase.from('nations_history')
-        .select('tick').eq('nation_id', nationId).order('tick', { ascending: false }).limit(10);
+        .select('tick').eq('nation_id', _nationId).order('tick', { ascending: false }).limit(10);
     if (error) { console.error('Query error:', error.message); return; }
     if (!rows || rows.length === 0) {
         console.error('%cNO history rows found for this nation! Snapshots are not being written.', 'color:#f44;font-weight:bold');
@@ -392,6 +391,7 @@ function toggleSection(catId) {
 // Initialize page
 initPage('nation', async (state) => {
     const { nation, faction } = state;
+    _nationId = nation?.id || null;
 
     if (!nation) {
         document.getElementById('content-area').innerHTML = '<div class="loading-container"><div style="font-size:24px">No Nation</div><div>Your party is not assigned to a nation yet.</div></div>';
