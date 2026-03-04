@@ -562,6 +562,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import { isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, loadSeats, fetchActiveCoalition, GAME_CONFIG } from './js/game-common.js';
 import { escapeHtml } from './js/utils.js';
+import { syncVoteTallies } from './js/game/bills.js';
 
 
 // Palette helper for party colors
@@ -832,7 +833,7 @@ function renderBills(faction, floorBills, committeeBills) {
     for (const bill of floorBills) {
         let f = 0, a = 0, ab = 0;
         (bill.bill_support || []).forEach(s => {
-            const st = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+            const st = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : 'abstain';
             if (st === 'yes')          f += (s.seat_count || 0);
             else if (st === 'no')      a += (s.seat_count || 0);
             else if (st === 'abstain') ab += (s.seat_count || 0);
@@ -936,6 +937,15 @@ function renderBills(faction, floorBills, committeeBills) {
                 stance: stance,
                 seat_count: faction.seats || 0
             }, { onConflict: 'bill_id,faction_id' });
+
+            // Sync tallies to bills table and update displayed counts
+            const { votesFor, votesAgainst, votesAbstain } = await syncVoteTallies(_supabase, billId);
+            const tallies = card.querySelector('.bill-card__tallies');
+            if (tallies) {
+                tallies.querySelector('.bill-card__tally--yes').textContent = votesFor + ' YES';
+                tallies.querySelector('.bill-card__tally--no').textContent = votesAgainst + ' NO';
+                tallies.querySelector('.bill-card__tally--abs').textContent = votesAbstain + ' ABSTAIN';
+            }
         });
     });
 }

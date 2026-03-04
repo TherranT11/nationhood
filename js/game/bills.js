@@ -39,7 +39,7 @@ export async function syncVoteTallies(supabase, billId) {
 
     let votesFor = 0, votesAgainst = 0, votesAbstain = 0;
     (allVotes || []).forEach(v => {
-        const st = v.stance === 'accept' ? 'yes' : v.stance === 'reject' ? 'no' : v.stance;
+        const st = v.stance === 'accept' ? 'yes' : v.stance === 'reject' ? 'no' : 'abstain';
         if (st === 'yes')            votesFor += v.seat_count;
         else if (st === 'no')        votesAgainst += v.seat_count;
         else if (st === 'abstain')   votesAbstain += v.seat_count;
