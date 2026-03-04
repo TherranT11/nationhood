@@ -312,15 +312,16 @@
     font-family: var(--dfont-mono); font-size: 10px; color: var(--dtxt-secondary);
   }
   .cabinet-row {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 3px 0; font-family: var(--dfont-mono); font-size: 10px;
+    display: flex; align-items: center; gap: 6px;
+    padding: 2px 0; font-family: var(--dfont-mono); font-size: 10px;
   }
-  .cabinet-row__ministry { color: var(--dtxt-muted); }
+  .cabinet-row__ministry { color: var(--dtxt-muted); min-width: 80px; flex-shrink: 0; }
   .cabinet-row__holder {
     color: var(--dtxt-secondary); display: flex; align-items: center; gap: 4px;
+    flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
   }
-  .cabinet-row__party-tag { font-size: 8px; font-weight: 700; padding: 1px 4px; }
-  .cabinet-row__approval { font-size: 9px; font-weight: 600; margin-left: auto; }
+  .cabinet-row__party-tag { font-size: 8px; font-weight: 700; padding: 1px 4px; border-radius: 2px; }
+  .cabinet-row__approval { font-size: 9px; font-weight: 600; flex-shrink: 0; text-align: right; min-width: 30px; }
 
   /* ── Deadlines ── */
   .deadline-row {
@@ -1019,13 +1020,14 @@ function renderGovernment(nation, coalition, ministries, allParties, hog, govTyp
       </div>` : '';
 
     // Cabinet (right side)
-    const CABINET_DISPLAY = ['finance','defense','healthcare','education','foreign','interior','trade'];
+    const CABINET_DISPLAY = ['finance','defense','healthcare','education','foreign','interior','trade','labor','justice','energy','transportation'];
     const cabinetRows = CABINET_DISPLAY.map(key => {
         const m = ministries.find(x => x.ministry_key === key);
         if (!m) return `
           <div class="cabinet-row">
             <span class="cabinet-row__ministry">${key.charAt(0).toUpperCase() + key.slice(1)}</span>
             <span class="cabinet-row__holder" style="color:var(--dtxt-dim)">Vacant</span>
+            <span class="cabinet-row__approval" style="color:var(--dtxt-dim)">--</span>
           </div>`;
         const name = `${(m.minister_first_name || '')[0] || ''}. ${m.minister_last_name || ''}`;
         const pAbbr = m.factions?.abbreviation || '';
@@ -1035,7 +1037,8 @@ function renderGovernment(nation, coalition, ministries, allParties, hog, govTyp
         return `
           <div class="cabinet-row">
             <span class="cabinet-row__ministry">${key.charAt(0).toUpperCase() + key.slice(1)}</span>
-            <span class="cabinet-row__holder">${escapeHtml(name)} <span class="cabinet-row__party-tag" style="background:${pColor}22;color:${pColor}">${escapeHtml(pAbbr)}</span> <span class="cabinet-row__approval" style="color:${apprColor}">${appr}%</span></span>
+            <span class="cabinet-row__holder">${escapeHtml(name)} <span class="cabinet-row__party-tag" style="background:${pColor}22;color:${pColor}">${escapeHtml(pAbbr)}</span></span>
+            <span class="cabinet-row__approval" style="color:${apprColor}">${appr}%</span>
           </div>`;
     }).join('');
 
