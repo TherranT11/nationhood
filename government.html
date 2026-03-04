@@ -43,6 +43,14 @@ import { GAME_CONFIG, initGameConfigForNation, isGovernmentAutocracy, isGovernme
 import { getPartyIconSVG } from './js/party-icons.js';
 (function () {
     'use strict';
+
+const IDEOLOGY_COLORS = {
+    liberty: '#9C27B0', equality: '#E91E63', freedom: '#2196F3', security: '#FF9800',
+    individualism: '#eab308', collectivism: '#ec4899', tradition: '#795548',
+    progress: '#00BCD4', nationalism: '#FF5722', globalism: '#3F51B5'
+};
+function ideologyBg(name) { return IDEOLOGY_COLORS[(name || '').toLowerCase()] || '#9C27B0'; }
+
 /**
  * Government Page
  * Displays government structure, administration, cabinet, and parliament.
@@ -579,7 +587,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                             ${primeMinister?.minister_approval != null ? `<div class="minister-approval" style="margin-top:6px;">Approval: <span class="${primeMinister.minister_approval < 35 ? 'low' : primeMinister.minister_approval < 50 ? 'mid' : 'high'}">${Math.round(primeMinister.minister_approval)}%</span></div>` : ''}
                             ${activeHOG ? `
                                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
-                                    <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:#9C27B0;color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
+                                    <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(activeHOG.ideology)};color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
                                     <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${activeHOG.leader_traits?.trait_name || activeHOG.trait_key}</div>
                                     <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
                                     <div style="font-size:0.75rem;color:#ff4444;">▼ ${activeHOG.leader_traits?.downside || ''}</div>
@@ -651,7 +659,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
             const t = presidentData._traitData;
             traitHTML = `
                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
-                    ${presidentData.ideology ? `<div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:#9C27B0;color:white;margin-bottom:6px;">${presidentData.ideology}</div>` : ''}
+                    ${presidentData.ideology ? `<div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(presidentData.ideology)};color:white;margin-bottom:6px;">${presidentData.ideology}</div>` : ''}
                     <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${t.trait_name || presidentData.trait}</div>
                     <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${t.upside || ''}</div>
                     <div style="font-size:0.75rem;color:#ff4444;">▼ ${t.downside || ''}</div>
@@ -747,7 +755,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                             ${pmApprHtml}
                             ${activeHOG ? `
                                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
-                                    <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:#9C27B0;color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
+                                    <div style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:bold;text-transform:uppercase;background:${ideologyBg(activeHOG.ideology)};color:white;margin-bottom:6px;">${activeHOG.ideology}</div>
                                     <div style="font-size:0.85rem;color:var(--accent);font-weight:bold;margin-bottom:4px;">🏷️ ${activeHOG.leader_traits?.trait_name || activeHOG.trait_key}</div>
                                     <div style="font-size:0.75rem;color:#4CAF50;margin-bottom:2px;">▲ ${activeHOG.leader_traits?.upside || ''}</div>
                                     <div style="font-size:0.75rem;color:#ff4444;">▼ ${activeHOG.leader_traits?.downside || ''}</div>
