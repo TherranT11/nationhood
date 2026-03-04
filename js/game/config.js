@@ -38,8 +38,12 @@ export const GAME_CONFIG = {
     INACTIVITY_APPROVAL_DECAY: 5,         // -5 approval per voter bloc per tick while inactive (ticks 7-11)
     INACTIVITY_DISBAND_TICKS: 12,         // at tick 12: party is disbanded (removed from nation, loses seats next election)
     BUDGET_EARLY_WINDOW_TICKS: 3,    // ticks before budget due date that early proposal opens
+    BUDGET_AUTO_GENERATE_LEAD_TICKS: 3, // auto-generate budget bill this many ticks before due date
+    BUDGET_COMMITTEE_EXPIRY_TICKS: 3,   // budget bills auto-expire in committee after 3 ticks
     BUDGET_BILL_VOTING_TICKS: null,   // budget bills persist until passed (never expire) — used for early resolution grace
     BUDGET_BILL_MAX_FLOOR_TICKS: 4,   // budget bills auto-resolve after 4 ticks on the floor (forced vote)
+    BUDGET_FAILURE_COALITION_PENALTY: -5,  // parliamentary: coalition approval penalty on budget committee expiry
+    BUDGET_FAILURE_PRESIDENT_PENALTY: -10, // presidential: president party approval penalty on budget committee expiry
     NO_BUDGET_PENALTY_TICKS: 24,     // how many ticks without a budget before max penalty
     // Impeachment (Presidential systems only)
     IMPEACHMENT_AP_COST: 7,

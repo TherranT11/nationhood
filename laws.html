@@ -853,23 +853,23 @@ async function renderBudgetBillContent() {
             h += '</div></div>';
         }
 
-        // === SUBMIT BUDGET BILL BUTTON ===
+        // === BUDGET BILL STATUS ===
         h += '<div class="bp-submit-section">';
         if (hasPendingBudget) {
-            h += '<div class="bp-submit-notice bp-submit-warning">A budget bill is already pending in ' + (existingBudget[0].status === 'committee' ? 'committee' : 'floor vote') + '.</div>';
-        } else if (budgetOnCooldown) {
-            h += '<div class="bp-submit-notice bp-submit-disabled">Budget cooldown: review opens ' + reviewAvailableDate + ', submissions open ' + openToSubmitDate + '.</div>';
-        } else if (!(lawsIsAutocracy ? isHeadFaction : isPresidential ? isPresidentParty : (currentFaction && coalitionLeadPartyId === currentFaction.id))) {
-            h += '<div class="bp-submit-notice bp-submit-disabled">Only the head of government can submit a budget bill.</div>';
-        } else if (isCaretaker || isNoGovernment) {
-            h += '<div class="bp-submit-notice bp-submit-disabled">Cannot submit budget bills while the legislature is dissolved.</div>';
+            const pendingStatus = existingBudget[0].status === 'committee' ? 'committee' : 'floor vote';
+            const isSystemBill = !existingBudget[0].proposed_by;
+            h += '<div class="bp-submit-notice bp-submit-warning">A budget bill is ' + (isSystemBill ? 'automatically ' : '') + 'pending in ' + pendingStatus + '. Move it to the floor before the committee deadline expires (' + GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS + ' ticks).</div>';
         } else {
-            if (inEarlyWindow) {
-                h += '<div class="bp-submit-notice bp-submit-early-window">⏳ Early proposal window — open to submit ' + openToSubmitDate + '. You can draft and submit now, but voting opens when the budget is officially due.</div>';
+            var lastBT = Number(currentNation.last_budget_tick || 0);
+            var dueTick = lastBT > 0 ? lastBT + GAME_CONFIG.TICKS_PER_YEAR : GAME_CONFIG.TICKS_PER_YEAR;
+            var genTick = dueTick - (GAME_CONFIG.BUDGET_AUTO_GENERATE_LEAD_TICKS || 3);
+            var ticksUntilGen = genTick - currentTick;
+            if (ticksUntilGen > 0) {
+                h += '<div class="bp-submit-notice bp-submit-disabled">Budget bills are automatically introduced to committee ' + (GAME_CONFIG.BUDGET_AUTO_GENERATE_LEAD_TICKS || 3) + ' ticks before the deadline. Next budget auto-generates in ' + ticksUntilGen + ' tick(s).</div>';
+            } else {
+                h += '<div class="bp-submit-notice bp-submit-disabled">A budget bill will be automatically introduced next tick.</div>';
             }
-            h += '<button id="submit-budget-btn" class="bp-submit-btn">Send Budget Bill to Committee</button>';
         }
-        h += '<div id="budget-submit-status" class="bp-submit-status"></div>';
         h += '</div>';
 
         panel.innerHTML = h;
@@ -1052,7 +1052,7 @@ function renderFloorBill(bill, isVetoed) {
             <div class="committee-bill-header">
                 <div>
                     <div class="floor-bill-name">` + billTitle + `</div>
-                    <div class="committee-bill-sponsor">${(bill.bill_type === 'no_confidence' || bill.bill_type === 'impeachment_motion' || bill.bill_type === 'impeachment_conviction') ? 'Filed' : 'Proposed'} by ${bill.factions?.faction_name || 'Unknown'}</div>
+                    <div class="committee-bill-sponsor">${!bill.proposed_by && bill.bill_type === 'budget' ? 'Automatically introduced to committee' : ((bill.bill_type === 'no_confidence' || bill.bill_type === 'impeachment_motion' || bill.bill_type === 'impeachment_conviction') ? 'Filed' : 'Proposed') + ' by ' + (bill.factions?.faction_name || 'Unknown')}</div>
                 </div>
                 ${isVetoed ? `<div class="floor-status vetoed-status">VETOED</div>`
                     : (bill.early_resolution_status === 'majority_reached' || bill.early_resolution_status === 'quorum_reached') ? `<div class="floor-status" style="border-color:#4CAF50;">MAJORITY REACHED — Passes This Tick</div>`
@@ -1319,7 +1319,7 @@ function renderCommitteeBill(bill) {
             <div class="committee-bill-header">
                 <div>
                     <div class="committee-bill-name">${bill.bill_name || 'Unnamed ' + termBill}${bill.bill_type === 'repeal' ? ' <span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>' : (bill.bill_type === 'foundational' ? ' <span style="background:#9C27B0;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>' : (bill.bill_type === 'default_resolution' ? ' <span style="background:#b71c1c;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">💀 Default Resolution</span>' : (bill.bill_type === 'ratification' ? ' <span style="background:#00695C;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🌐 Ratification</span>' : (bill.bill_type === 'budget' ? ' <span style="background:#ff9800;color:#000;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">💰 Budget</span>' : (bill.bill_type === 'impeachment_motion' ? ' <span style="background:#D32F2F;color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Impeachment</span>' : '')))))}</div>
-                    <div class="committee-bill-sponsor">Proposed by ${bill.factions?.faction_name || 'Unknown'}</div>
+                    <div class="committee-bill-sponsor">${!bill.proposed_by && bill.bill_type === 'budget' ? 'Automatically introduced to committee' : 'Proposed by ' + (bill.factions?.faction_name || 'Unknown')}</div>
                 </div>
                 ${lawsIsAutocracy ? `<div class="committee-support"><div style="font-size:0.85rem;color:#ff4444;font-weight:bold;">DECREE</div><div class="support-label">${isHeadFaction ? 'You can enact this' : 'Awaiting head faction'}</div></div>` :
                 `<div class="committee-support"><div class="support-percent ${support.percent >= 51 ? 'enough' : ''}">${support.percent}%</div><div class="support-label">Support</div></div>`}
