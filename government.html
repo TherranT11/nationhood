@@ -219,10 +219,10 @@ async function renderGovernmentPage() {
                 .eq('nation_id', currentNation.id).eq('faction_type', 'party')
         ]);
 
-        // Fetch active Head of Government with trait
+        // Fetch active Head of Government with trait and party name
         const { data: activeHOG } = await _supabase
             .from('head_of_government')
-            .select('*, leader_traits(*)')
+            .select('*, factions(id, faction_name, abbreviation), leader_traits(*)')
             .eq('nation_id', currentNation.id)
             .eq('active', true)
             .maybeSingle();
@@ -591,7 +591,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
                         <div class="admin-section">
                             <div class="admin-section-title">Prime Minister</div>
                             <div class="admin-person-name">${activeHOG ? `${escapeHtml(activeHOG.first_name)} ${escapeHtml(activeHOG.last_name)}` : escapeHtml(pmName)}</div>
-                            <div class="admin-person-details">${activeHOG ? `Age ${activeHOG.age} • ` : (pmAge !== '—' ? `Age ${pmAge} • ` : '')}<span class="admin-person-party">${activeHOG ? (allParties.find(p => p.id === activeHOG.faction_id)?.faction_name || pmPartyName) : pmPartyName}</span></div>
+                            <div class="admin-person-details">${activeHOG ? `Age ${activeHOG.age} • ` : (pmAge !== '—' ? `Age ${pmAge} • ` : '')}<span class="admin-person-party">${activeHOG ? (activeHOG.factions?.faction_name || allParties.find(p => p.id === activeHOG.faction_id)?.faction_name || pmPartyName) : pmPartyName}</span></div>
                             ${primeMinister?.minister_approval != null ? `<div class="minister-approval" style="margin-top:6px;">Approval: <span class="${primeMinister.minister_approval < 35 ? 'low' : primeMinister.minister_approval < 50 ? 'mid' : 'high'}">${Math.round(primeMinister.minister_approval)}%</span></div>` : ''}
                             ${activeHOG ? `
                                 <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);">
@@ -744,7 +744,7 @@ async function renderAdministrationBox(coalition, parties, primeMinister, govern
         const leadPartyName = leadParty ? leadParty.party_name : 'Unknown';
         const pmName = safePmName(primeMinister);
         const pmAge = primeMinister?.minister_age || '—';
-        const pmParty = primeMinister ? (primeMinister.factions?.faction_name || getPartyNameById(primeMinister.party_id)) : '—';
+        const pmParty = activeHOG?.factions?.faction_name || (primeMinister ? (primeMinister.factions?.faction_name || getPartyNameById(primeMinister.party_id)) : '—');
         const pmAppr = primeMinister?.minister_approval ?? null;
         const pmApprHtml = pmAppr !== null ? (() => {
             const cls = pmAppr < 35 ? 'low' : pmAppr < 50 ? 'mid' : 'high';
