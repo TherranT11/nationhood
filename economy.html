@@ -808,7 +808,7 @@ function renderOverviewTab(nation) {
     var unemp = Number(nation.unemployment) || 50;
     h += renderOverviewCard('Unemployment', Math.round(unemp), unemp <= 30 ? 'surplus' : unemp <= 60 ? 'neutral' : 'deficit', getTrendArrow('unemployment', unemp, true));
 
-    var infl = Number(nation.inflation) || 20;
+    var infl = Number(nation.inflation) || 0;
     var inflCC = inflationColorClass(infl);
     var inflStatus = inflCC === 'good' ? 'surplus' : inflCC === 'bad' ? 'deficit' : 'neutral';
     h += renderOverviewCard('Inflation', formatInflationRate(infl), inflStatus, getTrendArrow('inflation', infl, true));

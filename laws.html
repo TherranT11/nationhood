@@ -791,22 +791,19 @@ async function renderBudgetBillContent() {
         h += '</div>';
 
         // --- Right: Expenditures ---
-        var inflationStat = Number(currentNation.inflation || 20);
-        var inflationPct = (inflationStat - 20) * 0.5;
+        var inflationStat = Number(currentNation.inflation || 0);
+        var inflationPct = Math.pow(Math.max(0, inflationStat), 1.5) / 100;
         var inflMult = getInflationMultiplier(inflationStat);
         h += '<div class="bp-col">';
         h += '<div class="bp-col-header">EXPENDITURES</div>';
         h += '<div class="bp-inflation-summary">';
         h += '<span>📊</span> ';
         h += '<span>' + (currentNation.name || 'Nation') + '\'s inflation is currently <strong>' + formatInflationRate(inflationStat) + ' (' + getInflationLabel(inflationStat) + ')</strong>. ';
-        if (inflationPct > 1) {
+        if (inflationPct > 0.5) {
             h += 'That has raised all ministry costs by <strong class="bp-deficit">+' + inflationPct.toFixed(1) + '%</strong> ';
             h += '(multiplier: ' + inflMult.toFixed(3) + '×).';
-        } else if (inflationPct < -1) {
-            h += 'That has reduced all ministry costs by <strong class="bp-surplus">' + inflationPct.toFixed(1) + '%</strong> ';
-            h += '(multiplier: ' + inflMult.toFixed(3) + '×).';
         } else {
-            h += 'Costs are stable (no inflation adjustment).';
+            h += 'Costs are stable (negligible inflation adjustment).';
         }
         h += '</span></div>';
         for (var i = 0; i < FISCAL_CATEGORIES.length; i++) {

@@ -2792,8 +2792,8 @@ function renderBudgetPreview(gameYear) {
     var bd = bpBudgetData;
     var budget = calculateNationalBudget(nation);
     applyTradeTariffOverride(budget, bpTradeTariffRevenue);
-    var inflationStat = Number(nation.inflation || 50);
-    var inflationPct = (inflationStat - 50) / 2;
+    var inflationStat = Number(nation.inflation || 0);
+    var inflationPct = Math.pow(Math.max(0, inflationStat), 1.5) / 100;
 
     var totalSpending = bd.totalExpenditure;
     var available = bd.available;
@@ -2843,8 +2843,8 @@ function renderBudgetPreview(gameYear) {
     h += bpRevLine('AVAILABLE FOR ALLOCATION', available, true);
     h += '</div>';
 
-    if (inflationPct > 0.1) {
-        h += '<div class="budget-inflation-notice">Inflation (' + inflationStat.toFixed(0) + '/100) has increased all costs by ~' + inflationPct.toFixed(1) + '% since last budget cycle</div>';
+    if (inflationPct > 0.5) {
+        h += '<div class="budget-inflation-notice">Inflation (' + inflationPct.toFixed(1) + '%) has increased all costs by ~' + inflationPct.toFixed(1) + '% since last budget cycle</div>';
     }
     h += '</div>';
 

@@ -399,37 +399,37 @@ export function statDirectionSign(statKey) {
 // ==================== INFLATION FORMATTING ====================
 
 /**
- * Inflation scale: 20 = 0% (stable), 0 = -10% (deflation), 100 = +40% (hyperinflation).
- * Rate formula: (value - 20) * 0.5
+ * Inflation scale: 0-100 stat, no deflation (prices always go up).
+ * Rate formula: stat^1.5 / 100  →  stat 1 = 0.01%, stat 100 = 10.0%
  */
-const INFLATION_ZERO_POINT = 20;
+
+export function inflationRate(inflationStat) {
+    const val = Math.max(0, Number(inflationStat ?? 0));
+    return Math.pow(val, 1.5) / 100;
+}
 
 export function formatInflationRate(inflationStat) {
-    const val = Number(inflationStat ?? INFLATION_ZERO_POINT);
-    const rate = (val - INFLATION_ZERO_POINT) * 0.5;
-    const rounded = Math.round(rate * 10) / 10;
-    if (rounded === 0) return '0%';
-    return (rounded > 0 ? '+' : '') + rounded + '%';
+    const rate = inflationRate(inflationStat);
+    if (rate < 0.01) return '0%';
+    if (rate < 1) return '+' + rate.toFixed(2) + '%';
+    return '+' + rate.toFixed(1) + '%';
 }
 
 export function getInflationLabel(inflationStat) {
-    const val = Number(inflationStat ?? INFLATION_ZERO_POINT);
-    if (val <= 5)  return 'Severe Deflation';
-    if (val <= 14) return 'Deflation';
-    if (val <= 19) return 'Mild Deflation';
-    if (val <= 25) return 'Stable';
-    if (val <= 40) return 'Low Inflation';
-    if (val <= 60) return 'Moderate Inflation';
-    if (val <= 80) return 'High Inflation';
+    const rate = inflationRate(inflationStat);
+    if (rate < 0.1)  return 'Negligible';
+    if (rate < 0.5)  return 'Minimal';
+    if (rate < 1.5)  return 'Stable';
+    if (rate < 3)    return 'Low Inflation';
+    if (rate < 5)    return 'Moderate Inflation';
+    if (rate < 8)    return 'High Inflation';
     return 'Hyperinflation';
 }
 
 export function inflationColorClass(inflationStat) {
-    const val = Number(inflationStat ?? INFLATION_ZERO_POINT);
-    if (val <= 5)  return 'bad';
-    if (val <= 14) return 'medium';
-    if (val <= 40) return 'good';
-    if (val <= 60) return 'medium';
+    const rate = inflationRate(inflationStat);
+    if (rate < 1.5)  return 'good';
+    if (rate < 5)    return 'medium';
     return 'bad';
 }
 
