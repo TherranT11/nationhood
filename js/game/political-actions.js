@@ -1996,6 +1996,25 @@ export async function processPromiseTick(supabase, nation, currentTick) {
             results.push({ promise, resolution: 'broken' });
             continue;
         }
+
+        // Per-tick penalty: governing party with unfulfilled promise loses approval with the promised bloc
+        // -1D3 approval per tick (PENALTY_PER_TICK_MIN to PENALTY_PER_TICK_MAX)
+        if (isGoverning && promise.bloc_id) {
+            const penaltyAmount = -(Math.floor(Math.random() * (cfg.PENALTY_PER_TICK_MAX - cfg.PENALTY_PER_TICK_MIN + 1)) + cfg.PENALTY_PER_TICK_MIN);
+            const { data: penaltyBlocRow } = await supabase
+                .from('faction_bloc_approval')
+                .select('id, approval')
+                .eq('faction_id', promise.party_id)
+                .eq('bloc_id', promise.bloc_id)
+                .single();
+            if (penaltyBlocRow) {
+                const newApproval = Math.max(0, Math.round(penaltyBlocRow.approval + penaltyAmount));
+                await supabase.from('faction_bloc_approval')
+                    .update({ approval: newApproval })
+                    .eq('id', penaltyBlocRow.id);
+            }
+            results.push({ promise, resolution: 'tick_penalty', penaltyAmount });
+        }
     }
 
     return results;
@@ -2009,7 +2028,7 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
 
     if (resolution === 'fulfilled') {
         // ── REWARDS ──
-        // +preference with affected bloc
+        // +preference with affected bloc (KEPT_PREF_BONUS)
         const { data: blocRow } = await supabase
             .from('faction_bloc_approval')
             .select('id, preference_score')
@@ -2022,6 +2041,18 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
             await supabase.from('faction_bloc_approval')
                 .update({ preference_score: newPref })
                 .eq('id', blocRow.id);
+        }
+
+        // +approval with ALL blocs (APPROVAL_IF_KEPT — the main +12 reward)
+        const { data: allBlocRows } = await supabase
+            .from('faction_bloc_approval')
+            .select('id, approval')
+            .eq('faction_id', promise.party_id);
+        for (const row of (allBlocRows || [])) {
+            const newApproval = Math.min(100, Math.round(row.approval + cfg.APPROVAL_IF_KEPT));
+            await supabase.from('faction_bloc_approval')
+                .update({ approval: newApproval })
+                .eq('id', row.id);
         }
 
         // +momentum
