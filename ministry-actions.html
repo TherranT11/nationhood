@@ -2053,7 +2053,7 @@ window.enactPolicy = async function(policyId, ministryKey) {
         ministry_key: ministryKey,
         action_key: policyId,
         applied_at_tick: currentTick,
-        money_cost: currentCost,
+        money_cost: Math.round(currentCost),
         stat_effects: statEffects,
         processed: false
     });
