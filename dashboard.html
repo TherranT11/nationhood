@@ -613,7 +613,7 @@ initPage('dashboard', async (state) => {
         _supabase.from('factions').select('id, faction_name, abbreviation, seats, approval_rating, action_points, party_color, party_logo, is_npc, loyalty, momentum').eq('nation_id', nation.id).eq('faction_type', 'party'),
         _supabase.from('bills').select('*, factions(faction_name, abbreviation), bill_support(faction_id, stance, seat_count), bill_articles(article_number, article_title, article_text, policies(policy_name, description))').eq('nation_id', nation.id).in('status', ['floor', 'vetoed']),
         _supabase.from('bills').select('*, factions(faction_name, abbreviation), bill_support(faction_id, stance, seat_count), bill_articles(article_number, article_title, article_text, policies(policy_name, description))').eq('nation_id', nation.id).eq('status', 'committee'),
-        _supabase.from('head_of_government').select('*, leader_traits(*)').eq('nation_id', nation.id).eq('active', true).maybeSingle(),
+        _supabase.from('head_of_government').select('*, factions(id, faction_name), leader_traits(*)').eq('nation_id', nation.id).eq('active', true).maybeSingle(),
         _supabase.from('elections').select('election_tick, election_type, status').eq('nation_id', nation.id).eq('status', 'scheduled').order('election_tick', { ascending: true }).limit(1).maybeSingle(),
         _supabase.from('diplomatic_relations').select('*').or('nation_a_id.eq.' + nation.id + ',nation_b_id.eq.' + nation.id),
         _supabase.from('nations').select('id, name').neq('id', nation.id),
@@ -994,7 +994,7 @@ function renderGovernment(nation, coalition, ministries, allParties, hog, govTyp
         const ln = pm?.minister_last_name || hog?.last_name || '';
         leaderTitle = 'PM';
         leaderName = `${fn} ${ln}`.trim() || 'Vacant';
-        leaderSub = pm?.factions?.faction_name || '';
+        leaderSub = pm?.factions?.faction_name || hog?.factions?.faction_name || '';
         leaderInit = (fn || ln) ? initials(fn, ln) : '??';
     }
 
