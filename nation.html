@@ -34,7 +34,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatNumber, scaleRawToDollars } from './js/common.js';
 import { formatCurrencyShort, escapeHtml } from './js/utils.js';
-import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, INVERTED_STATS, STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
+import { CANONICAL_GOVERNMENT_TYPES, isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game-common.js';
 import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
 /**
  * Nation Page - Comprehensive Stats Display
@@ -201,7 +201,7 @@ var STAT_CATEGORIES = [
         { name: 'Birth Rate', key: 'birth_rate', desc: 'Births per 1,000 people' },
         { name: 'Death Rate', key: 'death_rate', desc: 'Deaths per 1,000 people', inverted: true },
         { name: 'Median Age', key: 'median_age', desc: 'Average age of population', format: 'years' },
-        { name: 'Eligible Voters', key: 'eligible_voters', desc: 'Citizens able to vote' },
+        { name: 'Eligible Voters', key: 'eligible_voters', desc: 'Citizens able to vote', noHealth: true, format: 'count' },
         { name: 'Ethnic Diversity', key: 'ethnic_diversity', desc: 'Cultural heterogeneity' }
     ]},
     { id: 'healthcare', label: 'Healthcare', icon: '\u{1F3E5}', blocs: ['Urban Progressives', 'Ethnic Minorities'],
@@ -301,6 +301,7 @@ function healthColorRaw(val, inverted) {
 
 function catHealth(cat, nation) {
     var scored = cat.stats.filter(function(s) {
+        if (s.noHealth) return false;
         var v = nation[s.key];
         return v !== null && v !== undefined;
     });
@@ -663,32 +664,6 @@ function calculateRanking(statKey, value, inverted = false) {
     return sorted.indexOf(value) + 1;
 }
 
-function roundDelta(val) {
-    return Math.abs(val) >= 1 ? Math.round(val).toString() : val.toFixed(1);
-}
-
-function getTrendArrow(statKey, currentValue, inverted, format) {
-    if (!previousTickData || currentValue === null || currentValue === undefined) {
-        return '<span class="trend-arrow trend-neutral">―</span>';
-    }
-    var historyKey = statKey === 'GDP' ? 'gdp' : statKey;
-    var previousValue = previousTickData[historyKey];
-    if (previousValue === null || previousValue === undefined) {
-        return '<span class="trend-arrow trend-neutral">―</span>';
-    }
-    var delta = currentValue - previousValue;
-    var invertedClass = inverted ? ' inverted' : '';
-    // GDP/debt are stored as raw dollars — delta is already in dollars, no scaling needed.
-    if (delta > 0) {
-        var formatted = (format === 'currency' || format === 'gdp') ? '+' + formatCurrencyShort(delta) : '+' + roundDelta(delta);
-        return '<span class="trend-arrow trend-up' + invertedClass + '">▲ ' + formatted + '</span>';
-    } else if (delta < 0) {
-        var formatted = (format === 'currency' || format === 'gdp') ? formatCurrencyShort(delta) : roundDelta(delta);
-        return '<span class="trend-arrow trend-down' + invertedClass + '">▼ ' + formatted + '</span>';
-    }
-    return '<span class="trend-arrow trend-neutral">―</span>';
-}
-
 function prettyStatName(key) {
     return key.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
 }
@@ -765,6 +740,7 @@ function getDisplayValue(stat, nation) {
     var raw = nation[stat.key];
     var format = stat.format;
     if (raw === null || raw === undefined) return 'N/A';
+    if (format === 'count') return formatNumber(raw);
     if (format === 'gdp') return formatCurrencyShort(scaleRawToDollars(raw));
     if (format === 'currency') return formatCurrencyShort(scaleRawToDollars(raw));
     if (format === 'gdpgrowth') return formatGdpGrowth(raw);
@@ -809,8 +785,10 @@ async function renderNationPage(nation) {
     var alertCount = 0;
     for (var ci = 0; ci < STAT_CATEGORIES.length; ci++) {
         for (var si = 0; si < STAT_CATEGORIES[ci].stats.length; si++) {
-            var sv = Number(nation[STAT_CATEGORIES[ci].stats[si].key] ?? 50);
-            var inv = STAT_CATEGORIES[ci].stats[si].inverted;
+            var _s = STAT_CATEGORIES[ci].stats[si];
+            if (_s.noHealth) continue;
+            var sv = Number(nation[_s.key] ?? 50);
+            var inv = _s.inverted;
             var effective = inv ? 100 - sv : sv;
             if (effective < 15) alertCount++;
         }
@@ -880,6 +858,7 @@ function renderCategory(cat, nation) {
     // Count alerts in this category
     var alerts = 0;
     for (var i = 0; i < cat.stats.length; i++) {
+        if (cat.stats[i].noHealth) continue;
         var sv = Number(nation[cat.stats[i].key] ?? 50);
         var effective = cat.stats[i].inverted ? 100 - sv : sv;
         if (effective < 15) alerts++;
@@ -955,12 +934,21 @@ function renderStatCard(stat, nation) {
     if (stat.key === 'inflation' && raw !== null && raw !== undefined) {
         var label = getInflationLabel(raw);
         if (label) {
-            tagHTML = '<span class="stat-card__tag" style="color:var(--n-green);background:var(--n-green-dim);border:1px solid rgba(74,222,128,0.2);">' + label + '</span>';
+            var tagColor, tagBg, tagBorder;
+            var iClass = inflationColorClass(raw);
+            if (iClass === 'good') { tagColor = 'var(--n-green)'; tagBg = 'var(--n-green-dim)'; tagBorder = 'rgba(74,222,128,0.2)'; }
+            else if (iClass === 'medium') { tagColor = 'var(--n-yellow)'; tagBg = 'var(--n-yellow-dim)'; tagBorder = 'rgba(250,204,21,0.2)'; }
+            else { tagColor = 'var(--n-red)'; tagBg = 'var(--n-red-dim)'; tagBorder = 'rgba(239,68,68,0.2)'; }
+            tagHTML = '<span class="stat-card__tag" style="color:' + tagColor + ';background:' + tagBg + ';border:1px solid ' + tagBorder + ';">' + escapeHtml(label) + '</span>';
         }
     }
 
-    // Sparkline
-    var sparkData = sparklineHistory[stat.key] || null;
+    // Sparkline — append current value so the line reaches "now"
+    var sparkData = sparklineHistory[stat.key] ? sparklineHistory[stat.key].slice() : null;
+    if (raw !== null && raw !== undefined) {
+        if (!sparkData) sparkData = [];
+        sparkData.push(Number(raw));
+    }
     var sparkHTML = buildSparklineSVG(sparkData, hcRaw);
 
     // Rank
@@ -969,7 +957,7 @@ function renderStatCard(stat, nation) {
 
     // Alert (stat below 15 effective)
     var effective = inv ? 100 - numVal : numVal;
-    var isAlert = effective < 15;
+    var isAlert = !stat.noHealth && effective < 15;
 
     // Effect dot
     var effectCount = (statEffectsByKey[stat.key] || []).length;
