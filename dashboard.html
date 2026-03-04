@@ -793,10 +793,11 @@ function renderAlerts(nation, faction, coalition, ministries, scheduledElection,
           </div>`);
     }
 
-    // Vacant ministries
+    // Vacant ministries (exclude prime_minister for presidential republics — they have a President instead)
     const CABINET_KEYS = ['prime_minister','interior','foreign','defense','finance','education','healthcare','labor','justice','trade','energy','transportation'];
     const filledKeys = new Set(ministries.map(m => m.ministry_key));
-    const vacancies = CABINET_KEYS.filter(k => !filledKeys.has(k));
+    const isPres = isPresidentialRepublic(nation);
+    const vacancies = CABINET_KEYS.filter(k => !filledKeys.has(k) && !(isPres && k === 'prime_minister'));
     if (vacancies.length > 0) {
         alerts.push(`
           <div class="alert alert--info">
