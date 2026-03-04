@@ -5,9 +5,6 @@
 
 import { isAutocracy } from './government-types.js';
 import { computeIdeologyAlignment, countIdeologyRelationship, ideologyOppositionMultiplier } from './ideology.js';
-import { ISSUE_CATEGORY_STATS, STAT_TO_MINISTRY, statDirectionSign, statTrendBatch } from './stats.js';
-import { RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
-import { fetchActiveCoalition } from './government-structure.js';
 import { recalcDerivedApproval } from './bills.js';
 
 // ==================== THREE-PILLAR PREFERENCE ENGINE ====================
@@ -16,9 +13,9 @@ import { recalcDerivedApproval } from './bills.js';
  * Master per-tick function that recalculates the three-pillar preference score
  * for every faction-bloc pair in a nation (democracies only).
  *
- * preference_score = ideology_alignment × 0.40
- *                  + performance_perception × 0.40
- *                  + clamp(momentum, 0, 100) × 0.20
+ * preference_score = ideology_alignment × 0.60
+ *                  + clamp(momentum, 0, 100) × 0.40
+ * (Performance Credit / Pillar 2 is DISABLED)
  *
  * Then runs softmax per bloc to produce vote_share, and aggregates
  * national_vote_share weighted by bloc population.
@@ -38,9 +35,6 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         .eq('faction_type', 'party');
     if (!factions || factions.length === 0) return;
     const factionIds = factions.map(f => f.id);
-
-    const coalition = await fetchActiveCoalition(supabase, nation.id);
-    const coalitionPartyIds = new Set(coalition?.party_ids || []);
 
     // ── 2. Load all faction_bloc_approval rows ──
     const { data: allBlocRows } = await supabase
@@ -69,42 +63,11 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
     const ideoMap = {};
     for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
 
-    // ── 5. Load ministries (for performance credit/blame) ──
-    const { data: ministries } = await supabase
-        .from('ministries')
-        .select('ministry_key, party_id')
-        .eq('nation_id', nation.id)
-        .eq('is_active', true);
-
-    const ministryHolder = {};
-    for (const m of (ministries || [])) {
-        if (m.party_id) ministryHolder[m.ministry_key] = m.party_id;
-    }
-
-    // ── 6. Collect all priority stat names for batch trend lookup ──
-    const allPriorityStatNames = new Set();
-    for (const bloc of voterBlocs) {
-        const priorities = Array.isArray(bloc.priority_issues) ? bloc.priority_issues : [];
-        for (const issue of priorities) {
-            const stats = ISSUE_CATEGORY_STATS[issue];
-            if (stats) stats.forEach(s => allPriorityStatNames.add(s));
-        }
-    }
-
-    // Load weighted trends for all relevant stats in one batch query
-    const trends = allPriorityStatNames.size > 0
-        ? await statTrendBatch(supabase, nation.id, [...allPriorityStatNames], 6)
-        : {};
-
-    // Fresh nation stats (after this tick's effects have been applied)
-    const curStats = nation;
-
-    // ── 7. Calculate all three pillars for each faction-bloc pair ──
-    const PILLAR_WEIGHT_IDEO = 0.40;
-    const PILLAR_WEIGHT_PERF = 0.35;
-    const PILLAR_WEIGHT_MOM  = 0.25;
+    // ── 5. Calculate pillars for each faction-bloc pair ──
+    // Performance Credit (Pillar 2) is DISABLED — weight redistributed to ideology + momentum
+    const PILLAR_WEIGHT_IDEO = 0.60;
+    const PILLAR_WEIGHT_MOM  = 0.40;
     const MOMENTUM_DECAY     = 0.85; // 15% decay per tick
-    const PERF_DECAY         = 0.05; // 5% drift toward neutral per tick
 
     const updates = [];
 
@@ -116,53 +79,8 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         // ─── PILLAR 1: Ideology Alignment (0-100) ───
         const ideoScore = ideo ? computeIdeologyAlignment(ideo, bloc) : 50;
 
-        // ─── PILLAR 2: Performance Perception (0-100) ───
-        // Uses weighted 6-tick trends for stats the bloc cares about.
-        // Ministry holders get credit/blame; non-holders get a muted signal.
-        let perfDelta = 0;
-        const priorities = Array.isArray(bloc.priority_issues) ? bloc.priority_issues : [];
-        if (priorities.length > 0) {
-            const relevantStats = new Set();
-            for (const issue of priorities) {
-                const stats = ISSUE_CATEGORY_STATS[issue];
-                if (stats) stats.forEach(s => relevantStats.add(s));
-            }
-
-            let creditSum = 0;
-            let statCount = 0;
-            for (const statKey of relevantStats) {
-                let rawTrend = trends[statKey] || 0;
-                if (rawTrend === 0) continue;
-                const sign = statDirectionSign(statKey);
-                if (sign === 0) continue;
-                // Normalize raw-value stats (GDP, debt, population) to index-equivalent scale
-                const divisor = RAW_SCALING_DIVISORS[statKey];
-                if (divisor) rawTrend = rawTrend / divisor;
-                const trendQuality = rawTrend * sign; // positive = improving
-
-                statCount++;
-                const ministryKey = STAT_TO_MINISTRY[statKey];
-                const holderId = ministryKey ? ministryHolder[ministryKey] : null;
-
-                if (holderId === row.faction_id) {
-                    // Ministry holder: full credit/blame
-                    creditSum += trendQuality * 1.5;
-                } else if (coalitionPartyIds.has(row.faction_id)) {
-                    // Coalition partner: partial credit/blame
-                    creditSum += trendQuality * 0.3;
-                }
-                // Opposition: no direct credit (they benefit via momentum feedback in Phase 4)
-            }
-
-            if (statCount > 0) {
-                perfDelta = (creditSum / statCount) * 1.5; // sensitivity multiplier (reduced from 3)
-            }
-        }
-
-        // Decay toward 50 + apply trend-based delta; floor at 15 (max display penalty = -35)
-        const oldPerf = Number(row.performance_perception ?? 50);
-        let newPerf = oldPerf * (1 - PERF_DECAY) + 50 * PERF_DECAY + perfDelta;
-        newPerf = Math.round(Math.max(15, Math.min(100, newPerf)) * 100) / 100;
+        // ─── PILLAR 2: Performance Perception — DISABLED ───
+        const newPerf = 50; // neutral; column still written for schema compat
 
         // ─── PILLAR 3: Momentum (-50 to +50) ───
         // Decays 15% per tick. Adjusted externally via adjustMomentum().
@@ -175,7 +93,7 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         // Map momentum from [-50,+50] to [0,100] for blending
         const momMapped = Math.max(0, Math.min(100, 50 + newMomentum));
         let prefScore = Math.round(
-            (ideoScore * PILLAR_WEIGHT_IDEO + newPerf * PILLAR_WEIGHT_PERF + momMapped * PILLAR_WEIGHT_MOM) * 100
+            (ideoScore * PILLAR_WEIGHT_IDEO + momMapped * PILLAR_WEIGHT_MOM) * 100
         ) / 100;
 
         // ─── IDEOLOGY OPPOSITION PENALTY (structural) ───
