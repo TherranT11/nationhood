@@ -230,6 +230,26 @@
     margin-bottom: 8px;
   }
   .bill-card__sponsor { color: var(--dtxt-muted); font-weight: 500; }
+  .bill-card__brief {
+    font-family: var(--dfont-mono); font-size: 9.5px; color: var(--dtxt-dim);
+    margin-bottom: 6px; line-height: 1.4;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .bill-card__tallies {
+    display: flex; gap: 10px; margin-bottom: 8px;
+    font-family: var(--dfont-mono); font-size: 9px; font-weight: 600;
+  }
+  .bill-card__tally--yes { color: var(--dgreen); }
+  .bill-card__tally--no { color: var(--dred); }
+  .bill-card__tally--abs { color: var(--dtxt-dim); }
+  .bill-card__view-btn {
+    font-family: var(--dfont-mono); font-size: 9.5px; font-weight: 700;
+    padding: 5px 12px; text-align: center; text-decoration: none;
+    border: 1px solid var(--dblue-border); background: var(--dblue-faint);
+    color: var(--dblue); cursor: pointer; flex-shrink: 0;
+    transition: all 0.1s; letter-spacing: 0.04em;
+  }
+  .bill-card__view-btn:hover { background: var(--dblue-border); color: #fff; }
   .bill-card__bottom {
     display: flex; align-items: center; gap: 8px;
   }
@@ -599,8 +619,8 @@ initPage('dashboard', async (state) => {
         fetchActiveCoalition(_supabase, nation.id),
         _supabase.from('ministries').select('*, factions(faction_name, abbreviation, party_color)').eq('nation_id', nation.id).eq('is_active', true),
         _supabase.from('factions').select('id, faction_name, abbreviation, seats, approval_rating, action_points, party_color, party_logo, is_npc, loyalty, momentum').eq('nation_id', nation.id).eq('faction_type', 'party'),
-        _supabase.from('bills').select('*, factions(faction_name, abbreviation), bill_support(faction_id, stance, seat_count)').eq('nation_id', nation.id).in('status', ['floor', 'vetoed']),
-        _supabase.from('bills').select('*, factions(faction_name, abbreviation), bill_support(faction_id, stance, seat_count)').eq('nation_id', nation.id).eq('status', 'committee'),
+        _supabase.from('bills').select('*, factions(faction_name, abbreviation), bill_support(faction_id, stance, seat_count), bill_articles(article_number, article_title, article_text, policies(policy_name, description))').eq('nation_id', nation.id).in('status', ['floor', 'vetoed']),
+        _supabase.from('bills').select('*, factions(faction_name, abbreviation), bill_support(faction_id, stance, seat_count), bill_articles(article_number, article_title, article_text, policies(policy_name, description))').eq('nation_id', nation.id).eq('status', 'committee'),
         _supabase.from('head_of_government').select('*, leader_traits(*)').eq('nation_id', nation.id).eq('active', true).maybeSingle(),
         _supabase.from('elections').select('election_tick, election_type, status').eq('nation_id', nation.id).eq('status', 'scheduled').order('election_tick', { ascending: true }).limit(1).maybeSingle(),
         _supabase.from('diplomatic_relations').select('*').or('nation_a_id.eq.' + nation.id + ',nation_b_id.eq.' + nation.id),
@@ -822,6 +842,20 @@ function renderAlerts(nation, faction, coalition, ministries, scheduledElection,
 }
 
 function renderBills(faction, floorBills, committeeBills) {
+    // Recalculate vote tallies from bill_support (same as laws page)
+    for (const bill of floorBills) {
+        let f = 0, a = 0, ab = 0;
+        (bill.bill_support || []).forEach(s => {
+            const st = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+            if (st === 'yes')          f += (s.seat_count || 0);
+            else if (st === 'no')      a += (s.seat_count || 0);
+            else if (st === 'abstain') ab += (s.seat_count || 0);
+        });
+        bill.votes_for = f;
+        bill.votes_against = a;
+        bill.votes_abstain = ab;
+    }
+
     const allBills = [...floorBills, ...committeeBills].slice(0, 6);
     if (allBills.length === 0) return;
 
@@ -835,7 +869,7 @@ function renderBills(faction, floorBills, committeeBills) {
         const sponsor = bill.factions?.abbreviation || bill.factions?.faction_name || '?';
         const isYours = bill.proposed_by === faction.id;
         const status = bill.status === 'floor' ? 'Floor Vote' : bill.status === 'vetoed' ? 'Vetoed' : 'Committee';
-        const statusColor = bill.status === 'floor' ? '--dblue' : '--damber';
+        const statusColor = bill.status === 'floor' ? '--dblue' : bill.status === 'vetoed' ? '--dred' : '--damber';
 
         // Check current faction stance
         const support = (bill.bill_support || []).find(s => s.faction_id === faction.id);
@@ -845,6 +879,29 @@ function renderBills(faction, floorBills, committeeBills) {
         if (isYours) {
             relevanceHTML = `<span class="bill-card__relevance" style="background:var(--damber-faint);color:var(--damber);border:1px solid var(--damber-border);">Your bill</span>`;
         }
+
+        // Build article brief
+        const arts = (bill.bill_articles || []).sort((a, b) => a.article_number - b.article_number);
+        let brief = '';
+        if (bill.bill_type === 'no_confidence') brief = 'Motion to dissolve the current government';
+        else if (bill.bill_type === 'foundational') brief = 'Electoral Makeup — Proposed: ' + (bill.proposed_seats || '?') + ' seats';
+        else if (bill.bill_type === 'budget') brief = 'Annual budget allocation across all ministries';
+        else if (bill.bill_type === 'default_resolution') brief = 'Sovereign default resolution';
+        else if (bill.bill_type === 'impeachment_motion') brief = 'Impeachment motion against the president';
+        else if (bill.bill_type === 'impeachment_conviction') brief = 'Impeachment trial — conviction vote';
+        else if (bill.bill_type === 'ratification') brief = 'Diplomatic ratification vote';
+        else if (bill.bill_type === 'confirmation') brief = 'Ambassador confirmation vote';
+        else if (bill.bill_type === 'minister_confirmation') brief = 'Cabinet confirmation vote';
+        else if (bill.bill_type === 'veto_override') brief = 'Vote to override presidential veto';
+        else if (arts.length > 0) {
+            brief = arts.map(a => a.policies?.policy_name || a.article_title || '').filter(Boolean).join(', ');
+        }
+        if (bill.bill_type === 'repeal' && !brief) brief = 'Proposes to rescind an active law';
+
+        // Vote tallies
+        const yesVotes = bill.votes_for || 0;
+        const noVotes = bill.votes_against || 0;
+        const absVotes = bill.votes_abstain || 0;
 
         const ayeSel = currentStance === 'accept' ? ' bill-card__vote-btn--selected-aye' : '';
         const naySel = currentStance === 'reject' ? ' bill-card__vote-btn--selected-nay' : '';
@@ -858,12 +915,19 @@ function renderBills(faction, floorBills, committeeBills) {
               <span class="bill-card__status" style="background:var(${statusColor}-faint);color:var(${statusColor});border:1px solid var(${statusColor}-border);">${status}</span>
             </div>
             <div class="bill-card__meta">Sponsor: <span class="bill-card__sponsor">${escapeHtml(sponsor)}</span></div>
+            ${brief ? `<div class="bill-card__brief">${escapeHtml(brief)}</div>` : ''}
+            <div class="bill-card__tallies">
+              <span class="bill-card__tally bill-card__tally--yes">${yesVotes} YES</span>
+              <span class="bill-card__tally bill-card__tally--no">${noVotes} NO</span>
+              <span class="bill-card__tally bill-card__tally--abs">${absVotes} ABSTAIN</span>
+            </div>
             <div class="bill-card__bottom">
               <div class="bill-card__votes">
                 <div class="bill-card__vote-btn bill-card__vote-btn--aye${ayeSel}" data-bill="${bill.id}" data-stance="accept">AYE</div>
                 <div class="bill-card__vote-btn bill-card__vote-btn--nay${naySel}" data-bill="${bill.id}" data-stance="reject">NAY</div>
                 <div class="bill-card__vote-btn bill-card__vote-btn--abs${absSel}" data-bill="${bill.id}" data-stance="conditional">ABSTAIN</div>
               </div>
+              <a class="bill-card__view-btn" href="bill.html?id=${bill.id}">VIEW</a>
             </div>
           </div>`;
     }).join('');
