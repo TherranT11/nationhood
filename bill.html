@@ -2543,8 +2543,8 @@ function renderBudgetBillUI() {
 
     const budget = calculateNationalBudget(nation);
     applyTradeTariffOverride(budget, budgetTradeTariffRevenue);
-    const inflationStat = Number(nation.inflation || 20);
-    const inflationPct = (inflationStat - 20) * 0.5;
+    const inflationStat = Number(nation.inflation || 0);
+    const inflationPct = Math.pow(Math.max(0, inflationStat), 1.5) / 100;
     const totals = getBudgetTotals();
     // Three-state controls: showControls = buttons visible, canEdit = buttons clickable
     const showControls = currentBill && currentBill.status === 'committee' && !currentBill.early_resolution_status;
@@ -2619,7 +2619,7 @@ function renderBudgetBillUI() {
     h += budgetRevLine('AVAILABLE FOR ALLOCATION', totals.available, true);
     h += '</div>';
 
-    if (inflationPct > 1) {
+    if (inflationPct > 0.5) {
         h += '<div class="budget-inflation-notice">Inflation (' + formatInflationRate(inflationStat) + ' — ' + getInflationLabel(inflationStat) + ') has increased all costs by ~' + inflationPct.toFixed(1) + '% since last budget cycle</div>';
     }
     h += '</div>';
@@ -2633,14 +2633,11 @@ function renderBudgetBillUI() {
     h += '<div class="budget-inflation-summary">';
     h += '<span class="budget-inflation-icon">📊</span>';
     h += '<span>' + escapeHtml(budgetNation.name || 'Nation') + '\'s inflation is currently <strong>' + formatInflationRate(inflationStat) + ' (' + getInflationLabel(inflationStat) + ')</strong>. ';
-    if (inflationPct > 1) {
+    if (inflationPct > 0.5) {
         h += 'That has raised all ministry costs by <strong class="budget-gap-deficit">+' + inflationPct.toFixed(1) + '%</strong> ';
         h += '(multiplier: ' + inflationMult.toFixed(3) + '×).';
-    } else if (inflationPct < -1) {
-        h += 'That has reduced all ministry costs by <strong class="budget-gap-surplus">' + inflationPct.toFixed(1) + '%</strong> ';
-        h += '(multiplier: ' + inflationMult.toFixed(3) + '×).';
     } else {
-        h += 'Costs are stable (no inflation adjustment).';
+        h += 'Costs are stable (negligible inflation adjustment).';
     }
     h += '</span></div>';
     h += '<div class="budget-ministry-tabs" id="budget-ministry-tabs">';

@@ -1217,8 +1217,8 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             }
         }
         var avgImportPrice = totalImpForPrice > 0 ? importWeightedPrice / totalImpForPrice : 1.0;
-        // Nudge inflation: (avgPrice - 1.0) scaled to ±0.5 per tick
-        var currentInflation = Number(n.inflation) || 50;
+        // Nudge inflation: (avgPrice - 1.0) scaled per tick. No deflation — clamp ≥ 0.
+        var currentInflation = Number(n.inflation) || 0;
         var inflationNudge = (avgImportPrice - 1.0) * 1.0; // price 1.5 → +0.5 nudge, price 0.7 → -0.3
         if (Math.abs(inflationNudge) >= 0.01) {
             nationUpdates.inflation = Math.round(Math.max(0, Math.min(100, currentInflation + inflationNudge)) * 10) / 10;
@@ -2939,13 +2939,12 @@ const FISCAL_TO_MINISTRY_KEY = {
 
 /**
  * Compute inflation cost multiplier from the 0-100 inflation stat.
- * Inflation scale: 20 = 0% (stable prices), 0 = deflation, 100 = hyperinflation.
- * Rate = (inflation - 20) * 0.5, applied as percentage cost adjustment.
- * e.g. inflation=40 → rate = +10% → multiplier = 1.10
+ * Rate = stat^1.5 / 100  →  stat 1 = 0.01%, stat 100 = 10%.
+ * No deflation — multiplier is always ≥ 1.
  */
 function getInflationMultiplier(inflationStat) {
-    const pct = (Number(inflationStat || 20) - 20) * 0.5;
-    return 1 + (pct / 100);
+    const rate = Math.pow(Math.max(0, Number(inflationStat || 0)), 1.5) / 100;
+    return 1 + (rate / 100);
 }
 
 /**
