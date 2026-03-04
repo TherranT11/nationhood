@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Choose Your Path | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root {
+  --bg-0: #0e0e0c;
+  --bg-1: #141412;
+  --bg-2: #1a1a17;
+  --bg-3: #1e1e1a;
+  --bg-4: #24241f;
+  --bg-5: #2c2c26;
+  --bg-hover: #282822;
+  --text-bright: #e2e0d6;
+  --text-primary: #c4c2b8;
+  --text-secondary: #8a8778;
+  --text-muted: #6b6a5e;
+  --text-dim: #4a4940;
+  --text-ghost: #333229;
+  --border-hair: rgba(255,255,255,0.04);
+  --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08);
+  --border-2: rgba(255,255,255,0.12);
+  --green: #5cb85c;
+  --green-faint: rgba(92,184,92,0.08);
+  --green-border: rgba(92,184,92,0.18);
+  --red: #d9534f;
+  --red-faint: rgba(217,83,79,0.08);
+  --red-border: rgba(217,83,79,0.18);
+  --amber: #c8a64e;
+  --amber-faint: rgba(200,166,78,0.08);
+  --amber-border: rgba(200,166,78,0.18);
+  --blue: #5b9bd5;
+  --blue-faint: rgba(91,155,213,0.08);
+  --blue-border: rgba(91,155,213,0.18);
+  --purple: #8b7ec8;
+  --purple-faint: rgba(139,126,200,0.08);
+  --purple-border: rgba(139,126,200,0.18);
+  --teal: #5aafa5;
+  --teal-faint: rgba(90,175,165,0.08);
+  --teal-border: rgba(90,175,165,0.18);
+  --orange: #d48a3c;
+  --orange-faint: rgba(212,138,60,0.08);
+  --orange-border: rgba(212,138,60,0.18);
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+  --font-serif: 'IBM Plex Serif', Georgia, serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.container {
+  max-width: 820px;
+  width: 100%;
+  padding: 40px 24px;
+}
+
+.page-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.page-title {
+  font-family: var(--font-ui);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: 6px;
+}
+
+.page-desc {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 32px;
+  line-height: 1.6;
+}
+
+.faction-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.faction-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  padding: 24px 18px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  position: relative;
+}
+
+.faction-card:hover:not(.faction-card--disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-2);
+}
+
+.faction-card--disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.faction-card__icon {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-dim);
+  width: 32px;
+  height: 32px;
+  background: var(--bg-4);
+  border: 1px solid var(--border-0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.faction-card__icon--active {
+  color: var(--blue);
+  background: var(--blue-faint);
+  border-color: var(--blue-border);
+}
+
+.faction-card__name {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: 6px;
+}
+
+.faction-card--disabled .faction-card__name {
+  color: var(--text-secondary);
+}
+
+.faction-card__desc {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+
+.faction-card__badge {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  display: inline-block;
+}
+
+.faction-card__badge--available {
+  background: var(--green-faint);
+  color: var(--green);
+  border: 1px solid var(--green-border);
+}
+
+.faction-card__badge--soon {
+  background: var(--amber-faint);
+  color: var(--amber);
+  border: 1px solid var(--amber-border);
+}
+
+.back-link {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-decoration: none;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-top: 24px;
+  display: inline-block;
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 5px 0;
+}
+
+.back-link:hover {
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .faction-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="page-label">Nationhood // New Faction</div>
+  <div class="page-title">Choose Your Path</div>
+  <div class="page-desc">Select the type of faction you want to operate. Your faction type determines how you interact with the political world.</div>
+
+  <div class="faction-grid">
+
+    <div class="faction-card" id="card-party" onclick="selectFaction('party')">
+      <div class="faction-card__icon faction-card__icon--active">PP</div>
+      <div class="faction-card__name">Political Party</div>
+      <div class="faction-card__desc">Form a political party to compete in elections, draft legislation, build coalitions, and govern nations through democratic or autocratic systems.</div>
+      <span class="faction-card__badge faction-card__badge--available">Available</span>
+    </div>
+
+    <div class="faction-card faction-card--disabled">
+      <div class="faction-card__icon">CO</div>
+      <div class="faction-card__name">Corporation</div>
+      <div class="faction-card__desc">Build a commercial empire. Lobby governments, negotiate trade contracts, and influence policy through economic leverage.</div>
+      <span class="faction-card__badge faction-card__badge--soon">Coming Soon</span>
+    </div>
+
+    <div class="faction-card faction-card--disabled">
+      <div class="faction-card__icon">MB</div>
+      <div class="faction-card__name">Military Branch</div>
+      <div class="faction-card__desc">Command a branch of the armed forces. Project power, enforce order, and shape the security landscape of nations.</div>
+      <span class="faction-card__badge faction-card__badge--soon">Coming Soon</span>
+    </div>
+
+  </div>
+
+  <button class="back-link" onclick="handleLogout()">Abandon Session</button>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+
+// Auth check — redirect to login if not signed in
+const { data: { user } } = await _supabase.auth.getUser();
+if (!user) {
+  window.location.href = 'index.html';
+}
+
+// If they already have a party with a nation, send them to dashboard
+const { data: faction } = await _supabase
+  .from('factions')
+  .select('nation_id')
+  .eq('id', user.id)
+  .eq('faction_type', 'party')
+  .maybeSingle();
+
+if (faction && faction.nation_id) {
+  window.location.href = 'dashboard.html';
+}
+
+function selectFaction(type) {
+  if (type === 'party') {
+    window.location.href = 'select-nation.html';
+  }
+}
+
+async function handleLogout() {
+  sessionStorage.removeItem('nationhood_state');
+  await _supabase.auth.signOut();
+  window.location.href = 'index.html';
+}
+
+window.selectFaction = selectFaction;
+window.handleLogout = handleLogout;
+</script>
+
+</body>
+</html>

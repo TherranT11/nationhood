@@ -583,7 +583,14 @@ function initials(first, last) {
 // ─── INIT ───
 initPage('dashboard', async (state) => {
     const { user, faction, nation, shard } = state;
-    if (!faction || !nation) return;
+
+    // If the user has no party (disbanded or never created), send them
+    // through the party-creation flow instead of showing a blank dashboard.
+    if (!faction || !faction.nation_id) {
+        window.location.href = 'faction-select.html';
+        return;
+    }
+    if (!nation) return;
 
     // Fire all data loads in parallel
     const [
@@ -703,7 +710,7 @@ initPage('dashboard', async (state) => {
 
     // ─── TOP STORIES ───
     renderStories(eventLog, opEds, faction, currentTick);
-});
+}, false);
 
 // ═══════════════════════════════════════════════════════
 // RENDER FUNCTIONS
