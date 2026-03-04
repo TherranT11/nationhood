@@ -5320,6 +5320,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         sponsor: bill.factions?.faction_name || 'Unknown',
                         votes_for: String(votesFor),
                         votes_against: String(votesAgainst),
+                        votes_abstain: String(votesAbstain),
                         reason: `quorum not met after two attempts (${participating}/${quorumThreshold} participating)`
                     }
                 });
@@ -5367,6 +5368,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                     sponsor: bill.factions?.faction_name || 'Unknown',
                     votes_for: String(votesFor),
                     votes_against: String(votesAgainst),
+                    votes_abstain: String(votesAbstain),
                     article_count: '0'
                 }
             });
@@ -5461,7 +5463,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                         bill_name: bill.bill_name,
                         sponsor: bill.factions?.faction_name || 'Unknown',
                         votes_for: String(votesFor),
-                        votes_against: String(votesAgainst)
+                        votes_against: String(votesAgainst),
+                        votes_abstain: String(votesAbstain)
                     }
                 });
             }
@@ -5573,7 +5576,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                             bill_name: bill.bill_name,
                             sponsor: bill.factions?.faction_name || 'Unknown',
                             votes_for: String(votesFor),
-                            votes_against: String(votesAgainst)
+                            votes_against: String(votesAgainst),
+                            votes_abstain: String(votesAbstain)
                         }
                     });
                 } catch (e) { /* non-blocking */ }
@@ -5602,7 +5606,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                                     bill_name: `${originalBill.bill_name} (override enactment failed)`,
                                     sponsor: originalBill.factions?.faction_name || 'Unknown',
                                     votes_for: '0',
-                                    votes_against: '0'
+                                    votes_against: '0',
+                                    votes_abstain: '0'
                                 }
                             });
                         } catch (e) { /* non-blocking */ }
@@ -5613,7 +5618,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         p_trigger_key: 'bill_passed',
                         p_nation_id: bill.nation_id,
                         p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), article_count: '0' }
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain), article_count: '0' }
                     });
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
@@ -5624,7 +5629,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         p_trigger_key: 'bill_failed',
                         p_nation_id: bill.nation_id,
                         p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain) }
                     });
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
@@ -5668,7 +5673,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                             p_trigger_key: 'bill_passed',
                             p_nation_id: bill.nation_id,
                             p_tick: currentTick,
-                            p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), article_count: '0' }
+                            p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain), article_count: '0' }
                         });
                     } catch (e) { /* non-blocking */ }
                 }
@@ -5684,7 +5689,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         p_trigger_key: 'bill_failed',
                         p_nation_id: bill.nation_id,
                         p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain) }
                     });
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
@@ -5799,7 +5804,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         p_trigger_key: 'bill_passed',
                         p_nation_id: bill.nation_id,
                         p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), article_count: '0' }
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain), article_count: '0' }
                     });
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'trade_ratification', earlyResolution: bill.early_resolution_status || null });
@@ -5814,7 +5819,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         p_trigger_key: 'bill_failed',
                         p_nation_id: bill.nation_id,
                         p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain) }
                     });
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'trade_ratification', earlyResolution: bill.early_resolution_status || null });
@@ -5829,7 +5834,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         p_trigger_key: 'bill_passed',
                         p_nation_id: bill.nation_id,
                         p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), article_count: '0' }
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain), article_count: '0' }
                     });
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
@@ -5840,7 +5845,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         p_trigger_key: 'bill_failed',
                         p_nation_id: bill.nation_id,
                         p_tick: currentTick,
-                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst) }
+                        p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, sponsor: bill.factions?.faction_name || 'Unknown', votes_for: String(votesFor), votes_against: String(votesAgainst), votes_abstain: String(votesAbstain) }
                     });
                 } catch (e) { /* non-blocking */ }
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'budget', earlyResolution: bill.early_resolution_status || null });
@@ -6033,6 +6038,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                         sponsor: bill.factions?.faction_name || 'Unknown',
                         votes_for: String(votesFor),
                         votes_against: String(votesAgainst),
+                        votes_abstain: String(votesAbstain),
                         article_count: String((bill.bill_articles || []).length)
                     }
                 });
@@ -6050,7 +6056,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                             bill_name: `${bill.bill_name} (enactment failed)`,
                             sponsor: bill.factions?.faction_name || 'Unknown',
                             votes_for: String(votesFor),
-                            votes_against: String(votesAgainst)
+                            votes_against: String(votesAgainst),
+                            votes_abstain: String(votesAbstain)
                         }
                     });
                     results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_enactment', votesFor, votesAgainst, error: enactment?.error, earlyResolution: bill.early_resolution_status || null });
@@ -6082,7 +6089,8 @@ async function resolveExpiredVotes(supabase, nationId) {
                     bill_name: bill.bill_name,
                     sponsor: bill.factions?.faction_name || 'Unknown',
                     votes_for: String(votesFor),
-                    votes_against: String(votesAgainst)
+                    votes_against: String(votesAgainst),
+                    votes_abstain: String(votesAbstain)
                 }
             });
             results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
@@ -9014,7 +9022,7 @@ async function signPresidentialBill(supabase, billId, presidentFactionId) {
                 nation: 'Unknown',
                 bill_name: bill.bill_name + ' (signed by President)',
                 sponsor: bill.factions?.faction_name || 'Unknown',
-                votes_for: '0', votes_against: '0',
+                votes_for: '0', votes_against: '0', votes_abstain: '0',
                 article_count: String((bill.bill_articles || []).length)
             }
         });
@@ -9069,7 +9077,7 @@ async function vetoPresidentialBill(supabase, billId, presidentFactionId) {
                 nation: 'Unknown',
                 bill_name: bill.bill_name + ' (VETOED by President)',
                 sponsor: bill.factions?.faction_name || 'Unknown',
-                votes_for: '0', votes_against: '0'
+                votes_for: '0', votes_against: '0', votes_abstain: '0'
             }
         });
     } catch (e) { /* non-blocking */ }
@@ -9490,7 +9498,8 @@ async function rejectOwnNomination(supabase, billId, nomineePartyId) {
                 bill_name: bill.bill_name + ' (Nominee declined)',
                 sponsor: 'President',
                 votes_for: '0',
-                votes_against: '0'
+                votes_against: '0',
+                votes_abstain: '0'
             }
         });
     } catch (e) { /* non-blocking */ }
