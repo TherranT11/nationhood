@@ -11851,9 +11851,7 @@ async function resolvePromise(supabase, promise, resolution, currentTick, nation
  * Uses the Largest Remainder method (same as allocateSeatsByVotes in
  * election-simulation.js) with existing seat counts as weights.
  */
-async function rebalanceAutocracySeats(supabase, nation) {
-    if (!isAutocracy(nation)) return null;
-
+async function rebalanceVacantSeats(supabase, nation) {
     const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
 
     const { data: factions, error } = await supabase
@@ -11869,7 +11867,7 @@ async function rebalanceAutocracySeats(supabase, nation) {
 
     if (vacantSeats <= 0) return null; // No vacant seats
 
-    console.log(`[rebalanceAutocracySeats] ${nation.name}: ${vacantSeats} vacant seat(s) detected (${currentSum}/${totalSeats}). Redistributing.`);
+    console.log(`[rebalanceVacantSeats] ${nation.name}: ${vacantSeats} vacant seat(s) detected (${currentSum}/${totalSeats}). Redistributing.`);
 
     // Proportional redistribution using Largest Remainder (Hamilton) method
     // Weight = each faction's current seats
@@ -11919,7 +11917,7 @@ async function rebalanceAutocracySeats(supabase, nation) {
     }
 
     if (updates.length > 0) {
-        console.log(`[rebalanceAutocracySeats] ${nation.name}: Seats rebalanced:`,
+        console.log(`[rebalanceVacantSeats] ${nation.name}: Seats rebalanced:`,
             updates.map(u => `${u.name}: ${u.oldSeats}→${u.newSeats}`).join(', '));
     }
 
@@ -14434,10 +14432,10 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
         throw new Error(`Disband is on cooldown for ${remaining} more tick${remaining !== 1 ? 's' : ''}.`);
     }
 
-    // 2. Fetch nation for autocracy/ruling checks
+    // 2. Fetch nation for autocracy/ruling checks + seat redistribution
     const { data: nation } = await supabase
         .from('nations')
-        .select('ruling_faction_id, government_type')
+        .select('id, name, ruling_faction_id, government_type, total_seats')
         .eq('id', nationId)
         .single();
 
@@ -14566,6 +14564,11 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
         });
     if (logErr) console.warn('disbandParty: could not log action:', logErr);
 
+    // 8. Immediately redistribute vacant seats to remaining parties
+    if (nation) {
+        await rebalanceVacantSeats(supabase, nation);
+    }
+
     return { result: 'disbanded' };
 }
 
@@ -14639,7 +14642,7 @@ async function processInactivityDecay(supabase, nationId, currentTick) {
             await supabase.from('event_log').insert({
                 nation_id: nationId,
                 event_name: 'PARTY_DISBANDED_INACTIVITY',
-                description_used: `${faction.faction_name} has been dissolved due to prolonged inactivity (${ticksInactive} ticks idle). Their seats will be vacated at the next election. Ambassadors remain at their posts until their terms expire.`,
+                description_used: `${faction.faction_name} has been dissolved due to prolonged inactivity (${ticksInactive} ticks idle). Their seats have been redistributed proportionally to remaining parties. Ambassadors remain at their posts until their terms expire.`,
                 category: 'POLITICAL',
                 effects_applied: {
                     faction_id: faction.id,
@@ -17416,10 +17419,10 @@ async function advanceTick(supabase) {
             await processPurgeDecay(supabase, nation.id, newTick);
         }
 
-        // Autocracy seat rebalancing: if factions were deleted and seats are vacant,
+        // Seat rebalancing: if factions were disbanded and seats are vacant,
         // proportionally redistribute the empty seats across remaining factions.
-        if (isAutocracy(nation)) {
-            const seatResult = await rebalanceAutocracySeats(supabase, nation);
+        {
+            const seatResult = await rebalanceVacantSeats(supabase, nation);
             if (seatResult) {
                 summary.seatRebalancing = summary.seatRebalancing || [];
                 summary.seatRebalancing.push(seatResult);
