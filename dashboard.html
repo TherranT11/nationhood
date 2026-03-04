@@ -667,6 +667,20 @@ initPage('dashboard', async (state) => {
         mySteward = stewardRow;
     }
 
+    // For presidential: fetch active president
+    let presidentData = null;
+    if (isPresidential) {
+        const { data: pres } = await _supabase
+            .from('presidents')
+            .select('first_name, last_name, age, terms_served')
+            .eq('nation_id', nation.id)
+            .eq('is_active', true)
+            .order('elected_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        presidentData = pres;
+    }
+
     // Load real seat counts
     const { allPartySeats, currentSeats } = await loadSeats(_supabase, nation.id, isAuto, allParties, faction.id);
     for (const p of allParties) {
@@ -684,7 +698,7 @@ initPage('dashboard', async (state) => {
     renderBills(faction, floorBills, committeeBills);
 
     // ─── GOVERNMENT ───
-    renderGovernment(nation, coalition, ministries, allParties, hog, govType, totalSeats, allPartySeats);
+    renderGovernment(nation, coalition, ministries, allParties, hog, govType, totalSeats, allPartySeats, isPresidential, isAuto, presidentData);
 
     // ─── QUICK ACTIONS ───
     renderQuickActions(faction, nation, coalition, govType, isPresidential, mySteward);
@@ -954,17 +968,48 @@ function renderBills(faction, floorBills, committeeBills) {
     });
 }
 
-function renderGovernment(nation, coalition, ministries, allParties, hog, govType, totalSeats, allPartySeats) {
+function renderGovernment(nation, coalition, ministries, allParties, hog, govType, totalSeats, allPartySeats, isPresidential, isAuto, presidentData) {
     const panel = document.getElementById('gov-panel');
     const body = document.getElementById('gov-body');
     const badge = document.getElementById('gov-badge');
     panel.style.display = '';
     badge.textContent = govType;
 
-    const pm = ministries.find(m => m.ministry_key === 'prime_minister');
-    const pmName = pm ? `${pm.minister_first_name || ''} ${pm.minister_last_name || ''}`.trim() : (hog ? `${hog.first_name || ''} ${hog.last_name || ''}`.trim() : 'Vacant');
-    const pmParty = pm?.factions?.faction_name || '';
-    const pmInit = pm ? initials(pm.minister_first_name, pm.minister_last_name) : (hog ? initials(hog.first_name, hog.last_name) : '??');
+    // Leader display varies by government type
+    let leaderTitle = '';
+    let leaderName = '';
+    let leaderSub = '';
+    let leaderInit = '??';
+
+    if (isPresidential && presidentData) {
+        const fn = presidentData.first_name || '';
+        const ln = presidentData.last_name || '';
+        const age = presidentData.age || '?';
+        const terms = presidentData.terms_served || 1;
+        const ordinal = terms === 1 ? '1st Term' : terms === 2 ? '2nd Term' : terms === 3 ? '3rd Term' : terms + 'th Term';
+        leaderTitle = 'President';
+        leaderName = `${fn} ${ln}`.trim();
+        leaderSub = `Age ${age} · ${ordinal}`;
+        leaderInit = initials(fn, ln);
+    } else if (isAuto) {
+        const fn = nation.head_of_state_first_name || '';
+        const ln = nation.head_of_state_last_name || '';
+        const age = nation.head_of_state_age || '?';
+        leaderTitle = 'Strongman';
+        leaderName = `${fn} ${ln}`.trim() || 'Unknown';
+        leaderSub = `Age ${age}`;
+        leaderInit = initials(fn, ln);
+    } else {
+        const pm = ministries.find(m => m.ministry_key === 'prime_minister');
+        const fn = pm?.minister_first_name || hog?.first_name || '';
+        const ln = pm?.minister_last_name || hog?.last_name || '';
+        leaderTitle = 'PM';
+        leaderName = `${fn} ${ln}`.trim() || 'Vacant';
+        leaderSub = pm?.factions?.faction_name || '';
+        leaderInit = (fn || ln) ? initials(fn, ln) : '??';
+    }
+
+    const pmParty = leaderSub;
 
     // Coalition seat bar
     let coalitionHTML = '';
@@ -972,7 +1017,9 @@ function renderGovernment(nation, coalition, ministries, allParties, hog, govTyp
         const coalParties = coalition.party_ids.map((id, idx) => {
             const p = allParties.find(x => x.id === id);
             const seats = allPartySeats[id] || p?.seats || 0;
-            return { name: p?.faction_name || 'Unknown', abbr: p?.abbreviation || '?', seats, color: partyColor(idx) };
+            const name = p?.faction_name || 'Unknown';
+            const abbr = p?.abbreviation || name.split(/\s+/).map(w => w[0]).join('').toUpperCase() || '?';
+            return { name, abbr, seats, color: p?.party_color || partyColor(idx) };
         }).sort((a, b) => b.seats - a.seats);
         const coalTotal = coalParties.reduce((s, p) => s + p.seats, 0);
 
@@ -1023,10 +1070,10 @@ function renderGovernment(nation, coalition, ministries, allParties, hog, govTyp
       <div class="gov-strip">
         <div class="gov-strip__left">
           <div class="gov-head">
-            <div class="gov-head__avatar">${pmInit}</div>
+            <div class="gov-head__avatar">${leaderInit}</div>
             <div>
-              <div class="gov-head__name">PM ${escapeHtml(pmName)}</div>
-              <div class="gov-head__role">${escapeHtml(pmParty)}</div>
+              <div class="gov-head__name">${escapeHtml(leaderTitle)} ${escapeHtml(leaderName)}</div>
+              <div class="gov-head__role">${escapeHtml(leaderSub)}</div>
             </div>
           </div>
           ${coalitionHTML}
