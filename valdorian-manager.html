@@ -450,7 +450,12 @@ import {
 // STATE
 // ═══════════════════════════════════════════════
 
-const ADMIN_PASSWORD = 'nationhood2000';
+const ADMIN_PW_HASH = 'dd5e5d55d1f108d2d4706f35672acf7eef98156c70101dd07279c1aa436de3b4';
+async function hashPassword(pw) {
+    const encoded = new TextEncoder().encode(pw);
+    const buf = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 const DB_TABLE = 'valdorian_templates';
 
 let templates = [];          // normalized flat array
@@ -467,9 +472,9 @@ for (const [k, v] of Object.entries(SECTIONS)) sectionColors[k] = v.color;
 // AUTH
 // ═══════════════════════════════════════════════
 
-window.doAuth = function() {
+window.doAuth = async function() {
     const pw = document.getElementById('auth-password').value;
-    if (pw === ADMIN_PASSWORD) {
+    if (await hashPassword(pw) === ADMIN_PW_HASH) {
         document.getElementById('auth-overlay').classList.add('hidden');
         document.getElementById('app').classList.remove('hidden');
         init();
