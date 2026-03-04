@@ -525,6 +525,201 @@ const MINISTRY_POLICIES = {
             fiscalCategory: 'Healthcare',
             maxUses: 5
         }
+    ],
+    education: [
+        {
+            id: 'teacher_salary_recruitment',
+            name: 'Teacher Salary & Recruitment Initiative',
+            icon: 'T$',
+            description: 'Raise teacher salaries, offer signing bonuses for rural placements, and fund scholarship-to-teaching pipelines to fill classroom vacancies.',
+            affects: [
+                { stat: 'Education Access', statKey: 'education_accessibility', change: '+2', direction: 'up', rate: 2 },
+                { stat: 'Literacy', statKey: 'literacy', change: '+1', direction: 'up', rate: 1 },
+                { stat: 'Unemployment', statKey: 'unemployment', change: '-0.5', direction: 'down', rate: 0.5 },
+                { stat: 'Debt Growth', statKey: 'debt_growth', change: '+0.5', direction: 'up', rate: 0.5, negative: true },
+                { stat: 'Income Inequality', statKey: 'income_inequality', change: '+0.3', direction: 'up', rate: 0.3, negative: true }
+            ],
+            costPerCapita: 0.75,
+            durationTicks: 4,
+            cooldownLabel: '4 ticks',
+            fiscalCategory: 'Education',
+            maxUses: 5,
+            ideologyAxes: ['EQUALITY', 'COLLECTIVISM'],
+            ideologyConflicts: ['LIBERTY', 'INDIVIDUALISM'],
+            blocReactions: [
+                { bloc: 'Urban Progressives', pct: 12, reaction: 'strong_positive', desc: 'State investment in public education — a loyalty-builder for this bloc.' },
+                { bloc: 'Academics & Professionals', pct: 9, reaction: 'positive', desc: 'Better teacher recruitment improves the education pipeline they value.' },
+                { bloc: 'Urban Workers', pct: 15, reaction: 'positive', desc: 'A wages-and-jobs policy for public sector workers. Equality-Collectivism alignment.' },
+                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'mild_positive', desc: 'Rural signing bonuses may improve underserved schools in minority communities.' },
+                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'mixed', desc: 'Signing bonuses help, but government salary intervention clashes with Liberty values.' },
+                { bloc: 'Business Owners', pct: 6, reaction: 'negative', desc: 'Government wage intervention sets a precedent. Funded through taxation.' },
+                { bloc: 'Religious Conservatives', pct: 13, reaction: 'mild_negative', desc: 'Ideological tags conflict with state economic intervention and debt burden.' },
+                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'neutral', desc: 'Education policy is not their priority. Low salience.' },
+                { bloc: 'Military & Security', pct: 5, reaction: 'neutral', desc: 'This policy is invisible to them unless it affects the defense budget.' }
+            ]
+        },
+        {
+            id: 'university_research_grants',
+            name: 'University Research Grants Program',
+            icon: 'RG',
+            description: 'Fund competitive research grants across public universities to attract top faculty, retain graduate talent, and boost institutional rankings.',
+            affects: [
+                { stat: 'Higher Education', statKey: 'higher_education', change: '+3', direction: 'up', rate: 3 },
+                { stat: 'Academic Immigration', statKey: 'immigration', change: '+2', direction: 'up', rate: 2 },
+                { stat: 'Intl Reputation', statKey: 'international_reputation', change: '+1', direction: 'up', rate: 1 },
+                { stat: 'Education Access', statKey: 'education_accessibility', change: '-0.5', direction: 'down', rate: 0.5, negative: true },
+                { stat: 'Corruption', statKey: 'corruption', change: '+0.4', direction: 'up', rate: 0.4, negative: true },
+                { stat: 'Income Inequality', statKey: 'income_inequality', change: '+0.3', direction: 'up', rate: 0.3, negative: true }
+            ],
+            costPerCapita: 1.15,
+            durationTicks: 4,
+            cooldownLabel: '4 ticks',
+            fiscalCategory: 'Education',
+            maxUses: 4,
+            ideologyAxes: ['GLOBALISM', 'EQUALITY'],
+            ideologyConflicts: ['NATIONALISM', 'LIBERTY'],
+            blocReactions: [
+                { bloc: 'Academics & Professionals', pct: 9, reaction: 'strong_positive', desc: 'This is their policy. Direct beneficiaries — more research funding and prestige.' },
+                { bloc: 'Urban Progressives', pct: 12, reaction: 'mixed', desc: 'Progress values say yes, but Equality worries about elite concentration.' },
+                { bloc: 'Business Owners', pct: 6, reaction: 'positive', desc: 'University research produces commercializable innovation and skilled graduates.' },
+                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'strong_negative', desc: 'Globalism is the opposite of their identity. Academic immigration triggers them.' },
+                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'mild_positive', desc: 'Academic immigration brings diversity, but Equality clashes with elite funding.' },
+                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'negative', desc: 'Urban elitist spending while rural schools crumble.' },
+                { bloc: 'Religious Conservatives', pct: 13, reaction: 'negative', desc: 'Tradition conflicts with globalist academic culture and foreign faculty.' },
+                { bloc: 'Urban Workers', pct: 15, reaction: 'negative', desc: 'Zero tangible benefit. This money could fund vocational programs instead.' },
+                { bloc: 'Military & Security', pct: 5, reaction: 'neutral', desc: 'No strong feeling unless research specifically funds defense projects.' }
+            ]
+        },
+        {
+            id: 'national_apprenticeship',
+            name: 'National Apprenticeship Expansion',
+            icon: 'AP',
+            description: 'Partner with industry to double apprenticeship placements in construction, electrical, plumbing, and manufacturing trades.',
+            affects: [
+                { stat: 'Labor Force', statKey: 'labor_force_participation', change: '+2', direction: 'up', rate: 2 },
+                { stat: 'Unemployment', statKey: 'unemployment', change: '-1.5', direction: 'down', rate: 1.5 },
+                { stat: 'Education Access', statKey: 'education_accessibility', change: '+1', direction: 'up', rate: 1 },
+                { stat: 'Higher Education', statKey: 'higher_education', change: '-0.8', direction: 'down', rate: 0.8, negative: true },
+                { stat: 'Union Strength', statKey: 'union_strength', change: '+0.5', direction: 'up', rate: 0.5 },
+                { stat: 'Income Inequality', statKey: 'income_inequality', change: '-0.5', direction: 'down', rate: 0.5 }
+            ],
+            costPerCapita: 0.6,
+            durationTicks: 4,
+            cooldownLabel: '4 ticks',
+            fiscalCategory: 'Education',
+            maxUses: 5,
+            ideologyAxes: ['TRADITION', 'INDIVIDUALISM'],
+            ideologyConflicts: ['PROGRESS', 'COLLECTIVISM'],
+            blocReactions: [
+                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'strong_positive', desc: 'Perfect alignment. Trades are culturally respected. Keeps young people local.' },
+                { bloc: 'Urban Workers', pct: 15, reaction: 'strong_positive', desc: 'Directly creates well-paying jobs. Union strength bonus appreciated.' },
+                { bloc: 'Business Owners', pct: 6, reaction: 'positive', desc: 'Subsidized workforce training reduces their own costs.' },
+                { bloc: 'Religious Conservatives', pct: 13, reaction: 'positive', desc: 'Practical, grounded education. Trades represent honest, traditional work.' },
+                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'mild_positive', desc: 'Building domestic workforce skills rather than chasing academic globalism.' },
+                { bloc: 'Military & Security', pct: 5, reaction: 'mild_positive', desc: 'Manufacturing and construction trades feed defense infrastructure.' },
+                { bloc: 'Academics & Professionals', pct: 9, reaction: 'negative', desc: 'Higher education decline is a direct threat to their institutions.' },
+                { bloc: 'Urban Progressives', pct: 12, reaction: 'mild_negative', desc: 'Progress conflicts with Tradition-coded policy. Worried about corporate influence.' },
+                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'mild_positive', desc: 'Non-discriminatory pathways to employment — judged on skill, not credentials.' }
+            ]
+        },
+        {
+            id: 'curriculum_modernization',
+            name: 'Curriculum Modernization Initiative',
+            icon: 'CM',
+            description: 'Overhaul the national curriculum — replace outdated textbooks, introduce digital literacy, align coursework with modern job market demands.',
+            affects: [
+                { stat: 'Education Access', statKey: 'education_accessibility', change: '+1.5', direction: 'up', rate: 1.5 },
+                { stat: 'Higher Education', statKey: 'higher_education', change: '+1', direction: 'up', rate: 1 },
+                { stat: 'Digital Infrastructure', statKey: 'digital_infrastructure', change: '+0.5', direction: 'up', rate: 0.5 },
+                { stat: 'Happiness', statKey: 'happiness', change: '-1.5', direction: 'down', rate: 1.5, negative: true },
+                { stat: 'Polarization', statKey: 'polarization', change: '+1', direction: 'up', rate: 1, negative: true },
+                { stat: 'Stability', statKey: 'stability', change: '-0.3', direction: 'down', rate: 0.3, negative: true }
+            ],
+            costPerCapita: 0.85,
+            durationTicks: 5,
+            cooldownLabel: '5 ticks',
+            fiscalCategory: 'Education',
+            maxUses: 4,
+            ideologyAxes: ['PROGRESS', 'SECURITY'],
+            ideologyConflicts: ['TRADITION', 'FREEDOM'],
+            blocReactions: [
+                { bloc: 'Urban Progressives', pct: 12, reaction: 'strong_positive', desc: 'Maximum alignment. Modernizing institutions is their identity.' },
+                { bloc: 'Academics & Professionals', pct: 9, reaction: 'strong_positive', desc: 'Forward-thinking curriculum aligned with the knowledge economy.' },
+                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'positive', desc: 'Modernized curricula tend to be more inclusive of marginalized communities.' },
+                { bloc: 'Urban Workers', pct: 15, reaction: 'mild_positive', desc: 'Modern job market alignment means better-prepared kids.' },
+                { bloc: 'Religious Conservatives', pct: 13, reaction: 'strong_negative', desc: 'Fear secular indoctrination and removal of religious/moral content.' },
+                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'strong_negative', desc: 'City bureaucrats deciding what children learn. Hostile to curriculum upheaval.' },
+                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'negative', desc: 'Suspicious of what "modernization" means for national identity content.' },
+                { bloc: 'Business Owners', pct: 6, reaction: 'mixed', desc: 'Digital literacy produces better employees, but dislikes government mandates.' },
+                { bloc: 'Military & Security', pct: 5, reaction: 'mild_negative', desc: 'Tradition conflict. Low salience overall.' }
+            ]
+        },
+        {
+            id: 'rural_school_consolidation',
+            name: 'Rural School Consolidation Program',
+            icon: 'SC',
+            description: 'Close underperforming rural schools and bus students to larger, better-equipped regional centers. Fewer schools, but properly funded and staffed.',
+            affects: [
+                { stat: 'Literacy', statKey: 'literacy', change: '+2', direction: 'up', rate: 2 },
+                { stat: 'Education Access', statKey: 'education_accessibility', change: '+1', direction: 'up', rate: 1 },
+                { stat: 'Efficiency', statKey: 'efficiency', change: '+0.5', direction: 'up', rate: 0.5 },
+                { stat: 'Happiness', statKey: 'happiness', change: '-2', direction: 'down', rate: 2, negative: true },
+                { stat: 'Urbanization', statKey: 'urbanization', change: '+1', direction: 'up', rate: 1, negative: true },
+                { stat: 'Civil Unrest', statKey: 'civil_unrest', change: '+0.5', direction: 'up', rate: 0.5, negative: true },
+                { stat: 'Social Mobility', statKey: 'social_mobility', change: '-0.3', direction: 'down', rate: 0.3, negative: true }
+            ],
+            costPerCapita: 0.5,
+            durationTicks: 4,
+            cooldownLabel: '4 ticks',
+            fiscalCategory: 'Education',
+            maxUses: 3,
+            ideologyAxes: ['EQUALITY', 'PROGRESS'],
+            ideologyConflicts: ['LIBERTY', 'TRADITION'],
+            blocReactions: [
+                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'strong_negative', desc: 'Closing a community\'s school is closing the community. Maximum hostility.' },
+                { bloc: 'Religious Conservatives', pct: 13, reaction: 'strong_negative', desc: 'Consolidated centers are larger, more secular, further from community control.' },
+                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'negative', desc: 'Tradition alignment hostile to dismantling rural institutions.' },
+                { bloc: 'Urban Progressives', pct: 12, reaction: 'positive', desc: 'Evidence-based consolidation improves outcomes. Technocratic sensibility.' },
+                { bloc: 'Academics & Professionals', pct: 9, reaction: 'positive', desc: 'Data supports consolidation for academic outcomes.' },
+                { bloc: 'Business Owners', pct: 6, reaction: 'mild_positive', desc: 'Efficiency and reduced overhead resonate.' },
+                { bloc: 'Urban Workers', pct: 15, reaction: 'neutral', desc: 'Doesn\'t affect urban schools. Not their concern.' },
+                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'mild_positive', desc: 'May improve access for minority students in underserved rural areas.' },
+                { bloc: 'Military & Security', pct: 5, reaction: 'mild_negative', desc: 'Tradition and Freedom conflict. Low salience.' }
+            ]
+        },
+        {
+            id: 'performance_based_funding',
+            name: 'Performance-Based School Funding',
+            icon: 'PF',
+            description: 'Tie school budgets to student outcomes — graduation rates, employment metrics, standardized scores. Top performers get bonuses. Underperformers get intervention teams.',
+            affects: [
+                { stat: 'Literacy', statKey: 'literacy', change: '+2', direction: 'up', rate: 2 },
+                { stat: 'Education Access', statKey: 'education_accessibility', change: '+0.5', direction: 'up', rate: 0.5 },
+                { stat: 'Efficiency', statKey: 'efficiency', change: '+1', direction: 'up', rate: 1 },
+                { stat: 'Social Mobility', statKey: 'social_mobility', change: '-1.5', direction: 'down', rate: 1.5, negative: true },
+                { stat: 'Corruption', statKey: 'corruption', change: '+0.5', direction: 'up', rate: 0.5, negative: true },
+                { stat: 'Income Inequality', statKey: 'income_inequality', change: '+0.5', direction: 'up', rate: 0.5, negative: true },
+                { stat: 'Happiness', statKey: 'happiness', change: '-0.5', direction: 'down', rate: 0.5, negative: true }
+            ],
+            costPerCapita: 0.6,
+            durationTicks: 4,
+            cooldownLabel: '4 ticks',
+            fiscalCategory: 'Education',
+            maxUses: 4,
+            ideologyAxes: ['LIBERTY', 'INDIVIDUALISM'],
+            ideologyConflicts: ['EQUALITY', 'COLLECTIVISM'],
+            blocReactions: [
+                { bloc: 'Business Owners', pct: 6, reaction: 'strong_positive', desc: 'Perfect ideological alignment. Accountability and competition are their language.' },
+                { bloc: 'Religious Conservatives', pct: 13, reaction: 'positive', desc: 'Liberty-Individualism alignment. Rewards hard work, merit, discipline.' },
+                { bloc: 'Military & Security', pct: 5, reaction: 'positive', desc: 'Accountability structures and performance metrics — how institutions should run.' },
+                { bloc: 'Nationalist Bloc', pct: 13, reaction: 'mild_positive', desc: 'Liberty alignment. Meritocratic framework resonates.' },
+                { bloc: 'Rural Traditionalists', pct: 10, reaction: 'mixed', desc: 'Ideologically sympathetic but rural schools score lower due to resource disadvantages.' },
+                { bloc: 'Urban Progressives', pct: 12, reaction: 'strong_negative', desc: 'Institutionalizing class stratification. "Punishing poor children for being poor."' },
+                { bloc: 'Academics & Professionals', pct: 9, reaction: 'mixed', desc: 'Appreciate data-driven evaluation but uneasy with crude metrics and gaming.' },
+                { bloc: 'Urban Workers', pct: 15, reaction: 'negative', desc: 'Working-class districts lose funding. Wealth gap in education widens.' },
+                { bloc: 'Ethnic Minorities', pct: 10, reaction: 'strong_negative', desc: 'Minority communities disproportionately attend underfunded schools that score lowest.' }
+            ]
+        }
     ]
 };
 
@@ -913,17 +1108,56 @@ function renderStatPill(label, value, decayStr, isPrimary) {
     return h;
 }
 
+// ==================== POLICY COST & EFFECT HELPERS ====================
+
+/**
+ * Compute population-scaled cost for a policy at a given use count.
+ * Uses costPerCapita if available, else falls back to costAmount.
+ * Diminishing returns: cost × (1.5 ^ timesUsed)
+ */
+function getPolicyCost(policy, timesUsed) {
+    const pop = currentNation?.population || 1;
+    const baseCost = policy.costPerCapita != null
+        ? policy.costPerCapita * pop
+        : (policy.costAmount || 0);
+    return baseCost * Math.pow(1.5, timesUsed);
+}
+
+/**
+ * Compute diminished effect rate at a given use count.
+ * effect × (0.6 ^ timesUsed)
+ */
+function getDiminishedRate(baseRate, timesUsed) {
+    return baseRate * Math.pow(0.6, timesUsed);
+}
+
+function fmtRate(rate, direction) {
+    const sign = direction === 'down' ? '-' : '+';
+    const val = Math.round(rate * 100) / 100;
+    return sign + val;
+}
+
+const REACTION_META = {
+    strong_positive: { label: 'STRONG +', color: '#5cb85c', bg: 'rgba(92,184,92,0.08)', border: 'rgba(92,184,92,0.18)' },
+    positive:        { label: 'POSITIVE', color: '#5cb85c', bg: 'rgba(92,184,92,0.06)', border: 'rgba(92,184,92,0.12)' },
+    mild_positive:   { label: 'MILD +',  color: '#8a9a5c', bg: 'rgba(138,154,92,0.06)', border: 'rgba(138,154,92,0.12)' },
+    mixed:           { label: 'MIXED',   color: '#c8a64e', bg: 'rgba(200,166,78,0.06)', border: 'rgba(200,166,78,0.12)' },
+    neutral:         { label: 'NEUTRAL', color: '#6b6a5e', bg: 'rgba(255,255,255,0.02)', border: 'rgba(255,255,255,0.06)' },
+    mild_negative:   { label: 'MILD -',  color: '#b87c4e', bg: 'rgba(184,124,78,0.06)', border: 'rgba(184,124,78,0.12)' },
+    negative:        { label: 'NEGATIVE', color: '#d9534f', bg: 'rgba(217,83,79,0.06)', border: 'rgba(217,83,79,0.12)' },
+    strong_negative: { label: 'STRONG -', color: '#d9534f', bg: 'rgba(217,83,79,0.08)', border: 'rgba(217,83,79,0.18)' }
+};
+
 // ==================== POLICIES TAB ====================
 function renderPoliciesTab(policies, ministryKey) {
     let h = '';
-    h += '<div class="mdet-tab-intro">Policies actively improve stats &mdash; but each use yields less return. Institutions maintain; policies push forward. Choose wisely, Minister.</div>';
+    h += '<div class="mdet-tab-intro">Policies actively improve stats — but each use yields less return and costs more. Institutions maintain; policies push forward.</div>';
 
     if (policies.length === 0) {
         h += '<div class="mdet-empty">No policies available for this ministry yet.</div>';
         return h;
     }
 
-    // Check if this ministry has enough budget to enact policies
     const fiscalCat = MINISTRY_FISCAL_MAP[ministryKey];
     const alloc = budgetAllocations[fiscalCat] || { allocated: 0, needed: 0 };
 
@@ -931,8 +1165,8 @@ function renderPoliciesTab(policies, ministryKey) {
         const timesUsed = policyUsage[policy.id] || 0;
         const isExhausted = timesUsed >= policy.maxUses;
         const isOnCooldown = policyCooldowns[policy.id] != null;
-        const canAfford = alloc.allocated >= policy.costAmount;
-        const canEnact = !isExhausted && !isOnCooldown && canAfford;
+        const currentCost = getPolicyCost(policy, timesUsed);
+        const canAfford = alloc.allocated >= currentCost;
 
         let btnLabel = 'ENACT';
         let btnDisabled = false;
@@ -944,23 +1178,50 @@ function renderPoliciesTab(policies, ministryKey) {
 
         h += '<div class="pol-card-top">';
         h += '<div class="pol-card-info">';
-        h += `<div class="pol-card-title"><span class="pol-icon">${policy.icon}</span> ${esc(policy.name)}</div>`;
+
+        // Title with icon glyph
+        h += `<div class="pol-card-title"><span class="pol-icon-glyph">${policy.icon}</span><span>${esc(policy.name)}</span></div>`;
+
+        // Ideology axes
+        if (policy.ideologyAxes && policy.ideologyAxes.length > 0) {
+            h += '<div class="pol-ideology-row">';
+            for (const axis of policy.ideologyAxes) {
+                h += `<span class="pol-ideo-tag pol-ideo-align">${axis}</span>`;
+            }
+            if (policy.ideologyConflicts) {
+                h += '<span class="pol-ideo-vs">vs</span>';
+                for (const axis of policy.ideologyConflicts) {
+                    h += `<span class="pol-ideo-tag pol-ideo-oppose">${axis}</span>`;
+                }
+            }
+            h += '</div>';
+        }
+
         h += `<div class="pol-card-desc">${esc(policy.description)}</div>`;
 
-        // Stat effects
+        // Stat effects with diminishing returns
         h += '<div class="pol-effects">';
         for (const a of policy.affects) {
-            const val = timesUsed > 0 ? a.diminished : a.change;
-            const wasStr = timesUsed > 0 ? ` <span class="pol-was">(was ${a.change})</span>` : '';
-            h += `<span class="pol-effect-pill"><span class="pol-effect-stat">${esc(a.stat)}:</span> <span class="pol-effect-val">${val}</span>${wasStr}</span>`;
+            const currentRate = getDiminishedRate(a.rate, timesUsed);
+            const isNeg = a.negative;
+            const displayVal = fmtRate(currentRate, a.direction);
+            const baseVal = fmtRate(a.rate, a.direction);
+            const wasStr = timesUsed > 0 ? ` <span class="pol-was">(base ${baseVal})</span>` : '';
+            const pillCls = isNeg ? 'pol-effect-pill pol-effect-neg' : 'pol-effect-pill';
+            const valCls = isNeg ? 'pol-effect-val pol-val-neg' : 'pol-effect-val';
+            h += `<span class="${pillCls}"><span class="pol-effect-stat">${esc(a.stat)}</span> <span class="${valCls}">${displayVal}</span>${wasStr}</span>`;
         }
         h += '</div>';
-        h += '</div>';
+        h += '</div>'; // .pol-card-info
 
         // Right: cost + button
         h += '<div class="pol-card-right">';
-        h += `<div class="pol-cost">${policy.costLabel}</div>`;
-        h += `<div class="pol-cooldown">\u23F1 ${policy.cooldownLabel}</div>`;
+        h += `<div class="pol-cost">${fmtCurrency(currentCost)}</div>`;
+        if (timesUsed > 0) {
+            const baseCost = getPolicyCost(policy, 0);
+            h += `<div class="pol-cost-base">base ${fmtCurrency(baseCost)}</div>`;
+        }
+        h += `<div class="pol-cooldown">${policy.cooldownLabel}</div>`;
         h += `<button class="pol-enact-btn${btnDisabled ? ' disabled' : ''}" ${btnDisabled ? 'disabled' : ''} onclick="enactPolicy('${policy.id}', '${ministryKey}')">${btnLabel}</button>`;
         h += '</div>';
 
@@ -975,12 +1236,43 @@ function renderPoliciesTab(policies, ministryKey) {
         h += '<div class="pol-dim-bar">';
         for (let i = 0; i < policy.maxUses; i++) {
             const filled = i < timesUsed;
-            const isLast = i >= policy.maxUses - 1 && filled;
-            const color = filled ? (isLast ? '#ef4444' : '#a3e635') : 'rgba(255,255,255,0.06)';
-            const opacity = filled ? (1 - i * 0.15) : 1;
-            h += `<div class="pol-dim-seg" style="background:${color};opacity:${opacity}"></div>`;
+            const pct = (i + 1) / policy.maxUses;
+            const color = filled
+                ? (pct >= 0.8 ? '#d9534f' : pct >= 0.6 ? '#c8a64e' : '#5cb85c')
+                : 'rgba(255,255,255,0.04)';
+            h += `<div class="pol-dim-seg" style="background:${color}"></div>`;
         }
-        h += '</div></div>';
+        h += '</div>';
+
+        // Cost/effect scaling preview
+        if (!isExhausted) {
+            const nextCost = getPolicyCost(policy, timesUsed + 1);
+            const sampleEffect = policy.affects.find(a => !a.negative);
+            const nextEffectStr = sampleEffect
+                ? fmtRate(getDiminishedRate(sampleEffect.rate, timesUsed + 1), sampleEffect.direction)
+                : '';
+            h += '<div class="pol-dim-preview">';
+            h += `<span>Next use: ${fmtCurrency(nextCost)}</span>`;
+            if (nextEffectStr) h += `<span>${esc(sampleEffect.stat)}: ${nextEffectStr}</span>`;
+            h += '</div>';
+        }
+        h += '</div>'; // .pol-diminishing
+
+        // Voter bloc reactions (collapsible)
+        if (policy.blocReactions && policy.blocReactions.length > 0) {
+            h += `<details class="pol-bloc-reactions">`;
+            h += `<summary class="pol-bloc-summary">VOTER BLOC REACTIONS</summary>`;
+            h += '<div class="pol-bloc-grid">';
+            for (const br of policy.blocReactions) {
+                const meta = REACTION_META[br.reaction] || REACTION_META.neutral;
+                h += `<div class="pol-bloc-row" style="border-left:3px solid ${meta.color};background:${meta.bg}">`;
+                h += `<div class="pol-bloc-name">${esc(br.bloc)} <span class="pol-bloc-pct">${br.pct}%</span></div>`;
+                h += `<div class="pol-bloc-reaction"><span class="pol-bloc-badge" style="color:${meta.color};border-color:${meta.border}">${meta.label}</span></div>`;
+                h += `<div class="pol-bloc-desc">${esc(br.desc)}</div>`;
+                h += '</div>';
+            }
+            h += '</div></details>';
+        }
 
         h += '</div>'; // .pol-card
     }
@@ -1016,7 +1308,6 @@ window.switchDetailTab = function(tab) {
 };
 
 window.enactPolicy = async function(policyId, ministryKey) {
-    // Find the policy definition
     const policies = MINISTRY_POLICIES[ministryKey] || [];
     const policy = policies.find(p => p.id === policyId);
     if (!policy) return;
@@ -1024,10 +1315,13 @@ window.enactPolicy = async function(policyId, ministryKey) {
     const timesUsed = policyUsage[policyId] || 0;
     if (timesUsed >= policy.maxUses) return;
 
+    // Compute population-scaled cost with diminishing returns
+    const currentCost = getPolicyCost(policy, timesUsed);
+
     // Budget check
     const fiscalCat = MINISTRY_FISCAL_MAP[ministryKey];
     const alloc = budgetAllocations[fiscalCat] || { allocated: 0, needed: 0 };
-    if (alloc.allocated < policy.costAmount) {
+    if (alloc.allocated < currentCost) {
         alert('Insufficient budget allocated to this ministry.');
         return;
     }
@@ -1046,27 +1340,25 @@ window.enactPolicy = async function(policyId, ministryKey) {
         return;
     }
 
-    // Build stat_effects for the action log
+    // Build stat_effects with exponential diminishing returns: rate × (0.6 ^ timesUsed)
     const statEffects = policy.affects.map(a => ({
         stat_key: a.statKey,
         direction: a.direction,
-        rate: timesUsed > 0 ? a.diminishedRate : a.rate,
+        rate: getDiminishedRate(a.rate, timesUsed),
         delay_ticks: 0,
         duration_ticks: policy.durationTicks,
         target: 'nation'
     }));
 
-    // Get current tick
     const currentTick = currentNation.current_tick || 0;
 
-    // Insert into ministry_action_log
     const { error } = await _supabase.from('ministry_action_log').insert({
         nation_id: currentNation.id,
         faction_id: factionId,
         ministry_key: ministryKey,
         action_key: policyId,
         applied_at_tick: currentTick,
-        cost: policy.costAmount,
+        cost: currentCost,
         stat_effects: statEffects,
         processed: false
     });
