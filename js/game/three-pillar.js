@@ -5,6 +5,7 @@
 
 import { isAutocracy } from './government-types.js';
 import { computeIdeologyAlignment, countIdeologyRelationship, ideologyOppositionMultiplier } from './ideology.js';
+import { fetchActiveCoalition } from './government-structure.js';
 import { recalcDerivedApproval } from './bills.js';
 
 // ==================== THREE-PILLAR PREFERENCE ENGINE ====================
@@ -15,7 +16,9 @@ import { recalcDerivedApproval } from './bills.js';
  *
  * preference_score = ideology_alignment × 0.60
  *                  + clamp(momentum, 0, 100) × 0.40
- * (Performance Credit / Pillar 2 is DISABLED)
+ *
+ * Governance feed: coalition parties get per-tick momentum nudge
+ * from gov_approval: (gov_approval - 50) / 16, capped ±3.
  *
  * Then runs softmax per bloc to produce vote_share, and aggregates
  * national_vote_share weighted by bloc population.
@@ -35,6 +38,9 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         .eq('faction_type', 'party');
     if (!factions || factions.length === 0) return;
     const factionIds = factions.map(f => f.id);
+
+    const coalition = await fetchActiveCoalition(supabase, nation.id);
+    const coalitionPartyIds = new Set(coalition?.party_ids || []);
 
     // ── 2. Load all faction_bloc_approval rows ──
     const { data: allBlocRows } = await supabase
@@ -64,10 +70,18 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
     for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
 
     // ── 5. Calculate pillars for each faction-bloc pair ──
-    // Performance Credit (Pillar 2) is DISABLED — weight redistributed to ideology + momentum
     const PILLAR_WEIGHT_IDEO = 0.60;
     const PILLAR_WEIGHT_MOM  = 0.40;
     const MOMENTUM_DECAY     = 0.85; // 15% decay per tick
+
+    // ── 5b. Governance → momentum feed ──
+    // Coalition parties get a per-tick momentum nudge based on gov_approval.
+    // Formula: (gov_approval - 50) / 16, capped at ±3.
+    // gov_approval 95 → +2.8/tick, 75 → +1.6, 50 → 0, 25 → -1.6
+    const govApproval = Number(nation.gov_approval ?? 50);
+    const govMomentumNudge = Math.max(-3, Math.min(3,
+        Math.round(((govApproval - 50) / 16) * 100) / 100
+    ));
 
     const updates = [];
 
@@ -86,7 +100,15 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         // Decays 15% per tick. Adjusted externally via adjustMomentum().
         const oldMomentum = Number(row.momentum ?? 0);
         let newMomentum = Math.round(oldMomentum * MOMENTUM_DECAY * 100) / 100;
-        // Zero out negligible values to avoid perpetual tiny drifts
+
+        // Governance momentum feed: coalition parties get nudge from gov_approval
+        if (coalitionPartyIds.has(row.faction_id)) {
+            newMomentum += govMomentumNudge;
+        }
+
+        // Clamp to [-50, +50] and zero out negligible values
+        newMomentum = Math.max(-50, Math.min(50, newMomentum));
+        newMomentum = Math.round(newMomentum * 100) / 100;
         if (Math.abs(newMomentum) < 0.05) newMomentum = 0;
 
         // ─── COMBINE: preference_score ───
@@ -102,13 +124,13 @@ export async function calculateThreePillarPreferences(supabase, nation, currentT
         prefScore = Math.round(prefScore * oppositionMult * 100) / 100;
 
         // ─── IDEOLOGY DRIFT: per-tick erosion based on opposition count ───
-        // 2+ opposing ideologies → -2/tick, 1 opposing → -1/tick, 0 aligned → -0.5/tick
+        // 2+ opposing → -1/tick, 1 opposing → -0.5/tick, 0 aligned → -0.25/tick
         let ideoDrift = 0;
         if (ideo) {
             const { opposed, aligned } = countIdeologyRelationship(ideo, bloc);
-            if (opposed >= 2)       ideoDrift = -2;
-            else if (opposed === 1) ideoDrift = -1;
-            else if (aligned === 0) ideoDrift = -0.5;
+            if (opposed >= 2)       ideoDrift = -1;
+            else if (opposed === 1) ideoDrift = -0.5;
+            else if (aligned === 0) ideoDrift = -0.25;
         }
         prefScore = Math.max(0, prefScore + ideoDrift);
         prefScore = Math.round(prefScore * 100) / 100;
