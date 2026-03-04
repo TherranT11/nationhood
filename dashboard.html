@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Home | Nationhood Alpha</title>
+
+<!-- Shared Styles -->
+<link rel="stylesheet" href="css/dashboard.css">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  /* ═══════════════════════════════════════
+     DASHBOARD — DESIGN GUIDE V3 OVERRIDES
+     ═══════════════════════════════════════ */
+  :root {
+    --dbg-0: #0e0e0c;
+    --dbg-1: #141412;
+    --dbg-2: #1a1a17;
+    --dbg-3: #1e1e1a;
+    --dbg-4: #24241f;
+    --dbg-5: #2c2c26;
+    --dbg-hover: #282822;
+    --dtxt-bright: #e2e0d6;
+    --dtxt-primary: #c4c2b8;
+    --dtxt-secondary: #8a8778;
+    --dtxt-muted: #6b6a5e;
+    --dtxt-dim: #4a4940;
+    --dtxt-ghost: #333229;
+    --dborder-hair: rgba(255,255,255,0.04);
+    --dborder-0: rgba(255,255,255,0.06);
+    --dborder-1: rgba(255,255,255,0.08);
+    --dborder-2: rgba(255,255,255,0.12);
+    --dgreen: #5cb85c;
+    --dgreen-faint: rgba(92,184,92,0.08);
+    --dgreen-border: rgba(92,184,92,0.18);
+    --dred: #d9534f;
+    --dred-faint: rgba(217,83,79,0.08);
+    --dred-border: rgba(217,83,79,0.18);
+    --damber: #c8a64e;
+    --damber-faint: rgba(200,166,78,0.08);
+    --damber-border: rgba(200,166,78,0.18);
+    --dblue: #5b9bd5;
+    --dblue-faint: rgba(91,155,213,0.08);
+    --dblue-border: rgba(91,155,213,0.18);
+    --dpurple: #8b7ec8;
+    --dpurple-faint: rgba(139,126,200,0.08);
+    --dpurple-border: rgba(139,126,200,0.18);
+    --dteal: #5aafa5;
+    --dteal-faint: rgba(90,175,165,0.08);
+    --dteal-border: rgba(90,175,165,0.18);
+    --dorange: #d48a3c;
+    --dorange-faint: rgba(212,138,60,0.08);
+    --dorange-border: rgba(212,138,60,0.18);
+    --dfont-mono: 'JetBrains Mono', monospace;
+    --dfont-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+    --dfont-serif: 'IBM Plex Serif', Georgia, serif;
+  }
+
+  /* ── Banner ── */
+  .banner {
+    background: var(--dbg-2);
+    border-bottom: 1px solid var(--dborder-0);
+    padding: 14px 20px;
+  }
+  .banner__inner {
+    max-width: 1400px; margin: 0 auto;
+    display: flex; align-items: center;
+    justify-content: space-between; gap: 20px;
+  }
+  .banner__left { display: flex; align-items: center; gap: 14px; }
+  .banner__title {
+    font-family: var(--dfont-ui); font-size: 15px; font-weight: 700;
+    color: var(--dtxt-bright); margin-bottom: 2px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .banner__title-abbr {
+    font-family: var(--dfont-mono); font-size: 10px; font-weight: 700;
+    color: var(--dblue); background: var(--dblue-faint);
+    border: 1px solid var(--dblue-border); padding: 1px 6px;
+  }
+  .banner__meta {
+    display: flex; align-items: center; gap: 14px;
+    font-family: var(--dfont-mono); font-size: 10.5px; color: var(--dtxt-muted);
+  }
+  .banner__status {
+    font-weight: 700; padding: 2px 8px; font-size: 9px;
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .banner__status--coalition { background: var(--dblue-faint); color: var(--dblue); border: 1px solid var(--dblue-border); }
+  .banner__status--governing { background: var(--dgreen-faint); color: var(--dgreen); border: 1px solid var(--dgreen-border); }
+  .banner__status--opposition { background: var(--dred-faint); color: var(--dred); border: 1px solid var(--dred-border); }
+  .banner__stat { display: flex; align-items: center; gap: 4px; }
+  .banner__stat-label { color: var(--dtxt-dim); }
+  .banner__stat-val { color: var(--dtxt-secondary); font-weight: 600; }
+  .banner__stat-val--up { color: var(--dgreen); }
+  .banner__stat-val--down { color: var(--dred); }
+  .banner__ap {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--dbg-3); border: 1px solid var(--dborder-0);
+    padding: 7px 12px; flex-shrink: 0;
+  }
+  .banner__ap-label {
+    font-family: var(--dfont-mono); font-size: 9px; font-weight: 600;
+    color: var(--dtxt-dim); letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .banner__ap-pips { display: flex; gap: 3px; }
+  .banner__ap-pip { width: 8px; height: 16px; background: var(--damber); }
+  .banner__ap-pip--empty { background: var(--dbg-5); border: 1px solid var(--dborder-0); }
+  .banner__ap-count {
+    font-family: var(--dfont-mono); font-size: 16px; font-weight: 800;
+    color: var(--damber); line-height: 1; min-width: 16px; text-align: right;
+  }
+
+  /* ── Layout ── */
+  .dashboard {
+    max-width: 1400px; margin: 0 auto; padding: 16px 20px 60px;
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 12px;
+  }
+  .dash-main { display: flex; flex-direction: column; gap: 12px; }
+  .dash-side { display: flex; flex-direction: column; gap: 12px; }
+
+  /* ── Panel ── */
+  .panel {
+    background: var(--dbg-2);
+    border: 1px solid var(--dborder-0);
+    overflow: hidden;
+  }
+  .panel__header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; border-bottom: 1px solid var(--dborder-hair);
+    background: var(--dbg-3);
+  }
+  .panel__title {
+    font-family: var(--dfont-mono); font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--dtxt-muted);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .panel__title-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+  .panel__badge {
+    font-family: var(--dfont-mono); font-size: 9px; font-weight: 600;
+    padding: 2px 7px; letter-spacing: 0.02em;
+  }
+  .panel__body { padding: 12px 14px; }
+  .sub-label {
+    font-family: var(--dfont-mono); font-size: 9px; font-weight: 600;
+    color: var(--dtxt-dim); letter-spacing: 0.1em; text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  /* ── Alerts ── */
+  .alert-stack { display: flex; flex-direction: column; gap: 8px; }
+  .alert {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px;
+    border-left: 3px solid;
+  }
+  .alert--crisis {
+    background: var(--dred-faint); border-color: var(--dred);
+    border-top: 1px solid var(--dred-border);
+    border-right: 1px solid var(--dred-border);
+    border-bottom: 1px solid var(--dred-border);
+  }
+  .alert--warn {
+    background: var(--damber-faint); border-color: var(--damber);
+    border-top: 1px solid var(--damber-border);
+    border-right: 1px solid var(--damber-border);
+    border-bottom: 1px solid var(--damber-border);
+  }
+  .alert--info {
+    background: var(--dblue-faint); border-color: var(--dblue);
+    border-top: 1px solid var(--dblue-border);
+    border-right: 1px solid var(--dblue-border);
+    border-bottom: 1px solid var(--dblue-border);
+  }
+  .alert__icon {
+    font-family: var(--dfont-mono); font-size: 12px; font-weight: 800;
+    flex-shrink: 0; width: 20px; text-align: center;
+  }
+  .alert__content { flex: 1; }
+  .alert__title {
+    font-family: var(--dfont-mono); font-size: 11px; font-weight: 700;
+    color: var(--dtxt-bright); margin-bottom: 1px;
+  }
+  .alert__sub {
+    font-family: var(--dfont-mono); font-size: 9.5px; color: var(--dtxt-dim);
+  }
+  .alert__action {
+    font-family: var(--dfont-mono); font-size: 9.5px; font-weight: 700;
+    padding: 4px 10px; cursor: pointer; flex-shrink: 0;
+    border: 1px solid; transition: all 0.1s; text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .alert__action--red {
+    color: var(--dred); border-color: var(--dred-border); background: transparent;
+  }
+  .alert__action--red:hover { background: var(--dred-faint); }
+  .alert__action--amber {
+    color: var(--damber); border-color: var(--damber-border); background: transparent;
+  }
+  .alert__action--amber:hover { background: var(--damber-faint); }
+  .alert__action--blue {
+    color: var(--dblue); border-color: var(--dblue-border); background: transparent;
+  }
+  .alert__action--blue:hover { background: var(--dblue-faint); }
+
+  /* ── Bills ── */
+  .bill-card {
+    background: var(--dbg-3); border: 1px solid var(--dborder-hair);
+    padding: 10px 12px; margin-bottom: 8px;
+  }
+  .bill-card:last-child { margin-bottom: 0; }
+  .bill-card__row1 {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 4px;
+  }
+  .bill-card__name {
+    font-family: var(--dfont-mono); font-size: 11px; font-weight: 700;
+    color: var(--dtxt-bright); flex: 1;
+  }
+  .bill-card__status {
+    font-family: var(--dfont-mono); font-size: 8.5px; font-weight: 700;
+    padding: 2px 6px; letter-spacing: 0.04em; text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .bill-card__meta {
+    font-family: var(--dfont-mono); font-size: 9.5px; color: var(--dtxt-dim);
+    margin-bottom: 8px;
+  }
+  .bill-card__sponsor { color: var(--dtxt-muted); font-weight: 500; }
+  .bill-card__bottom {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .bill-card__votes { display: flex; gap: 4px; flex: 1; }
+  .bill-card__vote-btn {
+    flex: 1; font-family: var(--dfont-mono); font-size: 10px; font-weight: 700;
+    padding: 5px 0; text-align: center; cursor: pointer;
+    border: 1px solid var(--dborder-0); background: var(--dbg-4);
+    color: var(--dtxt-muted); transition: all 0.1s; user-select: none;
+  }
+  .bill-card__vote-btn--aye:hover { background: var(--dgreen-faint); border-color: var(--dgreen-border); color: var(--dgreen); }
+  .bill-card__vote-btn--nay:hover { background: var(--dred-faint); border-color: var(--dred-border); color: var(--dred); }
+  .bill-card__vote-btn--abs:hover { background: var(--damber-faint); border-color: var(--damber-border); color: var(--damber); }
+  .bill-card__vote-btn--selected-aye { background: var(--dgreen-faint); border-color: var(--dgreen); color: var(--dgreen); }
+  .bill-card__vote-btn--selected-nay { background: var(--dred-faint); border-color: var(--dred); color: var(--dred); }
+  .bill-card__vote-btn--selected-abs { background: var(--damber-faint); border-color: var(--damber); color: var(--damber); }
+  .bill-card__relevance {
+    font-family: var(--dfont-mono); font-size: 8.5px; font-weight: 600;
+    padding: 2px 7px; flex-shrink: 0; white-space: nowrap;
+  }
+
+  /* ── Government ── */
+  .gov-strip {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+  .gov-strip__left {
+    padding: 12px 14px;
+    border-right: 1px solid var(--dborder-hair);
+  }
+  .gov-strip__right { padding: 12px 14px; }
+  .gov-head {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 10px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--dborder-hair);
+  }
+  .gov-head__avatar {
+    width: 28px; height: 28px; background: var(--dbg-4);
+    border: 1px solid var(--dborder-0); display: flex;
+    align-items: center; justify-content: center;
+    font-family: var(--dfont-mono); font-size: 10px;
+    font-weight: 700; color: var(--dtxt-dim); flex-shrink: 0;
+  }
+  .gov-head__name {
+    font-family: var(--dfont-ui); font-size: 12px; font-weight: 700;
+    color: var(--dtxt-bright);
+  }
+  .gov-head__role {
+    font-family: var(--dfont-mono); font-size: 9.5px; color: var(--dtxt-dim);
+  }
+  .coalition-bar { display: flex; height: 6px; overflow: hidden; margin-bottom: 6px; gap: 2px; }
+  .coalition-bar__seg { height: 100%; }
+  .coalition-legend { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .coalition-legend__item {
+    display: flex; align-items: center; gap: 4px;
+    font-family: var(--dfont-mono); font-size: 10px; color: var(--dtxt-secondary);
+  }
+  .coalition-legend__dot { width: 7px; height: 7px; flex-shrink: 0; }
+  .gov-stat-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 3px 0; font-family: var(--dfont-mono); font-size: 10.5px;
+  }
+  .gov-stat-row__label { color: var(--dtxt-muted); }
+  .gov-stat-row__val { font-weight: 600; }
+  .stability-warn {
+    background: var(--damber-faint); border: 1px solid var(--damber-border);
+    border-left: 3px solid var(--damber); padding: 8px 10px;
+    margin-top: 8px;
+  }
+  .stability-warn__title {
+    font-family: var(--dfont-mono); font-size: 9px; font-weight: 700;
+    color: var(--damber); letter-spacing: 0.06em; text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .stability-warn__text {
+    font-family: var(--dfont-mono); font-size: 10px; color: var(--dtxt-secondary);
+  }
+  .cabinet-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 3px 0; font-family: var(--dfont-mono); font-size: 10px;
+  }
+  .cabinet-row__ministry { color: var(--dtxt-muted); }
+  .cabinet-row__holder {
+    color: var(--dtxt-secondary); display: flex; align-items: center; gap: 4px;
+  }
+  .cabinet-row__party-tag { font-size: 8px; font-weight: 700; padding: 1px 4px; }
+
+  /* ── Deadlines ── */
+  .deadline-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--dborder-hair);
+  }
+  .deadline-row:last-child { border-bottom: none; }
+  .deadline-row__pip {
+    width: 3px; height: 24px; flex-shrink: 0;
+  }
+  .deadline-row__pip--urgent { background: var(--damber); }
+  .deadline-row__pip--normal { background: var(--dtxt-dim); }
+  .deadline-row__pip--live { background: var(--dgreen); }
+  .deadline-row__info { flex: 1; }
+  .deadline-row__label {
+    font-family: var(--dfont-mono); font-size: 11px; font-weight: 600;
+    color: var(--dtxt-bright); line-height: 1.2;
+  }
+  .deadline-row__sub {
+    font-family: var(--dfont-mono); font-size: 9px; color: var(--dtxt-dim);
+  }
+  .deadline-row__val {
+    font-family: var(--dfont-mono); font-size: 11px; font-weight: 700;
+    text-align: right; flex-shrink: 0;
+  }
+
+  /* ── Party Snapshot ── */
+  .axis-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+  .axis-mini__item {
+    background: var(--dbg-3); border: 1px solid var(--dborder-hair);
+    padding: 6px 8px; display: flex; align-items: center;
+    justify-content: space-between;
+  }
+  .axis-mini__label {
+    font-family: var(--dfont-mono); font-size: 9px; color: var(--dtxt-muted);
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .axis-mini__val {
+    font-family: var(--dfont-mono); font-size: 12px; font-weight: 700;
+    color: var(--dtxt-bright);
+  }
+  .bloc-row {
+    display: flex; align-items: center; gap: 6px; padding: 3px 0;
+  }
+  .bloc-row__name {
+    font-family: var(--dfont-mono); font-size: 10px; color: var(--dtxt-secondary);
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .bloc-row__bar { width: 50px; height: 4px; background: var(--dbg-5); overflow: hidden; flex-shrink: 0; }
+  .bloc-row__bar-fill { height: 100%; }
+  .bloc-row__pct {
+    font-family: var(--dfont-mono); font-size: 9px; font-weight: 600;
+    width: 28px; text-align: right; flex-shrink: 0;
+  }
+
+  /* ── Appointments ── */
+  .appt-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 5px 0; border-bottom: 1px solid var(--dborder-hair);
+    font-family: var(--dfont-mono); font-size: 10px;
+  }
+  .appt-row:last-child { border-bottom: none; }
+  .appt-row__role { color: var(--dtxt-muted); }
+  .appt-row__holder { color: var(--dtxt-secondary); font-weight: 500; }
+  .appt-row__vacant-btn {
+    color: var(--damber); font-weight: 700; font-size: 8.5px;
+    padding: 2px 8px; background: var(--damber-faint);
+    border: 1px solid var(--damber-border); cursor: pointer;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    transition: all 0.1s;
+  }
+  .appt-row__vacant-btn:hover {
+    background: rgba(200,166,78,0.15);
+  }
+  .appt-row__recalled {
+    color: var(--dred); font-weight: 600; font-size: 8.5px;
+    padding: 2px 6px; background: var(--dred-faint);
+    border: 1px solid var(--dred-border);
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+
+  /* ── Top Stories ── */
+  .story-item {
+    padding: 7px 0; border-bottom: 1px solid var(--dborder-hair);
+    cursor: pointer; transition: padding-left 0.08s;
+  }
+  .story-item:hover { padding-left: 4px; }
+  .story-item:last-child { border-bottom: none; }
+  .story-item__headline {
+    font-family: var(--dfont-serif); font-size: 12px; font-weight: 500;
+    line-height: 1.4; color: var(--dtxt-secondary); margin-bottom: 3px;
+  }
+  .story-item:hover .story-item__headline { color: var(--dtxt-bright); }
+  .story-item__tags {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .story-item__section {
+    font-family: var(--dfont-mono); font-size: 8px; font-weight: 700;
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .story-item__relevance {
+    font-family: var(--dfont-mono); font-size: 8px; font-weight: 600;
+    padding: 1px 5px;
+  }
+
+  /* ── Quick Actions ── */
+  .quick-actions {
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .qa-btn {
+    font-family: var(--dfont-mono); font-size: 10px; font-weight: 600;
+    padding: 7px 14px; background: var(--dbg-3);
+    border: 1px solid var(--dborder-0); color: var(--dtxt-muted);
+    cursor: pointer; transition: all 0.1s;
+    display: flex; align-items: center; gap: 6px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .qa-btn:hover {
+    background: var(--dbg-4); color: var(--dtxt-secondary);
+    border-color: var(--dborder-1);
+  }
+  .qa-btn:disabled {
+    opacity: 0.4; cursor: not-allowed;
+  }
+  .qa-btn__cost {
+    font-size: 9px; font-weight: 700; padding: 1px 5px;
+    background: var(--damber-faint); color: var(--damber);
+    border: 1px solid var(--damber-border);
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 1024px) {
+    .dashboard { grid-template-columns: 1fr; }
+    .gov-strip { grid-template-columns: 1fr; }
+    .gov-strip__left { border-right: none; border-bottom: 1px solid var(--dborder-hair); }
+    .banner__inner { flex-direction: column; align-items: flex-start; }
+    .banner__meta { flex-wrap: wrap; }
+  }
+
+  /* ── Loading states ── */
+  .dash-loading {
+    font-family: var(--dfont-mono); font-size: 10px; color: var(--dtxt-dim);
+    padding: 20px 14px; text-align: center;
+  }
+  .dash-empty {
+    font-family: var(--dfont-mono); font-size: 10px; color: var(--dtxt-dim);
+    padding: 12px 0; text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== TOP BAR (rendered by common.js) ===== -->
+<div id="top-bar"></div>
+
+<!-- ===== BANNER ===== -->
+<div class="banner" id="dash-banner" style="display:none;"></div>
+
+<!-- ===== CONTENT AREA ===== -->
+<div id="content-area">
+  <div class="dashboard">
+    <!-- MAIN COLUMN -->
+    <div class="dash-main">
+      <!-- ALERTS -->
+      <div class="alert-stack" id="alert-stack"></div>
+      <!-- BILLS -->
+      <div class="panel" id="bills-panel" style="display:none;">
+        <div class="panel__header">
+          <span class="panel__title"><span class="panel__title-dot" style="background:var(--dpurple)"></span> Bills Requiring Your Vote</span>
+          <span class="panel__badge" id="bills-badge" style="background:var(--dpurple-faint);color:var(--dpurple);border:1px solid var(--dpurple-border);"></span>
+        </div>
+        <div class="panel__body" id="bills-body"></div>
+      </div>
+      <!-- GOVERNMENT -->
+      <div class="panel" id="gov-panel" style="display:none;">
+        <div class="panel__header">
+          <span class="panel__title"><span class="panel__title-dot" style="background:var(--dgreen)"></span> Government</span>
+          <span class="panel__badge" id="gov-badge" style="background:var(--dgreen-faint);color:var(--dgreen);border:1px solid var(--dgreen-border);"></span>
+        </div>
+        <div id="gov-body"></div>
+      </div>
+      <!-- QUICK ACTIONS -->
+      <div class="panel" id="qa-panel" style="display:none;">
+        <div class="panel__header">
+          <span class="panel__title"><span class="panel__title-dot" style="background:var(--damber)"></span> Quick Actions</span>
+          <span class="panel__badge" id="qa-badge" style="background:var(--damber-faint);color:var(--damber);border:1px solid var(--damber-border);"></span>
+        </div>
+        <div class="panel__body" id="qa-body"></div>
+      </div>
+    </div>
+    <!-- SIDEBAR -->
+    <div class="dash-side">
+      <!-- DEADLINES -->
+      <div class="panel" id="deadlines-panel">
+        <div class="panel__header">
+          <span class="panel__title"><span class="panel__title-dot" style="background:var(--damber)"></span> Deadlines</span>
+        </div>
+        <div class="panel__body" id="deadlines-body"><div class="dash-loading">Loading...</div></div>
+      </div>
+      <!-- YOUR PARTY -->
+      <div class="panel" id="party-panel" style="display:none;">
+        <div class="panel__header">
+          <span class="panel__title"><span class="panel__title-dot" style="background:var(--dblue)"></span> Your Party</span>
+          <span class="panel__badge" id="party-badge-side" style="background:var(--dblue-faint);color:var(--dblue);border:1px solid var(--dblue-border);"></span>
+        </div>
+        <div class="panel__body" id="party-body"></div>
+      </div>
+      <!-- APPOINTMENTS -->
+      <div class="panel" id="appt-panel" style="display:none;">
+        <div class="panel__header">
+          <span class="panel__title"><span class="panel__title-dot" style="background:var(--dred)"></span> Appointments</span>
+        </div>
+        <div class="panel__body" id="appt-body"></div>
+      </div>
+      <!-- TREATIES -->
+      <div class="panel" id="treaties-panel" style="display:none;">
+        <div class="panel__header">
+          <span class="panel__title"><span class="panel__title-dot" style="background:var(--dteal)"></span> Treaties</span>
+        </div>
+        <div class="panel__body" id="treaties-body"></div>
+      </div>
+      <!-- TOP STORIES -->
+      <div class="panel" id="stories-panel" style="display:none;">
+        <div class="panel__header">
+          <span class="panel__title"><span class="panel__title-dot" style="background:var(--damber)"></span> Top Stories</span>
+          <span class="panel__badge" style="background:var(--damber-faint);color:var(--damber);border:1px solid var(--damber-border);">The Cruceran</span>
+        </div>
+        <div class="panel__body" id="stories-body"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Page Script -->
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { initPage, formatNumber } from './js/common.js';
+import { isAutocracy, isPresidentialRepublic, getCanonicalGovernmentType, loadSeats, fetchActiveCoalition, GAME_CONFIG } from './js/game-common.js';
+import { escapeHtml } from './js/utils.js';
+
+const MAX_AP = 6;
+
+// Palette helper for party colors
+const PARTY_COLORS = ['var(--dblue)', 'var(--dorange)', 'var(--dteal)', 'var(--dpurple)', 'var(--dgreen)', 'var(--dred)', 'var(--damber)'];
+function partyColor(index) { return PARTY_COLORS[index % PARTY_COLORS.length]; }
+
+function blocBarColor(pct) {
+    if (pct >= 60) return 'var(--dgreen)';
+    if (pct >= 40) return 'var(--dblue)';
+    if (pct >= 25) return 'var(--damber)';
+    return 'var(--dred)';
+}
+
+function initials(first, last) {
+    return ((first || '')[0] || '') + ((last || '')[0] || '');
+}
+
+// ─── INIT ───
+initPage('dashboard', async (state) => {
+    const { user, faction, nation, shard } = state;
+    if (!faction || !nation) return;
+
+    // Fire all data loads in parallel
+    const [
+        coalitionRes,
+        ministriesRes,
+        partiesRes,
+        floorBillsRes,
+        committeeBillsRes,
+        hogRes,
+        scheduledElectionRes,
+        relationsRes,
+        ambassadorsRes,
+        blocsRes,
+        blocApprovalsRes,
+        eventLogRes,
+        opEdsRes,
+    ] = await Promise.all([
+        fetchActiveCoalition(_supabase, nation.id),
+        _supabase.from('ministries').select('*, factions(faction_name, abbreviation, party_color)').eq('nation_id', nation.id).eq('is_active', true),
+        _supabase.from('factions').select('id, faction_name, abbreviation, seats, approval_rating, action_points, party_color, party_logo, is_npc, loyalty, momentum').eq('nation_id', nation.id).eq('faction_type', 'party'),
+        _supabase.from('bills').select('*, factions(faction_name, abbreviation), bill_support(faction_id, stance, seat_count)').eq('nation_id', nation.id).in('status', ['floor', 'vetoed']),
+        _supabase.from('bills').select('*, factions(faction_name, abbreviation), bill_support(faction_id, stance, seat_count)').eq('nation_id', nation.id).eq('status', 'committee'),
+        _supabase.from('head_of_government').select('*, leader_traits(*)').eq('nation_id', nation.id).eq('active', true).maybeSingle(),
+        _supabase.from('elections').select('election_tick, election_type, status').eq('nation_id', nation.id).eq('status', 'scheduled').order('election_tick', { ascending: true }).limit(1).maybeSingle(),
+        _supabase.from('diplomatic_relations').select('*').or('nation_a_id.eq.' + nation.id + ',nation_b_id.eq.' + nation.id),
+        _supabase.from('ambassadors').select('*, factions(abbreviation)').eq('nation_id', nation.id).eq('is_active', true),
+        _supabase.from('voter_blocs').select('id, bloc_name, population_weight').eq('nation_id', nation.id).eq('is_active', true),
+        _supabase.from('faction_bloc_approval').select('bloc_id, preference_score').eq('faction_id', faction.id),
+        _supabase.from('event_log').select('*').eq('nation_id', nation.id).order('fired_at_tick', { ascending: false }).limit(20),
+        _supabase.from('op_eds').select('*, factions!author_faction_id(faction_name, abbreviation, party_color)').eq('nation_id', nation.id).order('created_at', { ascending: false }).limit(5),
+    ]);
+
+    const coalition = coalitionRes;
+    const ministries = ministriesRes.data || [];
+    const allParties = partiesRes.data || [];
+    const floorBills = floorBillsRes.data || [];
+    const committeeBills = committeeBillsRes.data || [];
+    const hog = hogRes.data;
+    const scheduledElection = scheduledElectionRes.data;
+    const relations = relationsRes.data || [];
+    const ambassadors = ambassadorsRes.data || [];
+    const blocs = blocsRes.data || [];
+    const blocApprovals = blocApprovalsRes.data || [];
+    const eventLog = eventLogRes.data || [];
+    const opEds = opEdsRes.data || [];
+
+    const isAuto = isAutocracy(nation);
+    const isPresidential = isPresidentialRepublic(nation);
+    const govType = getCanonicalGovernmentType(nation, nation.government_type || '');
+    const currentTick = shard?.current_tick || 0;
+
+    // Load real seat counts
+    const { allPartySeats, currentSeats } = await loadSeats(_supabase, nation.id, isAuto, allParties, faction.id);
+    for (const p of allParties) {
+        if (allPartySeats[p.id] !== undefined) p.seats = allPartySeats[p.id];
+    }
+    const totalSeats = allParties.reduce((s, p) => s + (p.seats || 0), 0) || 100;
+
+    // ─── BANNER ───
+    renderBanner(faction, coalition, currentSeats, totalSeats);
+
+    // ─── ALERTS ───
+    renderAlerts(nation, faction, coalition, ministries, scheduledElection, currentTick, eventLog);
+
+    // ─── BILLS ───
+    renderBills(faction, floorBills, committeeBills);
+
+    // ─── GOVERNMENT ───
+    renderGovernment(nation, coalition, ministries, allParties, hog, govType, totalSeats, allPartySeats);
+
+    // ─── QUICK ACTIONS ───
+    renderQuickActions(faction);
+
+    // ─── DEADLINES ───
+    renderDeadlines(shard, scheduledElection, currentTick);
+
+    // ─── PARTY SNAPSHOT ───
+    renderPartySnapshot(faction, blocs, blocApprovals);
+
+    // ─── APPOINTMENTS ───
+    renderAppointments(ministries, ambassadors, nation);
+
+    // ─── TREATIES ───
+    renderTreaties(nation, relations);
+
+    // ─── TOP STORIES ───
+    renderStories(eventLog, opEds, faction, currentTick);
+});
+
+// ═══════════════════════════════════════════════════════
+// RENDER FUNCTIONS
+// ═══════════════════════════════════════════════════════
+
+function renderBanner(faction, coalition, seats, totalSeats) {
+    const el = document.getElementById('dash-banner');
+    const ap = faction.action_points ?? 0;
+    const momentum = faction.momentum ?? 0;
+    const approval = Math.round(faction.approval_rating ?? 0);
+    const treasury = faction.party_funds ?? 0;
+
+    // Determine government status
+    let statusHTML = '';
+    if (coalition) {
+        if (coalition.lead_party_id === faction.id) {
+            statusHTML = '<span class="banner__status banner__status--governing">GOVERNING</span>';
+        } else if (coalition.party_ids && coalition.party_ids.includes(faction.id)) {
+            statusHTML = '<span class="banner__status banner__status--coalition">COALITION PARTNER</span>';
+        } else {
+            statusHTML = '<span class="banner__status banner__status--opposition">OPPOSITION</span>';
+        }
+    } else {
+        statusHTML = '<span class="banner__status banner__status--opposition">OPPOSITION</span>';
+    }
+
+    const momClass = momentum > 0 ? 'banner__stat-val--up' : momentum < 0 ? 'banner__stat-val--down' : '';
+    const momSign = momentum > 0 ? '+' : '';
+
+    let pipsHTML = '';
+    for (let i = 0; i < MAX_AP; i++) {
+        pipsHTML += i < ap
+            ? '<div class="banner__ap-pip"></div>'
+            : '<div class="banner__ap-pip banner__ap-pip--empty"></div>';
+    }
+
+    el.innerHTML = `
+      <div class="banner__inner">
+        <div class="banner__left">
+          <div>
+            <div class="banner__title">
+              ${escapeHtml(faction.faction_name)}
+              <span class="banner__title-abbr">${escapeHtml(faction.abbreviation || '')}</span>
+            </div>
+            <div class="banner__meta">
+              ${statusHTML}
+              <span class="banner__stat"><span class="banner__stat-label">Seats</span> <span class="banner__stat-val">${seats || 0} / ${totalSeats}</span></span>
+              <span class="banner__stat"><span class="banner__stat-label">Approval</span> <span class="banner__stat-val">${approval}%</span></span>
+              <span class="banner__stat"><span class="banner__stat-label">Momentum</span> <span class="banner__stat-val ${momClass}">${momSign}${momentum}</span></span>
+              <span class="banner__stat"><span class="banner__stat-label">Treasury</span> <span class="banner__stat-val">${formatNumber(treasury)}</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="banner__ap">
+          <div class="banner__ap-label">Action Points</div>
+          <div class="banner__ap-pips">${pipsHTML}</div>
+          <div class="banner__ap-count">${ap}</div>
+        </div>
+      </div>`;
+    el.style.display = '';
+}
+
+function renderAlerts(nation, faction, coalition, ministries, scheduledElection, currentTick, eventLog) {
+    const stack = document.getElementById('alert-stack');
+    const alerts = [];
+
+    // Crisis events from event log (recent crises)
+    const crisisEvents = eventLog.filter(e =>
+        e.event_name && (
+            e.event_name.includes('CRISIS_STARTED') ||
+            e.event_name.includes('REVOLUTION_WARNING') ||
+            e.event_name.includes('REVOLUTION_ESCALATION') ||
+            e.event_name.includes('WAR_DECLARED')
+        ) && (currentTick - (e.fired_at_tick || 0)) <= 5
+    );
+    for (const evt of crisisEvents.slice(0, 2)) {
+        const name = (evt.event_name || '').replace(/_/g, ' ');
+        const desc = evt.description || evt.event_data?.description || '';
+        alerts.push(`
+          <div class="alert alert--crisis">
+            <div class="alert__icon" style="color:var(--dred)">!!</div>
+            <div class="alert__content">
+              <div class="alert__title">${escapeHtml(name)}</div>
+              <div class="alert__sub">${escapeHtml(desc).substring(0, 120)}</div>
+            </div>
+            <a class="alert__action alert__action--red" href="events.html">Respond</a>
+          </div>`);
+    }
+
+    // Low stability warning
+    if ((nation.stability ?? 100) < 40) {
+        alerts.push(`
+          <div class="alert alert--warn">
+            <div class="alert__icon" style="color:var(--damber)">/!</div>
+            <div class="alert__content">
+              <div class="alert__title">National Stability Critical: ${Math.round(nation.stability)}%</div>
+              <div class="alert__sub">Risk of government collapse or revolution</div>
+            </div>
+            <a class="alert__action alert__action--amber" href="nation.html">Review</a>
+          </div>`);
+    }
+
+    // Vacant ministries
+    const CABINET_KEYS = ['prime_minister','interior','foreign','defense','finance','education','healthcare','labor','justice','trade','energy','transportation'];
+    const filledKeys = new Set(ministries.map(m => m.ministry_key));
+    const vacancies = CABINET_KEYS.filter(k => !filledKeys.has(k));
+    if (vacancies.length > 0) {
+        alerts.push(`
+          <div class="alert alert--info">
+            <div class="alert__icon" style="color:var(--dblue)">?</div>
+            <div class="alert__content">
+              <div class="alert__title">${vacancies.length} Cabinet ${vacancies.length === 1 ? 'Vacancy' : 'Vacancies'}</div>
+              <div class="alert__sub">${vacancies.slice(0, 3).map(v => v.replace(/_/g, ' ')).join(', ')}${vacancies.length > 3 ? '...' : ''}</div>
+            </div>
+            <a class="alert__action alert__action--blue" href="government.html">Appoint</a>
+          </div>`);
+    }
+
+    // Upcoming election warning
+    if (scheduledElection) {
+        const ticksUntil = scheduledElection.election_tick - currentTick;
+        if (ticksUntil <= 5 && ticksUntil > 0) {
+            alerts.push(`
+              <div class="alert alert--warn">
+                <div class="alert__icon" style="color:var(--damber)">/!</div>
+                <div class="alert__content">
+                  <div class="alert__title">Election in ${ticksUntil} Tick${ticksUntil !== 1 ? 's' : ''}</div>
+                  <div class="alert__sub">${escapeHtml(scheduledElection.election_type || 'Parliamentary')} election approaching</div>
+                </div>
+                <a class="alert__action alert__action--amber" href="elections.html">Prepare</a>
+              </div>`);
+        }
+    }
+
+    stack.innerHTML = alerts.join('');
+}
+
+function renderBills(faction, floorBills, committeeBills) {
+    const allBills = [...floorBills, ...committeeBills].slice(0, 6);
+    if (allBills.length === 0) return;
+
+    const panel = document.getElementById('bills-panel');
+    const body = document.getElementById('bills-body');
+    const badge = document.getElementById('bills-badge');
+    panel.style.display = '';
+    badge.textContent = allBills.length + ' Active';
+
+    body.innerHTML = allBills.map(bill => {
+        const sponsor = bill.factions?.abbreviation || bill.factions?.faction_name || '?';
+        const isYours = bill.proposed_by === faction.id;
+        const status = bill.status === 'floor' ? 'Floor Vote' : bill.status === 'vetoed' ? 'Vetoed' : 'Committee';
+        const statusColor = bill.status === 'floor' ? '--dblue' : '--damber';
+
+        // Check current faction stance
+        const support = (bill.bill_support || []).find(s => s.faction_id === faction.id);
+        const currentStance = support?.stance || null;
+
+        let relevanceHTML = '';
+        if (isYours) {
+            relevanceHTML = `<span class="bill-card__relevance" style="background:var(--damber-faint);color:var(--damber);border:1px solid var(--damber-border);">Your bill</span>`;
+        }
+
+        const ayeSel = currentStance === 'accept' ? ' bill-card__vote-btn--selected-aye' : '';
+        const naySel = currentStance === 'reject' ? ' bill-card__vote-btn--selected-nay' : '';
+        const absSel = currentStance === 'conditional' ? ' bill-card__vote-btn--selected-abs' : '';
+
+        return `
+          <div class="bill-card" data-bill-id="${bill.id}">
+            <div class="bill-card__row1">
+              <span class="bill-card__name">${escapeHtml(bill.title || bill.bill_name || 'Untitled Bill')}</span>
+              ${relevanceHTML}
+              <span class="bill-card__status" style="background:var(${statusColor}-faint);color:var(${statusColor});border:1px solid var(${statusColor}-border);">${status}</span>
+            </div>
+            <div class="bill-card__meta">Sponsor: <span class="bill-card__sponsor">${escapeHtml(sponsor)}</span></div>
+            <div class="bill-card__bottom">
+              <div class="bill-card__votes">
+                <div class="bill-card__vote-btn bill-card__vote-btn--aye${ayeSel}" data-bill="${bill.id}" data-stance="accept">AYE</div>
+                <div class="bill-card__vote-btn bill-card__vote-btn--nay${naySel}" data-bill="${bill.id}" data-stance="reject">NAY</div>
+                <div class="bill-card__vote-btn bill-card__vote-btn--abs${absSel}" data-bill="${bill.id}" data-stance="conditional">ABSTAIN</div>
+              </div>
+            </div>
+          </div>`;
+    }).join('');
+
+    // Vote click handlers
+    body.querySelectorAll('.bill-card__vote-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const billId = this.dataset.bill;
+            const stance = this.dataset.stance;
+            const card = this.closest('.bill-card');
+            card.querySelectorAll('.bill-card__vote-btn').forEach(b => {
+                b.className = b.className.replace(/bill-card__vote-btn--selected-\w+/g, '').trim();
+            });
+            const colorMap = { accept: 'aye', reject: 'nay', conditional: 'abs' };
+            this.classList.add('bill-card__vote-btn--selected-' + colorMap[stance]);
+
+            await _supabase.from('bill_support').upsert({
+                bill_id: billId,
+                faction_id: faction.id,
+                stance: stance,
+                seat_count: faction.seats || 0
+            }, { onConflict: 'bill_id,faction_id' });
+        });
+    });
+}
+
+function renderGovernment(nation, coalition, ministries, allParties, hog, govType, totalSeats, allPartySeats) {
+    const panel = document.getElementById('gov-panel');
+    const body = document.getElementById('gov-body');
+    const badge = document.getElementById('gov-badge');
+    panel.style.display = '';
+    badge.textContent = govType;
+
+    const pm = ministries.find(m => m.ministry_key === 'prime_minister');
+    const pmName = pm ? `${pm.minister_first_name || ''} ${pm.minister_last_name || ''}`.trim() : (hog ? `${hog.first_name || ''} ${hog.last_name || ''}`.trim() : 'Vacant');
+    const pmParty = pm?.factions?.faction_name || '';
+    const pmInit = pm ? initials(pm.minister_first_name, pm.minister_last_name) : (hog ? initials(hog.first_name, hog.last_name) : '??');
+
+    // Coalition seat bar
+    let coalitionHTML = '';
+    if (coalition && coalition.party_ids && coalition.party_ids.length > 0) {
+        const coalParties = coalition.party_ids.map((id, idx) => {
+            const p = allParties.find(x => x.id === id);
+            const seats = allPartySeats[id] || p?.seats || 0;
+            return { name: p?.faction_name || 'Unknown', abbr: p?.abbreviation || '?', seats, color: partyColor(idx) };
+        }).sort((a, b) => b.seats - a.seats);
+        const coalTotal = coalParties.reduce((s, p) => s + p.seats, 0);
+
+        const barSegs = coalParties.map(p =>
+            `<div class="coalition-bar__seg" style="width:${(p.seats / coalTotal * 100).toFixed(1)}%;background:${p.color}"></div>`
+        ).join('');
+        const legendItems = coalParties.map(p =>
+            `<span class="coalition-legend__item"><span class="coalition-legend__dot" style="background:${p.color}"></span> ${escapeHtml(p.abbr)} (${p.seats})</span>`
+        ).join('');
+
+        coalitionHTML = `
+          <div class="sub-label">Coalition -- ${coalTotal} / ${totalSeats}</div>
+          <div class="coalition-bar">${barSegs}</div>
+          <div class="coalition-legend">${legendItems}</div>
+          <div class="gov-stat-row">
+            <span class="gov-stat-row__label">Majority</span>
+            <span class="gov-stat-row__val" style="color:${coalTotal > totalSeats / 2 ? 'var(--dgreen)' : 'var(--dred)'}">${coalTotal} / ${totalSeats}</span>
+          </div>`;
+    }
+
+    const govApproval = Math.round(nation.gov_approval ?? nation.stability ?? 50);
+    const stabilityWarnHTML = (nation.stability ?? 100) < 65 ? `
+      <div class="stability-warn">
+        <div class="stability-warn__title">/! Stability: ${Math.round(nation.stability)}%</div>
+        <div class="stability-warn__text">Government stability below threshold. Coalition tensions may escalate.</div>
+      </div>` : '';
+
+    // Cabinet (right side)
+    const CABINET_DISPLAY = ['finance','defense','healthcare','education','foreign','interior','trade'];
+    const cabinetRows = CABINET_DISPLAY.map(key => {
+        const m = ministries.find(x => x.ministry_key === key);
+        if (!m) return `
+          <div class="cabinet-row">
+            <span class="cabinet-row__ministry">${key.charAt(0).toUpperCase() + key.slice(1)}</span>
+            <span class="cabinet-row__holder" style="color:var(--dtxt-dim)">Vacant</span>
+          </div>`;
+        const name = `${(m.minister_first_name || '')[0] || ''}. ${m.minister_last_name || ''}`;
+        const pAbbr = m.factions?.abbreviation || '';
+        const pColor = m.factions?.party_color || 'var(--dblue)';
+        return `
+          <div class="cabinet-row">
+            <span class="cabinet-row__ministry">${key.charAt(0).toUpperCase() + key.slice(1)}</span>
+            <span class="cabinet-row__holder">${escapeHtml(name)} <span class="cabinet-row__party-tag" style="background:${pColor}22;color:${pColor}">${escapeHtml(pAbbr)}</span></span>
+          </div>`;
+    }).join('');
+
+    body.innerHTML = `
+      <div class="gov-strip">
+        <div class="gov-strip__left">
+          <div class="gov-head">
+            <div class="gov-head__avatar">${pmInit}</div>
+            <div>
+              <div class="gov-head__name">PM ${escapeHtml(pmName)}</div>
+              <div class="gov-head__role">${escapeHtml(pmParty)}</div>
+            </div>
+          </div>
+          ${coalitionHTML}
+          <div class="gov-stat-row">
+            <span class="gov-stat-row__label">Gov. Approval</span>
+            <span class="gov-stat-row__val" style="color:${govApproval >= 50 ? 'var(--dgreen)' : govApproval >= 35 ? 'var(--damber)' : 'var(--dred)'}">${govApproval}%</span>
+          </div>
+          ${stabilityWarnHTML}
+        </div>
+        <div class="gov-strip__right">
+          <div class="sub-label">Cabinet</div>
+          ${cabinetRows}
+        </div>
+      </div>`;
+}
+
+function renderQuickActions(faction) {
+    const panel = document.getElementById('qa-panel');
+    const body = document.getElementById('qa-body');
+    const badge = document.getElementById('qa-badge');
+    const ap = faction.action_points ?? 0;
+    panel.style.display = '';
+    badge.textContent = ap + ' AP remaining';
+
+    const actions = [
+        { name: 'Campaign Rally', cost: 1, href: 'elections.html' },
+        { name: 'Write Op-Ed', cost: 1, href: 'parties.html' },
+        { name: 'Policy Pledge', cost: 1, href: 'elections.html' },
+        { name: 'Media Blitz', cost: 2, href: 'elections.html' },
+        { name: 'Opposition Research', cost: 2, href: 'elections.html' },
+        { name: 'Party Congress', cost: 3, href: 'parties.html' },
+    ];
+
+    body.innerHTML = '<div class="quick-actions">' +
+        actions.map(a => `
+          <a class="qa-btn" href="${a.href}" ${ap < a.cost ? 'style="opacity:0.4;pointer-events:none;"' : ''}>
+            ${a.name} <span class="qa-btn__cost">${a.cost} AP</span>
+          </a>`).join('') +
+        '</div>';
+}
+
+function renderDeadlines(shard, scheduledElection, currentTick) {
+    const body = document.getElementById('deadlines-body');
+    const rows = [];
+
+    // Next tick
+    if (shard?.next_tick_at) {
+        const nextTick = new Date(shard.next_tick_at);
+        const now = new Date();
+        const diffMs = nextTick - now;
+        const diffS = Math.max(0, Math.floor(diffMs / 1000));
+        const h = Math.floor(diffS / 3600);
+        const m = Math.floor((diffS % 3600) / 60);
+        const s = diffS % 60;
+        rows.push(`
+          <div class="deadline-row">
+            <div class="deadline-row__pip deadline-row__pip--live"></div>
+            <div class="deadline-row__info">
+              <div class="deadline-row__label">Next Tick</div>
+              <div class="deadline-row__sub">Tick ${(currentTick || 0) + 1} processes in</div>
+            </div>
+            <div class="deadline-row__val" style="color:var(--dgreen)">${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}</div>
+          </div>`);
+    }
+
+    // Election
+    if (scheduledElection) {
+        const ticksUntil = scheduledElection.election_tick - currentTick;
+        const pip = ticksUntil <= 3 ? 'deadline-row__pip--urgent' : 'deadline-row__pip--normal';
+        const color = ticksUntil <= 3 ? 'var(--damber)' : 'var(--dtxt-muted)';
+        rows.push(`
+          <div class="deadline-row">
+            <div class="deadline-row__pip ${pip}"></div>
+            <div class="deadline-row__info">
+              <div class="deadline-row__label">${escapeHtml(scheduledElection.election_type || 'General')} Election</div>
+            </div>
+            <div class="deadline-row__val" style="color:${color}">${ticksUntil} tick${ticksUntil !== 1 ? 's' : ''}</div>
+          </div>`);
+    }
+
+    body.innerHTML = rows.length ? rows.join('') : '<div class="dash-empty">No upcoming deadlines</div>';
+}
+
+function renderPartySnapshot(faction, blocs, blocApprovals) {
+    const panel = document.getElementById('party-panel');
+    const body = document.getElementById('party-body');
+    const badge = document.getElementById('party-badge-side');
+    panel.style.display = '';
+    badge.textContent = faction.abbreviation || '';
+
+    // Ideology axes (from faction table fields)
+    const axes = [];
+    if (faction.ideology_value_1) axes.push({ label: faction.ideology_value_1.substring(0, 4), val: '1' });
+    if (faction.ideology_value_2) axes.push({ label: faction.ideology_value_2.substring(0, 4), val: '2' });
+
+    // Build from actual faction ideology fields if available
+    const ideologyFields = [
+        { key: 'axis_liberty_equality', label: 'Lib' },
+        { key: 'axis_tradition_progress', label: 'Prog' },
+        { key: 'axis_security_freedom', label: 'Free' },
+        { key: 'axis_individualism_collectivism', label: 'Coll' },
+    ];
+    let axisHTML = '';
+    const axisCells = ideologyFields
+        .filter(f => faction[f.key] != null)
+        .map(f => `<div class="axis-mini__item"><span class="axis-mini__label">${f.label}</span><span class="axis-mini__val">${Math.round(faction[f.key])}</span></div>`);
+    if (axisCells.length > 0) {
+        axisHTML = `<div class="axis-mini">${axisCells.join('')}</div>`;
+    }
+
+    // Bloc support
+    const approvalMap = {};
+    for (const ba of blocApprovals) {
+        approvalMap[ba.bloc_id] = Math.round(ba.preference_score ?? 50);
+    }
+    const blocRows = blocs
+        .map(b => ({ name: b.bloc_name, pct: approvalMap[b.id] ?? 50 }))
+        .sort((a, b) => b.pct - a.pct)
+        .slice(0, 8)
+        .map(b => {
+            const color = blocBarColor(b.pct);
+            return `
+              <div class="bloc-row">
+                <span class="bloc-row__name">${escapeHtml(b.name)}</span>
+                <div class="bloc-row__bar"><div class="bloc-row__bar-fill" style="width:${b.pct}%;background:${color}"></div></div>
+                <span class="bloc-row__pct" style="color:${color}">${b.pct}%</span>
+              </div>`;
+        }).join('');
+
+    body.innerHTML = axisHTML +
+        (blocRows ? '<div class="sub-label">Bloc Support</div>' + blocRows : '<div class="dash-empty">No bloc data</div>');
+}
+
+function renderAppointments(ministries, ambassadors, nation) {
+    const panel = document.getElementById('appt-panel');
+    const body = document.getElementById('appt-body');
+    panel.style.display = '';
+
+    const rows = [];
+
+    // PM
+    const pm = ministries.find(m => m.ministry_key === 'prime_minister');
+    if (pm) {
+        rows.push(`<div class="appt-row"><span class="appt-row__role">Prime Minister</span><span class="appt-row__holder">${escapeHtml((pm.minister_first_name || '')[0] + '. ' + (pm.minister_last_name || ''))}</span></div>`);
+    }
+
+    // Key appointments from ministries
+    const KEY_ROLES = ['finance', 'defense', 'foreign'];
+    for (const key of KEY_ROLES) {
+        const m = ministries.find(x => x.ministry_key === key);
+        const label = key.charAt(0).toUpperCase() + key.slice(1);
+        if (m && m.minister_last_name) {
+            rows.push(`<div class="appt-row"><span class="appt-row__role">Min. ${label}</span><span class="appt-row__holder">${escapeHtml((m.minister_first_name || '')[0] + '. ' + m.minister_last_name)}</span></div>`);
+        } else {
+            rows.push(`<div class="appt-row"><span class="appt-row__role">Min. ${label}</span><span class="appt-row__vacant-btn" onclick="window.location.href='government.html'">Appoint</span></div>`);
+        }
+    }
+
+    // Ambassadors
+    for (const amb of ambassadors.slice(0, 3)) {
+        const name = `${(amb.first_name || '')[0] || ''}. ${amb.last_name || ''}`;
+        const target = amb.target_nation_name || 'Unknown';
+        if (amb.status === 'recalled') {
+            rows.push(`<div class="appt-row"><span class="appt-row__role">Amb. ${escapeHtml(target)}</span><span class="appt-row__recalled">Recalled</span></div>`);
+        } else {
+            rows.push(`<div class="appt-row"><span class="appt-row__role">Amb. ${escapeHtml(target)}</span><span class="appt-row__holder">${escapeHtml(name)}</span></div>`);
+        }
+    }
+
+    body.innerHTML = rows.length ? rows.join('') : '<div class="dash-empty">No appointments</div>';
+}
+
+function renderTreaties(nation, relations) {
+    const panel = document.getElementById('treaties-panel');
+    const body = document.getElementById('treaties-body');
+    if (relations.length === 0) return;
+    panel.style.display = '';
+
+    // Fetch nation names (we have IDs only in relations)
+    const rows = relations.slice(0, 6).map(rel => {
+        const isA = rel.nation_a_id === nation.id;
+        const otherName = isA ? (rel.nation_b_name || 'Unknown') : (rel.nation_a_name || 'Unknown');
+        const score = rel.relation_score ?? 50;
+        let color = 'var(--dtxt-secondary)';
+        let label = 'Neutral';
+        if (score >= 70) { color = 'var(--dgreen)'; label = 'Friendly'; }
+        else if (score >= 50) { color = 'var(--dblue)'; label = 'Cordial'; }
+        else if (score >= 30) { color = 'var(--damber)'; label = 'Tense'; }
+        else { color = 'var(--dred)'; label = 'Hostile'; }
+
+        return `
+          <div class="gov-stat-row">
+            <span class="gov-stat-row__label">${escapeHtml(otherName)}</span>
+            <span class="gov-stat-row__val" style="color:${color}">${label} (${score})</span>
+          </div>`;
+    }).join('');
+
+    body.innerHTML = rows;
+}
+
+function renderStories(eventLog, opEds, faction, currentTick) {
+    const panel = document.getElementById('stories-panel');
+    const body = document.getElementById('stories-body');
+    panel.style.display = '';
+
+    const stories = [];
+
+    // Convert recent events to story items
+    for (const evt of eventLog.slice(0, 4)) {
+        const name = (evt.event_name || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const desc = evt.description || '';
+        let section = 'Politics';
+        let sectionColor = 'var(--dpurple)';
+
+        if ((evt.event_name || '').includes('ECONOMIC') || (evt.event_name || '').includes('BUDGET') || (evt.event_name || '').includes('GDP') || (evt.event_name || '').includes('TRADE')) {
+            section = 'Economy'; sectionColor = 'var(--dgreen)';
+        } else if ((evt.event_name || '').includes('WAR') || (evt.event_name || '').includes('MILITARY') || (evt.event_name || '').includes('BORDER') || (evt.event_name || '').includes('CRISIS')) {
+            section = 'Security'; sectionColor = 'var(--dred)';
+        } else if ((evt.event_name || '').includes('DIPLOMAT') || (evt.event_name || '').includes('TREATY') || (evt.event_name || '').includes('AMBASSADOR')) {
+            section = 'World'; sectionColor = 'var(--dteal)';
+        } else if ((evt.event_name || '').includes('ELECTION') || (evt.event_name || '').includes('VOTE')) {
+            section = 'Elections'; sectionColor = 'var(--damber)';
+        }
+
+        const headline = desc || name;
+        stories.push({ headline, section, sectionColor, relevance: '' });
+    }
+
+    // Op-eds
+    for (const ed of opEds.slice(0, 2)) {
+        const isYours = ed.author_faction_id === faction.id;
+        stories.push({
+            headline: ed.title || 'Untitled Op-Ed',
+            section: 'Opinion',
+            sectionColor: 'var(--dtxt-muted)',
+            relevance: isYours ? 'Your op-ed' : '',
+        });
+    }
+
+    body.innerHTML = stories.slice(0, 5).map(s => `
+      <div class="story-item">
+        <div class="story-item__headline">${escapeHtml(s.headline)}</div>
+        <div class="story-item__tags">
+          <span class="story-item__section" style="color:${s.sectionColor}">${s.section}</span>
+          ${s.relevance ? `<span class="story-item__relevance" style="background:var(--dblue-faint);color:var(--dblue);border:1px solid var(--dblue-border);">${escapeHtml(s.relevance)}</span>` : ''}
+        </div>
+      </div>`).join('') || '<div class="dash-empty">No stories yet</div>';
+}
+</script>
+
+</body>
+</html>

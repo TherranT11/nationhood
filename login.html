@@ -61,7 +61,7 @@ import { _supabase } from './js/supabase-client.js';
                 password: password,
             });
             if (error) throw error;
-            window.location.href = "world.html";
+            window.location.href = "dashboard.html";
         } catch (error) {
             console.error('Login error:', error);
             errorMsg.textContent = error.message || 'Login failed. Please try again.';

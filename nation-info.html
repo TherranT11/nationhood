@@ -39,7 +39,7 @@
         <a class="toc-link" href="#security">Security</a>
         <a class="toc-link" href="#immigration">Immigration</a>
         <a class="toc-link" href="#international">International</a>
-        <a class="toc-back" href="world.html">&larr; World Map</a>
+        <a class="toc-back" href="dashboard.html">&larr; Home</a>
     </nav>
 
     <!-- ===== CENTER: Main Content ===== -->
@@ -113,7 +113,7 @@ import { fetchPreviousNationTick } from './js/common.js';
 
 // Resolve nation name from query parameter: nation-info.html?name=sangreza
 const NATION_SLUG = new URLSearchParams(window.location.search).get('name');
-if (!NATION_SLUG) { window.location.href = 'world.html'; }
+if (!NATION_SLUG) { window.location.href = 'dashboard.html'; }
 
 // Map slugs to proper nation names (handles spaces and casing)
 const SLUG_TO_NAME = {
