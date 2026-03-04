@@ -855,9 +855,8 @@ async function advanceTick(supabase) {
 
         for (const faction of factions) {
             const isInGovernment = governmentPartyIds.has(faction.id);
-            let apGain = 5;
-            if (isInGovernment) apGain += 1;
-            if ((faction.approval_rating ?? 50) > 60) apGain += 1;
+            let apGain = 4;
+            if (isInGovernment) apGain += 2;
 
             // Family member successor penalty: ruling faction loses 1 AP/tick
             if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) {

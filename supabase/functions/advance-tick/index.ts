@@ -85,7 +85,7 @@ const GAME_CONFIG = {
     MINISTER_CONFIRMATION_VOTING_TICKS: 6,
     PRESIDENTIAL_TERM_LIMIT: 2,           // max terms before incumbent must step aside
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
-    MAX_AP: 20,  // maximum action points a party can accumulate
+    MAX_AP: 10,  // maximum action points a party can accumulate
     TICKS_PER_YEAR: 12,
     // Inactivity decay — penalties for factions that haven't logged in
     INACTIVITY_GRACE_TICKS: 6,            // no penalty for first 6 ticks of inactivity
@@ -17399,9 +17399,8 @@ async function advanceTick(supabase) {
 
         for (const faction of factions) {
             const isInGovernment = governmentPartyIds.has(faction.id);
-            let apGain = 5;
-            if (isInGovernment) apGain += 1;
-            if ((faction.approval_rating ?? 50) > 60) apGain += 1;
+            let apGain = 4;
+            if (isInGovernment) apGain += 2;
 
             // Family member successor penalty: ruling faction loses 1 AP/tick
             if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) {
