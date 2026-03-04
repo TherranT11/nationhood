@@ -184,7 +184,7 @@ export async function loadGameState(requireFaction = true) {
     } else {
         const { data: userFaction, error: factionError } = await _supabase
             .from('factions').select('*').eq('id', user.id).single();
-        if (factionError || !userFaction) { if (requireFaction) { window.location.href = 'world.html'; return null; } }
+        if (factionError || !userFaction) { if (requireFaction) { window.location.href = 'dashboard.html'; return null; } }
         faction = userFaction;
     }
 
@@ -291,7 +291,7 @@ export function renderTopBar(activeTab) {
 
 export function renderNavTabs(activeTab) {
     const tabs = [
-        { id: 'world', label: 'World', href: 'world.html' },
+        { id: 'dashboard', label: 'Home', href: 'dashboard.html' },
         { id: 'nation', label: 'Nation', href: 'nation.html' },
         { id: 'government', label: 'Government', href: 'government.html' },
         { id: 'ministry-actions', label: 'Ministry', href: 'ministry-actions.html' },
