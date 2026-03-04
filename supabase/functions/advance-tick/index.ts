@@ -85,7 +85,7 @@ const GAME_CONFIG = {
     MINISTER_CONFIRMATION_VOTING_TICKS: 6,
     PRESIDENTIAL_TERM_LIMIT: 2,           // max terms before incumbent must step aside
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
-    MAX_AP: 20,  // maximum action points a party can accumulate
+    MAX_AP: 10,  // maximum action points a party can accumulate
     TICKS_PER_YEAR: 12,
     // Inactivity decay — penalties for factions that haven't logged in
     INACTIVITY_GRACE_TICKS: 6,            // no penalty for first 6 ticks of inactivity
@@ -9901,17 +9901,17 @@ async function calculateThreePillarPreferences(supabase, nation, currentTick) {
     for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
 
     // ── 5. Calculate pillars for each faction-bloc pair ──
-    const PILLAR_WEIGHT_IDEO = 0.60;
-    const PILLAR_WEIGHT_MOM  = 0.40;
-    const MOMENTUM_DECAY     = 0.85; // 15% decay per tick
+    const PILLAR_WEIGHT_IDEO = 0.50;
+    const PILLAR_WEIGHT_MOM  = 0.50;
+    const MOMENTUM_DECAY     = 0.70; // 30% decay per tick
 
     // ── 5b. Governance → momentum feed ──
     // Coalition parties get a per-tick momentum nudge based on gov_approval.
-    // Formula: (gov_approval - 50) / 16, capped at ±3.
-    // gov_approval 95 → +2.8/tick, 75 → +1.6, 50 → 0, 25 → -1.6
+    // Formula: (gov_approval - 50) / 10, capped at ±5.
+    // gov_approval 95 → +4.5/tick, 75 → +2.5, 50 → 0, 25 → -2.5, 5 → -4.5
     const govApproval = Number(nation.gov_approval ?? 50);
-    const govMomentumNudge = Math.max(-3, Math.min(3,
-        Math.round(((govApproval - 50) / 16) * 100) / 100
+    const govMomentumNudge = Math.max(-5, Math.min(5,
+        Math.round(((govApproval - 50) / 10) * 100) / 100
     ));
 
     const updates = [];
@@ -17399,9 +17399,8 @@ async function advanceTick(supabase) {
 
         for (const faction of factions) {
             const isInGovernment = governmentPartyIds.has(faction.id);
-            let apGain = 5;
-            if (isInGovernment) apGain += 1;
-            if ((faction.approval_rating ?? 50) > 60) apGain += 1;
+            let apGain = 4;
+            if (isInGovernment) apGain += 2;
 
             // Family member successor penalty: ruling faction loses 1 AP/tick
             if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) {
