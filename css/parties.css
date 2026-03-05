@@ -846,11 +846,6 @@ body.light-mode .coup-risk-bar-track {
         word-break: break-word;
         font-size: 0.82rem;
     }
-    .ap-panel {
-        max-width: 520px;
-        min-width: 0;
-        width: 100%;
-    }
     .actions-row {
         flex-direction: column;
     }
@@ -1612,65 +1607,6 @@ body.light-mode .ideology-label-swatch {
 .stat-grid.stat-grid-4col { grid-template-columns: repeat(4, 1fr); }
 
 /* ===== ACTION POINTS PANEL ===== */
-.ap-panel {
-    background: #1e1e1a;
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 3px;
-    padding: 14px 18px;
-    flex: 0.6 1 0;
-    min-width: 150px;
-    display: flex;
-    flex-direction: column;
-}
-.ap-header {
-    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: #8a8778;
-    margin-bottom: 12px;
-}
-.ap-score-row {
-    display: flex;
-    align-items: baseline;
-    gap: 4px;
-    margin-bottom: 10px;
-}
-.ap-value {
-    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
-    font-size: 28px;
-    font-weight: 700;
-    color: #e2e0d6;
-    line-height: 1;
-}
-.ap-max {
-    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
-    font-size: 12px;
-    color: #6b6a5e;
-    font-weight: 400;
-}
-.ap-bar-track {
-    height: 4px;
-    background: rgba(255, 255, 255, 0.03);
-    border-radius: 2px;
-    overflow: hidden;
-}
-.ap-bar-fill {
-    height: 100%;
-    border-radius: 2px;
-    transition: width 0.4s ease;
-    min-width: 2px;
-    opacity: 0.7;
-}
-.ap-tip {
-    margin-top: auto;
-    padding-top: 8px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    font-size: 11px;
-    color: #6b6a5e;
-    line-height: 1.5;
-}
 
 /* ===== FACTION AP GRID (Autocracy) ===== */
 .faction-ap-grid {

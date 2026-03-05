@@ -361,8 +361,9 @@ body {
 .no-crisis {
   font-family: var(--font-mono);
   font-size: 9px;
-  color: var(--text-ghost);
+  color: var(--text-muted);
   padding: 2px 0;
+  font-style: italic;
 }
 
 /* Card footer */
@@ -374,11 +375,18 @@ body {
   align-items: center;
   justify-content: space-between;
 }
+.nation-card__footer {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.nation-card__footer:hover {
+  background: var(--bg-4);
+}
 .join-label {
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -392,6 +400,12 @@ body {
 }
 .nation-card:hover .join-arrow {
   color: var(--green);
+}
+.nation-card.disabled .nation-card__footer {
+  cursor: default;
+}
+.nation-card.disabled:hover .nation-card__footer {
+  background: var(--bg-3);
 }
 .nation-card.disabled:hover .join-label,
 .nation-card.disabled:hover .join-arrow {
@@ -672,8 +686,8 @@ function renderPartyBar() {
     <span class="party-bar__sep"></span>
     <span class="party-bar__name">${escapeHtml(partyData.name)}</span>
     <span class="party-bar__abbr" style="${colorStyle || ''}">${escapeHtml(partyData.abbreviation)}</span>
-    <span class="party-bar__ideo">${escapeHtml(partyData.ideology1)}</span>
-    <span class="party-bar__ideo">${escapeHtml(partyData.ideology2)}</span>
+    <span class="party-bar__ideo" style="color:${IDEOLOGY_COLORS[partyData.ideology1] || 'var(--purple)'};border-color:${IDEOLOGY_COLORS[partyData.ideology1] || 'var(--purple-border)'};background:${IDEOLOGY_COLORS[partyData.ideology1] ? IDEOLOGY_COLORS[partyData.ideology1] + '18' : 'var(--purple-faint)'}">${escapeHtml(partyData.ideology1)}</span>
+    <span class="party-bar__ideo" style="color:${IDEOLOGY_COLORS[partyData.ideology2] || 'var(--purple)'};border-color:${IDEOLOGY_COLORS[partyData.ideology2] || 'var(--purple-border)'};background:${IDEOLOGY_COLORS[partyData.ideology2] ? IDEOLOGY_COLORS[partyData.ideology2] + '18' : 'var(--purple-faint)'}">${escapeHtml(partyData.ideology2)}</span>
   `;
 }
 
@@ -712,6 +726,14 @@ async function loadNations() {
   renderNations(nations, partiesByNation, crisesByNation, ideoByFaction);
 }
 
+const IDEOLOGY_COLORS = {
+  'Liberty': '#3b82f6', 'Equality': '#ef4444',
+  'Tradition': '#a855f7', 'Progress': '#22c55e',
+  'Security': '#f59e0b', 'Freedom': '#06b6d4',
+  'Globalism': '#14b8a6', 'Nationalism': '#f97316',
+  'Individualism': '#eab308', 'Collectivism': '#ec4899'
+};
+
 function getIdeologyLabel(ideo) {
   if (!ideo) return '';
   const axes = [
@@ -729,6 +751,14 @@ function getIdeologyLabel(ideo) {
     }
   }
   return labels.slice(0, 2).join(', ');
+}
+
+function colorizeIdeology(text) {
+  if (!text) return '';
+  return text.split(', ').map(w => {
+    const color = IDEOLOGY_COLORS[w];
+    return color ? `<span style="color:${color}">${escapeHtml(w)}</span>` : escapeHtml(w);
+  }).join('<span style="color:var(--text-dim)">, </span>');
 }
 
 function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) {
@@ -772,7 +802,7 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
           <span class="party-row__dot" style="background:${color};"></span>
           <span class="party-row__name">${escapeHtml(p.faction_name)}</span>
           <span class="party-row__abbr">${escapeHtml(p.abbreviation || '?')}</span>
-          ${ideoLabel ? `<span class="party-row__ideo">${escapeHtml(ideoLabel)}</span>` : ''}
+          ${ideoLabel ? `<span class="party-row__ideo">${colorizeIdeology(ideoLabel)}</span>` : ''}
           <span class="party-row__seats">${p.seats || 0}</span>
         </div>
       `;

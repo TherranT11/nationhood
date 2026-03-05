@@ -569,6 +569,14 @@ import { syncVoteTallies } from './js/game/bills.js';
 const PARTY_COLORS = ['var(--dblue)', 'var(--dorange)', 'var(--dteal)', 'var(--dpurple)', 'var(--dgreen)', 'var(--dred)', 'var(--damber)'];
 function partyColor(index) { return PARTY_COLORS[index % PARTY_COLORS.length]; }
 
+const IDEOLOGY_COLORS = {
+  'Liberty': '#3b82f6', 'Equality': '#ef4444',
+  'Tradition': '#a855f7', 'Progress': '#22c55e',
+  'Security': '#f59e0b', 'Freedom': '#06b6d4',
+  'Globalism': '#14b8a6', 'Nationalism': '#f97316',
+  'Individualism': '#eab308', 'Collectivism': '#ec4899'
+};
+
 function blocBarColor(pct) {
     if (pct >= 60) return 'var(--dgreen)';
     if (pct >= 40) return 'var(--dblue)';
@@ -1196,9 +1204,10 @@ function renderPartySnapshot(faction, blocs, blocApprovals) {
     const ideologyTags = [faction.ideology_value_1, faction.ideology_value_2].filter(Boolean);
     if (ideologyTags.length > 0) {
         axisHTML = '<div class="axis-mini">' +
-            ideologyTags.map(tag =>
-                `<div class="axis-mini__item"><span class="axis-mini__label">Ideology</span><span class="axis-mini__val" style="font-size:10px;">${escapeHtml(tag)}</span></div>`
-            ).join('') + '</div>';
+            ideologyTags.map(tag => {
+                const color = IDEOLOGY_COLORS[tag] || 'var(--text-secondary)';
+                return `<div class="axis-mini__item"><span class="axis-mini__label">Ideology</span><span class="axis-mini__val" style="font-size:10px;color:${color}">${escapeHtml(tag)}</span></div>`;
+            }).join('') + '</div>';
     }
 
     // Bloc support
