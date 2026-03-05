@@ -7,6 +7,8 @@ import { GAME_CONFIG } from './config.js';
 import { isParliamentaryDemocracy, isPresidentialRepublic } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { enactBill, failBill } from './bills.js';
+import { resolveBudgetBill, GOVERNMENT_SHUTDOWN_CRISIS_ID } from './budget.js';
+import { adjustMomentumAll } from './momentum.js';
 import { PM_FIRST_NAMES, PM_LAST_NAMES, PM_TRAIT_KEYS, getWeightedIdeologies, selectPMCandidate, weightedRandomPick } from './political-actions.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
@@ -265,9 +267,15 @@ export async function signPresidentialBill(supabase, billId, presidentFactionId)
         president_action_tick: currentTick
     }).eq('id', bill.id);
 
-    const enactment = await enactBill(supabase, bill, currentTick);
-    if (!enactment?.success) {
-        throw new Error(enactment?.error || 'Bill enactment failed after presidential signature');
+    if (bill.bill_type === 'budget') {
+        // Budget bills: resolve budget effects instead of enactBill
+        await resolveBudgetBill(supabase, bill, currentTick);
+        await supabase.from('bills').update({ status: 'passed' }).eq('id', bill.id);
+    } else {
+        const enactment = await enactBill(supabase, bill, currentTick);
+        if (!enactment?.success) {
+            throw new Error(enactment?.error || 'Bill enactment failed after presidential signature');
+        }
     }
 
     try {
@@ -325,6 +333,41 @@ export async function vetoPresidentialBill(supabase, billId, presidentFactionId)
         preamble: `The President has vetoed "${bill.bill_name}". The legislature may override this veto with a two-thirds supermajority (${overrideSeats} of ${GAME_CONFIG.TOTAL_SEATS} seats).`
     }).select().single();
 
+    // Budget veto: apply president penalty + activate government shutdown
+    if (bill.bill_type === 'budget') {
+        if (president?.faction_id) {
+            await adjustMomentumAll(
+                supabase, bill.nation_id, president.faction_id,
+                GAME_CONFIG.BUDGET_FAILURE_PRESIDENT_PENALTY,
+                'budget:presidential_veto'
+            );
+        }
+        // Directly activate government shutdown crisis
+        const { data: existingCrises } = await supabase
+            .from('active_crises')
+            .select('id')
+            .eq('nation_id', bill.nation_id)
+            .eq('crisis_id', GOVERNMENT_SHUTDOWN_CRISIS_ID);
+
+        if (!existingCrises || existingCrises.length === 0) {
+            await supabase.from('active_crises').insert({
+                crisis_id: GOVERNMENT_SHUTDOWN_CRISIS_ID,
+                nation_id: bill.nation_id,
+                started_at_tick: currentTick,
+                effects_applied_log: []
+            });
+            await supabase.from('event_log').insert({
+                nation_id: bill.nation_id,
+                event_name: 'CRISIS_STARTED: Government Shutdown',
+                description_used: 'The President has vetoed the budget. The government has shut down pending a veto override vote.',
+                category: 'crisis',
+                effects_applied: [],
+                fired_at_tick: currentTick
+            });
+        }
+        console.log(`[vetoPresidentialBill] Budget vetoed — government shutdown activated for nation ${bill.nation_id}`);
+    }
+
     try {
         await supabase.rpc('fire_system_event', {
             p_trigger_key: 'bill_failed',
@@ -365,11 +408,23 @@ export async function processPresidentDesk(supabase, nation, currentTick) {
             president_action_tick: currentTick
         }).eq('id', bill.id);
 
-        const enactment = await enactBill(supabase, bill, currentTick);
-        if (!enactment?.success) {
-            console.error(`[processPresidentDesk] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
-            results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: enactment?.error });
-            continue;
+        if (bill.bill_type === 'budget') {
+            // Budget bills: resolve budget effects instead of enactBill
+            try {
+                await resolveBudgetBill(supabase, bill, currentTick);
+                await supabase.from('bills').update({ status: 'passed' }).eq('id', bill.id);
+            } catch (budgetErr) {
+                console.error(`[processPresidentDesk] resolveBudgetBill failed for bill ${bill.id}: ${budgetErr.message}`);
+                results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: budgetErr.message });
+                continue;
+            }
+        } else {
+            const enactment = await enactBill(supabase, bill, currentTick);
+            if (!enactment?.success) {
+                console.error(`[processPresidentDesk] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
+                results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: enactment?.error });
+                continue;
+            }
         }
 
         try {

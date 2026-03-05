@@ -1762,7 +1762,10 @@ async function signBillAction() {
 async function vetoBillAction() {
     if (!isPresidentParty) return;
     const overrideSeats = Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
-    if (!confirm(`VETO this bill?\n\nA veto override bill will be automatically created requiring ${overrideSeats}/${GAME_CONFIG.TOTAL_SEATS} seats (2/3 supermajority).\n\nProceed?`)) return;
+    const budgetWarning = currentBill.bill_type === 'budget'
+        ? '\n\nWARNING: Vetoing the budget will trigger a GOVERNMENT SHUTDOWN and apply approval penalties to the President\'s party.\n'
+        : '';
+    if (!confirm(`VETO this bill?${budgetWarning}\nA veto override bill will be automatically created requiring ${overrideSeats}/${GAME_CONFIG.TOTAL_SEATS} seats (2/3 supermajority).\n\nProceed?`)) return;
     try {
         await vetoPresidentialBill(_supabase, currentBill.id, currentFaction.id);
         alert('Bill vetoed. A veto override bill has been sent to the floor.');
