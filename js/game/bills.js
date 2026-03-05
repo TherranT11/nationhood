@@ -874,7 +874,7 @@ export async function checkEarlyMajority(supabase, nationId) {
     // Include budget bills with null voting_ends_tick (they persist until passed)
     const { data: activeBills, error } = await supabase
         .from('bills')
-        .select('id, bill_name, bill_type, voting_ends_tick, bill_support(faction_id, stance, seat_count)')
+        .select('id, bill_name, bill_type, voting_ends_tick, proposed_tick, floor_tick, bill_support(faction_id, stance, seat_count)')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .is('early_resolution_status', null)
@@ -962,17 +962,16 @@ export async function checkEarlyMajority(supabase, nationId) {
         // This prevents budget bills from getting stuck indefinitely when
         // bill_support seat_counts are stale and don't trigger a math-lock.
         if (!earlyStatus && bill.bill_type === 'budget' && bill.voting_ends_tick == null) {
-            const ticksSinceProposed = currentTick - (bill.proposed_tick || 0);
-            // Budget bills spend up to BUDGET_COMMITTEE_EXPIRY_TICKS in committee before reaching the floor,
-            // so the forced resolution threshold must account for both committee and floor time.
-            const budgetForceThreshold = GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS + GAME_CONFIG.BUDGET_BILL_MAX_FLOOR_TICKS;
-            if (ticksSinceProposed >= budgetForceThreshold) {
+            // Use floor_tick if available, otherwise fall back to proposed_tick + committee expiry
+            const floorStart = bill.floor_tick || (bill.proposed_tick || 0) + GAME_CONFIG.BUDGET_COMMITTEE_EXPIRY_TICKS;
+            const ticksOnFloor = currentTick - floorStart;
+            if (ticksOnFloor >= GAME_CONFIG.BUDGET_BILL_MAX_FLOOR_TICKS) {
                 if (participating >= quorumSeats && effectiveYes > noSeats) {
                     earlyStatus = 'quorum_reached';
                 } else {
                     earlyStatus = 'quorum_opposed';
                 }
-                console.log(`[checkEarlyMajority] Budget bill ${bill.bill_name}: FORCED resolution after ${ticksSinceProposed} ticks (YES=${yesSeats}, NO=${noSeats}, participating=${participating}, quorum=${quorumSeats})`);
+                console.log(`[checkEarlyMajority] Budget bill ${bill.bill_name}: FORCED resolution after ${ticksOnFloor} ticks on floor (YES=${yesSeats}, NO=${noSeats}, participating=${participating}, quorum=${quorumSeats})`);
             }
         }
 

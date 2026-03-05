@@ -2157,6 +2157,7 @@ async function fileNoConfidence() {
             bill_name: motionName,
             bill_type: 'no_confidence',
             status: 'floor',
+            floor_tick: tick,
             voting_ends_tick: tick + GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS,
             preamble: `This motion, filed by the ${currentFaction.faction_name}, calls for a vote of no confidence in the current government. If passed by simple majority, the coalition will be immediately dissolved.`
         }).select().single();

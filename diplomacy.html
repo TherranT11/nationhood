@@ -4375,6 +4375,7 @@ async function approveTradeNegotiation(negotiationId) {
             trade_negotiation_id: negotiationId,
             status: 'floor',
             proposed_tick: shardTick,
+            floor_tick: shardTick,
             voting_ends_tick: shardTick + GAME_CONFIG.VOTING_WINDOW_TICKS
         }).select('id').single();
 
@@ -4394,6 +4395,7 @@ async function approveTradeNegotiation(negotiationId) {
             trade_negotiation_id: negotiationId,
             status: 'floor',
             proposed_tick: shardTick,
+            floor_tick: shardTick,
             voting_ends_tick: shardTick + GAME_CONFIG.VOTING_WINDOW_TICKS
         }).select('id').single();
 

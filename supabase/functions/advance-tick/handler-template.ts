@@ -1143,6 +1143,7 @@ async function advanceTick(supabase) {
                 for (const cb of (committeeImpeach || [])) {
                     await supabase.from('bills').update({
                         status: 'floor',
+                        floor_tick: newTick,
                         voting_ends_tick: newTick + GAME_CONFIG.IMPEACHMENT_MOTION_VOTING_TICKS
                     }).eq('id', cb.id);
                     if (cb.impeachment_id) {
