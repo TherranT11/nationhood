@@ -1060,9 +1060,9 @@ function renderFloorBill(bill, isVetoed) {
                     : (function() {
                         var ev = evaluateBillVote({ votes_for: bill.votes_for || 0, votes_against: bill.votes_against || 0, votes_abstain: bill.votes_abstain || 0, bill_type: bill.bill_type }, GAME_CONFIG.TOTAL_SEATS);
                         var statusText, statusStyle;
-                        if (ev.status === 'will_pass') { statusText = 'WILL PASS — Resolves Next Tick'; statusStyle = 'border-color:#4CAF50;color:#4CAF50;'; }
+                        if (ev.status === 'will_pass') { statusText = 'WILL PASS — Resolves Next Tick'; statusStyle = 'background:#4CAF50;border-color:#4CAF50;color:#fff;'; }
                         else if (ev.status === 'will_fail') { statusText = 'WILL FAIL — Resolves Next Tick'; statusStyle = 'background:#ff4444;border-color:#ff4444;color:#fff;'; }
-                        else if (ev.status === 'passing') { statusText = 'PASSING — ' + ev.quorumCurrent + '/' + ev.quorumThreshold + ' quorum'; statusStyle = 'border-color:#8BC34A;color:#8BC34A;'; }
+                        else if (ev.status === 'passing') { statusText = 'PASSING — ' + ev.quorumCurrent + '/' + ev.quorumThreshold + ' quorum'; statusStyle = 'background:#8BC34A;border-color:#8BC34A;color:#fff;'; }
                         else if (ev.status === 'quorum_not_met') { statusText = 'QUORUM NOT MET — ' + ev.quorumCurrent + '/' + ev.quorumThreshold; statusStyle = 'border-color:#ffcc00;color:#ffcc00;'; }
                         else if (ev.status === 'pending') { statusText = (bill.votes_for || 0) + ' / ' + ev.thresholdNeeded + ' YES needed'; statusStyle = 'border-color:#ffcc00;color:#ffcc00;'; }
                         else { statusText = 'VOTING — ' + (bill.votes_for || 0) + ' YES / ' + (bill.votes_against || 0) + ' NO'; statusStyle = ''; }
