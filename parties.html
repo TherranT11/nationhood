@@ -352,7 +352,7 @@ async function renderAutocracyParties(el, f, n) {
             return 0;
         });
         for (const faction of sortedFactions) {
-            const isYourParty = faction.id === rulingId;
+            const isYourParty = faction.id === f.id;
             const loy = Math.round(faction.loyalty ?? 50);
             const loyPct = Math.max(0, Math.min(100, loy));
             const lColor = loyaltyColor(loy);
