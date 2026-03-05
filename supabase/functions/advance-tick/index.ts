@@ -983,7 +983,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 buyerNationId = otherNationId;
             }
 
-            // Calculate guaranteed volume from seller's export capacity
+            // Calculate guaranteed volume from buyer's import demand
             var sellerFlows = nationFlows[sellerNationId];
             var buyerFlows = nationFlows[buyerNationId];
             if (!sellerFlows || !buyerFlows) continue;
@@ -992,26 +992,16 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             var buyerDemand = (buyerFlows[supplyArt.sector] && buyerFlows[supplyArt.sector].importDemand) || 0;
             if (sellerExport <= 0 || buyerDemand <= 0) continue;
 
-            var guaranteedVolume = Math.round(sellerExport * (supplyArt.commitment_pct / 100));
-            guaranteedVolume = Math.min(guaranteedVolume, buyerDemand);
-
-            // Apply price modifier based on price_terms article
-            var sectorPriceMod = priceModifiers[supplyArt.sector] || 1.0;
-            var rscPriceMod = sectorPriceMod;
-            if (priceArt) {
-                if (priceArt.price_type === 'fixed') rscPriceMod = 1.0;
-                else if (priceArt.price_type === 'discounted') rscPriceMod = sectorPriceMod * (1 - (priceArt.modifier_pct || 0) / 100);
-                else if (priceArt.price_type === 'premium') rscPriceMod = sectorPriceMod * (1 + (priceArt.modifier_pct || 0) / 100);
-            }
-
-            var adjustedVolume = Math.round(guaranteedVolume * rscPriceMod);
-            if (adjustedVolume <= 0) continue;
+            // Commitment % applies to buyer's import demand, capped by seller's export capacity
+            var guaranteedVolume = Math.round(buyerDemand * (supplyArt.commitment_pct / 100));
+            guaranteedVolume = Math.min(guaranteedVolume, sellerExport);
+            if (guaranteedVolume <= 0) continue;
 
             rscPreAllocations.push({
                 sellerNationId: sellerNationId,
                 buyerNationId: buyerNationId,
                 sector: supplyArt.sector,
-                volume: adjustedVolume,
+                volume: guaranteedVolume,
                 agreementId: rsc.id
             });
         }
